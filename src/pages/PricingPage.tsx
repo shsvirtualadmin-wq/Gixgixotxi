@@ -120,7 +120,7 @@ export function PricingPage() {
           </div>
 
           {/* Unlimited Tier Card */}
-          <div className="glass-card p-7 sm:p-8 flex flex-col justify-between rounded-[28px] relative border-[#D71921]/60 shadow-[0_20px_50px_rgba(215,25,33,0.18),inset_0_1px_1px_rgba(255,255,255,0.18)]">
+          <div className="glass-card-highlight p-7 sm:p-8 flex flex-col justify-between rounded-[28px] relative">
             <div className="space-y-5">
               <div className="flex items-center justify-between">
                 <span className="glass-pill px-3 py-1 text-xs font-bold text-[#D71921] border-[#D71921]/40 bg-[#D71921]/15">
@@ -188,7 +188,7 @@ export function PricingPage() {
           </div>
 
           {/* Koban Pack Card */}
-          <div className="glass-card p-7 sm:p-8 flex flex-col justify-between rounded-[28px] relative border-amber-500/35 shadow-[0_20px_50px_rgba(232,163,23,0.12),inset_0_1px_1px_rgba(255,255,255,0.14)]">
+          <div className="glass-card-gold p-7 sm:p-8 flex flex-col justify-between rounded-[28px] relative">
             <div className="space-y-5">
               <div className="flex items-center justify-between">
                 <span className="glass-pill px-3 py-1 text-xs font-semibold text-[var(--muted)]">Koban Pack</span>
@@ -320,7 +320,7 @@ export function PricingPage() {
           {/* Verification Step Box */}
           <div className="glass-card p-6 sm:p-8 space-y-4 rounded-[28px]">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-white/[0.06] border border-white/10 text-[var(--red)] flex items-center justify-center shrink-0">
+              <div className="icon-tile w-10 h-10 rounded-full text-[var(--red)] flex items-center justify-center shrink-0">
                 <Shield size={20} />
               </div>
               <div>

@@ -83,10 +83,10 @@
           var effective = 'dark';
           if (saved === 'light') effective = 'light';
           else if (saved === 'dark') effective = 'dark';
-          else if (saved === 'system' || !saved) effective = systemDark ? 'dark' : 'light';
+          else if (saved === 'system') effective = systemDark ? 'dark' : 'light';
 
           document.documentElement.setAttribute('data-theme', effective);
-          document.documentElement.setAttribute('data-theme-setting', saved || 'system');
+          document.documentElement.setAttribute('data-theme-setting', saved || 'dark');
           document.documentElement.style.colorScheme = effective;
           if (effective === 'dark') {
             document.documentElement.classList.add('dark');
@@ -97,7 +97,7 @@
           }
           var metaThemeColor = document.querySelector('meta[name="theme-color"]');
           if (metaThemeColor) {
-            metaThemeColor.setAttribute('content', effective === 'dark' ? '#000000' : '#FFFFFF');
+            metaThemeColor.setAttribute('content', effective === 'dark' ? '#000000' : '#F8F9FA');
           }
 
           // Automatic Smooth Mode (Lite Mode) detection for low-end phones & slow connections

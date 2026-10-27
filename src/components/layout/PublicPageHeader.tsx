@@ -79,7 +79,7 @@ export const PublicPageHeader: React.FC<PublicPageHeaderProps> = ({ title }) => 
       <div className="w-full max-w-6xl mx-auto pt-3.5 sm:pt-4 md:pt-5 px-3 sm:px-4 md:px-6">
         <nav
           aria-label="Page Header Navigation"
-          className={`pointer-events-auto w-full h-[58px] sm:h-[64px] px-3 sm:px-5 rounded-full flex items-center justify-between gap-3 border shadow-[0_20px_50px_rgba(0,0,0,0.55),0_8px_20px_rgba(0,0,0,0.35),inset_0_1px_1px_rgba(255,255,255,0.14)] backdrop-blur-[32px] sm:backdrop-blur-[38px] text-[var(--text)] transition-all ${
+          className={`pointer-events-auto w-full h-[58px] sm:h-[64px] px-3 sm:px-5 rounded-full flex items-center justify-between gap-3 border shadow-[0_20px_50px_rgba(0,0,0,0.55),0_8px_20px_rgba(0,0,0,0.35),inset_0_1px_1px_rgba(255,255,255,0.14)] allow-backdrop-blur backdrop-blur-[32px] sm:backdrop-blur-[38px] text-[var(--text)] transition-all ${
             isDark
               ? 'bg-[rgba(10,10,14,0.85)] border-white/12'
               : 'bg-[rgba(255,255,255,0.88)] border-black/[0.08] shadow-[0_16px_40px_rgba(0,0,0,0.08)]'

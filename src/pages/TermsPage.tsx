@@ -47,7 +47,7 @@ export function TermsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start max-w-5xl mx-auto">
           {/* Table of Contents Sticky Sidebar */}
           <div className="lg:col-span-4 sticky top-28 hidden lg:block">
-            <div className="glass-card p-5 sm:p-6 rounded-[24px] space-y-4 border border-white/[0.08] bg-[#0E0E13]/85 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.4)]">
+            <div className="glass-card p-5 sm:p-6 rounded-[24px] space-y-4 ">
               <h3
                 className="text-xs font-black uppercase tracking-wider text-[var(--text-faint)] font-dot"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -78,7 +78,7 @@ export function TermsPage() {
           {/* Main Legal Content Column */}
           <div className="lg:col-span-8 space-y-6">
             {/* Section 1 */}
-            <div id="acceptance" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="acceptance" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -94,7 +94,7 @@ export function TermsPage() {
             </div>
 
             {/* Section 2 */}
-            <div id="accounts" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="accounts" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -109,7 +109,7 @@ export function TermsPage() {
             </div>
 
             {/* Section 3 */}
-            <div id="pricing-payments" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="pricing-payments" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -123,7 +123,7 @@ export function TermsPage() {
                 <li><strong className="text-[var(--text)]">Free Tier:</strong> The free tier is generous and enough for students to practice and learn every day. Access to Boardly Commons and sharing study material is always free with no limit.</li>
                 <li><strong className="text-[var(--text)]">Unlimited Access (199 PKR):</strong> Students who wish to unlock unlimited practice tests, unlimited Boardy AI queries, full chapter analytics, and complete question bank access can purchase Unlimited access for 199 PKR.</li>
               </ul>
-              <div className="glass-row p-4 sm:p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] text-xs space-y-1.5 leading-relaxed">
+              <div className="glass-row p-4 sm:p-5 rounded-2xl  text-xs space-y-1.5 leading-relaxed">
                 <p className="font-bold text-[var(--text)]">How Payments Work:</p>
                 <p className="text-[var(--muted)]">
                   Payments are conducted via manual local mobile and bank transfers in Pakistan (JazzCash, EasyPaisa, SadaPay, or direct bank transfer). After transferring the amount, you submit your Transaction ID (TRX) and receipt screenshot on the billing page. An administrator manually verifies the transaction against official bank records before activating your account.
@@ -132,7 +132,7 @@ export function TermsPage() {
             </div>
 
             {/* Section 4 */}
-            <div id="kobans" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="kobans" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -147,7 +147,7 @@ export function TermsPage() {
             </div>
 
             {/* Section 5 */}
-            <div id="commons-rules" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="commons-rules" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -165,14 +165,14 @@ export function TermsPage() {
             </div>
 
             {/* Section 6 */}
-            <div id="anonymous-conduct" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="anonymous-conduct" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
               >
                 6. Anonymous Posting &amp; Safety Standards
               </h2>
-              <div className="glass-row p-4 sm:p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] text-xs space-y-2 leading-relaxed">
+              <div className="glass-row p-4 sm:p-5 rounded-2xl  text-xs space-y-2 leading-relaxed">
                 <p className="font-bold text-[var(--text)]">Anonymity &amp; Accountability:</p>
                 <p className="text-[var(--muted)]">
                   When posting anonymously in Commons, other students see an anonymous pseudonym rather than your name or profile picture.
@@ -184,7 +184,7 @@ export function TermsPage() {
             </div>
 
             {/* Section 7 */}
-            <div id="study-crews" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="study-crews" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -197,7 +197,7 @@ export function TermsPage() {
             </div>
 
             {/* Section 8 */}
-            <div id="intellectual-property" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="intellectual-property" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -210,7 +210,7 @@ export function TermsPage() {
             </div>
 
             {/* Section 9 */}
-            <div id="termination" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="termination" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -223,7 +223,7 @@ export function TermsPage() {
             </div>
 
             {/* Section 10 */}
-            <div id="disclaimer" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="disclaimer" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -236,7 +236,7 @@ export function TermsPage() {
             </div>
 
             {/* Section 11 */}
-            <div id="contact" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="contact" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -246,7 +246,7 @@ export function TermsPage() {
               <p className="text-sm text-[var(--muted)] leading-relaxed">
                 For questions regarding these Terms of Service or to report a violation, please contact our administrative desk:
               </p>
-              <div className="glass-row p-4 sm:p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] text-xs space-y-1">
+              <div className="glass-row p-4 sm:p-5 rounded-2xl  text-xs space-y-1">
                 <p><strong className="text-[var(--text)]">Email:</strong> support@boardly.cfd</p>
                 <p><strong className="text-[var(--text)]">Phone / WhatsApp:</strong> 0305 8969050</p>
                 <p><strong className="text-[var(--text)]">Organization:</strong> SHS Virtual Academy (<a href="https://shsvirtualacademy.pro" target="_blank" rel="noopener noreferrer" className="text-[#D71921] hover:underline">shsvirtualacademy.pro</a>)</p>

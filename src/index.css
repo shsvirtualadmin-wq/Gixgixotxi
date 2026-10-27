@@ -61,21 +61,29 @@
   --surface-muted: #F1F3F5;
   --surface-2: #E5E7EB;
 
-  --glass-surface: rgba(255, 255, 255, 0.72);
-  --glass-surface-strong: rgba(255, 255, 255, 0.85);
-  --glass-row-bg: rgba(241, 245, 249, 0.78);
-  --glass-border: rgba(0, 0, 0, 0.08);
-  --glass-highlight: rgba(255, 255, 255, 0.92);
+  --glass-surface: rgba(255, 255, 255, 0.82);
+  --glass-surface-strong: rgba(255, 255, 255, 0.88);
+  --glass-surface-highlight: linear-gradient(180deg, rgba(254, 242, 242, 0.92) 0%, rgba(255, 255, 255, 0.88) 100%);
+  --glass-surface-highlight-color: rgba(255, 250, 250, 0.90);
+  --glass-row-bg: rgba(241, 245, 249, 0.88);
+  --glass-pill-bg: rgba(255, 255, 255, 0.90);
+  --glass-border: rgba(0, 0, 0, 0.10);
+  --glass-border-strong: rgba(0, 0, 0, 0.16);
+  --glass-border-hover: rgba(215, 25, 33, 0.35);
+  --glass-border-highlight: rgba(215, 25, 33, 0.50);
+  --glass-highlight: rgba(255, 255, 255, 0.95);
 
   --border: #E5E7EB;
   --border-strong: #D1D5DB;
-  --divider: rgba(0, 0, 0, 0.08);
+  --divider: rgba(0, 0, 0, 0.09);
   --track-bg: rgba(0, 0, 0, 0.12);
 
   --text-primary: #111827;
   --text-secondary: #374151;
   --text-muted: #4B5563;
   --text-on-accent: #FFFFFF;
+  --step-number-color: #111827;
+  --step-number-active-color: #D71921;
 
   --accent: #D71921;
   --accent-red: #D71921;
@@ -85,8 +93,11 @@
   --accent-gold-text: #B45309;
   --focus-ring: rgba(215, 25, 33, 0.35);
 
-  --shadow-card: 0 14px 35px -10px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.04), inset 0 1px 1px rgba(255, 255, 255, 0.92);
-  --shadow-panel: 0 20px 45px -12px rgba(15, 23, 42, 0.10), 0 8px 20px -6px rgba(15, 23, 42, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.94);
+  --shadow-card: 0 14px 35px -10px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.04), inset 0 1px 1px rgba(255, 255, 255, 0.95);
+  --shadow-panel: 0 20px 45px -12px rgba(15, 23, 42, 0.10), 0 8px 20px -6px rgba(15, 23, 42, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.96);
+  --shadow-card-highlight: 0 20px 45px -12px rgba(215, 25, 33, 0.14), 0 6px 16px -4px rgba(15, 23, 42, 0.06), inset 0 1px 1px rgba(255, 255, 255, 0.96);
+  --shadow-card-gold: 0 16px 38px -10px rgba(232, 163, 23, 0.14), 0 4px 12px -2px rgba(15, 23, 42, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.95);
+  --shadow-row: 0 4px 14px -2px rgba(15, 23, 42, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.92);
   --glow-red: rgba(215, 25, 33, 0.06);
   --glow-gold: rgba(245, 158, 11, 0.06);
 
@@ -171,10 +182,16 @@
   --surface-muted: #1A1A20;
   --surface-2: #1C1C22;
 
-  --glass-surface: rgba(14, 14, 19, 0.82);
-  --glass-surface-strong: rgba(18, 18, 24, 0.90);
-  --glass-row-bg: rgba(20, 20, 26, 0.65);
+  --glass-surface: rgba(14, 14, 19, 0.90);
+  --glass-surface-strong: rgba(18, 18, 24, 0.94);
+  --glass-surface-highlight: rgba(18, 18, 24, 0.94);
+  --glass-surface-highlight-color: rgba(18, 18, 24, 0.94);
+  --glass-row-bg: rgba(10, 10, 14, 0.75);
+  --glass-pill-bg: rgba(255, 255, 255, 0.06);
   --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-border-strong: rgba(255, 255, 255, 0.22);
+  --glass-border-hover: rgba(255, 255, 255, 0.24);
+  --glass-border-highlight: rgba(215, 25, 33, 0.55);
   --glass-highlight: rgba(255, 255, 255, 0.14);
 
   --border: #26262B;
@@ -186,6 +203,8 @@
   --text-secondary: #C4C4CC;
   --text-muted: #8E8E98;
   --text-on-accent: #FFFFFF;
+  --step-number-color: rgba(255, 255, 255, 0.22);
+  --step-number-active-color: rgba(215, 25, 33, 0.55);
 
   --accent: #D71921;
   --accent-red: #D71921;
@@ -195,8 +214,11 @@
   --accent-gold-text: #FFD66B;
   --focus-ring: rgba(215, 25, 33, 0.5);
 
-  --shadow-card: 0 16px 40px -10px rgba(0, 0, 0, 0.65), inset 0 1px 1px rgba(255, 255, 255, 0.12);
+  --shadow-card: 0 14px 34px -10px rgba(0, 0, 0, 0.65), inset 0 1px 1px rgba(255, 255, 255, 0.12);
   --shadow-panel: 0 24px 55px -12px rgba(0, 0, 0, 0.75), 0 0 35px rgba(215, 25, 33, 0.06), inset 0 1px 1px rgba(255, 255, 255, 0.14);
+  --shadow-card-highlight: 0 24px 55px -10px rgba(0, 0, 0, 0.85), 0 0 28px rgba(215, 25, 33, 0.14), inset 0 1px 1px rgba(255, 255, 255, 0.16);
+  --shadow-card-gold: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 24px rgba(232, 163, 23, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.12);
+  --shadow-row: 0 12px 32px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.08);
   --glow-red: rgba(215, 25, 33, 0.18);
   --glow-gold: rgba(245, 158, 11, 0.14);
 
@@ -250,21 +272,29 @@
   --surface-muted: #F1F3F5;
   --surface-2: #E5E7EB;
 
-  --glass-surface: rgba(255, 255, 255, 0.72);
-  --glass-surface-strong: rgba(255, 255, 255, 0.85);
-  --glass-row-bg: rgba(241, 245, 249, 0.78);
-  --glass-border: rgba(0, 0, 0, 0.08);
-  --glass-highlight: rgba(255, 255, 255, 0.92);
+  --glass-surface: rgba(255, 255, 255, 0.82);
+  --glass-surface-strong: rgba(255, 255, 255, 0.88);
+  --glass-surface-highlight: linear-gradient(180deg, rgba(254, 242, 242, 0.92) 0%, rgba(255, 255, 255, 0.88) 100%);
+  --glass-surface-highlight-color: rgba(255, 250, 250, 0.90);
+  --glass-row-bg: rgba(241, 245, 249, 0.88);
+  --glass-pill-bg: rgba(255, 255, 255, 0.90);
+  --glass-border: rgba(0, 0, 0, 0.10);
+  --glass-border-strong: rgba(0, 0, 0, 0.16);
+  --glass-border-hover: rgba(215, 25, 33, 0.35);
+  --glass-border-highlight: rgba(215, 25, 33, 0.50);
+  --glass-highlight: rgba(255, 255, 255, 0.95);
 
   --border: #E5E7EB;
   --border-strong: #D1D5DB;
-  --divider: rgba(0, 0, 0, 0.08);
+  --divider: rgba(0, 0, 0, 0.09);
   --track-bg: rgba(0, 0, 0, 0.12);
 
   --text-primary: #111827;
   --text-secondary: #374151;
   --text-muted: #4B5563;
   --text-on-accent: #FFFFFF;
+  --step-number-color: #111827;
+  --step-number-active-color: #D71921;
 
   --accent: #D71921;
   --accent-red: #D71921;
@@ -274,8 +304,11 @@
   --accent-gold-text: #B45309;
   --focus-ring: rgba(215, 25, 33, 0.35);
 
-  --shadow-card: 0 14px 35px -10px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.04), inset 0 1px 1px rgba(255, 255, 255, 0.92);
-  --shadow-panel: 0 20px 45px -12px rgba(15, 23, 42, 0.10), 0 8px 20px -6px rgba(15, 23, 42, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.94);
+  --shadow-card: 0 14px 35px -10px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.04), inset 0 1px 1px rgba(255, 255, 255, 0.95);
+  --shadow-panel: 0 20px 45px -12px rgba(15, 23, 42, 0.10), 0 8px 20px -6px rgba(15, 23, 42, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.96);
+  --shadow-card-highlight: 0 20px 45px -12px rgba(215, 25, 33, 0.14), 0 6px 16px -4px rgba(15, 23, 42, 0.06), inset 0 1px 1px rgba(255, 255, 255, 0.96);
+  --shadow-card-gold: 0 16px 38px -10px rgba(232, 163, 23, 0.14), 0 4px 12px -2px rgba(15, 23, 42, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.95);
+  --shadow-row: 0 4px 14px -2px rgba(15, 23, 42, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.92);
   --glow-red: rgba(215, 25, 33, 0.06);
   --glow-gold: rgba(245, 158, 11, 0.06);
 
@@ -514,21 +547,21 @@
 .boardly-card {
   padding: 24px;
   border-radius: 28px;
-  background: rgba(14, 14, 19, 0.86);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
   gap: 12px;
-  box-shadow: 0 14px 32px -10px rgba(0, 0, 0, 0.62), inset 0 1px 1px rgba(255, 255, 255, 0.12);
+  box-shadow: var(--shadow-card);
   contain: layout paint;
   overflow: visible;
   transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 .light .boardly-card,
 [data-theme="light"] .boardly-card {
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 12px 28px -10px rgba(15, 23, 42, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.92);
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-card);
 }
 @media (max-width: 399px) {
   .boardly-card {
@@ -538,13 +571,14 @@
 }
 
 .boardly-card-red {
-  border-color: rgba(215, 25, 33, 0.45) !important;
-  box-shadow: 0 16px 36px -10px rgba(215, 25, 33, 0.16), inset 0 1px 1px rgba(255, 255, 255, 0.14) !important;
+  border-color: var(--glass-border-highlight) !important;
+  box-shadow: var(--shadow-card-highlight) !important;
 }
 .light .boardly-card-red,
 [data-theme="light"] .boardly-card-red {
-  border-color: rgba(215, 25, 33, 0.38) !important;
-  box-shadow: 0 14px 32px -10px rgba(215, 25, 33, 0.10), inset 0 1px 1px rgba(255, 255, 255, 0.94) !important;
+  background: var(--glass-surface-highlight) !important;
+  border-color: var(--glass-border-highlight) !important;
+  box-shadow: var(--shadow-card-highlight) !important;
 }
 
 .icon-tile {
@@ -559,15 +593,16 @@
   justify-content: center;
   flex-shrink: 0;
   color: var(--text);
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
 }
 
 /* GlassCard & legacy aliases mapped to floating glass cards (no backdrop-filter on cards) */
 .glass,
 .card-solid {
-  background: rgba(14, 14, 19, 0.86) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: var(--glass-surface) !important;
+  border: 1px solid var(--glass-border) !important;
   border-radius: 28px;
-  box-shadow: 0 14px 32px -10px rgba(0, 0, 0, 0.62), inset 0 1px 1px rgba(255, 255, 255, 0.12) !important;
+  box-shadow: var(--shadow-card) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   contain: layout paint;
@@ -577,9 +612,9 @@
 [data-theme="light"] .glass,
 .light .card-solid,
 [data-theme="light"] .card-solid {
-  background: rgba(255, 255, 255, 0.88) !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-  box-shadow: 0 12px 28px -10px rgba(15, 23, 42, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.92) !important;
+  background: var(--glass-surface) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: var(--shadow-card) !important;
 }
 
 .glass-hover:hover {
@@ -588,31 +623,31 @@
 }
 .light .glass-hover:hover,
 [data-theme="light"] .glass-hover:hover {
-  background: rgba(248, 249, 252, 0.96) !important;
-  border-color: rgba(215, 25, 33, 0.30) !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-color: rgba(215, 25, 33, 0.35) !important;
 }
 
 .glass-animated-border {
-  background: rgba(14, 14, 19, 0.88) !important;
-  border: 1px solid rgba(215, 25, 33, 0.5) !important;
+  background: var(--glass-surface-highlight) !important;
+  border: 1px solid var(--glass-border-highlight) !important;
   border-radius: 28px;
-  box-shadow: 0 16px 36px -10px rgba(215, 25, 33, 0.18), inset 0 1px 1px rgba(255, 255, 255, 0.14) !important;
+  box-shadow: var(--shadow-card-highlight) !important;
 }
 .light .glass-animated-border,
 [data-theme="light"] .glass-animated-border {
-  background: rgba(255, 255, 255, 0.92) !important;
-  border: 1px solid rgba(215, 25, 33, 0.4) !important;
-  box-shadow: 0 14px 32px -10px rgba(215, 25, 33, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.94) !important;
+  background: var(--glass-surface-highlight) !important;
+  border: 1px solid var(--glass-border-highlight) !important;
+  box-shadow: var(--shadow-card-highlight) !important;
 }
 
 .glass-input {
   height: 48px;
   border-radius: 16px;
-  background: var(--glass-row-bg);
+  background: var(--input-bg);
   border: 1px solid var(--glass-border);
-  color: var(--text);
+  color: var(--input-text);
   padding: 0 16px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
 }
 .glass-input:focus {
   outline: none;
@@ -622,36 +657,81 @@
 
 /* ===== SHARED GLASS SYSTEM (STEP 8 & 9 - GPU OPTIMIZED) ===== */
 .glass-panel {
-  background: rgba(14, 14, 19, 0.86);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
   border-radius: 36px;
-  box-shadow: 0 20px 44px -12px rgba(0, 0, 0, 0.72), inset 0 1px 1px rgba(255, 255, 255, 0.14);
-  transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+  box-shadow: var(--shadow-panel);
+  transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease, color 200ms ease;
 }
 .light .glass-panel,
 [data-theme="light"] .glass-panel {
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 16px 36px -12px rgba(15, 23, 42, 0.10), inset 0 1px 1px rgba(255, 255, 255, 0.94);
+  background: var(--glass-surface-strong);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-panel);
 }
 
 .glass-card {
-  background: rgba(14, 14, 19, 0.86);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
   border-radius: 28px;
-  box-shadow: 0 14px 32px -10px rgba(0, 0, 0, 0.62), inset 0 1px 1px rgba(255, 255, 255, 0.12);
+  box-shadow: var(--shadow-card);
   contain: layout paint;
-  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, color 0.2s ease;
 }
 .light .glass-card,
 [data-theme="light"] .glass-card {
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 12px 28px -10px rgba(15, 23, 42, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.92);
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-card);
+}
+
+/* Highlighted Glass Card (Unlimited Plan, Grand Line Box, Open FAQ Row, Feature 05) */
+.glass-card-highlight {
+  background: var(--glass-surface-strong);
+  border: 1px solid var(--glass-border-highlight);
+  border-radius: 28px;
+  box-shadow: var(--shadow-card-highlight);
+  contain: layout paint;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+.light .glass-card-highlight,
+[data-theme="light"] .glass-card-highlight {
+  background: var(--glass-surface-highlight) !important;
+  background-color: var(--glass-surface-highlight-color) !important;
+  border: 1px solid var(--glass-border-highlight) !important;
+  box-shadow: var(--shadow-card-highlight) !important;
+}
+
+/* Gold-Accented Glass Card (Koban Pack Card, Captain Allotment Card) */
+.glass-card-gold {
+  background: var(--glass-surface);
+  border: 1px solid rgba(232, 163, 23, 0.38);
+  border-radius: 28px;
+  box-shadow: var(--shadow-card-gold);
+  contain: layout paint;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+.light .glass-card-gold,
+[data-theme="light"] .glass-card-gold {
+  background: rgba(255, 255, 255, 0.86) !important;
+  border: 1px solid rgba(217, 119, 6, 0.42) !important;
+  box-shadow: var(--shadow-card-gold) !important;
 }
 
 .glass-card-interactive {
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
+  border-radius: 28px;
+  box-shadow: var(--shadow-card);
+  contain: layout paint;
   cursor: pointer;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+.light .glass-card-interactive,
+[data-theme="light"] .glass-card-interactive {
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-card);
 }
 .glass-card-interactive:hover {
   transform: translateY(-5px);
@@ -668,17 +748,17 @@
 }
 
 .glass-row {
-  background: rgba(20, 20, 26, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--glass-row-bg);
+  border: 1px solid var(--glass-border);
   border-radius: 20px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.32), inset 0 1px 1px rgba(255, 255, 255, 0.06);
-  transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+  box-shadow: var(--shadow-row);
+  transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease, color 200ms ease;
 }
 .light .glass-row,
 [data-theme="light"] .glass-row {
-  background: rgba(241, 245, 249, 0.84);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04), inset 0 1px 1px rgba(255, 255, 255, 0.88);
+  background: var(--glass-row-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-row);
 }
 
 .glass-pill {
@@ -686,17 +766,17 @@
   align-items: center;
   gap: 8px;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--glass-pill-bg);
+  border: 1px solid var(--glass-border);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.1);
   transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
 }
 .light .glass-pill,
 [data-theme="light"] .glass-pill {
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(0, 0, 0, 0.09);
+  background: var(--glass-pill-bg);
+  border: 1px solid var(--glass-border);
   color: #111827;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.92);
 }
 
 .section-chip {
@@ -709,18 +789,18 @@
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--glass-pill-bg);
+  border: 1px solid var(--glass-border);
   color: rgba(255, 255, 255, 0.9);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
 }
 .light .section-chip,
 [data-theme="light"] .section-chip {
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(0, 0, 0, 0.09);
+  background: var(--glass-pill-bg);
+  border: 1px solid var(--glass-border);
   color: #111827;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.92);
 }
 
 .section-chip-red {
@@ -785,7 +865,7 @@
   height: 52px;
   padding: 0 24px;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--glass-pill-bg);
   color: var(--text);
   font-family: var(--font-heading);
   font-size: 14px;
@@ -793,16 +873,16 @@
   letter-spacing: -0.01em;
   border: 1px solid rgba(255, 255, 255, 0.15);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.08);
-  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
   cursor: pointer;
   text-decoration: none;
 }
 .light .btn-secondary,
 [data-theme="light"] .btn-secondary {
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.88);
   color: #111827;
-  border-color: rgba(0, 0, 0, 0.12);
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06), inset 0 1px 1px rgba(255, 255, 255, 0.92);
+  border-color: rgba(0, 0, 0, 0.14);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06), inset 0 1px 1px rgba(255, 255, 255, 0.94);
 }
 .btn-secondary:hover {
   background: rgba(255, 255, 255, 0.09);
@@ -812,9 +892,9 @@
 }
 .light .btn-secondary:hover,
 [data-theme="light"] .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.94);
-  border-color: rgba(0, 0, 0, 0.2);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.10), inset 0 1px 1px rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(0, 0, 0, 0.22);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.10), inset 0 1px 1px rgba(255, 255, 255, 0.98);
 }
 .btn-secondary:active {
   transform: scale(0.98);
@@ -1566,38 +1646,70 @@ body,
 }
 
 /* ===== LIGHT THEME COMPREHENSIVE TOKEN ADAPTATION =====
-   Ensures all glass widgets, cards, pills, tables, KaTeX blocks, code boxes,
-   progress tracks, and status badges meet WCAG AA (>= 4.5:1 body, >= 3:1 UI)
-   in light mode while keeping dark mode and brand red/gold 100% untouched. */
+   Ensures all glass widgets, cards, panels, FAQ rows, chips, inputs, modals,
+   tables, KaTeX blocks, code boxes, progress tracks, and status badges meet
+   WCAG AA (>= 4.5:1 body, >= 3:1 UI) in light mode while keeping dark mode
+   and brand red/gold 100% untouched. */
 :is(.light, [data-theme="light"]) {
   /* 1. Root & Container Dark Backgrounds -> Light Token Equivalents */
-  & .bg-black:not(.dark-surface-preserve) {
+  & :is(
+    .bg-black,
+    .bg-\[\#000000\]
+  ):not(.dark-surface-preserve) {
     background-color: var(--bg) !important;
   }
 
+  /* Standard Glass Card Surfaces -> var(--glass-surface) */
   & :is(
+    .bg-\[\#0e0e13\]\/90,
+    .bg-\[\#0e0e13\]\/85,
     .bg-\[\#0e0e13\]\/82,
+    .bg-\[\#0e0e13\]\/80,
+    .bg-\[\#0E0E13\]\/90,
     .bg-\[\#0E0E13\]\/85,
     .bg-\[\#0E0E13\]\/80,
-    .bg-\[\#0e0e13\]\/85,
+    .bg-\[rgba\(14\,14\,19\,0\.86\)\],
     .bg-\[rgba\(14\,14\,19\,0\.82\)\],
-    .bg-\[rgba\(14\,14\,19\,0\.78\)\]
+    .bg-\[rgba\(14\,14\,19\,0\.78\)\],
+    .bg-\[\#0c0c0e\],
+    .bg-\[\#0d0d0e\],
+    .bg-\[\#0e0e11\],
+    .bg-\[\#0B0B10\],
+    .bg-\[\#0D0D0D\],
+    .bg-\[\#0f0f11\]
   ):not(.dark-surface-preserve) {
     background-color: var(--glass-surface) !important;
     border-color: var(--glass-border);
     box-shadow: var(--shadow-card) !important;
   }
 
+  /* Elevated Panels & Modal Surfaces -> var(--glass-surface-strong) */
   & :is(
-    .bg-\[\#121218\]\/90,
+    .bg-\[\#121218\]\/94,
     .bg-\[\#121218\]\/92,
+    .bg-\[\#121218\]\/90,
+    .bg-\[\#0e0e13\]\/92,
     .bg-\[rgba\(24\,24\,32\,0\.92\)\],
-    .bg-\[\#0A0A0D\]\/85
+    .bg-\[\#0A0A0D\]\/85,
+    .bg-\[\#111111\],
+    .bg-\[\#121212\],
+    .bg-\[\#141414\],
+    .bg-\[\#161619\],
+    .bg-\[\#181818\],
+    .bg-\[\#191919\],
+    .bg-\[\#1A1A1A\],
+    .bg-\[\#1E1E1E\],
+    .bg-neutral-950,
+    .bg-neutral-900,
+    .bg-slate-900
   ):not(.dark-surface-preserve) {
     background-color: var(--glass-surface-strong) !important;
+    border-color: var(--glass-border);
     box-shadow: var(--shadow-panel) !important;
+    color: var(--text-primary);
   }
 
+  /* Inner Panels, Top Scorers Box, Icon Tiles, Table Rows & Inputs -> var(--glass-row-bg) */
   & :is(
     .bg-\[\#0a0a0e\]\/75,
     .bg-\[rgba\(10\,10\,14\,0\.65\)\],
@@ -1605,11 +1717,74 @@ body,
     .bg-\[\#0E0E13\],
     .bg-\[\#121216\],
     .bg-\[\#0A0A0A\],
-    .bg-\[\#141414\],
-    .bg-\[\#0F0F0F\]
+    .bg-\[\#0F0F0F\],
+    .bg-\[\#101010\],
+    .bg-neutral-800,
+    .bg-neutral-800\/50,
+    .bg-neutral-800\/60,
+    .bg-neutral-800\/70,
+    .bg-neutral-800\/80,
+    .bg-neutral-900\/40,
+    .bg-neutral-900\/50,
+    .bg-neutral-900\/60,
+    .bg-neutral-900\/70,
+    .bg-neutral-900\/80,
+    .bg-neutral-950\/50,
+    .bg-neutral-950\/80,
+    .bg-zinc-800,
+    .bg-black\/20,
+    .bg-black\/30,
+    .bg-black\/40,
+    .bg-black\/50,
+    .bg-black\/60,
+    .bg-black\/70
   ):not(.dark-surface-preserve) {
     background-color: var(--glass-row-bg) !important;
+    border-color: var(--glass-border);
+    box-shadow: var(--shadow-row) !important;
     color: var(--text-primary);
+  }
+
+  /* Highlighted Red-Bordered Cards & Rows (Unlimited Plan, Grand Line Box, Open FAQ Row, Feature 05, Top-3 Crew Rows) */
+  & :is(
+    .bg-\[\#181011\],
+    .bg-\[\#181011\]\/90,
+    .bg-\[\#201011\],
+    .bg-\[\#1C1213\],
+    .bg-\[\#260B0B\],
+    .bg-red-950\/\[0\.08\],
+    .bg-red-950\/\[0\.12\],
+    .glass-card.border-\[\#D71921\]\/60,
+    .glass-card.border-\[\#D71921\]\/50,
+    .glass-card.border-\[\#D71921\]\/45,
+    .glass-card.border-\[\#D71921\]\/40,
+    .glass-card.border-\[\#D71921\]\/35,
+    .glass-card.border-\[\#D71921\]\/30,
+    .glass-panel.border-\[\#D71921\]\/50,
+    .glass-panel.border-\[\#D71921\]\/45,
+    .glass-panel.border-\[\#D71921\]\/40,
+    .glass-panel.border-\[\#D71921\]\/30,
+    .bg-\[\#121218\]\/94.border-\[\#D71921\]\/60,
+    .bg-\[\#121218\]\/94.border-\[\#D71921\]\/45,
+    .bg-\[\#0e0e13\]\/92.border-\[\#D71921\]\/30
+  ):not(.dark-surface-preserve) {
+    background: var(--glass-surface-highlight) !important;
+    background-color: var(--glass-surface-highlight-color) !important;
+    border-color: var(--glass-border-highlight) !important;
+    box-shadow: var(--shadow-card-highlight) !important;
+    color: var(--text-primary);
+  }
+
+  /* Gold-Bordered Cards (Koban Pack Card, Captain Monthly Allotment Card, Journey Card) */
+  & :is(
+    .glass-card.border-\[\#E8A317\]\/35,
+    .glass-card.border-\[\#E8A317\]\/40,
+    .glass-card.border-amber-500\/35,
+    .bg-\[\#0e0e13\]\/90.border-\[\#E8A317\]\/35
+  ):not(.dark-surface-preserve) {
+    background: rgba(255, 255, 255, 0.86) !important;
+    border-color: rgba(217, 119, 6, 0.42) !important;
+    box-shadow: var(--shadow-card-gold) !important;
   }
 
   /* Gradient dark-stop widgets (e.g. PhoneMockup / ScrollDrivenPreview red-tinted cards) */
@@ -1619,8 +1794,39 @@ body,
     box-shadow: var(--shadow-card) !important;
   }
 
+  /* Dark Tinted Status & Category Surfaces -> Light Tinted Equivalents */
+  & :is(.bg-emerald-950\/40, .bg-emerald-950\/30, .bg-emerald-950\/20):not(.dark-surface-preserve) {
+    background-color: #ECFDF5 !important;
+    border-color: rgba(16, 185, 129, 0.35) !important;
+  }
+  & :is(.bg-amber-950\/40, .bg-amber-950\/30, .bg-amber-950\/20):not(.dark-surface-preserve) {
+    background-color: #FFFBEB !important;
+    border-color: rgba(245, 158, 11, 0.38) !important;
+  }
+  & :is(.bg-red-950\/40, .bg-red-950\/30, .bg-red-950\/20):not(.dark-surface-preserve) {
+    background-color: #FEF2F2 !important;
+    border-color: rgba(215, 25, 33, 0.35) !important;
+  }
+  & :is(.bg-cyan-950\/40, .bg-cyan-950\/30):not(.dark-surface-preserve) {
+    background-color: #ECFEFF !important;
+    border-color: rgba(6, 182, 212, 0.35) !important;
+  }
+  & :is(.bg-purple-950\/40, .bg-purple-950\/30):not(.dark-surface-preserve) {
+    background-color: #F5F3FF !important;
+    border-color: rgba(139, 92, 246, 0.35) !important;
+  }
+  & :is(.bg-pink-950\/40, .bg-pink-950\/30):not(.dark-surface-preserve) {
+    background-color: #FDF2F8 !important;
+    border-color: rgba(236, 72, 153, 0.35) !important;
+  }
+
   /* 2. Text Contrast Adaptation (Excluding Red Footer, Red/Solid Accent Buttons & Preserved Dark Tiles) */
-  & :is(.text-white, .text-white\/95, .text-white\/90):not(
+  & :is(
+    .text-white,
+    .text-white\/95,
+    .text-white\/90,
+    .hover\:text-white:hover
+  ):not(
     .boardly-red-footer,
     .boardly-red-footer *,
     .btn-primary,
@@ -1633,6 +1839,8 @@ body,
     .badge-pill-red *,
     .bg-\[\#D71921\],
     .bg-\[\#D71921\] *,
+    .bg-\[\#D71920\],
+    .bg-\[\#D71920\] *,
     .bg-\[\#10b981\],
     .bg-\[\#10b981\] *,
     .bg-red-600,
@@ -1641,29 +1849,75 @@ body,
     .bg-emerald-600 *,
     .bg-amber-500,
     .bg-amber-500 *,
+    .bg-amber-600,
+    .bg-amber-600 *,
+    .bg-accent,
+    .bg-accent *,
     .dark-surface-preserve,
     .dark-surface-preserve *
   ) {
     color: var(--text-primary) !important;
   }
 
-  & :is(.text-white\/85, .text-white\/80, .text-white\/75, .text-white\/70, .text-white\/65):not(
+  & :is(
+    .text-white\/85,
+    .text-white\/80,
+    .text-white\/75,
+    .text-white\/70,
+    .text-white\/65,
+    .text-\[rgba\(255\,255\,255\,0\.8\)\],
+    .text-\[rgba\(255\,255\,255\,0\.75\)\],
+    .text-\[rgba\(255\,255\,255\,0\.7\)\],
+    .text-\[rgba\(255\,255\,255\,0\.65\)\],
+    .text-neutral-200,
+    .text-neutral-300
+  ):not(
     .boardly-red-footer *,
     .bg-\[\#D71921\] *,
+    .bg-\[\#D71920\] *,
     .dark-surface-preserve *
   ) {
     color: var(--text-secondary) !important;
   }
 
-  & :is(.text-white\/60, .text-white\/55, .text-white\/50, .text-white\/45, .text-white\/40, .text-white\/35, .text-white\/30):not(
+  & :is(
+    .text-white\/60,
+    .text-white\/55,
+    .text-white\/50,
+    .text-white\/45,
+    .text-white\/40,
+    .text-white\/35,
+    .text-white\/30,
+    .text-white\/25,
+    .text-white\/20,
+    .text-\[rgba\(255\,255\,255\,0\.6\)\],
+    .text-\[rgba\(255\,255\,255\,0\.55\)\],
+    .text-\[rgba\(255\,255\,255\,0\.5\)\],
+    .text-\[rgba\(255\,255\,255\,0\.45\)\],
+    .text-\[rgba\(255\,255\,255\,0\.4\)\],
+    .text-\[rgba\(255\,255\,255\,0\.35\)\],
+    .text-\[rgba\(255\,255\,255\,0\.3\)\],
+    .text-\[rgba\(255\,255\,255\,0\.2\)\],
+    .text-neutral-400,
+    .text-neutral-500,
+    .text-zinc-400,
+    .text-zinc-500
+  ):not(
     .boardly-red-footer *,
     .bg-\[\#D71921\] *,
+    .bg-\[\#D71920\] *,
     .dark-surface-preserve *
   ) {
     color: var(--text-muted) !important;
   }
 
-  & :is(.placeholder\:text-white\/35, .placeholder\:text-white\/30, .placeholder\:text-white\/40)::placeholder {
+  & :is(
+    .placeholder\:text-white\/35,
+    .placeholder\:text-white\/30,
+    .placeholder\:text-white\/40,
+    .placeholder\:text-\[rgba\(255\,255\,255\,0\.3\)\],
+    .placeholder\:text-\[rgba\(255\,255\,255\,0\.35\)\]
+  )::placeholder {
     color: var(--placeholder) !important;
   }
 
@@ -1673,9 +1927,13 @@ body,
     .border-white\/8,
     .border-white\/10,
     .border-white\/12,
+    .border-white\/14,
     .border-white\/15,
     .border-white\/20,
+    .border-white\/22,
     .border-white\/25,
+    .border-white\/\[0\.04\],
+    .border-white\/\[0\.05\],
     .border-white\/\[0\.06\],
     .border-white\/\[0\.07\],
     .border-white\/\[0\.08\],
@@ -1683,9 +1941,20 @@ body,
     .border-white\/\[0\.10\],
     .border-white\/\[0\.12\],
     .border-white\/\[0\.14\],
-    .border-white\/\[0\.15\]
+    .border-white\/\[0\.15\],
+    .border-\[rgba\(255\,255\,255\,0\.06\)\],
+    .border-\[rgba\(255\,255\,255\,0\.08\)\],
+    .border-\[rgba\(255\,255\,255\,0\.1\)\],
+    .border-\[rgba\(255\,255\,255\,0\.12\)\],
+    .border-\[rgba\(255\,255\,255\,0\.14\)\],
+    .border-\[rgba\(255\,255\,255\,0\.15\)\],
+    .border-\[rgba\(255\,255\,255\,0\.2\)\],
+    .border-neutral-800,
+    .border-neutral-700,
+    .border-\[\#222226\],
+    .border-\[\#1f1f23\]
   ):not(.boardly-red-footer, .boardly-red-footer *, .dark-surface-preserve, .dark-surface-preserve *) {
-    border-color: rgba(0, 0, 0, 0.09) !important;
+    border-color: var(--glass-border) !important;
   }
 
   /* Unfilled Daily Ring top border & subtle dividers */
@@ -1698,16 +1967,21 @@ body,
     --tw-gradient-via: rgba(0, 0, 0, 0.10) !important;
   }
 
-  /* 4. Translucent Surface Tints & Unfilled Progress/Streak Tracks */
+  /* 4. Translucent Surface Tints, Inner Tiles, Chips & Unfilled Progress/Streak Tracks */
   & :is(
     .bg-white\/\[0\.02\],
     .bg-white\/\[0\.03\],
     .bg-white\/\[0\.04\],
     .bg-white\/\[0\.05\],
     .bg-white\/\[0\.06\],
-    .bg-white\/5
-  ):not(.boardly-red-footer *, .bg-\[\#D71921\] *, .dark-surface-preserve *) {
-    background-color: rgba(0, 0, 0, 0.04) !important;
+    .bg-white\/5,
+    .bg-\[rgba\(255\,255\,255\,0\.02\)\],
+    .bg-\[rgba\(255\,255\,255\,0\.03\)\],
+    .bg-\[rgba\(255\,255\,255\,0\.04\)\],
+    .bg-\[rgba\(255\,255\,255\,0\.05\)\],
+    .bg-\[rgba\(255\,255\,255\,0\.06\)\]
+  ):not(.boardly-red-footer *, .bg-\[\#D71921\] *, .bg-\[\#D71920\] *, .dark-surface-preserve *) {
+    background-color: rgba(15, 23, 42, 0.045) !important;
   }
 
   & :is(
@@ -1716,21 +1990,29 @@ body,
     .bg-white\/\[0\.1\],
     .bg-white\/\[0\.12\],
     .bg-white\/10,
-    .bg-white\/15
-  ):not(.boardly-red-footer *, .bg-\[\#D71921\] *, .dark-surface-preserve *) {
+    .bg-white\/15,
+    .bg-\[rgba\(255\,255\,255\,0\.07\)\],
+    .bg-\[rgba\(255\,255\,255\,0\.08\)\],
+    .bg-\[rgba\(255\,255\,255\,0\.1\)\],
+    .bg-\[rgba\(255\,255\,255\,0\.12\)\]
+  ):not(.boardly-red-footer *, .bg-\[\#D71921\] *, .bg-\[\#D71920\] *, .dark-surface-preserve *) {
     background-color: var(--track-bg) !important;
   }
 
   /* 5. Status & Koban Gold Text Readability on Light Glass (WCAG AA >= 4.5:1) */
-  & :is(.text-\[\#FFD66B\], .text-\[\#E8A317\], .text-amber-400, .text-amber-300):not(.dark-surface-preserve *) {
+  & :is(.text-\[\#FFD66B\], .text-\[\#E8A317\], .text-amber-400, .text-amber-300, .text-yellow-400):not(.dark-surface-preserve *) {
     color: #B45309 !important;
   }
 
-  & :is(.text-emerald-400, .text-emerald-300):not(.dark-surface-preserve *) {
+  & :is(.text-emerald-400, .text-emerald-300, .text-green-400):not(.dark-surface-preserve *) {
     color: #047857 !important;
   }
 
-  & :is(.text-red-400, .text-red-300):not(.boardly-red-footer *, .dark-surface-preserve *) {
+  & :is(.text-orange-400, .text-orange-300):not(.dark-surface-preserve *) {
+    color: #C2410C !important;
+  }
+
+  & :is(.text-red-400, .text-red-300, .text-red-300\/80, .text-red-200):not(.boardly-red-footer *, .dark-surface-preserve *) {
     color: #B91C1C !important;
   }
 
@@ -1738,12 +2020,88 @@ body,
     color: #0E7490 !important;
   }
 
+  & :is(.text-blue-400, .text-blue-300):not(.dark-surface-preserve *) {
+    color: #1D4ED8 !important;
+  }
+
   & :is(.text-purple-400, .text-purple-300):not(.dark-surface-preserve *) {
     color: #6D28D9 !important;
   }
 
-  /* 6. Code, Pre, and Inline Monospace Blocks */
+  & :is(.text-pink-400, .text-pink-300):not(.dark-surface-preserve *) {
+    color: #BE185D !important;
+  }
+
+  /* 6. Code, Pre, KaTeX, and Select Option Blocks */
   & :is(code, pre):not(.dark-surface-preserve *) {
     color: var(--text-primary);
   }
+
+  & option {
+    background-color: var(--surface) !important;
+    color: var(--text-primary) !important;
+  }
+}
+
+
+/* Solid red/brand buttons, red chips, and the red footer keep white text in both themes */
+:is(.light, [data-theme="light"]) :is(
+  footer,
+  footer :is(.text-white, [class*="text-white/"]),
+  .bg-\[\#D71921\],
+  .bg-\[\#D71921\] :is(.text-white, [class*="text-white/"]),
+  .bg-\[\#B8141B\],
+  .bg-\[\#b8141b\],
+  .bg-\[\#DC2626\],
+  .bg-red-600,
+  .bg-red-500,
+  .bg-emerald-600,
+  .bg-emerald-500,
+  .bg-\[\#059669\],
+  .bg-\[\#E8A317\],
+  .btn-primary,
+  .btn-primary :is(.text-white, [class*="text-white/"])
+) {
+  color: #FFFFFF !important;
+}
+
+/* Additional dark surface classes found in audit -> light theme tokens */
+:is(.light, [data-theme="light"]) :is(
+  [class*="bg-[#0A0A0D]/85"],
+  [class*="bg-[#0E0E13]"],
+  [class*="bg-[#121216]"],
+  [class*="bg-[#18181B]"],
+  [class*="bg-[rgba(10,10,14,0.85)]"],
+  [class*="bg-[rgba(14,14,19,0.78)]"],
+  [class*="bg-[rgba(14,14,19,0.82)]"],
+  [class*="bg-[rgba(24,24,32,0.92)]"]
+):not(nav):not(header *) {
+  background: var(--glass-surface) !important;
+  background-color: var(--card) !important;
+  border-color: var(--glass-border) !important;
+  box-shadow: var(--shadow-card) !important;
+}
+
+:is(.light, [data-theme="light"]) :is(
+  [class*="bg-[rgba(10,10,14,0.65)]"],
+  [class*="bg-[#1F1F1F]"],
+  [class*="bg-[#27272A]"],
+  .bg-neutral-850,
+  .bg-neutral-700,
+  .bg-zinc-700
+) {
+  background-color: var(--surface-2) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* KaTeX formulas and code/monospaced boxes: dark text on light inner surface */
+:is(.light, [data-theme="light"]) :is(.katex, .katex *) {
+  color: inherit;
+}
+
+:is(.light, [data-theme="light"]) :is(code, pre):not([class*="bg-"]) {
+  background-color: var(--surface-2);
+  color: var(--text-primary);
+  border-color: var(--border);
 }

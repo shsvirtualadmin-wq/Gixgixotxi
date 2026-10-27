@@ -13,7 +13,7 @@ export function NotFoundPage() {
         description="The page you are looking for does not exist on Boardly."
       />
       <div className="pt-32 pb-24 boardly-container page-enter min-h-[60vh] flex items-center justify-center">
-        <div className="glass-panel max-w-lg w-full text-center p-8 sm:p-12 space-y-6 rounded-[32px] sm:rounded-[36px] border border-white/10 bg-[#0E0E13]/90 backdrop-blur-xl shadow-[0_24px_60px_rgba(0,0,0,0.6),0_0_40px_rgba(215,25,33,0.12)]">
+        <div className="glass-panel max-w-lg w-full text-center p-8 sm:p-12 space-y-6 rounded-[32px] sm:rounded-[36px] ">
           <div className="flex justify-center pb-1">
             <Link to="/" aria-label="Boardly Home">
               <Logo height={32} className="text-[var(--text)] hover:opacity-80 transition-opacity" />

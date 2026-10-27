@@ -6,7 +6,7 @@ export function CommunityGuidelinesPage() {
 
   return (
     <div
-      className="min-h-screen bg-[#000000] text-[var(--text)] antialiased p-4 sm:p-6 md:p-8 flex justify-center selection:bg-[#D71921] selection:text-white"
+      className="min-h-screen bg-[var(--bg)] text-[var(--text)] antialiased p-4 sm:p-6 md:p-8 flex justify-center selection:bg-[#D71921] selection:text-white"
     >
       <div className="w-full max-w-3xl space-y-8 py-4 sm:py-6">
         {/* Header Back Link */}
@@ -55,7 +55,7 @@ export function CommunityGuidelinesPage() {
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="glass-card p-5 sm:p-6 rounded-[22px] border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_8px_24px_rgba(0,0,0,0.3)] space-y-2">
+            <div className="glass-card p-5 sm:p-6 rounded-[22px]  space-y-2">
               <span
                 className="text-[15px] sm:text-base font-bold text-[var(--text)] block"
               >
@@ -68,7 +68,7 @@ export function CommunityGuidelinesPage() {
               </p>
             </div>
 
-            <div className="glass-card p-5 sm:p-6 rounded-[22px] border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_8px_24px_rgba(0,0,0,0.3)] space-y-2">
+            <div className="glass-card p-5 sm:p-6 rounded-[22px]  space-y-2">
               <span
                 className="text-[15px] sm:text-base font-bold text-[var(--text)] block"
               >
@@ -81,7 +81,7 @@ export function CommunityGuidelinesPage() {
               </p>
             </div>
 
-            <div className="glass-card p-5 sm:p-6 rounded-[22px] border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_8px_24px_rgba(0,0,0,0.3)] space-y-2">
+            <div className="glass-card p-5 sm:p-6 rounded-[22px]  space-y-2">
               <span
                 className="text-[15px] sm:text-base font-bold text-[var(--text)] block"
               >
@@ -94,7 +94,7 @@ export function CommunityGuidelinesPage() {
               </p>
             </div>
 
-            <div className="glass-card p-5 sm:p-6 rounded-[22px] border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_8px_24px_rgba(0,0,0,0.3)] space-y-2">
+            <div className="glass-card p-5 sm:p-6 rounded-[22px]  space-y-2">
               <span
                 className="text-[15px] sm:text-base font-bold text-[var(--text)] block"
               >
@@ -120,7 +120,7 @@ export function CommunityGuidelinesPage() {
           </h2>
 
           <div
-            className="glass-card p-5 sm:p-6 rounded-[24px] border border-red-500/20 bg-red-950/[0.08] backdrop-blur-md shadow-[0_8px_24px_rgba(215,25,33,0.08)] space-y-3.5 text-xs sm:text-sm text-[var(--muted)] leading-relaxed"
+            className="glass-card-highlight p-5 sm:p-6 rounded-[24px]  space-y-3.5 text-xs sm:text-sm text-[var(--muted)] leading-relaxed"
           >
             <p>
               • <strong className="text-[var(--text)] font-semibold">Malicious Files &amp; Scripts:</strong> Executable files (.exe, .bat, .sh, .apk, .js, .msi) are strictly blocked. Uploading malware or deceptive downloads results in an immediate permanent ban.
@@ -154,7 +154,7 @@ export function CommunityGuidelinesPage() {
           </h2>
 
           <div
-            className="glass-card p-5 sm:p-6 rounded-[24px] border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_8px_24px_rgba(0,0,0,0.3)] space-y-3 text-xs sm:text-sm text-[var(--muted)] leading-relaxed"
+            className="glass-card p-5 sm:p-6 rounded-[24px]  space-y-3 text-xs sm:text-sm text-[var(--muted)] leading-relaxed"
           >
             <p>
               Anonymous posting lets you ask questions and share doubts without worry. Your name is hidden from other students, but anonymous posts must follow the same rules. Boardly keeps a private record of the author that only the superadmin can see, and it is used only for moderation. If a post gets 3 or more community flags, it is hidden automatically until a moderator reviews it.
@@ -164,7 +164,7 @@ export function CommunityGuidelinesPage() {
 
         {/* Section 4: Daily Posting Limit */}
         <div
-          className="glass-card p-5 rounded-2xl border border-red-500/25 bg-red-950/[0.12] space-y-1.5 shadow-[0_8px_24px_rgba(215,25,33,0.08)]"
+          className="glass-card-highlight p-5 rounded-2xl  space-y-1.5 "
         >
           <span
             className="text-sm sm:text-base font-bold block text-red-200 font-dot"

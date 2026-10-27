@@ -122,7 +122,7 @@ export function FeaturesPage() {
               key={f.title}
               className={`glass-card glass-card-interactive rounded-[28px] p-6 sm:p-8 h-full flex flex-col justify-between ${
                 f.highlight
-                  ? 'border-[#D71921]/60 shadow-[0_16px_40px_rgba(0,0,0,0.7),0_0_28px_rgba(215,25,33,0.14),inset_0_1px_1px_rgba(255,255,255,0.18)]'
+                  ? 'glass-card-highlight'
                   : ''
               }`}
             >
@@ -148,7 +148,7 @@ export function FeaturesPage() {
                 </div>
 
                 {/* Icon Tile */}
-                <div className="w-12 h-12 rounded-2xl bg-white/[0.06] border border-white/12 text-white flex items-center justify-center shrink-0 shadow-sm">
+                <div className="w-12 h-12 rounded-2xl icon-tile text-white flex items-center justify-center shrink-0">
                   {f.icon}
                 </div>
 

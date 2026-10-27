@@ -203,7 +203,7 @@ export function ScrollDrivenPreview() {
         <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
           {/* Interactive Experience Pill */}
           <div className="flex justify-center mb-4 sm:mb-5">
-            <span className="inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide text-white/90 bg-white/[0.06] border border-white/12 shadow-[0_2px_8px_rgba(0,0,0,0.25)]">
+            <span className="inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide section-chip">
               Interactive Experience
             </span>
           </div>
@@ -252,8 +252,8 @@ export function ScrollDrivenPreview() {
                   }}
                   className={`p-5 sm:p-6 rounded-[24px] sm:rounded-[28px] border transition-all duration-250 ease-out select-none cursor-pointer ${
                     isSelected
-                      ? 'bg-[rgba(24,24,32,0.92)] border-[#D71921]/60 shadow-[0_20px_45px_-12px_rgba(0,0,0,0.7),0_0_30px_rgba(215,25,33,0.14),inset_0_1px_1px_rgba(255,255,255,0.18)] backdrop-blur-[28px] sm:backdrop-blur-[32px]'
-                      : 'bg-[rgba(14,14,19,0.78)] border-white/12 shadow-[0_16px_36px_-12px_rgba(0,0,0,0.65),inset_0_1px_1px_rgba(255,255,255,0.1)] backdrop-blur-[24px] sm:backdrop-blur-[28px] hover:-translate-y-1 hover:border-white/25 hover:shadow-[0_22px_45px_-12px_rgba(0,0,0,0.8)] active:scale-[0.98]'
+                      ? 'glass-card-highlight'
+                      : 'glass-card hover:-translate-y-1 hover:border-white/25 active:scale-[0.98]'
                   }`}
                 >
                   <div className="flex items-start gap-4">
@@ -262,7 +262,7 @@ export function ScrollDrivenPreview() {
                       className={`w-11 h-11 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[18px] flex items-center justify-center shrink-0 border transition-all duration-250 ${
                         isSelected
                           ? 'bg-[#D71921] text-white border-[#D71921] shadow-[0_0_14px_rgba(215,25,33,0.5)]'
-                          : 'bg-white/[0.06] text-white/80 border-white/12 shadow-[inset_0_1px_1px_rgba(255,255,255,0.16)]'
+                          : 'icon-tile text-white/80'
                       }`}
                     >
                       <Icon size={19} />
@@ -321,7 +321,7 @@ export function ScrollDrivenPreview() {
               {activeScreen === 0 && (
                 <div className="w-full flex flex-col gap-3 sm:gap-4 transition-all duration-300 ease-out animate-in fade-in zoom-in-95">
                   {/* Widget 1: Daily Goal & Track */}
-                  <div className="w-full sm:w-[94%] ml-auto p-4 sm:p-5 rounded-[28px] bg-[#0E0E13]/85 border border-white/12 shadow-[0_22px_50px_rgba(0,0,0,0.6),0_8px_20px_rgba(0,0,0,0.35),inset_0_1px_1px_rgba(255,255,255,0.14)] backdrop-blur-[32px] animate-float-1 transition-transform">
+                  <div className="w-full sm:w-[94%] ml-auto p-4 sm:p-5 rounded-[28px] glass-card animate-float-1 transition-transform">
                     <div className="flex items-center justify-between text-xs text-[var(--text-muted)] mb-1.5 font-medium">
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-[#D71921] animate-pulse" />
@@ -332,13 +332,13 @@ export function ScrollDrivenPreview() {
                     <div className="text-base sm:text-lg font-bold text-[var(--text)] font-dot tracking-tight">
                       Daily Goal: 25 MCQs
                     </div>
-                    <div className="mt-2.5 w-full bg-white/[0.08] rounded-full h-1.5 overflow-hidden">
+                    <div className="mt-2.5 w-full bg-[var(--border-strong)] rounded-full h-1.5 overflow-hidden">
                       <div className="bg-gradient-to-r from-[#D71921] to-[#ff4d56] h-full rounded-full w-[72%]" />
                     </div>
                   </div>
 
                   {/* Widget 2: 7-Day Streak & Daily Ring */}
-                  <div className="w-full sm:w-[96%] mr-auto p-4 sm:p-5 rounded-[30px] bg-[#0E0E13]/85 border border-white/12 shadow-[0_24px_55px_rgba(0,0,0,0.65),0_8px_20px_rgba(0,0,0,0.35),inset_0_1px_1px_rgba(255,255,255,0.14)] backdrop-blur-[32px] flex items-center justify-between gap-4 animate-float-2 transition-transform">
+                  <div className="w-full sm:w-[96%] mr-auto p-4 sm:p-5 rounded-[30px] glass-card flex items-center justify-between gap-4 animate-float-2 transition-transform">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 text-xs mb-2.5 text-[var(--text)] font-semibold">
                         <span className="w-2 h-2 rounded-full bg-[#D71921]" />
@@ -354,7 +354,7 @@ export function ScrollDrivenPreview() {
                               className={`w-3 h-3 rounded-full transition-all ${
                                 idx < 5
                                   ? 'bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.6)]'
-                                  : 'bg-white/15'
+                                  : 'bg-[var(--border-strong)]'
                               }`}
                             />
                             <span className="text-[10px] font-medium text-[var(--text-muted)]">
@@ -367,7 +367,7 @@ export function ScrollDrivenPreview() {
 
                     {/* Daily Ring Display Widget (non-button) */}
                     <div className="flex flex-col items-center justify-center shrink-0 pl-3 border-l border-white/10">
-                      <div className="w-14 h-14 rounded-full border-[3px] border-[#D71921] border-t-white/20 flex flex-col items-center justify-center shadow-[0_0_15px_rgba(215,25,33,0.2)]">
+                      <div className="w-14 h-14 rounded-full border-[3px] border-[#D71921] border-t-[var(--border-strong)] flex flex-col items-center justify-center shadow-[0_0_15px_rgba(215,25,33,0.2)]">
                         <span className="font-dot text-sm font-bold text-[var(--text)] leading-none">
                           18
                         </span>
@@ -382,7 +382,7 @@ export function ScrollDrivenPreview() {
                   </div>
 
                   {/* Widget 3: Weak Chapters (< 50%) */}
-                  <div className="w-full p-4 sm:p-5 rounded-[28px] bg-[#0E0E13]/85 border border-white/12 shadow-[0_24px_55px_rgba(0,0,0,0.6),0_8px_20px_rgba(0,0,0,0.35),inset_0_1px_1px_rgba(255,255,255,0.14)] backdrop-blur-[32px] flex flex-col gap-2.5 animate-float-3 transition-transform">
+                  <div className="w-full p-4 sm:p-5 rounded-[28px] glass-card flex flex-col gap-2.5 animate-float-3 transition-transform">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">
                         Weak Chapters (&lt; 50%)
@@ -392,7 +392,7 @@ export function ScrollDrivenPreview() {
                       </span>
                     </div>
 
-                    <div className="p-3 rounded-[20px] bg-white/[0.04] border border-white/8 flex items-center justify-between gap-3 hover:bg-white/[0.07] transition-colors">
+                    <div className="p-3 rounded-[20px] glass-row flex items-center justify-between gap-3 hover:bg-white/[0.07] transition-colors">
                       <div className="min-w-0">
                         <div className="text-xs sm:text-[13px] text-[var(--text)] font-semibold truncate">
                           Integration by Parts
@@ -410,7 +410,7 @@ export function ScrollDrivenPreview() {
                       </button>
                     </div>
 
-                    <div className="p-3 rounded-[20px] bg-white/[0.04] border border-white/8 flex items-center justify-between gap-3 hover:bg-white/[0.07] transition-colors">
+                    <div className="p-3 rounded-[20px] glass-row flex items-center justify-between gap-3 hover:bg-white/[0.07] transition-colors">
                       <div className="min-w-0">
                         <div className="text-xs sm:text-[13px] text-[var(--text)] font-semibold truncate">
                           Electromagnetism
@@ -435,7 +435,7 @@ export function ScrollDrivenPreview() {
               {activeScreen === 1 && (
                 <div className="w-full flex flex-col gap-3 sm:gap-4 transition-all duration-300 ease-out animate-in fade-in zoom-in-95">
                   {/* Widget 1: Weekly Squad Goal */}
-                  <div className="w-full sm:w-[94%] ml-auto p-4 sm:p-5 rounded-[28px] bg-[#0E0E13]/85 border border-white/12 shadow-[0_22px_50px_rgba(0,0,0,0.6),0_8px_20px_rgba(0,0,0,0.35),inset_0_1px_1px_rgba(255,255,255,0.14)] backdrop-blur-[32px] flex items-center justify-between gap-3 animate-float-1 transition-transform">
+                  <div className="w-full sm:w-[94%] ml-auto p-4 sm:p-5 rounded-[28px] glass-card flex items-center justify-between gap-3 animate-float-1 transition-transform">
                     <div>
                       <span className="text-[11px] text-[var(--text-muted)] uppercase font-semibold block mb-1">
                         Weekly Squad Goal
@@ -446,7 +446,7 @@ export function ScrollDrivenPreview() {
                           Completed MCQs
                         </span>
                       </div>
-                      <div className="mt-2 w-36 bg-white/[0.08] rounded-full h-1.5 overflow-hidden">
+                      <div className="mt-2 w-36 bg-[var(--border-strong)] rounded-full h-1.5 overflow-hidden">
                         <div className="bg-[#D71921] h-full rounded-full w-[84%]" />
                       </div>
                     </div>
@@ -456,22 +456,22 @@ export function ScrollDrivenPreview() {
                   </div>
 
                   {/* Widget 2: Squad Synergy */}
-                  <div className="w-full sm:w-[96%] mr-auto p-4 sm:p-5 rounded-[30px] bg-[#0E0E13]/85 border border-white/12 shadow-[0_24px_55px_rgba(0,0,0,0.65),0_8px_20px_rgba(0,0,0,0.35),inset_0_1px_1px_rgba(255,255,255,0.14)] backdrop-blur-[32px] flex flex-col gap-2.5 animate-float-2 transition-transform">
+                  <div className="w-full sm:w-[96%] mr-auto p-4 sm:p-5 rounded-[30px] glass-card flex flex-col gap-2.5 animate-float-2 transition-transform">
                     <span className="text-[11px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">
                       Squad Synergy
                     </span>
-                    <div className="p-3 px-4 rounded-[20px] bg-white/[0.04] border border-white/8 flex items-center justify-between text-xs sm:text-[13px]">
+                    <div className="p-3 px-4 rounded-[20px] glass-row flex items-center justify-between text-xs sm:text-[13px]">
                       <span className="text-[var(--text)] font-medium">Shared Streaks</span>
                       <span className="font-dot text-[#D71921] font-semibold">Daily Active</span>
                     </div>
-                    <div className="p-3 px-4 rounded-[20px] bg-white/[0.04] border border-white/8 flex items-center justify-between text-xs sm:text-[13px]">
+                    <div className="p-3 px-4 rounded-[20px] glass-row flex items-center justify-between text-xs sm:text-[13px]">
                       <span className="text-[var(--text)] font-medium">Mistake Diagnostics</span>
                       <span className="font-dot text-[var(--text-muted)]">Aggregated</span>
                     </div>
                   </div>
 
                   {/* Widget 3: Squad-Wide Pro Benefit */}
-                  <div className="w-full p-4 sm:p-5 rounded-[28px] bg-gradient-to-r from-[#D71921]/15 via-[#0E0E13]/90 to-[#0E0E13]/85 border border-[#D71921]/30 shadow-[0_24px_55px_rgba(0,0,0,0.6),0_0_30px_rgba(215,25,33,0.1),inset_0_1px_1px_rgba(255,255,255,0.14)] backdrop-blur-[32px] flex items-center gap-3 animate-float-3 transition-transform">
+                  <div className="w-full p-4 sm:p-5 rounded-[28px] glass-card-highlight flex items-center gap-3 animate-float-3 transition-transform">
                     <div className="w-9 h-9 rounded-full bg-[#D71921] text-white flex items-center justify-center shrink-0 shadow-md">
                       <Zap size={18} />
                     </div>
@@ -491,7 +491,7 @@ export function ScrollDrivenPreview() {
               {activeScreen === 2 && (
                 <div className="w-full flex flex-col gap-3 sm:gap-4 transition-all duration-300 ease-out animate-in fade-in zoom-in-95">
                   {/* Widget 1: Campus Ambassador & Commission */}
-                  <div className="w-full sm:w-[94%] ml-auto p-4 sm:p-5 rounded-[28px] bg-[#0E0E13]/85 border border-white/12 shadow-[0_22px_50px_rgba(0,0,0,0.6),0_8px_20px_rgba(0,0,0,0.35),inset_0_1px_1px_rgba(255,255,255,0.14)] backdrop-blur-[32px] animate-float-1 transition-transform">
+                  <div className="w-full sm:w-[94%] ml-auto p-4 sm:p-5 rounded-[28px] glass-card animate-float-1 transition-transform">
                     <div className="flex items-center justify-between text-xs text-[var(--text-muted)] mb-1.5 font-medium">
                       <span>Campus Ambassador</span>
                       <span className="px-2 py-0.5 rounded-full bg-[#D71921]/15 text-[#D71921] font-semibold text-[10px]">
@@ -510,15 +510,15 @@ export function ScrollDrivenPreview() {
                   </div>
 
                   {/* Widget 2: Captain Perks */}
-                  <div className="w-full sm:w-[96%] mr-auto p-4 sm:p-5 rounded-[30px] bg-[#0E0E13]/85 border border-white/12 shadow-[0_24px_55px_rgba(0,0,0,0.65),0_8px_20px_rgba(0,0,0,0.35),inset_0_1px_1px_rgba(255,255,255,0.14)] backdrop-blur-[32px] flex flex-col gap-2.5 animate-float-2 transition-transform">
+                  <div className="w-full sm:w-[96%] mr-auto p-4 sm:p-5 rounded-[30px] glass-card flex flex-col gap-2.5 animate-float-2 transition-transform">
                     <span className="text-[11px] text-[var(--text-muted)] font-semibold uppercase tracking-wider">
                       Captain Perks
                     </span>
-                    <div className="p-3 px-4 rounded-[20px] bg-white/[0.04] border border-white/8 flex items-center justify-between text-xs sm:text-[13px]">
+                    <div className="p-3 px-4 rounded-[20px] glass-row flex items-center justify-between text-xs sm:text-[13px]">
                       <span className="text-[var(--text)] font-medium">Instant Free Pro</span>
                       <span className="text-xs text-[#D71921] font-semibold">Unlocked</span>
                     </div>
-                    <div className="p-3 px-4 rounded-[20px] bg-white/[0.04] border border-white/8 flex items-center justify-between text-xs sm:text-[13px]">
+                    <div className="p-3 px-4 rounded-[20px] glass-row flex items-center justify-between text-xs sm:text-[13px]">
                       <span className="text-[var(--text)] font-medium">JazzCash / EasyPaisa</span>
                       <span className="text-xs text-[var(--text-muted)] font-medium">
                         Direct Payouts
@@ -527,7 +527,7 @@ export function ScrollDrivenPreview() {
                   </div>
 
                   {/* Widget 3: Unique Referral */}
-                  <div className="w-full p-4 sm:p-5 rounded-[28px] bg-[#0E0E13]/85 border border-white/12 shadow-[0_24px_55px_rgba(0,0,0,0.6),0_8px_20px_rgba(0,0,0,0.35),inset_0_1px_1px_rgba(255,255,255,0.14)] backdrop-blur-[32px] flex items-center justify-between gap-3 animate-float-3 transition-transform">
+                  <div className="w-full p-4 sm:p-5 rounded-[28px] glass-card flex items-center justify-between gap-3 animate-float-3 transition-transform">
                     <div>
                       <span className="text-xs sm:text-[13px] font-semibold text-[var(--text)] block">
                         Unique Referral Link &amp; Code
@@ -547,7 +547,7 @@ export function ScrollDrivenPreview() {
               {activeScreen === 3 && (
                 <div className="w-full flex flex-col gap-3 sm:gap-4 transition-all duration-300 ease-out animate-in fade-in zoom-in-95">
                   {/* Widget 1: Grand Line Arena */}
-                  <div className="w-full sm:w-[94%] ml-auto p-4 sm:p-5 rounded-[28px] bg-gradient-to-r from-[#D71921]/15 via-[#0E0E13]/90 to-[#0E0E13]/85 border border-[#D71921]/30 shadow-[0_22px_50px_rgba(0,0,0,0.6),0_0_25px_rgba(215,25,33,0.1),inset_0_1px_1px_rgba(255,255,255,0.14)] backdrop-blur-[32px] animate-float-1 transition-transform">
+                  <div className="w-full sm:w-[94%] ml-auto p-4 sm:p-5 rounded-[28px] glass-card-highlight animate-float-1 transition-transform">
                     <div className="text-xs text-[#D71921] font-semibold mb-1 flex items-center gap-1.5">
                       <Target size={14} />
                       Grand Line Arena
@@ -561,12 +561,12 @@ export function ScrollDrivenPreview() {
                   </div>
 
                   {/* Widget 2: Arena Details */}
-                  <div className="w-full sm:w-[96%] mr-auto p-4 sm:p-5 rounded-[30px] bg-[#0E0E13]/85 border border-white/12 shadow-[0_24px_55px_rgba(0,0,0,0.65),0_8px_20px_rgba(0,0,0,0.35),inset_0_1px_1px_rgba(255,255,255,0.14)] backdrop-blur-[32px] flex flex-col gap-2.5 animate-float-2 transition-transform">
-                    <div className="p-3 px-4 rounded-[20px] bg-white/[0.04] border border-white/8 flex items-center justify-between text-xs sm:text-[13px]">
+                  <div className="w-full sm:w-[96%] mr-auto p-4 sm:p-5 rounded-[30px] glass-card flex flex-col gap-2.5 animate-float-2 transition-transform">
+                    <div className="p-3 px-4 rounded-[20px] glass-row flex items-center justify-between text-xs sm:text-[13px]">
                       <span className="text-[var(--text)] font-medium">Live Test Timer</span>
                       <span className="font-dot text-[#D71921] font-semibold">Synchronized</span>
                     </div>
-                    <div className="p-3 px-4 rounded-[20px] bg-white/[0.04] border border-white/8 flex items-center justify-between text-xs sm:text-[13px]">
+                    <div className="p-3 px-4 rounded-[20px] glass-row flex items-center justify-between text-xs sm:text-[13px]">
                       <span className="text-[var(--text)] font-medium">Nationwide Percentile</span>
                       <span className="font-dot text-[var(--text-muted)]">Instant</span>
                     </div>
@@ -591,7 +591,7 @@ export function ScrollDrivenPreview() {
               <div
                 role="tablist"
                 aria-label="Preview views"
-                className="inline-flex items-center gap-1 p-1 sm:p-1.5 rounded-full bg-[#0A0A0D]/85 border border-white/12 shadow-[0_12px_30px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.12)] backdrop-blur-2xl"
+                className="inline-flex items-center gap-1 p-1 sm:p-1.5 rounded-full glass-card"
               >
                 {/* Back Arrow button */}
                 <button

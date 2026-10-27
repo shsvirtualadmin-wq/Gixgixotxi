@@ -27,11 +27,11 @@ export function HeroSection() {
           <div className="flex flex-col items-center lg:items-start text-center lg:text-left">
             {/* Top chips: small, refined glass pills */}
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2.5 mb-5">
-              <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-heading font-medium text-white/80 bg-white/[0.06] border border-white/12 shadow-sm">
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-heading font-medium section-chip">
                 <Sparkles size={13} className="text-[#D71921]" />
                 Education For Everyone
               </span>
-              <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-heading font-medium text-white/80 bg-white/[0.06] border border-white/12 shadow-sm">
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-heading font-medium section-chip">
                 Practice &amp; Learn Together
               </span>
             </div>
@@ -82,7 +82,7 @@ export function HeroSection() {
 
               <Link
                 to="/features"
-                className="h-12 px-6 rounded-full inline-flex items-center justify-center text-sm font-heading font-semibold bg-white/[0.06] hover:bg-white/[0.1] border border-white/15 hover:border-white/25 text-white shadow-md transition-all duration-200 hover:-translate-y-1 active:scale-[0.98] w-full sm:w-auto cursor-pointer"
+                className="h-12 px-6 rounded-full inline-flex items-center justify-center text-sm font-heading font-semibold btn-secondary transition-all duration-200 hover:-translate-y-1 active:scale-[0.98] w-full sm:w-auto cursor-pointer"
               >
                 Explore Features
               </Link>

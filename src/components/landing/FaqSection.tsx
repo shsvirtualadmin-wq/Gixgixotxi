@@ -74,7 +74,7 @@ export function FaqSection() {
         <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
           {/* "Got Questions?" glass pill chip */}
           <div className="flex justify-center mb-4">
-            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide text-white/90 bg-white/[0.05] border border-white/12 shadow-[0_2px_8px_rgba(0,0,0,0.25)]">
+            <span className="section-chip inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide">
               <span
                 className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.85)] shrink-0"
                 aria-hidden="true"
@@ -112,10 +112,10 @@ export function FaqSection() {
             return (
               <div
                 key={faq.q}
-                className={`group rounded-[24px] sm:rounded-[28px] border transition-all duration-300 ease-out hover:-translate-y-0.5 active:scale-[0.99] ${
+                className={`group rounded-[24px] sm:rounded-[28px] transition-all duration-300 ease-out hover:-translate-y-0.5 active:scale-[0.99] ${
                   isOpen
-                    ? 'bg-[#121218]/94 border-[#D71921]/60 shadow-[0_16px_40px_-8px_rgba(0,0,0,0.7),inset_0_1px_1px_rgba(255,255,255,0.16)]'
-                    : 'bg-[#0e0e13]/90 border-white/12 hover:border-white/20 shadow-[0_12px_32px_-8px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.08)]'
+                    ? 'glass-card-highlight'
+                    : 'glass-card hover:border-white/20'
                 } ${
                   isVisible ? 'opacity-100 translate-y-0' : 'opacity-80 translate-y-3'
                 }`}
@@ -143,8 +143,8 @@ export function FaqSection() {
                   <span
                     className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border transition-all duration-300 ${
                       isOpen
-                        ? 'bg-[#D71921]/20 border-[#D71921]/60 text-white shadow-[0_0_12px_rgba(215,25,33,0.35)]'
-                        : 'bg-white/[0.05] border-white/12 text-white/70 group-hover:text-white group-hover:border-white/25 group-hover:bg-white/[0.08]'
+                        ? 'bg-[#D71921]/20 border-[#D71921]/60 text-[var(--text-primary)] shadow-[0_0_12px_rgba(215,25,33,0.35)]'
+                        : 'icon-tile text-white/70 group-hover:text-white group-hover:border-white/25'
                     }`}
                     aria-hidden="true"
                   >

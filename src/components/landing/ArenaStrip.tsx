@@ -64,7 +64,7 @@ export function ArenaStrip() {
 
           {/* Outer Floating Glass Panel with red accent border, internal radial glow and deep layered shadows */}
           <div
-            className={`relative overflow-hidden rounded-[26px] sm:rounded-[36px] lg:rounded-[40px] p-7 sm:p-10 lg:p-14 border border-[#D71921]/45 bg-[#0e0e13]/92 shadow-[0_24px_55px_-12px_rgba(0,0,0,0.85),inset_0_1px_1px_rgba(255,255,255,0.14)] transition-all duration-500 ease-out ${
+            className={`glass-card-highlight relative overflow-hidden rounded-[26px] sm:rounded-[36px] lg:rounded-[40px] p-7 sm:p-10 lg:p-14 transition-all duration-500 ease-out ${
               isVisible ? 'opacity-100 translate-y-0' : 'opacity-90 translate-y-2'
             }`}
           >
@@ -78,7 +78,7 @@ export function ArenaStrip() {
               {/* Left Column: Event info */}
               <div className="flex flex-col items-start text-left gap-4">
                 {/* Grand Line chip */}
-                <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide text-white/90 bg-white/[0.05] border border-[#D71921]/40 shadow-[0_2px_8px_rgba(0,0,0,0.25)]">
+                <span className="section-chip !border-[#D71921]/40 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide">
                   <span
                     className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.85)] shrink-0"
                     aria-hidden="true"
@@ -119,7 +119,7 @@ export function ArenaStrip() {
               {/* Right Column: Live Leaderboard Preview */}
               <div className="w-full">
                 {/* Inner floating glass panel with very slow subtle idle float */}
-                <div className="animate-float-2 p-5 sm:p-6 rounded-[28px] sm:rounded-[32px] bg-[#0a0a0e]/75 border border-white/10 shadow-[0_12px_32px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.08)] flex flex-col gap-3.5">
+                <div className="glass-card animate-float-2 p-5 sm:p-6 rounded-[28px] sm:rounded-[32px] flex flex-col gap-3.5">
                   <div className="flex items-center justify-between text-xs pb-3 border-b border-white/10">
                     <span
                       className="font-semibold text-white flex items-center gap-2 font-heading tracking-tight"
@@ -145,7 +145,7 @@ export function ArenaStrip() {
                       {topScorers.map((student, idx) => (
                         <div
                           key={idx + student.name}
-                          className="px-3.5 py-3 rounded-[14px] bg-white/[0.04] border border-white/8 hover:border-white/15 transition-colors flex items-center justify-between text-xs"
+                          className="glass-row px-3.5 py-3 rounded-[14px] transition-colors flex items-center justify-between text-xs"
                         >
                           <div className="flex items-center gap-3">
                             <span className="font-doto font-bold text-sm text-white/90 w-6 text-left shrink-0">
@@ -168,8 +168,8 @@ export function ArenaStrip() {
                       ))}
                     </div>
                   ) : (
-                    <div className="py-6 px-4 rounded-[20px] sm:rounded-[24px] bg-white/[0.03] border border-white/8 text-center space-y-2.5">
-                      <div className="w-11 h-11 rounded-[16px] bg-white/[0.05] border border-white/10 mx-auto flex items-center justify-center text-[#D71921] shadow-[0_0_15px_rgba(215,25,33,0.3)] animate-float-1">
+                    <div className="glass-row py-6 px-4 rounded-[20px] sm:rounded-[24px] text-center space-y-2.5">
+                      <div className="icon-tile w-11 h-11 rounded-[16px] mx-auto flex items-center justify-center text-[#D71921] shadow-[0_0_15px_rgba(215,25,33,0.3)] animate-float-1">
                         <Trophy size={19} />
                       </div>
                       <div className="text-xs font-semibold text-white font-heading">

@@ -59,7 +59,7 @@ export function HowItWorks() {
         <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
           {/* Simple 3-Step Strategy Chip */}
           <div className="flex justify-center mb-4">
-            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide text-white/90 bg-white/[0.05] border border-white/12 shadow-[0_2px_8px_rgba(0,0,0,0.25)]">
+            <span className="section-chip">
               <span
                 className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.85)] shrink-0"
                 aria-hidden="true"
@@ -110,7 +110,7 @@ export function HowItWorks() {
               return (
                 <div
                   key={item.step}
-                  className={`h-full flex flex-col justify-between rounded-[28px] sm:rounded-[32px] p-8 sm:p-9 bg-[#0e0e13]/90 border border-white/12 shadow-[0_20px_45px_-10px_rgba(0,0,0,0.7),inset_0_1px_1px_rgba(255,255,255,0.14)] transition-all duration-500 ease-out select-none ${
+                  className={`glass-card h-full flex flex-col justify-between rounded-[28px] sm:rounded-[32px] p-8 sm:p-9 transition-all duration-500 ease-out select-none ${
                     isVisible ? 'opacity-100 translate-y-0' : 'opacity-80 translate-y-3'
                   }`}
                   style={{
@@ -118,15 +118,15 @@ export function HowItWorks() {
                   }}
                 >
                   <div>
-                    {/* Top row: Big dot-matrix number (higher visibility with faint red tint), icon tile top-right */}
+                    {/* Top row: Big dot-matrix number, icon tile top-right */}
                     <div className="flex items-center justify-between mb-5">
                       <span
-                        className="font-doto text-[34px] sm:text-[38px] leading-none font-bold text-white/95 drop-shadow-[0_0_12px_rgba(215,25,33,0.35)]"
+                        className="font-doto text-[34px] sm:text-[38px] leading-none font-bold text-white/95 drop-shadow-[0_0_12px_rgba(215,25,33,0.28)]"
                       >
                         {item.step}
                       </span>
                       <div
-                        className={`w-12 h-12 rounded-[18px] bg-white/[0.06] border border-white/12 text-white flex items-center justify-center shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.3)] ${item.floatClass}`}
+                        className={`icon-tile w-12 h-12 rounded-[18px] ${item.floatClass}`}
                       >
                         <Icon size={20} />
                       </div>

@@ -20,11 +20,11 @@ export function MissionSection() {
 
           {/* Floating Glass Panel */}
           <div
-            className="animate-float-2 relative rounded-[32px] sm:rounded-[36px] lg:rounded-[40px] p-7 sm:p-12 lg:p-14 text-center border border-white/12 bg-[rgba(14,14,19,0.86)] shadow-[0_20px_44px_-12px_rgba(0,0,0,0.72),inset_0_1px_1px_rgba(255,255,255,0.14)]"
+            className="animate-float-2 glass-panel relative rounded-[32px] sm:rounded-[36px] lg:rounded-[40px] p-7 sm:p-12 lg:p-14 text-center"
           >
             {/* "Why We Built Boardly" chip */}
             <div className="flex justify-center mb-5 sm:mb-6">
-              <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide text-white/90 bg-white/[0.06] border border-white/12 shadow-[0_2px_8px_rgba(0,0,0,0.25)]">
+              <span className="section-chip">
                 <span
                   className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.85)] shrink-0"
                   aria-hidden="true"

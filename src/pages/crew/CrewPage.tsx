@@ -181,7 +181,7 @@ export function CrewPage() {
               onChange={(e) => setInviteCodeInput(e.target.value.toUpperCase())}
               placeholder="Enter 6-char crew code (e.g. CRW123)"
               maxLength={8}
-              className="w-full sm:flex-1 h-[52px] rounded-full px-5 text-sm text-[var(--text)] placeholder-[var(--muted)] bg-white/[0.05] border border-white/15 focus:outline-none focus:border-[#D71921] focus:ring-2 focus:ring-[#D71921]/40 uppercase tracking-wider text-center font-mono font-bold shadow-sm backdrop-blur-md transition-all"
+              className="w-full sm:flex-1 h-[52px] rounded-full px-5 text-sm text-[var(--text)] placeholder-[var(--muted)] glass-input focus:outline-none focus:border-[#D71921] focus:ring-2 focus:ring-[#D71921]/40 uppercase tracking-wider text-center font-mono font-bold transition-all"
             />
             <button
               type="submit"
@@ -253,7 +253,7 @@ export function CrewPage() {
           {CREW_FEATURES.map((f) => (
             <div key={f.title} className="glass-card rounded-[28px] p-6 sm:p-7 flex flex-col justify-between">
               <div className="space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-white/[0.06] border border-white/12 text-white flex items-center justify-center shrink-0 shadow-sm">
+                <div className="w-12 h-12 rounded-2xl icon-tile text-white flex items-center justify-center shrink-0">
                   {f.icon}
                 </div>
                 <div>
@@ -297,7 +297,7 @@ export function CrewPage() {
               key={role.title}
               className={`glass-card rounded-[28px] p-6 sm:p-8 flex flex-col justify-between ${
                 role.highlight
-                  ? 'border-[#D71921]/50 shadow-[0_16px_40px_rgba(0,0,0,0.7),0_0_28px_rgba(215,25,33,0.12),inset_0_1px_1px_rgba(255,255,255,0.15)]'
+                  ? 'glass-card-highlight'
                   : ''
               }`}
             >
@@ -371,8 +371,8 @@ export function CrewPage() {
                 key={faq.q}
                 className={`rounded-[24px] sm:rounded-[28px] border transition-all duration-300 ${
                   isOpen
-                    ? 'bg-[#121218]/92 border-[#D71921]/60 shadow-[0_12px_32px_-8px_rgba(0,0,0,0.7),0_0_24px_rgba(215,25,33,0.12),inset_0_1px_1px_rgba(255,255,255,0.14)]'
-                    : 'bg-[#0e0e13]/82 backdrop-blur-[24px] border-white/12 hover:border-white/20 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.08)]'
+                    ? 'glass-card-highlight'
+                    : 'glass-card hover:border-white/20'
                 }`}
               >
                 <button
@@ -392,8 +392,8 @@ export function CrewPage() {
                   <div
                     className={`w-8 h-8 rounded-full border transition-all duration-300 flex items-center justify-center shrink-0 ${
                       isOpen
-                        ? 'bg-[#D71921]/20 border-[#D71921]/60 text-white shadow-[0_0_12px_rgba(215,25,33,0.3)]'
-                        : 'bg-white/[0.05] border-white/12 text-white/70 hover:text-white'
+                        ? 'bg-[#D71921]/20 border-[#D71921]/60 text-[var(--text-primary)] shadow-[0_0_12px_rgba(215,25,33,0.3)]'
+                        : 'icon-tile text-white/70 hover:text-white'
                     }`}
                   >
                     {isOpen ? <Minus size={15} strokeWidth={2.5} /> : <Plus size={15} strokeWidth={2.5} />}

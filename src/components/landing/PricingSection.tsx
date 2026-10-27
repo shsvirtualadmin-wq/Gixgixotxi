@@ -62,7 +62,7 @@ export function PricingSection() {
         <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
           {/* Simple, Fair Pricing Chip */}
           <div className="flex justify-center mb-4">
-            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide text-white/90 bg-white/[0.05] border border-white/12 shadow-[0_2px_8px_rgba(0,0,0,0.25)]">
+            <span className="section-chip">
               <span
                 className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.85)] shrink-0"
                 aria-hidden="true"
@@ -102,7 +102,7 @@ export function PricingSection() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto items-stretch relative z-10">
             {/* Free Tier Card */}
             <div
-              className={`order-2 md:order-1 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-7 sm:p-8 lg:p-9 bg-[#0e0e13]/90 border border-white/12 shadow-[0_20px_45px_-10px_rgba(0,0,0,0.7),inset_0_1px_1px_rgba(255,255,255,0.14)] transition-all duration-300 ease-out hover:-translate-y-1.5 hover:border-white/25 hover:shadow-[0_28px_55px_-10px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.18)] ${
+              className={`glass-card order-2 md:order-1 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-7 sm:p-8 lg:p-9 transition-all duration-300 ease-out hover:-translate-y-1.5 ${
                 isVisible ? 'opacity-100 translate-y-0' : 'opacity-80 translate-y-3'
               }`}
               style={{ transitionDelay: '0ms' }}
@@ -110,7 +110,7 @@ export function PricingSection() {
               <div className="flex flex-col flex-1">
                 {/* Plan chip row */}
                 <div className="flex items-center justify-between min-h-[28px] mb-3.5">
-                  <span className="px-3 py-1 rounded-full text-xs font-semibold font-heading bg-white/[0.06] border border-white/12 text-white/90">
+                  <span className="glass-pill px-3 py-1 rounded-full text-xs font-semibold font-heading text-white/90">
                     Free
                   </span>
                 </div>
@@ -145,7 +145,7 @@ export function PricingSection() {
               <div className="mt-auto pt-6 flex flex-col justify-end">
                 <Link
                   to="/signup"
-                  className="inline-flex items-center justify-center w-full h-[48px] rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/15 hover:border-white/25 text-white font-semibold text-sm font-heading transition-all duration-200 active:scale-[0.98]"
+                  className="btn-secondary inline-flex items-center justify-center w-full h-[48px] rounded-full font-semibold text-sm font-heading transition-all duration-200 active:scale-[0.98]"
                 >
                   Start Free
                 </Link>
@@ -158,7 +158,7 @@ export function PricingSection() {
 
             {/* Unlimited Tier Card: Featured, slightly brighter surface, red border, static red glow */}
             <div
-              className={`order-1 md:order-2 h-full flex flex-col justify-between relative rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-7 sm:p-8 lg:p-9 bg-[#121218]/94 border border-[#D71921]/60 shadow-[0_24px_55px_-10px_rgba(0,0,0,0.85),inset_0_1px_1px_rgba(255,255,255,0.14)] transition-all duration-300 ease-out hover:-translate-y-1.5 hover:border-[#D71921]/80 hover:shadow-[0_32px_65px_-10px_rgba(0,0,0,0.9),inset_0_1px_1px_rgba(255,255,255,0.2)] ${
+              className={`glass-card-highlight order-1 md:order-2 h-full flex flex-col justify-between relative rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-7 sm:p-8 lg:p-9 transition-all duration-300 ease-out hover:-translate-y-1.5 ${
                 isVisible ? 'opacity-100 translate-y-0' : 'opacity-80 translate-y-3'
               }`}
               style={{ transitionDelay: '90ms' }}
@@ -223,7 +223,7 @@ export function PricingSection() {
 
             {/* Koban Pack Card: subtle gold edge glow */}
             <div
-              className={`order-3 md:order-3 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-7 sm:p-8 lg:p-9 bg-[#0e0e13]/90 border border-white/12 shadow-[0_20px_45px_-10px_rgba(0,0,0,0.7),inset_0_1px_1px_rgba(255,255,255,0.14)] transition-all duration-300 ease-out hover:-translate-y-1.5 hover:border-[#E8A317]/50 hover:shadow-[0_28px_55px_-10px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.18)] ${
+              className={`glass-card-gold order-3 md:order-3 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-7 sm:p-8 lg:p-9 transition-all duration-300 ease-out hover:-translate-y-1.5 ${
                 isVisible ? 'opacity-100 translate-y-0' : 'opacity-80 translate-y-3'
               }`}
               style={{ transitionDelay: '180ms' }}
@@ -231,7 +231,7 @@ export function PricingSection() {
               <div className="flex flex-col flex-1">
                 {/* Plan chip row */}
                 <div className="flex items-center justify-between min-h-[28px] mb-3.5">
-                  <span className="px-3 py-1 rounded-full text-xs font-semibold font-heading bg-white/[0.06] border border-white/12 text-white/90">
+                  <span className="glass-pill px-3 py-1 rounded-full text-xs font-semibold font-heading text-white/90">
                     Koban Pack
                   </span>
                   <div className="flex items-center gap-1.5 text-xs text-[#E8A317] font-semibold font-heading">
@@ -270,7 +270,7 @@ export function PricingSection() {
               <div className="mt-auto pt-6 flex flex-col justify-end">
                 <Link
                   to="/store"
-                  className="inline-flex items-center justify-center w-full h-[48px] rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/15 hover:border-white/25 text-white font-semibold text-sm font-heading transition-all duration-200 active:scale-[0.98]"
+                  className="btn-secondary inline-flex items-center justify-center w-full h-[48px] rounded-full font-semibold text-sm font-heading transition-all duration-200 active:scale-[0.98]"
                 >
                   Explore Store &amp; Kobans
                 </Link>
@@ -287,7 +287,7 @@ export function PricingSection() {
         <div className="text-center mt-10 sm:mt-12">
           <Link
             to="/pricing"
-            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-white/[0.05] hover:bg-white/[0.09] border border-white/15 hover:border-white/25 text-white font-semibold text-xs sm:text-sm font-heading shadow-[0_4px_16px_rgba(0,0,0,0.3)] hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-200 group"
+            className="btn-secondary inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full font-semibold text-xs sm:text-sm font-heading hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-200 group"
           >
             <span>View complete pricing guide &amp; local payment instructions</span>
             <span className="transition-transform group-hover:translate-x-1 select-none" aria-hidden="true">&rarr;</span>

@@ -47,7 +47,7 @@ export function PrivacyPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start max-w-5xl mx-auto">
           {/* Table of Contents Sticky Sidebar */}
           <div className="lg:col-span-4 sticky top-28 hidden lg:block">
-            <div className="glass-card p-5 sm:p-6 rounded-[24px] space-y-4 border border-white/[0.08] bg-[#0E0E13]/85 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.4)]">
+            <div className="glass-card p-5 sm:p-6 rounded-[24px] space-y-4 ">
               <h3
                 className="text-xs font-black uppercase tracking-wider text-[var(--text-faint)] font-dot"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -78,7 +78,7 @@ export function PrivacyPage() {
           {/* Main Legal Content Column */}
           <div className="lg:col-span-8 space-y-6">
             {/* Section 1 */}
-            <div id="identity" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="identity" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -91,7 +91,7 @@ export function PrivacyPage() {
               <p className="text-sm text-[var(--muted)] leading-relaxed">
                 Boardly is owned and operated by <strong className="text-[var(--text)]">SHS Virtual Academy</strong> (<a href="https://shsvirtualacademy.pro" target="_blank" rel="noopener noreferrer" className="text-[#D71921] hover:underline">https://shsvirtualacademy.pro</a>), founded by <strong className="text-[var(--text)]">Muhammad Hashir</strong>.
               </p>
-              <div className="glass-row p-4 sm:p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] text-xs space-y-1.5">
+              <div className="glass-row p-4 sm:p-5 rounded-2xl  text-xs space-y-1.5">
                 <p><strong className="text-[var(--text)]">Organization:</strong> SHS Virtual Academy</p>
                 <p><strong className="text-[var(--text)]">Founder:</strong> Muhammad Hashir</p>
                 <p><strong className="text-[var(--text)]">Email:</strong> <a href="mailto:support@boardly.cfd" className="text-[#D71921] hover:underline">support@boardly.cfd</a></p>
@@ -101,7 +101,7 @@ export function PrivacyPage() {
             </div>
 
             {/* Section 2 */}
-            <div id="collection" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="collection" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -120,7 +120,7 @@ export function PrivacyPage() {
             </div>
 
             {/* Section 3 */}
-            <div id="commons-privacy" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="commons-privacy" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -130,7 +130,7 @@ export function PrivacyPage() {
               <p className="text-sm text-[var(--muted)] leading-relaxed">
                 Boardly Commons is our student community feed where learners share study notes, ask questions, and discuss solutions. All content in Commons is user-generated.
               </p>
-              <div className="glass-row p-4 sm:p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] text-xs space-y-2 leading-relaxed">
+              <div className="glass-row p-4 sm:p-5 rounded-2xl  text-xs space-y-2 leading-relaxed">
                 <p className="font-bold text-[var(--text)]">How Anonymous Posting Works:</p>
                 <p className="text-[var(--muted)]">
                   When you select &ldquo;Post Anonymously&rdquo;, your real name and avatar are hidden from other students in the public feed, allowing you to ask questions freely without social anxiety.
@@ -145,7 +145,7 @@ export function PrivacyPage() {
             </div>
 
             {/* Section 4 */}
-            <div id="payments" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="payments" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -161,7 +161,7 @@ export function PrivacyPage() {
             </div>
 
             {/* Section 5 */}
-            <div id="purpose" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="purpose" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -179,7 +179,7 @@ export function PrivacyPage() {
             </div>
 
             {/* Section 6 */}
-            <div id="services" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="services" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -197,7 +197,7 @@ export function PrivacyPage() {
             </div>
 
             {/* Section 7 */}
-            <div id="no-sale" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="no-sale" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -210,7 +210,7 @@ export function PrivacyPage() {
             </div>
 
             {/* Section 8 */}
-            <div id="cookies" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="cookies" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -223,7 +223,7 @@ export function PrivacyPage() {
             </div>
 
             {/* Section 9 */}
-            <div id="security-retention" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="security-retention" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -236,7 +236,7 @@ export function PrivacyPage() {
             </div>
 
             {/* Section 10 */}
-            <div id="rights" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="rights" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -249,7 +249,7 @@ export function PrivacyPage() {
             </div>
 
             {/* Section 11 */}
-            <div id="contact" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 border border-white/[0.08] bg-[#0E0E13]/80 backdrop-blur-md shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+            <div id="contact" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
               <h2
                 className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
                 style={{ fontFamily: 'var(--font-dot)' }}
@@ -259,7 +259,7 @@ export function PrivacyPage() {
               <p className="text-sm text-[var(--muted)] leading-relaxed">
                 If you have any questions regarding this Privacy Policy or our data handling practices, please contact us:
               </p>
-              <div className="glass-row p-4 sm:p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] text-xs space-y-1">
+              <div className="glass-row p-4 sm:p-5 rounded-2xl  text-xs space-y-1">
                 <p><strong className="text-[var(--text)]">Email:</strong> support@boardly.cfd</p>
                 <p><strong className="text-[var(--text)]">Phone / WhatsApp:</strong> 0305 8969050</p>
                 <p><strong className="text-[var(--text)]">Organization:</strong> SHS Virtual Academy (<a href="https://shsvirtualacademy.pro" target="_blank" rel="noopener noreferrer" className="text-[#D71921] hover:underline">shsvirtualacademy.pro</a>)</p>

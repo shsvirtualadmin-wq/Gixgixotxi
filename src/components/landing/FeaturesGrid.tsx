@@ -59,7 +59,7 @@ export function FeaturesGrid() {
         <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
           {/* Platform Capabilities Pill */}
           <div className="flex justify-center mb-4 sm:mb-5">
-            <span className="inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide text-white/90 bg-white/[0.06] border border-white/12 shadow-[0_2px_8px_rgba(0,0,0,0.25)]">
+            <span className="inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide section-chip">
               Platform Capabilities
             </span>
           </div>
@@ -93,11 +93,11 @@ export function FeaturesGrid() {
               transition: 'opacity 500ms cubic-bezier(0.16, 1, 0.3, 1), transform 500ms cubic-bezier(0.16, 1, 0.3, 1)',
               transitionDelay: '0ms',
             }}
-            className="lg:col-span-2 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-6 sm:p-8 lg:p-9 border border-white/12 bg-[rgba(14,14,19,0.82)] shadow-[0_18px_40px_-12px_rgba(0,0,0,0.68),inset_0_1px_1px_rgba(255,255,255,0.14)]"
+            className="lg:col-span-2 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-6 sm:p-8 lg:p-9 glass-card hover:-translate-y-1.5 hover:border-white/22"
           >
             <div className="space-y-4 sm:space-y-5">
               {/* Floating Icon Tile */}
-              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[18px] bg-white/[0.06] border border-white/12 shadow-[inset_0_1px_1px_rgba(255,255,255,0.18)] flex items-center justify-center text-white shrink-0 animate-float-1">
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[18px] icon-tile flex items-center justify-center text-white shrink-0 animate-float-1">
                 <Calculator size={20} />
               </div>
 
@@ -114,7 +114,7 @@ export function FeaturesGrid() {
               </div>
 
               {/* Live Math Demo / Inner Glass Panel */}
-              <div className="p-4 sm:p-5 rounded-[20px] sm:rounded-[22px] border border-white/10 bg-[rgba(10,10,14,0.65)] shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)] space-y-2 select-text">
+              <div className="p-4 sm:p-5 rounded-[20px] sm:rounded-[22px] glass-row space-y-2 select-text">
                 <div className="text-xs font-medium text-[var(--muted)]">
                   Sample solution step:
                 </div>
@@ -159,11 +159,11 @@ export function FeaturesGrid() {
               transition: 'opacity 500ms cubic-bezier(0.16, 1, 0.3, 1), transform 500ms cubic-bezier(0.16, 1, 0.3, 1)',
               transitionDelay: '90ms',
             }}
-            className="lg:col-span-1 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-6 sm:p-8 lg:p-9 border border-white/12 bg-[rgba(14,14,19,0.82)] backdrop-blur-[28px] sm:backdrop-blur-[34px] shadow-[0_20px_45px_-12px_rgba(0,0,0,0.7),0_10px_20px_-8px_rgba(0,0,0,0.45),0_0_30px_rgba(215,25,33,0.04),inset_0_1px_1px_rgba(255,255,255,0.14)] hover:-translate-y-1.5 hover:border-white/22 hover:shadow-[0_26px_55px_-12px_rgba(0,0,0,0.85),0_12px_24px_-8px_rgba(0,0,0,0.6),0_0_35px_rgba(215,25,33,0.1)] active:scale-[0.98] transition-all duration-300 ease-out"
+            className="lg:col-span-1 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-6 sm:p-8 lg:p-9 glass-card hover:-translate-y-1.5 hover:border-white/22 active:scale-[0.98] transition-all duration-300 ease-out"
           >
             <div className="space-y-4 sm:space-y-5">
               {/* Floating Icon Tile */}
-              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[18px] bg-white/[0.06] border border-white/12 shadow-[inset_0_1px_1px_rgba(255,255,255,0.18)] flex items-center justify-center text-white shrink-0 animate-float-2">
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[18px] icon-tile flex items-center justify-center text-white shrink-0 animate-float-2">
                 <MessageSquare size={20} />
               </div>
 
@@ -180,7 +180,7 @@ export function FeaturesGrid() {
               </div>
 
               {/* Callout with red left accent line and faint glow */}
-              <div className="p-3.5 sm:p-4 rounded-[18px] border border-white/10 border-l-[3px] border-l-[#D71921] bg-white/[0.03] text-white shadow-[0_0_20px_rgba(215,25,33,0.06)]">
+              <div className="p-3.5 sm:p-4 rounded-[18px] glass-row !border-l-[3px] !border-l-[#D71921] text-white shadow-[0_0_20px_rgba(215,25,33,0.06)]">
                 <span className="text-xs font-medium text-white/90 leading-relaxed block">
                   Free, unlimited sharing and peer learning for everyone.
                 </span>
@@ -212,11 +212,11 @@ export function FeaturesGrid() {
               transition: 'opacity 500ms cubic-bezier(0.16, 1, 0.3, 1), transform 500ms cubic-bezier(0.16, 1, 0.3, 1)',
               transitionDelay: '180ms',
             }}
-            className="lg:col-span-1 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-6 sm:p-8 lg:p-9 border border-white/12 bg-[rgba(14,14,19,0.82)] backdrop-blur-[28px] sm:backdrop-blur-[34px] shadow-[0_20px_45px_-12px_rgba(0,0,0,0.7),0_10px_20px_-8px_rgba(0,0,0,0.45),0_0_30px_rgba(215,25,33,0.04),inset_0_1px_1px_rgba(255,255,255,0.14)]"
+            className="lg:col-span-1 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-6 sm:p-8 lg:p-9 glass-card hover:-translate-y-1.5 hover:border-white/22"
           >
             <div className="space-y-4 sm:space-y-5">
               {/* Floating Icon Tile */}
-              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[18px] bg-white/[0.06] border border-white/12 shadow-[inset_0_1px_1px_rgba(255,255,255,0.18)] flex items-center justify-center text-white shrink-0 animate-float-3">
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[18px] icon-tile flex items-center justify-center text-white shrink-0 animate-float-3">
                 <Cpu size={20} />
               </div>
 
@@ -247,11 +247,11 @@ export function FeaturesGrid() {
               transition: 'opacity 500ms cubic-bezier(0.16, 1, 0.3, 1), transform 500ms cubic-bezier(0.16, 1, 0.3, 1)',
               transitionDelay: '270ms',
             }}
-            className="lg:col-span-1 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-6 sm:p-8 lg:p-9 border border-white/12 bg-[rgba(14,14,19,0.82)] backdrop-blur-[28px] sm:backdrop-blur-[34px] shadow-[0_20px_45px_-12px_rgba(0,0,0,0.7),0_10px_20px_-8px_rgba(0,0,0,0.45),0_0_30px_rgba(215,25,33,0.04),inset_0_1px_1px_rgba(255,255,255,0.14)] hover:-translate-y-1.5 hover:border-white/22 hover:shadow-[0_26px_55px_-12px_rgba(0,0,0,0.85),0_12px_24px_-8px_rgba(0,0,0,0.6),0_0_35px_rgba(215,25,33,0.1)] active:scale-[0.98] transition-all duration-300 ease-out"
+            className="lg:col-span-1 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-6 sm:p-8 lg:p-9 glass-card hover:-translate-y-1.5 hover:border-white/22 active:scale-[0.98] transition-all duration-300 ease-out"
           >
             <div className="space-y-4 sm:space-y-5">
               {/* Floating Icon Tile */}
-              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[18px] bg-white/[0.06] border border-white/12 shadow-[inset_0_1px_1px_rgba(255,255,255,0.18)] flex items-center justify-center text-white shrink-0 animate-float-1">
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[18px] icon-tile flex items-center justify-center text-white shrink-0 animate-float-1">
                 <Users size={20} />
               </div>
 
@@ -293,11 +293,11 @@ export function FeaturesGrid() {
               transition: 'opacity 500ms cubic-bezier(0.16, 1, 0.3, 1), transform 500ms cubic-bezier(0.16, 1, 0.3, 1)',
               transitionDelay: '360ms',
             }}
-            className="lg:col-span-1 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-6 sm:p-8 lg:p-9 border border-white/12 bg-[rgba(14,14,19,0.82)] backdrop-blur-[28px] sm:backdrop-blur-[34px] shadow-[0_20px_45px_-12px_rgba(0,0,0,0.7),0_10px_20px_-8px_rgba(0,0,0,0.45),0_0_30px_rgba(215,25,33,0.04),inset_0_1px_1px_rgba(255,255,255,0.14)]"
+            className="lg:col-span-1 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-6 sm:p-8 lg:p-9 glass-card hover:-translate-y-1.5 hover:border-white/22"
           >
             <div className="space-y-4 sm:space-y-5">
               {/* Floating Icon Tile */}
-              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[18px] bg-white/[0.06] border border-white/12 shadow-[inset_0_1px_1px_rgba(255,255,255,0.18)] flex items-center justify-center text-white shrink-0 animate-float-2">
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[18px] icon-tile flex items-center justify-center text-white shrink-0 animate-float-2">
                 <Flame size={20} />
               </div>
 

@@ -76,7 +76,7 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
             placeholder="Search study squad by name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-11 pr-4 py-3 rounded-full bg-white/[0.05] border border-white/15 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[#D71921] focus:ring-2 focus:ring-[#D71921]/40 shadow-sm backdrop-blur-md transition-all"
+            className="w-full pl-11 pr-4 py-3 rounded-full glass-input text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[#D71921] focus:ring-2 focus:ring-[#D71921]/40 transition-all"
           />
         </div>
 
@@ -95,7 +95,7 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
       ) : crews.length === 0 ? (
         /* Empty state: Never show placeholder cards */
         <div className="p-10 sm:p-14 rounded-[28px] glass-card text-center space-y-4">
-          <div className="w-12 h-12 rounded-2xl bg-white/[0.06] border border-white/12 text-[var(--muted)] flex items-center justify-center mx-auto">
+          <div className="icon-tile w-12 h-12 rounded-2xl text-[var(--muted)] flex items-center justify-center mx-auto">
             <Trophy size={22} />
           </div>
           <h3 className="text-base font-bold text-[var(--text)] font-heading">No Study Squads Found</h3>
@@ -123,8 +123,8 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
                 onClick={() => setSelectedCrew(c)}
                 className={`p-3.5 sm:p-4 rounded-[24px] border transition-all duration-200 cursor-pointer flex items-center justify-between gap-3 min-h-[68px] hover:-translate-y-1 active:scale-[0.99] ${
                   isUserCrew
-                    ? 'bg-[#181011]/90 border-[#D71921]/60 hover:border-[#D71921] shadow-[0_8px_24px_rgba(215,25,33,0.18)]'
-                    : 'bg-[#0e0e13]/80 backdrop-blur-md border-white/12 hover:border-white/25 shadow-[0_8px_24px_rgba(0,0,0,0.4),inset_0_1px_1px_rgba(255,255,255,0.08)]'
+                    ? 'glass-card-highlight hover:border-[#D71921]'
+                    : 'glass-card hover:border-white/25'
                 }`}
               >
                 {/* Left: Rank, Avatar, Name & Conditions */}
@@ -215,7 +215,7 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
                       e.stopPropagation();
                       setSelectedCrew(c);
                     }}
-                    className="px-3.5 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/15 text-xs font-semibold text-[var(--text)] flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+                    className="btn-secondary px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95"
                     title="View squad details"
                   >
                     <Eye size={14} />
