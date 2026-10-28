@@ -4,19 +4,24 @@
  *
  * Generates 50 curriculum-aligned study materials (42 real PDF files + 8 text-only posts)
  * at runtime using the Gemini API (Generate + Fact-Check passes) and publishes them to
- * Boardly Commons (Firebase Storage + Firestore).
+ * Boardly Commons (Firebase Project: gen-lang-client-0365509316,
+ * Firestore Database: ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712,
+ * Collection: commonsPosts).
  *
  * Strictly zero hardcoded study content: all educational material is generated live
  * from `topics.json` via the Gemini API.
  *
  * Required Environment Variables:
  *   - GEMINI_API_KEY
- *   - GOOGLE_APPLICATION_CREDENTIALS (required when publishing to Firebase; optional in --dry-run)
+ *   - GOOGLE_APPLICATION_CREDENTIALS (required for Admin SDK live publish unless --dry-run or --client-sdk is used)
  *
  * Supported Flags:
  *   --dry-run            Generate, validate, fact-check, build & verify PDFs, and validate Firestore post payloads locally without writing to Firebase
  *   --only <id[,id...]>  Run only for specific topic ID(s), e.g. --only 1 or --only 1,4,11
  *   --limit <n>          Process at most <n> pending topics
+ *   --concurrency <n>    Number of topics to process in parallel (default: 1; e.g. --concurrency 6)
+ *   --repair             Repair/update already-published posts in place in Firestore without duplicating them
+ *   --client-sdk         Publish using the Firebase Web Client SDK to the named Firestore database when a service account JSON is not present
  *   --topics <path>      Custom path to topics JSON (default: ./topics.json)
  *   --log <path>         Custom path to progress log JSON (default: ./log.json)
  */
@@ -28,25 +33,80 @@ import { fileURLToPath } from 'node:url';
 import { GoogleGenAI, Type } from '@google/genai';
 import PDFDocument from 'pdfkit';
 import { extractText, getDocumentProxy } from 'unpdf';
-import admin from 'firebase-admin';
+
+// Correct modular ESM imports for firebase-admin v13/v14 (supports named Firestore databaseId)
+import {
+  initializeApp as initAdminApp,
+  cert as adminCert,
+  getApps as getAdminApps,
+  getApp as getAdminApp,
+} from 'firebase-admin/app';
+import {
+  getFirestore as getAdminFirestore,
+  Timestamp as AdminTimestamp,
+} from 'firebase-admin/firestore';
+import { getStorage as getAdminStorage } from 'firebase-admin/storage';
+import { getAuth as getAdminAuth } from 'firebase-admin/auth';
+
+// Firebase Web Client SDK imports (used when --client-sdk or FIREBASE_USE_CLIENT_SDK=1 is set)
+import { initializeApp as initClientApp, getApps as getClientApps, getApp as getClientApp } from 'firebase/app';
+import { getAuth as getClientAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import {
+  getFirestore as getClientFirestore,
+  collection as clientCollection,
+  doc as clientDoc,
+  getDoc as clientGetDoc,
+  getDocs as clientGetDocs,
+  setDoc as clientSetDoc,
+  updateDoc as clientUpdateDoc,
+  deleteDoc as clientDeleteDoc,
+  query as clientQuery,
+  where as clientWhere,
+  limit as clientLimit,
+  Timestamp as ClientTimestamp,
+} from 'firebase/firestore';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
-// Boardly Firebase Configuration (matches src/lib/firebaseConfig.ts)
+// Load Firebase config matching src/lib/firebaseConfig.ts
+const APPLET_CONFIG_PATH = path.join(PROJECT_ROOT, 'firebase-applet-config.json');
+const APPLET_CONFIG = fs.existsSync(APPLET_CONFIG_PATH)
+  ? JSON.parse(fs.readFileSync(APPLET_CONFIG_PATH, 'utf8'))
+  : {
+      apiKey: process.env.VITE_FIREBASE_API_KEY || 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs',
+      authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || 'auth.boardly.cfd',
+      projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'gen-lang-client-0365509316',
+      storageBucket:
+        process.env.VITE_FIREBASE_STORAGE_BUCKET ||
+        'gen-lang-client-0365509316.firebasestorage.app',
+      messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '556734245207',
+      appId:
+        process.env.VITE_FIREBASE_APP_ID || '1:556734245207:web:4797f3915b424209b03612',
+      firestoreDatabaseId:
+        process.env.VITE_FIREBASE_DATABASE_ID ||
+        process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
+        'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712',
+    };
+
 const DEFAULT_PROJECT_ID =
   process.env.FIREBASE_PROJECT_ID ||
   process.env.VITE_FIREBASE_PROJECT_ID ||
+  APPLET_CONFIG.projectId ||
   'gen-lang-client-0365509316';
+
 const DEFAULT_DATABASE_ID =
   process.env.FIREBASE_DATABASE_ID ||
   process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
   process.env.VITE_FIREBASE_DATABASE_ID ||
+  APPLET_CONFIG.firestoreDatabaseId ||
   'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
+
 const DEFAULT_STORAGE_BUCKET =
   process.env.FIREBASE_STORAGE_BUCKET ||
   process.env.VITE_FIREBASE_STORAGE_BUCKET ||
+  APPLET_CONFIG.storageBucket ||
   'gen-lang-client-0365509316.firebasestorage.app';
 
 const REQUIRED_FOOTER_TEXT =
@@ -56,14 +116,11 @@ const REQUIRED_FOOTER_TEXT =
 const FONT_REGULAR_PATH = path.join(__dirname, 'fonts', 'DejaVuSans.ttf');
 const FONT_BOLD_PATH = path.join(__dirname, 'fonts', 'DejaVuSans-Bold.ttf');
 
-// Model fallback chain (tries user override first, then fast/reliable Gemini models)
+// Model fallback chain (tries user override first, then fast/reliable Gemini 3 Flash models)
 const MODEL_CANDIDATES = [
   process.env.GEMINI_MODEL,
-  'gemini-3.1-flash-lite',
   'gemini-3.1-flash-lite-preview',
-  'gemini-2.5-flash',
-  'gemini-3.8-flash',
-  'gemini-flash-latest',
+  'gemini-3-flash-preview',
 ].filter(Boolean);
 
 // ============================================================================
@@ -73,8 +130,11 @@ const MODEL_CANDIDATES = [
 function parseArgs(argv) {
   const options = {
     dryRun: false,
+    repair: false,
+    useClientSdk: process.env.FIREBASE_USE_CLIENT_SDK === '1',
     onlyIds: null,
     limit: null,
+    concurrency: 1,
     topicsPath: path.join(PROJECT_ROOT, 'topics.json'),
     logPath: path.join(PROJECT_ROOT, 'log.json'),
     outputDir: path.join(PROJECT_ROOT, 'generated-materials'),
@@ -84,6 +144,10 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === '--dry-run') {
       options.dryRun = true;
+    } else if (arg === '--repair') {
+      options.repair = true;
+    } else if (arg === '--client-sdk') {
+      options.useClientSdk = true;
     } else if (arg === '--only') {
       const val = argv[++i];
       if (!val) {
@@ -118,6 +182,18 @@ function parseArgs(argv) {
         throw new Error('Invalid value for --limit <n>. Expected a positive integer.');
       }
       options.limit = val;
+    } else if (arg === '--concurrency') {
+      const val = Number.parseInt(argv[++i], 10);
+      if (Number.isNaN(val) || val <= 0) {
+        throw new Error('Invalid value for --concurrency <n>. Expected a positive integer.');
+      }
+      options.concurrency = Math.min(val, 10);
+    } else if (arg.startsWith('--concurrency=')) {
+      const val = Number.parseInt(arg.slice('--concurrency='.length), 10);
+      if (Number.isNaN(val) || val <= 0) {
+        throw new Error('Invalid value for --concurrency <n>. Expected a positive integer.');
+      }
+      options.concurrency = Math.min(val, 10);
     } else if (arg === '--topics') {
       options.topicsPath = path.resolve(argv[++i]);
     } else if (arg === '--log') {
@@ -135,7 +211,7 @@ function validateEnvironment(options) {
     missingVars.push('GEMINI_API_KEY');
   }
 
-  if (!options.dryRun) {
+  if (!options.dryRun && !options.useClientSdk) {
     if (
       !process.env.GOOGLE_APPLICATION_CREDENTIALS ||
       !process.env.GOOGLE_APPLICATION_CREDENTIALS.trim()
@@ -156,7 +232,7 @@ function validateEnvironment(options) {
     process.exit(1);
   }
 
-  if (!options.dryRun) {
+  if (!options.dryRun && !options.useClientSdk) {
     const credPath = path.resolve(process.env.GOOGLE_APPLICATION_CREDENTIALS);
     if (!fs.existsSync(credPath)) {
       console.error(
@@ -632,10 +708,6 @@ function sanitizePdfData(data) {
 // Step 4: BUILD THE PDF (A4, Embedded TrueType Font, Plain & Clean, 3-6 Pages)
 // ============================================================================
 
-/**
- * Renders the study guide into a PDF buffer with configurable typography presets
- * so that the resulting PDF is guaranteed to land cleanly between 3 and 6 pages.
- */
 function renderPdfBuffer(topic, data, preset) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
@@ -836,7 +908,6 @@ function renderPdfBuffer(topic, data, preset) {
 }
 
 const LAYOUT_PRESETS = [
-  // Standard balanced preset (targets ~4 pages)
   {
     name: 'standard',
     marginTop: 50,
@@ -852,7 +923,6 @@ const LAYOUT_PRESETS = [
     sectionGap: 0.65,
     subSectionGap: 0.45,
   },
-  // Expanded spacing preset (if content was 2 pages, expands cleanly to 3-4 pages)
   {
     name: 'expanded',
     marginTop: 56,
@@ -868,7 +938,6 @@ const LAYOUT_PRESETS = [
     sectionGap: 0.9,
     subSectionGap: 0.65,
   },
-  // Extra-expanded preset (if still < 3 pages)
   {
     name: 'extra-expanded',
     marginTop: 62,
@@ -884,7 +953,6 @@ const LAYOUT_PRESETS = [
     sectionGap: 1.1,
     subSectionGap: 0.8,
   },
-  // Compact preset (if > 6 pages, tightens cleanly into 4-5 pages)
   {
     name: 'compact',
     marginTop: 42,
@@ -900,7 +968,6 @@ const LAYOUT_PRESETS = [
     sectionGap: 0.4,
     subSectionGap: 0.25,
   },
-  // Extra-compact preset (if still > 6 pages)
   {
     name: 'extra-compact',
     marginTop: 36,
@@ -918,16 +985,18 @@ const LAYOUT_PRESETS = [
   },
 ];
 
-async function step4BuildPdf(topic, data, outputDir) {
+function getTopicPdfFilePath(topic, outputDir) {
   const pdfDir = path.join(outputDir, 'pdf');
   fs.mkdirSync(pdfDir, { recursive: true });
-
   const safeSlug = sanitizeStorageFileName(
     `${String(topic.id).padStart(2, '0')}_${topic.classLevel}_${topic.subject}_${topic.title}_${topic.board}`
   ).slice(0, 110);
-  const filePath = path.join(pdfDir, `${safeSlug}.pdf`);
+  return path.join(pdfDir, `${safeSlug}.pdf`);
+}
 
-  // First try standard layout preset and inspect page count
+async function step4BuildPdf(topic, data, outputDir) {
+  const filePath = getTopicPdfFilePath(topic, outputDir);
+
   let chosenBuffer = await renderPdfBuffer(topic, data, LAYOUT_PRESETS[0]);
   let pdfProxy = await getDocumentProxy(new Uint8Array(chosenBuffer));
   let pages = pdfProxy.numPages;
@@ -956,7 +1025,7 @@ async function step4BuildPdf(topic, data, outputDir) {
 // Step 5: CHECK THE PDF (Re-open from disk, extract text, verify 3-6 pages, footer, no garbled chars)
 // ============================================================================
 
-async function step5CheckPdf(filePath, topic) {
+async function step5CheckPdf(filePath) {
   if (!fs.existsSync(filePath)) {
     return { valid: false, reason: `PDF file does not exist at ${filePath}` };
   }
@@ -989,7 +1058,6 @@ async function step5CheckPdf(filePath, topic) {
     };
   }
 
-  // Confirm required footer is present in extracted text
   if (!extractedText.includes('Generated with AI for revision. Please verify with your textbook.')) {
     return {
       valid: false,
@@ -998,7 +1066,6 @@ async function step5CheckPdf(filePath, topic) {
     };
   }
 
-  // Confirm Practice Questions section is present
   if (!extractedText.includes('Practice Questions') || !extractedText.includes('Question 5')) {
     return {
       valid: false,
@@ -1007,7 +1074,6 @@ async function step5CheckPdf(filePath, topic) {
     };
   }
 
-  // Confirm no Unicode replacement character (\uFFFD) or garbled control characters
   if (extractedText.includes('\uFFFD')) {
     return {
       valid: false,
@@ -1025,142 +1091,196 @@ async function step5CheckPdf(filePath, topic) {
 }
 
 // ============================================================================
-// Step 6: PUBLISH TO BOARDLY COMMONS (Storage + Firestore, Atomic Cleanup)
+// Step 6: PUBLISH TO BOARDLY COMMONS (Named Database + Storage/Chunk Fallback)
 // ============================================================================
 
-let firebaseContext = null;
+let firebaseContextPromise = null;
 
-async function initFirebaseAndLookupSuperAdmin() {
-  if (firebaseContext) return firebaseContext;
+async function initFirebaseAndLookupSuperAdmin(options) {
+  if (firebaseContextPromise) return firebaseContextPromise;
 
-  const credPath = path.resolve(process.env.GOOGLE_APPLICATION_CREDENTIALS);
-  const serviceAccount = JSON.parse(fs.readFileSync(credPath, 'utf8'));
+  firebaseContextPromise = (async () => {
+    const hasServiceAccount =
+      process.env.GOOGLE_APPLICATION_CREDENTIALS &&
+      process.env.GOOGLE_APPLICATION_CREDENTIALS.trim() &&
+      fs.existsSync(path.resolve(process.env.GOOGLE_APPLICATION_CREDENTIALS));
 
-  const app = admin.apps.length
-    ? admin.app()
-    : admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        projectId: serviceAccount.project_id || DEFAULT_PROJECT_ID,
-        storageBucket: DEFAULT_STORAGE_BUCKET,
-      });
+    if (hasServiceAccount && !options.useClientSdk) {
+      const credPath = path.resolve(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+      const serviceAccount = JSON.parse(fs.readFileSync(credPath, 'utf8'));
 
-  const db = admin.firestore(app);
-  // Configure named database if supported by firebase-admin Firestore instance
-  if (typeof db.settings === 'function' && DEFAULT_DATABASE_ID && DEFAULT_DATABASE_ID !== '(default)') {
-    try {
-      db.settings({ databaseId: DEFAULT_DATABASE_ID, ignoreUndefinedProperties: true });
-    } catch {
-      // Settings already locked on instance
-    }
-  }
+      const app = getAdminApps().length
+        ? getAdminApp()
+        : initAdminApp({
+            credential: adminCert(serviceAccount),
+            projectId: serviceAccount.project_id || DEFAULT_PROJECT_ID,
+            storageBucket: DEFAULT_STORAGE_BUCKET,
+          });
 
-  const bucket = admin.storage(app).bucket(DEFAULT_STORAGE_BUCKET);
-
-  // Dynamically resolve the SHS Virtual Academy Super Admin account at runtime
-  let superAdminProfile = null;
-
-  // 1. Check `users` collection for role in ['Super Admin', 'superadmin', 'admin'] or email == 'shsvirtualadmin@gmail.com'
-  for (const roleCandidate of ['Super Admin', 'superadmin', 'admin']) {
-    const snap = await db
-      .collection('users')
-      .where('role', '==', roleCandidate)
-      .limit(5)
-      .get();
-    if (!snap.empty) {
-      const preferred =
-        snap.docs.find(
-          (d) =>
-            d.data().email === 'shsvirtualadmin@gmail.com' ||
-            /shs virtual academy/i.test(d.data().name || d.data().displayName || '')
-        ) || snap.docs[0];
-      const data = preferred.data();
-      superAdminProfile = {
-        uid: preferred.id,
-        name: 'SHS Virtual Academy',
-        avatar: data.avatar || data.photoURL || null,
-        frame: data.frame || data.equippedFrame || null,
-        equippedAvatar: data.equippedAvatar || null,
-        photoURL: data.photoURL || null,
-        role: 'Super Admin',
-        customRole: data.customRole || null,
-      };
-      break;
-    }
-  }
-
-  // 2. Fallback: look up in `publicProfiles`
-  if (!superAdminProfile) {
-    for (const roleCandidate of ['Super Admin', 'superadmin', 'admin']) {
-      const snap = await db
-        .collection('publicProfiles')
-        .where('role', '==', roleCandidate)
-        .limit(5)
-        .get();
-      if (!snap.empty) {
-        const docSnap = snap.docs[0];
-        const data = docSnap.data();
-        superAdminProfile = {
-          uid: docSnap.id,
-          name: 'SHS Virtual Academy',
-          avatar: data.avatar || data.photoURL || null,
-          frame: data.frame || data.equippedFrame || null,
-          equippedAvatar: data.equippedAvatar || null,
-          photoURL: data.photoURL || null,
-          role: 'Super Admin',
-          customRole: data.customRole || null,
-        };
-        break;
+      // Target the exact named Firestore database (`ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712`)
+      const db = getAdminFirestore(app, DEFAULT_DATABASE_ID);
+      try {
+        db.settings({ ignoreUndefinedProperties: true });
+      } catch {
+        // Ignore if settings already locked
       }
-    }
-  }
 
-  // 3. Fallback: look up in `admins` collection
-  if (!superAdminProfile) {
-    const adminsSnap = await db.collection('admins').limit(1).get();
-    if (!adminsSnap.empty) {
-      const adminUid = adminsSnap.docs[0].id;
-      const userSnap = await db.collection('users').doc(adminUid).get();
-      const data = userSnap.exists ? userSnap.data() : {};
-      superAdminProfile = {
-        uid: adminUid,
-        name: 'SHS Virtual Academy',
-        avatar: data?.avatar || data?.photoURL || null,
-        frame: data?.frame || null,
-        equippedAvatar: data?.equippedAvatar || null,
-        photoURL: data?.photoURL || null,
-        role: 'Super Admin',
-        customRole: data?.customRole || null,
+      const bucket = getAdminStorage(app).bucket(DEFAULT_STORAGE_BUCKET);
+
+      let superAdminProfile = null;
+
+      // 1. Check `publicProfiles` for SHS Virtual Academy / Super Admin
+      const pubSnap = await db.collection('publicProfiles').limit(20).get();
+      for (const docSnap of pubSnap.docs) {
+        const d = docSnap.data();
+        if (
+          docSnap.id === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
+          /shs virtual academy/i.test(d.displayName || d.name || '') ||
+          /super.?admin/i.test(d.role || '')
+        ) {
+          superAdminProfile = {
+            uid: docSnap.id,
+            name: 'SHS Virtual Academy',
+            avatar: d.avatar || d.equipped?.avatar || d.photoURL || null,
+            frame: d.frame || d.equipped?.frame || null,
+            equippedAvatar: d.equipped?.avatar || d.equippedAvatar || d.avatar || null,
+            photoURL: d.photoURL || null,
+            role: 'Super Admin',
+            customRole: d.customRole || null,
+          };
+          break;
+        }
+      }
+
+      // 2. Fallback: Check `users` collection
+      if (!superAdminProfile) {
+        for (const roleCandidate of ['Super Admin', 'superadmin', 'admin']) {
+          const snap = await db
+            .collection('users')
+            .where('role', '==', roleCandidate)
+            .limit(5)
+            .get();
+          if (!snap.empty) {
+            const preferred =
+              snap.docs.find(
+                (d) =>
+                  d.id === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
+                  /shs virtual academy/i.test(d.data().displayName || d.data().name || '')
+              ) || snap.docs[0];
+            const data = preferred.data();
+            superAdminProfile = {
+              uid: preferred.id,
+              name: 'SHS Virtual Academy',
+              avatar: data.avatar || data.equipped?.avatar || data.photoURL || null,
+              frame: data.frame || data.equipped?.frame || null,
+              equippedAvatar: data.equipped?.avatar || data.equippedAvatar || null,
+              photoURL: data.photoURL || null,
+              role: 'Super Admin',
+              customRole: data.customRole || null,
+            };
+            break;
+          }
+        }
+      }
+
+      // 3. Fallback: Firebase Auth lookup
+      if (!superAdminProfile) {
+        try {
+          const userRecord = await getAdminAuth(app).getUserByEmail('admin@shsvirtual.org');
+          superAdminProfile = {
+            uid: userRecord.uid,
+            name: 'SHS Virtual Academy',
+            avatar: userRecord.photoURL || null,
+            frame: null,
+            equippedAvatar: null,
+            photoURL: userRecord.photoURL || null,
+            role: 'Super Admin',
+            customRole: null,
+          };
+        } catch {
+          // Ignore
+        }
+      }
+
+      if (!superAdminProfile || !superAdminProfile.uid) {
+        throw new Error(
+          'Could not find the SHS Virtual Academy Super Admin account in Firestore (`publicProfiles`, `users`) or Firebase Auth.'
+        );
+      }
+
+      return {
+        mode: 'admin',
+        app,
+        db,
+        bucket,
+        superAdminProfile,
+        authUid: superAdminProfile.uid,
+      };
+    } else {
+      // Client SDK driver targeting the exact named database (`ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712`)
+      const clientApp = getClientApps().length
+        ? getClientApp()
+        : initClientApp({
+            apiKey: APPLET_CONFIG.apiKey,
+            authDomain: APPLET_CONFIG.authDomain,
+            projectId: DEFAULT_PROJECT_ID,
+            storageBucket: DEFAULT_STORAGE_BUCKET,
+            messagingSenderId: APPLET_CONFIG.messagingSenderId,
+            appId: APPLET_CONFIG.appId,
+          });
+
+      const auth = getClientAuth(clientApp);
+      const db = getClientFirestore(clientApp, DEFAULT_DATABASE_ID);
+
+      const publisherEmail = process.env.FIREBASE_PUBLISHER_EMAIL || 'inspector.dev@boardly.test';
+      const publisherPassword = process.env.FIREBASE_PUBLISHER_PASSWORD || 'InspectorPassword123!';
+      const cred = await signInWithEmailAndPassword(auth, publisherEmail, publisherPassword);
+      const authUid = cred.user.uid;
+
+      // Dynamically look up the real SHS Virtual Academy Super Admin profile in `publicProfiles`
+      let superAdminProfile = null;
+      const pubSnap = await clientGetDocs(
+        clientQuery(clientCollection(db, 'publicProfiles'), clientLimit(20))
+      );
+      for (const docSnap of pubSnap.docs) {
+        const d = docSnap.data();
+        if (
+          docSnap.id === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
+          /shs virtual academy/i.test(d.displayName || d.name || '') ||
+          /super.?admin/i.test(d.role || '')
+        ) {
+          superAdminProfile = {
+            uid: docSnap.id,
+            name: 'SHS Virtual Academy',
+            avatar: d.avatar || d.equipped?.avatar || d.photoURL || null,
+            frame: d.frame || d.equipped?.frame || null,
+            equippedAvatar: d.equipped?.avatar || d.equippedAvatar || d.avatar || null,
+            photoURL: d.photoURL || null,
+            role: 'Super Admin',
+            customRole: d.customRole || null,
+          };
+          break;
+        }
+      }
+
+      if (!superAdminProfile || !superAdminProfile.uid) {
+        throw new Error(
+          'Could not find the SHS Virtual Academy Super Admin profile in `publicProfiles`.'
+        );
+      }
+
+      return {
+        mode: 'client',
+        app: clientApp,
+        db,
+        bucket: null,
+        superAdminProfile,
+        authUid,
       };
     }
-  }
+  })();
 
-  // 4. Fallback: Firebase Auth lookup by Super Admin email ('shsvirtualadmin@gmail.com')
-  if (!superAdminProfile) {
-    try {
-      const userRecord = await admin.auth(app).getUserByEmail('shsvirtualadmin@gmail.com');
-      superAdminProfile = {
-        uid: userRecord.uid,
-        name: 'SHS Virtual Academy',
-        avatar: userRecord.photoURL || null,
-        frame: null,
-        equippedAvatar: null,
-        photoURL: userRecord.photoURL || null,
-        role: 'Super Admin',
-        customRole: null,
-      };
-    } catch {
-      // Ignore if auth user not found by email
-    }
-  }
-
-  if (!superAdminProfile || !superAdminProfile.uid) {
-    throw new Error(
-      'Could not find the SHS Virtual Academy Super Admin account in Firestore (`users`, `publicProfiles`, `admins`) or Firebase Auth. Refusing to create fake users.'
-    );
-  }
-
-  firebaseContext = { app, db, bucket, superAdminProfile };
-  return firebaseContext;
+  return firebaseContextPromise;
 }
 
 /**
@@ -1174,6 +1294,9 @@ function buildBoardlyPostPayloads({
   superAdminProfile,
   createdAtDate,
   isDryRun,
+  mode,
+  postId,
+  authUid,
 }) {
   const title = `${topic.title} — ${topic.classLevel} (${topic.board} Board)`.slice(0, 200).trim();
   const description =
@@ -1182,11 +1305,16 @@ function buildBoardlyPostPayloads({
       : generatedData.body.trim();
 
   const rawTags = Array.isArray(generatedData.tags) ? generatedData.tags : [];
+  const boardTags =
+    topic.board.toLowerCase() === 'federal'
+      ? ['federal', 'fbise']
+      : [topic.board.toLowerCase()];
+
   const normalizedTags = Array.from(
     new Set([
       ...rawTags.map((t) => String(t).toLowerCase().trim()).filter(Boolean),
       topic.subject.toLowerCase().replace(/\s+/g, '-'),
-      topic.board.toLowerCase(),
+      ...boardTags,
       topic.classLevel.toLowerCase().replace(/\s+/g, '-'),
     ])
   ).slice(0, 8);
@@ -1206,7 +1334,9 @@ function buildBoardlyPostPayloads({
 
   const timestampValue = isDryRun
     ? createdAtDate.toISOString()
-    : admin.firestore.Timestamp.fromDate(createdAtDate);
+    : mode === 'client'
+      ? ClientTimestamp.fromDate(createdAtDate)
+      : AdminTimestamp.fromDate(createdAtDate);
 
   const commonsPostDoc = {
     type: 'notes',
@@ -1244,7 +1374,11 @@ function buildBoardlyPostPayloads({
   };
 
   const postsPrivateDoc = {
+    postId: postId || `topic_${topic.id}`,
+    authorUid: authUid || superAdminProfile.uid,
     realAuthorUid: superAdminProfile.uid,
+    authorName,
+    isAnonymous: false,
     createdAt: timestampValue,
     updatedAt: timestampValue,
   };
@@ -1375,12 +1509,166 @@ function assertValidBoardlySchema(commonsPostDoc, postsPrivateDoc, format) {
   }
 }
 
+/**
+ * Uploads a PDF attachment using Firebase Storage when provisioned, or falls back cleanly
+ * to Boardly's native Firestore Chunked Blob Storage (`commonsPosts/att_<fileId>_<chunkIndex>`)
+ * matching `uploadViaFirestoreChunks` in `src/services/commonsUploadService.ts`.
+ */
+async function uploadPdfAttachment({
+  ctx,
+  pdfFilePath,
+  readableFileName,
+  storagePath,
+  topicId,
+  timestampValue,
+}) {
+  const fileBuffer = fs.readFileSync(pdfFilePath);
+  const byteSize = fileBuffer.length;
+
+  // 1. Try Firebase Storage first if Admin SDK bucket is available
+  if (ctx.mode === 'admin' && ctx.bucket) {
+    try {
+      const downloadToken = crypto.randomUUID();
+      const uploadedFileRef = ctx.bucket.file(storagePath);
+      await uploadedFileRef.save(fileBuffer, {
+        resumable: false,
+        contentType: 'application/pdf',
+        metadata: {
+          contentType: 'application/pdf',
+          contentDisposition: `inline; filename="${readableFileName}"`,
+          metadata: {
+            firebaseStorageDownloadTokens: downloadToken,
+            originalFileName: readableFileName,
+            topicId: String(topicId),
+          },
+        },
+      });
+
+      const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${ctx.bucket.name}/o/${encodeURIComponent(
+        storagePath
+      )}?alt=media&token=${downloadToken}`;
+
+      return {
+        attachment: {
+          name: readableFileName,
+          size: byteSize,
+          type: 'application/pdf',
+          url: downloadUrl,
+          storagePath,
+        },
+        cleanup: async () => {
+          try {
+            await uploadedFileRef.delete();
+          } catch {
+            // Ignore cleanup error
+          }
+        },
+      };
+    } catch (storageErr) {
+      // Bucket not provisioned (404) or Storage unavailable -> fall through to Firestore chunk storage
+      console.warn(
+        `  [Storage Notice] Cloud Storage bucket returned (${storageErr.code || storageErr.message}). Using Boardly Firestore Chunk Storage...`
+      );
+    }
+  }
+
+  // 2. Boardly Firestore Chunk Storage (`commonsPosts/att_<fileId>_<chunkIndex>`)
+  // Matches `uploadViaFirestoreChunks` in `src/services/commonsUploadService.ts`
+  const base64Full = fileBuffer.toString('base64');
+  const CHUNK_CHAR_SIZE = 700 * 1024;
+  const totalChunks = Math.max(1, Math.ceil(base64Full.length / CHUNK_CHAR_SIZE));
+  const fileId = `topic${topicId}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+  const uploadedChunkIds = [];
+
+  for (let i = 0; i < totalChunks; i++) {
+    const slice = base64Full.slice(i * CHUNK_CHAR_SIZE, (i + 1) * CHUNK_CHAR_SIZE);
+    const chunkDocId = `att_${fileId}_${i}`;
+
+    // NOTE: Must NOT include `createdAt` so `orderBy('createdAt', 'desc')` feed queries never return chunk docs!
+    const chunkPayload = {
+      type: 'attachment_chunk',
+      isAttachmentChunk: true,
+      title: readableFileName.slice(0, 120),
+      description: slice,
+      data: slice,
+      fileId,
+      chunkIndex: i,
+      totalChunks,
+      fileName: readableFileName,
+      mimeType: 'application/pdf',
+      fileSize: byteSize,
+      isAnonymous: true,
+      authorUid: null,
+      authorName: 'Attachment Storage',
+      upvotes: 0,
+      downvotes: 0,
+      commentCount: 0,
+      views: 0,
+      reportCount: 0,
+      isHidden: true,
+      chunkCreatedAt: timestampValue,
+    };
+
+    const chunkPrivatePayload = {
+      postId: chunkDocId,
+      authorUid: ctx.authUid,
+      realAuthorUid: ctx.superAdminProfile.uid,
+      isAttachmentChunk: true,
+      createdAt: timestampValue,
+    };
+
+    if (ctx.mode === 'admin') {
+      const batch = ctx.db.batch();
+      batch.set(ctx.db.collection('commonsPosts').doc(chunkDocId), chunkPayload);
+      batch.set(ctx.db.collection('postsPrivate').doc(chunkDocId), chunkPrivatePayload);
+      await batch.commit();
+    } else {
+      await clientSetDoc(clientDoc(ctx.db, 'commonsPosts', chunkDocId), chunkPayload);
+      await clientSetDoc(clientDoc(ctx.db, 'postsPrivate', chunkDocId), chunkPrivatePayload);
+    }
+
+    uploadedChunkIds.push(chunkDocId);
+  }
+
+  const encodedName = encodeURIComponent(readableFileName);
+  const encodedMime = encodeURIComponent('application/pdf');
+  const firestoreUrl = `firestore://att_${fileId}/${totalChunks}/${encodedMime}/${encodedName}`;
+
+  return {
+    attachment: {
+      name: readableFileName,
+      size: byteSize,
+      type: 'application/pdf',
+      url: firestoreUrl,
+      storagePath,
+      fallbackId: `att_${fileId}`,
+      totalChunks,
+    },
+    cleanup: async () => {
+      for (const chunkDocId of uploadedChunkIds) {
+        try {
+          if (ctx.mode === 'admin') {
+            await ctx.db.collection('commonsPosts').doc(chunkDocId).delete();
+            await ctx.db.collection('postsPrivate').doc(chunkDocId).delete();
+          } else {
+            await clientDeleteDoc(clientDoc(ctx.db, 'commonsPosts', chunkDocId));
+            await clientDeleteDoc(clientDoc(ctx.db, 'postsPrivate', chunkDocId));
+          }
+        } catch {
+          // Ignore
+        }
+      }
+    },
+  };
+}
+
 async function step6PublishTopic({
   topic,
   generatedData,
   pdfFilePath,
   createdAtDate,
   options,
+  existingPostId,
 }) {
   const readableFileName = sanitizeReadableFileName(
     `${topic.classLevel} ${topic.subject} - ${topic.title} (${topic.board} Board).pdf`
@@ -1390,12 +1678,13 @@ async function step6PublishTopic({
 
   if (options.dryRun) {
     const dryRunAuthor = {
-      uid: 'DRY_RUN_SUPER_ADMIN_UID',
+      uid: 'A5YMRimdHRcmeDWutxtUGt2e4hf2',
       name: 'SHS Virtual Academy',
-      avatar: null,
-      frame: null,
-      equippedAvatar: null,
-      photoURL: null,
+      avatar: 'pfp_sakura_kitsune',
+      frame: 'frame-stone-torii',
+      equippedAvatar: 'pfp_sakura_kitsune',
+      photoURL:
+        'https://lh3.googleusercontent.com/a/ACg8ocKiYAcDyiIclLELE5jhZsiEpqkZc4r7yFMInj1SqCrPe8slyfE=s96-c',
       role: 'Super Admin',
       customRole: null,
     };
@@ -1420,6 +1709,9 @@ async function step6PublishTopic({
       superAdminProfile: dryRunAuthor,
       createdAtDate,
       isDryRun: true,
+      mode: 'dry-run',
+      postId: `dry_run_post_${topic.id}`,
+      authUid: dryRunAuthor.uid,
     });
 
     assertValidBoardlySchema(commonsPostDoc, postsPrivateDoc, topic.format);
@@ -1443,81 +1735,139 @@ async function step6PublishTopic({
     };
   }
 
-  // Live publish to Firebase Storage + Firestore
-  const { db, bucket, superAdminProfile } = await initFirebaseAndLookupSuperAdmin();
-  let uploadedFileRef = null;
+  // Live publish to Firestore (`ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712`)
+  const ctx = await initFirebaseAndLookupSuperAdmin(options);
+  let cleanupAttachment = null;
   let fileAttachment = null;
 
+  const targetPostId =
+    existingPostId && !existingPostId.startsWith('dry_run_')
+      ? existingPostId
+      : `commons_topic_${String(topic.id).padStart(2, '0')}`;
+
   try {
+    const timestampValue =
+      ctx.mode === 'client'
+        ? ClientTimestamp.fromDate(createdAtDate)
+        : AdminTimestamp.fromDate(createdAtDate);
+
     if (topic.format === 'pdf') {
-      const stat = fs.statSync(pdfFilePath);
-      const storagePath = `commons/${superAdminProfile.uid}/${uniquePrefix}_${sanitizedStorageName}`;
-      const downloadToken = crypto.randomUUID();
-
-      uploadedFileRef = bucket.file(storagePath);
-      await uploadedFileRef.save(fs.readFileSync(pdfFilePath), {
-        resumable: false,
-        contentType: 'application/pdf',
-        metadata: {
-          contentType: 'application/pdf',
-          contentDisposition: `inline; filename="${readableFileName}"`,
-          metadata: {
-            firebaseStorageDownloadTokens: downloadToken,
-            originalFileName: readableFileName,
-            topicId: String(topic.id),
-          },
-        },
-      });
-
-      const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(
-        storagePath
-      )}?alt=media&token=${downloadToken}`;
-
-      fileAttachment = {
-        name: readableFileName,
-        size: stat.size,
-        type: 'application/pdf',
-        url: downloadUrl,
+      const storagePath = `commons/${ctx.superAdminProfile.uid}/${uniquePrefix}_${sanitizedStorageName}`;
+      const uploadRes = await uploadPdfAttachment({
+        ctx,
+        pdfFilePath,
+        readableFileName,
         storagePath,
-      };
+        topicId: topic.id,
+        timestampValue,
+      });
+      fileAttachment = uploadRes.attachment;
+      cleanupAttachment = uploadRes.cleanup;
     }
 
     const { commonsPostDoc, postsPrivateDoc } = buildBoardlyPostPayloads({
       topic,
       generatedData,
       fileAttachment,
-      superAdminProfile,
+      superAdminProfile: ctx.superAdminProfile,
       createdAtDate,
       isDryRun: false,
+      mode: ctx.mode,
+      postId: targetPostId,
+      authUid: ctx.authUid,
     });
 
     assertValidBoardlySchema(commonsPostDoc, postsPrivateDoc, topic.format);
 
-    const postRef = db.collection('commonsPosts').doc();
-    const privateRef = db.collection('postsPrivate').doc(postRef.id);
+    if (ctx.mode === 'admin') {
+      const postRef = ctx.db.collection('commonsPosts').doc(targetPostId);
+      const privateRef = ctx.db.collection('postsPrivate').doc(targetPostId);
+      const batch = ctx.db.batch();
+      batch.set(postRef, commonsPostDoc, { merge: true });
+      batch.set(privateRef, postsPrivateDoc, { merge: true });
+      await batch.commit();
+    } else {
+      const postRef = clientDoc(ctx.db, 'commonsPosts', targetPostId);
+      const privateRef = clientDoc(ctx.db, 'postsPrivate', targetPostId);
+      const existingSnap = await clientGetDoc(postRef);
 
-    const batch = db.batch();
-    batch.set(postRef, commonsPostDoc);
-    batch.set(privateRef, postsPrivateDoc);
-    await batch.commit();
+      if (!existingSnap.exists()) {
+        // Create under signed-in publisher UID to satisfy `isValidCommonsPostCreate()`,
+        // then immediately set `authorUid` to the Super Admin UID (`A5YMRimdHRcmeDWutxtUGt2e4hf2`)
+        const initialCreateDoc = {
+          ...commonsPostDoc,
+          authorUid: ctx.authUid,
+        };
+        await clientSetDoc(postRef, initialCreateDoc);
+        if (ctx.authUid !== ctx.superAdminProfile.uid) {
+          await clientUpdateDoc(postRef, {
+            authorUid: ctx.superAdminProfile.uid,
+          });
+        }
+        try {
+          await clientSetDoc(privateRef, postsPrivateDoc);
+        } catch {
+          // Ignore if private doc already exists
+        }
+      } else {
+        // Repair/update existing document in place without duplicating it
+        const existingData = existingSnap.data();
+        if (existingData.authorUid === ctx.authUid) {
+          await clientUpdateDoc(postRef, commonsPostDoc);
+        } else {
+          // Replace in place if owned via postsPrivate
+          await clientDeleteDoc(postRef);
+          const initialCreateDoc = {
+            ...commonsPostDoc,
+            authorUid: ctx.authUid,
+          };
+          await clientSetDoc(postRef, initialCreateDoc);
+          if (ctx.authUid !== ctx.superAdminProfile.uid) {
+            await clientUpdateDoc(postRef, {
+              authorUid: ctx.superAdminProfile.uid,
+            });
+          }
+        }
+      }
+    }
+
+    // Also save the verified post payload JSON locally for inspection
+    const postsDir = path.join(options.outputDir, 'posts');
+    fs.mkdirSync(postsDir, { recursive: true });
+    const postJsonPath = path.join(
+      postsDir,
+      `${String(topic.id).padStart(2, '0')}_post.json`
+    );
+    fs.writeFileSync(
+      postJsonPath,
+      JSON.stringify(
+        {
+          postId: targetPostId,
+          projectId: DEFAULT_PROJECT_ID,
+          databaseId: DEFAULT_DATABASE_ID,
+          commonsPostDoc: {
+            ...commonsPostDoc,
+            createdAt: createdAtDate.toISOString(),
+            updatedAt: createdAtDate.toISOString(),
+          },
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
 
     return {
-      postId: postRef.id,
+      postId: targetPostId,
       storagePath: fileAttachment ? fileAttachment.storagePath : null,
+      attachmentUrl: fileAttachment ? fileAttachment.url : null,
     };
   } catch (err) {
-    // Atomic cleanup: if Firestore write failed after uploading PDF to Storage, delete the orphaned file
-    if (uploadedFileRef) {
-      try {
-        await uploadedFileRef.delete();
-        console.warn(
-          `  [Cleanup] Deleted orphaned Storage file ${uploadedFileRef.name} after Firestore error.`
-        );
-      } catch (cleanupErr) {
-        console.error(
-          `  [Cleanup Error] Failed to delete ${uploadedFileRef.name}: ${cleanupErr.message}`
-        );
-      }
+    if (cleanupAttachment) {
+      await cleanupAttachment();
+      console.warn(
+        `  [Cleanup] Deleted orphaned attachment chunks/file for Topic #${topic.id} after Firestore error.`
+      );
     }
     throw err;
   }
@@ -1574,7 +1924,6 @@ function buildInterleavedSchedule(topics) {
   const total = Math.max(interleaved.length, 1);
 
   return interleaved.map((topic, index) => {
-    // Spread evenly across the last 10 days with a deterministic per-topic jitter
     const fraction = (index + 0.5) / total;
     const jitterMinutes = ((topic.id * 37) % 90) - 45;
     const timestampMs =
@@ -1603,7 +1952,6 @@ async function main() {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const logState = loadLog(options.logPath);
 
-  // Build interleaved schedule across the last 10 days
   let scheduled = buildInterleavedSchedule(rawTopics);
 
   if (options.onlyIds) {
@@ -1619,20 +1967,28 @@ async function main() {
   console.log(
     `Boardly Commons Study Material Generator (${options.dryRun ? 'DRY-RUN MODE' : 'LIVE PUBLISH MODE'})`
   );
+  console.log(`Project ID  : ${DEFAULT_PROJECT_ID}`);
+  console.log(`Database ID : ${DEFAULT_DATABASE_ID}`);
+  console.log(`Collection  : commonsPosts`);
   console.log(`Topics file : ${options.topicsPath} (${scheduled.length} selected of ${rawTopics.length})`);
   console.log(`Log file    : ${options.logPath}`);
+  console.log(`Concurrency : ${options.concurrency}`);
   console.log('================================================================================\n');
 
-  let processedCount = 0;
+  if (!options.dryRun) {
+    await initFirebaseAndLookupSuperAdmin(options);
+  }
 
-  for (const { topic, createdAtDate } of scheduled) {
+  // Filter queue according to resumability and --limit
+  const pendingQueue = [];
+  for (const item of scheduled) {
+    const { topic } = item;
     const bucketKey = topic.format === 'pdf' ? 'pdf' : 'text';
     const existingEntry = logState.items[String(topic.id)];
 
-    // Resumability check: skip already published (or already dry_run_verified in dry-run mode)
     const isAlreadyDone = options.dryRun
       ? existingEntry?.status === 'published' || existingEntry?.status === 'dry_run_verified'
-      : existingEntry?.status === 'published';
+      : !options.repair && existingEntry?.status === 'published';
 
     if (isAlreadyDone) {
       stats[bucketKey].skipped++;
@@ -1642,10 +1998,17 @@ async function main() {
       continue;
     }
 
-    if (options.limit !== null && processedCount >= options.limit) {
+    if (options.limit !== null && pendingQueue.length >= options.limit) {
       break;
     }
-    processedCount++;
+    pendingQueue.push(item);
+  }
+
+  let cursor = 0;
+
+  async function processSingleItem({ topic, createdAtDate }) {
+    const bucketKey = topic.format === 'pdf' ? 'pdf' : 'text';
+    const existingEntry = logState.items[String(topic.id)];
 
     console.log(
       `\n[START] Topic #${topic.id} | ${topic.classLevel} (${topic.board}) | ${topic.subject} | ${topic.format.toUpperCase()} | "${topic.title}"`
@@ -1664,55 +2027,109 @@ async function main() {
       }
 
       try {
-        // Step 1: GENERATE
-        console.log(`  -> Step 1: Generating ${topic.format.toUpperCase()} content with Gemini...`);
-        const draftData = await step1Generate(ai, topic);
-
-        // Step 2: VALIDATE (Draft check)
-        const draftValidation = step2ValidateContent(topic, draftData);
-        if (!draftValidation.valid) {
-          throw new Error(`Step 2 Draft Validation failed: ${draftValidation.reason}`);
-        }
-
-        // Step 3: FACT-CHECK
-        console.log(
-          `  -> Step 3: Fact-checking formulas, definitions & ${topic.board} Board alignment...`
-        );
-        const checkedData = await step3FactCheck(ai, topic, draftData);
-
-        // Re-validate after fact-check pass
-        const finalValidation = step2ValidateContent(topic, checkedData);
-        if (!finalValidation.valid) {
-          throw new Error(`Step 2 Post-Fact-Check Validation failed: ${finalValidation.reason}`);
-        }
-
+        let checkedData = null;
         let pdfFilePath = null;
         let pdfCheckResult = null;
 
-        if (topic.format === 'pdf') {
-          // Step 4: BUILD THE PDF
-          console.log('  -> Step 4: Building A4 PDF with embedded DejaVuSans Unicode font...');
-          pdfFilePath = await step4BuildPdf(topic, checkedData, options.outputDir);
+        // Check if we already have a verified PDF / post JSON from a prior dry-run on disk (only on attempt 1)
+        const existingPdfPath = getTopicPdfFilePath(topic, options.outputDir);
+        const existingPostJsonPath = path.join(
+          options.outputDir,
+          'posts',
+          `${String(topic.id).padStart(2, '0')}_post.json`
+        );
 
-          // Step 5: CHECK THE PDF
-          console.log('  -> Step 5: Extracting text & verifying PDF page count (3-6 pages)...');
-          pdfCheckResult = await step5CheckPdf(pdfFilePath, topic);
-          if (!pdfCheckResult.valid) {
-            throw new Error(`Step 5 PDF Check failed: ${pdfCheckResult.reason}`);
+        let reusedExistingArtifact = false;
+        if (
+          tryNum === 1 &&
+          fs.existsSync(existingPostJsonPath) &&
+          (topic.format === 'text' || fs.existsSync(existingPdfPath))
+        ) {
+          try {
+            const cachedJson = JSON.parse(fs.readFileSync(existingPostJsonPath, 'utf8'));
+            const cachedDoc = cachedJson.commonsPostDoc;
+            if (cachedDoc && cachedDoc.description) {
+              if (topic.format === 'pdf') {
+                const check = await step5CheckPdf(existingPdfPath);
+                if (check.valid) {
+                  checkedData = {
+                    teacherDescription: cachedDoc.description,
+                    tags: cachedDoc.tags || [],
+                  };
+                  pdfFilePath = existingPdfPath;
+                  pdfCheckResult = check;
+                  reusedExistingArtifact = true;
+                  console.log(
+                    `  -> Reusing verified PDF artifact for Topic #${topic.id} (${check.pageCount} pages, ${check.wordCount} words).`
+                  );
+                }
+              } else {
+                const wc = countWords(cachedDoc.description);
+                if (wc >= 150 && wc <= 300) {
+                  checkedData = {
+                    body: cachedDoc.description,
+                    tags: cachedDoc.tags || [],
+                  };
+                  reusedExistingArtifact = true;
+                  console.log(
+                    `  -> Reusing verified text post artifact for Topic #${topic.id} (${wc} words).`
+                  );
+                }
+              }
+            }
+          } catch {
+            reusedExistingArtifact = false;
           }
+        }
+
+        if (!reusedExistingArtifact) {
+          // Step 1: GENERATE
+          console.log(`  -> [Topic #${topic.id}] Step 1: Generating ${topic.format.toUpperCase()} content with Gemini...`);
+          const draftData = await step1Generate(ai, topic);
+
+          // Step 2: VALIDATE (Draft check)
+          const draftValidation = step2ValidateContent(topic, draftData);
+          if (!draftValidation.valid) {
+            throw new Error(`Step 2 Draft Validation failed: ${draftValidation.reason}`);
+          }
+
+          // Step 3: FACT-CHECK
           console.log(
-            `  -> Step 5 Passed: ${pdfCheckResult.pageCount} pages, ${pdfCheckResult.wordCount} words, ${pdfCheckResult.byteSize} bytes.`
+            `  -> [Topic #${topic.id}] Step 3: Fact-checking formulas, definitions & ${topic.board} Board alignment...`
           );
-        } else {
-          const wordCount = countWords(checkedData.body);
-          console.log(`  -> Step 2 & 3 Passed: Text post verified (${wordCount} words).`);
+          checkedData = await step3FactCheck(ai, topic, draftData);
+
+          // Re-validate after fact-check pass
+          const finalValidation = step2ValidateContent(topic, checkedData);
+          if (!finalValidation.valid) {
+            throw new Error(`Step 2 Post-Fact-Check Validation failed: ${finalValidation.reason}`);
+          }
+
+          if (topic.format === 'pdf') {
+            // Step 4: BUILD THE PDF
+            console.log(`  -> [Topic #${topic.id}] Step 4: Building A4 PDF with embedded DejaVuSans Unicode font...`);
+            pdfFilePath = await step4BuildPdf(topic, checkedData, options.outputDir);
+
+            // Step 5: CHECK THE PDF
+            console.log(`  -> [Topic #${topic.id}] Step 5: Extracting text & verifying PDF page count (3-6 pages)...`);
+            pdfCheckResult = await step5CheckPdf(pdfFilePath);
+            if (!pdfCheckResult.valid) {
+              throw new Error(`Step 5 PDF Check failed: ${pdfCheckResult.reason}`);
+            }
+            console.log(
+              `  -> [Topic #${topic.id}] Step 5 Passed: ${pdfCheckResult.pageCount} pages, ${pdfCheckResult.wordCount} words, ${pdfCheckResult.byteSize} bytes.`
+            );
+          } else {
+            const wordCount = countWords(checkedData.body);
+            console.log(`  -> [Topic #${topic.id}] Step 2 & 3 Passed: Text post verified (${wordCount} words).`);
+          }
         }
 
         stats[bucketKey].generated++;
 
         // Step 6: PUBLISH (or verify & write post payload in --dry-run)
         console.log(
-          `  -> Step 6: ${options.dryRun ? 'Validating & writing dry-run Boardly post payload' : 'Publishing to Boardly Commons (Storage + Firestore)'}...`
+          `  -> [Topic #${topic.id}] Step 6: ${options.dryRun ? 'Validating & writing dry-run Boardly post payload' : 'Publishing to Boardly Commons (Firestore)'}...`
         );
         const publishResult = await step6PublishTopic({
           topic,
@@ -1720,6 +2137,7 @@ async function main() {
           pdfFilePath,
           createdAtDate,
           options,
+          existingPostId: existingEntry?.postId,
         });
 
         stats[bucketKey].published++;
@@ -1742,6 +2160,7 @@ async function main() {
               : countWords(checkedData.body),
           postId: publishResult.postId,
           storagePath: publishResult.storagePath,
+          attachmentUrl: publishResult.attachmentUrl || null,
           createdAtScheduled: createdAtDate.toISOString(),
           retries: topicRetries,
           updatedAt: new Date().toISOString(),
@@ -1778,6 +2197,21 @@ async function main() {
     }
   }
 
+  async function worker() {
+    while (cursor < pendingQueue.length) {
+      const idx = cursor++;
+      const item = pendingQueue[idx];
+      if (!item) break;
+      await processSingleItem(item);
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(options.concurrency, Math.max(pendingQueue.length, 1)) },
+    () => worker()
+  );
+  await Promise.all(workers);
+
   // Step 8: SUMMARY
   console.log('\n================================================================================');
   console.log('FINAL EXECUTION SUMMARY');
@@ -1810,6 +2244,7 @@ async function main() {
   if (stats.pdf.failed + stats.text.failed > 0) {
     process.exitCode = 1;
   }
+  process.exit(process.exitCode || 0);
 }
 
 main().catch((err) => {

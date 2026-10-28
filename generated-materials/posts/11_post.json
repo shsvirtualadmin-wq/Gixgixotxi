@@ -1,4 +1,7 @@
 {
+  "postId": "commons_topic_11",
+  "projectId": "gen-lang-client-0365509316",
+  "databaseId": "ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712",
   "commonsPostDoc": {
     "type": "notes",
     "title": "Scalars and vectors — Class 9 (Federal Board)",
@@ -15,23 +18,26 @@
       "mechanics",
       "fbi-board",
       "class-9",
-      "federal"
+      "federal",
+      "fbise"
     ],
     "files": [
       {
         "name": "Class 9 Physics - Scalars and vectors (Federal Board).pdf",
         "size": 37687,
         "type": "application/pdf",
-        "url": "https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0365509316.firebasestorage.app/o/commons%2FDRY_RUN_SUPER_ADMIN_UID%2F1793149180649_66a22e_Class_9_Physics_-_Scalars_and_vectors__Federal_Board_.pdf?alt=media",
-        "storagePath": "commons/DRY_RUN_SUPER_ADMIN_UID/1793149180649_66a22e_Class_9_Physics_-_Scalars_and_vectors__Federal_Board_.pdf"
+        "url": "firestore://att_topic11_1793152566729_83cc7a/1/application%2Fpdf/Class%209%20Physics%20-%20Scalars%20and%20vectors%20(Federal%20Board).pdf",
+        "storagePath": "commons/A5YMRimdHRcmeDWutxtUGt2e4hf2/1793152566729_3b96a1_Class_9_Physics_-_Scalars_and_vectors__Federal_Board_.pdf",
+        "fallbackId": "att_topic11_1793152566729_83cc7a",
+        "totalChunks": 1
       }
     ],
     "isAnonymous": false,
-    "authorUid": "DRY_RUN_SUPER_ADMIN_UID",
+    "authorUid": "A5YMRimdHRcmeDWutxtUGt2e4hf2",
     "authorName": "SHS Virtual Academy",
-    "authorAvatar": null,
-    "authorFrame": null,
-    "authorEquippedAvatar": null,
+    "authorAvatar": "pfp_sakura_kitsune",
+    "authorFrame": "frame-stone-torii",
+    "authorEquippedAvatar": "pfp_sakura_kitsune",
     "authorPhotoURL": null,
     "authorRole": "Super Admin",
     "authorCustomRole": null,
@@ -81,6 +87,8 @@
       "mechani",
       "mechanic",
       "fbi",
+      "fbise",
+      "fbis",
       "shs",
       "virtual",
       "vir",
@@ -93,12 +101,7 @@
       "acade",
       "academ"
     ],
-    "createdAt": "2026-10-18T08:12:38.992Z",
-    "updatedAt": "2026-10-18T08:12:38.992Z"
-  },
-  "postsPrivateDoc": {
-    "realAuthorUid": "DRY_RUN_SUPER_ADMIN_UID",
-    "createdAt": "2026-10-18T08:12:38.992Z",
-    "updatedAt": "2026-10-18T08:12:38.992Z"
+    "createdAt": "2026-10-18T09:10:05.334Z",
+    "updatedAt": "2026-10-18T09:10:05.334Z"
   }
 }

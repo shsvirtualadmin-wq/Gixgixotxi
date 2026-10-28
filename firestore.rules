@@ -756,9 +756,15 @@ service cloud.firestore {
     // =========================================================================
 
     match /commonsPosts/{postId} {
-      allow read: if resource == null ||
+      allow get: if resource == null ||
         resource.data.get('isHidden', false) == false ||
         (isSignedIn() && resource.data.get('authorUid', '') == request.auth.uid) ||
+        isAdmin() ||
+        isModerator();
+
+      allow list: if isSignedIn() ||
+        resource == null ||
+        resource.data.get('isHidden', false) == false ||
         isAdmin() ||
         isModerator();
 

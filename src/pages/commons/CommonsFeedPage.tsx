@@ -176,7 +176,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
     }
     if (classFilter !== 'all') {
       list = list.filter((p) => {
-        const target = `${p.target || ''} ${p.chapter || ''} ${(p.tags || []).join(' ')}`.toLowerCase();
+        const target = `${p.target || ''} ${p.classLevel || ''} ${p.board || ''} ${p.chapter || ''} ${(p.tags || []).join(' ')}`.toLowerCase();
         return target.includes(classFilter.toLowerCase());
       });
     }
@@ -477,11 +477,14 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           className="ml-auto px-3 py-1.5 rounded-full text-xs font-medium bg-surface border border-border text-secondary focus:outline-none"
         >
           <option value="all">All Classes & Boards</option>
+          <option value="class 9">Class 9 (SSC-I)</option>
+          <option value="class 10">Class 10 (SSC-II)</option>
           <option value="11">Class 11 (HSSC-I)</option>
           <option value="12">Class 12 (HSSC-II)</option>
           <option value="mdcat">MDCAT</option>
           <option value="ecat">ECAT / NET</option>
-          <option value="fbise">FBISE</option>
+          <option value="fbise">FBISE / Federal Board</option>
+          <option value="sindh">Sindh Board</option>
           <option value="punjab">Punjab Board</option>
         </select>
       </div>

@@ -12,6 +12,7 @@ import {
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { fetchCommonsPosts } from '@/services/commonsService';
+import { resolveCommonsAttachmentUrl } from '@/services/commonsUploadService';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { sanitizeStudentDisplayName, maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
@@ -265,8 +266,20 @@ export const MaterialLibraryPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() =>
-                            requireAuth('download this study material', () => {
-                              window.open(firstFile.url, '_blank', 'noopener,noreferrer');
+                            requireAuth('download this study material', async () => {
+                              try {
+                                const resolvedUrl = await resolveCommonsAttachmentUrl(firstFile.url);
+                                const a = document.createElement('a');
+                                a.href = resolvedUrl;
+                                a.download = firstFile.name || 'study-material.pdf';
+                                a.target = '_blank';
+                                a.rel = 'noopener noreferrer';
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                              } catch (err) {
+                                console.warn('[MaterialLibraryPage] Attachment download error:', err);
+                              }
                             })
                           }
                           className="btn-primary px-3.5 py-1.5 text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"

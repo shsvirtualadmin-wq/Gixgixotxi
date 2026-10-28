@@ -1,4 +1,7 @@
 {
+  "postId": "commons_topic_04",
+  "projectId": "gen-lang-client-0365509316",
+  "databaseId": "ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712",
   "commonsPostDoc": {
     "type": "notes",
     "title": "Linear equations and inequalities — Class 9 (Sindh Board)",
@@ -20,11 +23,11 @@
     ],
     "files": [],
     "isAnonymous": false,
-    "authorUid": "DRY_RUN_SUPER_ADMIN_UID",
+    "authorUid": "A5YMRimdHRcmeDWutxtUGt2e4hf2",
     "authorName": "SHS Virtual Academy",
-    "authorAvatar": null,
-    "authorFrame": null,
-    "authorEquippedAvatar": null,
+    "authorAvatar": "pfp_sakura_kitsune",
+    "authorFrame": "frame-stone-torii",
+    "authorEquippedAvatar": "pfp_sakura_kitsune",
     "authorPhotoURL": null,
     "authorRole": "Super Admin",
     "authorCustomRole": null,
@@ -114,12 +117,7 @@
       "acade",
       "academ"
     ],
-    "createdAt": "2026-10-21T17:59:38.992Z",
-    "updatedAt": "2026-10-21T17:59:38.992Z"
-  },
-  "postsPrivateDoc": {
-    "realAuthorUid": "DRY_RUN_SUPER_ADMIN_UID",
-    "createdAt": "2026-10-21T17:59:38.992Z",
-    "updatedAt": "2026-10-21T17:59:38.992Z"
+    "createdAt": "2026-10-21T18:57:05.334Z",
+    "updatedAt": "2026-10-21T18:57:05.334Z"
   }
 }

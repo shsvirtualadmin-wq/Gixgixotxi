@@ -1,4 +1,7 @@
 {
+  "postId": "commons_topic_01",
+  "projectId": "gen-lang-client-0365509316",
+  "databaseId": "ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712",
   "commonsPostDoc": {
     "type": "notes",
     "title": "Real numbers and their properties — Class 9 (Federal Board)",
@@ -23,16 +26,18 @@
         "name": "Class 9 Mathematics - Real numbers and their properties (Federal Board).pdf",
         "size": 36648,
         "type": "application/pdf",
-        "url": "https://firebasestorage.googleapis.com/v0/b/gen-lang-client-0365509316.firebasestorage.app/o/commons%2FDRY_RUN_SUPER_ADMIN_UID%2F1793149148852_1fb573_Class_9_Mathematics_-_Real_numbers_and_their_properties__Federal_Board_.pdf?alt=media",
-        "storagePath": "commons/DRY_RUN_SUPER_ADMIN_UID/1793149148852_1fb573_Class_9_Mathematics_-_Real_numbers_and_their_properties__Federal_Board_.pdf"
+        "url": "firestore://att_topic1_1793152566361_7869b5/1/application%2Fpdf/Class%209%20Mathematics%20-%20Real%20numbers%20and%20their%20properties%20(Federal%20Board).pdf",
+        "storagePath": "commons/A5YMRimdHRcmeDWutxtUGt2e4hf2/1793152566360_bbe681_Class_9_Mathematics_-_Real_numbers_and_their_properties__Federal_Board_.pdf",
+        "fallbackId": "att_topic1_1793152566361_7869b5",
+        "totalChunks": 1
       }
     ],
     "isAnonymous": false,
-    "authorUid": "DRY_RUN_SUPER_ADMIN_UID",
+    "authorUid": "A5YMRimdHRcmeDWutxtUGt2e4hf2",
     "authorName": "SHS Virtual Academy",
-    "authorAvatar": null,
-    "authorFrame": null,
-    "authorEquippedAvatar": null,
+    "authorAvatar": "pfp_sakura_kitsune",
+    "authorFrame": "frame-stone-torii",
+    "authorEquippedAvatar": "pfp_sakura_kitsune",
     "authorPhotoURL": null,
     "authorRole": "Super Admin",
     "authorCustomRole": null,
@@ -120,12 +125,7 @@
       "acade",
       "academ"
     ],
-    "createdAt": "2026-10-18T03:14:38.992Z",
-    "updatedAt": "2026-10-18T03:14:38.992Z"
-  },
-  "postsPrivateDoc": {
-    "realAuthorUid": "DRY_RUN_SUPER_ADMIN_UID",
-    "createdAt": "2026-10-18T03:14:38.992Z",
-    "updatedAt": "2026-10-18T03:14:38.992Z"
+    "createdAt": "2026-10-18T04:12:05.334Z",
+    "updatedAt": "2026-10-18T04:12:05.334Z"
   }
 }

@@ -18,6 +18,7 @@ import { CommonsReportModal } from '@/components/commons/CommonsReportModal';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { GonePage } from '@/pages/GonePage';
 import { fetchCommonsPostById, fetchCommonsPosts } from '@/services/commonsService';
+import { resolveCommonsAttachmentUrl } from '@/services/commonsUploadService';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import {
@@ -279,16 +280,28 @@ export const MaterialDetailPage: React.FC = () => {
                   </div>
 
                   {user ? (
-                    <a
-                      href={file.url}
-                      target="_blank"
-                      rel="ugc nofollow noopener noreferrer"
-                      download={file.name}
-                      className="btn-primary px-5 py-2.5 text-xs font-semibold inline-flex items-center justify-center gap-2 shrink-0"
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const resolvedUrl = await resolveCommonsAttachmentUrl(file.url);
+                          const a = document.createElement('a');
+                          a.href = resolvedUrl;
+                          a.download = file.name || 'study-material.pdf';
+                          a.target = '_blank';
+                          a.rel = 'ugc nofollow noopener noreferrer';
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                        } catch (err) {
+                          console.warn('[MaterialDetailPage] Attachment download error:', err);
+                        }
+                      }}
+                      className="btn-primary px-5 py-2.5 text-xs font-semibold inline-flex items-center justify-center gap-2 shrink-0 cursor-pointer"
                     >
                       <Download size={15} />
                       <span>Download File</span>
-                    </a>
+                    </button>
                   ) : (
                     <button
                       type="button"
