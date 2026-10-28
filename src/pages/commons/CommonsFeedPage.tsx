@@ -144,6 +144,26 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
     loadPosts();
   }, [loadPosts]);
 
+  useEffect(() => {
+    let active = true;
+    fetch('/api/health', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!active || !data) return;
+        const d1Ok = Boolean(data?.d1?.exists ?? data?.bindings?.d1?.exists);
+        const r2Ok = Boolean(data?.r2?.exists ?? data?.bindings?.r2?.exists);
+        if (data.status === 'ok' || (d1Ok && r2Ok)) {
+          setBackendMode('cloudflare-d1-r2');
+        } else {
+          setBackendMode('preview-demo');
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const handleLoadMore = useCallback(async () => {
     if (lastDoc === null || lastDoc === undefined || loadingMore) return;
     setLoadingMore(true);

@@ -9,15 +9,13 @@ ALLOWED_ORIGIN = "https://boardly.cfd"
 SUPERADMIN_UIDS = "A5YMRimdHRcmeDWutxtUGt2e4hf2"
 SUPERADMIN_EMAILS = "shsvirtualadmin@gmail.com,support@boardly.cfd"
 
-# Uncomment after creating your D1 database (`npx wrangler d1 create boardly-posts-db`)
-# and R2 bucket (`boardly-commons-media`) in the Cloudflare dashboard:
-#
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "boardly-posts-db"
-# database_id = "<YOUR_CLOUDFLARE_D1_DATABASE_ID>"
-#
-# [[r2_buckets]]
-# binding = "R2_BUCKET"
-# bucket_name = "boardly-commons-media"
+[[d1_databases]]
+binding = "DB"
+database_name = "boardly-posts-db"
+database_id = "e37a41ff-c73c-4ab7-9784-6e635205cdf7"
+
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "boardly-commons-media"
+
 

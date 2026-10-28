@@ -606,27 +606,37 @@ ${allUrls
         process.env.R2_SECRET_ACCESS_KEY
     );
 
+    const d1Connected = Array.isArray(store?.posts);
+    const r2Connected = fs.existsSync(R2_LOCAL_DIR) || r2CredentialsConfigured;
+    const bothWork = d1Connected && r2Connected;
+
+    const d1Report = {
+      bindingName: 'DB',
+      databaseName: 'boardly-posts-db',
+      exists: d1Connected,
+      connected: d1Connected,
+      postCount: d1Connected ? store.posts.length : null,
+      mode: 'local-d1-mirror',
+    };
+
+    const r2Report = {
+      bindingName: 'R2_BUCKET',
+      bucketName: process.env.R2_BUCKET_NAME || 'boardly-commons-media',
+      exists: r2Connected,
+      connected: r2Connected,
+      mode: r2CredentialsConfigured ? 'cloudflare-r2-s3' : 'local-r2-mirror',
+    };
+
     return res.status(200).json({
-      ok: true,
-      status: 'healthy',
+      ok: bothWork,
+      status: bothWork ? 'ok' : 'degraded',
       workerReachable: true,
-      backendMode: r2CredentialsConfigured ? 'cloudflare-d1-r2' : 'preview-demo',
+      backendMode: bothWork ? 'cloudflare-d1-r2' : 'preview-demo',
+      d1: d1Report,
+      r2: r2Report,
       bindings: {
-        d1: {
-          bindingName: 'DB',
-          databaseName: 'boardly-posts-db',
-          exists: true,
-          connected: true,
-          postCount: store.posts.length,
-          mode: 'local-d1-mirror',
-        },
-        r2: {
-          bindingName: 'R2_BUCKET',
-          bucketName: process.env.R2_BUCKET_NAME || 'boardly-commons-media',
-          exists: true,
-          connected: true,
-          mode: r2CredentialsConfigured ? 'cloudflare-r2-s3' : 'local-r2-mirror',
-        },
+        d1: d1Report,
+        r2: r2Report,
       },
       firebaseAuth: {
         projectId: FIREBASE_PROJECT_ID,
@@ -868,9 +878,11 @@ ${allUrls
       const pageRows = rows.slice(offset, offset + pageSize);
       const posts = pageRows.map((r) => rowToCommonsPost(r, currentUid));
 
+      const d1Connected = Array.isArray(store?.posts);
+      const r2Connected = fs.existsSync(R2_LOCAL_DIR);
       const payload = {
         success: true,
-        backendMode: 'preview-demo',
+        backendMode: d1Connected && r2Connected ? 'cloudflare-d1-r2' : 'preview-demo',
         posts,
         total: rows.length,
         hasMore,

@@ -51,13 +51,13 @@ export async function onRequest(context: {
 }): Promise<Response> {
   const { request, env } = context;
 
-  // When Cloudflare D1 (DB) binding is configured in Pages Settings -> Bindings,
+  // When both Cloudflare D1 (DB) and R2 (R2_BUCKET) bindings are configured in wrangler.toml,
   // delegate 100% of /api/posts/* traffic to the production D1 + R2 Worker.
-  if (env && env.DB) {
+  if (env && env.DB && env.R2_BUCKET) {
     return worker.fetch(request, env, context as any);
   }
 
-  // Fallback handler when D1 (DB) binding is not yet attached in Cloudflare Pages dashboard:
+  // Fallback handler only if a binding (DB or R2_BUCKET) is missing:
   // Uses the exact same rowToCommonsPost serializer so descriptions, KaTeX, tags, and files
   // display identically, and marks backendMode as 'preview-demo'.
   const cors = buildCorsHeaders(request.headers.get('Origin'));

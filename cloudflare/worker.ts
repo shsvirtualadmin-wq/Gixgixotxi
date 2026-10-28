@@ -88,8 +88,11 @@ export async function getGooglePublicJwks(): Promise<any[]> {
   return keys;
 }
 
+import seedDataset from '../data/cloudflare_d1_posts.json';
+
 /**
- * Ensures the D1 database schema exists so a newly bound D1 database works out of the box.
+ * Ensures the D1 database schema exists so a newly bound D1 database works out of the box,
+ * and seeds the initial study material dataset if the `posts` table is empty.
  */
 async function ensureD1Schema(db: D1Database): Promise<void> {
   if (schemaInitialized) return;
@@ -135,18 +138,38 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(is_hidden, is_pinned DESC, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_posts_upvotes ON posts(is_hidden, is_pinned DESC, upvotes DESC, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_posts_subject ON posts(is_hidden, subject, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_posts_type ON posts(is_hidden, type, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_posts_class_board ON posts(is_hidden, class_level, board, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_posts_author_uid ON posts(author_uid, is_anonymous, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_posts_real_author_uid ON posts(real_author_uid, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug)`),
       db.prepare(`CREATE TABLE IF NOT EXISTS post_likes (
         post_id TEXT NOT NULL,
         user_uid TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         PRIMARY KEY (post_id, user_uid)
       )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_post_likes_user ON post_likes(user_uid, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_post_likes_post ON post_likes(post_id)`),
       db.prepare(`CREATE TABLE IF NOT EXISTS post_saves (
         post_id TEXT NOT NULL,
         user_uid TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         PRIMARY KEY (post_id, user_uid)
       )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_post_saves_user ON post_saves(user_uid, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_post_saves_post ON post_saves(post_id)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS follows (
+        follower_uid TEXT NOT NULL,
+        following_uid TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (follower_uid, following_uid)
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_follows_follower ON follows(follower_uid, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_uid, created_at DESC)`),
       db.prepare(`CREATE TABLE IF NOT EXISTS post_comments (
         id TEXT PRIMARY KEY,
         post_id TEXT NOT NULL,
@@ -163,6 +186,8 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
         author_custom_role TEXT,
         created_at INTEGER NOT NULL
       )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_post_comments_post_id ON post_comments(post_id, created_at ASC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_post_comments_author_uid ON post_comments(real_author_uid, created_at DESC)`),
       db.prepare(`CREATE TABLE IF NOT EXISTS post_reports (
         id TEXT PRIMARY KEY,
         post_id TEXT NOT NULL,
@@ -172,6 +197,23 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
         status TEXT NOT NULL DEFAULT 'pending',
         created_at INTEGER NOT NULL
       )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_post_reports_post_id ON post_reports(post_id, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_post_reports_status ON post_reports(status, created_at DESC)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS post_media (
+        id TEXT PRIMARY KEY,
+        post_id TEXT NOT NULL,
+        r2_key TEXT NOT NULL UNIQUE,
+        file_name TEXT NOT NULL,
+        mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+        file_size INTEGER NOT NULL DEFAULT 0,
+        url TEXT NOT NULL,
+        download_url TEXT NOT NULL,
+        uploaded_by_uid TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_post_media_post_id ON post_media(post_id, created_at ASC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_post_media_r2_key ON post_media(r2_key)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_post_media_uploader ON post_media(uploaded_by_uid, created_at DESC)`),
       db.prepare(`CREATE TABLE IF NOT EXISTS user_roles (
         uid TEXT PRIMARY KEY,
         email TEXT NOT NULL DEFAULT '',
@@ -186,6 +228,72 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
         window_start INTEGER NOT NULL
       )`),
     ]);
+
+    // Seed initial Commons study material posts if table is completely empty
+    const countRow = await db.prepare('SELECT COUNT(*) as cnt FROM posts').first<{ cnt: number }>();
+    if (Number(countRow?.cnt ?? 0) === 0 && Array.isArray((seedDataset as any)?.posts)) {
+      const initialPosts = (seedDataset as any).posts as Record<string, any>[];
+      const chunkSize = 20;
+      for (let i = 0; i < initialPosts.length; i += chunkSize) {
+        const chunk = initialPosts.slice(i, i + chunkSize);
+        const stmts = chunk.map((p) =>
+          db
+            .prepare(
+              `INSERT OR IGNORE INTO posts (
+                id, slug, type, title, description, subject, chapter, target,
+                class_level, board, format, tags_json, files_json, is_anonymous,
+                anonymous_alias, author_uid, real_author_uid, author_name,
+                author_avatar, author_frame, author_equipped_avatar, author_photo_url,
+                author_role, author_custom_role, status, visibility,
+                is_hidden, is_pinned, is_featured, upvotes, downvotes, views,
+                comment_count, save_count, shares_count, report_count, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            )
+            .bind(
+              String(p.id),
+              String(p.slug || `${p.id}-post`),
+              String(p.type || 'notes'),
+              String(p.title || ''),
+              String(p.description || ''),
+              String(p.subject || 'General'),
+              String(p.chapter || 'General'),
+              String(p.target || 'General'),
+              String(p.class_level || '11'),
+              String(p.board || 'Federal'),
+              String(p.format || 'text'),
+              typeof p.tags_json === 'string' ? p.tags_json : JSON.stringify(p.tags || []),
+              typeof p.files_json === 'string' ? p.files_json : JSON.stringify(p.files || []),
+              Number(p.is_anonymous ? 1 : 0),
+              String(p.anonymous_alias || 'Anonymous Student'),
+              p.author_uid || null,
+              p.real_author_uid || null,
+              String(p.author_name || 'Anonymous Student'),
+              p.author_avatar || null,
+              p.author_frame || null,
+              p.author_equipped_avatar || null,
+              p.author_photo_url || null,
+              String(p.author_role || 'student'),
+              p.author_custom_role || null,
+              String(p.status || 'published'),
+              String(p.visibility || 'public'),
+              Number(p.is_hidden || 0),
+              Number(p.is_pinned || 0),
+              Number(p.is_featured || 0),
+              Number(p.upvotes || 0),
+              Number(p.downvotes || 0),
+              Number(p.views || 0),
+              Number(p.comment_count || 0),
+              Number(p.save_count || 0),
+              Number(p.shares_count || 0),
+              Number(p.report_count || 0),
+              Number(p.created_at || Date.now()),
+              Number(p.updated_at || Date.now())
+            )
+        );
+        await db.batch(stmts);
+      }
+    }
+
     schemaInitialized = true;
   } catch (err) {
     console.error('[CloudflareWorker] D1 schema init warning:', err);
@@ -603,30 +711,37 @@ export async function handleHealthCheck(req: Request, env: Env): Promise<Respons
     } catch {}
   }
 
-  const allHealthy = d1BindingExists && d1Connected && r2BindingExists && r2Connected && jwksReachable;
+  const bothBindingsWork =
+    d1BindingExists && d1Connected && r2BindingExists && r2Connected;
+
+  const d1Report = {
+    bindingName: BOARDLY_CLOUDFLARE_CONFIG.d1BindingName,
+    databaseName: BOARDLY_CLOUDFLARE_CONFIG.d1DatabaseName,
+    exists: d1BindingExists,
+    connected: d1Connected,
+    postCount: d1PostCount,
+    error: d1Error,
+  };
+
+  const r2Report = {
+    bindingName: BOARDLY_CLOUDFLARE_CONFIG.r2BindingName,
+    bucketName: BOARDLY_CLOUDFLARE_CONFIG.r2BucketName,
+    exists: r2BindingExists,
+    connected: r2Connected,
+    error: r2Error,
+  };
 
   return jsonResponse(
     {
-      ok: allHealthy,
-      status: allHealthy ? 'healthy' : 'degraded',
+      ok: bothBindingsWork,
+      status: bothBindingsWork ? 'ok' : 'degraded',
       workerReachable: true,
-      backendMode: d1BindingExists && r2BindingExists ? 'cloudflare-d1-r2' : 'preview-demo',
+      backendMode: bothBindingsWork ? 'cloudflare-d1-r2' : 'preview-demo',
+      d1: d1Report,
+      r2: r2Report,
       bindings: {
-        d1: {
-          bindingName: BOARDLY_CLOUDFLARE_CONFIG.d1BindingName,
-          databaseName: BOARDLY_CLOUDFLARE_CONFIG.d1DatabaseName,
-          exists: d1BindingExists,
-          connected: d1Connected,
-          postCount: d1PostCount,
-          error: d1Error,
-        },
-        r2: {
-          bindingName: BOARDLY_CLOUDFLARE_CONFIG.r2BindingName,
-          bucketName: BOARDLY_CLOUDFLARE_CONFIG.r2BucketName,
-          exists: r2BindingExists,
-          connected: r2Connected,
-          error: r2Error,
-        },
+        d1: d1Report,
+        r2: r2Report,
       },
       firebaseAuth: {
         projectId: env.FIREBASE_PROJECT_ID || BOARDLY_CLOUDFLARE_CONFIG.firebaseProjectId,
@@ -637,7 +752,7 @@ export async function handleHealthCheck(req: Request, env: Env): Promise<Respons
       },
       timestamp: new Date().toISOString(),
     },
-    allHealthy ? 200 : 200,
+    200,
     {
       ...cors,
       'Cache-Control': 'no-store',
@@ -1031,6 +1146,32 @@ ${urls
           ? `${BOARDLY_CLOUDFLARE_CONFIG.inlineFileEndpoint}?key=${encodeURIComponent(key)}`
           : downloadUrl;
 
+        // Also record the media reference in D1 post_media table when DB is bound
+        if (env.DB) {
+          try {
+            await env.DB.prepare(
+              `INSERT OR REPLACE INTO post_media (
+                id, post_id, r2_key, file_name, mime_type, file_size, url, download_url, uploaded_by_uid, created_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            )
+              .bind(
+                `media_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`,
+                postId,
+                key,
+                fileName,
+                mimeType,
+                fileSize,
+                urlStr,
+                downloadUrl,
+                user.uid,
+                Date.now()
+              )
+              .run();
+          } catch (mediaErr) {
+            console.warn('[CloudflareWorker] post_media reference insert notice:', mediaErr);
+          }
+        }
+
         return jsonResponse(
           {
             success: true,
@@ -1063,6 +1204,16 @@ ${urls
         if (env.R2_BUCKET && keys.length > 0) {
           await Promise.all(keys.map((k) => env.R2_BUCKET!.delete(k).catch(() => {})));
         }
+        if (env.DB && keys.length > 0) {
+          await Promise.all(
+            keys.map((k) =>
+              env.DB!.prepare('DELETE FROM post_media WHERE r2_key = ?')
+                .bind(k)
+                .run()
+                .catch(() => {})
+            )
+          );
+        }
 
         return jsonResponse({ success: true, deletedKeys: keys }, 200, cors);
       }
@@ -1085,7 +1236,7 @@ ${urls
         const cache = caches.default;
         const cacheKey = new Request(url.toString(), { method: 'GET' });
 
-        if (!hasAuthHeader) {
+        if (!hasAuthHeader && !url.searchParams.get('flaggedOnly')) {
           const cached = await cache.match(cacheKey);
           if (cached) return cached;
         }
@@ -1105,9 +1256,16 @@ ${urls
         const board = (url.searchParams.get('board') || '').trim();
         const search = (url.searchParams.get('search') || url.searchParams.get('q') || '').trim();
         const authorUid = (url.searchParams.get('authorUid') || '').trim();
+        const includeOwnAnonymous = url.searchParams.get('includeOwnAnonymous') === 'true';
+        const savedBy = (url.searchParams.get('savedBy') || '').trim();
+        const likedBy = (url.searchParams.get('likedBy') || '').trim();
+        const followingUidsRaw = (url.searchParams.get('followingUids') || '').trim();
+        const flaggedOnly = url.searchParams.get('flaggedOnly') === 'true';
         const sort = (url.searchParams.get('sort') || 'newest').trim();
 
-        const clauses: string[] = ['is_hidden = 0'];
+        const clauses: string[] = [
+          flaggedOnly ? '(report_count >= 1 OR is_hidden = 1)' : 'is_hidden = 0',
+        ];
         const binds: any[] = [];
 
         if (subject && subject !== 'all') {
@@ -1131,8 +1289,35 @@ ${urls
           binds.push(board);
         }
         if (authorUid) {
-          clauses.push('(author_uid = ? AND is_anonymous = 0)');
-          binds.push(authorUid);
+          if (includeOwnAnonymous) {
+            clauses.push('(author_uid = ? OR real_author_uid = ?)');
+            binds.push(authorUid, authorUid);
+          } else {
+            clauses.push('(author_uid = ? AND is_anonymous = 0)');
+            binds.push(authorUid);
+          }
+        }
+        if (savedBy) {
+          clauses.push('id IN (SELECT post_id FROM post_saves WHERE user_uid = ?)');
+          binds.push(savedBy);
+        }
+        if (likedBy) {
+          clauses.push('id IN (SELECT post_id FROM post_likes WHERE user_uid = ?)');
+          binds.push(likedBy);
+        }
+        if (followingUidsRaw) {
+          const uids = followingUidsRaw
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .slice(0, 50);
+          if (uids.length > 0) {
+            const placeholders = uids.map(() => '?').join(',');
+            clauses.push(`(is_anonymous = 0 AND author_uid IN (${placeholders}))`);
+            binds.push(...uids);
+          } else {
+            clauses.push('1 = 0');
+          }
         }
         if (search) {
           clauses.push(
@@ -1156,10 +1341,11 @@ ${urls
         const pageRows = rows.slice(0, pageSize);
         const posts = pageRows.map((r) => rowToCommonsPost(r as Record<string, any>));
 
+        const bothBindingsPresent = Boolean(env.DB && env.R2_BUCKET);
         const resp = jsonResponse(
           {
             success: true,
-            backendMode: 'cloudflare-d1-r2',
+            backendMode: bothBindingsPresent ? 'cloudflare-d1-r2' : 'preview-demo',
             posts,
             hasMore,
             nextOffset: hasMore ? offset + pageSize : null,

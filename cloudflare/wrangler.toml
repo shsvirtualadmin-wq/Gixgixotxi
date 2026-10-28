@@ -12,7 +12,7 @@ SUPERADMIN_EMAILS = "shsvirtualadmin@gmail.com,support@boardly.cfd"
 [[d1_databases]]
 binding = "DB"
 database_name = "boardly-posts-db"
-database_id = "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID"
+database_id = "e37a41ff-c73c-4ab7-9784-6e635205cdf7"
 
 [[r2_buckets]]
 binding = "R2_BUCKET"
