@@ -15,6 +15,11 @@ import {
   isAllowedOrigin,
   sanitizeUploadFileName,
 } from '../src/config/cloudflareConfig';
+import { BOARDLY_BOT_ACCOUNTS, BotAccountConfig } from '../src/config/botsConfig';
+import {
+  generateVerifiedBotStudyPost,
+  generateVerifiedBotComment,
+} from '../src/services/botContentGenerator';
 
 export interface Env {
   DB?: D1Database;
@@ -24,6 +29,9 @@ export interface Env {
   ALLOWED_ORIGIN?: string;
   SUPERADMIN_UIDS?: string;
   SUPERADMIN_EMAILS?: string;
+  GEMINI_API_KEY?: string;
+  GEMINI_MODEL?: string;
+  BOT_RUN_SECRET?: string;
 }
 
 export interface VerifiedFirebaseUser {
@@ -227,17 +235,103 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
         count INTEGER NOT NULL DEFAULT 0,
         window_start INTEGER NOT NULL
       )`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS bot_accounts (
+        uid TEXT PRIMARY KEY,
+        placeholder_name TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        class_level TEXT NOT NULL DEFAULT '11',
+        board TEXT NOT NULL DEFAULT 'Federal',
+        equipped_avatar TEXT NOT NULL DEFAULT 'pfp_luffy',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        post_count INTEGER NOT NULL DEFAULT 0,
+        comment_count INTEGER NOT NULL DEFAULT 0,
+        like_count INTEGER NOT NULL DEFAULT 0,
+        last_run_at INTEGER,
+        last_status TEXT,
+        updated_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_bot_accounts_subject ON bot_accounts(subject, enabled)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS announcements (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        author_id TEXT NOT NULL DEFAULT 'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+        author_email TEXT NOT NULL DEFAULT 'shsvirtualadmin@gmail.com',
+        author_name TEXT NOT NULL DEFAULT 'SHS Virtual Academy',
+        is_pinned INTEGER NOT NULL DEFAULT 0,
+        is_welcome INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_announcements_pinned_created ON announcements(is_pinned DESC, created_at DESC)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS user_welcome_status (
+        user_uid TEXT PRIMARY KEY,
+        welcomed INTEGER NOT NULL DEFAULT 1,
+        read INTEGER NOT NULL DEFAULT 0,
+        welcomed_at INTEGER NOT NULL,
+        read_at INTEGER
+      )`),
     ]);
+
+    // Seed 12 bot accounts in user_roles (role = 'bot') and bot_accounts
+    const botRoleStmts = BOARDLY_BOT_ACCOUNTS.map((b) =>
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO user_roles (uid, email, role, custom_role, is_posting_banned, updated_at)
+           VALUES (?, ?, 'bot', ?, 0, ?)`
+        )
+        .bind(b.uid, b.email, `${b.subject} Bot`, 1743465600000)
+    );
+    const botAccountStmts = BOARDLY_BOT_ACCOUNTS.map((b) =>
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO bot_accounts (
+            uid, placeholder_name, display_name, subject, class_level, board, equipped_avatar,
+            enabled, post_count, comment_count, like_count, last_run_at, last_status, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, NULL, 'Ready', ?)`
+        )
+        .bind(
+          b.uid,
+          b.placeholderName,
+          b.displayName,
+          b.subject,
+          b.classLevel,
+          b.board,
+          b.equippedAvatar,
+          1743465600000
+        )
+    );
+    const welcomeStmt = db
+      .prepare(
+        `INSERT OR IGNORE INTO announcements (
+          id, title, message, author_id, author_email, author_name, is_pinned, is_welcome, created_at, updated_at
+        ) VALUES (
+          'welcome_to_boardly',
+          'Welcome to Boardly',
+          'Welcome to Boardly! Practice entrance and board exam MCQs, share and download verified notes and past papers in Boardly Commons, track your daily study streaks, and climb the Grand Line leaderboard. Click this notification anytime to review what is new — we are glad to have you onboard!',
+          'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+          'shsvirtualadmin@gmail.com',
+          'SHS Virtual Academy',
+          1,
+          1,
+          1743465600000,
+          1743465600000
+        )`
+      );
+    await db.batch([...botRoleStmts, ...botAccountStmts, welcomeStmt]);
 
     // Seed initial Commons study material posts if table is completely empty
     const countRow = await db.prepare('SELECT COUNT(*) as cnt FROM posts').first<{ cnt: number }>();
     if (Number(countRow?.cnt ?? 0) === 0 && Array.isArray((seedDataset as any)?.posts)) {
       const initialPosts = (seedDataset as any).posts as Record<string, any>[];
       const chunkSize = 20;
+      const basePastMs = 1743465600000;
       for (let i = 0; i < initialPosts.length; i += chunkSize) {
         const chunk = initialPosts.slice(i, i + chunkSize);
-        const stmts = chunk.map((p) =>
-          db
+        const stmts = chunk.map((p, idx) => {
+          const pastTs = basePastMs - (i + idx) * 3600000;
+          return db
             .prepare(
               `INSERT OR IGNORE INTO posts (
                 id, slug, type, title, description, subject, chapter, target,
@@ -286,13 +380,27 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
               Number(p.save_count || 0),
               Number(p.shares_count || 0),
               Number(p.report_count || 0),
-              Number(p.created_at || Date.now()),
-              Number(p.updated_at || Date.now())
-            )
-        );
+              pastTs,
+              pastTs
+            );
+        });
         await db.batch(stmts);
       }
     }
+
+    // BUG 1 FIX: Normalize any second-based timestamps (< 1e10) to ms, and clamp any
+    // seeded/future timestamps (> Date.now() or commons_anon_topic_*) so newly created posts
+    // ALWAYS have the highest created_at and appear at the top of the Newest feed.
+    const nowMs = Date.now();
+    await db.batch([
+      db
+        .prepare('UPDATE posts SET created_at = created_at * 1000, updated_at = updated_at * 1000 WHERE created_at > 0 AND created_at < 10000000000'),
+      db
+        .prepare('UPDATE posts SET created_at = 1743465600000, updated_at = 1743465600000 WHERE id LIKE "commons_anon_topic_%" AND created_at > 1745000000000'),
+      db
+        .prepare('UPDATE posts SET created_at = ?, updated_at = ? WHERE created_at > ?')
+        .bind(nowMs - 60000, nowMs - 60000, nowMs + 5000),
+    ]);
 
     schemaInitialized = true;
   } catch (err) {
@@ -731,6 +839,19 @@ export async function handleHealthCheck(req: Request, env: Env): Promise<Respons
     error: r2Error,
   };
 
+  let enabledBotsCount = 12;
+  let botPostsCount = 0;
+  if (env.DB && d1Connected) {
+    try {
+      const [bRow, bpRow] = await Promise.all([
+        env.DB.prepare('SELECT COUNT(*) as cnt FROM bot_accounts WHERE enabled = 1').first<{ cnt: number }>(),
+        env.DB.prepare("SELECT COUNT(*) as cnt FROM posts WHERE author_role = 'bot' OR author_uid LIKE 'bot_%'").first<{ cnt: number }>(),
+      ]);
+      enabledBotsCount = Number(bRow?.cnt ?? 12);
+      botPostsCount = Number(bpRow?.cnt ?? 0);
+    } catch {}
+  }
+
   return jsonResponse(
     {
       ok: bothBindingsWork,
@@ -742,6 +863,13 @@ export async function handleHealthCheck(req: Request, env: Env): Promise<Respons
       bindings: {
         d1: d1Report,
         r2: r2Report,
+      },
+      bots: {
+        totalBots: BOARDLY_BOT_ACCOUNTS.length,
+        enabledBots: enabledBotsCount,
+        botPostsCount,
+        geminiKeyConfigured: Boolean(env.GEMINI_API_KEY),
+        botSecretConfigured: Boolean(env.BOT_RUN_SECRET),
       },
       firebaseAuth: {
         projectId: env.FIREBASE_PROJECT_ID || BOARDLY_CLOUDFLARE_CONFIG.firebaseProjectId,
@@ -911,6 +1039,628 @@ ${urls
           });
         }
       }
+    }
+
+    // 2b. API Routes under /api/announcements (Welcome Notification & Admin Pinned Announcement)
+    if (url.pathname.startsWith('/api/announcements')) {
+      if (!env.DB) {
+        return jsonResponse({ success: false, error: 'D1 binding missing' }, 503, cors);
+      }
+      const annSub = url.pathname.slice('/api/announcements'.length).replace(/\/+$/, '') || '/';
+
+      // GET /api/announcements/welcome?userId=...
+      if (annSub === '/welcome' && req.method === 'GET') {
+        const user = await verifyFirebaseIdToken(req, env).catch(() => null);
+        const uid = user?.uid || (url.searchParams.get('userId') || '').trim();
+
+        const welcomeRow = await env.DB.prepare(
+          "SELECT * FROM announcements WHERE id = 'welcome_to_boardly' LIMIT 1"
+        ).first<Record<string, any>>();
+
+        let welcomeStatus = { welcomed: false, read: false };
+        if (uid) {
+          const st = await env.DB.prepare(
+            'SELECT welcomed, read FROM user_welcome_status WHERE user_uid = ? LIMIT 1'
+          )
+            .bind(uid)
+            .first<{ welcomed: number; read: number }>();
+          if (st) {
+            welcomeStatus = { welcomed: Boolean(st.welcomed), read: Boolean(st.read) };
+          }
+        }
+
+        return jsonResponse(
+          {
+            success: true,
+            announcement: welcomeRow
+              ? {
+                  id: welcomeRow.id,
+                  title: welcomeRow.title,
+                  message: welcomeRow.message,
+                  authorId: welcomeRow.author_id,
+                  authorEmail: welcomeRow.author_email,
+                  authorName: welcomeRow.author_name,
+                  isPinned: Boolean(welcomeRow.is_pinned),
+                  isWelcome: Boolean(welcomeRow.is_welcome),
+                  createdAt: welcomeRow.created_at,
+                  updatedAt: welcomeRow.updated_at,
+                }
+              : null,
+            welcomeStatus,
+          },
+          200,
+          { ...cors, 'Cache-Control': 'no-store' }
+        );
+      }
+
+      // POST /api/announcements/welcome/ensure
+      if (annSub === '/welcome/ensure' && req.method === 'POST') {
+        const user = await verifyFirebaseIdToken(req, env).catch(() => null);
+        const body = (await req.json().catch(() => ({}))) as { userId?: string };
+        const uid = user?.uid || String(body.userId || '').trim();
+        if (!uid) {
+          return jsonResponse({ success: false, error: 'Missing userId' }, 400, cors);
+        }
+
+        const existing = await env.DB.prepare(
+          'SELECT welcomed, read, welcomed_at FROM user_welcome_status WHERE user_uid = ? LIMIT 1'
+        )
+          .bind(uid)
+          .first<{ welcomed: number; read: number; welcomed_at: number }>();
+
+        let newlyCreated = false;
+        let isRead = false;
+        const now = Date.now();
+
+        if (!existing) {
+          await env.DB.prepare(
+            'INSERT OR IGNORE INTO user_welcome_status (user_uid, welcomed, read, welcomed_at, read_at) VALUES (?, 1, 0, ?, NULL)'
+          )
+            .bind(uid, now)
+            .run();
+          newlyCreated = true;
+          isRead = false;
+        } else {
+          isRead = Boolean(existing.read);
+        }
+
+        const welcomeRow = await env.DB.prepare(
+          "SELECT * FROM announcements WHERE id = 'welcome_to_boardly' LIMIT 1"
+        ).first<Record<string, any>>();
+
+        return jsonResponse(
+          {
+            success: true,
+            welcomed: true,
+            newlyCreated,
+            read: isRead,
+            announcement: welcomeRow
+              ? {
+                  id: welcomeRow.id,
+                  title: welcomeRow.title,
+                  message: welcomeRow.message,
+                  authorId: welcomeRow.author_id,
+                  authorEmail: welcomeRow.author_email,
+                  authorName: welcomeRow.author_name,
+                  isPinned: true,
+                  isWelcome: true,
+                  createdAt: existing?.welcomed_at || now,
+                  updatedAt: welcomeRow.updated_at,
+                }
+              : null,
+          },
+          200,
+          { ...cors, 'Cache-Control': 'no-store' }
+        );
+      }
+
+      // POST /api/announcements/welcome/read
+      if (annSub === '/welcome/read' && req.method === 'POST') {
+        const user = await verifyFirebaseIdToken(req, env).catch(() => null);
+        const body = (await req.json().catch(() => ({}))) as { userId?: string };
+        const uid = user?.uid || String(body.userId || '').trim();
+        if (!uid) {
+          return jsonResponse({ success: false, error: 'Missing userId' }, 400, cors);
+        }
+
+        const now = Date.now();
+        await env.DB.prepare(
+          `INSERT INTO user_welcome_status (user_uid, welcomed, read, welcomed_at, read_at)
+           VALUES (?, 1, 1, ?, ?)
+           ON CONFLICT(user_uid) DO UPDATE SET read = 1, read_at = excluded.read_at`
+        )
+          .bind(uid, now, now)
+          .run();
+
+        return jsonResponse({ success: true, read: true }, 200, { ...cors, 'Cache-Control': 'no-store' });
+      }
+
+      // PUT /api/announcements/welcome — Admin edits the pinned "Welcome to Boardly" announcement
+      if (annSub === '/welcome' && (req.method === 'PUT' || req.method === 'POST')) {
+        const user = await verifyFirebaseIdToken(req, env);
+        if (!user || user.role !== 'superadmin') {
+          return jsonResponse({ success: false, error: 'Forbidden: superadmin only' }, 403, cors);
+        }
+
+        const body = (await req.json().catch(() => ({}))) as { title?: string; message?: string };
+        const title = String(body.title || 'Welcome to Boardly').trim();
+        const message = String(body.message || '').trim();
+        if (!title || !message) {
+          return jsonResponse({ success: false, error: 'Title and message are required' }, 400, cors);
+        }
+
+        const now = Date.now();
+        await env.DB.prepare(
+          `INSERT INTO announcements (id, title, message, author_id, author_email, author_name, is_pinned, is_welcome, created_at, updated_at)
+           VALUES ('welcome_to_boardly', ?, ?, ?, ?, 'SHS Virtual Academy', 1, 1, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET title = excluded.title, message = excluded.message, updated_at = excluded.updated_at`
+        )
+          .bind(title, message, user.uid, user.email, now, now)
+          .run();
+
+        return jsonResponse(
+          {
+            success: true,
+            announcement: {
+              id: 'welcome_to_boardly',
+              title,
+              message,
+              authorName: 'SHS Virtual Academy',
+              isPinned: true,
+              isWelcome: true,
+              updatedAt: now,
+            },
+          },
+          200,
+          cors
+        );
+      }
+
+      return jsonResponse({ error: 'Announcement endpoint not found' }, 404, cors);
+    }
+
+    // 2c. API Routes under /api/bots (12 Subject Bots + Daily Cron Runner + Admin Controls)
+    if (url.pathname.startsWith('/api/bots')) {
+      if (!env.DB) {
+        return jsonResponse({ success: false, error: 'D1 binding (DB) is missing' }, 503, cors);
+      }
+      const botSub = url.pathname.slice('/api/bots'.length).replace(/\/+$/, '') || '/';
+
+      // GET /api/bots — List all 12 bots, stats, and configuration status
+      if (botSub === '/' && req.method === 'GET') {
+        const { results } = await env.DB.prepare(
+          'SELECT * FROM bot_accounts ORDER BY uid ASC'
+        ).all();
+
+        const dbMap = new Map<string, Record<string, any>>();
+        for (const r of results || []) {
+          dbMap.set(String((r as any).uid), r as Record<string, any>);
+        }
+
+        const bots = BOARDLY_BOT_ACCOUNTS.map((cfg) => {
+          const row = dbMap.get(cfg.uid);
+          const postCount = Number(row?.post_count || 0);
+          const commentCount = Number(row?.comment_count || 0);
+          const likeCount = Number(row?.like_count || 0);
+          const lastStatus = row?.last_status || 'Ready';
+          return {
+            uid: cfg.uid,
+            username: cfg.placeholderName,
+            placeholderName: cfg.placeholderName,
+            displayName: row?.display_name || cfg.displayName,
+            subject: row?.subject || cfg.subject,
+            classLevel: row?.class_level || cfg.classLevel,
+            board: row?.board || cfg.board,
+            target: cfg.target,
+            avatar: row?.equipped_avatar || cfg.equippedAvatar,
+            equippedAvatar: row?.equipped_avatar || cfg.equippedAvatar,
+            bio: cfg.bio,
+            dailyPostLimit: 2,
+            role: 'bot',
+            enabled: row ? Boolean(row.enabled) : true,
+            postCount,
+            postsCount: postCount,
+            commentCount,
+            commentsCount: commentCount,
+            likeCount,
+            likesCount: likeCount,
+            lastRunAt: row?.last_run_at ? new Date(Number(row.last_run_at)).toISOString() : null,
+            lastStatus,
+            lastRunStatus: lastStatus,
+          };
+        });
+
+        return jsonResponse(
+          {
+            success: true,
+            bots,
+            geminiConfigured: Boolean(env.GEMINI_API_KEY),
+            botRunSecretConfigured: Boolean(env.BOT_RUN_SECRET),
+            config: {
+              geminiKeyConfigured: Boolean(env.GEMINI_API_KEY),
+              geminiModel: env.GEMINI_MODEL || 'gemini-3.5-flash',
+              botRunSecretConfigured: Boolean(env.BOT_RUN_SECRET),
+            },
+          },
+          200,
+          { ...cors, 'Cache-Control': 'no-store' }
+        );
+      }
+
+      // POST /api/bots/run — Execute daily or manual bot run (Secured by BOT_RUN_SECRET or Superadmin JWT)
+      if (botSub === '/run' && req.method === 'POST') {
+        const secretHeader =
+          (req.headers.get('x-bot-run-secret') || '').trim() ||
+          (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+
+        const hasValidBotSecret =
+          Boolean(env.BOT_RUN_SECRET) && secretHeader === env.BOT_RUN_SECRET.trim();
+
+        let isSuperAdminCaller = false;
+        if (!hasValidBotSecret) {
+          const user = await verifyFirebaseIdToken(req, env).catch(() => null);
+          if (user && user.role === 'superadmin') {
+            isSuperAdminCaller = true;
+          }
+        }
+
+        if (!hasValidBotSecret && !isSuperAdminCaller) {
+          return jsonResponse(
+            {
+              success: false,
+              error: 'Unauthorized: missing or invalid BOT_RUN_SECRET header.',
+            },
+            401,
+            cors
+          );
+        }
+
+        const apiKey = (env.GEMINI_API_KEY || '').trim();
+        if (!apiKey) {
+          return jsonResponse(
+            {
+              success: false,
+              error: 'GEMINI_API_KEY secret is not configured in Cloudflare environment.',
+            },
+            500,
+            cors
+          );
+        }
+
+        const body = (await req.json().catch(() => ({}))) as {
+          botUid?: string;
+          postsPerBot?: number;
+          force?: boolean;
+        };
+        const targetBotUid = (body.botUid || '').trim();
+        const forceRun = Boolean(body.force);
+        const dateKey = new Date().toISOString().slice(0, 10);
+
+        const { results: botRows } = await env.DB.prepare(
+          'SELECT * FROM bot_accounts ORDER BY uid ASC'
+        ).all();
+        const enabledMap = new Map<string, boolean>();
+        for (const r of botRows || []) {
+          enabledMap.set(String((r as any).uid), Boolean((r as any).enabled));
+        }
+
+        const candidateBots = BOARDLY_BOT_ACCOUNTS.filter((b) => {
+          if (targetBotUid && b.uid !== targetBotUid) return false;
+          return enabledMap.get(b.uid) ?? true;
+        });
+
+        const runResults: Array<{
+          uid: string;
+          displayName: string;
+          subject: string;
+          postsCreated: number;
+          commentsCreated: number;
+          likesCreated: number;
+          status: string;
+          postIds: string[];
+        }> = [];
+
+        for (const bot of candidateBots) {
+          let postsCreated = 0;
+          let commentsCreated = 0;
+          let likesCreated = 0;
+          const createdPostIds: string[] = [];
+          let statusMsg = 'Completed';
+
+          try {
+            // Check per-bot daily limit in rate_limits (max 2 posts/day per bot)
+            const rateKey = `bot_daily:${bot.uid}:${dateKey}`;
+            const existingRate = await env.DB.prepare(
+              'SELECT count FROM rate_limits WHERE rate_key = ?'
+            )
+              .bind(rateKey)
+              .first<{ count: number }>();
+
+            const alreadyPostedToday = Number(existingRate?.count || 0);
+            if (!forceRun && alreadyPostedToday >= 2) {
+              runResults.push({
+                uid: bot.uid,
+                displayName: bot.displayName,
+                subject: bot.subject,
+                postsCreated: 0,
+                commentsCreated: 0,
+                likesCreated: 0,
+                status: 'Skipped (daily limit 2/2 reached)',
+                postIds: [],
+              });
+              continue;
+            }
+
+            // Random delay (80ms - 220ms)
+            await new Promise((r) => setTimeout(r, 80 + Math.floor(Math.random() * 140)));
+
+            // Determine 1 or 2 posts for this bot (if running all 12 bots in one HTTP request, 1 post/bot keeps total duration fast; if single bot or requested, 1-2 posts)
+            const desiredPosts =
+              typeof body.postsPerBot === 'number'
+                ? Math.min(2, Math.max(1, body.postsPerBot))
+                : targetBotUid
+                ? 2
+                : Math.random() < 0.35
+                ? 2
+                : 1;
+            const maxAllowedNow = forceRun ? desiredPosts : Math.min(desiredPosts, 2 - alreadyPostedToday);
+
+            for (let pIdx = 0; pIdx < maxAllowedNow; pIdx++) {
+              const genRes = await generateVerifiedBotStudyPost({
+                bot,
+                apiKey,
+                model: env.GEMINI_MODEL,
+                postIndex: pIdx,
+              });
+
+              if (!genRes.post) {
+                statusMsg = genRes.discardReason || 'Skipped post';
+                continue;
+              }
+
+              const now = Date.now();
+              const postId = `post_bot_${now}_${crypto.randomUUID().slice(0, 6)}`;
+              const slug = buildSlug(postId, genRes.post.title);
+
+              await env.DB.prepare(
+                `INSERT INTO posts (
+                  id, slug, type, title, description, subject, chapter, target,
+                  class_level, board, format, tags_json, files_json, is_anonymous,
+                  anonymous_alias, author_uid, real_author_uid, author_name,
+                  author_avatar, author_frame, author_equipped_avatar, author_photo_url,
+                  author_role, author_custom_role, status, visibility, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'text', ?, '[]', 0, 'Anonymous Student', ?, ?, ?, ?, NULL, ?, NULL, 'bot', ?, 'published', 'public', ?, ?)`
+              )
+                .bind(
+                  postId,
+                  slug,
+                  genRes.post.type,
+                  genRes.post.title,
+                  genRes.post.description,
+                  bot.subject,
+                  genRes.post.chapter,
+                  bot.target,
+                  bot.classLevel,
+                  bot.board,
+                  JSON.stringify(genRes.post.tags),
+                  bot.uid,
+                  bot.uid,
+                  bot.displayName,
+                  bot.equippedAvatar,
+                  bot.equippedAvatar,
+                  `${bot.subject} Bot`,
+                  now,
+                  now
+                )
+                .run();
+
+              postsCreated++;
+              createdPostIds.push(postId);
+
+              await env.DB.prepare(
+                `INSERT INTO rate_limits (rate_key, count, window_start)
+                 VALUES (?, 1, ?)
+                 ON CONFLICT(rate_key) DO UPDATE SET count = count + 1`
+              )
+                .bind(rateKey, now)
+                .run();
+            }
+
+            // Now like 1-2 posts by other authors (humans' posts included, NEVER its own)
+            const { results: otherPosts } = await env.DB.prepare(
+              `SELECT id, title, description, subject, author_uid, real_author_uid
+               FROM posts
+               WHERE is_hidden = 0
+                 AND (author_uid IS NULL OR author_uid != ?)
+                 AND (real_author_uid IS NULL OR real_author_uid != ?)
+               ORDER BY created_at DESC
+               LIMIT 18`
+            )
+              .bind(bot.uid, bot.uid)
+              .all();
+
+            if (otherPosts && otherPosts.length > 0) {
+              const shuffled = [...otherPosts].sort(() => Math.random() - 0.5);
+              const likeTargets = shuffled.slice(0, 2);
+
+              for (const tPost of likeTargets) {
+                const targetId = String((tPost as any).id);
+                const alreadyLiked = await env.DB.prepare(
+                  'SELECT 1 FROM post_likes WHERE post_id = ? AND user_uid = ?'
+                )
+                  .bind(targetId, bot.uid)
+                  .first();
+
+                if (!alreadyLiked) {
+                  await env.DB.prepare(
+                    'INSERT OR IGNORE INTO post_likes (post_id, user_uid, created_at) VALUES (?, ?, ?)'
+                  )
+                    .bind(targetId, bot.uid, Date.now())
+                    .run();
+                  await env.DB.prepare('UPDATE posts SET upvotes = upvotes + 1 WHERE id = ?')
+                    .bind(targetId)
+                    .run();
+                  likesCreated++;
+                }
+              }
+
+              // Comment on 1 post by another author (prefer same subject if available)
+              const sameSubPost =
+                shuffled.find(
+                  (p: any) => String(p.subject || '').toLowerCase() === bot.subject.toLowerCase()
+                ) || shuffled[0];
+
+              if (sameSubPost) {
+                const cmtRes = await generateVerifiedBotComment({
+                  bot,
+                  targetPost: {
+                    title: String((sameSubPost as any).title || ''),
+                    description: String((sameSubPost as any).description || ''),
+                    subject: String((sameSubPost as any).subject || bot.subject),
+                  },
+                  apiKey,
+                  model: env.GEMINI_MODEL,
+                });
+
+                if (cmtRes.comment) {
+                  const cmtId = `cmt_bot_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`;
+                  const cmtNow = Date.now();
+                  await env.DB.prepare(
+                    `INSERT INTO post_comments (
+                      id, post_id, text, is_anonymous, author_uid, real_author_uid,
+                      author_name, author_avatar, author_frame, author_equipped_avatar,
+                      author_photo_url, author_role, author_custom_role, created_at
+                    ) VALUES (?, ?, ?, 0, ?, ?, ?, ?, NULL, ?, NULL, 'bot', ?, ?)`
+                  )
+                    .bind(
+                      cmtId,
+                      String((sameSubPost as any).id),
+                      cmtRes.comment.text,
+                      bot.uid,
+                      bot.uid,
+                      bot.displayName,
+                      bot.equippedAvatar,
+                      bot.equippedAvatar,
+                      `${bot.subject} Bot`,
+                      cmtNow
+                    )
+                    .run();
+
+                  await env.DB.prepare(
+                    'UPDATE posts SET comment_count = comment_count + 1 WHERE id = ?'
+                  )
+                    .bind(String((sameSubPost as any).id))
+                    .run();
+                  commentsCreated++;
+                }
+              }
+            }
+
+            const runNow = Date.now();
+            await env.DB.prepare(
+              `UPDATE bot_accounts
+               SET post_count = post_count + ?,
+                   comment_count = comment_count + ?,
+                   like_count = like_count + ?,
+                   last_run_at = ?,
+                   last_status = ?,
+                   updated_at = ?
+               WHERE uid = ?`
+            )
+              .bind(
+                postsCreated,
+                commentsCreated,
+                likesCreated,
+                runNow,
+                statusMsg,
+                runNow,
+                bot.uid
+              )
+              .run();
+          } catch (botErr: any) {
+            statusMsg = `Error (skipped): ${botErr?.message || String(botErr)}`;
+            await env.DB.prepare(
+              'UPDATE bot_accounts SET last_run_at = ?, last_status = ?, updated_at = ? WHERE uid = ?'
+            )
+              .bind(Date.now(), statusMsg.slice(0, 160), Date.now(), bot.uid)
+              .run()
+              .catch(() => {});
+          }
+
+          runResults.push({
+            uid: bot.uid,
+            displayName: bot.displayName,
+            subject: bot.subject,
+            postsCreated,
+            commentsCreated,
+            likesCreated,
+            status: statusMsg,
+            postIds: createdPostIds,
+          });
+        }
+
+        return jsonResponse(
+          {
+            success: true,
+            ranAt: new Date().toISOString(),
+            totalBotsProcessed: runResults.length,
+            totalPostsCreated: runResults.reduce((s, r) => s + r.postsCreated, 0),
+            totalCommentsCreated: runResults.reduce((s, r) => s + r.commentsCreated, 0),
+            totalLikesCreated: runResults.reduce((s, r) => s + r.likesCreated, 0),
+            results: runResults,
+          },
+          200,
+          cors
+        );
+      }
+
+      // POST /api/bots/delete-content — Admin deletes all bot posts, comments, and likes in one click
+      if (botSub === '/delete-content' && req.method === 'POST') {
+        const user = await verifyFirebaseIdToken(req, env);
+        if (!user || user.role !== 'superadmin') {
+          return jsonResponse({ success: false, error: 'Forbidden: superadmin only' }, 403, cors);
+        }
+
+        await env.DB.batch([
+          env.DB.prepare("DELETE FROM posts WHERE author_role = 'bot' OR author_uid LIKE 'bot_%' OR real_author_uid LIKE 'bot_%'"),
+          env.DB.prepare("DELETE FROM post_comments WHERE author_role = 'bot' OR author_uid LIKE 'bot_%' OR real_author_uid LIKE 'bot_%'"),
+          env.DB.prepare("DELETE FROM post_likes WHERE user_uid LIKE 'bot_%'"),
+          env.DB.prepare("DELETE FROM rate_limits WHERE rate_key LIKE 'bot_daily:%'"),
+          env.DB.prepare("UPDATE bot_accounts SET post_count = 0, comment_count = 0, like_count = 0, last_status = 'Content cleared by admin', updated_at = ?").bind(Date.now()),
+        ]);
+
+        return jsonResponse(
+          {
+            success: true,
+            message: 'All bot posts, comments, and likes have been deleted.',
+          },
+          200,
+          cors
+        );
+      }
+
+      // POST /api/bots/:uid/toggle — Enable or disable a specific bot
+      const botParts = botSub.split('/').filter(Boolean);
+      if (botParts.length === 2 && botParts[1] === 'toggle' && req.method === 'POST') {
+        const user = await verifyFirebaseIdToken(req, env);
+        if (!user || user.role !== 'superadmin') {
+          return jsonResponse({ success: false, error: 'Forbidden: superadmin only' }, 403, cors);
+        }
+
+        const targetUid = botParts[0];
+        const body = (await req.json().catch(() => ({}))) as { enabled?: boolean };
+        const enabledVal = body.enabled ? 1 : 0;
+
+        await env.DB.prepare(
+          'UPDATE bot_accounts SET enabled = ?, updated_at = ? WHERE uid = ?'
+        )
+          .bind(enabledVal, Date.now(), targetUid)
+          .run();
+
+        return jsonResponse({ success: true, uid: targetUid, enabled: Boolean(enabledVal) }, 200, cors);
+      }
+
+      return jsonResponse({ error: 'Bot endpoint not found' }, 404, cors);
     }
 
     // 3. API Routes under /api/posts
@@ -1230,16 +1980,8 @@ ${urls
         );
       }
 
-      // ── GET /api/posts — Paginated list, filter, search (Edge Cached for public readers) ──
+      // ── GET /api/posts — Paginated list, filter, search (Always fresh so new posts appear immediately) ──
       if (subPath === '/' && req.method === 'GET') {
-        const hasAuthHeader = Boolean(req.headers.get('Authorization'));
-        const cache = caches.default;
-        const cacheKey = new Request(url.toString(), { method: 'GET' });
-
-        if (!hasAuthHeader && !url.searchParams.get('flaggedOnly')) {
-          const cached = await cache.match(cacheKey);
-          if (cached) return cached;
-        }
 
         const pageSize = Math.min(
           100,
@@ -1342,7 +2084,7 @@ ${urls
         const posts = pageRows.map((r) => rowToCommonsPost(r as Record<string, any>));
 
         const bothBindingsPresent = Boolean(env.DB && env.R2_BUCKET);
-        const resp = jsonResponse(
+        return jsonResponse(
           {
             success: true,
             backendMode: bothBindingsPresent ? 'cloudflare-d1-r2' : 'preview-demo',
@@ -1353,16 +2095,9 @@ ${urls
           200,
           {
             ...cors,
-            'Cache-Control': hasAuthHeader
-              ? 'private, no-cache'
-              : 'public, max-age=15, s-maxage=30, stale-while-revalidate=60',
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
           }
         );
-
-        if (!hasAuthHeader) {
-          ctx.waitUntil(cache.put(cacheKey, resp.clone()));
-        }
-        return resp;
       }
 
       // ── POST /api/posts — Create Post in D1 (with R2 rollback on failure) ──
@@ -1418,7 +2153,11 @@ ${urls
         ).trim();
         const slug = buildSlug(id, title);
         const isAnon = Boolean(body.isAnonymous);
-        const now = Date.now();
+        // Ensure created_at is strictly in milliseconds and >= any existing non-pinned post
+        const maxRow = await env.DB.prepare(
+          'SELECT MAX(created_at) as max_ts FROM posts WHERE is_pinned = 0'
+        ).first<{ max_ts: number | null }>();
+        const now = Math.max(Date.now(), Number(maxRow?.max_ts || 0) + 1);
         const files = rawFiles.map(normalizeStoredFileEntry);
         const tags = Array.isArray(body.tags) ? body.tags : [];
 

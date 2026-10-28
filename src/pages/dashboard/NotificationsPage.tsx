@@ -11,6 +11,7 @@ import {
   Shield,
   Sparkles,
   X,
+  Pin,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { PageMeta } from '@/components/ui/PageMeta';
@@ -25,6 +26,8 @@ import {
   markNotificationAsRead,
   markAnnouncementAsRead,
   markAllNotificationsAsRead,
+  ensureWelcomeNotificationForUser,
+  WELCOME_ANNOUNCEMENT_ID,
   type AppNotification,
   type AnnouncementItem,
 } from '@/services/notificationService';
@@ -77,6 +80,7 @@ export function NotificationsPage() {
     setError(null);
 
     try {
+      await ensureWelcomeNotificationForUser(user.uid);
       const [notifRes, announcementsRes, readIds] = await Promise.all([
         fetchUserNotificationsPage({ userId: user.uid, pageSize: 20 }),
         fetchAnnouncements(50),
@@ -131,16 +135,21 @@ export function NotificationsPage() {
       message: a.message,
       createdAt: a.createdAt,
       read: readAnnouncementIds.has(a.id),
+      isPinned: Boolean(a.isPinned || a.id === WELCOME_ANNOUNCEMENT_ID),
       isAnnouncement: true,
       announcementId: a.id,
       publishedBy: a.authorName || 'Superadmin',
     }));
   }, [announcements, readAnnouncementIds]);
 
-  // Combined and sorted newest first
+  // Combined and sorted: pinned first, then newest first
   const allNotifications = useMemo<AppNotification[]>(() => {
     const combined = [...userNotifications, ...announcementNotifications];
     return combined.sort((a, b) => {
+      const aPinned = Boolean(a.isPinned || a.announcementId === WELCOME_ANNOUNCEMENT_ID);
+      const bPinned = Boolean(b.isPinned || b.announcementId === WELCOME_ANNOUNCEMENT_ID);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
       const getMillis = (val: any) => {
         if (!val) return 0;
         if (typeof val.toDate === 'function') return val.toDate().getTime();
@@ -386,7 +395,13 @@ export function NotificationsPage() {
                   {/* Card Content */}
                   <div className="flex-1 min-w-0 space-y-1">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                        {(notif.isPinned || notif.announcementId === WELCOME_ANNOUNCEMENT_ID) && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 uppercase tracking-wider shrink-0">
+                            <Pin size={10} />
+                            <span>Pinned</span>
+                          </span>
+                        )}
                         {isAnnouncement && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--red)] text-white uppercase tracking-wider shrink-0">
                             Announcement

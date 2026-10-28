@@ -20,6 +20,7 @@ import {
   Coins,
   Tag,
   Megaphone,
+  Bot,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -39,6 +40,7 @@ const PRIMARY_NAV: AdminNavItem[] = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/admin/users', label: 'Users', icon: Users },
   { to: '/admin/announcements', label: 'Announcements', icon: Megaphone },
+  { to: '/admin/bots', label: 'Bots', icon: Bot },
   { to: '/admin/crews', label: 'Crews', icon: Shield },
   { to: '/admin/captains', label: NAKAMA_CAPTAINS_NAME, icon: Award },
   { to: '/admin/questions', label: 'Questions', icon: Database },

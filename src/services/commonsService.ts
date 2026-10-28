@@ -126,7 +126,11 @@ export function normalizeCloudflarePost(raw: Record<string, any>): CommonsPost {
     authorFrame: raw.isAnonymous ? null : raw.authorFrame || null,
     authorEquippedAvatar: raw.isAnonymous ? null : raw.authorEquippedAvatar || null,
     authorPhotoURL: raw.isAnonymous ? null : raw.authorPhotoURL || null,
-    authorRole: raw.isAnonymous ? 'student' : raw.authorRole || 'student',
+    authorRole: raw.isAnonymous
+      ? 'student'
+      : String(raw.authorUid || '').startsWith('bot_')
+      ? 'bot'
+      : raw.authorRole || 'student',
     authorCustomRole: raw.isAnonymous ? null : raw.authorCustomRole || null,
     upvotes: Number(raw.upvotes ?? 0),
     downvotes: Number(raw.downvotes ?? 0),
@@ -346,7 +350,11 @@ export async function fetchCommonsPosts(options: {
     params.set('followingUids', options.followingUids.join(','));
   }
 
-  const resp = await fetch(`/api/posts?${params.toString()}`);
+  const headers = await getOptionalAuthHeader();
+  const resp = await fetch(`/api/posts?${params.toString()}`, {
+    headers,
+    cache: 'no-store',
+  });
   const data = await resp.json().catch(() => ({}));
 
   if (!resp.ok || !Array.isArray(data?.posts)) {

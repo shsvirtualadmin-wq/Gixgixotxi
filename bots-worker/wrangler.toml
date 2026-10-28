@@ -1,0 +1,13 @@
+name = "boardly-bots-cron"
+main = "worker.ts"
+compatibility_date = "2025-02-01"
+
+# Daily Cron Trigger: runs once per day at 03:00 UTC (08:00 PKT)
+[triggers]
+crons = ["0 3 * * *"]
+
+[vars]
+TARGET_API_URL = "https://boardly.cfd/api/bots/run"
+
+# Secrets (never stored in wrangler.toml — add via `npx wrangler secret put BOT_RUN_SECRET`):
+# - BOT_RUN_SECRET

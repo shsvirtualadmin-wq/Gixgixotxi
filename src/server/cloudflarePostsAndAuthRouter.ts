@@ -2,6 +2,11 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { BOARDLY_BOT_ACCOUNTS, DEFAULT_WELCOME_ANNOUNCEMENT } from '../config/botsConfig';
+import {
+  generateVerifiedBotStudyPost,
+  generateVerifiedBotComment,
+} from '../services/botContentGenerator';
 
 const R2_PUBLIC_BASE_URL = (
   process.env.R2_PUBLIC_BASE_URL ||
@@ -140,6 +145,44 @@ interface D1UserRoleRow {
   updated_at: number;
 }
 
+interface D1BotAccountRow {
+  uid: string;
+  username: string;
+  display_name: string;
+  subject: string;
+  avatar: string;
+  bio: string;
+  enabled: number;
+  daily_post_limit: number;
+  posts_count: number;
+  comments_count: number;
+  likes_count: number;
+  last_run_at: number | null;
+  last_run_status: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+interface D1AnnouncementRow {
+  id: string;
+  title: string;
+  message: string;
+  is_pinned: number;
+  author_uid: string;
+  author_email: string;
+  author_name: string;
+  created_at: number;
+  updated_at: number;
+}
+
+interface D1UserWelcomeRow {
+  user_uid: string;
+  welcomed: number;
+  read_welcome: number;
+  welcomed_at: number;
+  read_at: number | null;
+}
+
 interface D1StoreData {
   version: number;
   migratedAt: string;
@@ -150,10 +193,96 @@ interface D1StoreData {
   comments: D1CommentRow[];
   reports: D1ReportRow[];
   userRoles: D1UserRoleRow[];
+  botAccounts?: D1BotAccountRow[];
+  announcements?: D1AnnouncementRow[];
+  userWelcomeStatus?: D1UserWelcomeRow[];
 }
 
 let d1Cache: D1StoreData | null = null;
 let d1LastMtime = 0;
+
+function ensureStoreDefaults(store: D1StoreData): boolean {
+  let mutated = false;
+  const now = Date.now();
+  const basePastMs = 1743465600000;
+
+  if (!Array.isArray(store.posts)) store.posts = [];
+  for (let i = 0; i < store.posts.length; i++) {
+    const p = store.posts[i];
+    if (p.created_at > 0 && p.created_at < 10000000000) {
+      p.created_at = p.created_at * 1000;
+      p.updated_at = p.created_at;
+      mutated = true;
+    }
+    if (
+      p.created_at > now ||
+      (String(p.id || '').startsWith('commons_anon_topic_') && p.created_at > basePastMs)
+    ) {
+      p.created_at = basePastMs - i * 3600000;
+      p.updated_at = p.created_at;
+      mutated = true;
+    }
+  }
+
+  if (!Array.isArray(store.userRoles)) store.userRoles = [];
+  if (!Array.isArray(store.botAccounts)) store.botAccounts = [];
+
+  for (const b of BOARDLY_BOT_ACCOUNTS) {
+    if (!store.userRoles.some((r) => r.uid === b.uid)) {
+      store.userRoles.push({
+        uid: b.uid,
+        email: b.email,
+        role: 'bot',
+        custom_role: `${b.subject} Bot`,
+        is_posting_banned: 0,
+        updated_at: basePastMs,
+      });
+      mutated = true;
+    }
+    if (!store.botAccounts.some((a) => a.uid === b.uid)) {
+      store.botAccounts.push({
+        uid: b.uid,
+        username: b.placeholderName,
+        display_name: b.displayName,
+        subject: b.subject,
+        avatar: b.equippedAvatar,
+        bio: b.bio,
+        enabled: 1,
+        daily_post_limit: 2,
+        posts_count: 0,
+        comments_count: 0,
+        likes_count: 0,
+        last_run_at: null,
+        last_run_status: 'ready',
+        created_at: basePastMs,
+        updated_at: basePastMs,
+      });
+      mutated = true;
+    }
+  }
+
+  if (!Array.isArray(store.announcements)) store.announcements = [];
+  if (!store.announcements.some((a) => a.id === DEFAULT_WELCOME_ANNOUNCEMENT.id)) {
+    store.announcements.unshift({
+      id: DEFAULT_WELCOME_ANNOUNCEMENT.id,
+      title: DEFAULT_WELCOME_ANNOUNCEMENT.title,
+      message: DEFAULT_WELCOME_ANNOUNCEMENT.message,
+      is_pinned: 1,
+      author_uid: DEFAULT_WELCOME_ANNOUNCEMENT.authorUid,
+      author_email: DEFAULT_WELCOME_ANNOUNCEMENT.authorEmail,
+      author_name: DEFAULT_WELCOME_ANNOUNCEMENT.authorName,
+      created_at: basePastMs,
+      updated_at: basePastMs,
+    });
+    mutated = true;
+  }
+
+  if (!Array.isArray(store.userWelcomeStatus)) {
+    store.userWelcomeStatus = [];
+  }
+
+  return mutated;
+}
 
 export function loadD1Store(): D1StoreData {
   try {
@@ -174,8 +303,15 @@ export function loadD1Store(): D1StoreData {
         comments: Array.isArray(parsed.comments) ? parsed.comments : [],
         reports: Array.isArray(parsed.reports) ? parsed.reports : [],
         userRoles: Array.isArray(parsed.userRoles) ? parsed.userRoles : [],
+        botAccounts: Array.isArray(parsed.botAccounts) ? parsed.botAccounts : [],
+        announcements: Array.isArray(parsed.announcements) ? parsed.announcements : [],
+        userWelcomeStatus: Array.isArray(parsed.userWelcomeStatus) ? parsed.userWelcomeStatus : [],
       };
-      d1LastMtime = stat.mtimeMs;
+      if (ensureStoreDefaults(d1Cache)) {
+        saveD1Store(d1Cache);
+      } else {
+        d1LastMtime = stat.mtimeMs;
+      }
       return d1Cache;
     }
   } catch (err) {
@@ -192,7 +328,11 @@ export function loadD1Store(): D1StoreData {
     comments: [],
     reports: [],
     userRoles: [],
+    botAccounts: [],
+    announcements: [],
+    userWelcomeStatus: [],
   };
+  ensureStoreDefaults(d1Cache);
   return d1Cache;
 }
 
@@ -627,6 +767,12 @@ ${allUrls
       mode: r2CredentialsConfigured ? 'cloudflare-r2-s3' : 'local-r2-mirror',
     };
 
+    const botRows = store.botAccounts || [];
+    const enabledBotsCount = botRows.filter((b) => b.enabled === 1).length;
+    const totalBotPosts = store.posts.filter(
+      (p) => p.author_role === 'bot' || String(p.author_uid || '').startsWith('bot_')
+    ).length;
+
     return res.status(200).json({
       ok: bothWork,
       status: bothWork ? 'ok' : 'degraded',
@@ -637,6 +783,13 @@ ${allUrls
       bindings: {
         d1: d1Report,
         r2: r2Report,
+      },
+      bots: {
+        totalBots: botRows.length || 12,
+        enabledBots: enabledBotsCount || 12,
+        botPostsCount: totalBotPosts,
+        geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
+        botRunSecretConfigured: Boolean(process.env.BOT_RUN_SECRET),
       },
       firebaseAuth: {
         projectId: FIREBASE_PROJECT_ID,
@@ -772,16 +925,6 @@ ${allUrls
       const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
       const currentUid = user?.uid || String(req.query.currentUid || '').trim() || null;
 
-      const cacheKey = req.originalUrl;
-      if (!currentUid && !req.query.flaggedOnly) {
-        const hit = edgeFeedCache.get(cacheKey);
-        if (hit && hit.expiresAt > Date.now()) {
-          res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=180');
-          res.setHeader('X-Edge-Cache', 'HIT');
-          return res.status(200).json(hit.payload);
-        }
-      }
-
       const store = loadD1Store();
       const pageSize = Math.min(
         100,
@@ -889,14 +1032,7 @@ ${allUrls
         nextOffset: hasMore ? offset + pageSize : null,
       };
 
-      if (!currentUid && !flaggedOnly) {
-        edgeFeedCache.set(cacheKey, { payload, expiresAt: Date.now() + 60 * 1000 });
-        res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=180');
-        res.setHeader('X-Edge-Cache', 'MISS');
-      } else {
-        res.setHeader('Cache-Control', 'private, no-cache');
-      }
-
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       return res.status(200).json(payload);
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || 'Failed to list posts' });
@@ -1226,6 +1362,14 @@ ${allUrls
       };
 
       const store = loadD1Store();
+      const maxExistingCreated = store.posts.reduce(
+        (max, p) => Math.max(max, Number(p.created_at || 0)),
+        0
+      );
+      const safeCreatedAt = Math.max(now, maxExistingCreated + 1);
+      newRow.created_at = safeCreatedAt;
+      newRow.updated_at = safeCreatedAt;
+
       store.posts.unshift(newRow);
       saveD1Store(store);
 
@@ -1944,6 +2088,603 @@ ${allUrls
       deletedEntry: deletedEntry || null,
     });
   });
+
+  // ==========================================================================
+  // WELCOME TO BOARDLY ANNOUNCEMENT ROUTES (/api/announcements/*)
+  // ==========================================================================
+  app.get('/api/announcements/welcome', async (req, res) => {
+    const store = loadD1Store();
+    const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
+    const queryUid = String(req.query.userId || user?.uid || '').trim();
+
+    let welcomeRow = (store.announcements || []).find(
+      (a) => a.id === DEFAULT_WELCOME_ANNOUNCEMENT.id
+    );
+    if (!welcomeRow) {
+      welcomeRow = {
+        id: DEFAULT_WELCOME_ANNOUNCEMENT.id,
+        title: DEFAULT_WELCOME_ANNOUNCEMENT.title,
+        message: DEFAULT_WELCOME_ANNOUNCEMENT.message,
+        is_pinned: 1,
+        author_uid: DEFAULT_WELCOME_ANNOUNCEMENT.authorUid,
+        author_email: DEFAULT_WELCOME_ANNOUNCEMENT.authorEmail,
+        author_name: DEFAULT_WELCOME_ANNOUNCEMENT.authorName,
+        created_at: 1743465600000,
+        updated_at: 1743465600000,
+      };
+    }
+
+    let welcomed = false;
+    let readWelcome = false;
+    if (queryUid) {
+      const st = (store.userWelcomeStatus || []).find((u) => u.user_uid === queryUid);
+      if (st) {
+        welcomed = Boolean(st.welcomed);
+        readWelcome = Boolean(st.read_welcome);
+      }
+    }
+
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    return res.status(200).json({
+      success: true,
+      announcement: {
+        id: welcomeRow.id,
+        title: welcomeRow.title,
+        message: welcomeRow.message,
+        isPinned: Boolean(welcomeRow.is_pinned ?? 1),
+        authorId: welcomeRow.author_uid,
+        authorEmail: welcomeRow.author_email,
+        authorName: welcomeRow.author_name || 'Superadmin',
+        createdAtMs: Number(welcomeRow.created_at || Date.now()),
+        updatedAtMs: Number(welcomeRow.updated_at || Date.now()),
+      },
+      userStatus: queryUid ? { userId: queryUid, welcomed, read: readWelcome } : null,
+    });
+  });
+
+  app.post('/api/announcements/welcome/ensure', async (req, res) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
+    const body = req.body || {};
+    const targetUid = String(user?.uid || body.userId || '').trim();
+    if (!targetUid) {
+      return res.status(400).json({ success: false, error: 'Missing userId.' });
+    }
+
+    const store = loadD1Store();
+    if (!Array.isArray(store.userWelcomeStatus)) store.userWelcomeStatus = [];
+    const now = Date.now();
+    let existing = store.userWelcomeStatus.find((u) => u.user_uid === targetUid);
+    const alreadyWelcomed = Boolean(existing?.welcomed);
+
+    if (!existing) {
+      existing = {
+        user_uid: targetUid,
+        welcomed: 1,
+        read_welcome: 0,
+        welcomed_at: now,
+        read_at: null,
+      };
+      store.userWelcomeStatus.push(existing);
+      saveD1Store(store);
+    }
+
+    const welcomeRow = (store.announcements || []).find(
+      (a) => a.id === DEFAULT_WELCOME_ANNOUNCEMENT.id
+    );
+
+    return res.status(200).json({
+      success: true,
+      userId: targetUid,
+      welcomed: true,
+      newlyWelcomed: !alreadyWelcomed,
+      read: Boolean(existing.read_welcome),
+      announcement: {
+        id: welcomeRow?.id || DEFAULT_WELCOME_ANNOUNCEMENT.id,
+        title: welcomeRow?.title || DEFAULT_WELCOME_ANNOUNCEMENT.title,
+        message: welcomeRow?.message || DEFAULT_WELCOME_ANNOUNCEMENT.message,
+        isPinned: true,
+        authorName: welcomeRow?.author_name || 'Superadmin',
+        createdAtMs: Number(welcomeRow?.created_at || now),
+      },
+    });
+  });
+
+  app.post('/api/announcements/welcome/read', async (req, res) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
+    const body = req.body || {};
+    const targetUid = String(user?.uid || body.userId || '').trim();
+    if (!targetUid) {
+      return res.status(400).json({ success: false, error: 'Missing userId.' });
+    }
+
+    const store = loadD1Store();
+    if (!Array.isArray(store.userWelcomeStatus)) store.userWelcomeStatus = [];
+    const now = Date.now();
+    let existing = store.userWelcomeStatus.find((u) => u.user_uid === targetUid);
+    if (!existing) {
+      existing = {
+        user_uid: targetUid,
+        welcomed: 1,
+        read_welcome: 1,
+        welcomed_at: now,
+        read_at: now,
+      };
+      store.userWelcomeStatus.push(existing);
+    } else {
+      existing.welcomed = 1;
+      existing.read_welcome = 1;
+      existing.read_at = now;
+    }
+    saveD1Store(store);
+
+    return res.status(200).json({ success: true, userId: targetUid, read: true });
+  });
+
+  app.put('/api/announcements/welcome', async (req, res) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
+    if (!user || user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Only superadmin can edit the Welcome to Boardly announcement.',
+      });
+    }
+
+    const body = req.body || {};
+    const title = String(body.title || DEFAULT_WELCOME_ANNOUNCEMENT.title).trim();
+    const message = String(body.message || '').trim();
+    if (!title || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Title and message are required.',
+      });
+    }
+
+    const store = loadD1Store();
+    if (!Array.isArray(store.announcements)) store.announcements = [];
+    const now = Date.now();
+    const existing = store.announcements.find((a) => a.id === DEFAULT_WELCOME_ANNOUNCEMENT.id);
+    if (existing) {
+      existing.title = title;
+      existing.message = message;
+      existing.is_pinned = 1;
+      existing.author_uid = user.uid;
+      existing.author_email = user.email;
+      existing.author_name = user.name || 'Superadmin';
+      existing.updated_at = now;
+    } else {
+      store.announcements.unshift({
+        id: DEFAULT_WELCOME_ANNOUNCEMENT.id,
+        title,
+        message,
+        is_pinned: 1,
+        author_uid: user.uid,
+        author_email: user.email,
+        author_name: user.name || 'Superadmin',
+        created_at: now,
+        updated_at: now,
+      });
+    }
+    saveD1Store(store);
+
+    return res.status(200).json({
+      success: true,
+      announcement: {
+        id: DEFAULT_WELCOME_ANNOUNCEMENT.id,
+        title,
+        message,
+        isPinned: true,
+        authorId: user.uid,
+        authorEmail: user.email,
+        authorName: user.name || 'Superadmin',
+        updatedAtMs: now,
+      },
+    });
+  });
+
+  // ==========================================================================
+  // DAILY BOTS API ROUTES (/api/bots/*)
+  // ==========================================================================
+  app.get('/api/bots', (_req, res) => {
+    const store = loadD1Store();
+    const bots = (store.botAccounts || []).map((r) => {
+      const actualPostCount = store.posts.filter(
+        (p) => p.author_uid === r.uid || p.real_author_uid === r.uid
+      ).length;
+      const actualCommentCount = store.comments.filter(
+        (c) => c.author_uid === r.uid || c.real_author_uid === r.uid
+      ).length;
+      const actualLikeCount = store.likes.filter((l) => l.user_uid === r.uid).length;
+      return {
+        uid: r.uid,
+        username: r.username,
+        displayName: r.display_name,
+        subject: r.subject,
+        avatar: r.avatar,
+        bio: r.bio,
+        enabled: Boolean(r.enabled),
+        dailyPostLimit: Number(r.daily_post_limit || 2),
+        postsCount: Math.max(Number(r.posts_count || 0), actualPostCount),
+        commentsCount: Math.max(Number(r.comments_count || 0), actualCommentCount),
+        likesCount: Math.max(Number(r.likes_count || 0), actualLikeCount),
+        lastRunAt: r.last_run_at ? new Date(Number(r.last_run_at)).toISOString() : null,
+        lastRunStatus: r.last_run_status || 'ready',
+        role: 'bot',
+      };
+    });
+
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    return res.status(200).json({
+      success: true,
+      bots,
+      totalBots: bots.length,
+      enabledBots: bots.filter((b) => b.enabled).length,
+      geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
+      geminiModel: String(process.env.GEMINI_MODEL || 'gemini-3.5-flash').trim(),
+      botRunSecretConfigured: Boolean(process.env.BOT_RUN_SECRET),
+      config: {
+        geminiKeyConfigured: Boolean(process.env.GEMINI_API_KEY),
+        geminiModel: String(process.env.GEMINI_MODEL || 'gemini-3.5-flash').trim(),
+        botRunSecretConfigured: Boolean(process.env.BOT_RUN_SECRET),
+      },
+    });
+  });
+
+  app.post('/api/bots/:uid/toggle', async (req, res) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
+    if (!user || user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Superadmin authorization required.',
+      });
+    }
+
+    const botUid = String(req.params.uid || '').trim();
+    const body = req.body || {};
+    const store = loadD1Store();
+    const botRow = (store.botAccounts || []).find((b) => b.uid === botUid);
+    if (!botRow) {
+      return res.status(404).json({ success: false, error: 'Bot not found.' });
+    }
+
+    const nextEnabled =
+      typeof body.enabled === 'boolean' ? (body.enabled ? 1 : 0) : botRow.enabled ? 0 : 1;
+    botRow.enabled = nextEnabled;
+    botRow.updated_at = Date.now();
+    saveD1Store(store);
+
+    return res.status(200).json({
+      success: true,
+      uid: botUid,
+      enabled: Boolean(nextEnabled),
+    });
+  });
+
+  app.post('/api/bots/delete-content', async (req, res) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
+    if (!user || user.role !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Superadmin authorization required.',
+      });
+    }
+
+    const body = req.body || {};
+    const targetBotUid = body.botUid ? String(body.botUid).trim() : null;
+    const store = loadD1Store();
+
+    const beforePosts = store.posts.length;
+    const beforeComments = store.comments.length;
+    const beforeLikes = store.likes.length;
+
+    if (targetBotUid) {
+      store.posts = store.posts.filter(
+        (p) => p.author_uid !== targetBotUid && p.real_author_uid !== targetBotUid
+      );
+      store.comments = store.comments.filter(
+        (c) => c.author_uid !== targetBotUid && c.real_author_uid !== targetBotUid
+      );
+      store.likes = store.likes.filter((l) => l.user_uid !== targetBotUid);
+      const botRow = (store.botAccounts || []).find((b) => b.uid === targetBotUid);
+      if (botRow) {
+        botRow.posts_count = 0;
+        botRow.comments_count = 0;
+        botRow.likes_count = 0;
+        botRow.updated_at = Date.now();
+      }
+    } else {
+      store.posts = store.posts.filter(
+        (p) =>
+          p.author_role !== 'bot' &&
+          !String(p.author_uid || '').startsWith('bot_') &&
+          !String(p.real_author_uid || '').startsWith('bot_')
+      );
+      store.comments = store.comments.filter(
+        (c) =>
+          c.author_role !== 'bot' &&
+          !String(c.author_uid || '').startsWith('bot_') &&
+          !String(c.real_author_uid || '').startsWith('bot_')
+      );
+      store.likes = store.likes.filter((l) => !String(l.user_uid || '').startsWith('bot_'));
+      for (const b of store.botAccounts || []) {
+        b.posts_count = 0;
+        b.comments_count = 0;
+        b.likes_count = 0;
+        b.updated_at = Date.now();
+      }
+    }
+
+    // Recalculate post upvotes and comment counts
+    for (const p of store.posts) {
+      p.upvotes = store.likes.filter((l) => l.post_id === p.id).length;
+      p.comment_count = store.comments.filter((c) => c.post_id === p.id).length;
+    }
+
+    saveD1Store(store);
+
+    return res.status(200).json({
+      success: true,
+      deletedPosts: beforePosts - store.posts.length,
+      deletedComments: beforeComments - store.comments.length,
+      deletedLikes: beforeLikes - store.likes.length,
+    });
+  });
+
+  app.post('/api/bots/run', async (req, res) => {
+    const providedSecret = String(
+      req.headers['x-bot-run-secret'] ||
+        (String(req.headers.authorization || '').startsWith('Bearer ')
+          ? String(req.headers.authorization || '').slice(7).trim()
+          : '')
+    ).trim();
+    const configuredSecret = String(process.env.BOT_RUN_SECRET || '').trim();
+    const hasValidSecret = Boolean(
+      configuredSecret && providedSecret && providedSecret === configuredSecret
+    );
+
+    let isAdminCaller = false;
+    if (!hasValidSecret) {
+      const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
+      if (user && user.role === 'superadmin') {
+        isAdminCaller = true;
+      }
+    }
+
+    if (!hasValidSecret && !isAdminCaller) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized: Missing or invalid BOT_RUN_SECRET header or Superadmin token.',
+      });
+    }
+
+    const geminiApiKey = String(process.env.GEMINI_API_KEY || '').trim();
+    const geminiModel = String(process.env.GEMINI_MODEL || 'gemini-3.5-flash').trim();
+    if (!geminiApiKey) {
+      return res.status(500).json({
+        success: false,
+        error: 'GEMINI_API_KEY is not configured in environment variables.',
+      });
+    }
+
+    const body = req.body || {};
+    const targetBotUid = body.botUid ? String(body.botUid).trim() : null;
+    const maxBotsPerCall = Math.min(12, Math.max(1, Number(body.maxBots || (targetBotUid ? 1 : 3))));
+    const postsPerBotReq = Math.min(2, Math.max(1, Number(body.postsPerBot || 1)));
+    const forceManual = Boolean(body.force || isAdminCaller);
+
+    const store = loadD1Store();
+    const enabledBots = (store.botAccounts || []).filter(
+      (b) => b.enabled === 1 && (!targetBotUid || b.uid === targetBotUid)
+    );
+    const selectedBots = enabledBots.slice(0, maxBotsPerCall);
+
+    const results: Array<{
+      botUid: string;
+      displayName: string;
+      subject: string;
+      postsCreated: number;
+      commentsCreated: number;
+      likesAdded: number;
+      status: string;
+      error?: string;
+    }> = [];
+
+    for (const botRow of selectedBots) {
+      const botMeta =
+        BOARDLY_BOT_ACCOUNTS.find((b) => b.uid === botRow.uid) || {
+          uid: botRow.uid,
+          placeholderName: botRow.username,
+          displayName: botRow.display_name,
+          email: `${botRow.username}@bots.boardly.cfd`,
+          subject: botRow.subject as any,
+          classLevel: '11' as const,
+          board: 'Federal' as const,
+          target: 'Federal & Entrance Exam Prep',
+          equippedAvatar: botRow.avatar,
+          bio: botRow.bio,
+          chapters: [botRow.subject],
+        };
+
+      const dailyLimit = Math.min(2, Math.max(1, Number(botRow.daily_post_limit || 2)));
+      const rateKey = `bot_daily:${botRow.uid}:${new Date().toISOString().slice(0, 10)}`;
+      if (!forceManual && !checkWriteRateLimit(rateKey, dailyLimit, 24 * 60 * 60 * 1000)) {
+        results.push({
+          botUid: botRow.uid,
+          displayName: botRow.display_name,
+          subject: botRow.subject,
+          postsCreated: 0,
+          commentsCreated: 0,
+          likesAdded: 0,
+          status: 'daily_limit_reached',
+        });
+        continue;
+      }
+
+      const postsToCreate = Math.min(postsPerBotReq, dailyLimit);
+      let postsCreated = 0;
+      let commentsCreated = 0;
+      let likesAdded = 0;
+      let lastError: string | undefined;
+
+      for (let i = 0; i < postsToCreate; i++) {
+        const generated = await generateVerifiedBotStudyPost({
+          bot: botMeta,
+          apiKey: geminiApiKey,
+          model: geminiModel,
+          postIndex: i,
+        });
+
+        if (!generated.post) {
+          lastError = generated.discardReason || 'Generation skipped';
+          continue;
+        }
+
+        const p = generated.post;
+        const maxCreated = store.posts.reduce(
+          (max, item) => Math.max(max, Number(item.created_at || 0)),
+          0
+        );
+        const now = Math.max(Date.now(), maxCreated + 1);
+        const postId = `post_bot_${now}_${crypto.randomUUID().slice(0, 6)}`;
+        const slug = buildSlug(postId, p.title);
+
+        store.posts.unshift({
+          id: postId,
+          slug,
+          type: p.type,
+          title: p.title,
+          description: p.description,
+          subject: botMeta.subject,
+          chapter: p.chapter,
+          target: botMeta.target,
+          class_level: botMeta.classLevel,
+          board: botMeta.board,
+          format: 'text',
+          tags_json: JSON.stringify(p.tags),
+          files_json: '[]',
+          is_anonymous: 0,
+          anonymous_alias: 'Anonymous Student',
+          author_uid: botRow.uid,
+          real_author_uid: botRow.uid,
+          author_name: botRow.display_name,
+          author_avatar: botRow.avatar,
+          author_frame: null,
+          author_equipped_avatar: botRow.avatar,
+          author_photo_url: null,
+          author_role: 'bot',
+          author_custom_role: `${botMeta.subject} Bot`,
+          status: 'published',
+          visibility: 'public',
+          is_hidden: 0,
+          is_pinned: 0,
+          is_featured: 0,
+          upvotes: 0,
+          downvotes: 0,
+          views: 1,
+          comment_count: 0,
+          save_count: 0,
+          shares_count: 0,
+          report_count: 0,
+          created_at: now,
+          updated_at: now,
+        });
+        postsCreated++;
+      }
+
+      // Like & comment on other users' posts (humans included, never its own)
+      const candidatePosts = store.posts
+        .filter(
+          (p) =>
+            p.is_hidden === 0 &&
+            p.author_uid !== botRow.uid &&
+            p.real_author_uid !== botRow.uid
+        )
+        .slice(0, 12);
+
+      for (const other of candidatePosts.slice(0, 2)) {
+        const alreadyLiked = store.likes.some(
+          (l) => l.post_id === other.id && l.user_uid === botRow.uid
+        );
+        if (!alreadyLiked) {
+          store.likes.push({
+            post_id: other.id,
+            user_uid: botRow.uid,
+            created_at: Date.now(),
+          });
+          other.upvotes = (other.upvotes || 0) + 1;
+          likesAdded++;
+        }
+      }
+
+      const commentTarget =
+        candidatePosts.find(
+          (p) => p.subject.toLowerCase() === botRow.subject.toLowerCase()
+        ) || candidatePosts[0];
+
+      if (commentTarget) {
+        const commentRes = await generateVerifiedBotComment({
+          bot: botMeta,
+          targetPost: {
+            title: commentTarget.title,
+            description: commentTarget.description,
+            subject: commentTarget.subject,
+          },
+          apiKey: geminiApiKey,
+          model: geminiModel,
+        });
+        if (commentRes.comment && commentRes.comment.text) {
+          const commentId = `cmt_bot_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`;
+          store.comments.push({
+            id: commentId,
+            post_id: commentTarget.id,
+            text: commentRes.comment.text,
+            is_anonymous: 0,
+            author_uid: botRow.uid,
+            real_author_uid: botRow.uid,
+            author_name: botRow.display_name,
+            author_avatar: botRow.avatar,
+            author_frame: null,
+            author_equipped_avatar: botRow.avatar,
+            author_photo_url: null,
+            author_role: 'bot',
+            author_custom_role: `${botMeta.subject} Bot`,
+            created_at: Date.now(),
+          });
+          commentTarget.comment_count = (commentTarget.comment_count || 0) + 1;
+          commentsCreated++;
+        }
+      }
+
+      botRow.posts_count = Number(botRow.posts_count || 0) + postsCreated;
+      botRow.comments_count = Number(botRow.comments_count || 0) + commentsCreated;
+      botRow.likes_count = Number(botRow.likes_count || 0) + likesAdded;
+      botRow.last_run_at = Date.now();
+      botRow.last_run_status =
+        postsCreated > 0
+          ? `Published ${postsCreated} post(s), ${commentsCreated} comment(s), ${likesAdded} like(s)`
+          : lastError || 'Completed';
+      botRow.updated_at = Date.now();
+
+      results.push({
+        botUid: botRow.uid,
+        displayName: botRow.display_name,
+        subject: botRow.subject,
+        postsCreated,
+        commentsCreated,
+        likesAdded,
+        status: postsCreated > 0 ? 'ok' : 'skipped',
+        error: lastError,
+      });
+    }
+
+    saveD1Store(store);
+
+    return res.status(200).json({
+      success: true,
+      ranAt: new Date().toISOString(),
+      botsProcessed: results.length,
+      results,
+    });
+  });
 }
 
 function escapeHtmlAttr(str: string): string {
@@ -2091,12 +2832,14 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
       (pathname.startsWith('/api/posts') ||
         pathname.startsWith('/api/r2') ||
         pathname.startsWith('/api/auth') ||
+        pathname.startsWith('/api/bots') ||
+        pathname.startsWith('/api/announcements') ||
         pathname.startsWith('/api/admin/users'))
     ) {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Bot-Run-Secret',
       });
       res.end();
       return;

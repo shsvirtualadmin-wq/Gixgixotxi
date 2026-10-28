@@ -64,6 +64,7 @@ export async function onRequest(context: {
   const jsonHeaders = {
     ...cors,
     'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
   };
 
   if (request.method === 'OPTIONS') {
@@ -386,7 +387,11 @@ export async function onRequest(context: {
     ).trim();
     const slug = buildSlug(id, title);
     const isAnon = Boolean(body.isAnonymous);
-    const now = Date.now();
+    const maxExistingCreated = memoryStore.posts.reduce(
+      (max, p) => Math.max(max, Number(p.created_at || 0)),
+      0
+    );
+    const now = Math.max(Date.now(), maxExistingCreated + 1);
     const files = Array.isArray(body.files) ? body.files.map(normalizeStoredFileEntry) : [];
     const tags = Array.isArray(body.tags) ? body.tags : [];
 

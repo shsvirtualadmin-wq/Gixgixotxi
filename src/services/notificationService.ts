@@ -17,10 +17,13 @@ import {
   type DocumentSnapshot,
   type Timestamp,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { SUPER_ADMIN_EMAIL, SUPER_ADMIN_EMAIL_SUPPORT, SUPER_ADMIN_UID } from '@/constants/superAdmin';
+import { DEFAULT_WELCOME_ANNOUNCEMENT } from '@/config/botsConfig';
 
 export type NotificationType = 'following' | 'announcement';
+
+export const WELCOME_ANNOUNCEMENT_ID = DEFAULT_WELCOME_ANNOUNCEMENT.id;
 
 export interface AppNotification {
   id: string;
@@ -29,6 +32,7 @@ export interface AppNotification {
   message: string;
   createdAt: Timestamp | Date | number | null;
   read: boolean;
+  isPinned?: boolean;
   link?: string;
   // Specific to following:
   authorId?: string;
@@ -44,10 +48,31 @@ export interface AnnouncementItem {
   id: string;
   title: string;
   message: string;
+  isPinned?: boolean;
   authorId: string;
   authorEmail: string;
   authorName: string;
-  createdAt: Timestamp | null;
+  createdAt: Timestamp | Date | number | null;
+}
+
+const unreadRefreshSubscribers = new Set<() => void>();
+
+export function triggerUnreadNotificationsRefresh(): void {
+  unreadRefreshSubscribers.forEach((cb) => {
+    try {
+      cb();
+    } catch {}
+  });
+}
+
+async function getOptionalBearerHeader(): Promise<Record<string, string>> {
+  try {
+    const token = await auth.currentUser?.getIdToken(false);
+    if (token) {
+      return { Authorization: `Bearer ${token}` };
+    }
+  } catch {}
+  return {};
 }
 
 /**
@@ -62,6 +87,212 @@ export function isUserSuperAdmin(user: { uid?: string; email?: string | null } |
     email === SUPER_ADMIN_EMAIL.toLowerCase() ||
     email === SUPER_ADMIN_EMAIL_SUPPORT.toLowerCase()
   );
+}
+
+/**
+ * Fetches the pinned "Welcome to Boardly" announcement from D1 (/api/announcements/welcome)
+ * with Firestore fallback.
+ */
+export async function fetchWelcomeAnnouncement(userId?: string): Promise<{
+  announcement: AnnouncementItem;
+  userStatus: { welcomed: boolean; read: boolean } | null;
+}> {
+  let d1Item: AnnouncementItem | null = null;
+  let userStatus: { welcomed: boolean; read: boolean } | null = null;
+
+  try {
+    const headers = await getOptionalBearerHeader();
+    const qs = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+    const resp = await fetch(`/api/announcements/welcome${qs}`, {
+      headers,
+      cache: 'no-store',
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data?.announcement) {
+        const a = data.announcement;
+        d1Item = {
+          id: a.id || WELCOME_ANNOUNCEMENT_ID,
+          title: a.title || DEFAULT_WELCOME_ANNOUNCEMENT.title,
+          message: a.message || DEFAULT_WELCOME_ANNOUNCEMENT.message,
+          isPinned: true,
+          authorId: a.authorId || DEFAULT_WELCOME_ANNOUNCEMENT.authorUid,
+          authorEmail: a.authorEmail || DEFAULT_WELCOME_ANNOUNCEMENT.authorEmail,
+          authorName: a.authorName || DEFAULT_WELCOME_ANNOUNCEMENT.authorName,
+          createdAt: a.updatedAtMs || a.createdAtMs || Date.now(),
+        };
+      }
+      if (data?.userStatus) {
+        userStatus = {
+          welcomed: Boolean(data.userStatus.welcomed),
+          read: Boolean(data.userStatus.read),
+        };
+      }
+    }
+  } catch {}
+
+  try {
+    const snap = await getDoc(doc(db, 'announcements', WELCOME_ANNOUNCEMENT_ID));
+    if (snap.exists()) {
+      const data = snap.data();
+      d1Item = {
+        id: WELCOME_ANNOUNCEMENT_ID,
+        title: data.title || d1Item?.title || DEFAULT_WELCOME_ANNOUNCEMENT.title,
+        message: data.message || d1Item?.message || DEFAULT_WELCOME_ANNOUNCEMENT.message,
+        isPinned: true,
+        authorId: data.authorId || d1Item?.authorId || DEFAULT_WELCOME_ANNOUNCEMENT.authorUid,
+        authorEmail: data.authorEmail || d1Item?.authorEmail || DEFAULT_WELCOME_ANNOUNCEMENT.authorEmail,
+        authorName: data.authorName || d1Item?.authorName || 'Superadmin',
+        createdAt: data.updatedAt || data.createdAt || d1Item?.createdAt || Date.now(),
+      };
+    }
+  } catch {}
+
+  const fallback: AnnouncementItem = d1Item || {
+    id: WELCOME_ANNOUNCEMENT_ID,
+    title: DEFAULT_WELCOME_ANNOUNCEMENT.title,
+    message: DEFAULT_WELCOME_ANNOUNCEMENT.message,
+    isPinned: true,
+    authorId: DEFAULT_WELCOME_ANNOUNCEMENT.authorUid,
+    authorEmail: DEFAULT_WELCOME_ANNOUNCEMENT.authorEmail,
+    authorName: DEFAULT_WELCOME_ANNOUNCEMENT.authorName,
+    createdAt: Date.now(),
+  };
+
+  return { announcement: fallback, userStatus };
+}
+
+/**
+ * Superadmin: Update the pinned "Welcome to Boardly" announcement in both D1 and Firestore.
+ */
+export async function updateWelcomeAnnouncement(params: {
+  title: string;
+  message: string;
+  adminUser: { uid: string; email?: string | null; displayName?: string | null };
+}): Promise<AnnouncementItem> {
+  const { title, message, adminUser } = params;
+  if (!isUserSuperAdmin(adminUser)) {
+    throw new Error('Unauthorized: Only the superadmin can edit the Welcome announcement.');
+  }
+
+  const cleanTitle = title.trim();
+  const cleanMessage = message.trim();
+  if (!cleanTitle || !cleanMessage) {
+    throw new Error('Both title and message are required.');
+  }
+
+  const headers = await getOptionalBearerHeader();
+  await fetch('/api/announcements/welcome', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify({
+      title: cleanTitle,
+      message: cleanMessage,
+    }),
+  }).catch(() => {});
+
+  try {
+    await setDoc(
+      doc(db, 'announcements', WELCOME_ANNOUNCEMENT_ID),
+      {
+        title: cleanTitle,
+        message: cleanMessage,
+        isPinned: true,
+        authorId: adminUser.uid,
+        authorEmail: adminUser.email || '',
+        authorName: adminUser.displayName || 'Superadmin',
+        updatedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch {}
+
+  invalidateAnnouncementsCache();
+  triggerUnreadNotificationsRefresh();
+
+  return {
+    id: WELCOME_ANNOUNCEMENT_ID,
+    title: cleanTitle,
+    message: cleanMessage,
+    isPinned: true,
+    authorId: adminUser.uid,
+    authorEmail: adminUser.email || '',
+    authorName: adminUser.displayName || 'Superadmin',
+    createdAt: Date.now(),
+  };
+}
+
+const ensuredWelcomeSessionSet = new Set<string>();
+
+/**
+ * Ensures every user (both newly registered and existing users who have not seen it)
+ * receives the pinned "Welcome to Boardly" announcement once as an unread notification.
+ * Stores `welcomed = true` on `users/{uid}` and in D1 `user_welcome_status` so it is never duplicated.
+ */
+export async function ensureWelcomeNotificationForUser(userId: string): Promise<void> {
+  if (!userId || ensuredWelcomeSessionSet.has(userId)) return;
+  ensuredWelcomeSessionSet.add(userId);
+
+  try {
+    const headers = await getOptionalBearerHeader();
+    const d1Resp = await fetch('/api/announcements/welcome/ensure', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body: JSON.stringify({ userId }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+
+    const welcomeTitle = d1Resp?.announcement?.title || DEFAULT_WELCOME_ANNOUNCEMENT.title;
+    const welcomeMessage = d1Resp?.announcement?.message || DEFAULT_WELCOME_ANNOUNCEMENT.message;
+
+    // Also persist welcomed flag on Firestore user profile so it is never duplicated across devices
+    try {
+      const userRef = doc(db, 'users', userId);
+      const userSnap = await getDoc(userRef);
+      const alreadyWelcomedFirestore = userSnap.exists() && Boolean(userSnap.data()?.welcomed);
+
+      if (!alreadyWelcomedFirestore) {
+        await setDoc(
+          userRef,
+          {
+            welcomed: true,
+            welcomedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+    } catch {}
+
+    // Ensure welcome announcement doc exists in Firestore if possible
+    try {
+      const welcomeDocRef = doc(db, 'announcements', WELCOME_ANNOUNCEMENT_ID);
+      const welcomeSnap = await getDoc(welcomeDocRef);
+      if (!welcomeSnap.exists()) {
+        await setDoc(welcomeDocRef, {
+          title: welcomeTitle,
+          message: welcomeMessage,
+          isPinned: true,
+          authorId: DEFAULT_WELCOME_ANNOUNCEMENT.authorUid,
+          authorEmail: DEFAULT_WELCOME_ANNOUNCEMENT.authorEmail,
+          authorName: DEFAULT_WELCOME_ANNOUNCEMENT.authorName,
+          createdAt: serverTimestamp(),
+        });
+      }
+    } catch {}
+
+    invalidateAnnouncementsCache();
+    triggerUnreadNotificationsRefresh();
+  } catch (err) {
+    console.warn('[notificationService] ensureWelcomeNotificationForUser notice:', err);
+  }
 }
 
 /**
@@ -91,6 +322,7 @@ export async function createAnnouncement(params: {
   const docRef = await addDoc(collection(db, 'announcements'), {
     title: cleanTitle,
     message: cleanMessage,
+    isPinned: false,
     authorId: adminUser.uid,
     authorEmail: adminUser.email || '',
     authorName: adminUser.displayName || 'Superadmin',
@@ -98,6 +330,7 @@ export async function createAnnouncement(params: {
   });
 
   invalidateAnnouncementsCache();
+  triggerUnreadNotificationsRefresh();
   return docRef.id;
 }
 
@@ -114,6 +347,7 @@ export async function deleteAnnouncement(
 
   await deleteDoc(doc(db, 'announcements', announcementId));
   invalidateAnnouncementsCache();
+  triggerUnreadNotificationsRefresh();
 }
 
 let cachedAnnouncements: { data: AnnouncementItem[]; expires: number } | null = null;
@@ -123,8 +357,7 @@ export function invalidateAnnouncementsCache() {
 }
 
 /**
- * Fetches all global announcements ordered newest first.
- * Cached in-memory for 2 minutes to prevent repeated Firestore reads on page switches.
+ * Fetches all global announcements ordered with pinned "Welcome to Boardly" first, then newest first.
  */
 export async function fetchAnnouncements(limitCount = 50): Promise<AnnouncementItem[]> {
   if (cachedAnnouncements && Date.now() < cachedAnnouncements.expires) {
@@ -132,29 +365,49 @@ export async function fetchAnnouncements(limitCount = 50): Promise<AnnouncementI
   }
 
   try {
-    const q = query(
-      collection(db, 'announcements'),
-      orderBy('createdAt', 'desc'),
-      limit(limitCount)
-    );
-    const snap = await getDocs(q);
-    const list = snap.docs.map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        title: data.title || '',
-        message: data.message || '',
-        authorId: data.authorId || '',
-        authorEmail: data.authorEmail || '',
-        authorName: data.authorName || 'Superadmin',
-        createdAt: data.createdAt || null,
-      };
-    });
-    cachedAnnouncements = { data: list, expires: Date.now() + 120000 };
-    return list;
+    const [{ announcement: welcomeItem }, snap] = await Promise.all([
+      fetchWelcomeAnnouncement(),
+      getDocs(
+        query(collection(db, 'announcements'), orderBy('createdAt', 'desc'), limit(limitCount))
+      ).catch(() => null),
+    ]);
+
+    const firestoreItems: AnnouncementItem[] = snap
+      ? snap.docs
+          .filter((d) => d.id !== WELCOME_ANNOUNCEMENT_ID)
+          .map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              title: data.title || '',
+              message: data.message || '',
+              isPinned: Boolean(data.isPinned),
+              authorId: data.authorId || '',
+              authorEmail: data.authorEmail || '',
+              authorName: data.authorName || 'Superadmin',
+              createdAt: data.createdAt || null,
+            };
+          })
+      : [];
+
+    const list: AnnouncementItem[] = [{ ...welcomeItem, isPinned: true }, ...firestoreItems];
+    cachedAnnouncements = { data: list, expires: Date.now() + 60000 };
+    return list.slice(0, limitCount);
   } catch (err: unknown) {
     console.warn('[notificationService] Error fetching announcements:', err);
-    return cachedAnnouncements?.data ? cachedAnnouncements.data.slice(0, limitCount) : [];
+    const fallbackWelcome: AnnouncementItem = {
+      id: WELCOME_ANNOUNCEMENT_ID,
+      title: DEFAULT_WELCOME_ANNOUNCEMENT.title,
+      message: DEFAULT_WELCOME_ANNOUNCEMENT.message,
+      isPinned: true,
+      authorId: DEFAULT_WELCOME_ANNOUNCEMENT.authorUid,
+      authorEmail: DEFAULT_WELCOME_ANNOUNCEMENT.authorEmail,
+      authorName: DEFAULT_WELCOME_ANNOUNCEMENT.authorName,
+      createdAt: Date.now(),
+    };
+    return cachedAnnouncements?.data
+      ? cachedAnnouncements.data.slice(0, limitCount)
+      : [fallbackWelcome];
   }
 }
 
@@ -170,7 +423,6 @@ export async function notifyFollowersOfPost(params: {
   postTitle: string;
   isAnonymous?: boolean;
 }): Promise<void> {
-  // CRITICAL PRIVACY CHECK: If anonymous, NEVER notify
   if (params.isAnonymous) {
     return;
   }
@@ -198,7 +450,6 @@ export async function notifyFollowersOfPost(params: {
         createdAt: serverTimestamp(),
       });
       count++;
-      // Firestore batch limit is 500
       if (count >= 400) break;
     }
 
@@ -215,13 +466,25 @@ export async function notifyFollowersOfPost(params: {
  */
 export async function fetchReadAnnouncementIds(userId: string): Promise<Set<string>> {
   if (!userId) return new Set();
+  const readSet = new Set<string>();
+
   try {
-    const snap = await getDocs(collection(db, 'users', userId, 'readAnnouncements'));
-    return new Set(snap.docs.map((d) => d.id));
+    const [snap, welcomeRes] = await Promise.all([
+      getDocs(collection(db, 'users', userId, 'readAnnouncements')).catch(() => null),
+      fetchWelcomeAnnouncement(userId).catch(() => null),
+    ]);
+
+    if (snap) {
+      snap.docs.forEach((d) => readSet.add(d.id));
+    }
+    if (welcomeRes?.userStatus?.read) {
+      readSet.add(WELCOME_ANNOUNCEMENT_ID);
+    }
   } catch (err: unknown) {
     console.warn('[notificationService] Failed to fetch read announcements:', err);
-    return new Set();
   }
+
+  return readSet;
 }
 
 /**
@@ -236,6 +499,8 @@ export async function markNotificationAsRead(notificationId: string): Promise<vo
     });
   } catch (err: unknown) {
     console.warn('[notificationService] Error marking notification as read:', err);
+  } finally {
+    triggerUnreadNotificationsRefresh();
   }
 }
 
@@ -245,11 +510,25 @@ export async function markNotificationAsRead(notificationId: string): Promise<vo
 export async function markAnnouncementAsRead(userId: string, announcementId: string): Promise<void> {
   if (!userId || !announcementId) return;
   try {
+    if (announcementId === WELCOME_ANNOUNCEMENT_ID) {
+      const headers = await getOptionalBearerHeader();
+      await fetch('/api/announcements/welcome/read', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...headers,
+        },
+        body: JSON.stringify({ userId }),
+      }).catch(() => {});
+    }
+
     await setDoc(doc(db, 'users', userId, 'readAnnouncements', announcementId), {
       readAt: serverTimestamp(),
     });
   } catch (err: unknown) {
     console.warn('[notificationService] Error marking announcement as read:', err);
+  } finally {
+    triggerUnreadNotificationsRefresh();
   }
 }
 
@@ -264,9 +543,18 @@ export async function markAllNotificationsAsRead(
   if (!userId) return;
 
   try {
+    const headers = await getOptionalBearerHeader();
+    void fetch('/api/announcements/welcome/read', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body: JSON.stringify({ userId }),
+    }).catch(() => {});
+
     const batch = writeBatch(db);
 
-    // 1. Mark unread user notifications
     userNotifications
       .filter((n) => !n.read && n.type === 'following')
       .slice(0, 200)
@@ -277,7 +565,6 @@ export async function markAllNotificationsAsRead(
         });
       });
 
-    // 2. Mark announcements as read in user's readAnnouncements subcollection
     announcements.slice(0, 100).forEach((a) => {
       batch.set(
         doc(db, 'users', userId, 'readAnnouncements', a.id),
@@ -289,6 +576,8 @@ export async function markAllNotificationsAsRead(
     await batch.commit();
   } catch (err: unknown) {
     console.warn('[notificationService] Error marking all as read:', err);
+  } finally {
+    triggerUnreadNotificationsRefresh();
   }
 }
 
@@ -328,21 +617,24 @@ export async function fetchUserNotificationsPage(params: {
     }
 
     const snap = await getDocs(q);
-    const notifications: AppNotification[] = snap.docs.map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        type: (data.type as NotificationType) || 'following',
-        title: data.title || '',
-        message: data.message || '',
-        createdAt: data.createdAt || null,
-        read: Boolean(data.read),
-        link: data.link || '/dashboard/commons',
-        authorId: data.authorId,
-        authorName: data.authorName,
-        postId: data.postId,
-      };
-    });
+    const notifications: AppNotification[] = snap.docs
+      .filter((d) => d.data()?.announcementId !== WELCOME_ANNOUNCEMENT_ID)
+      .map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          type: (data.type as NotificationType) || 'following',
+          title: data.title || '',
+          message: data.message || '',
+          createdAt: data.createdAt || null,
+          read: Boolean(data.read),
+          isPinned: Boolean(data.isPinned),
+          link: data.link || '/dashboard/commons',
+          authorId: data.authorId,
+          authorName: data.authorName,
+          postId: data.postId,
+        };
+      });
 
     const newLastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
     const hasMore = snap.docs.length === pageSize;
@@ -355,7 +647,7 @@ export async function fetchUserNotificationsPage(params: {
 }
 
 /**
- * Real-time listener for the unread notifications count (for bottom nav bell badge).
+ * Listener for the unread notifications count (for bottom nav and header bell badge).
  */
 export function subscribeToUnreadNotifications(
   userId: string,
@@ -380,16 +672,18 @@ export function subscribeToUnreadNotifications(
     limit(50)
   );
 
-  // Poll notifications and announcements every 60s using getDocs (zero persistent onSnapshot listeners)
   const checkAllUnread = async () => {
     try {
+      await ensureWelcomeNotificationForUser(userId);
       const [notifSnap, announcements, readSet] = await Promise.all([
         getDocs(qNotif).catch(() => null),
         fetchAnnouncements(20),
         fetchReadAnnouncementIds(userId),
       ]);
       if (notifSnap) {
-        unreadNotificationsCount = notifSnap.size;
+        unreadNotificationsCount = notifSnap.docs.filter(
+          (d) => d.data()?.announcementId !== WELCOME_ANNOUNCEMENT_ID
+        ).length;
       }
       unreadAnnouncementsCount = announcements.filter((a) => !readSet.has(a.id)).length;
       updateGrandTotal();
@@ -399,9 +693,11 @@ export function subscribeToUnreadNotifications(
   };
 
   void checkAllUnread();
-  const timer = setInterval(checkAllUnread, 60000);
+  unreadRefreshSubscribers.add(checkAllUnread);
+  const timer = setInterval(checkAllUnread, 45000);
 
   return () => {
+    unreadRefreshSubscribers.delete(checkAllUnread);
     clearInterval(timer);
   };
 }

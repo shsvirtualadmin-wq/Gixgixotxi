@@ -219,6 +219,7 @@ export async function fetchAdminAmbassadorsList(): Promise<AdminAmbassadorItem[]
     ambSnap.docs.forEach((d) => {
       const u = d.data() as UserProfile;
       const uid = d.id;
+      if (uid.startsWith('bot_') || (u as any).role === 'bot') return;
       const shortId = u.shortId || uid.slice(0, 5);
       const brought = referralsByAmbassador[uid] || referralsByAmbassador[shortId] || [];
 
@@ -432,7 +433,9 @@ export async function fetchUsersPaginated(options?: {
       ),
     ]);
 
-    let users = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
+    let users = snap.docs
+      .map((d) => ({ uid: d.id, ...d.data() } as UserProfile))
+      .filter((u) => !u.uid.startsWith('bot_') && (u as any).role !== 'bot');
     if (options?.searchQuery) {
       const qLower = options.searchQuery.toLowerCase().trim();
       users = users.filter((u) =>

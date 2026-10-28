@@ -193,6 +193,9 @@ const AdminAnnouncementsPage = lazyWithRetry(() =>
 const AdminCommonsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminCommonsPage').then(m => ({ default: m.AdminCommonsPage }))
 );
+const AdminBotsPage = lazyWithRetry(() =>
+  import('./pages/admin/AdminBotsPage').then(m => ({ default: m.AdminBotsPage }))
+);
 const AdminPricingPage = lazyWithRetry(() =>
   import('./pages/admin/AdminPricingPage').then(m => ({ default: m.AdminPricingPage }))
 );
@@ -246,6 +249,7 @@ function AppInner() {
           <Route path="payments" element={<AdminPaymentsPage />} />
           <Route path="kobans" element={<AdminKobansPage />} />
           <Route path="announcements" element={<AdminAnnouncementsPage />} />
+          <Route path="bots" element={<AdminBotsPage />} />
           <Route path="captains" element={<AdminCaptainsPage />} />
           <Route path="audit-logs" element={<AdminAuditLogsPage />} />
           <Route path="crews" element={<AdminCrewsPage />} />

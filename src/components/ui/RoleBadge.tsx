@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, GraduationCap, BookOpen, Heart, User } from 'lucide-react';
+import { Shield, GraduationCap, BookOpen, Heart, User, Bot } from 'lucide-react';
 
 export interface RoleBadgeProps {
   role?: string | null;
@@ -20,6 +20,9 @@ function formatRoleName(role?: string | null, customRole?: string | null): strin
   if (lower === 'superadmin' || lower === 'super admin' || lower === 'admin') {
     return 'Super Admin';
   }
+  if (lower === 'bot') {
+    return 'Bot';
+  }
   if (lower === 'student') return 'Student';
   if (lower === 'teacher') return 'Teacher';
   if (lower === 'parent') return 'Parent';
@@ -34,9 +37,8 @@ function formatRoleName(role?: string | null, customRole?: string | null): strin
 /**
  * Standardized RoleBadge across Profile, Commons posts, comments, and chats.
  * - Superadmin: Solid deep red pill (#D71921), white text, small shield icon.
+ * - Bot: Distinct visible Bot badge with Bot icon.
  * - Other roles: Calm neutral style (light grey in light mode, dark grey in dark mode).
- * - Clean sans-serif font, no monospace, medium weight.
- * - WCAG AA compliant contrast in both themes.
  */
 export const RoleBadge: React.FC<RoleBadgeProps> = ({
   role,
@@ -46,8 +48,15 @@ export const RoleBadge: React.FC<RoleBadgeProps> = ({
   className = '',
 }) => {
   const lower = (role || '').toLowerCase().trim();
-  const isSuper = isSuperAdmin || lower === 'superadmin' || lower === 'super admin' || lower === 'admin';
-  const displayName = isSuper ? 'Super Admin' : formatRoleName(role, customRole);
+  const lowerCustom = (customRole || '').toLowerCase().trim();
+  const isSuper =
+    isSuperAdmin || lower === 'superadmin' || lower === 'super admin' || lower === 'admin';
+  const isBot = lower === 'bot' || lowerCustom.includes('bot');
+  const displayName = isSuper
+    ? 'Super Admin'
+    : isBot
+    ? 'Bot'
+    : formatRoleName(role, customRole);
 
   const isSmall = size === 'sm';
 
@@ -73,8 +82,32 @@ export const RoleBadge: React.FC<RoleBadgeProps> = ({
     );
   }
 
+  // Bot Badge: Distinct visible Bot pill
+  if (isBot) {
+    return (
+      <span
+        className={`inline-flex items-center gap-1.5 rounded-full font-sans font-semibold select-none shrink-0 border ${
+          isSmall
+            ? 'h-[20px] px-2 text-[11px]'
+            : 'h-[24px] px-2.5 text-[12.5px]'
+        } bg-sky-500/15 text-sky-400 border-sky-500/40 ${className}`}
+        title={customRole || 'Automated Study Bot'}
+      >
+        <Bot size={isSmall ? 11 : 13} className="shrink-0 text-sky-400" />
+        <span className="leading-none">Bot</span>
+      </span>
+    );
+  }
+
   // Determine icon for neutral roles
-  const roleType = lower === 'teacher' ? 'teacher' : lower === 'parent' ? 'parent' : lower === 'other' || customRole ? 'other' : 'student';
+  const roleType =
+    lower === 'teacher'
+      ? 'teacher'
+      : lower === 'parent'
+      ? 'parent'
+      : lower === 'other' || customRole
+      ? 'other'
+      : 'student';
 
   const renderIcon = () => {
     const iconSize = isSmall ? 10 : 12;

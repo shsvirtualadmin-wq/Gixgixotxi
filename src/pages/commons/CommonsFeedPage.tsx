@@ -12,6 +12,7 @@ import {
   EyeOff,
   Compass,
   FolderOpen,
+  Bell,
 } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useAuth } from '@/contexts/AuthContext';
@@ -32,6 +33,7 @@ import type { CommonsPost, CommonsPostType } from '@/types/commons';
 import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { subscribeToUnreadNotifications } from '@/services/notificationService';
 
 const SUBJECT_FILTERS = [
   { slug: 'all', label: 'All Subjects' },
@@ -64,6 +66,19 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
   const [lastDoc, setLastDoc] = useState<any>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [backendMode, setBackendMode] = useState<'cloudflare-d1-r2' | 'preview-demo' | null>(null);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+  const recentCreatedPostRef = useRef<CommonsPost | null>(null);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setUnreadNotifCount(0);
+      return;
+    }
+    const unsubscribe = subscribeToUnreadNotifications(user.uid, (count) => {
+      setUnreadNotifCount(count);
+    });
+    return () => unsubscribe();
+  }, [user?.uid]);
 
   // Modals & Composer Config
   const [wizardConfig, setWizardConfig] = useState<{
@@ -121,6 +136,13 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       let combined = res.posts;
       if (targetPost && !combined.some((p) => p.id === targetPost!.id)) {
         combined = [targetPost, ...combined];
+      }
+      if (
+        recentCreatedPostRef.current &&
+        feedTab !== 'following' &&
+        !combined.some((p) => p.id === recentCreatedPostRef.current!.id)
+      ) {
+        combined = [recentCreatedPostRef.current, ...combined];
       }
 
       setPosts(sortCommonsPosts(combined));
@@ -258,10 +280,19 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
 
   const handlePostCreated = useCallback(
     (_postId: string, optimisticPost?: CommonsPost) => {
+      setFeedTab('all');
+      setSubjectFilter('all');
+      setClassFilter('all');
       if (optimisticPost) {
-        setPosts((prev) => [optimisticPost, ...prev.filter((p) => p.id !== optimisticPost.id)]);
+        recentCreatedPostRef.current = optimisticPost;
+        setPosts((prev) =>
+          sortCommonsPosts([
+            optimisticPost,
+            ...prev.filter((p) => p.id !== optimisticPost.id),
+          ])
+        );
       }
-      // Sync with Firestore in background
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       void loadPosts();
     },
     [loadPosts]
@@ -356,6 +387,22 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           >
             <Shield size={18} />
           </Link>
+
+          {user && (
+            <Link
+              to="/dashboard/notifications"
+              className="relative p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
+              title="Notifications"
+              aria-label="Notifications"
+            >
+              <Bell size={18} />
+              {unreadNotifCount > 0 && (
+                <span className="absolute top-1 right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-[#D71921] text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                  {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
+                </span>
+              )}
+            </Link>
+          )}
 
           <button
             onClick={() => loadPosts()}

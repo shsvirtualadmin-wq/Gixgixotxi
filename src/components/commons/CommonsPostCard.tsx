@@ -385,7 +385,11 @@ export const CommonsPostCard = memo(function CommonsPostCard({
                     {sanitizeStudentDisplayName(post.authorName, post.authorUid)}
                   </span>
                   <RoleBadge
-                    role={(post as any).authorRole || 'Student'}
+                    role={
+                      String(post.authorUid || '').startsWith('bot_')
+                        ? 'bot'
+                        : (post as any).authorRole || 'Student'
+                    }
                     customRole={(post as any).authorCustomRole}
                     isSuperAdmin={isSuperAdminAuthor}
                     size="sm"

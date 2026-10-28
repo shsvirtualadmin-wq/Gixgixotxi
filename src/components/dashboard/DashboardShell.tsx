@@ -7,6 +7,7 @@ import { DashboardErrorBoundary } from './DashboardErrorBoundary';
 import { RoleSelectionPromptModal } from '@/components/profile/RoleSelectionPromptModal';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { useEffect, useState } from 'react';
+import { ensureWelcomeNotificationForUser } from '@/services/notificationService';
 
 export function DashboardShell() {
   const { user, profileLoading } = useAuth();
@@ -20,6 +21,12 @@ export function DashboardShell() {
     location.pathname.startsWith('/commons') ||
     location.pathname === '/messages' ||
     location.pathname === '/saved';
+
+  useEffect(() => {
+    if (user?.uid) {
+      void ensureWelcomeNotificationForUser(user.uid);
+    }
+  }, [user?.uid]);
 
   useEffect(() => {
     // 2.5s grace period so Firebase Auth restores without flashing empty/redirect
