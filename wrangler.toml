@@ -1,5 +1,5 @@
-name = "boardly-posts-worker"
-main = "cloudflare/worker.ts"
+name = "boardly"
+pages_build_output_dir = "dist"
 compatibility_date = "2025-02-01"
 
 [vars]
@@ -9,19 +9,15 @@ ALLOWED_ORIGIN = "https://boardly.cfd"
 SUPERADMIN_UIDS = "A5YMRimdHRcmeDWutxtUGt2e4hf2"
 SUPERADMIN_EMAILS = "shsvirtualadmin@gmail.com,support@boardly.cfd"
 
-[[d1_databases]]
-binding = "DB"
-database_name = "boardly-posts-db"
-database_id = "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID"
+# Uncomment after creating your D1 database (`npx wrangler d1 create boardly-posts-db`)
+# and R2 bucket (`boardly-commons-media`) in the Cloudflare dashboard:
+#
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "boardly-posts-db"
+# database_id = "<YOUR_CLOUDFLARE_D1_DATABASE_ID>"
+#
+# [[r2_buckets]]
+# binding = "R2_BUCKET"
+# bucket_name = "boardly-commons-media"
 
-[[r2_buckets]]
-binding = "R2_BUCKET"
-bucket_name = "boardly-commons-media"
-
-# Route bindings when deployed onto boardly.cfd zone in Cloudflare:
-# routes = [
-#   { pattern = "boardly.cfd/api/posts*", zone_name = "boardly.cfd" },
-#   { pattern = "boardly.cfd/commons/post/*", zone_name = "boardly.cfd" },
-#   { pattern = "boardly.cfd/material/*", zone_name = "boardly.cfd" },
-#   { pattern = "boardly.cfd/sitemap.xml", zone_name = "boardly.cfd" }
-# ]

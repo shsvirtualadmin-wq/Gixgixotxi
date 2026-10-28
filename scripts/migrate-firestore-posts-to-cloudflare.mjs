@@ -41,9 +41,22 @@ const r2AccessKeyId = process.env.R2_ACCESS_KEY_ID || '';
 const r2SecretAccessKey = process.env.R2_SECRET_ACCESS_KEY || '';
 const r2BucketName = process.env.R2_BUCKET_NAME || 'boardly-commons-media';
 
-const firebaseConfigJson = JSON.parse(
-  fs.readFileSync(path.resolve('firebase-applet-config.json'), 'utf8')
-);
+const firebaseConfigPath = path.resolve('firebase-applet-config.json');
+const firebaseConfigJson = fs.existsSync(firebaseConfigPath)
+  ? JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf8'))
+  : {
+      projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'gen-lang-client-0365509316',
+      appId: process.env.VITE_FIREBASE_APP_ID || '1:556734245207:web:4797f3915b424209b03612',
+      apiKey: process.env.VITE_FIREBASE_API_KEY || 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs',
+      authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || 'auth.boardly.cfd',
+      firestoreDatabaseId:
+        process.env.VITE_FIREBASE_DATABASE_ID ||
+        'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712',
+      storageBucket:
+        process.env.VITE_FIREBASE_STORAGE_BUCKET ||
+        'gen-lang-client-0365509316.firebasestorage.app',
+      messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '556734245207',
+    };
 
 const app = initializeApp(firebaseConfigJson);
 const auth = getAuth(app);
