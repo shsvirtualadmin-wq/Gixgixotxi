@@ -63,6 +63,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
   const [hasMore, setHasMore] = useState(false);
   const [lastDoc, setLastDoc] = useState<any>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [backendMode, setBackendMode] = useState<'cloudflare-d1-r2' | 'preview-demo' | null>(null);
 
   // Modals & Composer Config
   const [wizardConfig, setWizardConfig] = useState<{
@@ -125,6 +126,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       setPosts(sortCommonsPosts(combined));
       setLastDoc(res.lastDoc);
       setHasMore(res.hasMore);
+      if (res.backendMode) setBackendMode(res.backendMode);
     } catch (err: unknown) {
       console.warn('[CommonsFeedPage] fetch error:', err);
       const msg =
@@ -143,12 +145,12 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
   }, [loadPosts]);
 
   const handleLoadMore = useCallback(async () => {
-    if (!lastDoc || loadingMore) return;
+    if (lastDoc === null || lastDoc === undefined || loadingMore) return;
     setLoadingMore(true);
     try {
       const res = await fetchCommonsPosts({
         feedTab: feedTab === 'following' ? 'following' : 'all',
-        lastVisibleDoc: lastDoc,
+        lastDoc,
         pageSize: 15,
         currentUid: user?.uid,
       });
@@ -453,6 +455,22 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           </button>
         </div>
       </div>
+
+      {backendMode === 'preview-demo' && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-200 flex items-center justify-between gap-2">
+          <span className="font-semibold">
+            Demo Mode (Preview Store) — Bind Cloudflare D1 (<code className="font-mono">DB</code>) &amp; R2 (<code className="font-mono">R2_BUCKET</code>) in Cloudflare Pages to use live cloud storage.
+          </span>
+          <a
+            href="/api/health"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline font-bold shrink-0 hover:text-white"
+          >
+            Check /api/health
+          </a>
+        </div>
+      )}
 
       {/* ── Subject & Class Filters ── */}
       <div className="flex flex-wrap items-center gap-1.5 pt-1">

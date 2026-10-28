@@ -28,7 +28,16 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
 
     async function resolveSource() {
       const rawUrl = file?.url?.trim() || '';
-      if (!rawUrl) {
+      const r2Key = file?.r2Key?.trim() || '';
+
+      if (r2Key && r2Key.startsWith('posts/')) {
+        if (!isCancelled) {
+          setResolvedUrl(`/api/posts/file?key=${encodeURIComponent(r2Key)}`);
+        }
+        return;
+      }
+
+      if (!rawUrl && !r2Key) {
         if (!isCancelled) {
           setHasError(true);
           setIsLoading(false);
@@ -37,6 +46,8 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
       }
 
       if (
+        rawUrl.startsWith('/api/posts/file') ||
+        rawUrl.startsWith('/api/posts/download') ||
         rawUrl.startsWith('/api/r2/') ||
         rawUrl.startsWith('/api/commons/files/') ||
         rawUrl.startsWith('https://') ||
@@ -50,6 +61,13 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
         return;
       }
 
+      if (rawUrl.startsWith('posts/')) {
+        if (!isCancelled) {
+          setResolvedUrl(`/api/posts/file?key=${encodeURIComponent(rawUrl)}`);
+        }
+        return;
+      }
+
       if (rawUrl.startsWith('commons/')) {
         if (!isCancelled) {
           setResolvedUrl(`${R2_PUBLIC_BUCKET_URL}/${rawUrl}`);
@@ -57,7 +75,7 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
         return;
       }
 
-      const hydrated = await resolveCommonsAttachmentUrl(rawUrl).catch(() => '');
+      const hydrated = await resolveCommonsAttachmentUrl(rawUrl, r2Key).catch(() => '');
       if (!isCancelled) {
         if (hydrated) {
           setResolvedUrl(hydrated);

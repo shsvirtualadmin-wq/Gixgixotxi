@@ -230,25 +230,18 @@ export const PublicPostDetailPage: React.FC = () => {
 
   const handleDocumentDownload = async (
     e: React.MouseEvent,
-    file: { name?: string; url?: string }
+    file: { name?: string; url?: string; r2Key?: string; downloadUrl?: string }
   ) => {
-    const rawUrl = (file.url || '').trim();
-    if (!rawUrl.startsWith('firestore://')) return;
     e.preventDefault();
+    if (!user) {
+      requireAuth('download this study material');
+      return;
+    }
     try {
-      const resolvedUrl = await resolveCommonsAttachmentUrl(rawUrl);
-      if (resolvedUrl) {
-        const a = document.createElement('a');
-        a.href = resolvedUrl;
-        a.download = file.name || 'resource';
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
+      const { downloadCommonsAttachment } = await import('@/services/commonsUploadService');
+      await downloadCommonsAttachment(file);
     } catch (err) {
-      console.warn('[PublicPostDetailPage] attachment download resolve error:', err);
+      console.error('[PublicPostDetailPage] attachment download error:', err);
     }
   };
 

@@ -158,7 +158,19 @@ export async function checkPostingRateLimit(_uid: string): Promise<{
 }
 
 export async function createCommonsPost(params: {
-  author: {
+  postId?: string;
+  author?: {
+    uid: string;
+    email?: string | null;
+    displayName?: string | null;
+    photoURL?: string | null;
+    equippedAvatar?: string | null;
+    frame?: string | null;
+    avatarUrl?: string | null;
+    role?: string | null;
+    customRole?: string | null;
+  };
+  currentUser?: {
     uid: string;
     email?: string | null;
     displayName?: string | null;
@@ -172,18 +184,28 @@ export async function createCommonsPost(params: {
   type: CommonsPostType;
   title: string;
   description: string;
-  subject: string;
-  chapter: string;
-  target: string;
+  subject?: string;
+  chapter?: string;
+  target?: string;
   tags: string[];
   files: CommonsFileAttachment[];
   isAnonymous: boolean;
 }): Promise<{ postId: string; post: CommonsPost }> {
-  const { author, isAnonymous } = params;
+  const author = params.author || params.currentUser || {
+    uid: auth.currentUser?.uid || '',
+    email: auth.currentUser?.email || null,
+    displayName: auth.currentUser?.displayName || 'Student',
+    photoURL: auth.currentUser?.photoURL || null,
+  };
+  const { isAnonymous } = params;
+
+  if (params.files.length > 5) {
+    throw new Error('Maximum 5 files are allowed per post.');
+  }
 
   for (const f of params.files) {
     if (isExecutableFile(f.name)) {
-      throw new Error(`Security Restriction: Executable file "${f.name}" is not allowed.`);
+      throw new Error(`Unsupported file type: "${f.name}". Executable files are not allowed.`);
     }
   }
 
@@ -196,6 +218,8 @@ export async function createCommonsPost(params: {
     method: 'POST',
     headers,
     body: JSON.stringify({
+      id: params.postId,
+      postId: params.postId,
       type: params.type,
       title: params.title.trim(),
       description: params.description.trim(),
@@ -217,7 +241,15 @@ export async function createCommonsPost(params: {
 
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok || !data?.success) {
-    throw new Error(data?.error || 'Could not publish post to Boardly Commons.');
+    console.error('[CommonsService] POST /api/posts failed:', {
+      status: resp.status,
+      postId: params.postId,
+      response: data,
+    });
+    if (resp.status === 401) {
+      throw new Error('Please sign in again');
+    }
+    throw new Error(data?.error || 'Upload failed, try again');
   }
 
   const normalized = normalizeCloudflarePost(data.post || { id: data.postId, ...params });
@@ -273,13 +305,16 @@ export async function fetchCommonsPosts(options: {
   searchQuery?: string;
   pageSize?: number;
   lastDoc?: any;
+  lastVisibleDoc?: any;
 }): Promise<{
   posts: CommonsPost[];
   lastDoc: any;
   hasMore: boolean;
+  backendMode?: 'cloudflare-d1-r2' | 'preview-demo';
 }> {
   const pageSize = options.pageSize || 15;
-  const offset = typeof options.lastDoc === 'number' ? options.lastDoc : 0;
+  const cursor = options.lastDoc ?? options.lastVisibleDoc;
+  const offset = typeof cursor === 'number' ? cursor : 0;
 
   if (
     options.feedTab === 'following' &&
@@ -315,14 +350,18 @@ export async function fetchCommonsPosts(options: {
   const data = await resp.json().catch(() => ({}));
 
   if (!resp.ok || !Array.isArray(data?.posts)) {
-    return { posts: [], lastDoc: null, hasMore: false };
+    throw new Error(data?.error || `Failed to load posts (HTTP ${resp.status}).`);
   }
 
   const posts = data.posts.map((p: any) => normalizeCloudflarePost(p));
+  const nextOffset =
+    typeof data.nextOffset === 'number' ? data.nextOffset : offset + pageSize;
+
   return {
     posts,
-    lastDoc: data.hasMore ? data.nextOffset : null,
+    lastDoc: data.hasMore ? nextOffset : null,
     hasMore: Boolean(data.hasMore),
+    backendMode: data.backendMode || (data.source === 'cloudflare-d1-r2' ? 'cloudflare-d1-r2' : 'preview-demo'),
   };
 }
 

@@ -29,8 +29,10 @@ import {
 import {
   uploadCommonsAttachment,
   cleanupUploadedAttachment,
+  rollbackUploadedPostFiles,
   ensureAuthenticatedUser,
   isAllowedCommonsFile,
+  validateCommonsFile,
   CommonsUploadError,
 } from '@/services/commonsUploadService';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
@@ -79,6 +81,8 @@ interface StagedAttachment {
   status: 'compressing' | 'staged' | 'uploading' | 'uploaded' | 'error';
   progress: number;
   uploadedUrl?: string;
+  r2Key?: string;
+  downloadUrl?: string;
   fallbackId?: string;
   totalChunks?: number;
   errorMessage?: string;
@@ -125,6 +129,9 @@ export function PostingWizardModal({
   const stagedFilesRef = useRef<StagedAttachment[]>([]);
   stagedFilesRef.current = stagedFiles;
   const activeUploadsRef = useRef<Map<string, Promise<CommonsFileAttachment>>>(new Map());
+  const draftPostIdRef = useRef<string>(
+    `post_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+  );
 
   // Custom Tags
   const [tagInput, setTagInput] = useState('');
@@ -142,6 +149,7 @@ export function PostingWizardModal({
 
   useEffect(() => {
     if (isOpen) {
+      draftPostIdRef.current = `post_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
       if (initialType) setSelectedType(initialType);
       if (typeof initialAnonymous === 'boolean') setIsAnonymous(initialAnonymous);
       if (initialStep) setCurrentStep(initialStep);
@@ -408,6 +416,7 @@ export function PostingWizardModal({
     try {
       const result = await uploadCommonsAttachment({
         file: fileToUpload,
+        postId: draftPostIdRef.current,
         displayName: item.name,
         userId: currentUser.uid,
         isImage: item.isImage,
@@ -438,6 +447,8 @@ export function PostingWizardModal({
                 status: 'uploaded',
                 progress: 100,
                 uploadedUrl: result.url,
+                r2Key: result.r2Key,
+                downloadUrl: result.downloadUrl,
                 fallbackId: result.fallbackId,
                 totalChunks: result.totalChunks,
                 errorMessage: undefined,
@@ -451,6 +462,8 @@ export function PostingWizardModal({
         size: result.size,
         type: result.type,
         url: result.url,
+        r2Key: result.r2Key,
+        downloadUrl: result.downloadUrl,
       };
     } catch (err: any) {
       const specificMsg =
@@ -540,15 +553,9 @@ export function PostingWizardModal({
     }
 
     for (const f of currentFiles) {
-      if (isExecutableFile(f.name) || !isAllowedCommonsFile(f.name, f.type)) {
-        setErrorMsg(
-          `File "${f.name}" is not allowed. Supported formats: PNG, JPG, WEBP, GIF, PDF, DOC, DOCX, PPT, PPTX, TXT.`
-        );
-        return;
-      }
-      if (f.size > MAX_ATTACHMENT_BYTES) {
-        const sizeMb = (f.size / (1024 * 1024)).toFixed(1);
-        setErrorMsg(`File "${f.name}" (${sizeMb} MB) exceeds the 25 MB maximum size limit.`);
+      const check = validateCommonsFile(f.file || f.name, f.type, f.size);
+      if (!check.valid) {
+        setErrorMsg(check.reason || 'Unsupported file type');
         return;
       }
     }
@@ -556,12 +563,8 @@ export function PostingWizardModal({
     setIsSubmitting(true);
     setUploadStatus('Verifying session & permissions...');
 
-    const newlyUploadedItems: Array<{
-      itemId: string;
-      url?: string;
-      fallbackId?: string;
-      totalChunks?: number;
-    }> = [];
+    const uploadedR2Keys: string[] = [];
+    const postId = draftPostIdRef.current;
 
     try {
       // 1. Verify active Firebase Auth session & refresh token before uploading any file
@@ -577,137 +580,70 @@ export function PostingWizardModal({
 
       const finalAttachments: CommonsFileAttachment[] = [];
 
-      // 3. Upload staged files with progress-based inactivity timeout & automatic retry
+      // 3. Upload staged files to R2 under posts/{postId}/{random-id}-{safe-filename}
       for (let i = 0; i < currentFiles.length; i++) {
         const item = currentFiles[i];
-        const wasAlreadyUploaded = item.status === 'uploaded' && Boolean(item.uploadedUrl);
         const label = `Uploading file ${i + 1} of ${currentFiles.length}`;
         setUploadStatus(`${label}...`);
         const uploadedAttachment = await uploadSingleAttachmentItem(item, label);
         finalAttachments.push(uploadedAttachment);
-
-        if (!wasAlreadyUploaded) {
-          const updatedItem = stagedFilesRef.current.find((f) => f.id === item.id);
-          newlyUploadedItems.push({
-            itemId: item.id,
-            url: uploadedAttachment.url,
-            fallbackId: updatedItem?.fallbackId,
-            totalChunks: updatedItem?.totalChunks,
-          });
+        if (uploadedAttachment.r2Key) {
+          uploadedR2Keys.push(uploadedAttachment.r2Key);
         }
       }
 
       setUploadStatus('Publishing post...');
 
-      // 4. Create post document with persistent download URLs (with 25s timeout)
-      let newPostId: string;
-      try {
-        newPostId = await withTimeout(
-          createCommonsPost({
-            currentUser,
-            type: selectedType,
-            title: trimmedTitle,
-            description: trimmedDesc,
-            tags: tags.slice(0, 8),
-            files: finalAttachments.slice(0, 5),
-            isAnonymous,
-          }),
-          25000,
-          'Saving post to database timed out (25s). Click Publish Resource to try again.'
-        );
-      } catch (postCreateErr) {
-        // Clean up any newly uploaded files from this failed post creation so no orphan files remain
-        if (newlyUploadedItems.length > 0) {
-          await Promise.all(
-            newlyUploadedItems.map((u) =>
-              cleanupUploadedAttachment(
-                { url: u.url, fallbackId: u.fallbackId, totalChunks: u.totalChunks },
-                currentUser.uid
-              )
-            )
-          );
-          const cleanedIds = new Set(newlyUploadedItems.map((u) => u.itemId));
-          setStagedFiles((prev) =>
-            prev.map((f) =>
-              cleanedIds.has(f.id)
-                ? {
-                    ...f,
-                    status: 'staged',
-                    progress: 0,
-                    uploadedUrl: undefined,
-                    fallbackId: undefined,
-                    totalChunks: undefined,
-                  }
-                : f
-            )
-          );
-        }
-        throw postCreateErr;
-      }
+      // 4. Save post metadata + R2 file list in Cloudflare D1
+      const { postId: createdPostId, post: createdPost } = await withTimeout(
+        createCommonsPost({
+          postId,
+          author: currentUser,
+          currentUser,
+          type: selectedType,
+          title: trimmedTitle,
+          description: trimmedDesc,
+          tags: tags.slice(0, 8),
+          files: finalAttachments.slice(0, 5),
+          isAnonymous,
+        }),
+        25000,
+        'Upload failed, try again'
+      );
 
-      const cleanAuthorName = isAnonymous
-        ? 'Anonymous'
-        : sanitizeStudentDisplayName(currentUser.displayName, currentUser.uid);
-
-      const optimisticPost: CommonsPost = {
-        id: newPostId,
-        type: selectedType,
-        title: trimmedTitle,
-        description: trimmedDesc,
-        subject: '',
-        chapter: '',
-        target: '',
-        tags: tags.map((t) => t.trim().toLowerCase()).filter(Boolean).slice(0, 8),
-        files: finalAttachments,
-        isAnonymous: Boolean(isAnonymous),
-        authorUid: isAnonymous ? null : currentUser.uid,
-        authorName: cleanAuthorName,
-        authorAvatar: isAnonymous
-          ? null
-          : currentUser.equippedAvatar || currentUser.avatarUrl || currentUser.photoURL || null,
-        authorFrame: isAnonymous ? null : currentUser.frame || null,
-        authorEquippedAvatar: isAnonymous ? null : currentUser.equippedAvatar || null,
-        authorPhotoURL: isAnonymous ? null : currentUser.photoURL || null,
-        authorRole: isAnonymous ? null : currentUser.role || 'Student',
-        authorCustomRole: isAnonymous ? null : currentUser.customRole || null,
-        upvotes: 0,
-        commentCount: 0,
-        saveCount: 0,
-        reportCount: 0,
-        isHidden: false,
-        searchKeywords: [],
-        createdAt: { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 },
-        updatedAt: { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 },
-      };
-
-      onPostCreated(newPostId, optimisticPost);
+      onPostCreated(createdPostId, createdPost);
       onClose();
     } catch (err: any) {
+      // Roll back any uploaded R2 files if multi-file upload or D1 insert failed
+      if (uploadedR2Keys.length > 0) {
+        await rollbackUploadedPostFiles(uploadedR2Keys, postId);
+        setStagedFiles((prev) =>
+          prev.map((f) => ({
+            ...f,
+            status: 'staged',
+            progress: 0,
+            uploadedUrl: undefined,
+            r2Key: undefined,
+            downloadUrl: undefined,
+          }))
+        );
+      }
+
       console.error('[PostingWizard] Publish failed:', {
+        postId,
         step: err instanceof CommonsUploadError ? err.step : 'create_commons_post',
         code: err instanceof CommonsUploadError ? err.code : err?.code || 'PUBLISH_ERROR',
-        statusCode: err instanceof CommonsUploadError ? err.statusCode : undefined,
-        responseBody: err instanceof CommonsUploadError ? err.responseBody : undefined,
         message: err?.message,
         error: err,
       });
 
-      let friendlyMsg = err instanceof Error ? err.message : 'Failed to publish post.';
-      if (err instanceof CommonsUploadError) {
-        if (err.code === 'AUTH_ERROR') {
-          friendlyMsg = err.message;
-        } else if (err.code === 'FILE_TOO_LARGE') {
-          friendlyMsg = err.message;
-        } else if (err.code === 'UNSUPPORTED_TYPE') {
-          friendlyMsg = err.message;
-        }
-      } else if (
-        friendlyMsg.includes('permission-denied') ||
-        friendlyMsg.includes('Missing or insufficient permissions')
-      ) {
-        friendlyMsg =
-          'No permission: Security rules denied publishing this post. Please verify your session is active and all fields meet community limits.';
-      }
+      const friendlyMsg =
+        err instanceof CommonsUploadError
+          ? err.userMessage
+          : err instanceof Error
+          ? err.message
+          : 'Upload failed, try again';
+
       setErrorMsg(friendlyMsg);
     } finally {
       setIsSubmitting(false);

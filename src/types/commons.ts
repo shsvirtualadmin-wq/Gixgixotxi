@@ -98,6 +98,8 @@ export interface CommonsFileAttachment {
   size: number;
   type: string;
   url: string;
+  r2Key?: string;
+  downloadUrl?: string;
   storagePath?: string;
   thumbnailUrl?: string;
 }

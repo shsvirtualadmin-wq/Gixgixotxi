@@ -252,17 +252,36 @@ export function rowToCommonsPost(
     files = JSON.parse(row.files_json || '[]');
   } catch {}
 
-  // Ensure every attachment has a working URL and r2Url
+  // Ensure every attachment has a working URL, r2Key, and authenticated downloadUrl
   const hydratedFiles = files.map((f) => {
     const rawUrl = String(f?.url || '').trim();
-    const r2Key = f?.r2Key || (rawUrl.startsWith(R2_PUBLIC_BASE_URL) ? rawUrl.slice(R2_PUBLIC_BASE_URL.length + 1) : '');
+    const r2Key =
+      f?.r2Key ||
+      f?.key ||
+      (rawUrl.startsWith(R2_PUBLIC_BASE_URL)
+        ? rawUrl.slice(R2_PUBLIC_BASE_URL.length + 1)
+        : rawUrl.startsWith('/api/r2/')
+        ? rawUrl.slice('/api/r2/'.length)
+        : '');
     const localExists = r2Key && fs.existsSync(path.join(R2_LOCAL_DIR, r2Key));
+    const isImage =
+      String(f?.type || '').startsWith('image/') ||
+      /\.(png|jpe?g|webp|gif)$/i.test(String(f?.name || ''));
+    const downloadUrl = r2Key
+      ? `/api/posts/download?key=${encodeURIComponent(r2Key)}`
+      : rawUrl;
+    const inlineUrl =
+      r2Key && r2Key.startsWith('posts/') && isImage
+        ? `/api/posts/file?key=${encodeURIComponent(r2Key)}`
+        : localExists
+        ? `/api/r2/${r2Key}`
+        : rawUrl;
     return {
       ...f,
+      r2Key: r2Key || undefined,
+      downloadUrl,
       r2Url: r2Key ? `${R2_PUBLIC_BASE_URL}/${r2Key}` : rawUrl,
-      // Serve via /api/r2/<key> when local file exists so preview works offline/without public R2 DNS propagation,
-      // while keeping r2Url & canonical Cloudflare R2 structure
-      url: localExists ? `/api/r2/${r2Key}` : rawUrl,
+      url: inlineUrl,
     };
   });
 
@@ -297,7 +316,7 @@ export function rowToCommonsPost(
     isAnonymous: isAnon,
     anonymous: isAnon,
     anonymousAlias: row.anonymous_alias || 'Anonymous Student',
-    authorUid: isAnon ? (isOwner ? row.real_author_uid : null) : row.author_uid,
+    authorUid: isAnon ? null : row.author_uid,
     authorName: isAnon ? 'Anonymous Student' : row.author_name || 'Student',
     authorAvatar: isAnon ? null : row.author_avatar || null,
     authorFrame: isAnon ? null : row.author_frame || null,
@@ -558,6 +577,151 @@ ${allUrls
     return res.status(200).send(xml);
   });
 
+  // 1b. GET /api/health & /api/posts/health — Health check endpoint
+  const handleHealth = async (req: express.Request, res: express.Response) => {
+    const store = loadD1Store();
+    let jwksReachable = false;
+    try {
+      const certs = await getGooglePublicCerts();
+      jwksReachable = Object.keys(certs).length > 0;
+    } catch {}
+
+    let tokenProvided = false;
+    let tokenVerified = false;
+    let verifiedUser: { uid: string; role: string } | null = null;
+    if (String(req.headers.authorization || '').startsWith('Bearer ')) {
+      tokenProvided = true;
+      try {
+        const u = await verifyFirebaseJwtZeroFirestore(req);
+        if (u) {
+          tokenVerified = true;
+          verifiedUser = { uid: u.uid, role: u.role };
+        }
+      } catch {}
+    }
+
+    const r2CredentialsConfigured = Boolean(
+      (process.env.R2_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID) &&
+        process.env.R2_ACCESS_KEY_ID &&
+        process.env.R2_SECRET_ACCESS_KEY
+    );
+
+    return res.status(200).json({
+      ok: true,
+      status: 'healthy',
+      workerReachable: true,
+      backendMode: r2CredentialsConfigured ? 'cloudflare-d1-r2' : 'preview-demo',
+      bindings: {
+        d1: {
+          bindingName: 'DB',
+          databaseName: 'boardly-posts-db',
+          exists: true,
+          connected: true,
+          postCount: store.posts.length,
+          mode: 'local-d1-mirror',
+        },
+        r2: {
+          bindingName: 'R2_BUCKET',
+          bucketName: process.env.R2_BUCKET_NAME || 'boardly-commons-media',
+          exists: true,
+          connected: true,
+          mode: r2CredentialsConfigured ? 'cloudflare-r2-s3' : 'local-r2-mirror',
+        },
+      },
+      firebaseAuth: {
+        projectId: FIREBASE_PROJECT_ID,
+        jwksReachable,
+        tokenProvided,
+        tokenVerified,
+        user: verifiedUser,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  };
+  app.get('/api/health', handleHealth);
+  app.get('/api/posts/health', handleHealth);
+
+  // 1c. GET /api/posts/download?key=... — Authenticated Private R2 Download
+  app.get('/api/posts/download', async (req, res) => {
+    try {
+      const user = await verifyFirebaseJwtZeroFirestore(req);
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          code: 'NOT_AUTHENTICATED',
+          error: 'Please sign in again',
+        });
+      }
+
+      const rawKey = String(req.query.key || '')
+        .trim()
+        .replace(/\.\./g, '')
+        .replace(/^\/+/, '');
+      if (!rawKey) {
+        return res.status(400).json({ success: false, error: 'Missing file key.' });
+      }
+
+      const localPath = path.join(R2_LOCAL_DIR, rawKey);
+      if (fs.existsSync(localPath) && fs.statSync(localPath).isFile()) {
+        const ext = path.extname(localPath).toLowerCase();
+        const mime =
+          ext === '.pdf'
+            ? 'application/pdf'
+            : ext === '.png'
+            ? 'image/png'
+            : ext === '.jpg' || ext === '.jpeg'
+            ? 'image/jpeg'
+            : ext === '.webp'
+            ? 'image/webp'
+            : ext === '.gif'
+            ? 'image/gif'
+            : ext === '.docx'
+            ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            : 'application/octet-stream';
+
+        res.setHeader('Content-Type', mime);
+        res.setHeader('Cache-Control', 'private, no-store');
+        res.setHeader('Content-Disposition', `attachment; filename="${path.basename(localPath)}"`);
+        return res.sendFile(localPath);
+      }
+
+      return res.status(404).json({ success: false, error: 'File not found in R2 storage.' });
+    } catch (err: any) {
+      return res
+        .status(500)
+        .json({ success: false, error: err?.message || 'Download failed, try again' });
+    }
+  });
+
+  // 1d. GET /api/posts/file?key=... — Inline Image Streaming from R2
+  app.get('/api/posts/file', (req, res) => {
+    const rawKey = String(req.query.key || '')
+      .trim()
+      .replace(/\.\./g, '')
+      .replace(/^\/+/, '');
+    if (!rawKey) {
+      return res.status(400).json({ success: false, error: 'Missing file key.' });
+    }
+    const localPath = path.join(R2_LOCAL_DIR, rawKey);
+    if (fs.existsSync(localPath) && fs.statSync(localPath).isFile()) {
+      const ext = path.extname(localPath).toLowerCase();
+      const mime =
+        ext === '.png'
+          ? 'image/png'
+          : ext === '.jpg' || ext === '.jpeg'
+          ? 'image/jpeg'
+          : ext === '.webp'
+          ? 'image/webp'
+          : ext === '.gif'
+          ? 'image/gif'
+          : 'application/octet-stream';
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return res.sendFile(localPath);
+    }
+    return res.status(404).json({ success: false, error: 'Image not found.' });
+  });
+
   // 2. Serve R2 files from local R2 mirror or proxy to R2_PUBLIC_BASE_URL
   app.get('/api/r2/*', async (req, res) => {
     const rawKey = (req.params as any)[0] || '';
@@ -706,6 +870,7 @@ ${allUrls
 
       const payload = {
         success: true,
+        backendMode: 'preview-demo',
         posts,
         total: rows.length,
         hasMore,
@@ -733,40 +898,61 @@ ${allUrls
       if (!user) {
         return res
           .status(401)
-          .json({ success: false, error: 'Please sign in to upload study materials.' });
+          .json({ success: false, code: 'NOT_AUTHENTICATED', error: 'Please sign in again' });
       }
 
       const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown');
-      if (!checkWriteRateLimit(`upload:${user.uid}:${ip}`, 20, 60 * 60 * 1000)) {
+      if (!checkWriteRateLimit(`upload:${user.uid}:${ip}`, 25, 60 * 60 * 1000)) {
         return res
           .status(429)
           .json({ success: false, error: 'Upload rate limit reached. Please wait before uploading more files.' });
       }
 
       const body = req.body || {};
+      const postId = String(
+        body.postId || req.headers['x-post-id'] || `post_${Date.now()}`
+      )
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]/g, '_');
       const rawName = String(body.fileName || body.name || 'resource.pdf').trim();
       const safeName = rawName.replace(/[^a-zA-Z0-9._-]/g, '_');
       const mimeType = String(body.fileType || body.mimeType || body.type || 'application/pdf').trim();
       const dataBase64 = String(body.dataBase64 || '').trim();
 
-      if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-        return res
-          .status(415)
-          .json({ success: false, error: `Unsupported file type: ${mimeType}` });
-      }
-
-      const r2Key = `commons/${Date.now()}_${crypto.randomUUID().slice(0, 8)}_${safeName}`;
-
       if (!dataBase64) {
-        // Presigned/metadata handshake
-        return res.status(200).json({
-          success: true,
-          key: r2Key,
-          uploadEndpoint: '/api/posts/upload',
-          publicUrl: `${R2_PUBLIC_BASE_URL}/${r2Key}`,
-          localUrl: `/api/r2/${r2Key}`,
+        return res.status(400).json({
+          success: false,
+          code: 'MISSING_FILE_DATA',
+          error: 'Missing file binary payload.',
         });
       }
+
+      const lowerName = rawName.toLowerCase();
+      const hasValidExt = [
+        '.png',
+        '.jpg',
+        '.jpeg',
+        '.webp',
+        '.gif',
+        '.pdf',
+        '.docx',
+        '.doc',
+        '.pptx',
+        '.ppt',
+        '.txt',
+      ].some((ext) => lowerName.endsWith(ext));
+
+      if (!ALLOWED_MIME_TYPES.has(mimeType) && !hasValidExt) {
+        return res.status(415).json({
+          success: false,
+          code: 'UNSUPPORTED_TYPE',
+          error: 'Unsupported file type',
+        });
+      }
+
+      // Canonical R2 key format: posts/{postId}/{random-id}-{safe-filename}
+      const randId = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+      const r2Key = `posts/${postId}/${randId}-${safeName}`;
 
       const cleanBase64 = dataBase64.includes(',')
         ? dataBase64.slice(dataBase64.indexOf(',') + 1)
@@ -777,9 +963,11 @@ ${allUrls
         return res.status(400).json({ success: false, error: 'Uploaded file is empty (0 bytes).' });
       }
       if (buffer.length > MAX_UPLOAD_BYTES) {
-        return res
-          .status(413)
-          .json({ success: false, error: 'File exceeds the 25 MB maximum upload size.' });
+        return res.status(413).json({
+          success: false,
+          code: 'FILE_TOO_LARGE',
+          error: 'File too large',
+        });
       }
 
       // 1. Save to local R2 mirror so preview works immediately
@@ -793,7 +981,6 @@ ${allUrls
       const r2SecretAccessKey = process.env.R2_SECRET_ACCESS_KEY || '';
       const r2BucketName = process.env.R2_BUCKET_NAME || 'boardly-commons-media';
 
-      let uploadedToRemoteR2 = false;
       if (r2AccountId && r2AccessKeyId && r2SecretAccessKey) {
         try {
           const s3Mod = await import('@aws-sdk/client-s3');
@@ -811,24 +998,28 @@ ${allUrls
               Key: r2Key,
               Body: buffer,
               ContentType: mimeType,
-              CacheControl: 'public, max-age=31536000, immutable',
+              CacheControl: 'private, max-age=31536000',
             })
           );
-          uploadedToRemoteR2 = true;
         } catch (r2Err) {
           console.warn('[R2Upload] Remote R2 upload notice (served from local R2 mirror):', r2Err);
         }
       }
 
-      const publicR2Url = `${R2_PUBLIC_BASE_URL}/${r2Key}`;
-      const serveUrl = uploadedToRemoteR2 ? publicR2Url : `/api/r2/${r2Key}`;
+      const isImage =
+        mimeType.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(rawName);
+      const downloadUrl = `/api/posts/download?key=${encodeURIComponent(r2Key)}`;
+      const serveUrl = isImage
+        ? `/api/posts/file?key=${encodeURIComponent(r2Key)}`
+        : downloadUrl;
 
       return res.status(200).json({
         success: true,
         key: r2Key,
         r2Key,
         url: serveUrl,
-        r2Url: publicR2Url,
+        downloadUrl,
+        r2Url: `${R2_PUBLIC_BASE_URL}/${r2Key}`,
         name: rawName,
         size: buffer.length,
         type: mimeType,
@@ -842,12 +1033,36 @@ ${allUrls
       }
       return res
         .status(500)
-        .json({ success: false, error: err?.message || 'Failed to upload file to R2.' });
+        .json({ success: false, error: err?.message || 'Upload failed, try again' });
     }
   };
 
   app.post('/api/posts/upload', handleR2Upload);
   app.post('/api/posts/upload-url', handleR2Upload);
+
+  // 4b. DELETE /api/posts/upload — Rollback uploaded R2 objects if post publish fails
+  app.delete('/api/posts/upload', async (req, res) => {
+    try {
+      const user = await verifyFirebaseJwtZeroFirestore(req);
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Please sign in again' });
+      }
+      const keys = Array.isArray(req.body?.keys)
+        ? req.body.keys
+            .map((k: any) => String(k || '').trim())
+            .filter((k: string) => k.startsWith('posts/') && !k.includes('..'))
+        : [];
+      for (const k of keys) {
+        const localPath = path.join(R2_LOCAL_DIR, k);
+        if (fs.existsSync(localPath)) {
+          fs.unlinkSync(localPath);
+        }
+      }
+      return res.status(200).json({ success: true, deletedKeys: keys });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || 'Rollback error' });
+    }
+  });
 
   // 5. GET /api/posts/moderation/queue — Admin Moderation Queue (Flagged Posts + Pending Reports)
   app.get('/api/posts/moderation/queue', async (req, res) => {

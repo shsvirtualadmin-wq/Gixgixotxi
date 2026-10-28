@@ -638,6 +638,7 @@ function FileAttachmentChip({
   onRequireAuth: () => void;
 }) {
   const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const fileName = file?.name || 'attachment';
   const fileType = file?.type || '';
   const isPdf =
@@ -649,62 +650,62 @@ function FileAttachmentChip({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const handleDownloadClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (!file?.url?.startsWith('firestore://')) return;
+  const handleDownloadClick = async (e: React.MouseEvent) => {
     e.preventDefault();
+    if (!currentUserId) {
+      onRequireAuth();
+      return;
+    }
     if (downloading) return;
     setDownloading(true);
+    setDownloadError(null);
     try {
-      const { resolveCommonsAttachmentUrl } = await import('@/services/commonsUploadService');
-      const resolved = await resolveCommonsAttachmentUrl(file.url);
-      if (resolved) {
-        const a = document.createElement('a');
-        a.href = resolved;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
-    } catch (err) {
+      const { downloadCommonsAttachment } = await import('@/services/commonsUploadService');
+      await downloadCommonsAttachment(file);
+    } catch (err: any) {
       console.error('[CommonsPostCard] Failed to download attachment:', err);
+      setDownloadError(err?.message || 'Download failed, try again');
     } finally {
       setDownloading(false);
     }
   };
 
   return (
-    <div className="flex items-center justify-between gap-3 p-2.5 rounded-xl border border-border bg-surface-muted/60 hover:border-border-strong transition-colors">
-      <div className="flex items-center gap-2.5 min-w-0">
-        <div className="w-8 h-8 rounded-lg bg-surface border border-border flex items-center justify-center text-secondary shrink-0">
-          {isPdf ? <FileText size={16} /> : <File size={16} />}
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-3 p-2.5 rounded-xl border border-border bg-surface-muted/60 hover:border-border-strong transition-colors">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-surface border border-border flex items-center justify-center text-secondary shrink-0">
+            {isPdf ? <FileText size={16} /> : <File size={16} />}
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-primary truncate">{file.name}</p>
+            <p className="text-[10px] text-muted">{formatSize(file.size)}</p>
+          </div>
         </div>
-        <div className="min-w-0">
-          <p className="text-xs font-semibold text-primary truncate">{file.name}</p>
-          <p className="text-[10px] text-muted">{formatSize(file.size)}</p>
-        </div>
-      </div>
 
-      {currentUserId ? (
-        <a
-          href={file.url}
-          onClick={handleDownloadClick}
-          target="_blank"
-          rel="ugc nofollow noopener noreferrer"
-          download={file.name}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-secondary bg-surface hover:bg-surface-raised border border-border hover:border-border-strong rounded-lg shrink-0 transition-colors shadow-xs"
-        >
-          <Download size={13} />
-          <span>{downloading ? 'Preparing...' : 'Download'}</span>
-        </a>
-      ) : (
-        <button
-          type="button"
-          onClick={onRequireAuth}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-secondary bg-surface hover:bg-surface-raised border border-border hover:border-border-strong rounded-lg shrink-0 transition-colors shadow-xs cursor-pointer"
-        >
-          <Download size={13} />
-          <span>Sign in to Download</span>
-        </button>
+        {currentUserId ? (
+          <button
+            type="button"
+            onClick={handleDownloadClick}
+            disabled={downloading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-secondary bg-surface hover:bg-surface-raised border border-border hover:border-border-strong rounded-lg shrink-0 transition-colors shadow-xs cursor-pointer disabled:opacity-60"
+          >
+            <Download size={13} />
+            <span>{downloading ? 'Downloading...' : 'Download'}</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onRequireAuth}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-secondary bg-surface hover:bg-surface-raised border border-border hover:border-border-strong rounded-lg shrink-0 transition-colors shadow-xs cursor-pointer"
+          >
+            <Download size={13} />
+            <span>Sign in to Download</span>
+          </button>
+        )}
+      </div>
+      {downloadError && (
+        <p className="text-[11px] text-accent font-medium px-1">{downloadError}</p>
       )}
     </div>
   );
