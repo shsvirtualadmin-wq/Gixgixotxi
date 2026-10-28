@@ -30,7 +30,7 @@ import { getFollowingIds, fetchUserFollowers } from '@/services/followService';
 import { notifyFollowersOfPost } from '@/services/notificationService';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
-const DAILY_POST_LIMIT = 10;
+export const DAILY_POST_LIMIT = 10;
 const DISALLOWED_FILE_EXTENSIONS = [
   '.exe',
   '.bat',
@@ -265,15 +265,24 @@ export async function createCommonsPost(params: {
 
   const now = serverTimestamp();
 
+  const cleanTitle = params.title.trim().slice(0, 200);
+  const cleanDescription = params.description.trim().slice(0, 20000);
+  if (!cleanTitle) {
+    throw new Error('Post title is required.');
+  }
+
   const publicData: Omit<CommonsPost, 'id'> = {
     type: params.type,
-    title: params.title.trim(),
-    description: params.description.trim(),
+    title: cleanTitle,
+    description: cleanDescription,
     subject: params.subject || '',
     chapter: params.chapter || '',
     target: params.target || '',
-    tags: params.tags.map((t) => t.trim().toLowerCase()).filter(Boolean),
-    files: params.files,
+    tags: params.tags
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean)
+      .slice(0, 8),
+    files: params.files.slice(0, 5),
     isAnonymous: Boolean(params.isAnonymous),
     authorUid: publicAuthorUid,
     authorName: publicAuthorName,
@@ -375,10 +384,17 @@ export async function fetchCommonsPosts(params: {
     }
 
     const snap = await getDocs(q);
-    let posts: CommonsPost[] = snap.docs.map((d) => ({
-      id: d.id,
-      ...(d.data() as Omit<CommonsPost, 'id'>),
-    }));
+    let posts: CommonsPost[] = snap.docs
+      .filter(
+        (d) =>
+          !d.id.startsWith('att_') &&
+          (d.data() as any)?.isAttachmentChunk !== true &&
+          (d.data() as any)?.type !== 'attachment_chunk'
+      )
+      .map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<CommonsPost, 'id'>),
+      }));
 
     // Client-side filtering for isHidden
     posts = posts.filter((p) => p.isHidden !== true);
@@ -507,13 +523,17 @@ export function sortCommonsPosts(posts: CommonsPost[]): CommonsPost[] {
 }
 
 export async function fetchCommonsPostById(postId: string): Promise<CommonsPost | null> {
-  if (!postId) return null;
+  if (!postId || postId.startsWith('att_')) return null;
   try {
     const snap = await getDoc(doc(db, 'commonsPosts', postId));
     if (!snap.exists()) return null;
+    const data = snap.data() as any;
+    if (data?.isAttachmentChunk === true || data?.type === 'attachment_chunk') {
+      return null;
+    }
     return {
       id: snap.id,
-      ...(snap.data() as Omit<CommonsPost, 'id'>),
+      ...(data as Omit<CommonsPost, 'id'>),
     };
   } catch (err) {
     console.warn('[commonsService] fetchCommonsPostById notice:', err);
@@ -547,7 +567,9 @@ export async function togglePostVote(
     });
   } else {
     batch.set(voteRef, {
+      uid: userId,
       userId,
+      value: 1,
       postId,
       createdAt: serverTimestamp(),
     });
@@ -606,10 +628,10 @@ export async function toggleSavePost(
 
   if (isSaved) {
     batch.delete(saveRef);
-    batch.update(postRef, { saveCount: increment(-1) });
+    batch.update(postRef, { savesCount: increment(-1), updatedAt: serverTimestamp() });
   } else {
     batch.set(saveRef, { postId, savedAt: serverTimestamp() });
-    batch.update(postRef, { saveCount: increment(1) });
+    batch.update(postRef, { savesCount: increment(1), updatedAt: serverTimestamp() });
   }
 
   await batch.commit();
@@ -643,50 +665,62 @@ export async function checkUserSaved(postId: string, userId: string): Promise<bo
  */
 export async function addPostComment(params: {
   postId: string;
-  author: {
+  author?: {
     uid: string;
+    email?: string | null;
     displayName?: string | null;
     photoURL?: string | null;
     equippedAvatar?: string | null;
     frame?: string | null;
     avatarUrl?: string | null;
   };
-  text: string;
+  user?: {
+    uid: string;
+    email?: string | null;
+    displayName?: string | null;
+    photoURL?: string | null;
+    equippedAvatar?: string | null;
+    frame?: string | null;
+    avatarUrl?: string | null;
+  };
+  text?: string;
+  body?: string;
   isAnonymous?: boolean;
 }): Promise<CommonsComment> {
+  const actor = params.author || params.user;
   if (!params.postId) throw new Error('Missing post ID');
-  if (!params.author?.uid) throw new Error('Must be signed in to comment');
+  if (!actor?.uid) throw new Error('Must be signed in to comment');
 
   const commentRef = doc(collection(db, 'commonsPosts', params.postId, 'comments'));
   const postRef = doc(db, 'commonsPosts', params.postId);
 
-  const cleanText = params.text.trim();
+  const rawText = params.text ?? params.body ?? '';
+  const cleanText = rawText.trim();
   if (!cleanText) throw new Error('Comment text cannot be empty');
-  if (cleanText.length > 1000) throw new Error('Comment exceeds 1,000 characters');
+  if (cleanText.length > 3000) throw new Error('Comment exceeds 3,000 characters');
 
   const isAnon = Boolean(params.isAnonymous);
 
   // For anonymous comments, NEVER store real UID in the public comment document;
-  // store moderation ownership in postsPrivate/{postId}_comment_{commentId}.
-  const publicAuthorUid = isAnon ? null : params.author.uid;
+  // store moderation ownership in postsPrivate/{commentId}.
+  const publicAuthorUid = isAnon ? null : actor.uid;
   const authorName = isAnon
     ? 'Anonymous'
-    : sanitizeStudentDisplayName(params.author.displayName, params.author.uid);
+    : sanitizeStudentDisplayName(actor.displayName, actor.uid);
 
-  // Avatar priority: equippedAvatar -> avatarUrl -> photoURL -> null
   const authorAvatar = isAnon
     ? null
-    : params.author.equippedAvatar || params.author.avatarUrl || params.author.photoURL || null;
-  const authorFrame = isAnon ? null : params.author.frame || null;
-  const authorEquippedAvatar = isAnon ? null : params.author.equippedAvatar || null;
-  const authorPhotoURL = isAnon ? null : params.author.photoURL || null;
-  const authorRole = isAnon ? null : ((params.author as any).role || 'Student');
-  const authorCustomRole = isAnon ? null : ((params.author as any).customRole || null);
+    : actor.equippedAvatar || actor.avatarUrl || actor.photoURL || null;
+  const authorFrame = isAnon ? null : actor.frame || null;
+  const authorEquippedAvatar = isAnon ? null : actor.equippedAvatar || null;
+  const authorPhotoURL = isAnon ? null : actor.photoURL || null;
+  const authorRole = isAnon ? null : ((actor as any).role || 'Student');
+  const authorCustomRole = isAnon ? null : ((actor as any).customRole || null);
 
-  const commentData: Omit<CommonsComment, 'id'> = {
+  const commentData: Omit<CommonsComment, 'id'> & { body: string } = {
     postId: params.postId,
     authorUid: publicAuthorUid,
-    uid: publicAuthorUid || undefined,
+    ...(publicAuthorUid ? { uid: publicAuthorUid } : {}),
     authorName,
     authorAvatar,
     authorFrame,
@@ -696,6 +730,7 @@ export async function addPostComment(params: {
     authorCustomRole,
     isAnonymous: isAnon,
     text: cleanText,
+    body: cleanText,
     createdAt: serverTimestamp(),
   };
 
@@ -703,19 +738,18 @@ export async function addPostComment(params: {
     const batch = writeBatch(db);
     batch.set(commentRef, commentData);
     if (isAnon) {
-      const commentPrivateRef = doc(db, 'postsPrivate', `${params.postId}_comment_${commentRef.id}`);
+      const commentPrivateRef = doc(db, 'postsPrivate', commentRef.id);
       batch.set(commentPrivateRef, {
         postId: params.postId,
         commentId: commentRef.id,
-        authorUid: params.author.uid,
-        authorEmail: params.author.email || null,
+        authorUid: actor.uid,
+        ...(actor.email ? { authorEmail: actor.email } : {}),
         isAnonymous: true,
         createdAt: serverTimestamp(),
       });
     }
     batch.update(postRef, {
       commentCount: increment(1),
-      commentsCount: increment(1),
       updatedAt: serverTimestamp(),
     });
     await batch.commit();
@@ -912,7 +946,12 @@ export async function fetchUserPublicPosts(
     }
 
     const snap = await getDocs(q);
-    const docs = snap.docs;
+    const docs = snap.docs.filter(
+      (d) =>
+        !d.id.startsWith('att_') &&
+        (d.data() as any)?.isAttachmentChunk !== true &&
+        (d.data() as any)?.type !== 'attachment_chunk'
+    );
     const hasMore = docs.length > pageSize;
     const returnDocs = hasMore ? docs.slice(0, pageSize) : docs;
     const lastDoc = returnDocs.length > 0 ? returnDocs[returnDocs.length - 1] : null;
@@ -952,6 +991,13 @@ export async function fetchUserOwnPosts(
     const postMap = new Map<string, CommonsPost>();
 
     publicSnap.docs.forEach((d) => {
+      if (
+        d.id.startsWith('att_') ||
+        (d.data() as any)?.isAttachmentChunk === true ||
+        (d.data() as any)?.type === 'attachment_chunk'
+      ) {
+        return;
+      }
       postMap.set(d.id, {
         id: d.id,
         ...(d.data() as Omit<CommonsPost, 'id'>),
@@ -969,9 +1015,17 @@ export async function fetchUserOwnPosts(
       );
       const privSnap = await getDocs(privQ);
       for (const pDoc of privSnap.docs) {
+        if (pDoc.id.startsWith('att_') || (pDoc.data() as any)?.commentId) {
+          continue;
+        }
         if (!postMap.has(pDoc.id)) {
           const postDoc = await getDoc(doc(db, 'commonsPosts', pDoc.id));
-          if (postDoc.exists()) {
+          if (
+            postDoc.exists() &&
+            !postDoc.id.startsWith('att_') &&
+            (postDoc.data() as any)?.isAttachmentChunk !== true &&
+            (postDoc.data() as any)?.type !== 'attachment_chunk'
+          ) {
             postMap.set(postDoc.id, {
               id: postDoc.id,
               ...(postDoc.data() as Omit<CommonsPost, 'id'>),

@@ -34,6 +34,7 @@
     ]
   },
   "firestore": {
+    "database": "ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712",
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
@@ -43,6 +44,10 @@
   "emulators": {
     "firestore": {
       "port": 8282,
+      "host": "127.0.0.1"
+    },
+    "storage": {
+      "port": 9199,
       "host": "127.0.0.1"
     },
     "ui": {

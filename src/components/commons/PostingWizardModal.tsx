@@ -20,8 +20,19 @@ import {
   type CommonsPostType,
   type CommonsFileAttachment,
 } from '@/types/commons';
-import { createCommonsPost, isExecutableFile } from '@/services/commonsService';
-import { uploadCommonsAttachment, CommonsUploadError } from '@/services/commonsUploadService';
+import {
+  createCommonsPost,
+  checkPostingRateLimit,
+  DAILY_POST_LIMIT,
+  isExecutableFile,
+} from '@/services/commonsService';
+import {
+  uploadCommonsAttachment,
+  cleanupUploadedAttachment,
+  ensureAuthenticatedUser,
+  isAllowedCommonsFile,
+  CommonsUploadError,
+} from '@/services/commonsUploadService';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
@@ -68,6 +79,8 @@ interface StagedAttachment {
   status: 'compressing' | 'staged' | 'uploading' | 'uploaded' | 'error';
   progress: number;
   uploadedUrl?: string;
+  fallbackId?: string;
+  totalChunks?: number;
   errorMessage?: string;
 }
 
@@ -281,7 +294,8 @@ export function PostingWizardModal({
 
       validEntries.push(entry);
 
-      // Run compression non-blockingly in the background with fallback to original file, then start upload
+      // Run compression non-blockingly in the background with fallback to original file.
+      // Do NOT upload to Storage/Firestore until the post is validated and allowed in handlePublish.
       if (shouldCompress) {
         void compressPhoto(file, { maxDimension: 1600, quality: 0.82, timeoutMs: 4000 })
           .then((compressed) => {
@@ -295,9 +309,6 @@ export function PostingWizardModal({
             setStagedFiles((prev) =>
               prev.map((item) => (item.id === id ? updatedEntry : item))
             );
-            if (currentUser?.uid) {
-              void uploadSingleAttachmentItem(updatedEntry).catch(() => {});
-            }
           })
           .catch((err) => {
             console.warn(`[PostingWizard] Non-blocking compression fallback for "${file.name}":`, err);
@@ -309,14 +320,7 @@ export function PostingWizardModal({
             setStagedFiles((prev) =>
               prev.map((item) => (item.id === id ? fallbackEntry : item))
             );
-            if (currentUser?.uid) {
-              void uploadSingleAttachmentItem(fallbackEntry).catch(() => {});
-            }
           });
-      } else if (currentUser?.uid) {
-        setTimeout(() => {
-          void uploadSingleAttachmentItem(entry).catch(() => {});
-        }, 20);
       }
     }
 
@@ -335,6 +339,16 @@ export function PostingWizardModal({
       activeUploadsRef.current.delete(target.id);
       if (target.previewUrl?.startsWith('blob:')) {
         URL.revokeObjectURL(target.previewUrl);
+      }
+      if (target.uploadedUrl || target.fallbackId) {
+        void cleanupUploadedAttachment(
+          {
+            url: target.uploadedUrl,
+            fallbackId: target.fallbackId,
+            totalChunks: target.totalChunks,
+          },
+          currentUser?.uid
+        );
       }
     }
     setStagedFiles((prev) => prev.filter((_, i) => i !== index));
@@ -424,6 +438,8 @@ export function PostingWizardModal({
                 status: 'uploaded',
                 progress: 100,
                 uploadedUrl: result.url,
+                fallbackId: result.fallbackId,
+                totalChunks: result.totalChunks,
                 errorMessage: undefined,
               }
             : f
@@ -488,12 +504,23 @@ export function PostingWizardModal({
   const handlePublish = async () => {
     setErrorMsg(null);
 
-    if (!title.trim()) {
+    const trimmedTitle = title.trim();
+    const trimmedDesc = description.trim();
+
+    if (!trimmedTitle) {
       setErrorMsg('Please enter a clear title for your resource.');
       return;
     }
-    if (!description.trim()) {
+    if (trimmedTitle.length > 200) {
+      setErrorMsg('Title cannot exceed 200 characters.');
+      return;
+    }
+    if (!trimmedDesc) {
       setErrorMsg('Please enter a short description to help peers find and understand this material.');
+      return;
+    }
+    if (trimmedDesc.length > 20000) {
+      setErrorMsg('Description cannot exceed 20,000 characters.');
       return;
     }
     if (!consentAcademic) {
@@ -502,42 +529,121 @@ export function PostingWizardModal({
     }
 
     if (!currentUser?.uid) {
-      setErrorMsg('Authentication error: You must be signed in to create a post.');
+      setErrorMsg('Session expired or not signed in: Please sign in to publish a resource.');
       return;
     }
 
+    const currentFiles = [...stagedFilesRef.current];
+    if (currentFiles.length > 5) {
+      setErrorMsg('Maximum 5 files are allowed per post.');
+      return;
+    }
+
+    for (const f of currentFiles) {
+      if (isExecutableFile(f.name) || !isAllowedCommonsFile(f.name, f.type)) {
+        setErrorMsg(
+          `File "${f.name}" is not allowed. Supported formats: PNG, JPG, WEBP, GIF, PDF, DOC, DOCX, PPT, PPTX, TXT.`
+        );
+        return;
+      }
+      if (f.size > MAX_ATTACHMENT_BYTES) {
+        const sizeMb = (f.size / (1024 * 1024)).toFixed(1);
+        setErrorMsg(`File "${f.name}" (${sizeMb} MB) exceeds the 25 MB maximum size limit.`);
+        return;
+      }
+    }
+
     setIsSubmitting(true);
-    setUploadStatus(stagedFiles.length > 0 ? 'Uploading attachments...' : 'Publishing post...');
+    setUploadStatus('Verifying session & permissions...');
+
+    const newlyUploadedItems: Array<{
+      itemId: string;
+      url?: string;
+      fallbackId?: string;
+      totalChunks?: number;
+    }> = [];
 
     try {
-      const currentFiles = [...stagedFilesRef.current];
+      // 1. Verify active Firebase Auth session & refresh token before uploading any file
+      await ensureAuthenticatedUser(currentUser.uid, false);
+
+      // 2. Verify daily posting rate limit BEFORE uploading files so disallowed posts never create orphan files
+      const rateLimit = await checkPostingRateLimit(currentUser.uid);
+      if (!rateLimit.allowed) {
+        throw new Error(
+          `Daily posting limit reached (${DAILY_POST_LIMIT} posts/day). Please try again tomorrow.`
+        );
+      }
+
       const finalAttachments: CommonsFileAttachment[] = [];
 
-      // 1. Upload files with progress-based inactivity timeout & automatic retry
+      // 3. Upload staged files with progress-based inactivity timeout & automatic retry
       for (let i = 0; i < currentFiles.length; i++) {
         const item = currentFiles[i];
+        const wasAlreadyUploaded = item.status === 'uploaded' && Boolean(item.uploadedUrl);
         const label = `Uploading file ${i + 1} of ${currentFiles.length}`;
         setUploadStatus(`${label}...`);
         const uploadedAttachment = await uploadSingleAttachmentItem(item, label);
         finalAttachments.push(uploadedAttachment);
+
+        if (!wasAlreadyUploaded) {
+          const updatedItem = stagedFilesRef.current.find((f) => f.id === item.id);
+          newlyUploadedItems.push({
+            itemId: item.id,
+            url: uploadedAttachment.url,
+            fallbackId: updatedItem?.fallbackId,
+            totalChunks: updatedItem?.totalChunks,
+          });
+        }
       }
 
       setUploadStatus('Publishing post...');
 
-      // 2. Create post document with persistent download URLs (with 25s timeout)
-      const newPostId = await withTimeout(
-        createCommonsPost({
-          currentUser,
-          type: selectedType,
-          title: title.trim(),
-          description: description.trim(),
-          tags,
-          files: finalAttachments,
-          isAnonymous,
-        }),
-        25000,
-        'Saving post to database timed out (25s). Your files are already uploaded — click Publish Resource to try again.'
-      );
+      // 4. Create post document with persistent download URLs (with 25s timeout)
+      let newPostId: string;
+      try {
+        newPostId = await withTimeout(
+          createCommonsPost({
+            currentUser,
+            type: selectedType,
+            title: trimmedTitle,
+            description: trimmedDesc,
+            tags: tags.slice(0, 8),
+            files: finalAttachments.slice(0, 5),
+            isAnonymous,
+          }),
+          25000,
+          'Saving post to database timed out (25s). Click Publish Resource to try again.'
+        );
+      } catch (postCreateErr) {
+        // Clean up any newly uploaded files from this failed post creation so no orphan files remain
+        if (newlyUploadedItems.length > 0) {
+          await Promise.all(
+            newlyUploadedItems.map((u) =>
+              cleanupUploadedAttachment(
+                { url: u.url, fallbackId: u.fallbackId, totalChunks: u.totalChunks },
+                currentUser.uid
+              )
+            )
+          );
+          const cleanedIds = new Set(newlyUploadedItems.map((u) => u.itemId));
+          setStagedFiles((prev) =>
+            prev.map((f) =>
+              cleanedIds.has(f.id)
+                ? {
+                    ...f,
+                    status: 'staged',
+                    progress: 0,
+                    uploadedUrl: undefined,
+                    fallbackId: undefined,
+                    totalChunks: undefined,
+                  }
+                : f
+            )
+          );
+        }
+        throw postCreateErr;
+      }
 
       const cleanAuthorName = isAnonymous
         ? 'Anonymous'
@@ -546,12 +652,12 @@ export function PostingWizardModal({
       const optimisticPost: CommonsPost = {
         id: newPostId,
         type: selectedType,
-        title: title.trim(),
-        description: description.trim(),
+        title: trimmedTitle,
+        description: trimmedDesc,
         subject: '',
         chapter: '',
         target: '',
-        tags: tags.map((t) => t.trim().toLowerCase()).filter(Boolean),
+        tags: tags.map((t) => t.trim().toLowerCase()).filter(Boolean).slice(0, 8),
         files: finalAttachments,
         isAnonymous: Boolean(isAnonymous),
         authorUid: isAnonymous ? null : currentUser.uid,
@@ -585,11 +691,23 @@ export function PostingWizardModal({
         message: err?.message,
         error: err,
       });
-      const rawMsg = err instanceof Error ? err.message : 'Failed to publish post.';
-      const friendlyMsg =
-        rawMsg.includes('permission-denied') || rawMsg.includes('Missing or insufficient permissions')
-          ? 'Permission denied by database security rules while publishing your post. Please verify you are signed in and try again.'
-          : rawMsg;
+
+      let friendlyMsg = err instanceof Error ? err.message : 'Failed to publish post.';
+      if (err instanceof CommonsUploadError) {
+        if (err.code === 'AUTH_ERROR') {
+          friendlyMsg = err.message;
+        } else if (err.code === 'FILE_TOO_LARGE') {
+          friendlyMsg = err.message;
+        } else if (err.code === 'UNSUPPORTED_TYPE') {
+          friendlyMsg = err.message;
+        }
+      } else if (
+        friendlyMsg.includes('permission-denied') ||
+        friendlyMsg.includes('Missing or insufficient permissions')
+      ) {
+        friendlyMsg =
+          'No permission: Security rules denied publishing this post. Please verify your session is active and all fields meet community limits.';
+      }
       setErrorMsg(friendlyMsg);
     } finally {
       setIsSubmitting(false);

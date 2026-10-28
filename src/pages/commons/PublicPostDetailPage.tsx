@@ -37,6 +37,7 @@ import {
   checkUserVoted,
   checkUserSaved,
 } from '@/services/commonsService';
+import { resolveCommonsAttachmentUrl } from '@/services/commonsUploadService';
 import type { CommonsPost, CommonsComment } from '@/types/commons';
 import { COMMONS_POST_TYPES } from '@/types/commons';
 import {
@@ -226,6 +227,30 @@ export const PublicPostDetailPage: React.FC = () => {
     }
   };
 
+  const handleDocumentDownload = async (
+    e: React.MouseEvent,
+    file: { name?: string; url?: string }
+  ) => {
+    const rawUrl = (file.url || '').trim();
+    if (!rawUrl.startsWith('firestore://')) return;
+    e.preventDefault();
+    try {
+      const resolvedUrl = await resolveCommonsAttachmentUrl(rawUrl);
+      if (resolvedUrl) {
+        const a = document.createElement('a');
+        a.href = resolvedUrl;
+        a.download = file.name || 'resource';
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    } catch (err) {
+      console.warn('[PublicPostDetailPage] attachment download resolve error:', err);
+    }
+  };
+
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
@@ -236,17 +261,21 @@ export const PublicPostDetailPage: React.FC = () => {
     if (!trimmed || submittingComment) return;
     setSubmittingComment(true);
     try {
+      const actor = {
+        uid: user.uid,
+        email: user.email || null,
+        displayName: profile?.displayName || user.displayName || 'Student',
+        photoURL: profile?.photoURL || user.photoURL || null,
+        equippedAvatar: profile?.equipped?.avatar || null,
+        frame: profile?.equipped?.frame || null,
+      };
       await addPostComment({
         postId: post.id,
+        text: trimmed,
         body: trimmed,
         isAnonymous: isAnonComment,
-        user: {
-          uid: user.uid,
-          displayName: profile?.displayName || user.displayName || 'Student',
-          photoURL: profile?.photoURL || user.photoURL || null,
-          equippedAvatar: profile?.equipped?.avatar || null,
-          frame: profile?.equipped?.frame || null,
-        },
+        author: actor,
+        user: actor,
       });
       setCommentText('');
       const refreshed = await fetchPostComments(post.id);
@@ -426,6 +455,7 @@ export const PublicPostDetailPage: React.FC = () => {
                     {user ? (
                       <a
                         href={file.url}
+                        onClick={(e) => void handleDocumentDownload(e, file)}
                         target="_blank"
                         rel="ugc nofollow noopener noreferrer"
                         download={file.name}

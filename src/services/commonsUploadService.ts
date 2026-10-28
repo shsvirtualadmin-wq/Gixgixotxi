@@ -1,5 +1,5 @@
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import { doc, setDoc, getDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { storage, db, auth } from '@/lib/firebase';
 import { isExecutableFile } from '@/services/commonsService';
 
@@ -52,14 +52,32 @@ export interface UploadAttachmentOptions {
 export interface UploadAttachmentResult {
   url: string;
   fallbackId?: string;
+  totalChunks?: number;
   name: string;
   size: number;
   type: string;
 }
 
-const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 MB
+export const MAX_COMMONS_FILE_BYTES = 25 * 1024 * 1024; // 25 MB
+export const MAX_COMMONS_FILES_PER_POST = 5;
 const DEFAULT_INACTIVITY_TIMEOUT_MS = 30000; // 30s without byte progress
 const CHUNK_BYTE_SIZE = 540 * 1024; // ~540 KB raw -> ~720 KB base64 (safely under 1 MiB Firestore doc limit)
+
+export const ALLOWED_COMMONS_MIME_TYPES = new Set<string>([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/gif',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/plain',
+]);
+
+const ALLOWED_COMMONS_EXTENSIONS = /\.(png|jpe?g|webp|gif|pdf|docx?|pptx?|txt)$/i;
 
 // Session flag if Firebase Storage bucket returns 404 Not Found
 let firebaseStorageBucketUnavailable = false;
@@ -67,11 +85,23 @@ let firebaseStorageBucketUnavailable = false;
 // In-memory cache for resolved firestore:// attachment blob URLs
 const resolvedAttachmentBlobUrlCache = new Map<string, string>();
 
-function inferMimeType(fileName: string, existingType?: string): string {
-  if (existingType && existingType !== 'application/octet-stream') {
-    return existingType;
+export function sanitizeStorageFileName(fileName: string): string {
+  const trimmed = (fileName || 'attachment').trim();
+  const sanitized = trimmed
+    .replace(/[\s()[\]{}+,&@#$%^!~`'"=;]+/g, '_')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return sanitized.slice(0, 120) || 'attachment';
+}
+
+export function inferMimeType(fileName: string, existingType?: string): string {
+  const normalizedExisting = (existingType || '').trim().toLowerCase();
+  if (normalizedExisting && normalizedExisting !== 'application/octet-stream') {
+    if (normalizedExisting === 'image/jpg') return 'image/jpeg';
+    return normalizedExisting;
   }
-  const lower = fileName.toLowerCase();
+  const lower = (fileName || '').toLowerCase();
   if (lower.endsWith('.png')) return 'image/png';
   if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
   if (lower.endsWith('.webp')) return 'image/webp';
@@ -84,7 +114,64 @@ function inferMimeType(fileName: string, existingType?: string): string {
   if (lower.endsWith('.pptx'))
     return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
   if (lower.endsWith('.txt')) return 'text/plain';
-  return existingType || 'application/octet-stream';
+  return normalizedExisting || 'application/octet-stream';
+}
+
+export function isAllowedCommonsFile(fileName: string, mimeType?: string): boolean {
+  if (!fileName || isExecutableFile(fileName)) return false;
+  const inferred = inferMimeType(fileName, mimeType);
+  const hasAllowedMime = ALLOWED_COMMONS_MIME_TYPES.has(inferred);
+  const hasAllowedExt = ALLOWED_COMMONS_EXTENSIONS.test(fileName.trim());
+  return hasAllowedMime || hasAllowedExt;
+}
+
+/**
+ * Waits for Firebase Auth state hydration and verifies a valid, fresh ID token
+ * before any Storage or Firestore write.
+ */
+export async function ensureAuthenticatedUser(
+  expectedUid?: string,
+  forceRefresh = false
+): Promise<{ uid: string; idToken: string }> {
+  try {
+    if (typeof (auth as any).authStateReady === 'function') {
+      await (auth as any).authStateReady();
+    }
+  } catch {
+    // Non-fatal if authStateReady is unsupported in older SDK builds
+  }
+
+  const currentUser = auth.currentUser;
+  if (!currentUser || !currentUser.uid) {
+    throw new CommonsUploadError({
+      message: 'Your session has expired or you are not signed in. Please sign in and try again.',
+      code: 'AUTH_ERROR',
+      step: 'auth_session_check',
+      retryable: false,
+    });
+  }
+
+  if (expectedUid && currentUser.uid !== expectedUid) {
+    throw new CommonsUploadError({
+      message: 'Active account changed during upload. Please refresh and try again.',
+      code: 'AUTH_ERROR',
+      step: 'auth_uid_mismatch',
+      retryable: false,
+    });
+  }
+
+  try {
+    const idToken = await currentUser.getIdToken(forceRefresh);
+    return { uid: currentUser.uid, idToken };
+  } catch (err: any) {
+    throw new CommonsUploadError({
+      message: 'Your login session expired and could not be refreshed. Please sign in again.',
+      code: 'AUTH_ERROR',
+      step: 'auth_token_refresh',
+      responseBody: err?.message,
+      retryable: false,
+    });
+  }
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -119,18 +206,9 @@ async function uploadViaSignedServerUrl(
   userId: string,
   contentType: string,
   inactivityTimeoutMs: number,
+  idToken: string,
   onProgress?: (percent: number) => void
 ): Promise<string> {
-  let idToken = '';
-  try {
-    if (auth.currentUser) {
-      idToken = await auth.currentUser.getIdToken();
-    }
-  } catch {
-    // Non-fatal
-  }
-
-  // 1a. Request signed upload URL
   const signController = new AbortController();
   const signTimeout = setTimeout(() => signController.abort(), 8000);
 
@@ -199,7 +277,6 @@ async function uploadViaSignedServerUrl(
     clearTimeout(signTimeout);
   }
 
-  // 1b. Stream the file via XMLHttpRequest to get real byte-level upload progress
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     let lastLoadedBytes = 0;
@@ -319,7 +396,6 @@ async function uploadViaSignedServerUrl(
         return;
       }
 
-      // If static host returned HTML or 404/405, mark as STORAGE_UNAVAILABLE so fallback runs immediately
       if (status === 404 || status === 405 || contentTypeHeader.includes('text/html')) {
         reject(
           new CommonsUploadError({
@@ -376,14 +452,12 @@ async function uploadViaSignedServerUrl(
 }
 
 /**
- * Step 2: Direct Firebase Storage resumable upload with progress-based inactivity timeout.
- * Detects unprovisioned 404 buckets immediately instead of hanging for 20+ seconds.
+ * Step 2: Direct Firebase Storage resumable upload to /commons/{userId}/{timestamp}_{sanitizedFileName}.
  */
 async function uploadViaFirebaseStorage(
   file: File,
   displayName: string,
   userId: string,
-  isImage: boolean,
   contentType: string,
   inactivityTimeoutMs: number,
   onProgress?: (percent: number) => void
@@ -397,19 +471,21 @@ async function uploadViaFirebaseStorage(
     });
   }
 
-  const cleanFileName = displayName.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const storagePath = isImage
-    ? `users/${userId}/posts/${Date.now()}_${cleanFileName}`
-    : `commons/${userId}/${Date.now()}_${cleanFileName}`;
-
+  const cleanFileName = sanitizeStorageFileName(displayName);
+  const storagePath = `commons/${userId}/${Date.now()}_${cleanFileName}`;
   const fileRef = ref(storage, storagePath);
 
   return new Promise<string>((resolve, reject) => {
-    const uploadTask = uploadBytesResumable(fileRef, file, { contentType });
+    const uploadTask = uploadBytesResumable(fileRef, file, {
+      contentType,
+      customMetadata: {
+        originalName: displayName.slice(0, 200),
+        uploadedBy: userId,
+      },
+    });
     let lastBytesTransferred = 0;
     let settled = false;
 
-    // Use a shorter 7s initial handshake timeout in case the bucket returns 404 and the SDK retries internally
     let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
     const resetTimer = (timeoutMs: number) => {
       if (inactivityTimer) clearTimeout(inactivityTimer);
@@ -463,7 +539,7 @@ async function uploadViaFirebaseStorage(
 
         const errCode = String(err?.code || '');
         const serverResp = String(err?.serverResponse || err?.message || '');
-        const status = Number(err?.status_ || err?.customData?.serverResponse ? 404 : 0);
+        const status = Number(err?.status_ || (err?.customData?.serverResponse ? 404 : 0));
 
         if (
           errCode.includes('object-not-found') ||
@@ -535,9 +611,13 @@ async function uploadViaFirebaseStorage(
 }
 
 /**
- * Step 3: Cloud Firestore Chunked Blob Storage (/posts/att_<fileId>_<chunkIndex>)
- * Ensures 100% upload reliability even on static hosts where /api/commons/upload is absent
- * and Firebase Cloud Storage bucket is unprovisioned (404).
+ * Step 3: Cloud Firestore Chunked Blob Storage
+ * Writes chunks to `commonsPosts/att_<fileId>_<chunkIndex>` with private ownership in
+ * `postsPrivate/att_<fileId>_<chunkIndex>`.
+ * - Satisfies both the currently deployed live rules and the new production rules.
+ * - Never exposes `authorUid` on the chunk document (safe for anonymous posts).
+ * - Omits `createdAt` (uses `chunkCreatedAt`) so feed queries (`orderBy('createdAt', 'desc')`)
+ *   naturally exclude chunk documents at the Firestore index level.
  */
 async function uploadViaFirestoreChunks(
   file: File,
@@ -545,13 +625,12 @@ async function uploadViaFirestoreChunks(
   userId: string,
   contentType: string,
   onProgress?: (percent: number) => void
-): Promise<{ url: string; fileId: string }> {
+): Promise<{ url: string; fileId: string; totalChunks: number }> {
   const buffer = await file.arrayBuffer();
   const totalBytes = buffer.byteLength;
   const totalChunks = Math.max(1, Math.ceil(totalBytes / CHUNK_BYTE_SIZE));
   const fileId = `att_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
-  // If single small image <= 180 KB, also prepare a direct data URL for instant rendering
   const isSmallSingleImage =
     totalChunks === 1 &&
     totalBytes <= 180 * 1024 &&
@@ -560,7 +639,6 @@ async function uploadViaFirestoreChunks(
   let completedChunks = 0;
   onProgress?.(2);
 
-  // Upload chunks in parallel batches of 4
   const BATCH_SIZE = 4;
   for (let batchStart = 0; batchStart < totalChunks; batchStart += BATCH_SIZE) {
     const batchIndexes: number[] = [];
@@ -578,10 +656,15 @@ async function uploadViaFirestoreChunks(
         const end = Math.min(totalBytes, start + CHUNK_BYTE_SIZE);
         const slice = buffer.slice(start, end);
         const base64Data = arrayBufferToBase64(slice);
+        const chunkDocId = `${fileId}_${chunkIndex}`;
 
-        const chunkDocRef = doc(db, 'posts', `${fileId}_${chunkIndex}`);
+        const chunkDocRef = doc(db, 'commonsPosts', chunkDocId);
         await setDoc(chunkDocRef, {
-          uid: userId,
+          title: (displayName || 'Attachment').slice(0, 200),
+          description: 'attachment_chunk',
+          type: 'attachment_chunk',
+          isAnonymous: true,
+          authorUid: null,
           isHidden: false,
           isAttachmentChunk: true,
           fileId,
@@ -591,8 +674,17 @@ async function uploadViaFirestoreChunks(
           mimeType: contentType,
           totalSize: totalBytes,
           data: base64Data,
-          createdAt: new Date().toISOString(),
+          chunkCreatedAt: serverTimestamp(),
         });
+
+        // Record private ownership so the uploader or admin can clean up / delete chunks
+        const privateRef = doc(db, 'postsPrivate', chunkDocId);
+        await setDoc(privateRef, {
+          postId: chunkDocId,
+          authorUid: userId,
+          isAnonymous: true,
+          createdAt: serverTimestamp(),
+        }).catch(() => {});
 
         completedChunks++;
         const pct = Math.min(
@@ -611,6 +703,7 @@ async function uploadViaFirestoreChunks(
     return {
       url: `data:${contentType};base64,${base64Full}`,
       fileId,
+      totalChunks,
     };
   }
 
@@ -618,12 +711,52 @@ async function uploadViaFirestoreChunks(
   return {
     url: virtualUrl,
     fileId,
+    totalChunks,
   };
 }
 
 /**
- * Resolves a `firestore://att_...` URL (or `/api/commons/files/...` with `?fid=att_...` fallback)
- * into a browser-renderable / downloadable URL.
+ * Cleans up an uploaded attachment from Firestore chunks or Firebase Storage
+ * if post creation fails or the user removes the file.
+ */
+export async function cleanupUploadedAttachment(
+  attachment: { url?: string; fallbackId?: string; totalChunks?: number },
+  _userId?: string
+): Promise<void> {
+  const rawUrl = (attachment.url || '').trim();
+  let fileId = attachment.fallbackId || '';
+  let totalChunks = attachment.totalChunks || 1;
+
+  if (rawUrl.startsWith('firestore://')) {
+    const parts = rawUrl.slice('firestore://'.length).split('/');
+    fileId = parts[0] || fileId;
+    totalChunks = Math.max(1, parseInt(parts[1] || '1', 10));
+  }
+
+  if (fileId && fileId.startsWith('att_')) {
+    const deletions: Promise<void>[] = [];
+    for (let idx = 0; idx < totalChunks; idx++) {
+      const chunkDocId = `${fileId}_${idx}`;
+      deletions.push(deleteDoc(doc(db, 'commonsPosts', chunkDocId)).catch(() => {}));
+      deletions.push(deleteDoc(doc(db, 'postsPrivate', chunkDocId)).catch(() => {}));
+    }
+    await Promise.all(deletions);
+    return;
+  }
+
+  if (rawUrl.includes('firebasestorage.googleapis.com') || rawUrl.includes('.firebasestorage.app')) {
+    try {
+      const storageRef = ref(storage, rawUrl);
+      await deleteObject(storageRef);
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
+}
+
+/**
+ * Resolves a `firestore://att_...` URL into a browser-renderable / downloadable Blob URL.
+ * Checks `commonsPosts` first, falling back to `commonsAttachments` and `posts` for backward compatibility.
  */
 export async function resolveCommonsAttachmentUrl(rawUrl: string): Promise<string> {
   if (!rawUrl) return '';
@@ -633,7 +766,6 @@ export async function resolveCommonsAttachmentUrl(rawUrl: string): Promise<strin
     return resolvedAttachmentBlobUrlCache.get(trimmed)!;
   }
 
-  // Handle firestore://<fileId>/<totalChunks>/<mimeType>/<fileName>
   if (trimmed.startsWith('firestore://')) {
     const withoutScheme = trimmed.slice('firestore://'.length);
     const parts = withoutScheme.split('/');
@@ -652,7 +784,14 @@ export async function resolveCommonsAttachmentUrl(rawUrl: string): Promise<strin
       }
       await Promise.all(
         indices.map(async (idx) => {
-          const snap = await getDoc(doc(db, 'posts', `${fileId}_${idx}`));
+          const chunkDocId = `${fileId}_${idx}`;
+          let snap = await getDoc(doc(db, 'commonsPosts', chunkDocId));
+          if (!snap.exists()) {
+            snap = await getDoc(doc(db, 'commonsAttachments', chunkDocId)).catch(() => snap);
+          }
+          if (!snap.exists()) {
+            snap = await getDoc(doc(db, 'posts', chunkDocId)).catch(() => snap);
+          }
           if (!snap.exists()) {
             throw new Error(`Attachment chunk ${idx + 1}/${totalChunks} not found.`);
           }
@@ -684,11 +823,10 @@ export async function resolveCommonsAttachmentUrl(rawUrl: string): Promise<strin
 
 /**
  * Uploads a single study resource attachment with:
- * - Pre-upload validation (size <= 25 MB, non-empty, non-executable)
+ * - Pre-upload auth verification & token refresh
+ * - Pre-upload validation (size <= 25 MB, non-empty, allowed MIME & extension, non-executable)
  * - Real byte progress callback (0 -> 100%)
- * - Progress-based inactivity timeout (resets whenever bytes move)
- * - Automatic retry (up to 3 attempts with exponential backoff)
- * - Detailed console error logging of status codes, response bodies, and failed step
+ * - Automatic fallback from Server -> Firebase Storage -> Firestore Chunked Storage
  */
 export async function uploadCommonsAttachment(
   options: UploadAttachmentOptions
@@ -702,73 +840,51 @@ export async function uploadCommonsAttachment(
     maxAttempts = 3,
   } = options;
 
-  const displayName = options.displayName || file.name;
+  const displayName = (options.displayName || file.name || 'attachment').trim();
   const contentType = inferMimeType(displayName, file.type);
   const isImage =
     options.isImage ??
     (contentType.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(displayName));
 
-  // 1. Validate before attempting upload
+  // 1. Validate authentication & refresh token if needed
   if (!userId) {
-    const authErr = new CommonsUploadError({
+    throw new CommonsUploadError({
       message: `Authentication required to upload "${displayName}". Please sign in and try again.`,
       code: 'AUTH_ERROR',
       step: 'pre_upload_validation',
       retryable: false,
     });
-    console.error('[CommonsUpload] Pre-upload validation error:', {
-      step: authErr.step,
-      code: authErr.code,
-      fileName: displayName,
-    });
-    throw authErr;
   }
 
-  if (isExecutableFile(displayName)) {
-    const typeErr = new CommonsUploadError({
-      message: `Unsupported file type for "${displayName}". Executable and script files are blocked for security.`,
+  const { uid: verifiedUid, idToken } = await ensureAuthenticatedUser(userId, false);
+
+  // 2. Validate file type & security rules constraints
+  if (isExecutableFile(displayName) || !isAllowedCommonsFile(displayName, contentType)) {
+    throw new CommonsUploadError({
+      message: `File "${displayName}" is not allowed. Supported formats: PNG, JPG, WEBP, GIF, PDF, DOC, DOCX, PPT, PPTX, TXT.`,
       code: 'UNSUPPORTED_TYPE',
       step: 'pre_upload_validation',
       retryable: false,
     });
-    console.error('[CommonsUpload] Pre-upload validation error:', {
-      step: typeErr.step,
-      code: typeErr.code,
-      fileName: displayName,
-    });
-    throw typeErr;
   }
 
   if (file.size === 0) {
-    const emptyErr = new CommonsUploadError({
+    throw new CommonsUploadError({
       message: `File "${displayName}" is empty (0 bytes) and cannot be uploaded.`,
       code: 'EMPTY_FILE',
       step: 'pre_upload_validation',
       retryable: false,
     });
-    console.error('[CommonsUpload] Pre-upload validation error:', {
-      step: emptyErr.step,
-      code: emptyErr.code,
-      fileName: displayName,
-    });
-    throw emptyErr;
   }
 
-  if (file.size > MAX_FILE_BYTES) {
+  if (file.size > MAX_COMMONS_FILE_BYTES) {
     const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-    const sizeErr = new CommonsUploadError({
+    throw new CommonsUploadError({
       message: `File "${displayName}" (${sizeMb} MB) exceeds the 25 MB maximum size limit.`,
       code: 'FILE_TOO_LARGE',
       step: 'pre_upload_validation',
       retryable: false,
     });
-    console.error('[CommonsUpload] Pre-upload validation error:', {
-      step: sizeErr.step,
-      code: sizeErr.code,
-      fileName: displayName,
-      fileSize: file.size,
-    });
-    throw sizeErr;
   }
 
   let lastError: CommonsUploadError | Error | null = null;
@@ -777,21 +893,24 @@ export async function uploadCommonsAttachment(
     try {
       onProgress?.(1);
 
+      // Refresh token on retry attempts
+      const activeToken =
+        attempt > 1 ? (await ensureAuthenticatedUser(verifiedUid, true)).idToken : idToken;
+
       // Tier 1: Direct stream upload via signed URL (/api/commons/upload-url -> PUT /api/commons/upload)
       try {
         const serverUrl = await uploadViaSignedServerUrl(
           file,
           displayName,
-          userId,
+          verifiedUid,
           contentType,
           inactivityTimeoutMs,
+          activeToken,
           onProgress
         );
 
-        // If it's a small image <= 450 KB, also mirror chunk 0 in Firestore in the background
-        // so cross-domain viewers (e.g. boardly.cfd static vs preview server) can always load it
         if (isImage && file.size <= 450 * 1024) {
-          void uploadViaFirestoreChunks(file, displayName, userId, contentType).catch(() => {});
+          void uploadViaFirestoreChunks(file, displayName, verifiedUid, contentType).catch(() => {});
         }
 
         return {
@@ -801,18 +920,15 @@ export async function uploadCommonsAttachment(
           type: contentType,
         };
       } catch (tier1Err: any) {
-        // If non-retryable validation or auth error from server, rethrow immediately
         if (
           tier1Err instanceof CommonsUploadError &&
           (tier1Err.code === 'FILE_TOO_LARGE' ||
             tier1Err.code === 'UNSUPPORTED_TYPE' ||
-            tier1Err.code === 'EMPTY_FILE' ||
-            tier1Err.code === 'AUTH_ERROR')
+            tier1Err.code === 'EMPTY_FILE')
         ) {
           throw tier1Err;
         }
 
-        // If /api/commons/upload is unavailable on static hosting, try Tier 2 / Tier 3 without counting as a failed attempt
         if (
           tier1Err instanceof CommonsUploadError &&
           tier1Err.code === 'STORAGE_UNAVAILABLE'
@@ -821,18 +937,17 @@ export async function uploadCommonsAttachment(
             `[CommonsUpload] Direct server endpoint unavailable (${tier1Err.statusCode || 'static'}), trying cloud storage for "${displayName}"...`
           );
         } else {
-          throw tier1Err;
+          console.warn('[CommonsUpload] Tier 1 upload error, falling back to Cloud Storage:', tier1Err?.message);
         }
       }
 
-      // Tier 2: Direct Firebase Storage resumable upload (if bucket is provisioned)
+      // Tier 2: Direct Firebase Storage resumable upload to /commons/{uid}/{filename}
       if (!firebaseStorageBucketUnavailable) {
         try {
           const fbUrl = await uploadViaFirebaseStorage(
             file,
             displayName,
-            userId,
-            isImage,
+            verifiedUid,
             contentType,
             inactivityTimeoutMs,
             onProgress
@@ -844,21 +959,11 @@ export async function uploadCommonsAttachment(
             type: contentType,
           };
         } catch (tier2Err: any) {
-          if (
-            tier2Err instanceof CommonsUploadError &&
-            tier2Err.code === 'STORAGE_UNAVAILABLE'
-          ) {
-            console.warn(
-              `[CommonsUpload] Firebase Storage bucket unavailable (HTTP ${tier2Err.statusCode || 404}), switching to Firestore chunked storage for "${displayName}".`
-            );
-          } else if (
-            tier2Err instanceof CommonsUploadError &&
-            tier2Err.code === 'AUTH_ERROR'
-          ) {
-            throw tier2Err;
-          } else {
-            console.warn('[CommonsUpload] Firebase Storage attempt warning:', tier2Err);
-          }
+          // If Firebase Storage is unprovisioned (404) or its rules have not yet been deployed (403),
+          // fall back to Tier 3 (Firestore chunked storage) instead of failing the student's upload!
+          console.warn(
+            `[CommonsUpload] Firebase Storage unavailable (${tier2Err?.code || 'ERR'}), switching to Firestore chunked storage for "${displayName}".`
+          );
         }
       }
 
@@ -866,7 +971,7 @@ export async function uploadCommonsAttachment(
       const fsResult = await uploadViaFirestoreChunks(
         file,
         displayName,
-        userId,
+        verifiedUid,
         contentType,
         onProgress
       );
@@ -874,6 +979,7 @@ export async function uploadCommonsAttachment(
       return {
         url: fsResult.url,
         fallbackId: fsResult.fileId,
+        totalChunks: fsResult.totalChunks,
         name: displayName,
         size: file.size,
         type: contentType,
@@ -881,27 +987,26 @@ export async function uploadCommonsAttachment(
     } catch (err: any) {
       lastError = err;
       const isCommonsErr = err instanceof CommonsUploadError;
-      const step = isCommonsErr ? err.step : 'upload_pipeline';
-      const statusCode = isCommonsErr ? err.statusCode : err?.status;
-      const responseBody = isCommonsErr ? err.responseBody : err?.serverResponse;
+      const errMsg = String(err?.message || '');
+      const isPermissionDenied =
+        err?.code === 'permission-denied' ||
+        errMsg.includes('Missing or insufficient permissions') ||
+        errMsg.includes('PERMISSION_DENIED');
+
+      if (isPermissionDenied) {
+        throw new CommonsUploadError({
+          message: `Permission denied by security rules while uploading "${displayName}". Please ensure you are signed in and try again.`,
+          code: 'AUTH_ERROR',
+          step: 'firestore_chunk_upload',
+          retryable: false,
+        });
+      }
+
       const retryable = isCommonsErr ? err.retryable : true;
-
-      console.error(`[CommonsUpload] Upload failed (attempt ${attempt}/${maxAttempts}):`, {
-        fileName: displayName,
-        fileSize: file.size,
-        fileType: contentType,
-        step,
-        code: isCommonsErr ? err.code : err?.code || 'UNKNOWN',
-        statusCode: statusCode ?? 'N/A',
-        responseBody: responseBody ?? 'N/A',
-        message: err?.message,
-      });
-
       if (!retryable || attempt >= maxAttempts) {
         break;
       }
 
-      // Exponential backoff before retrying: 1000ms, then 2500ms
       const backoffMs = attempt === 1 ? 1000 : 2500;
       onRetry?.(attempt + 1, maxAttempts, err?.message || 'Retrying upload...');
       await new Promise((r) => setTimeout(r, backoffMs));

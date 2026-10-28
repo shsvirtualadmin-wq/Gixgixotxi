@@ -2,13 +2,12 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Helper functions
     function isSignedIn() {
       return request.auth != null && request.auth.uid != null;
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
     }
 
     function isAdmin() {
@@ -16,88 +15,98 @@ service firebase.storage {
         request.auth.token.admin == true ||
         request.auth.token.role == 'admin' ||
         request.auth.token.role == 'superadmin' ||
-        request.auth.uid == 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
-        (request.auth.token.email != null && (
-          request.auth.token.email.lower() == 'shsvirtualadmin@gmail.com' ||
-          request.auth.token.email.lower() == 'admin@shsvirtual.org' ||
-          request.auth.token.email.lower() == 'support@boardly.cfd' ||
-          request.auth.token.email.lower() == 'support@scholario.me' ||
-          request.auth.token.email.lower() == 'hashir@boardly.pk'
-        ))
+        request.auth.token.role == 'Super Admin' ||
+        request.auth.uid == 'jJfb1nThG1X9phL8fFDZ0G0J7m33' ||
+        (request.auth.token.email == 'shsvirtualadmin@gmail.com' &&
+         request.auth.token.email_verified == true)
+      );
+    }
+
+    function isModerator() {
+      return isSignedIn() && (
+        isAdmin() ||
+        request.auth.token.moderator == true ||
+        request.auth.token.role == 'moderator' ||
+        request.auth.token.role == 'Moderator'
       );
     }
 
     function isValidImage(maxBytes) {
       return request.resource != null &&
+        request.resource.size > 0 &&
         request.resource.size <= maxBytes &&
+        request.resource.contentType != null &&
+        request.resource.contentType.matches('image/(png|jpeg|jpg|webp|gif)');
+    }
+
+    function isValidCommonsFile() {
+      return request.resource != null &&
+        request.resource.size > 0 &&
+        request.resource.size <= 25 * 1024 * 1024 &&
+        request.resource.contentType != null &&
         (
-          request.resource.contentType.matches('image/(jpeg|jpg|png|webp|gif)') ||
-          request.resource.contentType == 'image/jpeg' ||
-          request.resource.contentType == 'image/jpg' ||
-          request.resource.contentType == 'image/png' ||
-          request.resource.contentType == 'image/webp' ||
-          request.resource.contentType == 'image/gif'
+          request.resource.contentType.matches('image/(png|jpeg|jpg|webp|gif)') ||
+          request.resource.contentType == 'application/pdf' ||
+          request.resource.contentType == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+          request.resource.contentType == 'application/msword' ||
+          request.resource.contentType == 'application/vnd.ms-powerpoint' ||
+          request.resource.contentType == 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+          request.resource.contentType == 'text/plain'
         );
     }
 
-    // -------------------------------------------------------------------------
-    // USER PUBLIC ASSETS (Avatar, Profile Banner, Feed Post Media)
-    // -------------------------------------------------------------------------
-    match /users/{userId} {
-
-      // User Profile Avatars: Publicly viewable, max 2 MB
-      match /avatars/{fileName} {
-        allow read: if true;
-        allow write: if isOwner(userId) && isValidImage(2 * 1024 * 1024);
-        allow delete: if isOwner(userId) || isAdmin();
-      }
-
-      // User Profile Banners: Publicly viewable, max 5 MB
-      match /banners/{fileName} {
-        allow read: if true;
-        allow write: if isOwner(userId) && isValidImage(5 * 1024 * 1024);
-        allow delete: if isOwner(userId) || isAdmin();
-      }
-
-      // User Profile Feed Post Images: Publicly viewable, max 25 MB
-      match /posts/{fileName} {
-        allow read: if true;
-        allow write: if isOwner(userId) && isValidImage(25 * 1024 * 1024);
-        allow delete: if isOwner(userId) || isAdmin();
-      }
-
-      // Private Payment Screenshots / Receipts (if stored in Storage): Owner or Admin ONLY
-      match /receipts/{fileName} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isOwner(userId) && isValidImage(10 * 1024 * 1024);
-        allow delete: if isAdmin();
-      }
+    // 1. Commons study resources (images, PDFs, DOCX, PPTX, TXT up to 25 MB)
+    // Supports nested folders, thumbnails, and sanitized filenames under /commons/{uid}/...
+    match /commons/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow create, update: if isOwner(userId) && isValidCommonsFile();
+      allow delete: if isOwner(userId) || isAdmin() || isModerator();
     }
 
-    // -------------------------------------------------------------------------
-    // POSTS ALIAS (/posts/{userId}/{fileName})
-    // -------------------------------------------------------------------------
-    match /posts/{userId}/{fileName} {
+    // 2. User avatars (max 5 MB, images only)
+    match /users/{userId}/avatars/{fileName} {
       allow read: if true;
-      allow write: if isOwner(userId) && isValidImage(25 * 1024 * 1024);
+      allow create, update: if isOwner(userId) && isValidImage(5 * 1024 * 1024);
       allow delete: if isOwner(userId) || isAdmin();
     }
 
-    // -------------------------------------------------------------------------
-    // COMMONS STUDY MATERIAL UPLOADS (PDFs, notes, study resources up to 25 MB)
-    // Public metadata is read from Firestore; downloading the actual file requires login
-    // -------------------------------------------------------------------------
-    match /commons/{uploaderId}/{fileName} {
-      allow read: if isSignedIn();
-      allow write: if isOwner(uploaderId) &&
-        request.resource.size <= 25 * 1024 * 1024 &&
-        !fileName.matches('.*\\.(exe|bat|cmd|sh|bin|msi|apk|jar|scr|vbs|js|com|wsf|ps1)$');
-      allow delete: if isOwner(uploaderId) || isAdmin();
+    // 3. User banners (max 8 MB, images only)
+    match /users/{userId}/banners/{fileName} {
+      allow read: if true;
+      allow create, update: if isOwner(userId) && isValidImage(8 * 1024 * 1024);
+      allow delete: if isOwner(userId) || isAdmin();
     }
 
-    // -------------------------------------------------------------------------
-    // DEFAULT CATCH-ALL: Strictly deny any unlisted paths
-    // -------------------------------------------------------------------------
+    // 4. User post attachments (legacy/feed path under /users/{uid}/posts/...)
+    match /users/{userId}/posts/{allPaths=**} {
+      allow read: if true;
+      allow create, update: if isOwner(userId) && isValidCommonsFile();
+      allow delete: if isOwner(userId) || isAdmin() || isModerator();
+    }
+
+    // 5. Payment receipts (private to owner and admin, max 10 MB)
+    match /users/{userId}/receipts/{fileName} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId) && (
+        isValidImage(10 * 1024 * 1024) ||
+        (
+          request.resource != null &&
+          request.resource.size > 0 &&
+          request.resource.size <= 10 * 1024 * 1024 &&
+          request.resource.contentType == 'application/pdf'
+        )
+      );
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // 6. Legacy post uploads path (/posts/{userId}/...)
+    match /posts/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow create, update: if isOwner(userId) && isValidCommonsFile();
+      allow delete: if isOwner(userId) || isAdmin() || isModerator();
+    }
+
+    // Default deny for all other paths
     match /{allPaths=**} {
       allow read, write: if false;
     }
