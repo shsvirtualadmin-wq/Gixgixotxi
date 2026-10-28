@@ -1,0 +1,56 @@
+{
+  "updatedAt": "2026-10-28T00:59:52.297Z",
+  "items": {
+    "1": {
+      "topicId": 1,
+      "title": "Real numbers and their properties",
+      "subject": "Mathematics",
+      "classLevel": "Class 9",
+      "board": "Federal",
+      "format": "pdf",
+      "status": "dry_run_verified",
+      "filePath": "generated-materials/pdf/01_Class_9_Mathematics_Real_numbers_and_their_properties_Federal.pdf",
+      "pageCount": 6,
+      "wordCount": 1756,
+      "postId": "dry_run_post_1",
+      "storagePath": "commons/DRY_RUN_SUPER_ADMIN_UID/1793149148852_1fb573_Class_9_Mathematics_-_Real_numbers_and_their_properties__Federal_Board_.pdf",
+      "createdAtScheduled": "2026-10-18T03:14:38.992Z",
+      "retries": 0,
+      "updatedAt": "2026-10-28T00:59:08.854Z"
+    },
+    "4": {
+      "topicId": 4,
+      "title": "Linear equations and inequalities",
+      "subject": "Mathematics",
+      "classLevel": "Class 9",
+      "board": "Sindh",
+      "format": "text",
+      "status": "dry_run_verified",
+      "filePath": null,
+      "pageCount": null,
+      "wordCount": 214,
+      "postId": "dry_run_post_4",
+      "storagePath": null,
+      "createdAtScheduled": "2026-10-21T17:59:38.992Z",
+      "retries": 0,
+      "updatedAt": "2026-10-28T00:59:52.297Z"
+    },
+    "11": {
+      "topicId": 11,
+      "title": "Scalars and vectors",
+      "subject": "Physics",
+      "classLevel": "Class 9",
+      "board": "Federal",
+      "format": "pdf",
+      "status": "dry_run_verified",
+      "filePath": "generated-materials/pdf/11_Class_9_Physics_Scalars_and_vectors_Federal.pdf",
+      "pageCount": 6,
+      "wordCount": 1769,
+      "postId": "dry_run_post_11",
+      "storagePath": "commons/DRY_RUN_SUPER_ADMIN_UID/1793149180649_66a22e_Class_9_Physics_-_Scalars_and_vectors__Federal_Board_.pdf",
+      "createdAtScheduled": "2026-10-18T08:12:38.992Z",
+      "retries": 0,
+      "updatedAt": "2026-10-28T00:59:40.650Z"
+    }
+  }
+}
