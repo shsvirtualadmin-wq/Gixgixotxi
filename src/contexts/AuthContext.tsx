@@ -23,6 +23,11 @@ import {
   doc,
   getDoc,
   setDoc,
+  deleteDoc,
+  collection,
+  query,
+  where,
+  getDocs,
   runTransaction,
   serverTimestamp,
 } from 'firebase/firestore';
@@ -325,13 +330,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = useCallback(
     async (email: string, password: string, displayName: string) => {
       setAuthError(null);
-      const credential = await createUserWithEmailAndPassword(auth, email, password);
+      const cleanEmail = email.trim().toLowerCase();
+      const credential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
       const { user: newUser } = credential;
 
       // Resolve and save displayName immediately
       const resolvedName =
         displayName?.trim() ||
-        (email.includes('@') ? email.split('@')[0] : 'Student');
+        (cleanEmail.includes('@') ? cleanEmail.split('@')[0] : 'Student');
 
       try {
         await firebaseUpdateProfile(newUser, { displayName: resolvedName });
@@ -339,30 +345,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn('Could not update Firebase Auth profile displayName:', err);
       }
 
-      // Create base user document ONLY if it doesn't already exist
-      const userDocRef = doc(db, 'users', newUser.uid);
-      const existingSnap = await getDoc(userDocRef).catch(() => null);
-      if (!existingSnap || !existingSnap.exists()) {
-        await withTimeout(
-          setDoc(
-            userDocRef,
-            {
-              uid: newUser.uid,
-              name: resolvedName,
-              displayName: resolvedName,
-              email: email.toLowerCase(),
-              photoURL: null,
-              role: 'student',
-              plan: 'free',
-              status: 'active',
-              onboardingCompleted: false,
-              createdAt: serverTimestamp(),
-            },
-            { merge: true }
-          ),
-          6000
-        );
+      // Clean up any leftover orphan profile records with the same email under an old UID
+      try {
+        const orphanPubSnap = await getDocs(
+          query(collection(db, 'publicProfiles'), where('email', '==', cleanEmail))
+        ).catch(() => null);
+        if (orphanPubSnap && !orphanPubSnap.empty) {
+          for (const d of orphanPubSnap.docs) {
+            if (d.id !== newUser.uid) {
+              await deleteDoc(doc(db, 'publicProfiles', d.id)).catch(() => {});
+              await deleteDoc(doc(db, 'users', d.id)).catch(() => {});
+            }
+          }
+        }
+      } catch {
+        // Non-fatal orphan cleanup
       }
+
+      // Always write/overwrite the user document for the new Auth user (overwriting any orphan doc)
+      const userDocRef = doc(db, 'users', newUser.uid);
+      await withTimeout(
+        setDoc(
+          userDocRef,
+          {
+            uid: newUser.uid,
+            name: resolvedName,
+            displayName: resolvedName,
+            email: cleanEmail,
+            photoURL: null,
+            role: 'student',
+            plan: 'free',
+            status: 'active',
+            deleted: false,
+            onboardingCompleted: false,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ),
+        6000
+      );
 
       // Send email verification
       try {
@@ -371,7 +393,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn('Verification email send issue:', e);
       }
 
-      createReferralDoc(newUser.uid, email).catch(() => {});
+      createReferralDoc(newUser.uid, cleanEmail).catch(() => {});
     },
     [createReferralDoc]
   );
@@ -444,15 +466,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resetPassword = useCallback(async (email: string) => {
     setAuthError(null);
-    const actionCodeSettings = {
-      url: 'https://boardly.cfd/login',
-      handleCodeInApp: false,
-    };
-    await withTimeout(
-      sendPasswordResetEmail(auth, email, actionCodeSettings),
-      15000,
-      'Password reset request timed out after 15 seconds.'
-    );
+    const cleanEmail = email.trim().toLowerCase();
+
+    try {
+      // Call sendPasswordResetEmail WITHOUT restrictive continueUrl first to avoid
+      // Firebase Identity Toolkit internal error -26 (auth/error-code:-26) on auth.boardly.cfd
+      await withTimeout(
+        sendPasswordResetEmail(auth, cleanEmail),
+        12000,
+        'Password reset request timed out.'
+      );
+      return;
+    } catch (sdkErr: any) {
+      const code = String(sdkErr?.code || '');
+      const msg = String(sdkErr?.message || '');
+
+      // If Firebase explicitly reports user-not-found or invalid-email, rethrow immediately
+      if (code === 'auth/user-not-found' || code === 'auth/invalid-email') {
+        throw sdkErr;
+      }
+
+      // For auth/error-code:-26, unauthorized-continue-uri, or custom authDomain errors,
+      // fallback to the server-side Identity Toolkit endpoint
+      if (
+        code.includes('-26') ||
+        msg.includes('-26') ||
+        code.includes('continue-uri') ||
+        code === 'auth/internal-error' ||
+        code === 'auth/network-request-failed'
+      ) {
+        const resp = await fetch('/api/auth/password-reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: cleanEmail }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data?.success) {
+          const fallbackErr: any = new Error(
+            data?.error || 'Could not send password reset email.'
+          );
+          fallbackErr.code = data?.code || code || 'auth/error-code:-26';
+          throw fallbackErr;
+        }
+        return;
+      }
+
+      throw sdkErr;
+    }
   }, []);
 
   const retryProfile = useCallback(() => {

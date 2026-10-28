@@ -24,7 +24,8 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { auth, db, functions } from '@/lib/firebase';
 import type {
   UserProfile,
   Question,
@@ -690,16 +691,273 @@ export async function updateUserOverride(
   return verifiedProfile || ({ ...previous, ...updates, uid: targetUid } as UserProfile);
 }
 
+export interface DeleteUserAccountResult {
+  firebaseAuthDeleted: boolean;
+  firestoreDeleted: boolean;
+  cloudflareD1Deleted: boolean;
+  warning?: string;
+}
+
 export async function deleteUserAccount(
   adminEmail: string,
   targetUid: string,
   targetEmail: string
-): Promise<void> {
-  if (adminEmail.toLowerCase() !== 'shsvirtualadmin@gmail.com') {
-    throw new Error('Only Superadmin (shsvirtualadmin@gmail.com) can delete users.');
+): Promise<DeleteUserAccountResult> {
+  const cleanAdmin = (adminEmail || '').trim().toLowerCase();
+  if (
+    cleanAdmin !== 'shsvirtualadmin@gmail.com' &&
+    cleanAdmin !== 'support@boardly.cfd'
+  ) {
+    throw new Error('Only Superadmin (shsvirtualadmin@gmail.com) can permanently delete users.');
   }
-  await deleteDoc(doc(db, 'users', targetUid));
-  await logAdminAction(adminEmail, 'delete_user_account', { targetUid, targetEmail }, targetUid, targetEmail);
+
+  const cleanUid = (targetUid || '').trim();
+  const cleanEmail = (targetEmail || '').trim().toLowerCase();
+  if (!cleanUid) {
+    throw new Error('Missing target user UID for deletion.');
+  }
+
+  let firebaseAuthDeleted = false;
+  let cloudflareD1Deleted = false;
+  let authWarning: string | undefined;
+
+  // 1. Try Firebase Callable Cloud Function (adminDeleteUserAccount) first
+  try {
+    const fn = httpsCallable<
+      { targetUid: string; targetEmail: string },
+      { success: boolean; firebaseAuthDeleted: boolean }
+    >(functions, 'adminDeleteUserAccount');
+    const res = await fn({ targetUid: cleanUid, targetEmail: cleanEmail });
+    if (res.data?.firebaseAuthDeleted) {
+      firebaseAuthDeleted = true;
+    }
+  } catch (fnErr: any) {
+    // Cloud Function might not be deployed yet; fallback to server Admin API below
+    console.warn('[AdminService] adminDeleteUserAccount callable fallback notice:', fnErr?.message);
+  }
+
+  // 2. Call Server Admin API (/api/admin/users/delete & /api/admin/remove-student)
+  try {
+    const idToken = await auth.currentUser?.getIdToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+    };
+
+    const [delResp] = await Promise.all([
+      fetch('/api/admin/users/delete', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ targetUid: cleanUid, targetEmail: cleanEmail }),
+      }).catch(() => null),
+      fetch('/api/admin/remove-student', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ studentId: cleanUid, studentEmail: cleanEmail }),
+      }).catch(() => null),
+    ]);
+
+    if (delResp && delResp.ok) {
+      const data = await delResp.json().catch(() => ({}));
+      cloudflareD1Deleted = true;
+      if (data?.firebaseAuthDeleted) {
+        firebaseAuthDeleted = true;
+      } else if (!firebaseAuthDeleted && data?.firebaseAuthWarning) {
+        authWarning = data.firebaseAuthWarning;
+      }
+    }
+  } catch (srvErr: any) {
+    console.warn('[AdminService] Server deletion endpoint notice:', srvErr?.message);
+  }
+
+  // 3. Delete all direct UID documents in Firestore
+  const directCollections = [
+    'users',
+    'publicProfiles',
+    'admins',
+    'streaks',
+    'referrals',
+    'leaderboard',
+    'wallets',
+    'captainApplications',
+    'crewApplications',
+    'captains',
+  ];
+
+  await Promise.all(
+    directCollections.map((collName) =>
+      deleteDoc(doc(db, collName, cleanUid)).catch(() => {})
+    )
+  );
+
+  // 4. Delete any duplicate / orphan records matching the same email in users & publicProfiles
+  if (cleanEmail) {
+    for (const collName of ['users', 'publicProfiles'] as const) {
+      try {
+        const emailSnap = await getDocs(
+          query(collection(db, collName), where('email', '==', cleanEmail))
+        );
+        for (const d of emailSnap.docs) {
+          await deleteDoc(doc(db, collName, d.id)).catch(() => {});
+        }
+      } catch {}
+    }
+  }
+
+  // 5. Delete queried child documents (attempts, paymentRequests, reviews, crew_requests)
+  const childQueries = [
+    { coll: 'attempts', field: 'userId' },
+    { coll: 'paymentRequests', field: 'userId' },
+    { coll: 'reviews', field: 'userId' },
+    { coll: 'crew_requests', field: 'userId' },
+  ];
+
+  for (const cq of childQueries) {
+    try {
+      const qSnap = await getDocs(
+        query(collection(db, cq.coll), where(cq.field, '==', cleanUid), limit(200))
+      );
+      await Promise.all(qSnap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
+    } catch {}
+  }
+
+  // 6. Verify primary Firestore user document is gone
+  const checkUserSnap = await getDocFromServer(doc(db, 'users', cleanUid)).catch(() => null);
+  if (checkUserSnap && checkUserSnap.exists()) {
+    throw new Error(
+      `Failed to delete Firestore document users/${cleanUid}. Check Firestore security rules.`
+    );
+  }
+
+  await logAdminAction(
+    adminEmail,
+    'delete_user_account',
+    {
+      targetUid: cleanUid,
+      targetEmail: cleanEmail,
+      firebaseAuthDeleted,
+      cloudflareD1Deleted,
+    },
+    cleanUid,
+    cleanEmail
+  );
+
+  return {
+    firebaseAuthDeleted,
+    firestoreDeleted: true,
+    cloudflareD1Deleted,
+    warning: !firebaseAuthDeleted ? authWarning : undefined,
+  };
+}
+
+export async function cleanupOrphanUserProfiles(
+  adminEmail: string
+): Promise<{ scanned: number; removed: number; removedUids: string[] }> {
+  const cleanAdmin = (adminEmail || '').trim().toLowerCase();
+  if (
+    cleanAdmin !== 'shsvirtualadmin@gmail.com' &&
+    cleanAdmin !== 'support@boardly.cfd'
+  ) {
+    throw new Error('Only Superadmin can clean up orphan profiles.');
+  }
+
+  const removedUids = new Set<string>();
+
+  // 1. Try Cloud Function cleanupOrphanProfiles if deployed
+  try {
+    const fn = httpsCallable<
+      Record<string, never>,
+      { success: boolean; scannedCount: number; removedCount: number; removedUids: string[] }
+    >(functions, 'cleanupOrphanProfiles');
+    const res = await fn({});
+    if (Array.isArray(res.data?.removedUids)) {
+      res.data.removedUids.forEach((u) => removedUids.add(u));
+    }
+  } catch {
+    // Fallback to client-side Firestore scan below
+  }
+
+  // 2. Scan users and publicProfiles in Firestore for duplicate emails or orphan publicProfiles
+  const [usersSnap, pubSnap] = await Promise.all([
+    getDocs(collection(db, 'users')),
+    getDocs(collection(db, 'publicProfiles')),
+  ]);
+
+  const usersByUid = new Map<string, { uid: string; email: string; createdAtMs: number; data: any }>();
+  const byEmail = new Map<string, Array<{ uid: string; email: string; createdAtMs: number }>>();
+
+  usersSnap.docs.forEach((d) => {
+    const data = d.data();
+    const uid = d.id;
+    const email = String(data.email || '').trim().toLowerCase();
+    const createdAtMs =
+      typeof data.createdAt?.toMillis === 'function'
+        ? data.createdAt.toMillis()
+        : typeof data.createdAt?.seconds === 'number'
+        ? data.createdAt.seconds * 1000
+        : 0;
+    usersByUid.set(uid, { uid, email, createdAtMs, data });
+    if (email) {
+      if (!byEmail.has(email)) byEmail.set(email, []);
+      byEmail.get(email)!.push({ uid, email, createdAtMs });
+    }
+  });
+
+  // Duplicate email records: keep the newest UID, mark older UIDs as orphans
+  for (const [, list] of byEmail.entries()) {
+    if (list.length > 1) {
+      list.sort((a, b) => b.createdAtMs - a.createdAtMs);
+      for (let i = 1; i < list.length; i++) {
+        removedUids.add(list[i].uid);
+      }
+    }
+  }
+
+  // Records explicitly marked deleted
+  for (const [uid, info] of usersByUid.entries()) {
+    if (info.data?.deleted === true || info.data?.status === 'deleted') {
+      removedUids.add(uid);
+    }
+  }
+
+  // publicProfiles with no matching users/{uid} document
+  for (const d of pubSnap.docs) {
+    if (!usersByUid.has(d.id)) {
+      removedUids.add(d.id);
+    }
+  }
+
+  // Never touch superadmin UID
+  removedUids.delete('A5YMRimdHRcmeDWutxtUGt2e4hf2');
+
+  const collectionsToClean = [
+    'users',
+    'publicProfiles',
+    'streaks',
+    'referrals',
+    'leaderboard',
+    'wallets',
+    'captainApplications',
+    'crewApplications',
+  ];
+
+  for (const uid of removedUids) {
+    await Promise.all(
+      collectionsToClean.map((coll) => deleteDoc(doc(db, coll, uid)).catch(() => {}))
+    );
+  }
+
+  await logAdminAction(adminEmail, 'cleanup_orphan_profiles', {
+    scanned: usersByUid.size + pubSnap.size,
+    removed: removedUids.size,
+    removedUids: Array.from(removedUids),
+  });
+
+  return {
+    scanned: usersByUid.size,
+    removed: removedUids.size,
+    removedUids: Array.from(removedUids),
+  };
 }
 
 export async function backfillMissingDisplayNames(

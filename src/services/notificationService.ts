@@ -14,7 +14,6 @@ import {
   startAfter,
   serverTimestamp,
   writeBatch,
-  onSnapshot,
   type DocumentSnapshot,
   type Timestamp,
 } from 'firebase/firestore';
@@ -374,44 +373,35 @@ export function subscribeToUnreadNotifications(
     onCountChange(unreadNotificationsCount + unreadAnnouncementsCount);
   };
 
-  // 1. Listen for unread following notifications
   const qNotif = query(
     collection(db, 'notifications'),
     where('userId', '==', userId),
-    where('read', '==', false)
+    where('read', '==', false),
+    limit(50)
   );
 
-  const unsubNotif = onSnapshot(
-    qNotif,
-    (snap) => {
-      unreadNotificationsCount = snap.size;
-      updateGrandTotal();
-    },
-    (err) => {
-      console.warn('[notificationService] Unread notif snapshot error:', err);
-    }
-  );
-
-  // 2. Poll / check announcements against readAnnouncements
-  const checkAnnouncements = async () => {
+  // Poll notifications and announcements every 60s using getDocs (zero persistent onSnapshot listeners)
+  const checkAllUnread = async () => {
     try {
-      const [announcements, readSet] = await Promise.all([
+      const [notifSnap, announcements, readSet] = await Promise.all([
+        getDocs(qNotif).catch(() => null),
         fetchAnnouncements(20),
         fetchReadAnnouncementIds(userId),
       ]);
-      const unread = announcements.filter((a) => !readSet.has(a.id)).length;
-      unreadAnnouncementsCount = unread;
+      if (notifSnap) {
+        unreadNotificationsCount = notifSnap.size;
+      }
+      unreadAnnouncementsCount = announcements.filter((a) => !readSet.has(a.id)).length;
       updateGrandTotal();
     } catch {
       // Ignore background errors
     }
   };
 
-  checkAnnouncements();
-  const timer = setInterval(checkAnnouncements, 45000);
+  void checkAllUnread();
+  const timer = setInterval(checkAllUnread, 60000);
 
   return () => {
-    unsubNotif();
     clearInterval(timer);
   };
 }

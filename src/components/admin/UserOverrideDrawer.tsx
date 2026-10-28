@@ -254,10 +254,16 @@ export function UserOverrideDrawer({
     setDeleteInProgress(true);
     setError(null);
     try {
-      await deleteUserAccount(adminEmail, user.uid, user.email);
+      const result = await deleteUserAccount(adminEmail, user.uid, user.email);
       setConfirmAction(null);
       onSuccess();
-      onClose();
+      if (result && !result.firebaseAuthDeleted && result.warning) {
+        setError(
+          `Firestore & Cloudflare D1 records wiped. Firebase Auth notice: ${result.warning}`
+        );
+      } else {
+        onClose();
+      }
     } catch (err: unknown) {
       setError((err as Error).message || 'Failed to delete user');
     } finally {

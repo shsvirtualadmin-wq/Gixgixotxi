@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from './useUserProfile';
@@ -236,9 +236,8 @@ export function useEffectivePlan(): EffectivePlanResult {
       crewSubscriptionRegistry.set(crewId, entry);
 
       const crewRef = doc(db, 'crews', crewId);
-      entry.unsub = onSnapshot(
-        crewRef,
-        (snap) => {
+      getDoc(crewRef)
+        .then((snap) => {
           const cur = crewSubscriptionRegistry.get(crewId);
           if (!cur) return;
           cur.data = snap.exists() ? (snap.data() as PlanResolverInput['crew']) : null;
@@ -251,8 +250,8 @@ export function useEffectivePlan(): EffectivePlanResult {
               console.warn('[useEffectivePlan] subscriber notify error:', notifyErr);
             }
           }
-        },
-        (err) => {
+        })
+        .catch((err) => {
           console.warn('[useEffectivePlan] Error reading crew plan:', err);
           const cur = crewSubscriptionRegistry.get(crewId);
           if (!cur) return;
@@ -265,8 +264,7 @@ export function useEffectivePlan(): EffectivePlanResult {
               console.warn('[useEffectivePlan] subscriber notify error:', notifyErr);
             }
           }
-        }
-      );
+        });
     }
 
     entry.subscribers.add(onUpdate);
@@ -276,10 +274,6 @@ export function useEffectivePlan(): EffectivePlanResult {
       const cur = crewSubscriptionRegistry.get(crewId);
       if (!cur) return;
       cur.subscribers.delete(onUpdate);
-      if (cur.subscribers.size === 0) {
-        if (cur.unsub) cur.unsub();
-        crewSubscriptionRegistry.delete(crewId);
-      }
     };
   }, [isSuper, crewId]);
 

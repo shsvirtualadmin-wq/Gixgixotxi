@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Image as ImageIcon, RefreshCw } from 'lucide-react';
-import { ref, getDownloadURL } from 'firebase/storage';
-import { storage } from '@/lib/firebase';
-import { resolveCommonsAttachmentUrl } from '@/services/commonsUploadService';
+import {
+  resolveCommonsAttachmentUrl,
+  R2_PUBLIC_BUCKET_URL,
+} from '@/services/commonsUploadService';
 import type { CommonsFileAttachment } from '@/types/commons';
 
 interface CommonsImageAttachmentProps {
@@ -13,7 +14,6 @@ interface CommonsImageAttachmentProps {
 
 export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
   file,
-  authorUid,
   onOpenViewer,
 }) => {
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
@@ -28,15 +28,21 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
 
     async function resolveSource() {
       const rawUrl = file?.url?.trim() || '';
-      const rawName = file?.name?.trim() || '';
+      if (!rawUrl) {
+        if (!isCancelled) {
+          setHasError(true);
+          setIsLoading(false);
+        }
+        return;
+      }
 
-      // Case 1: Relative server URL (/api/commons/files/...), data: URL, or HTTP(S) URL
       if (
-        (rawUrl.startsWith('/api/commons/files/') ||
-          rawUrl.startsWith('https://') ||
-          rawUrl.startsWith('http://') ||
-          rawUrl.startsWith('data:image/')) &&
-        !rawUrl.includes('blob:')
+        rawUrl.startsWith('/api/r2/') ||
+        rawUrl.startsWith('/api/commons/files/') ||
+        rawUrl.startsWith('https://') ||
+        rawUrl.startsWith('http://') ||
+        rawUrl.startsWith('data:image/') ||
+        rawUrl.startsWith('blob:')
       ) {
         if (!isCancelled) {
           setResolvedUrl(rawUrl);
@@ -44,67 +50,30 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
         return;
       }
 
-      // Case 2: Firestore chunked attachment URL (firestore://commons_attachments/...)
-      if (rawUrl.startsWith('firestore://')) {
-        try {
-          const hydrated = await resolveCommonsAttachmentUrl(rawUrl);
-          if (!isCancelled && hydrated) {
-            setResolvedUrl(hydrated);
-            return;
-          }
-        } catch (err) {
-          console.warn('[CommonsImageAttachment] Failed to resolve firestore:// attachment:', err);
-        }
-      }
-
-      // Case 3: Resolve from Firebase Storage path or filename
-      const candidatePaths: string[] = [];
-
-      if (rawUrl && (rawUrl.startsWith('users/') || rawUrl.startsWith('posts/') || rawUrl.startsWith('commons/'))) {
-        candidatePaths.push(rawUrl);
-      }
-
-      const fileNameTarget = rawName || rawUrl.split('/').pop() || '';
-      if (authorUid && fileNameTarget && !fileNameTarget.startsWith('blob:')) {
-        candidatePaths.push(`users/${authorUid}/posts/${fileNameTarget}`);
-        candidatePaths.push(`posts/${authorUid}/${fileNameTarget}`);
-        candidatePaths.push(`commons/${authorUid}/${fileNameTarget}`);
-      }
-
-      for (const path of candidatePaths) {
-        try {
-          const storageRef = ref(storage, path);
-          const dlUrl = await getDownloadURL(storageRef);
-          if (!isCancelled && dlUrl) {
-            setResolvedUrl(dlUrl);
-            return;
-          }
-        } catch {
-          // try next candidate path
-        }
-      }
-
-      // If rawUrl was a blob and still loadable in this session, attempt it
-      if (rawUrl.startsWith('blob:')) {
+      if (rawUrl.startsWith('commons/')) {
         if (!isCancelled) {
-          setResolvedUrl(rawUrl);
+          setResolvedUrl(`${R2_PUBLIC_BUCKET_URL}/${rawUrl}`);
         }
         return;
       }
 
-      // Could not resolve to a download URL and file is not in storage
+      const hydrated = await resolveCommonsAttachmentUrl(rawUrl).catch(() => '');
       if (!isCancelled) {
-        setHasError(true);
-        setIsLoading(false);
+        if (hydrated) {
+          setResolvedUrl(hydrated);
+        } else {
+          setHasError(true);
+          setIsLoading(false);
+        }
       }
     }
 
-    resolveSource();
+    void resolveSource();
 
     return () => {
       isCancelled = true;
     };
-  }, [file, authorUid, retryKey]);
+  }, [file, retryKey]);
 
   const handleRetry = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -123,7 +92,6 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
     setHasError(true);
   };
 
-  // Error State: Clean placeholder card with photo icon, "Image couldn't load" and "Retry" button
   if (hasError || (!resolvedUrl && !isLoading)) {
     return (
       <div className="rounded-xl border border-border bg-surface-muted/60 p-5 sm:p-6 text-center flex flex-col items-center justify-center space-y-2.5 my-1.5 transition-all">
@@ -132,7 +100,7 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
         </div>
         <div>
           <p className="text-xs sm:text-sm font-semibold text-secondary">
-            Image couldn't load
+            Image couldn&apos;t load
           </p>
           <p className="text-[11px] text-muted mt-0.5 max-w-xs">
             The image is unavailable or expired.
@@ -152,40 +120,31 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
 
   return (
     <div
-      onClick={() => resolvedUrl && onOpenViewer(resolvedUrl, file.name)}
-      className="relative rounded-xl overflow-hidden border border-border bg-surface-muted/80 my-2 cursor-pointer group transition-all duration-150 hover:border-border-strong hover:shadow-xs min-h-[180px] max-h-[500px] flex items-center justify-center"
-      style={{ aspectRatio: '16 / 10' }}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (resolvedUrl && !hasError) {
+          onOpenViewer(resolvedUrl, file.name);
+        }
+      }}
+      className="relative rounded-xl overflow-hidden border border-border bg-surface-muted/40 cursor-zoom-in group my-1.5"
     >
-      {/* Skeleton loading placeholder */}
       {isLoading && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-surface-muted animate-pulse">
-          <ImageIcon size={28} className="text-muted/40 mb-2" />
-          <div className="h-2 w-24 bg-skeleton rounded-full" />
+        <div className="w-full h-52 sm:h-64 animate-pulse bg-surface-muted flex items-center justify-center text-xs text-muted">
+          Loading image...
         </div>
       )}
-
-      {/* Actual Image with lazy loading and CLS protection */}
       {resolvedUrl && (
         <img
-          key={`${resolvedUrl}_${retryKey}`}
           src={resolvedUrl}
-          alt={file.name || 'Post image'}
+          alt={file.name || 'Study attachment'}
           loading="lazy"
-          decoding="async"
           onLoad={handleImageLoad}
           onError={handleImageError}
-          className={`w-full h-full max-h-[500px] object-cover transition-opacity duration-200 group-hover:opacity-95 ${
-            isLoading ? 'opacity-0' : 'opacity-100'
+          className={`w-full max-h-[420px] object-contain bg-black/20 transition-opacity duration-200 ${
+            isLoading ? 'opacity-0 h-0' : 'opacity-100'
           }`}
         />
-      )}
-
-      {/* Subtle overlay hint on hover */}
-      {!isLoading && !hasError && (
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none" />
       )}
     </div>
   );
 };
-
-export default CommonsImageAttachment;

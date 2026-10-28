@@ -89,7 +89,10 @@ export function hashNormalizedQuestionText(text: string): string {
   return `qh_${(hash1 >>> 0).toString(16)}_${(hash2 >>> 0).toString(16)}`;
 }
 
-// ─── SESSION CACHES ─────────────────────────────────────────────────────────
+// ─── SESSION & VERSIONED LOCALSTORAGE CACHES ────────────────────────────────
+export const MCQ_CACHE_VERSION = 'v2';
+const MCQ_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 interface AggregatedCounts {
   subjectCounts: Record<string, number>;
   topicCounts: Record<string, Record<string, number>>;
@@ -100,11 +103,49 @@ let countsFetchPromise: Promise<AggregatedCounts> | null = null;
 const sourceIndexCache = new Map<string, Map<string, string[]>>(); // sourceId -> subject -> raw docIds
 const multiSourcePageCache = new Map<string, { questions: Question[]; hasMore: boolean }>();
 
+function readMcqStorageCache<T>(key: string): T | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(`boardly_mcq_${MCQ_CACHE_VERSION}_${key}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { v: string; ts: number; data: T };
+    if (parsed.v !== MCQ_CACHE_VERSION) return null;
+    if (Date.now() - parsed.ts > MCQ_CACHE_TTL_MS) return null;
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+
+function writeMcqStorageCache<T>(key: string, data: T): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      `boardly_mcq_${MCQ_CACHE_VERSION}_${key}`,
+      JSON.stringify({ v: MCQ_CACHE_VERSION, ts: Date.now(), data })
+    );
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
 export function clearMultiSourceCache(): void {
   sessionAggregatedCounts = null;
   countsFetchPromise = null;
   sourceIndexCache.clear();
   multiSourcePageCache.clear();
+  if (typeof window !== 'undefined') {
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i);
+        if (k && k.startsWith('boardly_mcq_')) keysToRemove.push(k);
+      }
+      keysToRemove.forEach((k) => window.localStorage.removeItem(k));
+    } catch {
+      // Ignore storage errors
+    }
+  }
 }
 
 // ─── 4. MULTI-SOURCE QUESTION INDEX (DRILLS & SPRINTS) ───────────────────────
@@ -115,6 +156,10 @@ export function clearMultiSourceCache(): void {
  */
 export async function getMultiSourceSubjectQuestionIds(subject: string): Promise<string[]> {
   const norm = subject.toLowerCase().trim();
+  const cachedIds = readMcqStorageCache<string[]>(`idx_${norm}`);
+  if (cachedIds && cachedIds.length > 0) {
+    return cachedIds;
+  }
   const sources = getBankSources();
   const compoundIds: string[] = [];
 
@@ -148,13 +193,13 @@ export async function getMultiSourceSubjectQuestionIds(subject: string): Promise
           }
         }
 
-        // If index doc does not exist yet on this source, query complete set of IDs and write index doc
+        // If index doc does not exist yet on this source, query a bounded batch of IDs (never the whole collection)
         if (rawIds.length === 0) {
           const targetColl = getSubjectPoolCollection(norm);
           const subVariants = Array.from(new Set([norm, formatSubjectName(norm), norm.toLowerCase(), norm.toUpperCase()]));
           try {
             const poolSnap = await getDocs(
-              query(collection(source.db, targetColl), limit(3000))
+              query(collection(source.db, targetColl), limit(250))
             );
             if (!poolSnap.empty) {
               rawIds = poolSnap.docs.map((d) => d.id);
@@ -164,7 +209,7 @@ export async function getMultiSourceSubjectQuestionIds(subject: string): Promise
                 query(
                   collection(source.db, 'questions'),
                   where('subject', 'in', subVariants),
-                  limit(3000)
+                  limit(250)
                 )
               );
               legacySnap.docs.forEach((d) => {
@@ -198,7 +243,11 @@ export async function getMultiSourceSubjectQuestionIds(subject: string): Promise
     })
   );
 
-  return Array.from(new Set(compoundIds));
+  const uniqueIds = Array.from(new Set(compoundIds));
+  if (uniqueIds.length > 0) {
+    writeMcqStorageCache(`idx_${norm}`, uniqueIds);
+  }
+  return uniqueIds;
 }
 
 /**
@@ -332,6 +381,11 @@ export async function getMultiSourceQuestionCounts(): Promise<AggregatedCounts> 
   if (sessionAggregatedCounts) {
     return sessionAggregatedCounts;
   }
+  const cachedCounts = readMcqStorageCache<AggregatedCounts>('counts');
+  if (cachedCounts && Object.keys(cachedCounts.subjectCounts || {}).length > 0) {
+    sessionAggregatedCounts = cachedCounts;
+    return cachedCounts;
+  }
   if (countsFetchPromise) {
     return countsFetchPromise;
   }
@@ -414,6 +468,9 @@ export async function getMultiSourceQuestionCounts(): Promise<AggregatedCounts> 
       subjectCounts: sumSubjects,
       topicCounts: sumTopics,
     };
+    if (Object.keys(sumSubjects).length > 0) {
+      writeMcqStorageCache('counts', sessionAggregatedCounts);
+    }
     return sessionAggregatedCounts;
   })();
 
@@ -472,7 +529,12 @@ export async function fetchMultiSourcePoolQuestions(
 ): Promise<Question[]> {
   const normSub = subject.toLowerCase().trim();
   const poolColl = getSubjectPoolCollection(normSub);
-  const limitCount = options?.limitPerSource ?? 60;
+  const limitCount = options?.limitPerSource ?? 40;
+  const storageCacheKey = `pool_${normSub}_${options?.topic || 'all'}_${options?.difficulty || 'all'}_${options?.status || 'all'}_${limitCount}`;
+  const cachedPool = readMcqStorageCache<Question[]>(storageCacheKey);
+  if (cachedPool && cachedPool.length > 0) {
+    return cachedPool;
+  }
   const sources = getBankSources();
 
   const allRawQuestions: Question[] = [];
@@ -480,8 +542,11 @@ export async function fetchMultiSourcePoolQuestions(
   await Promise.all(
     sources.map(async (source) => {
       try {
-        // Query pool collection
+        // Query pool collection per-chapter when topic is specified so we never read the whole collection
         const qConstraints: QueryConstraint[] = [limit(limitCount)];
+        if (options?.topic && options.topic !== 'all') {
+          qConstraints.unshift(where('topic', '==', options.topic));
+        }
         if (options?.difficulty && options.difficulty !== 'all') {
           qConstraints.unshift(where('difficulty', '==', options.difficulty.toLowerCase()));
         }
@@ -489,7 +554,15 @@ export async function fetchMultiSourcePoolQuestions(
           qConstraints.unshift(where('status', '==', options.status.toLowerCase()));
         }
 
-        const poolSnap = await getDocs(query(collection(source.db, poolColl), ...qConstraints));
+        let poolSnap = await getDocs(query(collection(source.db, poolColl), ...qConstraints));
+        if (poolSnap.empty && options?.topic && options.topic !== 'all') {
+          // Fallback if documents use 'chapter' field instead of 'topic'
+          const fallbackConstraints: QueryConstraint[] = [limit(limitCount)];
+          if (options?.difficulty && options.difficulty !== 'all') {
+            fallbackConstraints.unshift(where('difficulty', '==', options.difficulty.toLowerCase()));
+          }
+          poolSnap = await getDocs(query(collection(source.db, poolColl), ...fallbackConstraints));
+        }
 
         poolSnap.docs.forEach((d) => {
           const data = d.data();
@@ -588,6 +661,9 @@ export async function fetchMultiSourcePoolQuestions(
     }
   }
 
+  if (deduplicated.length > 0) {
+    writeMcqStorageCache(storageCacheKey, deduplicated);
+  }
   return deduplicated;
 }
 

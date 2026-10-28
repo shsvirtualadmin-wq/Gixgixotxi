@@ -1,7 +1,6 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, initializeFirestore, memoryLocalCache } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
 import {
   TARGET_PROJECT_ID,
@@ -28,13 +27,6 @@ export {
 // Single shared Firebase App instance used by both Auth and Firestore
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
-export const storage = getStorage(app);
-try {
-  storage.maxUploadRetryTime = 8000;
-  storage.maxOperationRetryTime = 8000;
-} catch {
-  // Ignore if read-only in test environment
-}
 export const functions = getFunctions(app);
 
 // Initialize Firestore with the unified database:
@@ -95,5 +87,4 @@ if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
   }
 }
 
-export { getApp, getAuth, getStorage };
-
+export { getApp, getAuth };

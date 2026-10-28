@@ -49,12 +49,14 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
   const [signupSuccess, setSignupSuccess] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [resendSuccess, setResendSuccess] = useState(false);
+  const [emailAlreadyInUse, setEmailAlreadyInUse] = useState(false);
 
   // Sync mode with props if prop changes
   useEffect(() => {
     setMode(initialMode);
     setFieldErrors({});
     setGeneralError('');
+    setEmailAlreadyInUse(false);
     clearAuthError();
     clearProfileError();
   }, [initialMode, clearAuthError, clearProfileError]);
@@ -228,18 +230,28 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
       const code = fe.code ?? '';
 
       if (code === 'auth/user-not-found' || code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
+        setEmailAlreadyInUse(false);
         setGeneralError('Incorrect email or password. Please check your credentials.');
       } else if (code === 'auth/email-already-in-use') {
-        setFieldErrors({ email: 'An account with this email already exists. Try signing in.' });
+        setEmailAlreadyInUse(true);
+        const msg =
+          'An account with this email already exists in Firebase Authentication. You can sign in with your password or reset your password below.';
+        setFieldErrors({ email: msg });
+        setGeneralError(msg);
       } else if (code === 'auth/weak-password') {
+        setEmailAlreadyInUse(false);
         setFieldErrors({ password: 'Password is too weak. Please use at least 6 characters.' });
       } else if (code === 'auth/too-many-requests') {
+        setEmailAlreadyInUse(false);
         setGeneralError('Too many failed attempts. Please wait a few moments before trying again.');
       } else if (code === 'auth/user-disabled') {
+        setEmailAlreadyInUse(false);
         setGeneralError('This account has been disabled. Please contact support@boardly.cfd.');
       } else if (code === 'auth/network-request-failed') {
+        setEmailAlreadyInUse(false);
         setGeneralError('Network connection issue. Please check your internet connection.');
       } else {
+        setEmailAlreadyInUse(false);
         setGeneralError('Authentication failed. Please check your details and try again.');
       }
     } finally {
@@ -393,6 +405,29 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
               &times;
             </button>
           </div>
+
+          {emailAlreadyInUse && (
+            <div className="pt-2 border-t border-[#EF4444]/30 flex flex-wrap items-center gap-3">
+              <Link
+                to={`/forgot-password${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ''}`}
+                className="py-1.5 px-3 rounded-xl bg-[#EF4444] text-[#FFFFFF] font-semibold text-xs hover:bg-[#DC2626] transition-colors"
+              >
+                Forgot password? Reset it here →
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('signin');
+                  setGeneralError('');
+                  setFieldErrors({});
+                  setEmailAlreadyInUse(false);
+                }}
+                className="py-1.5 px-3 rounded-xl border border-[#FCA5A5]/40 text-[#FCA5A5] hover:text-white text-xs font-semibold cursor-pointer"
+              >
+                Switch to Sign In
+              </button>
+            </div>
+          )}
 
           {authError?.code === 'auth/popup-blocked' && (
             <div className="pt-2 border-t border-[#EF4444]/30 flex flex-col gap-1.5">

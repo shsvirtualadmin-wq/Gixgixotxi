@@ -1,615 +1,452 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-  limit as firestoreLimit,
-  runTransaction,
-  serverTimestamp,
-  arrayUnion,
-  arrayRemove,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
+import { sanitizeStudentDisplayName } from '@/utils/privacy';
+
+/**
+ * ============================================================================
+ * USER POST SERVICE — CLOUDFLARE D1 + R2 (`/api/posts`)
+ * ============================================================================
+ * All user profile posts, edits, image uploads, likes, anonymity toggles, and
+ * deletions are stored in Cloudflare D1 + R2 and served via `/api/posts`.
+ * Zero Firestore reads or writes.
+ */
 
 export interface UserPost {
   id: string;
-  user_id: string;
-  text: string;
-  image_url?: string | null;
+  user_id: string | null;
   author_name?: string;
   author_avatar?: string | null;
-  likes_count?: number;
-  comments_count?: number;
+  title: string;
+  content: string;
+  text: string;
+  image_url?: string | null;
+  subject: string;
+  tags: string[];
+  is_anonymous: boolean;
+  isAnonymous?: boolean;
+  likes_count: number;
+  likesCount?: number;
   liked_by?: string[];
+  likedBy?: string[];
+  comments_count: number;
+  commentsCount?: number;
+  views_count?: number;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
+  files?: { name: string; url: string; type: string; size: number }[];
+  sourceCollection?: 'posts' | 'commonsPosts';
 }
 
-export interface FetchUserPostsParams {
-  userId?: string | null;
-  page?: number;
-  limit?: number;
-  currentUserId?: string | null;
+const LOCAL_POSTS_CACHE_KEY = 'boardly_user_posts_cache_v2';
+
+function getLocalCachedPosts(): Record<string, UserPost[]> {
+  try {
+    const raw = localStorage.getItem(LOCAL_POSTS_CACHE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
 }
 
-export interface FetchUserPostsResponse {
-  success: boolean;
-  posts: UserPost[];
-  total: number;
-  page: number;
-  limit: number;
-  hasMore: boolean;
+function setLocalCachedPosts(userId: string, posts: UserPost[]) {
+  try {
+    const cache = getLocalCachedPosts();
+    cache[userId] = posts;
+    localStorage.setItem(LOCAL_POSTS_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Ignore storage write errors
+  }
 }
 
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+async function getAuthHeaders(requireAuth = false): Promise<Record<string, string>> {
+  const token = await auth.currentUser?.getIdToken(false).catch(() => null);
+  if (requireAuth && !token) {
+    throw new Error('Please sign in to manage posts.');
+  }
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+function mapD1PostToUserPost(p: Record<string, any>, fallbackUserId: string): UserPost {
+  const files = Array.isArray(p.files) ? p.files : [];
+  const firstImage =
+    p.image_url ||
+    p.imageUrl ||
+    files.find((f: any) => String(f?.type || '').startsWith('image/'))?.url ||
+    null;
+  const bodyText = String(p.description ?? p.content ?? p.text ?? '');
+  const likes = Number(p.upvotes ?? p.likesCount ?? p.likes_count ?? 0);
+  const comments = Number(p.commentCount ?? p.commentsCount ?? p.comments_count ?? 0);
+  const likedByList = Array.isArray(p.upvotedBy)
+    ? p.upvotedBy
+    : Array.isArray(p.likedBy)
+      ? p.likedBy
+      : Array.isArray(p.liked_by)
+        ? p.liked_by
+        : [];
+  const isAnon = Boolean(p.isAnonymous ?? p.is_anonymous);
+
+  return {
+    id: String(p.id || ''),
+    user_id: isAnon ? null : p.authorUid || fallbackUserId,
+    author_name: isAnon
+      ? 'Anonymous Student'
+      : sanitizeStudentDisplayName(p.authorName || p.author_name, p.authorUid || fallbackUserId),
+    author_avatar: isAnon ? null : p.authorAvatar || p.author_avatar || null,
+    title: String(p.title || bodyText.slice(0, 80) || 'Post'),
+    content: bodyText,
+    text: bodyText,
+    image_url: firstImage,
+    subject: String(p.subject || 'General'),
+    tags: Array.isArray(p.tags) ? p.tags : [],
+    is_anonymous: isAnon,
+    isAnonymous: isAnon,
+    likes_count: likes,
+    likesCount: likes,
+    liked_by: likedByList,
+    likedBy: likedByList,
+    comments_count: comments,
+    commentsCount: comments,
+    views_count: Number(p.views ?? p.viewsCount ?? 0),
+    created_at: String(
+      typeof p.createdAt === 'string'
+        ? p.createdAt
+        : p.created_at || new Date().toISOString()
+    ),
+    updated_at: String(
+      typeof p.updatedAt === 'string'
+        ? p.updatedAt
+        : p.updated_at || new Date().toISOString()
+    ),
+    files,
+    sourceCollection: 'commonsPosts',
+  };
+}
 
 /**
- * Validates, compresses, and resizes an image file to max 1600px dimension and WebP/JPEG data URL.
+ * Validates and compresses an image file in the browser before uploading to R2.
  */
 export async function validateAndCompressImage(file: File): Promise<{
   dataUrl: string;
   originalSize: number;
   compressedSize: number;
 }> {
-  // 1. Validate file extension and MIME type
-  const fileNameLower = file.name.toLowerCase();
-  const hasValidExt = ALLOWED_EXTENSIONS.some((ext) => fileNameLower.endsWith(ext));
-  const hasValidMime = ALLOWED_IMAGE_TYPES.includes(file.type);
-
-  if (!hasValidExt || !hasValidMime) {
-    throw new Error('Images must be JPG, PNG, or WebP only.');
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Only image files (JPG, PNG, WEBP, GIF) are allowed.');
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error('Image size must be under 10 MB.');
   }
 
-  // 2. Validate file size (max 5 MB)
-  if (file.size > MAX_FILE_SIZE_BYTES) {
-    const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-    throw new Error(`Image size (${sizeMb} MB) exceeds the maximum allowed limit of 5 MB.`);
-  }
-
-  // 3. Resize and compress via HTML Canvas
-  return new Promise((resolve, reject) => {
+  const originalSize = file.size;
+  const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
     reader.onerror = () => reject(new Error('Failed to read image file.'));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('Failed to load image preview.'));
-      img.onload = () => {
-        try {
-          const maxDim = 1600;
-          let width = img.width;
-          let height = img.height;
-
-          if (width > maxDim || height > maxDim) {
-            if (width > height) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            } else {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
-            }
-          }
-
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-
-          if (!ctx) {
-            // Fallback to original data URL if canvas context unavailable
-            resolve({
-              dataUrl: reader.result as string,
-              originalSize: file.size,
-              compressedSize: file.size,
-            });
-            return;
-          }
-
-          ctx.drawImage(img, 0, 0, width, height);
-
-          // Use image/webp if supported, or fallback to image/jpeg
-          const outputFormat = 'image/webp';
-          let compressedUrl = canvas.toDataURL(outputFormat, 0.85);
-          if (!compressedUrl.startsWith('data:image/webp')) {
-            compressedUrl = canvas.toDataURL('image/jpeg', 0.85);
-          }
-
-          const approxBytes = Math.round((compressedUrl.length * 3) / 4);
-
-          resolve({
-            dataUrl: compressedUrl,
-            originalSize: file.size,
-            compressedSize: approxBytes,
-          });
-        } catch (e: any) {
-          reject(new Error(e?.message || 'Error compressing image.'));
-        }
-      };
-      img.src = reader.result as string;
-    };
     reader.readAsDataURL(file);
   });
-}
-
-/**
- * Fetch posts for a specific user, sorted newest first, with pagination.
- * Checks posts/{postId}/likes/{uid} subcollection and liked_by array to ensure like state is accurately hydrated.
- */
-export async function fetchUserPosts(params: FetchUserPostsParams): Promise<FetchUserPostsResponse> {
-  const page = params.page || 1;
-  const limitCount = params.limit || 5;
-  const userId = params.userId || '';
-  const currentUserId = params.currentUserId || '';
-
-  const mergedMap = new Map<string, UserPost>();
-
-  const parseTimestampIso = (val: any): string => {
-    if (!val) return new Date(0).toISOString();
-    if (typeof val === 'string') return val;
-    if (typeof val?.toDate === 'function') {
-      try {
-        return val.toDate().toISOString();
-      } catch {
-        return new Date().toISOString();
-      }
-    }
-    if (typeof val?.seconds === 'number') {
-      return new Date(val.seconds * 1000).toISOString();
-    }
-    return new Date().toISOString();
-  };
-
-  // 1. Try server API endpoint /api/posts
-  try {
-    const url = new URL('/api/posts', window.location.origin);
-    if (userId) url.searchParams.set('userId', userId);
-    url.searchParams.set('page', '1');
-    url.searchParams.set('limit', '50');
-
-    const res = await fetch(url.toString(), {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success && Array.isArray(data.posts)) {
-        for (const p of data.posts) {
-          if (p && p.id && (!userId || p.user_id === userId)) {
-            mergedMap.set(p.id, p);
-          }
-        }
-      }
-    }
-  } catch (apiErr) {
-    console.warn('[userPostService] /api/posts fetch notice (falling back to Firestore):', apiErr);
-  }
-
-  // 2. Query Firestore 'posts' collection (avoid composite index requirement by sorting client-side)
-  try {
-    const postsRef = collection(db, 'posts');
-    const q = userId
-      ? query(postsRef, where('user_id', '==', userId), firestoreLimit(50))
-      : query(postsRef, orderBy('created_at', 'desc'), firestoreLimit(50));
-
-    const snap = await getDocs(q);
-    for (const d of snap.docs) {
-      if (d.id.startsWith('att_')) continue; // skip chunked attachment docs
-      const data = d.data();
-      const postUid = data.user_id || data.userId || '';
-      if (userId && postUid !== userId) continue;
-      mergedMap.set(d.id, {
-        id: d.id,
-        user_id: postUid,
-        text: data.text || '',
-        image_url: data.image_url || data.imageUrl || null,
-        author_name: data.author_name || data.authorName || 'Student',
-        author_avatar: data.author_avatar || data.authorAvatar || null,
-        likes_count: data.likes_count ?? data.likesCount ?? 0,
-        comments_count: data.comments_count ?? data.commentCount ?? 0,
-        liked_by: Array.isArray(data.liked_by)
-          ? data.liked_by
-          : Array.isArray(data.likedBy)
-          ? data.likedBy
-          : [],
-        created_at: parseTimestampIso(data.created_at || data.createdAt),
-        updated_at: parseTimestampIso(data.updated_at || data.updatedAt || data.created_at),
-      });
-    }
-  } catch (fsErr: any) {
-    console.warn('[userPostService] Firestore posts query notice:', fsErr);
-  }
-
-  // 3. Also query 'commonsPosts' authored by this user (non-anonymous) so Commons resources appear on their profile
-  if (userId) {
-    try {
-      const commonsRef = collection(db, 'commonsPosts');
-      const commonsQuery = query(commonsRef, where('authorUid', '==', userId), firestoreLimit(50));
-      const commonsSnap = await getDocs(commonsQuery);
-
-      for (const d of commonsSnap.docs) {
-        const data = d.data();
-        if (data.isAnonymous || data.isHidden) continue;
-
-        const files = Array.isArray(data.files) ? data.files : [];
-        const firstImage = files.find(
-          (f: any) =>
-            f?.url &&
-            !String(f.url).startsWith('blob:') &&
-            (f?.type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/i.test(f?.name || ''))
-        );
-
-        const titleText = (data.title || '').trim();
-        const descText = (data.description || '').trim();
-        const combinedText =
-          titleText && descText
-            ? `${titleText}\n\n${descText}`
-            : titleText || descText || 'Shared a study resource';
-
-        if (!mergedMap.has(d.id)) {
-          mergedMap.set(d.id, {
-            id: d.id,
-            user_id: userId,
-            text: combinedText,
-            image_url: firstImage?.url || null,
-            author_name: data.authorName || 'Student',
-            author_avatar: data.authorAvatar || data.authorPhotoURL || null,
-            likes_count: Number(data.upvotes ?? 0),
-            comments_count: Number(data.commentCount ?? 0),
-            liked_by: [],
-            created_at: parseTimestampIso(data.createdAt || data.created_at),
-            updated_at: parseTimestampIso(data.updatedAt || data.createdAt),
-          });
-        }
-      }
-    } catch (commonsErr) {
-      console.warn('[userPostService] Firestore commonsPosts query notice:', commonsErr);
-    }
-  }
-
-  const allSorted = Array.from(mergedMap.values()).sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
-
-  const totalCount = allSorted.length;
-  const startIndex = (page - 1) * limitCount;
-  const postsList = allSorted.slice(startIndex, startIndex + limitCount);
-  const hasMorePosts = totalCount > page * limitCount;
-
-  // 4. Hydrate like state for current user from posts/{id}/likes/{currentUserId} if needed
-  if (currentUserId && postsList.length > 0) {
-    try {
-      await Promise.all(
-        postsList.map(async (post) => {
-          const likedByArray = Array.isArray(post.liked_by) ? post.liked_by : [];
-          if (!likedByArray.includes(currentUserId)) {
-            const likeDocRef = doc(db, 'posts', post.id, 'likes', currentUserId);
-            const likeDocSnap = await getDoc(likeDocRef);
-            if (likeDocSnap.exists()) {
-              post.liked_by = [...likedByArray, currentUserId];
-            }
-          }
-        })
-      );
-    } catch (likeCheckErr) {
-      console.warn('[userPostService] like check hydration notice:', likeCheckErr);
-    }
-  }
 
   return {
-    success: true,
-    posts: postsList,
-    total: totalCount,
-    page,
-    limit: limitCount,
-    hasMore: hasMorePosts,
+    dataUrl,
+    originalSize,
+    compressedSize: Math.round((dataUrl.length * 3) / 4),
   };
 }
 
-/**
- * Create a new user post.
- */
+async function uploadDataUrlToR2(dataUrl: string, fileName = 'post-image.jpg'): Promise<string> {
+  if (!dataUrl.startsWith('data:')) {
+    return dataUrl;
+  }
+  const headers = await getAuthHeaders(true);
+  const commaIdx = dataUrl.indexOf(',');
+  const headerPart = commaIdx >= 0 ? dataUrl.slice(0, commaIdx) : '';
+  const base64Data = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl;
+  const mimeMatch = headerPart.match(/data:([^;]+);/);
+  const contentType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+
+  const resp = await fetch('/api/posts/upload', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      fileName,
+      contentType,
+      dataBase64: base64Data,
+      folder: 'images',
+    }),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data?.url) {
+    throw new Error(data?.error || 'Failed to upload image to Cloudflare R2.');
+  }
+  return String(data.url);
+}
+
+export async function fetchUserPosts(params: {
+  userId: string;
+  page?: number;
+  limit?: number;
+  currentUserId?: string | null;
+}): Promise<{ posts: UserPost[]; hasMore: boolean }>;
+export async function fetchUserPosts(
+  targetUserId: string,
+  includeAnonymous?: boolean
+): Promise<UserPost[]>;
+export async function fetchUserPosts(
+  arg1:
+    | string
+    | {
+        userId: string;
+        page?: number;
+        limit?: number;
+        currentUserId?: string | null;
+      },
+  includeAnonymous = false
+): Promise<UserPost[] | { posts: UserPost[]; hasMore: boolean }> {
+  const isObjectCall = typeof arg1 === 'object' && arg1 !== null;
+  const targetUserId = isObjectCall ? arg1.userId : arg1;
+  const page = isObjectCall ? Math.max(1, arg1.page ?? 1) : 1;
+  const pageSize = isObjectCall ? Math.max(1, arg1.limit ?? 10) : 50;
+  const includeAnon = isObjectCall
+    ? Boolean(arg1.currentUserId && arg1.currentUserId === arg1.userId)
+    : includeAnonymous;
+
+  if (!targetUserId) {
+    return isObjectCall ? { posts: [], hasMore: false } : [];
+  }
+
+  try {
+    const headers = await getAuthHeaders(false);
+    const params = new URLSearchParams({
+      authorUid: targetUserId,
+      limit: '50',
+      ...(includeAnon ? { includeOwnAnonymous: 'true' } : {}),
+    });
+
+    const resp = await fetch(`/api/posts?${params.toString()}`, { headers });
+    let list: UserPost[];
+    if (!resp.ok) {
+      list = getLocalCachedPosts()[targetUserId] || [];
+    } else {
+      const data = await resp.json();
+      list = Array.isArray(data?.posts)
+        ? data.posts.map((p: any) => mapD1PostToUserPost(p, targetUserId))
+        : [];
+      setLocalCachedPosts(targetUserId, list);
+    }
+
+    if (isObjectCall) {
+      const start = (page - 1) * pageSize;
+      const slice = list.slice(start, start + pageSize);
+      return {
+        posts: slice,
+        hasMore: start + pageSize < list.length,
+      };
+    }
+    return list;
+  } catch {
+    const cached = getLocalCachedPosts()[targetUserId] || [];
+    if (isObjectCall) {
+      const start = (page - 1) * pageSize;
+      return {
+        posts: cached.slice(start, start + pageSize),
+        hasMore: start + pageSize < cached.length,
+      };
+    }
+    return cached;
+  }
+}
+
 export async function createUserPost(params: {
   userId: string;
-  text: string;
-  imageUrl?: string | null;
   authorName?: string;
   authorAvatar?: string | null;
-}): Promise<UserPost> {
-  const text = (params.text || '').trim();
-  const imageUrl = params.imageUrl || null;
-
-  if (!text && !imageUrl) {
-    throw new Error('Please enter some text or attach an image.');
-  }
-
-  const payload = {
-    user_id: params.userId,
-    text,
-    image_url: imageUrl,
-    author_name: params.authorName || 'Student',
-    author_avatar: params.authorAvatar || null,
-  };
-
-  // 1. Call server API
-  let createdPost: UserPost | null = null;
-  try {
-    const res = await fetch('/api/posts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success && data.post) {
-        createdPost = data.post;
-      }
-    }
-  } catch (err) {
-    console.warn('[userPostService] /api/posts create failed, saving to Firestore:', err);
-  }
-
-  // Fallback generation if API failed
-  if (!createdPost) {
-    const nowIso = new Date().toISOString();
-    createdPost = {
-      id: `post_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      user_id: params.userId,
-      text,
-      image_url: imageUrl,
-      author_name: params.authorName || 'Student',
-      author_avatar: params.authorAvatar || null,
-      likes_count: 0,
-      comments_count: 0,
-      liked_by: [],
-      created_at: nowIso,
-      updated_at: nowIso,
-    };
-  }
-
-  // 2. Synchronize to Firestore collection
-  try {
-    const postRef = doc(db, 'posts', createdPost.id);
-    await setDoc(postRef, createdPost, { merge: true });
-  } catch (fsErr) {
-    console.warn('[userPostService] Firestore sync post error:', fsErr);
-  }
-
-  return createdPost;
-}
-
-/**
- * Edit an existing post. Only the owner can edit.
- */
-export async function updateUserPost(params: {
-  id: string;
-  userId: string;
-  text: string;
+  title?: string;
+  content?: string;
+  text?: string;
   imageUrl?: string | null;
+  subject?: string;
+  tags?: string[];
+  isAnonymous?: boolean;
 }): Promise<UserPost> {
-  const text = (params.text || '').trim();
-  const imageUrl = params.imageUrl;
+  const headers = await getAuthHeaders(true);
+  const isAnon = Boolean(params.isAnonymous);
+  const cleanPublicName = isAnon
+    ? 'Anonymous Student'
+    : sanitizeStudentDisplayName(params.authorName, params.userId);
 
-  if (!text && !imageUrl) {
-    throw new Error('A post cannot be empty. Please provide text or an image.');
-  }
+  const bodyContent = (params.content ?? params.text ?? '').trim();
+  const titleText = (params.title || bodyContent.slice(0, 80) || 'Community Update').trim();
 
-  const payload = {
-    action: 'edit',
-    id: params.id,
-    user_id: params.userId,
-    text,
-    image_url: imageUrl,
-  };
-
-  let updatedPost: UserPost | null = null;
-
-  try {
-    const res = await fetch('/api/posts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+  const files: { name: string; url: string; type: string; size: number }[] = [];
+  let r2ImageUrl: string | null = null;
+  if (params.imageUrl) {
+    r2ImageUrl = await uploadDataUrlToR2(params.imageUrl, 'profile-post.jpg');
+    files.push({
+      name: 'profile-post.jpg',
+      url: r2ImageUrl,
+      type: 'image/jpeg',
+      size: 0,
     });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success && data.post) {
-        updatedPost = data.post;
-      }
-    } else {
-      const errData = await res.json().catch(() => ({}));
-      if (res.status === 403) {
-        throw new Error(errData?.error || 'You can only edit your own posts.');
-      }
-    }
-  } catch (apiErr: any) {
-    if (apiErr?.message?.includes('own posts')) throw apiErr;
-    console.warn('[userPostService] /api/posts update error, applying to Firestore:', apiErr);
   }
 
-  // Firestore update
-  try {
-    const postRef = doc(db, 'posts', params.id);
-    const updates: Record<string, any> = {
-      text,
-      updated_at: new Date().toISOString(),
-    };
-    if (imageUrl !== undefined) {
-      updates.image_url = imageUrl;
-    }
-    await updateDoc(postRef, updates);
-  } catch (fsErr) {
-    console.warn('[userPostService] Firestore update post error:', fsErr);
+  const resp = await fetch('/api/posts', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      type: 'notes',
+      title: titleText,
+      description: bodyContent,
+      subject: params.subject || 'General',
+      chapter: 'General',
+      target: 'General',
+      tags: params.tags || [],
+      files,
+      isAnonymous: isAnon,
+      authorName: cleanPublicName,
+      authorAvatar: isAnon ? null : params.authorAvatar || null,
+    }),
+  });
+
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data?.success) {
+    throw new Error(data?.error || 'Could not create post.');
   }
 
-  return (
-    updatedPost || {
-      id: params.id,
-      user_id: params.userId,
-      text,
-      image_url: imageUrl ?? null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
+  return mapD1PostToUserPost(
+    data.post || {
+      id: data.postId,
+      authorUid: params.userId,
+      authorName: cleanPublicName,
+      authorAvatar: params.authorAvatar,
+      title: titleText,
+      description: bodyContent,
+      image_url: r2ImageUrl,
+      files,
+      isAnonymous: isAnon,
+    },
+    params.userId
   );
 }
 
-/**
- * Delete a post. Only the owner can delete.
- */
-export async function deleteUserPost(params: { id: string; userId: string }): Promise<boolean> {
-  // 1. Call server API
-  try {
-    const res = await fetch('/api/posts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'delete',
-        id: params.id,
-        user_id: params.userId,
-      }),
-    });
+export async function updateUserPost(
+  arg1:
+    | string
+    | {
+        id: string;
+        userId: string;
+        text?: string;
+        imageUrl?: string | null;
+        title?: string;
+        content?: string;
+        subject?: string;
+        tags?: string[];
+      },
+  userIdArg?: string,
+  updatesArg?: {
+    title?: string;
+    content?: string;
+    text?: string;
+    imageUrl?: string | null;
+    subject?: string;
+    tags?: string[];
+  }
+): Promise<UserPost | null> {
+  const isObj = typeof arg1 === 'object' && arg1 !== null;
+  const postId = isObj ? arg1.id : arg1;
+  const userId = isObj ? arg1.userId : userIdArg || '';
+  const updates = isObj ? arg1 : updatesArg || {};
 
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      if (res.status === 403) {
-        throw new Error(errData?.error || 'You can only delete your own posts.');
-      }
+  const headers = await getAuthHeaders(true);
+  const bodyPayload: Record<string, any> = {};
+
+  if (updates.title !== undefined) bodyPayload.title = updates.title;
+  if (updates.content !== undefined || updates.text !== undefined) {
+    bodyPayload.description = updates.content ?? updates.text ?? '';
+  }
+  if (updates.subject !== undefined) bodyPayload.subject = updates.subject;
+  if (updates.tags !== undefined) bodyPayload.tags = updates.tags;
+
+  if (updates.imageUrl !== undefined) {
+    if (updates.imageUrl) {
+      const uploadedUrl = await uploadDataUrlToR2(updates.imageUrl, 'profile-post.jpg');
+      bodyPayload.files = [
+        {
+          name: 'profile-post.jpg',
+          url: uploadedUrl,
+          type: 'image/jpeg',
+          size: 0,
+        },
+      ];
+    } else {
+      bodyPayload.files = [];
     }
-  } catch (apiErr: any) {
-    if (apiErr?.message?.includes('own posts')) throw apiErr;
-    console.warn('[userPostService] /api/posts delete notice:', apiErr);
   }
 
-  // 2. Synchronize deletion with Firestore
-  try {
-    const postRef = doc(db, 'posts', params.id);
-    await deleteDoc(postRef);
-  } catch (fsErr) {
-    console.warn('[userPostService] Firestore delete post notice:', fsErr);
-  }
+  const resp = await fetch(`/api/posts/${encodeURIComponent(postId)}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(bodyPayload),
+  });
 
-  return true;
+  if (!resp.ok) return null;
+  const data = await resp.json().catch(() => ({}));
+  return data?.post ? mapD1PostToUserPost(data.post, userId) : null;
 }
 
-/**
- * Like / unlike a post.
- * Stores like in subcollection posts/{postId}/likes/{userId} and maintains liked_by[] array on posts/{postId}.
- */
-export async function toggleLikePost(params: { id: string; userId: string }): Promise<{
-  liked: boolean;
-  likesCount: number;
-}> {
-  if (!params.id || !params.userId) {
-    throw new Error('Post ID and User ID required to toggle like.');
-  }
+export async function toggleUserPostAnonymity(
+  postId: string,
+  userId: string,
+  isAnonymous: boolean,
+  authorName?: string,
+  authorAvatar?: string | null
+): Promise<boolean> {
+  const headers = await getAuthHeaders(true);
+  const cleanPublicName = isAnonymous
+    ? 'Anonymous Student'
+    : sanitizeStudentDisplayName(authorName, userId);
 
-  const postRef = doc(db, 'posts', params.id);
-  const likeRef = doc(db, 'posts', params.id, 'likes', params.userId);
+  const resp = await fetch(`/api/posts/${encodeURIComponent(postId)}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({
+      isAnonymous,
+      authorName: cleanPublicName,
+      authorAvatar: isAnonymous ? null : authorAvatar || null,
+    }),
+  });
 
-  try {
-    const result = await runTransaction(db, async (tx) => {
-      const [postSnap, likeSnap] = await Promise.all([
-        tx.get(postRef),
-        tx.get(likeRef),
-      ]);
-
-      const isLiked = likeSnap.exists();
-      const currentData = postSnap.exists() ? postSnap.data() : null;
-      const currentLikedBy: string[] = Array.isArray(currentData?.liked_by)
-        ? currentData.liked_by
-        : Array.isArray(currentData?.likedBy)
-        ? currentData.likedBy
-        : [];
-      const currentCount = typeof currentData?.likes_count === 'number'
-        ? currentData.likes_count
-        : typeof currentData?.likesCount === 'number'
-        ? currentData.likesCount
-        : currentLikedBy.length;
-
-      if (isLiked) {
-        // Unlike
-        tx.delete(likeRef);
-        const newCount = Math.max(0, currentCount - 1);
-        const newLikedBy = currentLikedBy.filter((u) => u !== params.userId);
-        if (postSnap.exists()) {
-          tx.update(postRef, {
-            likes_count: newCount,
-            likesCount: newCount,
-            liked_by: newLikedBy,
-            likedBy: newLikedBy,
-            updated_at: new Date().toISOString(),
-          });
-        }
-        return { liked: false, likesCount: newCount };
-      } else {
-        // Like
-        tx.set(likeRef, {
-          uid: params.userId,
-          createdAt: serverTimestamp(),
-        });
-        const newCount = currentCount + 1;
-        const newLikedBy = currentLikedBy.includes(params.userId) ? currentLikedBy : [...currentLikedBy, params.userId];
-        if (postSnap.exists()) {
-          tx.update(postRef, {
-            likes_count: newCount,
-            likesCount: newCount,
-            liked_by: newLikedBy,
-            likedBy: newLikedBy,
-            updated_at: new Date().toISOString(),
-          });
-        }
-        return { liked: true, likesCount: newCount };
-      }
-    });
-
-    // Also notify server in background if available
-    fetch('/api/posts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'like',
-        id: params.id,
-        user_id: params.userId,
-      }),
-    }).catch(() => {});
-
-    return result;
-  } catch (err: any) {
-    console.error(
-      '[userPostService] toggleLikePost error:',
-      err?.code || 'ERROR',
-      `posts/${params.id}/likes/${params.userId}`,
-      err
-    );
-    throw err;
-  }
+  return resp.ok;
 }
 
-/**
- * Checks if a user has liked a specific post.
- */
-export async function checkUserLikedPost(postId: string, userId: string): Promise<boolean> {
-  if (!postId || !userId) return false;
-  try {
-    const likeRef = doc(db, 'posts', postId, 'likes', userId);
-    const snap = await getDoc(likeRef);
-    return snap.exists();
-  } catch (err: any) {
-    console.error(
-      '[userPostService] checkUserLikedPost error:',
-      err?.code || 'ERROR',
-      `posts/${postId}/likes/${userId}`,
-      err
-    );
-    return false;
+export async function deleteUserPost(
+  arg1: string | { id: string; userId: string },
+  _userId?: string
+): Promise<boolean> {
+  const postId = typeof arg1 === 'object' && arg1 !== null ? arg1.id : arg1;
+  const headers = await getAuthHeaders(true);
+  const resp = await fetch(`/api/posts/${encodeURIComponent(postId)}`, {
+    method: 'DELETE',
+    headers,
+  });
+  return resp.ok;
+}
+
+export async function toggleLikePost(params: {
+  id: string;
+  userId: string;
+}): Promise<{ upvoted: boolean; upvotesCount: number }> {
+  const headers = await getAuthHeaders(true);
+  const resp = await fetch(`/api/posts/${encodeURIComponent(params.id)}/like`, {
+    method: 'POST',
+    headers,
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new Error(data?.error || 'Could not toggle like.');
   }
+  return {
+    upvoted: Boolean(data.upvoted),
+    upvotesCount: Number(data.upvotesCount ?? 0),
+  };
 }

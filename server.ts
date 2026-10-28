@@ -41,6 +41,13 @@ import {
   buildBoardySystemPrompt,
   BoardyMode,
 } from "./src/config/boardyConfig.js";
+import {
+  registerCloudflarePostsAndAuthRoutes,
+  loadD1Store,
+   saveD1Store,
+  extractIdFromSlugOrId,
+  rowToCommonsPost,
+} from "./src/server/cloudflarePostsAndAuthRouter.js";
 
 dotenv.config();
 
@@ -13666,6 +13673,40 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         console.warn("[remove-student] Promo links JSON cleanup note:", promoCleanErr?.message);
       }
 
+      // H. Delete user from Firebase Authentication (via Identity Toolkit Admin API) & Cloudflare D1 store
+      try {
+        const gToken = await getGoogleAccessToken().catch(() => null);
+        if (gToken && studentId) {
+          const fbDelResp = await fetch(
+            "https://identitytoolkit.googleapis.com/v1/projects/gen-lang-client-0365509316/accounts:delete",
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${gToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ localId: studentId }),
+            }
+          );
+          wipedSummary["firebase_auth_deleted"] = fbDelResp.ok;
+        }
+        const d1Store = loadD1Store();
+        const beforePosts = d1Store.posts.length;
+        d1Store.posts = d1Store.posts.filter(
+          (p) => !idsToWipe.has(p.real_author_uid || "") && !idsToWipe.has(p.author_uid || "")
+        );
+        d1Store.likes = d1Store.likes.filter((l) => !idsToWipe.has(l.user_uid));
+        d1Store.saves = d1Store.saves.filter((s) => !idsToWipe.has(s.user_uid));
+        d1Store.comments = d1Store.comments.filter((c) => !idsToWipe.has(c.real_author_uid));
+        d1Store.userRoles = d1Store.userRoles.filter(
+          (r) => !idsToWipe.has(r.uid) && (!studentEmail || r.email.toLowerCase() !== studentEmail)
+        );
+        saveD1Store(d1Store);
+        wipedSummary["cloudflare_d1_posts_removed"] = beforePosts - d1Store.posts.length;
+      } catch (d1CleanErr: any) {
+        console.warn("[remove-student] Firebase Auth / Cloudflare D1 cleanup note:", d1CleanErr?.message);
+      }
+
       console.log(`🗑️ [User Permanent Deletion Complete] Student wiped by ${requestedBy}: ID=${studentId}, Email=${studentEmail}`);
 
       return res.status(200).json({
@@ -13870,6 +13911,10 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   };
 
   app.get("/api/admin/verify-user-deletion", handleVerifyUserDeletion);
+
+  // Mount Cloudflare D1 + R2 Post API (/api/posts, /api/r2, /sitemap.xml) & Auth/Admin deletion endpoints
+  registerCloudflarePostsAndAuthRoutes(app, { getGoogleAccessToken });
+
   // Universal Crawler, Search Engine & Social Share Metadata Responder
   app.use((req, res, next) => {
     const rawPath = req.path.replace(/\/+$/, '') || '/';
@@ -14047,15 +14092,25 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       description = `Read public student discussions, solved numericals, and shared notes for ${subName} in Boardly Commons.`;
       h1Text = `${subName} in Boardly Commons`;
     } else if (lowerPath.startsWith('/commons/post/')) {
-      const postTitle = humanizeSlug(rawPath.replace('/commons/post/', '')) || 'Student Discussion';
-      title = `${postTitle} — Boardly Commons`;
-      description = `Read "${postTitle}" and join the student academic discussion on Boardly Commons.`;
+      const slugPart = rawPath.replace('/commons/post/', '');
+      const lookupId = extractIdFromSlugOrId(slugPart);
+      const d1Row = loadD1Store().posts.find(
+        (p) => (p.id === lookupId || p.slug === slugPart) && !p.is_hidden
+      );
+      const postObj = d1Row ? rowToCommonsPost(d1Row) : null;
+      const postTitle = postObj?.title || humanizeSlug(slugPart) || 'Student Discussion';
+      title = `${postTitle} — ${postObj?.subject || 'Boardly Commons'}`;
+      description = postObj?.description
+        ? String(postObj.description).slice(0, 160)
+        : `Read "${postTitle}" and join the student academic discussion on Boardly Commons.`;
       ogType = 'article';
       h1Text = postTitle;
       jsonLd = {
         '@context': 'https://schema.org',
-        '@type': 'DiscussionForumPosting',
-        headline: postTitle,
+        '@type': 'LearningResource',
+        name: postTitle,
+        description,
+        educationalLevel: postObj ? `Class ${postObj.classLevel} (${postObj.board})` : 'Class 11 & 12',
         url: canonical,
       };
     } else if (lowerPath === '/material') {
@@ -14069,15 +14124,24 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       description = `Browse and preview ${subName} PDF notes, formula sheets, and solved past papers shared by students on Boardly.`;
       h1Text = `${subName} Study Material`;
     } else if (lowerPath.startsWith('/material/')) {
-      const matTitle = humanizeSlug(rawPath.replace('/material/', '')) || 'Study Material';
+      const slugPart = rawPath.replace('/material/', '');
+      const lookupId = extractIdFromSlugOrId(slugPart);
+      const d1Row = loadD1Store().posts.find(
+        (p) => (p.id === lookupId || p.slug === slugPart) && !p.is_hidden
+      );
+      const postObj = d1Row ? rowToCommonsPost(d1Row) : null;
+      const matTitle = postObj?.title || humanizeSlug(slugPart) || 'Study Material';
       title = `${matTitle} — Study Material PDF & Notes — Boardly`;
-      description = `Preview and download "${matTitle}" study notes and exam preparation material on Boardly.`;
+      description = postObj?.description
+        ? String(postObj.description).slice(0, 160)
+        : `Preview and download "${matTitle}" study notes and exam preparation material on Boardly.`;
       ogType = 'article';
       h1Text = matTitle;
       jsonLd = {
         '@context': 'https://schema.org',
         '@type': 'LearningResource',
         name: matTitle,
+        description,
         url: canonical,
       };
     } else if (lowerPath.startsWith('/grand-line')) {

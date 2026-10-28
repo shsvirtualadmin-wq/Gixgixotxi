@@ -1,53 +1,39 @@
 import { useState, useEffect } from 'react';
-import {
-  collection,
-  getDocs,
-  query,
-  where,
-  orderBy,
-  limit,
-  doc,
-  updateDoc,
-  deleteDoc,
-  getDoc,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
 import { Shield, AlertTriangle, Eye, EyeOff, Trash2, Ban, CheckCircle2, RefreshCw } from 'lucide-react';
-import type { CommonsPost, CommonsReport, CommonsPrivatePost } from '@/types/commons';
+import { normalizeCloudflarePost } from '@/services/commonsService';
+import type { CommonsPost, CommonsReport } from '@/types/commons';
 
 export function AdminCommonsPage() {
   const [flaggedPosts, setFlaggedPosts] = useState<CommonsPost[]>([]);
-  const [reports, setReports] = useState<CommonsReport[]>([]);
+  const [, setReports] = useState<CommonsReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+
+  const getAdminHeaders = async () => {
+    const token = await auth.currentUser?.getIdToken(false);
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  };
 
   const loadModerationQueue = async () => {
     setLoading(true);
     setActionNotice(null);
     try {
-      // 1. Fetch posts with reportCount >= 1 or isHidden == true
-      const qPosts = query(
-        collection(db, 'commonsPosts'),
-        where('reportCount', '>=', 1),
-        limit(50)
-      );
-      const postSnap = await getDocs(qPosts);
-      const posts: CommonsPost[] = postSnap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<CommonsPost, 'id'>),
-      }));
+      const headers = await getAdminHeaders();
+      const resp = await fetch('/api/posts/moderation/queue', { headers });
+      const data = await resp.json().catch(() => ({}));
 
-      // 2. Fetch pending reports
-      const qReports = query(
-        collection(db, 'commonsReports'),
-        where('status', '==', 'pending'),
-        limit(50)
-      );
-      const repSnap = await getDocs(qReports);
-      const reps: CommonsReport[] = repSnap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<CommonsReport, 'id'>),
-      }));
+      if (!resp.ok || !data?.success) {
+        throw new Error(data?.error || 'Could not load moderation queue.');
+      }
+
+      const posts: CommonsPost[] = Array.isArray(data.flaggedPosts)
+        ? data.flaggedPosts.map((p: any) => normalizeCloudflarePost(p))
+        : [];
+      const reps: CommonsReport[] = Array.isArray(data.reports) ? data.reports : [];
 
       setFlaggedPosts(posts);
       setReports(reps);
@@ -60,15 +46,21 @@ export function AdminCommonsPage() {
   };
 
   useEffect(() => {
-    loadModerationQueue();
+    void loadModerationQueue();
   }, []);
 
   const handleToggleHide = async (post: CommonsPost) => {
     try {
       const nextHide = !post.isHidden;
-      await updateDoc(doc(db, 'commonsPosts', post.id), {
-        isHidden: nextHide,
+      const headers = await getAdminHeaders();
+      const resp = await fetch(`/api/posts/${encodeURIComponent(post.id)}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ isHidden: nextHide }),
       });
+      if (!resp.ok) {
+        throw new Error('Failed to update post visibility');
+      }
       setFlaggedPosts((prev) =>
         prev.map((p) => (p.id === post.id ? { ...p, isHidden: nextHide } : p))
       );
@@ -81,10 +73,16 @@ export function AdminCommonsPage() {
   const handleDeletePost = async (post: CommonsPost) => {
     if (!window.confirm(`Are you sure you want to permanently delete "${post.title}"?`)) return;
     try {
-      await deleteDoc(doc(db, 'commonsPosts', post.id));
-      await deleteDoc(doc(db, 'postPrivate', post.id)).catch(() => {});
+      const headers = await getAdminHeaders();
+      const resp = await fetch(`/api/posts/${encodeURIComponent(post.id)}`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (!resp.ok) {
+        throw new Error('Delete request failed');
+      }
       setFlaggedPosts((prev) => prev.filter((p) => p.id !== post.id));
-      setActionNotice('Post and private audit doc permanently deleted.');
+      setActionNotice('Post permanently deleted from Cloudflare D1.');
     } catch (err: any) {
       setActionNotice(`Delete failed: ${err.message}`);
     }
@@ -92,24 +90,26 @@ export function AdminCommonsPage() {
 
   const handleBanAuthor = async (post: CommonsPost) => {
     try {
-      // Look up private author UID
-      let authorUid = post.authorUid;
-      if (!authorUid) {
-        const privSnap = await getDoc(doc(db, 'postPrivate', post.id));
-        authorUid = privSnap.data()?.authorUid;
-      }
-      if (!authorUid) {
-        setActionNotice('Author UID could not be determined.');
+      const authorUid = (post as any).realAuthorUid || post.authorUid;
+      if (!window.confirm(`Ban author of "${post.title}" from publishing in Boardly Commons?`)) {
         return;
       }
 
-      if (!window.confirm(`Ban user ${authorUid} from publishing in Boardly Commons?`)) return;
-
-      await updateDoc(doc(db, 'users', authorUid), {
-        isPostingBanned: true,
-        postingBannedAt: new Date().toISOString(),
+      const headers = await getAdminHeaders();
+      const resp = await fetch('/api/posts/moderation/ban', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          postId: post.id,
+          targetUid: authorUid,
+        }),
       });
-      setActionNotice(`User ${authorUid} has been banned from posting.`);
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data?.success) {
+        throw new Error(data?.error || 'Could not ban author');
+      }
+
+      setActionNotice(`User ${data.bannedUid || authorUid} has been banned from posting.`);
     } catch (err: any) {
       setActionNotice(`Ban failed: ${err.message}`);
     }

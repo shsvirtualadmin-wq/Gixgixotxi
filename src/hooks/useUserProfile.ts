@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { debugTracker } from '@/utils/debugTracker';
@@ -142,9 +142,14 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
     }
   }, 8000);
 
-  activeUnsub = onSnapshot(
-    doc(db, 'users', uid),
-    (snap) => {
+  let cancelled = false;
+  activeUnsub = () => {
+    cancelled = true;
+  };
+
+  getDoc(doc(db, 'users', uid))
+    .then((snap) => {
+      if (cancelled) return;
       if (activeTimeoutTimer) {
         clearTimeout(activeTimeoutTimer);
         activeTimeoutTimer = null;
@@ -174,8 +179,9 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
         }
       }
       broadcastState();
-    },
-    (err) => {
+    })
+    .catch((err) => {
+      if (cancelled) return;
       if (activeTimeoutTimer) {
         clearTimeout(activeTimeoutTimer);
         activeTimeoutTimer = null;
@@ -199,8 +205,7 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
         sharedState.docExists = true;
       }
       broadcastState();
-    }
-  );
+    });
 }
 
 function releaseSubscription() {

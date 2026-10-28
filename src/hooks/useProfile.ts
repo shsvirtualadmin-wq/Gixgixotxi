@@ -1,4 +1,4 @@
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase';
 import { isQuotaExhaustedError } from '@/utils/quota';
@@ -34,11 +34,12 @@ export function useProfile(uid: string | null): ProfileState {
       return;
     }
 
+    let cancelled = false;
     const path = `users/${uid}`;
 
-    const unsubscribe = onSnapshot(
-      doc(db, 'users', uid),
-      (snap) => {
+    getDoc(doc(db, 'users', uid))
+      .then((snap) => {
+        if (cancelled) return;
         if (snap.exists()) {
           const profileData = { uid, ...snap.data() } as UserProfile;
           try {
@@ -50,8 +51,9 @@ export function useProfile(uid: string | null): ProfileState {
         } else {
           setState({ profile: null, loading: false, error: null });
         }
-      },
-      (err) => {
+      })
+      .catch((err) => {
+        if (cancelled) return;
         const isQuota = isQuotaExhaustedError(err);
         if (isQuota) {
           console.warn(`[useProfile] Daily quota limit reached on ${path}.`);
@@ -72,10 +74,11 @@ export function useProfile(uid: string | null): ProfileState {
           loading: false,
           error: isQuota ? null : { code: err.code, message: err.message, path },
         });
-      }
-    );
+      });
 
-    return unsubscribe;
+    return () => {
+      cancelled = true;
+    };
   }, [uid]);
 
   return state;

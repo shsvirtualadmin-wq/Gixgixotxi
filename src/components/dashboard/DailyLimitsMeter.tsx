@@ -1,4 +1,4 @@
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState, memo, useRef } from 'react';
 import { db } from '@/lib/firebase';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
@@ -44,7 +44,6 @@ export const DailyLimitsMeter = memo(function DailyLimitsMeter({
   const dateKey = getPKTDateKey();
 
   useEffect(() => {
-    // If auth is still resolving, keep showing skeleton
     if (profileLoading) {
       setLoading(true);
       return;
@@ -52,34 +51,36 @@ export const DailyLimitsMeter = memo(function DailyLimitsMeter({
 
     const effectiveUid = uid || user?.uid;
     if (!effectiveUid) {
-      // If auth finished and there's no user, signal error to hide the card
       setHasError(true);
       setLoading(false);
       if (onErrorRef.current) onErrorRef.current();
       return;
     }
 
+    let cancelled = false;
     setLoading(true);
     setHasError(false);
 
-    const unsubscribe = onSnapshot(
-      doc(db, 'users', effectiveUid, 'usage', dateKey),
-      (snap) => {
+    getDoc(doc(db, 'users', effectiveUid, 'usage', dateKey))
+      .then((snap) => {
+        if (cancelled) return;
         const u = snap.exists() ? (snap.data() as UsageData) : {};
         setUsage(u);
         const count = Number(u.questionsUsed ?? u.testsStarted ?? u.practiceAttempts ?? 0);
         if (onUsageChangeRef.current) onUsageChangeRef.current(count);
         setLoading(false);
-      },
-      (err) => {
+      })
+      .catch((err) => {
+        if (cancelled) return;
         console.warn('[DailyLimitsMeter] usage fetch error:', err);
         setHasError(true);
         setLoading(false);
         if (onErrorRef.current) onErrorRef.current();
-      }
-    );
+      });
 
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+    };
   }, [uid, user?.uid, profileLoading, dateKey]);
 
   // If loading or auth/plan resolving, show a small skeleton

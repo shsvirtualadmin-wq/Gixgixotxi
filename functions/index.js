@@ -395,3 +395,157 @@ exports.toggleFollow = functions.https.onCall(async (data, context) => {
     }
   });
 });
+
+/**
+ * CALLABLE CLOUD FUNCTION: adminDeleteUserAccount
+ * Permanently deletes a user from Firebase Authentication AND all Firestore collections.
+ */
+exports.adminDeleteUserAccount = functions.https.onCall(async (data, context) => {
+  const callerUid = context.auth ? context.auth.uid : null;
+  const callerEmail = context.auth && context.auth.token && context.auth.token.email
+    ? String(context.auth.token.email).toLowerCase()
+    : '';
+
+  if (!callerUid) {
+    throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+  }
+
+  let isAdmin =
+    callerUid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
+    callerEmail === 'shsvirtualadmin@gmail.com' ||
+    callerEmail === 'support@boardly.cfd' ||
+    Boolean(context.auth.token && (context.auth.token.admin || context.auth.token.role === 'superadmin'));
+
+  if (!isAdmin) {
+    const adminDoc = await db.collection('admins').doc(callerUid).get();
+    if (adminDoc.exists) isAdmin = true;
+  }
+
+  if (!isAdmin) {
+    throw new functions.https.HttpsError('permission-denied', 'Superadmin access required.');
+  }
+
+  const targetUid = String(data?.targetUid || '').trim();
+  const targetEmail = String(data?.targetEmail || '').trim().toLowerCase();
+
+  if (!targetUid && !targetEmail) {
+    throw new functions.https.HttpsError('invalid-argument', 'targetUid or targetEmail is required.');
+  }
+
+  let resolvedUid = targetUid;
+  if (!resolvedUid && targetEmail) {
+    try {
+      const userRecord = await admin.auth().getUserByEmail(targetEmail);
+      resolvedUid = userRecord.uid;
+    } catch {}
+  }
+
+  if (resolvedUid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2') {
+    throw new functions.https.HttpsError('permission-denied', 'Cannot delete protected superadmin.');
+  }
+
+  // 1. Delete from Firebase Authentication
+  let authDeleted = false;
+  if (resolvedUid) {
+    try {
+      await admin.auth().deleteUser(resolvedUid);
+      authDeleted = true;
+    } catch (authErr) {
+      if (authErr && authErr.code === 'auth/user-not-found') {
+        authDeleted = true;
+      } else {
+        throw new functions.https.HttpsError(
+          'internal',
+          `Failed to delete user from Firebase Authentication: ${authErr.message || authErr.code}`
+        );
+      }
+    }
+  }
+
+  // 2. Delete direct UID documents in Firestore
+  if (resolvedUid) {
+    const directCollections = [
+      'users',
+      'publicProfiles',
+      'admins',
+      'streaks',
+      'referrals',
+      'leaderboard',
+      'wallets',
+      'captainApplications',
+      'crewApplications',
+      'captains',
+    ];
+    await Promise.all(
+      directCollections.map((coll) =>
+        db.collection(coll).doc(resolvedUid).delete().catch(() => {})
+      )
+    );
+  }
+
+  return {
+    success: true,
+    uid: resolvedUid,
+    email: targetEmail,
+    firebaseAuthDeleted: authDeleted,
+  };
+});
+
+/**
+ * CALLABLE CLOUD FUNCTION: cleanupOrphanProfiles
+ * Finds any users/{uid} or publicProfiles/{uid} record with no matching Firebase Auth user
+ * and deletes the orphan records.
+ */
+exports.cleanupOrphanProfiles = functions.https.onCall(async (_data, context) => {
+  const callerUid = context.auth ? context.auth.uid : null;
+  const callerEmail = context.auth && context.auth.token && context.auth.token.email
+    ? String(context.auth.token.email).toLowerCase()
+    : '';
+
+  if (
+    !callerUid ||
+    (callerUid !== 'A5YMRimdHRcmeDWutxtUGt2e4hf2' &&
+      callerEmail !== 'shsvirtualadmin@gmail.com' &&
+      callerEmail !== 'support@boardly.cfd')
+  ) {
+    throw new functions.https.HttpsError('permission-denied', 'Superadmin access required.');
+  }
+
+  const [usersSnap, pubSnap] = await Promise.all([
+    db.collection('users').get(),
+    db.collection('publicProfiles').get(),
+  ]);
+
+  const allUids = new Set([
+    ...usersSnap.docs.map((d) => d.id),
+    ...pubSnap.docs.map((d) => d.id),
+  ]);
+
+  const removedUids = [];
+  for (const uid of allUids) {
+    if (uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2') continue;
+    try {
+      await admin.auth().getUser(uid);
+    } catch (err) {
+      if (err && err.code === 'auth/user-not-found') {
+        await Promise.all([
+          db.collection('users').doc(uid).delete().catch(() => {}),
+          db.collection('publicProfiles').doc(uid).delete().catch(() => {}),
+          db.collection('streaks').doc(uid).delete().catch(() => {}),
+          db.collection('referrals').doc(uid).delete().catch(() => {}),
+          db.collection('leaderboard').doc(uid).delete().catch(() => {}),
+          db.collection('wallets').doc(uid).delete().catch(() => {}),
+        ]);
+        removedUids.push(uid);
+      }
+    }
+  }
+
+  return {
+    success: true,
+    scannedCount: allUids.size,
+    removedCount: removedUids.length,
+    removedUids,
+  };
+});
+

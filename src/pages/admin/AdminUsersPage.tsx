@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, RefreshCw, UserCheck, Loader2, Shield, Users as UsersIcon, Clock, Tag } from 'lucide-react';
+import { Search, RefreshCw, UserCheck, Loader2, Shield, Users as UsersIcon, Clock, Tag, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserOverrideDrawer } from '@/components/admin/UserOverrideDrawer';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
@@ -7,6 +7,7 @@ import { AdminNameRequestsSection } from '@/components/admin/AdminNameRequestsSe
 import {
   fetchUsersPaginated,
   backfillMissingDisplayNames,
+  cleanupOrphanUserProfiles,
   getUserDisplayName,
 } from '@/services/adminService';
 import { backfillAllPublicProfiles } from '@/services/publicProfileService';
@@ -138,6 +139,34 @@ export function AdminUsersPage() {
     }
   }, [user, loadUsers]);
 
+  // Orphan profile cleanup state
+  const [cleaningOrphans, setCleaningOrphans] = useState(false);
+
+  const handleCleanupOrphans = async () => {
+    if (!user?.email) return;
+    setCleaningOrphans(true);
+    setBackfillMessage(null);
+    try {
+      const res = await cleanupOrphanUserProfiles(user.email);
+      setBackfillMessage(
+        res.removed > 0
+          ? `Cleaned up ${res.removed} orphan profile(s) across ${res.scanned} user records.`
+          : `All clean! 0 orphan profiles found across ${res.scanned} user records.`
+      );
+      if (res.removed > 0) {
+        await loadUsers();
+      }
+    } catch (err: unknown) {
+      console.error('Orphan cleanup error:', err);
+      setBackfillMessage(
+        'Could not complete orphan profile cleanup: ' +
+          (err instanceof Error ? err.message : String(err))
+      );
+    } finally {
+      setCleaningOrphans(false);
+    }
+  };
+
   const handleBackfillNames = async () => {
     if (!user?.email) return;
     setBackfilling(true);
@@ -216,6 +245,19 @@ export function AdminUsersPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {isSuperAdmin && (
+            <button
+              type="button"
+              onClick={handleCleanupOrphans}
+              disabled={cleaningOrphans}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--red)]/50 text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
+              title="Find and remove orphan database profiles with no matching active Firebase Auth user"
+            >
+              <Trash2 size={14} className={cleaningOrphans ? 'animate-spin text-[#D71921]' : 'text-[#D71921]'} />
+              <span>{cleaningOrphans ? 'Cleaning orphans...' : 'Clean Up Orphan Profiles'}</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleBackfillPublicProfiles}

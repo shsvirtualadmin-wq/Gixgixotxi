@@ -1,191 +1,164 @@
+import { auth, db } from '@/lib/firebase';
 import {
   collection,
-  doc,
-  getDoc,
   getDocs,
-  setDoc,
-  updateDoc,
-  deleteDoc,
   query,
-  where,
-  orderBy,
   limit,
-  startAfter,
-  serverTimestamp,
-  increment,
-  writeBatch,
-  DocumentSnapshot,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { getPKTDateKey } from '@/hooks/usePKTDate';
 import type {
   CommonsPost,
   CommonsPostType,
-  CommonsPrivatePost,
-  CommonsComment,
   CommonsFileAttachment,
+  CommonsComment,
   CommonsUserPreview,
 } from '@/types/commons';
-import { getFollowingIds, fetchUserFollowers } from '@/services/followService';
-import { notifyFollowersOfPost } from '@/services/notificationService';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
+/**
+ * ============================================================================
+ * BOARDLY COMMONS SERVICE — CLOUDFLARE WORKER + D1 + R2
+ * ============================================================================
+ * 100% of post creation, listing, filtering, search, likes, saves, comments,
+ * and reports run through `/api/posts` backed by Cloudflare D1 and R2.
+ *
+ * Zero Firestore reads or writes are performed for posts, comments, likes,
+ * saves, or study material attachments.
+ * Firebase Auth is used strictly for JWT verification on authenticated writes.
+ */
+
 export const DAILY_POST_LIMIT = 10;
-const DISALLOWED_FILE_EXTENSIONS = [
+
+const BLOCKED_EXTENSIONS = [
   '.exe',
   '.bat',
   '.cmd',
   '.sh',
-  '.bin',
   '.msi',
   '.apk',
-  '.jar',
+  '.dmg',
+  '.pkg',
+  '.com',
   '.scr',
   '.vbs',
   '.js',
-  '.com',
-  '.wsf',
+  '.jar',
+  '.py',
+  '.php',
   '.ps1',
+  '.elf',
+  '.bin',
+  '.dll',
+  '.so',
 ];
 
-const ANONYMOUS_ADJECTIVES = [
-  'Curious',
-  'Diligent',
-  'Tenacious',
-  'Focused',
-  'Brilliant',
-  'Strategic',
-  'Resilient',
-  'Aspiring',
-  'Analytical',
-  'Keen',
-];
-
-const ANONYMOUS_NOUNS = [
-  'Scholar',
-  'Engineer',
-  'Falcon',
-  'Physicist',
-  'Mathematician',
-  'Doctor',
-  'Strategist',
-  'Innovator',
-  'Learner',
-  'Achiever',
-];
+export function isExecutableFile(filename: string): boolean {
+  const lower = (filename || '').toLowerCase().trim();
+  return BLOCKED_EXTENSIONS.some((ext) => lower.endsWith(ext) || lower.includes(`${ext}.`));
+}
 
 export function generateAnonymousAlias(): string {
-  const adj = ANONYMOUS_ADJECTIVES[Math.floor(Math.random() * ANONYMOUS_ADJECTIVES.length)];
-  const noun = ANONYMOUS_NOUNS[Math.floor(Math.random() * ANONYMOUS_NOUNS.length)];
-  const num = Math.floor(100 + Math.random() * 900);
-  return `${adj} ${noun} #${num}`;
+  return 'Anonymous Student';
 }
 
-/**
- * Generate comprehensive searchable keywords array (tokens + word prefixes 3..12 chars).
- */
-export function generateSearchKeywords(params: {
-  title: string;
-  description: string;
-  tags: string[];
-  subject: string;
-  chapter: string;
-  target: string;
-  type: string;
-}): string[] {
-  const rawText = [
-    params.title,
-    params.description,
-    ...params.tags,
-    params.subject,
-    params.chapter,
-    params.target,
-    params.type,
-  ]
-    .join(' ')
-    .toLowerCase();
-
-  // Clean and split words
-  const words = rawText
-    .replace(/[^\w\s-]/g, ' ')
-    .split(/\s+/)
-    .map((w) => w.trim())
-    .filter((w) => w.length >= 2);
-
-  const keywordsSet = new Set<string>();
-
-  words.forEach((word) => {
-    keywordsSet.add(word);
-    // Add prefixes for substring search
-    if (word.length >= 3) {
-      for (let i = 3; i <= Math.min(word.length, 12); i++) {
-        keywordsSet.add(word.slice(0, i));
-      }
+async function getOptionalAuthHeader(): Promise<Record<string, string>> {
+  try {
+    const token = await auth.currentUser?.getIdToken(false);
+    if (token) {
+      return { Authorization: `Bearer ${token}` };
     }
-  });
+  } catch {}
+  return {};
+}
 
-  // Limit array size to stay safely within Firestore 20KB index limits (max 80 tokens)
-  return Array.from(keywordsSet).slice(0, 80);
+async function getRequiredAuthHeader(): Promise<Record<string, string>> {
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('Please sign in to perform this action.');
+  }
+  const token = await user.getIdToken(false);
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
 }
 
 /**
- * Check if a file extension is blocked for safety.
+ * Normalizes a post object returned from `/api/posts` so `createdAt` supports
+ * both `.toDate()` (for legacy UI components) and ISO string / Date parsing.
  */
-export function isExecutableFile(filename: string): boolean {
-  const lower = filename.toLowerCase();
-  return DISALLOWED_FILE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+export function normalizeCloudflarePost(raw: Record<string, any>): CommonsPost {
+  const createdMs =
+    typeof raw.createdAtMs === 'number'
+      ? raw.createdAtMs
+      : raw.createdAt
+      ? Date.parse(String(raw.createdAt)) || Date.now()
+      : Date.now();
+
+  const dateObj = new Date(createdMs);
+  const timestampCompat = {
+    seconds: Math.floor(createdMs / 1000),
+    nanoseconds: 0,
+    toDate: () => dateObj,
+    toMillis: () => createdMs,
+  };
+
+  return {
+    ...(raw as any),
+    id: String(raw.id || ''),
+    slug: String(raw.slug || raw.id || ''),
+    type: (raw.type || 'notes') as CommonsPostType,
+    title: String(raw.title || ''),
+    description: String(raw.description || raw.body || ''),
+    subject: String(raw.subject || 'General'),
+    chapter: String(raw.chapter || 'General'),
+    target: String(raw.target || 'General'),
+    classLevel: String(raw.classLevel || raw.class || '11'),
+    board: String(raw.board || 'Federal'),
+    tags: Array.isArray(raw.tags) ? raw.tags : [],
+    files: Array.isArray(raw.files) ? raw.files : [],
+    isAnonymous: Boolean(raw.isAnonymous),
+    anonymousAlias: String(raw.anonymousAlias || 'Anonymous Student'),
+    authorUid: raw.isAnonymous ? null : raw.authorUid || null,
+    authorName: raw.isAnonymous
+      ? 'Anonymous Student'
+      : String(raw.authorName || 'Student'),
+    authorAvatar: raw.isAnonymous ? null : raw.authorAvatar || null,
+    authorFrame: raw.isAnonymous ? null : raw.authorFrame || null,
+    authorEquippedAvatar: raw.isAnonymous ? null : raw.authorEquippedAvatar || null,
+    authorPhotoURL: raw.isAnonymous ? null : raw.authorPhotoURL || null,
+    authorRole: raw.isAnonymous ? 'student' : raw.authorRole || 'student',
+    authorCustomRole: raw.isAnonymous ? null : raw.authorCustomRole || null,
+    upvotes: Number(raw.upvotes ?? 0),
+    downvotes: Number(raw.downvotes ?? 0),
+    views: Number(raw.views ?? 0),
+    commentCount: Number(raw.commentCount ?? 0),
+    saveCount: Number(raw.saveCount ?? 0),
+    sharesCount: Number(raw.sharesCount ?? 0),
+    reportCount: Number(raw.reportCount ?? 0),
+    isHidden: Boolean(raw.isHidden),
+    isPinned: Boolean(raw.isPinned),
+    isFeatured: Boolean(raw.isFeatured),
+    createdAt: timestampCompat as any,
+  };
 }
 
-/**
- * Verify user posting quota (10 posts per day).
- */
-export async function checkPostingRateLimit(uid: string): Promise<{
+export async function checkPostingRateLimit(_uid: string): Promise<{
   allowed: boolean;
-  todayCount: number;
   remaining: number;
+  count: number;
+  isBanned: boolean;
 }> {
-  try {
-    const dateKey = getPKTDateKey();
-    const usageRef = doc(db, 'users', uid, 'usage', dateKey);
-    const snap = await getDoc(usageRef);
-    const count = Number(snap.data()?.commonsPostsCount ?? 0);
-
-    return {
-      allowed: count < DAILY_POST_LIMIT,
-      todayCount: count,
-      remaining: Math.max(0, DAILY_POST_LIMIT - count),
-    };
-  } catch (err) {
-    console.warn('[commonsService] rate limit check warning:', err);
-    return { allowed: true, todayCount: 0, remaining: DAILY_POST_LIMIT };
-  }
+  // Enforced directly by Cloudflare Worker / D1 rate_limits table on POST /api/posts
+  return {
+    allowed: true,
+    remaining: DAILY_POST_LIMIT,
+    count: 0,
+    isBanned: false,
+  };
 }
 
-/**
- * Increment daily post count.
- */
-async function recordPostUsage(uid: string): Promise<void> {
-  try {
-    const dateKey = getPKTDateKey();
-    const usageRef = doc(db, 'users', uid, 'usage', dateKey);
-    await setDoc(
-      usageRef,
-      {
-        commonsPostsCount: increment(1),
-        lastPostAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-  } catch (err) {
-    console.warn('[commonsService] usage record notice:', err);
-  }
-}
-
-/**
- * Create a new Commons post (Public doc + Private author record for moderation).
- */
 export async function createCommonsPost(params: {
-  currentUser: {
+  author: {
     uid: string;
     email?: string | null;
     displayName?: string | null;
@@ -193,911 +166,437 @@ export async function createCommonsPost(params: {
     equippedAvatar?: string | null;
     frame?: string | null;
     avatarUrl?: string | null;
+    role?: string | null;
+    customRole?: string | null;
   };
   type: CommonsPostType;
   title: string;
   description: string;
-  subject?: string;
-  chapter?: string;
-  target?: string;
+  subject: string;
+  chapter: string;
+  target: string;
   tags: string[];
   files: CommonsFileAttachment[];
   isAnonymous: boolean;
-}): Promise<string> {
-  const { currentUser } = params;
+}): Promise<{ postId: string; post: CommonsPost }> {
+  const { author, isAnonymous } = params;
 
-  // 1. Rate limit verification
-  const rateLimit = await checkPostingRateLimit(currentUser.uid);
-  if (!rateLimit.allowed) {
-    throw new Error(`Daily posting limit reached (${DAILY_POST_LIMIT} posts/day). Please try again tomorrow.`);
-  }
-
-  // 2. Validate attachments
-  if (params.files.length > 5) {
-    throw new Error('Maximum 5 files allowed per post.');
-  }
   for (const f of params.files) {
     if (isExecutableFile(f.name)) {
-      throw new Error(`Executable file "${f.name}" is forbidden for security.`);
-    }
-    if (f.size > 25 * 1024 * 1024) {
-      throw new Error(`File "${f.name}" exceeds the 25 MB limit.`);
+      throw new Error(`Security Restriction: Executable file "${f.name}" is not allowed.`);
     }
   }
 
-  // 3. Prepare Post ID & Author Identifiers
-  const postRef = doc(collection(db, 'commonsPosts'));
-  const postId = postRef.id;
+  const headers = await getRequiredAuthHeader();
+  const cleanPublicName = isAnonymous
+    ? 'Anonymous Student'
+    : sanitizeStudentDisplayName(author.displayName, author.uid);
 
-  let publicAuthorUid: string | null = currentUser.uid;
-  let publicAuthorName = sanitizeStudentDisplayName(currentUser.displayName, currentUser.uid);
-  // Priority: 1. equippedAvatar, 2. avatarUrl, 3. photoURL (Google), 4. null
-  let publicAuthorAvatar: string | null =
-    currentUser.equippedAvatar || currentUser.avatarUrl || currentUser.photoURL || null;
-  let authorFrame: string | null = currentUser.frame || null;
-  let authorEquippedAvatar: string | null = currentUser.equippedAvatar || null;
-  let authorPhotoURL: string | null = currentUser.photoURL || null;
-  let authorRole: string | null = (currentUser as any).role || 'Student';
-  let authorCustomRole: string | null = (currentUser as any).customRole || null;
-  let authorAlias: string | undefined = undefined;
-
-  if (params.isAnonymous) {
-    publicAuthorUid = null;
-    authorAlias = undefined;
-    publicAuthorName = 'Anonymous';
-    publicAuthorAvatar = null;
-    authorFrame = null;
-    authorEquippedAvatar = null;
-    authorPhotoURL = null;
-    authorRole = null;
-    authorCustomRole = null;
-  }
-
-  const searchKeywords = generateSearchKeywords({
-    title: params.title,
-    description: params.description,
-    tags: params.tags,
-    subject: params.subject || '',
-    chapter: params.chapter || '',
-    target: params.target || '',
-    type: params.type,
+  const resp = await fetch('/api/posts', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      type: params.type,
+      title: params.title.trim(),
+      description: params.description.trim(),
+      subject: (params.subject || 'General').trim(),
+      chapter: (params.chapter || 'General').trim(),
+      target: (params.target || 'General').trim(),
+      tags: params.tags.map((t) => t.trim().toLowerCase()).filter(Boolean),
+      files: params.files,
+      isAnonymous: Boolean(isAnonymous),
+      authorName: cleanPublicName,
+      authorAvatar: isAnonymous ? null : author.avatarUrl || author.equippedAvatar || null,
+      authorFrame: isAnonymous ? null : author.frame || null,
+      authorEquippedAvatar: isAnonymous ? null : author.equippedAvatar || null,
+      authorPhotoURL: isAnonymous ? null : author.photoURL || null,
+      authorRole: isAnonymous ? 'student' : author.role || 'student',
+      authorCustomRole: isAnonymous ? null : author.customRole || null,
+    }),
   });
 
-  const now = serverTimestamp();
-
-  const cleanTitle = params.title.trim().slice(0, 200);
-  const cleanDescription = params.description.trim().slice(0, 20000);
-  if (!cleanTitle) {
-    throw new Error('Post title is required.');
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data?.success) {
+    throw new Error(data?.error || 'Could not publish post to Boardly Commons.');
   }
 
-  const publicData: Omit<CommonsPost, 'id'> = {
-    type: params.type,
-    title: cleanTitle,
-    description: cleanDescription,
-    subject: params.subject || '',
-    chapter: params.chapter || '',
-    target: params.target || '',
-    tags: params.tags
-      .map((t) => t.trim().toLowerCase())
-      .filter(Boolean)
-      .slice(0, 8),
-    files: params.files.slice(0, 5),
-    isAnonymous: Boolean(params.isAnonymous),
-    authorUid: publicAuthorUid,
-    authorName: publicAuthorName,
-    authorAvatar: publicAuthorAvatar,
-    authorFrame,
-    authorEquippedAvatar,
-    authorPhotoURL,
-    authorRole,
-    authorCustomRole,
-    upvotes: 0,
-    commentCount: 0,
-    saveCount: 0,
-    reportCount: 0,
-    isHidden: false,
-    searchKeywords,
-    createdAt: now,
-    updatedAt: now,
+  const normalized = normalizeCloudflarePost(data.post || { id: data.postId, ...params });
+  return {
+    postId: normalized.id,
+    post: normalized,
   };
-
-  const privateData: CommonsPrivatePost = {
-    postId,
-    authorUid: currentUser.uid,
-    ...(currentUser.email ? { authorEmail: currentUser.email } : {}),
-    authorName: currentUser.displayName || 'Student',
-    isAnonymous: Boolean(params.isAnonymous),
-    createdAt: now,
-  };
-
-  const batch = writeBatch(db);
-  batch.set(postRef, publicData);
-  // Author & admin private audit doc (postsPrivate)
-  const postsPrivateRef = doc(db, 'postsPrivate', postId);
-  batch.set(postsPrivateRef, privateData);
-
-  await batch.commit();
-
-  // Fire-and-forget post usage counter and follower notifications so the UI never hangs
-  void recordPostUsage(currentUser.uid);
-
-  if (!params.isAnonymous && currentUser.uid) {
-    void (async () => {
-      try {
-        const followers = await fetchUserFollowers(currentUser.uid, 100);
-        const followerUids = followers.map((f) => f.uid).filter(Boolean);
-        if (followerUids.length > 0) {
-          await notifyFollowersOfPost({
-            followerUids,
-            authorId: currentUser.uid,
-            authorName: publicAuthorName,
-            postId,
-            postTitle: params.title,
-            isAnonymous: false,
-          });
-        }
-      } catch (notifErr) {
-        console.warn('[commonsService] Failed to notify followers:', notifErr);
-      }
-    })();
-  }
-
-  return postId;
 }
 
-/**
- * Fetch Commons feed posts with filtering & pagination.
- */
-export async function fetchCommonsPosts(params: {
-  feedTab?: 'all' | 'following' | 'for_you';
+export function sortCommonsPosts(
+  posts: CommonsPost[],
+  sortBy: 'trending' | 'newest' | 'top' = 'newest'
+): CommonsPost[] {
+  return [...posts].sort((a, b) => {
+    const aPinned = Boolean(a.isPinned);
+    const bPinned = Boolean(b.isPinned);
+    if (aPinned && !bPinned) return -1;
+    if (!aPinned && bPinned) return 1;
+
+    const aTime = a.createdAt?.toMillis
+      ? a.createdAt.toMillis()
+      : a.createdAt?.seconds
+      ? a.createdAt.seconds * 1000
+      : 0;
+    const bTime = b.createdAt?.toMillis
+      ? b.createdAt.toMillis()
+      : b.createdAt?.seconds
+      ? b.createdAt.seconds * 1000
+      : 0;
+
+    if (sortBy === 'newest') {
+      return bTime - aTime;
+    }
+    if (sortBy === 'top') {
+      if ((b.upvotes || 0) !== (a.upvotes || 0)) {
+        return (b.upvotes || 0) - (a.upvotes || 0);
+      }
+      return bTime - aTime;
+    }
+    // trending
+    return (b.upvotes || 0) - (a.upvotes || 0) || bTime - aTime;
+  });
+}
+
+export async function fetchCommonsPosts(options: {
   subject?: string;
-  type?: string;
   target?: string;
-  searchQuery?: string;
-  lastVisibleDoc?: DocumentSnapshot | null;
-  pageSize?: number;
+  type?: CommonsPostType | 'all';
+  sortBy?: 'trending' | 'newest' | 'top';
+  feedTab?: 'all' | 'following';
+  followingUids?: string[];
   currentUid?: string | null;
-}): Promise<{ posts: CommonsPost[]; lastDoc: DocumentSnapshot | null; hasMore: boolean }> {
-  const limitCount = params.pageSize || 20;
+  searchQuery?: string;
+  pageSize?: number;
+  lastDoc?: any;
+}): Promise<{
+  posts: CommonsPost[];
+  lastDoc: any;
+  hasMore: boolean;
+}> {
+  const pageSize = options.pageSize || 15;
+  const offset = typeof options.lastDoc === 'number' ? options.lastDoc : 0;
 
-  try {
-    // Composite index (isHidden ASC, createdAt DESC) is deployed in Firestore so hidden docs never consume limit slots
-    let q = query(
-      collection(db, 'commonsPosts'),
-      where('isHidden', '==', false),
-      orderBy('createdAt', 'desc'),
-      limit(limitCount * 2)
-    );
-
-    // If querying by first keyword token
-    if (params.searchQuery && params.searchQuery.trim().length >= 2) {
-      const firstToken = params.searchQuery.trim().toLowerCase().split(/\s+/)[0];
-      q = query(
-        collection(db, 'commonsPosts'),
-        where('isHidden', '==', false),
-        where('searchKeywords', 'array-contains', firstToken),
-        limit(limitCount * 2)
-      );
-    }
-
-    if (params.lastVisibleDoc) {
-      q = query(q, startAfter(params.lastVisibleDoc));
-    }
-
-    const snap = await getDocs(q);
-    let posts: CommonsPost[] = snap.docs
-      .filter(
-        (d) =>
-          !d.id.startsWith('att_') &&
-          (d.data() as any)?.isAttachmentChunk !== true &&
-          (d.data() as any)?.type !== 'attachment_chunk'
-      )
-      .map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<CommonsPost, 'id'>),
-      }));
-
-    // Client-side filtering for isHidden
-    posts = posts.filter((p) => p.isHidden !== true);
-
-    // Handle "following" tab: filter to followed creators (anonymous posts never shown in Following)
-    if (params.feedTab === 'following') {
-      if (!params.currentUid) {
-        return { posts: [], lastDoc: null, hasMore: false };
-      }
-      try {
-        const followedIdsList = await getFollowingIds(params.currentUid);
-        const followedUids = new Set<string>(followedIdsList);
-
-        // Also check legacy subcollection if user has older follow entries
-        if (followedUids.size === 0) {
-          const legacyFollowingSnap = await getDocs(
-            collection(db, 'publicProfiles', params.currentUid, 'following')
-          ).catch(() => null);
-          legacyFollowingSnap?.docs.forEach((d) => followedUids.add(d.id));
-        }
-
-        posts = posts.filter(
-          (p) => !p.isAnonymous && p.authorUid && followedUids.has(p.authorUid)
-        );
-      } catch (err) {
-        console.warn('[commonsService] error fetching followed list for following tab:', err);
-        posts = [];
-      }
-    }
-
-    // Client-side filtering for combined chips and multi-word searches
-    if (params.subject && params.subject !== 'all') {
-      const s = params.subject.toLowerCase();
-      posts = posts.filter((p) => p.subject?.toLowerCase() === s);
-    }
-
-    if (params.type && params.type !== 'all') {
-      posts = posts.filter((p) => p.type === params.type);
-    }
-
-    if (params.target && params.target !== 'all') {
-      const t = params.target.toLowerCase();
-      posts = posts.filter((p) => p.target?.toLowerCase().includes(t) || t.includes(p.target?.toLowerCase()));
-    }
-
-    if (params.searchQuery && params.searchQuery.trim().length >= 2) {
-      const tokens = params.searchQuery.toLowerCase().trim().split(/\s+/);
-      posts = posts.filter((post) => {
-        const text = `${post.title || ''} ${post.description || ''} ${post.subject || ''} ${post.chapter || ''} ${post.target || ''} ${(post.tags || []).join(' ')}`.toLowerCase();
-        return tokens.every((token) => text.includes(token));
-      });
-    }
-
-    // Sort pinned posts first in the order pinned, then normal posts newest first
-    posts = sortCommonsPosts(posts);
-
-    const trimmed = posts.slice(0, limitCount);
-    const lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
-    const hasMore = snap.docs.length >= limitCount;
-
-    return { posts: trimmed, lastDoc, hasMore };
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    console.warn('[commonsService] fetchCommonsPosts notice (using local feed fallback):', errorMsg);
+  if (
+    options.feedTab === 'following' &&
+    (!options.followingUids || options.followingUids.length === 0)
+  ) {
     return { posts: [], lastDoc: null, hasMore: false };
   }
-}
 
-export function isPostPinned(post: CommonsPost): boolean {
-  if (post.isPinned || (post as any).pinned) return true;
-  const isSuperAdminAuthor =
-    post.authorUid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
-    post.authorRole === 'superadmin' ||
-    (post as any).authorRole === 'admin';
-  if (
-    isSuperAdminAuthor &&
-    (post.title?.toLowerCase().includes('welcome') ||
-      post.title?.toLowerCase().includes('guideline'))
-  ) {
-    return true;
+  const params = new URLSearchParams();
+  params.set('limit', String(pageSize));
+  params.set('offset', String(offset));
+
+  if (options.subject && options.subject !== 'all') {
+    params.set('subject', options.subject);
   }
-  return false;
-}
-
-export function getPostMillis(val: any): number {
-  if (!val) return 0;
-  if (typeof val === 'number') return val;
-  if (typeof val?.toMillis === 'function') return val.toMillis();
-  if (val?.seconds) return val.seconds * 1000 + (val.nanoseconds ? Math.floor(val.nanoseconds / 1000000) : 0);
-  if (val instanceof Date) return val.getTime();
-  const d = new Date(val);
-  return isNaN(d.getTime()) ? 0 : d.getTime();
-}
-
-/**
- * Sorts posts so pinned posts appear at the top in the order they were pinned,
- * followed by normal posts newest first.
- */
-export function sortCommonsPosts(posts: CommonsPost[]): CommonsPost[] {
-  const pinned: CommonsPost[] = [];
-  const normal: CommonsPost[] = [];
-
-  for (const post of posts) {
-    if (isPostPinned(post)) {
-      pinned.push(post);
-    } else {
-      normal.push(post);
-    }
+  if (options.target && options.target !== 'all') {
+    params.set('target', options.target);
+  }
+  if (options.type && options.type !== 'all') {
+    params.set('type', options.type);
+  }
+  if (options.sortBy) {
+    params.set('sort', options.sortBy);
+  }
+  if (options.searchQuery?.trim()) {
+    params.set('q', options.searchQuery.trim());
+  }
+  if (options.feedTab === 'following' && options.followingUids?.length) {
+    params.set('followingUids', options.followingUids.join(','));
   }
 
-  // Pinned posts: in the order they were pinned (pinnedAt / createdAt ascending)
-  pinned.sort((a, b) => {
-    const timeA = getPostMillis((a as any).pinnedAt) || getPostMillis(a.createdAt);
-    const timeB = getPostMillis((b as any).pinnedAt) || getPostMillis(b.createdAt);
-    return timeA - timeB;
-  });
+  const resp = await fetch(`/api/posts?${params.toString()}`);
+  const data = await resp.json().catch(() => ({}));
 
-  // Normal posts: newest first
-  normal.sort((a, b) => {
-    const timeA = getPostMillis(a.createdAt);
-    const timeB = getPostMillis(b.createdAt);
-    return timeB - timeA;
-  });
+  if (!resp.ok || !Array.isArray(data?.posts)) {
+    return { posts: [], lastDoc: null, hasMore: false };
+  }
 
-  return [...pinned, ...normal];
+  const posts = data.posts.map((p: any) => normalizeCloudflarePost(p));
+  return {
+    posts,
+    lastDoc: data.hasMore ? data.nextOffset : null,
+    hasMore: Boolean(data.hasMore),
+  };
 }
 
-export async function fetchCommonsPostById(postId: string): Promise<CommonsPost | null> {
-  if (!postId || postId.startsWith('att_')) return null;
+export async function fetchCommonsPostById(postIdOrSlug: string): Promise<CommonsPost | null> {
+  if (!postIdOrSlug) return null;
   try {
-    const snap = await getDoc(doc(db, 'commonsPosts', postId));
-    if (!snap.exists()) return null;
-    const data = snap.data() as any;
-    if (data?.isAttachmentChunk === true || data?.type === 'attachment_chunk') {
-      return null;
-    }
-    return {
-      id: snap.id,
-      ...(data as Omit<CommonsPost, 'id'>),
-    };
-  } catch (err) {
-    console.warn('[commonsService] fetchCommonsPostById notice:', err);
+    const headers = await getOptionalAuthHeader();
+    const resp = await fetch(`/api/posts/${encodeURIComponent(postIdOrSlug)}?view=1`, {
+      headers,
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!data?.post) return null;
+    return normalizeCloudflarePost(data.post);
+  } catch {
     return null;
   }
 }
 
-const voteStatusCache = new Map<string, boolean>();
-const saveStatusCache = new Map<string, boolean>();
-
-/**
- * Toggle upvote on a post with atomic counter update.
- */
 export async function togglePostVote(
   postId: string,
-  userId: string
+  _userId: string
 ): Promise<{ voted: boolean; newCount: number }> {
-  const voteRef = doc(db, 'commonsPosts', postId, 'votes', userId);
-  const postRef = doc(db, 'commonsPosts', postId);
-
-  const voteSnap = await getDoc(voteRef);
-  const isVoted = voteSnap.exists();
-
-  const batch = writeBatch(db);
-
-  if (isVoted) {
-    batch.delete(voteRef);
-    batch.update(postRef, {
-      upvotes: increment(-1),
-      updatedAt: serverTimestamp(),
-    });
-  } else {
-    batch.set(voteRef, {
-      uid: userId,
-      userId,
-      value: 1,
-      postId,
-      createdAt: serverTimestamp(),
-    });
-    batch.update(postRef, {
-      upvotes: increment(1),
-      updatedAt: serverTimestamp(),
-    });
+  const headers = await getRequiredAuthHeader();
+  const resp = await fetch(`/api/posts/${encodeURIComponent(postId)}/like`, {
+    method: 'POST',
+    headers,
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data?.success) {
+    throw new Error(data?.error || 'Could not update like.');
   }
-
-  await batch.commit();
-
-  // Update in-memory vote cache
-  voteStatusCache.set(`${postId}_${userId}`, !isVoted);
-
-  // Read latest upvotes
-  const updatedSnap = await getDoc(postRef);
-  const count = Number(updatedSnap.data()?.upvotes ?? 0);
-
-  return { voted: !isVoted, newCount: Math.max(0, count) };
+  return {
+    voted: Boolean(data.voted),
+    newCount: Number(data.newCount || 0),
+  };
 }
 
-/**
- * Check if the user has voted on a post with in-memory caching.
- */
-export async function checkUserVoted(postId: string, userId: string): Promise<boolean> {
-  if (!userId) return false;
-  const key = `${postId}_${userId}`;
-  if (voteStatusCache.has(key)) {
-    return voteStatusCache.get(key)!;
-  }
-  try {
-    const voteRef = doc(db, 'commonsPosts', postId, 'votes', userId);
-    const snap = await getDoc(voteRef);
-    const hasVoted = snap.exists();
-    voteStatusCache.set(key, hasVoted);
-    return hasVoted;
-  } catch {
-    return false;
-  }
-}
+const statusRequestCache = new Map<
+  string,
+  Promise<{ voted: boolean; saved: boolean }>
+>();
 
-/**
- * Toggle bookmark / saved post.
- */
-export async function toggleSavePost(
+async function fetchUserPostStatus(
   postId: string,
   userId: string
+): Promise<{ voted: boolean; saved: boolean }> {
+  if (!postId || !userId) return { voted: false, saved: false };
+  const key = `${userId}:${postId}`;
+  const pending = statusRequestCache.get(key);
+  if (pending) return pending;
+
+  const p = (async () => {
+    try {
+      const headers = await getOptionalAuthHeader();
+      const resp = await fetch(
+        `/api/posts/${encodeURIComponent(postId)}/status?userId=${encodeURIComponent(userId)}`,
+        { headers }
+      );
+      if (!resp.ok) return { voted: false, saved: false };
+      const data = await resp.json();
+      return {
+        voted: Boolean(data?.voted),
+        saved: Boolean(data?.saved),
+      };
+    } catch {
+      return { voted: false, saved: false };
+    } finally {
+      setTimeout(() => statusRequestCache.delete(key), 5000);
+    }
+  })();
+
+  statusRequestCache.set(key, p);
+  return p;
+}
+
+export async function checkUserVoted(postId: string, userId: string): Promise<boolean> {
+  const st = await fetchUserPostStatus(postId, userId);
+  return st.voted;
+}
+
+export async function toggleSavePost(
+  postId: string,
+  _userId: string
 ): Promise<{ saved: boolean }> {
-  const saveRef = doc(db, 'users', userId, 'savedCommons', postId);
-  const postRef = doc(db, 'commonsPosts', postId);
-
-  const saveSnap = await getDoc(saveRef);
-  const isSaved = saveSnap.exists();
-
-  const batch = writeBatch(db);
-
-  if (isSaved) {
-    batch.delete(saveRef);
-    batch.update(postRef, { savesCount: increment(-1), updatedAt: serverTimestamp() });
-  } else {
-    batch.set(saveRef, { postId, savedAt: serverTimestamp() });
-    batch.update(postRef, { savesCount: increment(1), updatedAt: serverTimestamp() });
+  const headers = await getRequiredAuthHeader();
+  const resp = await fetch(`/api/posts/${encodeURIComponent(postId)}/save`, {
+    method: 'POST',
+    headers,
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data?.success) {
+    throw new Error(data?.error || 'Could not save post.');
   }
-
-  await batch.commit();
-
-  saveStatusCache.set(`${postId}_${userId}`, !isSaved);
-  return { saved: !isSaved };
+  return { saved: Boolean(data.saved) };
 }
 
-/**
- * Check if user has saved a post with in-memory caching.
- */
 export async function checkUserSaved(postId: string, userId: string): Promise<boolean> {
-  if (!userId) return false;
-  const key = `${postId}_${userId}`;
-  if (saveStatusCache.has(key)) {
-    return saveStatusCache.get(key)!;
-  }
-  try {
-    const saveRef = doc(db, 'users', userId, 'savedCommons', postId);
-    const snap = await getDoc(saveRef);
-    const isSaved = snap.exists();
-    saveStatusCache.set(key, isSaved);
-    return isSaved;
-  } catch {
-    return false;
-  }
+  const st = await fetchUserPostStatus(postId, userId);
+  return st.saved;
 }
 
-/**
- * Submit comment to a post.
- */
 export async function addPostComment(params: {
   postId: string;
-  author?: {
+  author: {
     uid: string;
-    email?: string | null;
     displayName?: string | null;
     photoURL?: string | null;
     equippedAvatar?: string | null;
     frame?: string | null;
     avatarUrl?: string | null;
   };
-  user?: {
-    uid: string;
-    email?: string | null;
-    displayName?: string | null;
-    photoURL?: string | null;
-    equippedAvatar?: string | null;
-    frame?: string | null;
-    avatarUrl?: string | null;
-  };
-  text?: string;
-  body?: string;
-  isAnonymous?: boolean;
+  text: string;
+  isAnonymous: boolean;
 }): Promise<CommonsComment> {
-  const actor = params.author || params.user;
-  if (!params.postId) throw new Error('Missing post ID');
-  if (!actor?.uid) throw new Error('Must be signed in to comment');
+  const headers = await getRequiredAuthHeader();
+  const cleanName = params.isAnonymous
+    ? 'Anonymous Student'
+    : sanitizeStudentDisplayName(params.author.displayName, params.author.uid);
 
-  const commentRef = doc(collection(db, 'commonsPosts', params.postId, 'comments'));
-  const postRef = doc(db, 'commonsPosts', params.postId);
-
-  const rawText = params.text ?? params.body ?? '';
-  const cleanText = rawText.trim();
-  if (!cleanText) throw new Error('Comment text cannot be empty');
-  if (cleanText.length > 3000) throw new Error('Comment exceeds 3,000 characters');
-
-  const isAnon = Boolean(params.isAnonymous);
-
-  // For anonymous comments, NEVER store real UID in the public comment document;
-  // store moderation ownership in postsPrivate/{commentId}.
-  const publicAuthorUid = isAnon ? null : actor.uid;
-  const authorName = isAnon
-    ? 'Anonymous'
-    : sanitizeStudentDisplayName(actor.displayName, actor.uid);
-
-  const authorAvatar = isAnon
-    ? null
-    : actor.equippedAvatar || actor.avatarUrl || actor.photoURL || null;
-  const authorFrame = isAnon ? null : actor.frame || null;
-  const authorEquippedAvatar = isAnon ? null : actor.equippedAvatar || null;
-  const authorPhotoURL = isAnon ? null : actor.photoURL || null;
-  const authorRole = isAnon ? null : ((actor as any).role || 'Student');
-  const authorCustomRole = isAnon ? null : ((actor as any).customRole || null);
-
-  const commentData: Omit<CommonsComment, 'id'> & { body: string } = {
-    postId: params.postId,
-    authorUid: publicAuthorUid,
-    ...(publicAuthorUid ? { uid: publicAuthorUid } : {}),
-    authorName,
-    authorAvatar,
-    authorFrame,
-    authorEquippedAvatar,
-    authorPhotoURL,
-    authorRole,
-    authorCustomRole,
-    isAnonymous: isAnon,
-    text: cleanText,
-    body: cleanText,
-    createdAt: serverTimestamp(),
-  };
-
-  try {
-    const batch = writeBatch(db);
-    batch.set(commentRef, commentData);
-    if (isAnon) {
-      const commentPrivateRef = doc(db, 'postsPrivate', commentRef.id);
-      batch.set(commentPrivateRef, {
-        postId: params.postId,
-        commentId: commentRef.id,
-        authorUid: actor.uid,
-        ...(actor.email ? { authorEmail: actor.email } : {}),
-        isAnonymous: true,
-        createdAt: serverTimestamp(),
-      });
+  const resp = await fetch(
+    `/api/posts/${encodeURIComponent(params.postId)}/comments`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        text: params.text.trim(),
+        isAnonymous: Boolean(params.isAnonymous),
+        authorName: cleanName,
+        authorAvatar: params.isAnonymous
+          ? null
+          : params.author.avatarUrl || params.author.equippedAvatar || null,
+        authorFrame: params.isAnonymous ? null : params.author.frame || null,
+        authorEquippedAvatar: params.isAnonymous
+          ? null
+          : params.author.equippedAvatar || null,
+        authorPhotoURL: params.isAnonymous ? null : params.author.photoURL || null,
+      }),
     }
-    batch.update(postRef, {
-      commentCount: increment(1),
-      updatedAt: serverTimestamp(),
-    });
-    await batch.commit();
+  );
 
-    return {
-      id: commentRef.id,
-      ...commentData,
-    };
-  } catch (err: any) {
-    console.error(
-      '[commonsService] addPostComment error:',
-      err?.code || 'ERROR',
-      `commonsPosts/${params.postId}/comments/${commentRef.id}`,
-      err
-    );
-    throw err;
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data?.comment) {
+    throw new Error(data?.error || 'Could not post comment.');
   }
+
+  return data.comment as CommonsComment;
 }
 
-/**
- * Fetch comments for a post.
- */
 export async function fetchPostComments(postId: string): Promise<CommonsComment[]> {
+  if (!postId) return [];
   try {
-    const q = query(
-      collection(db, 'commonsPosts', postId, 'comments'),
-      orderBy('createdAt', 'asc'),
-      limit(50)
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => ({
-      id: d.id,
-      ...(d.data() as Omit<CommonsComment, 'id'>),
-    }));
-  } catch (err) {
-    console.error('[commonsService] fetchPostComments error:', err);
+    const resp = await fetch(`/api/posts/${encodeURIComponent(postId)}/comments`);
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return Array.isArray(data?.comments) ? data.comments : [];
+  } catch {
     return [];
   }
 }
 
-/**
- * Report a post for moderation. Auto-hides when reportCount reaches 3.
- */
 export async function reportCommonsPost(params: {
   postId: string;
   reporterUid: string;
   reason: 'spam' | 'harassment' | 'copyright' | 'inaccurate' | 'other';
-  details?: string;
-}): Promise<{ autoHidden: boolean }> {
-  const reportRef = doc(collection(db, 'commonsReports'));
-  const postRef = doc(db, 'commonsPosts', params.postId);
-
-  const batch = writeBatch(db);
-  batch.set(reportRef, {
-    postId: params.postId,
-    reporterUid: params.reporterUid,
-    reason: params.reason,
-    details: params.details || '',
-    createdAt: serverTimestamp(),
-    status: 'pending',
+  details: string;
+}): Promise<void> {
+  const headers = await getRequiredAuthHeader();
+  const resp = await fetch(`/api/posts/${encodeURIComponent(params.postId)}/report`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      reason: params.reason,
+      details: params.details.trim(),
+    }),
   });
-
-  batch.update(postRef, { reportCount: increment(1) });
-  await batch.commit();
-
-  // Check if auto-hide threshold met
-  const postSnap = await getDoc(postRef);
-  const reportCount = Number(postSnap.data()?.reportCount ?? 1);
-  let autoHidden = false;
-
-  if (reportCount >= 3) {
-    await updateDoc(postRef, { isHidden: true });
-    autoHidden = true;
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data?.error || 'Failed to submit report.');
   }
-
-  return { autoHidden };
 }
 
-/**
- * Search students (people) by prefix on displayName.
- * Strictly avoids exposing emails.
- */
-export async function searchPeople(queryText: string): Promise<CommonsUserPreview[]> {
-  if (!queryText || queryText.trim().length < 2) return [];
-  const cleanQ = queryText.trim().toLowerCase();
+export async function searchPeople(searchTerm: string): Promise<CommonsUserPreview[]> {
+  const cleaned = searchTerm.trim().toLowerCase();
+  if (!cleaned) return [];
 
   try {
-    const q = query(
-      collection(db, 'publicProfiles'),
-      limit(50)
-    );
+    const q = query(collection(db, 'publicProfiles'), limit(40));
     const snap = await getDocs(q);
+    const results: CommonsUserPreview[] = [];
 
-    const matches: CommonsUserPreview[] = [];
-    snap.docs.forEach((docSnap) => {
-      const data = docSnap.data();
-      const displayName = String(data.displayName || '').toLowerCase();
-      const nickname = String(data.nickname || '').toLowerCase();
-      const username = String(data.username || '').toLowerCase();
+    snap.docs.forEach((d) => {
+      const data = d.data();
+      const rawName = data.displayName || data.name || data.username || '';
+      const displayName = sanitizeStudentDisplayName(rawName, d.id);
+      const shortId = data.shortId ? String(data.shortId) : '';
+      const bio = data.bio || data.tagline || '';
 
-      if (displayName.includes(cleanQ) || nickname.includes(cleanQ) || username.includes(cleanQ)) {
-        matches.push({
-          uid: docSnap.id,
-          displayName: data.displayName || data.nickname || 'Student',
-          nickname: data.nickname || data.displayName || 'Student',
-          username: data.username || undefined,
-          role: data.role || 'Student',
-          customRole: data.customRole || undefined,
-          isSuperAdmin: Boolean(data.isSuperAdmin || data.role === 'superadmin' || docSnap.id === 'A5YMRimdHRcmeDWutxtUGt2e4hf2'),
-          shortId: data.shortId,
-          avatarUrl: data.avatarUrl || data.photoURL,
-          photoURL: data.photoURL,
-          equippedAvatar: data.equippedAvatar,
-          frame: data.frame,
-          targetUniversity: data.targetUniversity,
-          streak: data.streak,
+      if (
+        displayName.toLowerCase().includes(cleaned) ||
+        shortId.toLowerCase().includes(cleaned)
+      ) {
+        results.push({
+          uid: d.id,
+          displayName,
+          avatar: data.avatar || data.avatarUrl || data.equipped?.avatar || null,
+          frame: data.frame || data.equipped?.frame || null,
+          equippedAvatar: data.equipped?.avatar || data.equippedAvatar || null,
+          photoURL: data.photoURL || null,
+          shortId: shortId || null,
+          bio: bio || null,
+          followersCount: Number(data.followersCount || 0),
+          followingCount: Number(data.followingCount || 0),
+          role: data.role || 'student',
+          customRole: data.customRole || null,
         });
       }
     });
 
-    return matches;
-  } catch (err) {
-    console.warn('[commonsService] searchPeople notice:', err);
+    return results.slice(0, 12);
+  } catch {
     return [];
   }
 }
 
-/**
- * Delete a post (by author or superadmin).
- */
-export async function deleteCommonsPost(postId: string, userUid: string, isAdmin = false): Promise<void> {
-  const postRef = doc(db, 'commonsPosts', postId);
-  const postsPrivateRef = doc(db, 'postsPrivate', postId);
-  const legacyPrivateRef = doc(db, 'postPrivate', postId);
-
-  // Author verification check across public post and postsPrivate
-  const [postSnap, postsPrivateSnap] = await Promise.all([
-    getDoc(postRef),
-    getDoc(postsPrivateRef).catch(() => null),
-  ]);
-
-  const publicAuthorUid = postSnap.data()?.authorUid;
-  const privateAuthorUid = postsPrivateSnap?.data()?.authorUid;
-
-  if (!isAdmin && publicAuthorUid !== userUid && privateAuthorUid !== userUid) {
-    throw new Error('Unauthorized to delete this post.');
-  }
-
-  const batch = writeBatch(db);
-  batch.delete(postRef);
-  if (postsPrivateSnap?.exists()) {
-    batch.delete(postsPrivateRef);
-  }
+export async function fetchUserCommonsPosts(
+  targetUid: string,
+  includeOwnAnonymous = false
+): Promise<CommonsPost[]> {
+  if (!targetUid) return [];
   try {
-    const legacySnap = await getDoc(legacyPrivateRef);
-    if (legacySnap.exists()) {
-      batch.delete(legacyPrivateRef);
-    }
+    const headers = await getOptionalAuthHeader();
+    const params = new URLSearchParams({
+      authorUid: targetUid,
+      limit: '50',
+      ...(includeOwnAnonymous ? { includeOwnAnonymous: 'true' } : {}),
+    });
+    const resp = await fetch(`/api/posts?${params.toString()}`, { headers });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return Array.isArray(data?.posts)
+      ? data.posts.map((p: any) => normalizeCloudflarePost(p))
+      : [];
   } catch {
-    // Ignore legacy collection permission notice
+    return [];
   }
-  await batch.commit();
 }
 
-/**
- * Fetch a user's PUBLIC posts only (isAnonymous == false).
- * Enforces privacy: Anonymous posts never appear here.
- */
-export async function fetchUserPublicPosts(
-  authorUid: string,
-  lastVisibleDoc?: DocumentSnapshot | null,
-  pageSize = 10
-): Promise<{ posts: CommonsPost[]; lastDoc: DocumentSnapshot | null; hasMore: boolean }> {
-  if (!authorUid) return { posts: [], lastDoc: null, hasMore: false };
-
+export async function fetchUserSavedPosts(uid: string): Promise<CommonsPost[]> {
+  if (!uid) return [];
   try {
-    let q = query(
-      collection(db, 'commonsPosts'),
-      where('authorUid', '==', authorUid),
-      where('isAnonymous', '==', false),
-      orderBy('createdAt', 'desc'),
-      limit(pageSize + 1)
+    const headers = await getOptionalAuthHeader();
+    const resp = await fetch(
+      `/api/posts?savedBy=${encodeURIComponent(uid)}&limit=50`,
+      { headers }
     );
-
-    if (lastVisibleDoc) {
-      q = query(
-        collection(db, 'commonsPosts'),
-        where('authorUid', '==', authorUid),
-        where('isAnonymous', '==', false),
-        orderBy('createdAt', 'desc'),
-        startAfter(lastVisibleDoc),
-        limit(pageSize + 1)
-      );
-    }
-
-    const snap = await getDocs(q);
-    const docs = snap.docs.filter(
-      (d) =>
-        !d.id.startsWith('att_') &&
-        (d.data() as any)?.isAttachmentChunk !== true &&
-        (d.data() as any)?.type !== 'attachment_chunk'
-    );
-    const hasMore = docs.length > pageSize;
-    const returnDocs = hasMore ? docs.slice(0, pageSize) : docs;
-    const lastDoc = returnDocs.length > 0 ? returnDocs[returnDocs.length - 1] : null;
-
-    const posts: CommonsPost[] = returnDocs.map((d) => ({
-      id: d.id,
-      ...(d.data() as Omit<CommonsPost, 'id'>),
-      isAnonymous: Boolean(d.data().isAnonymous),
-    }));
-
-    return { posts, lastDoc, hasMore };
-  } catch (err) {
-    console.warn('[commonsService] fetchUserPublicPosts warning:', err);
-    return { posts: [], lastDoc: null, hasMore: false };
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return Array.isArray(data?.posts)
+      ? data.posts.map((p: any) => normalizeCloudflarePost(p))
+      : [];
+  } catch {
+    return [];
   }
 }
 
-/**
- * Fetch OWN posts (both public and anonymous created by this user).
- */
-export async function fetchUserOwnPosts(
-  userUid: string,
-  lastVisibleDoc?: DocumentSnapshot | null,
-  pageSize = 10
-): Promise<{ posts: CommonsPost[]; lastDoc: DocumentSnapshot | null; hasMore: boolean }> {
-  if (!userUid) return { posts: [], lastDoc: null, hasMore: false };
-
-  try {
-    // 1. Fetch public posts created by this user
-    const publicQ = query(
-      collection(db, 'commonsPosts'),
-      where('authorUid', '==', userUid),
-      orderBy('createdAt', 'desc'),
-      limit(50)
-    );
-    const publicSnap = await getDocs(publicQ);
-    const postMap = new Map<string, CommonsPost>();
-
-    publicSnap.docs.forEach((d) => {
-      if (
-        d.id.startsWith('att_') ||
-        (d.data() as any)?.isAttachmentChunk === true ||
-        (d.data() as any)?.type === 'attachment_chunk'
-      ) {
-        return;
-      }
-      postMap.set(d.id, {
-        id: d.id,
-        ...(d.data() as Omit<CommonsPost, 'id'>),
-        isAnonymous: Boolean(d.data().isAnonymous),
-      });
-    });
-
-    // 2. Fetch anonymous posts created by this user from postsPrivate
-    try {
-      const privQ = query(
-        collection(db, 'postsPrivate'),
-        where('authorUid', '==', userUid),
-        where('isAnonymous', '==', true),
-        limit(50)
-      );
-      const privSnap = await getDocs(privQ);
-      for (const pDoc of privSnap.docs) {
-        if (pDoc.id.startsWith('att_') || (pDoc.data() as any)?.commentId) {
-          continue;
-        }
-        if (!postMap.has(pDoc.id)) {
-          const postDoc = await getDoc(doc(db, 'commonsPosts', pDoc.id));
-          if (
-            postDoc.exists() &&
-            !postDoc.id.startsWith('att_') &&
-            (postDoc.data() as any)?.isAttachmentChunk !== true &&
-            (postDoc.data() as any)?.type !== 'attachment_chunk'
-          ) {
-            postMap.set(postDoc.id, {
-              id: postDoc.id,
-              ...(postDoc.data() as Omit<CommonsPost, 'id'>),
-              isAnonymous: true,
-            });
-          }
-        }
-      }
-    } catch (privErr) {
-      console.warn('[commonsService] Error fetching private anonymous posts:', privErr);
-    }
-
-    // Sort all by createdAt desc
-    const allPosts = Array.from(postMap.values()).sort((a, b) => {
-      const tA = (a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
-      const tB = (b.createdAt as any)?.seconds ? (b.createdAt as any).seconds * 1000 : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
-      return tB - tA;
-    });
-
-    const paginated = allPosts.slice(0, pageSize);
-    return {
-      posts: paginated,
-      lastDoc: null,
-      hasMore: allPosts.length > pageSize,
-    };
-  } catch (err) {
-    console.warn('[commonsService] fetchUserOwnPosts warning:', err);
-    return { posts: [], lastDoc: null, hasMore: false };
+export async function deleteCommonsPost(postId: string): Promise<void> {
+  const headers = await getRequiredAuthHeader();
+  const resp = await fetch(`/api/posts/${encodeURIComponent(postId)}`, {
+    method: 'DELETE',
+    headers,
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data?.error || 'Could not delete post.');
   }
-}
-
-/**
- * Switch a post between public and anonymous.
- * Switching to anonymous removes it from public profile immediately.
- */
-export async function togglePostAnonymity(
-  postId: string,
-  user: { uid: string; displayName?: string | null; photoURL?: string | null },
-  makeAnonymous: boolean
-): Promise<void> {
-  const postRef = doc(db, 'commonsPosts', postId);
-  const postsPrivateRef = doc(db, 'postsPrivate', postId);
-
-  const now = serverTimestamp();
-  const batch = writeBatch(db);
-
-  if (makeAnonymous) {
-    batch.update(postRef, {
-      isAnonymous: true,
-      authorUid: null,
-      authorName: 'Anonymous',
-      authorAvatar: null,
-      authorFrame: null,
-      authorEquippedAvatar: null,
-      authorPhotoURL: null,
-      authorRole: null,
-      authorCustomRole: null,
-      updatedAt: now,
-    });
-    batch.set(postsPrivateRef, { authorUid: user.uid, isAnonymous: true, updatedAt: now }, { merge: true });
-  } else {
-    batch.update(postRef, {
-      isAnonymous: false,
-      authorUid: user.uid,
-      authorName: sanitizeStudentDisplayName(user.displayName, user.uid),
-      authorAvatar: user.photoURL || null,
-      updatedAt: now,
-    });
-    batch.set(postsPrivateRef, { authorUid: user.uid, isAnonymous: false, updatedAt: now }, { merge: true });
-  }
-
-  await batch.commit();
 }

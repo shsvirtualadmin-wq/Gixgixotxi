@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { UserPlus, UserCheck, MessageSquare, Shield, BookOpen, Lock } from 'lucide-react';
-import { doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
@@ -12,6 +12,7 @@ import { NotFoundPage } from '@/pages/NotFoundPage';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { followUser, unfollowUser, isFollowing } from '@/services/followService';
+import { fetchUserCommonsPosts } from '@/services/commonsService';
 import { sanitizeStudentDisplayName, maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
 import type { CommonsPost } from '@/types/commons';
 
@@ -51,19 +52,10 @@ export const PublicUserProfilePage: React.FC = () => {
         setTargetUid(uid);
         setProfileData(data);
 
-        // Fetch public non-anonymous posts by this user
-        const postsQ = query(
-          collection(db, 'commonsPosts'),
-          where('authorUid', '==', uid),
-          where('isAnonymous', '==', false),
-          limit(10)
-        );
-        const postsSnap = await getDocs(postsQ).catch(() => null);
-        if (mounted && postsSnap) {
-          const list = postsSnap.docs
-            .map((d) => ({ id: d.id, ...d.data() } as CommonsPost))
-            .filter((p) => !(p as any).isHidden);
-          setUserPosts(list);
+        // Fetch public non-anonymous posts by this user from Cloudflare D1 (zero Firestore post reads)
+        const postsList = await fetchUserCommonsPosts(uid, false).catch(() => []);
+        if (mounted) {
+          setUserPosts(postsList.filter((p) => !(p as any).isHidden).slice(0, 10));
         }
 
         if (user?.uid && user.uid !== uid) {

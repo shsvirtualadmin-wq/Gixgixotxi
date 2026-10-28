@@ -1,35 +1,51 @@
-// Single, unified Firebase configuration
-// Project ID: gen-lang-client-0365509316
-// authDomain: auth.boardly.cfd (verified)
-// messagingSenderId: 556734245207
-// appId: 1:556734245207:web:4797f3915b424209b03612
+import firebaseAppletConfig from '../../firebase-applet-config.json';
 
-const getEnv = (key: string): string | undefined => {
-  if (typeof import.meta !== 'undefined' && import.meta.env && key in import.meta.env) {
-    return (import.meta.env as Record<string, string>)[key];
-  }
-  if (typeof process !== 'undefined' && process.env && key in process.env) {
-    return process.env[key];
-  }
-  return undefined;
-};
+export const FIREBASE_DEFAULT_AUTH_DOMAIN = `${firebaseAppletConfig.projectId}.firebaseapp.com`;
 
-export const TARGET_PROJECT_ID = getEnv('VITE_FIREBASE_PROJECT_ID') || 'gen-lang-client-0365509316';
-export const TARGET_DATABASE_ID = (getEnv('VITE_FIREBASE_DATABASE_ID') || getEnv('VITE_FIREBASE_FIRESTORE_DATABASE_ID') || 'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712').trim();
-export const TARGET_AUTH_DOMAIN = getEnv('VITE_FIREBASE_AUTH_DOMAIN') || 'auth.boardly.cfd';
-export const TARGET_API_KEY = getEnv('VITE_FIREBASE_API_KEY') || 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs';
-export const TARGET_STORAGE_BUCKET = getEnv('VITE_FIREBASE_STORAGE_BUCKET') || 'gen-lang-client-0365509316.firebasestorage.app';
-export const TARGET_MESSAGING_SENDER_ID = getEnv('VITE_FIREBASE_MESSAGING_SENDER_ID') || '556734245207';
-export const TARGET_APP_ID = getEnv('VITE_FIREBASE_APP_ID') || '1:556734245207:web:4797f3915b424209b03612';
+function resolveRuntimeAuthDomain(): string {
+  const configured =
+    import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseAppletConfig.authDomain;
+
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    const host = window.location.hostname.toLowerCase();
+    // Use custom auth.boardly.cfd domain only when running on boardly.cfd in production
+    if (host === 'boardly.cfd' || host.endsWith('.boardly.cfd')) {
+      return configured || 'auth.boardly.cfd';
+    }
+    // On preview / localhost domains, use the canonical Firebase project authDomain
+    // so Google Sign-In and sendPasswordResetEmail never fail domain validation
+    return FIREBASE_DEFAULT_AUTH_DOMAIN;
+  }
+
+  return configured || FIREBASE_DEFAULT_AUTH_DOMAIN;
+}
 
 export const firebaseConfig = {
-  apiKey: TARGET_API_KEY,
-  authDomain: TARGET_AUTH_DOMAIN,
-  projectId: TARGET_PROJECT_ID,
-  storageBucket: TARGET_STORAGE_BUCKET,
-  messagingSenderId: TARGET_MESSAGING_SENDER_ID,
-  appId: TARGET_APP_ID,
-  firestoreDatabaseId: TARGET_DATABASE_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseAppletConfig.apiKey,
+  authDomain: resolveRuntimeAuthDomain(),
+  databaseURL:
+    import.meta.env.VITE_FIREBASE_DATABASE_URL ||
+    'https://gen-lang-client-0365509316-default-rtdb.firebaseio.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseAppletConfig.projectId,
+  storageBucket:
+    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseAppletConfig.storageBucket,
+  messagingSenderId:
+    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseAppletConfig.messagingSenderId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseAppletConfig.appId,
+  measurementId:
+    import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || firebaseAppletConfig.measurementId,
+  firestoreDatabaseId:
+    import.meta.env.VITE_FIREBASE_DATABASE_ID || firebaseAppletConfig.firestoreDatabaseId,
 };
 
-export const firebaseWebConfig = firebaseConfig;
+export const TARGET_PROJECT_ID = firebaseConfig.projectId;
+export const TARGET_DATABASE_ID = firebaseConfig.firestoreDatabaseId || '(default)';
+export const TARGET_AUTH_DOMAIN = firebaseConfig.authDomain;
+export const TARGET_API_KEY = firebaseConfig.apiKey;
+export const TARGET_STORAGE_BUCKET = firebaseConfig.storageBucket;
+export const TARGET_MESSAGING_SENDER_ID = firebaseConfig.messagingSenderId;
+export const TARGET_APP_ID = firebaseConfig.appId;
+
+export const isFirebaseConfigured = Boolean(
+  firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId
+);

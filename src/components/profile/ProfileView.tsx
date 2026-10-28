@@ -62,8 +62,9 @@ import { ProfilePostsSection } from './ProfilePostsSection';
 import { FollowListModal } from './FollowListModal';
 import { EditProfileSheet } from './EditProfileSheet';
 import { ShareProfileCardModal } from './ShareProfileCardModal';
-import { doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { fetchUserCommonsPosts } from '@/services/commonsService';
 import { deriveFallbackShortId } from '@/utils/shortId';
 import { sanitizeStudentDisplayName, isAdminAccount } from '@/utils/privacy';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
@@ -193,25 +194,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         if (!uData?.displayName && !pubData?.displayName) {
           try {
-            const commonsPostSnap = await getDocs(
-              query(collection(db, 'commonsPosts'), where('authorUid', '==', uid), limit(1))
-            );
-            if (!commonsPostSnap.empty) {
-              const pData = commonsPostSnap.docs[0].data();
+            const recentPosts = await fetchUserCommonsPosts(uid, false);
+            if (recentPosts.length > 0) {
+              const pData = recentPosts[0];
               postAuthorName = pData.authorName || null;
               postAuthorAvatar = pData.authorAvatar || null;
-              postAuthorPhotoURL = pData.authorPhotoURL || (pData.authorAvatar?.includes('googleusercontent') ? pData.authorAvatar : null);
+              postAuthorPhotoURL =
+                pData.authorPhotoURL ||
+                (pData.authorAvatar?.includes('googleusercontent') ? pData.authorAvatar : null);
               postAuthorFrame = pData.authorFrame || null;
               postAuthorEquippedAvatar = pData.authorEquippedAvatar || null;
-            } else {
-              const userPostSnap = await getDocs(
-                query(collection(db, 'posts'), where('user_id', '==', uid), limit(1))
-              );
-              if (!userPostSnap.empty) {
-                const pData = userPostSnap.docs[0].data();
-                postAuthorName = pData.author_name || pData.authorName || null;
-                postAuthorAvatar = pData.author_avatar || pData.authorAvatar || null;
-              }
             }
           } catch (postErr) {
             console.warn('[ProfileView] author post fallback notice:', postErr);
@@ -379,67 +371,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     };
   }, [targetUid, currentUid, isAdmin, authUser?.email]);
 
-  // Live real-time listener for followersCount, followingCount, cosmetics, and follow state
-  useEffect(() => {
-    const resolvedUid = targetUid || currentUid;
-    if (!resolvedUid) return;
-
-    // Listen to users/{resolvedUid} ONLY when viewing self or admin; otherwise listen to publicProfiles/{resolvedUid}
-    const targetDocRef =
-      resolvedUid === currentUid || isAdmin
-        ? doc(db, 'users', resolvedUid)
-        : doc(db, 'publicProfiles', resolvedUid);
-
-    const unsubTarget = onSnapshot(
-      targetDocRef,
-      (snap) => {
-        if (snap.exists()) {
-          const d = snap.data();
-          setProfile((prev) => {
-            if (!prev || prev.uid !== resolvedUid) return prev;
-            const eq = d.equipped || {};
-            const nextAvatar =
-              (eq.avatar as string) ||
-              (d.avatar as string) ||
-              prev.avatar ||
-              null;
-            return {
-              ...prev,
-              avatar: nextAvatar && !String(nextAvatar).includes('googleusercontent.com') ? nextAvatar : prev.avatar,
-              frame: (eq.frame as string) || (d.frame as string) || prev.frame || null,
-              banner: (eq.banner as string) || (d.banner as string) || prev.banner || null,
-              nameplate: (eq.nameplate as string) || (d.nameplate as string) || prev.nameplate || null,
-              effectId: (eq.effect as string) || (d.effectId as string) || prev.effectId || null,
-              followersCount: typeof d.followersCount === 'number' ? Math.max(0, d.followersCount) : (prev.followersCount || 0),
-              followingCount: typeof d.followingCount === 'number' ? Math.max(0, d.followingCount) : (prev.followingCount || 0),
-            };
-          });
-        }
-      },
-      (err) => {
-        console.warn('[ProfileView] live profile onSnapshot notice:', err?.code || 'ERROR');
-      }
-    );
-
-    // Listen to users/{currentUid}/following/{resolvedUid} for live button state
-    let unsubFollowing: (() => void) | undefined;
-    if (currentUid && resolvedUid !== currentUid) {
-      unsubFollowing = onSnapshot(
-        doc(db, 'users', currentUid, 'following', resolvedUid),
-        (snap) => {
-          setIsFollowedByMe(snap.exists());
-        },
-        (err) => {
-          console.warn('[ProfileView] following doc onSnapshot notice:', err?.code || 'ERROR');
-        }
-      );
-    }
-
-    return () => {
-      unsubTarget();
-      if (unsubFollowing) unsubFollowing();
-    };
-  }, [targetUid, currentUid, isAdmin]);
+  // Profile and follow status are fetched via one-time getDoc in fetchProfileData above to conserve Firestore read quota.
 
   // When viewing self in own mode, safely merge ownProfile/ownEquipped without wiping loaded cosmetics or replacing Boardly avatars with Google photoURL
   useEffect(() => {
