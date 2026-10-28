@@ -147,15 +147,22 @@ service cloud.firestore {
         );
     }
 
-    // Allows post owners to update content fields without tampering with counters or moderation flags
-    function isCommonsPostOwnerEditableUpdate() {
-      return resource.data.isAnonymous == false &&
-        resource.data.authorUid == request.auth.uid &&
+    // Allows post owners (verified directly or via postsPrivate/{postId}) to update content fields without tampering with counters or moderation flags
+    function isCommonsPostOwnerEditableUpdate(postId) {
+      return isSignedIn() &&
+        (
+          (resource.data.isAnonymous == false && resource.data.authorUid == request.auth.uid) ||
+          (
+            exists(/databases/$(database)/documents/postsPrivate/$(postId)) &&
+            get(/databases/$(database)/documents/postsPrivate/$(postId)).data.authorUid == request.auth.uid
+          )
+        ) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'title',
           'description',
           'subject',
           'chapter',
+          'target',
           'tags',
           'files',
           'type',
@@ -163,8 +170,32 @@ service cloud.firestore {
           'classLevel',
           'targetExam',
           'difficulty',
+          'searchKeywords',
+          'isAnonymous',
+          'authorUid',
+          'authorName',
+          'authorAvatar',
+          'authorFrame',
+          'authorEquippedAvatar',
+          'authorPhotoURL',
+          'authorRole',
+          'authorCustomRole',
           'updatedAt'
         ]) &&
+        (
+          (
+            request.resource.data.isAnonymous == true &&
+            request.resource.data.get('authorUid', null) == null
+          ) ||
+          (
+            request.resource.data.isAnonymous == false &&
+            request.resource.data.authorUid == request.auth.uid &&
+            (
+              !isReservedOfficialName(request.resource.data.get('authorName', '')) ||
+              isAdmin()
+            )
+          )
+        ) &&
         request.resource.data.title is string &&
         request.resource.data.title.size() >= 1 &&
         request.resource.data.title.size() <= 200 &&
@@ -772,7 +803,7 @@ service cloud.firestore {
 
       allow update: if isAdmin() ||
         isModerator() ||
-        isCommonsPostOwnerEditableUpdate() ||
+        isCommonsPostOwnerEditableUpdate(postId) ||
         isCommonsPostCounterUpdate();
 
       allow delete: if isAdmin() ||
@@ -878,7 +909,13 @@ service cloud.firestore {
       );
       allow create: if isSignedIn() &&
         request.resource.data.authorUid == request.auth.uid;
-      allow update: if false;
+      allow update: if isAdmin() ||
+        isModerator() ||
+        (
+          isSignedIn() &&
+          resource.data.authorUid == request.auth.uid &&
+          request.resource.data.authorUid == request.auth.uid
+        );
       allow delete: if isAdmin() ||
         isModerator() ||
         (isSignedIn() && resource.data.authorUid == request.auth.uid);

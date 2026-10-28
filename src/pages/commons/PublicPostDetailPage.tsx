@@ -19,6 +19,7 @@ import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { RoleBadge } from '@/components/ui/RoleBadge';
+import { MathText } from '@/components/ui/MathText';
 import { CommonsImageAttachment } from '@/components/commons/CommonsImageAttachment';
 import { CommonsImageViewerModal } from '@/components/commons/CommonsImageViewerModal';
 import { CommonsReportModal } from '@/components/commons/CommonsReportModal';
@@ -385,13 +386,13 @@ export const PublicPostDetailPage: React.FC = () => {
 
           {/* Post H1 Title */}
           <h1 className="font-dot text-2xl sm:text-3xl font-bold text-white mb-4 leading-snug">
-            {post.title}
+            <MathText text={post.title} />
           </h1>
 
           {/* Post Body */}
           {post.description && (
             <div className="text-sm sm:text-base text-white/80 leading-relaxed whitespace-pre-wrap mb-6">
-              {maskPublicUserText(post.description)}
+              <MathText text={maskPublicUserText(post.description)} block />
             </div>
           )}
 
@@ -583,9 +584,9 @@ export const PublicPostDetailPage: React.FC = () => {
                     <div className="flex items-center justify-between gap-2 mb-1.5">
                       <span className="text-xs font-bold text-white">{cAuthor}</span>
                     </div>
-                    <p className="text-xs sm:text-sm text-white/80 whitespace-pre-wrap leading-relaxed">
-                      {maskPublicUserText(c.body)}
-                    </p>
+                    <div className="text-xs sm:text-sm text-white/80 whitespace-pre-wrap leading-relaxed">
+                      <MathText text={maskPublicUserText(c.body || c.text)} block />
+                    </div>
                   </div>
                 );
               })}
@@ -609,10 +610,12 @@ export const PublicPostDetailPage: React.FC = () => {
                   <span className="text-[11px] text-[#D71921] font-semibold uppercase">
                     {rp.subject || 'Commons'}
                   </span>
-                  <h3 className="text-sm font-bold text-white mt-1 line-clamp-2">{rp.title}</h3>
-                  <p className="text-xs text-white/60 mt-1 line-clamp-2">
-                    {maskPublicUserText(rp.description)}
-                  </p>
+                  <h3 className="text-sm font-bold text-white mt-1 line-clamp-2">
+                    <MathText text={rp.title} />
+                  </h3>
+                  <div className="text-xs text-white/60 mt-1 line-clamp-2">
+                    <MathText text={maskPublicUserText(rp.description)} />
+                  </div>
                 </Link>
               ))}
             </div>

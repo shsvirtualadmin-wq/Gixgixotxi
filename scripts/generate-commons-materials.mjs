@@ -33,6 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { GoogleGenAI, Type } from '@google/genai';
 import PDFDocument from 'pdfkit';
 import { extractText, getDocumentProxy } from 'unpdf';
+import katex from 'katex';
 
 // Correct modular ESM imports for firebase-admin v13/v14 (supports named Firestore databaseId)
 import {
@@ -300,7 +301,7 @@ function sanitizeReadableFileName(str) {
 }
 
 /**
- * Normalizes text so no markdown stars (*), decorative symbols, or replacement chars appear.
+ * Normalizes text for PDF sections so no markdown stars (*), decorative symbols, or replacement chars appear.
  */
 function cleanPlainText(text) {
   if (typeof text !== 'string') return '';
@@ -314,6 +315,88 @@ function cleanPlainText(text) {
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+/**
+ * Normalizes post description/body text while preserving KaTeX ($...$ and $$...$$) expressions intact.
+ * Also repairs LaTeX commands (\frac, \times, \theta, \text, \beta, \rho, \rightarrow, \neq, etc.)
+ * whose leading backslash was turned into an ASCII control char (\f, \t, \b, \r, \n) by JSON.parse.
+ */
+function cleanPostMathText(text) {
+  if (typeof text !== 'string') return '';
+  const repairedJsonEscapes = text
+    .replace(/\x0c/g, '\\f')
+    .replace(/\x08/g, '\\b')
+    .replace(/\x09(?=[a-zA-Z])/g, '\\t')
+    .replace(/\x0d(?=[a-zA-Z])/g, '\\r')
+    .replace(/\x0a(?=(?:eq\b|u\b|abla\b|otin\b|atural\b|eg\b|mid\b|parallel\b|ewline\b|subseteq\b|supseteq\b))/g, '\\n');
+
+  const mathPlaceholders = [];
+  const masked = repairedJsonEscapes
+    .replace(/\uFFFD/g, '')
+    .replace(/(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$)/g, (match) => {
+      const idx = mathPlaceholders.length;
+      mathPlaceholders.push(match);
+      return `@@MATH_SEG_${idx}@@`;
+    });
+
+  const cleanedOutside = masked
+    .replace(/[*★☆•●◆▪▸►]/g, '-')
+    .replace(/#+\s*/g, '')
+    .replace(/`+/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return cleanedOutside.replace(/@@MATH_SEG_(\d+)@@/g, (_m, idx) => mathPlaceholders[Number(idx)]);
+}
+
+/**
+ * Validates that text contains at least one KaTeX ($...$ or $$...$$) expression
+ * and that every KaTeX expression compiles cleanly with `throwOnError: true`.
+ */
+function validateKatexInText(text) {
+  if (!text || typeof text !== 'string') {
+    return { ok: false, count: 0, reason: 'Text is empty.' };
+  }
+
+  const regex = /(?:\$\$([\s\S]+?)\$\$)|(?:\$([^$\n]+?)\$)/g;
+  let match;
+  let count = 0;
+
+  while ((match = regex.exec(text)) !== null) {
+    const isDisplay = match[1] !== undefined;
+    const formula = (isDisplay ? match[1] : match[2] || '').trim();
+    if (!formula) {
+      return { ok: false, count, reason: 'Empty $...$ math block found.' };
+    }
+    try {
+      katex.renderToString(formula, {
+        displayMode: isDisplay,
+        throwOnError: true,
+        strict: 'ignore',
+        trust: false,
+      });
+      count++;
+    } catch (err) {
+      return {
+        ok: false,
+        count,
+        reason: `Invalid KaTeX in "${formula.slice(0, 40)}": ${err.message}`,
+      };
+    }
+  }
+
+  if (count === 0) {
+    return {
+      ok: false,
+      count: 0,
+      reason: 'Post description must include at least one KaTeX math expression ($...$ or $$...$$).',
+    };
+  }
+
+  return { ok: true, count };
 }
 
 function countWords(text) {
@@ -403,7 +486,7 @@ const PDF_STUDY_GUIDE_SCHEMA = {
     teacherDescription: {
       type: Type.STRING,
       description:
-        'A short, warm 2-3 sentence summary in a helpful Pakistani high-school teacher voice introducing these revision notes for the post description.',
+        'A warm 3-4 sentence summary in a helpful Pakistani high-school teacher voice introducing these revision notes for the post description, INCLUDING 2 to 4 key KaTeX math expressions/formulas wrapped in $...$ (inline) or $$...$$ (display) relevant to the topic.',
     },
     tags: {
       type: Type.ARRAY,
@@ -440,7 +523,7 @@ const PDF_STUDY_GUIDE_SCHEMA = {
     keyFormulasOrDefinitions: {
       type: Type.ARRAY,
       description:
-        '8 to 10 key formulas, laws, equations, grammar rules, or core definitions with plain-text notation (e.g., x^2, sqrt(x), v = u + at).',
+        '8 to 10 key formulas, laws, equations, grammar rules, or core definitions with plain-text notation (e.g., x^2, sqrt(x), v = u + at) for the PDF body.',
       items: {
         type: Type.OBJECT,
         properties: {
@@ -499,13 +582,30 @@ const PDF_STUDY_GUIDE_SCHEMA = {
   ],
 };
 
+const PDF_KATEX_DESC_ONLY_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    teacherDescription: {
+      type: Type.STRING,
+      description:
+        'A warm 3-5 sentence overview in a helpful Pakistani high-school teacher voice introducing these revision notes for Boardly Commons, including 2 to 4 accurate KaTeX expressions wrapped in $...$ or $$...$$ summarizing the core formulas, equations, laws, or structural rules of the topic.',
+    },
+    tags: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: '5 to 7 lowercase tags relevant to the topic.',
+    },
+  },
+  required: ['teacherDescription', 'tags'],
+};
+
 const TEXT_POST_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     body: {
       type: Type.STRING,
       description:
-        'A plain-text revision post of strictly 165 to 260 words written in a warm, clear teacher voice (a revision tip, quick summary, or numbered checklist). No markdown stars (*), no hashtags (#), no tables.',
+        'A revision post of strictly 165 to 260 words written in a warm, clear teacher voice (a revision tip, quick summary, or numbered checklist) that includes at least 2 to 4 valid KaTeX math/formula expressions wrapped in $...$ or $$...$$. No markdown stars (*), no hashtags (#), no tables.',
     },
     tags: {
       type: Type.ARRAY,
@@ -516,9 +616,53 @@ const TEXT_POST_SCHEMA = {
   required: ['body', 'tags'],
 };
 
+async function generateAndFactCheckPdfDescriptionWithKatex(ai, topic) {
+  const draftPrompt = `You are a senior subject teacher preparing a Boardly Commons post summary for ${topic.classLevel} (${topic.board} Board, Pakistan) in ${topic.subject}.
+
+Topic Title: "${topic.title}"
+Subject: ${topic.subject}
+Class Level: ${topic.classLevel}
+Curriculum Board: ${topic.board} Board
+
+Write "teacherDescription" (3 to 5 sentences, 55 to 110 words) introducing the attached PDF study guide for "${topic.title}".
+CRITICAL REQUIREMENT:
+- You MUST include 2 to 4 valid KaTeX math/scientific/structural expressions wrapped in inline $...$ or display $$...$$ delimiters (for example: $a^2 - b^2 = (a-b)(a+b)$, $F = G\\frac{m_1 m_2}{r^2}$, $\\text{pH} = -\\log[\\text{H}^+]$, $6\\text{CO}_2 + 6\\text{H}_2\\text{O} \\xrightarrow{\\text{light}} \\text{C}_6\\text{H}_{12}\\text{O}_6 + 6\\text{O}_2$, $\\mathcal{O}(n \\log n)$, or structural/marks formulas like $\\text{Passive} = \\text{Object} + \\text{be} + V_3 + \\text{by} + \\text{Subject}$).
+- Ensure every $...$ block uses valid KaTeX syntax with balanced braces and dollar signs.
+- Do NOT use markdown asterisks (*) or hashtags (#) outside $...$.`;
+
+  const draft = await callGeminiJson(
+    ai,
+    draftPrompt,
+    PDF_KATEX_DESC_ONLY_SCHEMA,
+    `Step 1 KaTeX Summary #${topic.id}`
+  );
+
+  const checkPrompt = `You are a senior curriculum reviewer for ${topic.classLevel} (${topic.board} Board, Pakistan) in ${topic.subject}.
+Review and fact-check the following post summary for "${topic.title}":
+${JSON.stringify(draft)}
+
+1. Verify all facts and formulas for 100% accuracy at ${topic.classLevel} (${topic.board} Board).
+2. Ensure "teacherDescription" contains at least 2 valid KaTeX expressions wrapped in $...$ or $$...$$ with balanced dollar signs and valid KaTeX commands.
+3. Ensure no markdown asterisks (*) or hashtags (#) appear outside $...$.`;
+
+  const checked = await callGeminiJson(
+    ai,
+    checkPrompt,
+    PDF_KATEX_DESC_ONLY_SCHEMA,
+    `Step 3 Fact-Check KaTeX Summary #${topic.id}`
+  );
+
+  return {
+    teacherDescription: cleanPostMathText(checked.teacherDescription),
+    tags: Array.isArray(checked.tags)
+      ? checked.tags.map((t) => cleanPlainText(t).toLowerCase()).filter(Boolean).slice(0, 7)
+      : [],
+  };
+}
+
 async function step1Generate(ai, topic) {
   if (topic.format === 'pdf') {
-    const prompt = `You are a senior subject teacher at SHS Virtual Academy preparing an official revision study guide for ${topic.classLevel} (${topic.board} Board, Pakistan) in the subject ${topic.subject}.
+    const prompt = `You are a senior subject teacher preparing an official revision study guide for ${topic.classLevel} (${topic.board} Board, Pakistan) in the subject ${topic.subject}.
 
 Topic Title: "${topic.title}"
 Subject: ${topic.subject}
@@ -529,13 +673,14 @@ Requirements:
 1. Write in a clear, helpful, encouraging teacher voice tailored to ${topic.classLevel} ${topic.board} Board students.
 2. Provide thorough, accurate, textbook-aligned explanations so the finished study guide fills 3 to 5 A4 pages comfortably (roughly 1,400 to 2,100 words total across all sections).
 3. Include:
-   - overview: 3 substantive paragraphs introducing the topic and its exam importance.
-   - sections: 4 in-depth concept sections (each with a clear heading, a thorough 110-160 word explanation, and 4-5 key points).
-   - keyFormulasOrDefinitions: 8 to 10 essential formulas, laws, rules, or definitions. Write all mathematical or chemical expressions in clean, readable plain text (for example: x^2, a/b, sqrt(b^2 - 4ac), v = u + a*t, 2H2 + O2 -> 2H2O, Delta H). Do NOT use LaTeX backslashes (like \\frac or \\sqrt) and do NOT use markdown asterisks (*).
+   - teacherDescription: 3 to 4 sentences introducing these revision notes for the Boardly Commons feed, INCLUDING 2 to 4 valid KaTeX expressions wrapped in $...$ or $$...$$ highlighting the core formulas, equations, or rules of "${topic.title}".
+   - overview: 3 substantive paragraphs introducing the topic and its exam importance (plain text for PDF).
+   - sections: 4 in-depth concept sections (each with a clear heading, a thorough 110-160 word explanation, and 4-5 key points in plain text for PDF).
+   - keyFormulasOrDefinitions: 8 to 10 essential formulas, laws, rules, or definitions in clean plain text for the PDF body (e.g., x^2, a/b, sqrt(b^2 - 4ac), v = u + a*t, 2H2 + O2 -> 2H2O).
    - workedExamples: 4 complete worked examples or solved board-style exercises with step-by-step workings and final answers.
    - practiceQuestions: 5 board-exam practice questions, each with a complete, clear model answer.
    - commonMistakes: 5 to 6 specific exam mistakes students often make on "${topic.title}" and how to avoid them.
-4. Do NOT use asterisks (*), star symbols, or markdown tables anywhere in the text.`;
+4. Do NOT use asterisks (*), star symbols, or markdown tables outside $...$ math blocks.`;
 
     return await callGeminiJson(
       ai,
@@ -544,7 +689,7 @@ Requirements:
       `Step 1 Generate PDF #${topic.id}`
     );
   } else {
-    const prompt = `You are a senior subject teacher at SHS Virtual Academy writing a short, high-value revision post for Boardly Commons.
+    const prompt = `You are a senior subject teacher writing a high-value revision post for Boardly Commons.
 
 Topic Title: "${topic.title}"
 Subject: ${topic.subject}
@@ -552,10 +697,11 @@ Class Level: ${topic.classLevel}
 Curriculum Board: ${topic.board} Board
 
 Requirements:
-1. Write a plain-text revision note, exam tip, or numbered revision checklist in a warm, clear teacher voice.
-2. Length MUST be strictly between 165 and 260 words (within the required 150 to 300 word window).
+1. Write a revision note, exam tip, or numbered revision checklist in a warm, clear teacher voice.
+2. Length MUST be strictly between 170 and 250 words (within the required 150 to 300 word window).
 3. Format using plain paragraphs and simple numbered lines (1., 2., 3.) or dashes (- ).
-4. Do NOT use asterisks (*), stars, hashtags (#), LaTeX backslashes, or markdown tables. Write any math or formulas in clean plain text (e.g., x^2, v = f * lambda).`;
+4. CRITICAL: Include at least 3 to 5 valid KaTeX math/scientific/structural expressions wrapped in inline $...$ or display $$...$$ delimiters (e.g., $ax + b = 0$, $v = u + at$, $s = ut + \\frac{1}{2}at^2$, $PV = nRT$, $E_a$, $\\text{Rate} \\propto [E][S]$, or structural equations in $...$). Ensure all dollar signs and braces are balanced.
+5. Do NOT use markdown asterisks (*), stars, hashtags (#), or markdown tables outside $...$.`;
 
     return await callGeminiJson(
       ai,
@@ -574,6 +720,10 @@ function step2ValidateContent(topic, data) {
   if (topic.format === 'pdf') {
     if (!data.teacherDescription || data.teacherDescription.trim().length < 20) {
       return { valid: false, reason: 'Missing or too short teacherDescription.' };
+    }
+    const katexCheck = validateKatexInText(data.teacherDescription);
+    if (!katexCheck.ok) {
+      return { valid: false, reason: `teacherDescription KaTeX validation failed: ${katexCheck.reason}` };
     }
     if (!Array.isArray(data.overview) || data.overview.length < 2) {
       return { valid: false, reason: 'Overview must have at least 2 paragraphs.' };
@@ -614,13 +764,17 @@ function step2ValidateContent(topic, data) {
     }
     return { valid: true };
   } else {
-    const cleanedBody = cleanPlainText(data.body || '');
+    const cleanedBody = cleanPostMathText(data.body || '');
     const words = countWords(cleanedBody);
     if (words < 150 || words > 300) {
       return {
         valid: false,
         reason: `Text post word count is ${words} words (must be between 150 and 300 words).`,
       };
+    }
+    const katexCheck = validateKatexInText(cleanedBody);
+    if (!katexCheck.ok) {
+      return { valid: false, reason: `Text post KaTeX validation failed: ${katexCheck.reason}` };
     }
     return { valid: true };
   }
@@ -634,8 +788,9 @@ Review the following JSON study guide for the topic "${topic.title}".
 Your task:
 1. Check every formula, number, scientific law, mathematical step, historical/curriculum fact, definition, worked example calculation, and practice question answer for 100% accuracy at the ${topic.classLevel} (${topic.board} Board) level.
 2. Fix any incorrect formula, wrong arithmetic, ambiguous statement, or unsimplified answer directly in the JSON.
-3. Ensure all math and scientific notation is written in clean, readable plain text (e.g., x^2, sqrt(x), a/b, ->) with NO LaTeX backslashes and NO markdown asterisks (*).
-4. Keep the structure comprehensive (4 concept sections, 8-10 key definitions/formulas, 4 worked examples, 5 practice questions with full answers, 5-6 common mistakes) so that it produces a 3 to 5 page PDF.
+3. Ensure "teacherDescription" includes 2 to 4 valid KaTeX expressions wrapped in $...$ or $$...$$ with balanced dollar signs and braces.
+4. For the PDF sections (overview, sections, keyFormulasOrDefinitions, workedExamples, practiceQuestions, commonMistakes), ensure all math and scientific notation is written in clean, readable plain text (e.g., x^2, sqrt(x), a/b, ->) with NO LaTeX backslashes and NO markdown asterisks (*).
+5. Keep the structure comprehensive (4 concept sections, 8-10 key definitions/formulas, 4 worked examples, 5 practice questions with full answers, 5-6 common mistakes) so that it produces a 3 to 5 page PDF.
 
 Draft JSON to fact-check and return in corrected form:
 ${JSON.stringify(draftData)}`;
@@ -650,11 +805,12 @@ ${JSON.stringify(draftData)}`;
   } else {
     const prompt = `You are an expert curriculum reviewer and fact-checker for ${topic.classLevel} (${topic.board} Board, Pakistan) in ${topic.subject}.
 
-Review the following plain-text revision post for the topic "${topic.title}".
+Review the following revision post for the topic "${topic.title}".
 Your task:
 1. Verify every definition, formula, example, or rule for accuracy at the ${topic.classLevel} (${topic.board} Board) level and fix any errors.
-2. Ensure the body text is written in a clear, helpful teacher voice with plain headings/lines (no asterisks *, no hashtags #, no tables, no LaTeX backslashes).
-3. Ensure the word count of "body" is strictly between 165 and 260 words (must be within 150 to 300 words). If it is shorter than 160 words or longer than 280 words, adjust the text so it falls cleanly around 200-230 words.
+2. Ensure "body" includes at least 3 valid KaTeX expressions wrapped in $...$ or $$...$$ with balanced dollar signs and valid KaTeX syntax.
+3. Ensure no markdown asterisks (*), hashtags (#), or tables appear outside $...$.
+4. Ensure the word count of "body" is strictly between 170 and 250 words (must be within 150 to 300 words).
 
 Draft JSON to fact-check and return in corrected form:
 ${JSON.stringify(draftData)}`;
@@ -665,7 +821,7 @@ ${JSON.stringify(draftData)}`;
       TEXT_POST_SCHEMA,
       `Step 3 Fact-Check Text #${topic.id}`
     );
-    checked.body = cleanPlainText(checked.body);
+    checked.body = cleanPostMathText(checked.body);
     checked.tags = Array.isArray(checked.tags)
       ? checked.tags.map((t) => cleanPlainText(t).toLowerCase()).filter(Boolean).slice(0, 7)
       : [];
@@ -675,7 +831,7 @@ ${JSON.stringify(draftData)}`;
 
 function sanitizePdfData(data) {
   return {
-    teacherDescription: cleanPlainText(data.teacherDescription),
+    teacherDescription: cleanPostMathText(data.teacherDescription),
     tags: (data.tags || [])
       .map((t) => cleanPlainText(t).toLowerCase())
       .filter(Boolean)
@@ -1286,6 +1442,7 @@ async function initFirebaseAndLookupSuperAdmin(options) {
 /**
  * Builds the exact `commonsPosts` and `postsPrivate` payload matching
  * `createCommonsPost` in `src/services/commonsService.ts` and `firestore.rules`.
+ * All generated study material posts are published ANONYMOUSLY (`isAnonymous: true`, `authorUid: null`, `authorName: 'Anonymous'`).
  */
 function buildBoardlyPostPayloads({
   topic,
@@ -1320,7 +1477,7 @@ function buildBoardlyPostPayloads({
   ).slice(0, 8);
 
   const target = `${topic.classLevel} · ${topic.board} Board`;
-  const authorName = 'SHS Virtual Academy';
+  const authorName = 'Anonymous';
 
   const searchKeywords = generateSearchKeywords(
     title,
@@ -1349,15 +1506,15 @@ function buildBoardlyPostPayloads({
     board: topic.board,
     tags: normalizedTags,
     files: fileAttachment ? [fileAttachment] : [],
-    isAnonymous: false,
-    authorUid: superAdminProfile.uid,
-    authorName,
-    authorAvatar: superAdminProfile.avatar ?? null,
-    authorFrame: superAdminProfile.frame ?? null,
-    authorEquippedAvatar: superAdminProfile.equippedAvatar ?? null,
-    authorPhotoURL: superAdminProfile.photoURL ?? null,
-    authorRole: 'Super Admin',
-    authorCustomRole: superAdminProfile.customRole ?? null,
+    isAnonymous: true,
+    authorUid: null,
+    authorName: 'Anonymous',
+    authorAvatar: null,
+    authorFrame: null,
+    authorEquippedAvatar: null,
+    authorPhotoURL: null,
+    authorRole: null,
+    authorCustomRole: null,
     upvotes: 0,
     downvotes: 0,
     views: 0,
@@ -1374,11 +1531,11 @@ function buildBoardlyPostPayloads({
   };
 
   const postsPrivateDoc = {
-    postId: postId || `topic_${topic.id}`,
+    postId: postId || `commons_anon_topic_${String(topic.id).padStart(2, '0')}`,
     authorUid: authUid || superAdminProfile.uid,
-    realAuthorUid: superAdminProfile.uid,
-    authorName,
-    isAnonymous: false,
+    realAuthorUid: authUid || superAdminProfile.uid,
+    authorName: 'Anonymous',
+    isAnonymous: true,
     createdAt: timestampValue,
     updatedAt: timestampValue,
   };
@@ -1388,7 +1545,9 @@ function buildBoardlyPostPayloads({
 
 /**
  * Validates that a constructed `commonsPosts` object satisfies every single
- * field and type rule in `firestore.rules` (`isValidCommonsPostCreate`) and `src/types/commons.ts`.
+ * field and type rule in `firestore.rules` (`isValidCommonsPostCreate`), `src/types/commons.ts`,
+ * anonymous attribution (`isAnonymous: true`, `authorUid: null`, `authorName: 'Anonymous'`),
+ * and KaTeX mathematical formatting (`$...$` / `$$...$$`).
  */
 function assertValidBoardlySchema(commonsPostDoc, postsPrivateDoc, format) {
   const requiredFields = [
@@ -1449,6 +1608,12 @@ function assertValidBoardlySchema(commonsPostDoc, postsPrivateDoc, format) {
   ) {
     throw new Error(`Invalid description length: ${commonsPostDoc.description?.length}`);
   }
+
+  const katexCheck = validateKatexInText(commonsPostDoc.description);
+  if (!katexCheck.ok) {
+    throw new Error(`KaTeX validation failed on post description: ${katexCheck.reason}`);
+  }
+
   if (!Array.isArray(commonsPostDoc.tags) || commonsPostDoc.tags.length > 15) {
     throw new Error('Invalid tags array');
   }
@@ -1459,14 +1624,17 @@ function assertValidBoardlySchema(commonsPostDoc, postsPrivateDoc, format) {
   ) {
     throw new Error(`Invalid searchKeywords length: ${commonsPostDoc.searchKeywords?.length}`);
   }
-  if (commonsPostDoc.isAnonymous !== false) {
-    throw new Error('isAnonymous must be false for SHS Virtual Academy posts.');
+  if (commonsPostDoc.isAnonymous !== true) {
+    throw new Error('isAnonymous must be true for anonymous study material posts.');
   }
-  if (commonsPostDoc.authorName !== 'SHS Virtual Academy') {
+  if (commonsPostDoc.authorUid !== null) {
+    throw new Error(`authorUid must be null for anonymous posts, got: ${commonsPostDoc.authorUid}`);
+  }
+  if (commonsPostDoc.authorName !== 'Anonymous') {
     throw new Error(`Unexpected authorName: ${commonsPostDoc.authorName}`);
   }
-  if (commonsPostDoc.authorRole !== 'Super Admin') {
-    throw new Error(`Unexpected authorRole: ${commonsPostDoc.authorRole}`);
+  if (commonsPostDoc.authorRole !== null) {
+    throw new Error(`Unexpected authorRole for anonymous post: ${commonsPostDoc.authorRole}`);
   }
 
   for (const zeroCounter of [
@@ -1494,7 +1662,7 @@ function assertValidBoardlySchema(commonsPostDoc, postsPrivateDoc, format) {
       f.type !== 'application/pdf' ||
       !f.url ||
       !f.storagePath ||
-      !f.storagePath.startsWith(`commons/${commonsPostDoc.authorUid}/`)
+      !f.storagePath.startsWith('commons/')
     ) {
       throw new Error(`Invalid file attachment metadata: ${JSON.stringify(f)}`);
     }
@@ -1504,8 +1672,8 @@ function assertValidBoardlySchema(commonsPostDoc, postsPrivateDoc, format) {
     }
   }
 
-  if (!postsPrivateDoc || postsPrivateDoc.realAuthorUid !== commonsPostDoc.authorUid) {
-    throw new Error('postsPrivate.realAuthorUid must match commonsPosts.authorUid.');
+  if (!postsPrivateDoc || postsPrivateDoc.isAnonymous !== true) {
+    throw new Error('postsPrivate.isAnonymous must be true.');
   }
 }
 
@@ -1612,7 +1780,7 @@ async function uploadPdfAttachment({
     const chunkPrivatePayload = {
       postId: chunkDocId,
       authorUid: ctx.authUid,
-      realAuthorUid: ctx.superAdminProfile.uid,
+      realAuthorUid: ctx.authUid,
       isAttachmentChunk: true,
       createdAt: timestampValue,
     };
@@ -1669,6 +1837,8 @@ async function step6PublishTopic({
   createdAtDate,
   options,
   existingPostId,
+  existingAttachmentUrl,
+  existingStoragePath,
 }) {
   const readableFileName = sanitizeReadableFileName(
     `${topic.classLevel} ${topic.subject} - ${topic.title} (${topic.board} Board).pdf`
@@ -1679,13 +1849,12 @@ async function step6PublishTopic({
   if (options.dryRun) {
     const dryRunAuthor = {
       uid: 'A5YMRimdHRcmeDWutxtUGt2e4hf2',
-      name: 'SHS Virtual Academy',
-      avatar: 'pfp_sakura_kitsune',
-      frame: 'frame-stone-torii',
-      equippedAvatar: 'pfp_sakura_kitsune',
-      photoURL:
-        'https://lh3.googleusercontent.com/a/ACg8ocKiYAcDyiIclLELE5jhZsiEpqkZc4r7yFMInj1SqCrPe8slyfE=s96-c',
-      role: 'Super Admin',
+      name: 'Anonymous',
+      avatar: null,
+      frame: null,
+      equippedAvatar: null,
+      photoURL: null,
+      role: null,
       customRole: null,
     };
 
@@ -1740,10 +1909,7 @@ async function step6PublishTopic({
   let cleanupAttachment = null;
   let fileAttachment = null;
 
-  const targetPostId =
-    existingPostId && !existingPostId.startsWith('dry_run_')
-      ? existingPostId
-      : `commons_topic_${String(topic.id).padStart(2, '0')}`;
+  let targetPostId = `commons_anon_topic_${String(topic.id).padStart(2, '0')}`;
 
   try {
     const timestampValue =
@@ -1752,17 +1918,74 @@ async function step6PublishTopic({
         : AdminTimestamp.fromDate(createdAtDate);
 
     if (topic.format === 'pdf') {
-      const storagePath = `commons/${ctx.superAdminProfile.uid}/${uniquePrefix}_${sanitizedStorageName}`;
-      const uploadRes = await uploadPdfAttachment({
-        ctx,
-        pdfFilePath,
-        readableFileName,
-        storagePath,
-        topicId: topic.id,
-        timestampValue,
-      });
-      fileAttachment = uploadRes.attachment;
-      cleanupAttachment = uploadRes.cleanup;
+      const stat = fs.statSync(pdfFilePath);
+      if (existingAttachmentUrl && existingStoragePath) {
+        const match = existingAttachmentUrl.match(/^firestore:\/\/([^/]+)\/(\d+)\//);
+        fileAttachment = {
+          name: readableFileName,
+          size: stat.size,
+          type: 'application/pdf',
+          url: existingAttachmentUrl,
+          storagePath: existingStoragePath,
+          ...(match ? { fallbackId: match[1], totalChunks: Number(match[2]) } : {}),
+        };
+      } else {
+        const storagePath = `commons/${ctx.authUid}/${uniquePrefix}_${sanitizedStorageName}`;
+        const uploadRes = await uploadPdfAttachment({
+          ctx,
+          pdfFilePath,
+          readableFileName,
+          storagePath,
+          topicId: topic.id,
+          timestampValue,
+        });
+        fileAttachment = uploadRes.attachment;
+        cleanupAttachment = uploadRes.cleanup;
+      }
+    }
+
+    // Hide any legacy non-anonymous post (`commons_topic_XX`) so there are zero duplicates in the feed
+    const legacyPostId = `commons_topic_${String(topic.id).padStart(2, '0')}`;
+    const idsToHide = new Set();
+    if (legacyPostId !== targetPostId) idsToHide.add(legacyPostId);
+    if (existingPostId && existingPostId !== targetPostId && !existingPostId.startsWith('dry_run_')) {
+      idsToHide.add(existingPostId);
+    }
+
+    for (const oldId of idsToHide) {
+      try {
+        if (ctx.mode === 'admin') {
+          await ctx.db.collection('commonsPosts').doc(oldId).update({
+            reportCount: 3,
+            isHidden: true,
+          });
+        } else {
+          const oldRef = clientDoc(ctx.db, 'commonsPosts', oldId);
+          const oldSnap = await clientGetDoc(oldRef);
+          if (oldSnap.exists() && oldSnap.data().isHidden !== true) {
+            await clientUpdateDoc(oldRef, {
+              reportCount: 3,
+              isHidden: true,
+            });
+          }
+        }
+      } catch {
+        // Ignore if old doc doesn't exist
+      }
+    }
+
+    if (ctx.mode === 'client') {
+      const checkRef = clientDoc(ctx.db, 'commonsPosts', targetPostId);
+      const checkSnap = await clientGetDoc(checkRef);
+      if (checkSnap.exists()) {
+        // Hide old targetPostId and rotate to a clean anonymous document ID if needed
+        try {
+          await clientUpdateDoc(checkRef, { reportCount: 3, isHidden: true });
+        } catch {
+          // Ignore
+        }
+        targetPostId = `commons_anon_topic_${String(topic.id).padStart(2, '0')}_${Date.now().toString(36)}`;
+      }
     }
 
     const { commonsPostDoc, postsPrivateDoc } = buildBoardlyPostPayloads({
@@ -1789,45 +2012,11 @@ async function step6PublishTopic({
     } else {
       const postRef = clientDoc(ctx.db, 'commonsPosts', targetPostId);
       const privateRef = clientDoc(ctx.db, 'postsPrivate', targetPostId);
-      const existingSnap = await clientGetDoc(postRef);
-
-      if (!existingSnap.exists()) {
-        // Create under signed-in publisher UID to satisfy `isValidCommonsPostCreate()`,
-        // then immediately set `authorUid` to the Super Admin UID (`A5YMRimdHRcmeDWutxtUGt2e4hf2`)
-        const initialCreateDoc = {
-          ...commonsPostDoc,
-          authorUid: ctx.authUid,
-        };
-        await clientSetDoc(postRef, initialCreateDoc);
-        if (ctx.authUid !== ctx.superAdminProfile.uid) {
-          await clientUpdateDoc(postRef, {
-            authorUid: ctx.superAdminProfile.uid,
-          });
-        }
-        try {
-          await clientSetDoc(privateRef, postsPrivateDoc);
-        } catch {
-          // Ignore if private doc already exists
-        }
-      } else {
-        // Repair/update existing document in place without duplicating it
-        const existingData = existingSnap.data();
-        if (existingData.authorUid === ctx.authUid) {
-          await clientUpdateDoc(postRef, commonsPostDoc);
-        } else {
-          // Replace in place if owned via postsPrivate
-          await clientDeleteDoc(postRef);
-          const initialCreateDoc = {
-            ...commonsPostDoc,
-            authorUid: ctx.authUid,
-          };
-          await clientSetDoc(postRef, initialCreateDoc);
-          if (ctx.authUid !== ctx.superAdminProfile.uid) {
-            await clientUpdateDoc(postRef, {
-              authorUid: ctx.superAdminProfile.uid,
-            });
-          }
-        }
+      await clientSetDoc(postRef, commonsPostDoc);
+      try {
+        await clientSetDoc(privateRef, postsPrivateDoc);
+      } catch {
+        // Ignore if private doc already exists
       }
     }
 
@@ -1847,6 +2036,11 @@ async function step6PublishTopic({
           databaseId: DEFAULT_DATABASE_ID,
           commonsPostDoc: {
             ...commonsPostDoc,
+            createdAt: createdAtDate.toISOString(),
+            updatedAt: createdAtDate.toISOString(),
+          },
+          postsPrivateDoc: {
+            ...postsPrivateDoc,
             createdAt: createdAtDate.toISOString(),
             updatedAt: createdAtDate.toISOString(),
           },
@@ -1970,6 +2164,7 @@ async function main() {
   console.log(`Project ID  : ${DEFAULT_PROJECT_ID}`);
   console.log(`Database ID : ${DEFAULT_DATABASE_ID}`);
   console.log(`Collection  : commonsPosts`);
+  console.log(`Attribution : Anonymous (isAnonymous: true, authorUid: null) + KaTeX Verified`);
   console.log(`Topics file : ${options.topicsPath} (${scheduled.length} selected of ${rawTopics.length})`);
   console.log(`Log file    : ${options.logPath}`);
   console.log(`Concurrency : ${options.concurrency}`);
@@ -1988,7 +2183,10 @@ async function main() {
 
     const isAlreadyDone = options.dryRun
       ? existingEntry?.status === 'published' || existingEntry?.status === 'dry_run_verified'
-      : !options.repair && existingEntry?.status === 'published';
+      : !options.repair &&
+        existingEntry?.status === 'published' &&
+        existingEntry?.isAnonymous === true &&
+        existingEntry?.katexVerified === true;
 
     if (isAlreadyDone) {
       stats[bucketKey].skipped++;
@@ -2031,7 +2229,7 @@ async function main() {
         let pdfFilePath = null;
         let pdfCheckResult = null;
 
-        // Check if we already have a verified PDF / post JSON from a prior dry-run on disk (only on attempt 1)
+        // Check if we already have a verified PDF / post JSON on disk
         const existingPdfPath = getTopicPdfFilePath(topic, options.outputDir);
         const existingPostJsonPath = path.join(
           options.outputDir,
@@ -2040,41 +2238,64 @@ async function main() {
         );
 
         let reusedExistingArtifact = false;
-        if (
-          tryNum === 1 &&
-          fs.existsSync(existingPostJsonPath) &&
-          (topic.format === 'text' || fs.existsSync(existingPdfPath))
-        ) {
-          try {
-            const cachedJson = JSON.parse(fs.readFileSync(existingPostJsonPath, 'utf8'));
-            const cachedDoc = cachedJson.commonsPostDoc;
-            if (cachedDoc && cachedDoc.description) {
-              if (topic.format === 'pdf') {
-                const check = await step5CheckPdf(existingPdfPath);
-                if (check.valid) {
+        if (topic.format === 'pdf' && fs.existsSync(existingPdfPath)) {
+          const check = await step5CheckPdf(existingPdfPath);
+          if (check.valid) {
+            pdfFilePath = existingPdfPath;
+            pdfCheckResult = check;
+
+            // Check if cached post JSON already has valid KaTeX description
+            if (tryNum === 1 && fs.existsSync(existingPostJsonPath)) {
+              try {
+                const cachedJson = JSON.parse(fs.readFileSync(existingPostJsonPath, 'utf8'));
+                const cachedDoc = cachedJson.commonsPostDoc;
+                if (cachedDoc && cachedDoc.description && validateKatexInText(cachedDoc.description).ok) {
                   checkedData = {
                     teacherDescription: cachedDoc.description,
                     tags: cachedDoc.tags || [],
                   };
-                  pdfFilePath = existingPdfPath;
-                  pdfCheckResult = check;
                   reusedExistingArtifact = true;
                   console.log(
-                    `  -> Reusing verified PDF artifact for Topic #${topic.id} (${check.pageCount} pages, ${check.wordCount} words).`
+                    `  -> Reusing verified PDF (${check.pageCount} pages) + KaTeX post description for Topic #${topic.id}.`
                   );
                 }
-              } else {
-                const wc = countWords(cachedDoc.description);
-                if (wc >= 150 && wc <= 300) {
-                  checkedData = {
-                    body: cachedDoc.description,
-                    tags: cachedDoc.tags || [],
-                  };
-                  reusedExistingArtifact = true;
-                  console.log(
-                    `  -> Reusing verified text post artifact for Topic #${topic.id} (${wc} words).`
-                  );
-                }
+              } catch {
+                // Fall through to generate KaTeX description
+              }
+            }
+
+            if (!reusedExistingArtifact) {
+              console.log(
+                `  -> Reusing verified PDF (${check.pageCount} pages, ${check.wordCount} words) & generating + fact-checking KaTeX post description with Gemini for Topic #${topic.id}...`
+              );
+              const descData = await generateAndFactCheckPdfDescriptionWithKatex(ai, topic);
+              const katexRes = validateKatexInText(descData.teacherDescription);
+              if (!katexRes.ok) {
+                throw new Error(`KaTeX validation failed on generated PDF description: ${katexRes.reason}`);
+              }
+              checkedData = {
+                teacherDescription: descData.teacherDescription,
+                tags: descData.tags || [],
+              };
+              reusedExistingArtifact = true;
+            }
+          }
+        } else if (topic.format === 'text' && tryNum === 1 && fs.existsSync(existingPostJsonPath)) {
+          try {
+            const cachedJson = JSON.parse(fs.readFileSync(existingPostJsonPath, 'utf8'));
+            const cachedDoc = cachedJson.commonsPostDoc;
+            if (cachedDoc && cachedDoc.description) {
+              const wc = countWords(cachedDoc.description);
+              const katexRes = validateKatexInText(cachedDoc.description);
+              if (wc >= 150 && wc <= 300 && katexRes.ok) {
+                checkedData = {
+                  body: cachedDoc.description,
+                  tags: cachedDoc.tags || [],
+                };
+                reusedExistingArtifact = true;
+                console.log(
+                  `  -> Reusing verified KaTeX text post artifact for Topic #${topic.id} (${wc} words, ${katexRes.count} KaTeX blocks).`
+                );
               }
             }
           } catch {
@@ -2095,7 +2316,7 @@ async function main() {
 
           // Step 3: FACT-CHECK
           console.log(
-            `  -> [Topic #${topic.id}] Step 3: Fact-checking formulas, definitions & ${topic.board} Board alignment...`
+            `  -> [Topic #${topic.id}] Step 3: Fact-checking formulas, KaTeX expressions & ${topic.board} Board alignment...`
           );
           checkedData = await step3FactCheck(ai, topic, draftData);
 
@@ -2121,7 +2342,10 @@ async function main() {
             );
           } else {
             const wordCount = countWords(checkedData.body);
-            console.log(`  -> [Topic #${topic.id}] Step 2 & 3 Passed: Text post verified (${wordCount} words).`);
+            const katexRes = validateKatexInText(checkedData.body);
+            console.log(
+              `  -> [Topic #${topic.id}] Step 2 & 3 Passed: Text post verified (${wordCount} words, ${katexRes.count} KaTeX blocks).`
+            );
           }
         }
 
@@ -2129,7 +2353,7 @@ async function main() {
 
         // Step 6: PUBLISH (or verify & write post payload in --dry-run)
         console.log(
-          `  -> [Topic #${topic.id}] Step 6: ${options.dryRun ? 'Validating & writing dry-run Boardly post payload' : 'Publishing to Boardly Commons (Firestore)'}...`
+          `  -> [Topic #${topic.id}] Step 6: ${options.dryRun ? 'Validating & writing dry-run Boardly post payload' : 'Publishing anonymously with KaTeX to Boardly Commons (Firestore)'}...`
         );
         const publishResult = await step6PublishTopic({
           topic,
@@ -2138,9 +2362,15 @@ async function main() {
           createdAtDate,
           options,
           existingPostId: existingEntry?.postId,
+          existingAttachmentUrl: existingEntry?.attachmentUrl,
+          existingStoragePath: existingEntry?.storagePath,
         });
 
         stats[bucketKey].published++;
+
+        const descForCheck =
+          topic.format === 'pdf' ? checkedData.teacherDescription : checkedData.body;
+        const katexVerification = validateKatexInText(descForCheck);
 
         // Step 7: LOG AND RESUME
         const statusLabel = options.dryRun ? 'dry_run_verified' : 'published';
@@ -2152,6 +2382,11 @@ async function main() {
           board: topic.board,
           format: topic.format,
           status: statusLabel,
+          isAnonymous: true,
+          authorName: 'Anonymous',
+          authorUid: null,
+          katexVerified: katexVerification.ok,
+          katexExpressionCount: katexVerification.count || 0,
           filePath: pdfFilePath ? path.relative(PROJECT_ROOT, pdfFilePath) : null,
           pageCount: pdfCheckResult ? pdfCheckResult.pageCount : null,
           wordCount:
@@ -2168,7 +2403,7 @@ async function main() {
         saveLog(options.logPath, logState);
 
         console.log(
-          `  [SUCCESS] Topic #${topic.id} ${statusLabel} (postId: ${publishResult.postId})`
+          `  [SUCCESS] Topic #${topic.id} ${statusLabel} (postId: ${publishResult.postId} | isAnonymous: true | KaTeX expressions: ${katexVerification.count})`
         );
         topicSucceeded = true;
         break;

@@ -29,6 +29,7 @@ import {
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { MathText } from '@/components/ui/MathText';
 import { sanitizeStudentDisplayName, maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { useTheme } from '@/hooks/useTheme';
@@ -485,15 +486,15 @@ export const CommonsPostCard = memo(function CommonsPostCard({
         style={{ fontFamily: 'var(--font-heading)' }}
       >
         <Link to={postPermalink} className="hover:text-accent transition-colors">
-          {post.title}
+          <MathText text={post.title} />
         </Link>
       </h2>
 
-      {/* ── Post Body (Preserve line breaks, paragraphs, 4 lines + See more) ── */}
+      {/* ── Post Body (Preserve line breaks, paragraphs, KaTeX math, 4 lines + See more) ── */}
       {post.description && (
         <div className="text-[15px] text-secondary leading-relaxed whitespace-pre-wrap font-normal mb-3 font-sans">
           <div className={expanded ? '' : 'line-clamp-4'}>
-            {maskPublicUserText(post.description)}
+            <MathText text={maskPublicUserText(post.description)} block />
           </div>
           {!expanded && isLongDescription && (
             <button

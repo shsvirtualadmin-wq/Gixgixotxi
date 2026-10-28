@@ -362,9 +362,10 @@ export async function fetchCommonsPosts(params: {
   const limitCount = params.pageSize || 20;
 
   try {
-    // Single-field index on createdAt ensures instant execution without requiring composite index creation
+    // Composite index (isHidden ASC, createdAt DESC) is deployed in Firestore so hidden docs never consume limit slots
     let q = query(
       collection(db, 'commonsPosts'),
+      where('isHidden', '==', false),
       orderBy('createdAt', 'desc'),
       limit(limitCount * 2)
     );
@@ -374,6 +375,7 @@ export async function fetchCommonsPosts(params: {
       const firstToken = params.searchQuery.trim().toLowerCase().split(/\s+/)[0];
       q = query(
         collection(db, 'commonsPosts'),
+        where('isHidden', '==', false),
         where('searchKeywords', 'array-contains', firstToken),
         limit(limitCount * 2)
       );

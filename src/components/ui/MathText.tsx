@@ -19,8 +19,8 @@ export function validateMath(text: string): ValidateMathResult {
   }
 
   const errors: string[] = [];
-  // Tokenize looking for escaped \$, $$, and $
-  const regex = /(?:\\\$)|(?:\$\$([\s\S]+?)\$\$)|(?:\$([^$\n]+?)\$)/g;
+  // Tokenize looking for escaped \$, $$...$$, \[...\], $...$, and \(...\)
+  const regex = /(?:\\\$)|(?:\$\$([\s\S]+?)\$\$)|(?:\\\[([\s\S]+?)\\\])|(?:\$([^$\n]+?)\$)|(?:\\\(([\s\S]+?)\\\))/g;
   let match: RegExpExecArray | null;
 
   while ((match = regex.exec(text)) !== null) {
@@ -29,8 +29,8 @@ export function validateMath(text: string): ValidateMathResult {
       continue;
     }
 
-    const isDisplay = match[1] !== undefined;
-    const formula = isDisplay ? match[1] : match[2];
+    const isDisplay = match[1] !== undefined || match[2] !== undefined;
+    const formula = match[1] ?? match[2] ?? match[3] ?? match[4];
 
     if (!formula || formula.trim().length === 0) {
       errors.push('Empty math block found');
@@ -65,14 +65,14 @@ interface ParsedSegment {
 }
 
 /**
- * Tokenizes string into plain text, inline math ($...$), and display math ($$...$$).
+ * Tokenizes string into plain text, inline math ($...$ or \(...\)), and display math ($$...$$ or \[...\]).
  * Handles literal escaped dollar signs (\$ -> $ in plain text).
  */
 function parseMathText(raw: string): ParsedSegment[] {
   if (!raw || typeof raw !== 'string') return [];
 
   const segments: ParsedSegment[] = [];
-  const regex = /(?:\\\$)|(?:\$\$([\s\S]+?)\$\$)|(?:\$([^$\n]+?)\$)/g;
+  const regex = /(?:\\\$)|(?:\$\$([\s\S]+?)\$\$)|(?:\\\[([\s\S]+?)\\\])|(?:\$([^$\n]+?)\$)|(?:\\\(([\s\S]+?)\\\))/g;
 
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -92,12 +92,12 @@ function parseMathText(raw: string): ParsedSegment[] {
     if (match[0] === '\\$') {
       // Escaped literal dollar sign in plain text
       segments.push({ type: 'text', content: '$' });
-    } else if (match[1] !== undefined) {
-      // Display math $$...$$
-      segments.push({ type: 'display-math', content: match[1] });
-    } else if (match[2] !== undefined) {
-      // Inline math $...$
-      segments.push({ type: 'inline-math', content: match[2] });
+    } else if (match[1] !== undefined || match[2] !== undefined) {
+      // Display math $$...$$ or \[...\]
+      segments.push({ type: 'display-math', content: (match[1] ?? match[2])! });
+    } else if (match[3] !== undefined || match[4] !== undefined) {
+      // Inline math $...$ or \(...\)
+      segments.push({ type: 'inline-math', content: (match[3] ?? match[4])! });
     }
 
     lastIndex = matchEnd;

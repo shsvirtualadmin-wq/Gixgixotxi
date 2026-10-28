@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
+import { MathText } from '@/components/ui/MathText';
 import { fetchCommonsPosts } from '@/services/commonsService';
 import { resolveCommonsAttachmentUrl } from '@/services/commonsUploadService';
 import { useAuth } from '@/contexts/AuthContext';
@@ -241,12 +242,12 @@ export const MaterialLibraryPage: React.FC = () => {
                       to={`/material/${slug}`}
                       className="font-dot text-lg font-bold text-white hover:text-[#D71921] transition-colors block mb-2"
                     >
-                      {item.title}
+                      <MathText text={item.title} />
                     </Link>
 
-                    <p className="text-xs text-white/65 line-clamp-2 leading-relaxed mb-3">
-                      {maskPublicUserText(item.description)}
-                    </p>
+                    <div className="text-xs text-white/65 line-clamp-2 leading-relaxed mb-3">
+                      <MathText text={maskPublicUserText(item.description)} />
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between gap-3 pt-3 border-t border-white/[0.08]">

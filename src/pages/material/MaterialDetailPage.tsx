@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
+import { MathText } from '@/components/ui/MathText';
 import { CommonsImageAttachment } from '@/components/commons/CommonsImageAttachment';
 import { CommonsImageViewerModal } from '@/components/commons/CommonsImageViewerModal';
 import { CommonsReportModal } from '@/components/commons/CommonsReportModal';
@@ -187,7 +188,7 @@ export const MaterialDetailPage: React.FC = () => {
           </div>
 
           <h1 className="font-dot text-2xl sm:text-3xl font-bold text-white mb-3">
-            {material.title}
+            <MathText text={material.title} />
           </h1>
 
           {/* Public Metadata Table */}
@@ -233,9 +234,9 @@ export const MaterialDetailPage: React.FC = () => {
                 <Eye size={14} className="text-[#D71921]" />
                 <span>Public Overview &amp; Notes Preview</span>
               </div>
-              <p className="text-sm text-white/80 whitespace-pre-wrap leading-relaxed">
-                {maskPublicUserText(material.description)}
-              </p>
+              <div className="text-sm text-white/80 whitespace-pre-wrap leading-relaxed">
+                <MathText text={maskPublicUserText(material.description)} block />
+              </div>
             </div>
           )}
 

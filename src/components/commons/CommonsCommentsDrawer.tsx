@@ -3,7 +3,8 @@ import { X, Send, AlertCircle, EyeOff, ThumbsUp, MessageSquare, Reply } from 'lu
 import type { CommonsPost, CommonsComment } from '@/types/commons';
 import { addPostComment, fetchPostComments } from '@/services/commonsService';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
-import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { MathText } from '@/components/ui/MathText';
+import { sanitizeStudentDisplayName, maskPublicUserText } from '@/utils/privacy';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 
@@ -231,9 +232,9 @@ export function CommonsCommentsDrawer({
                           </>
                         )}
                       </div>
-                      <p className="text-[13px] text-secondary leading-relaxed whitespace-pre-wrap break-words">
-                        {comment.text}
-                      </p>
+                      <div className="text-[13px] text-secondary leading-relaxed whitespace-pre-wrap break-words">
+                        <MathText text={maskPublicUserText(comment.text || comment.body)} block />
+                      </div>
                     </div>
 
                     {/* Like / Reply under each comment */}
