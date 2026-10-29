@@ -14,6 +14,15 @@ import { db as legacyDb } from '@/lib/firebase';
  */
 export const ENABLE_MULTI_SOURCE_BANK = true;
 
+/**
+ * FEATURE FLAG: Keep the old client-side Firestore question reader behind a flag
+ * until counts are confirmed in Cloudflare D1 (`boardly-posts-db`).
+ * Default: false (reads & writes use `/api/questions` backed by Cloudflare D1).
+ */
+export const USE_FIRESTORE_QUESTION_READER =
+  typeof import.meta !== 'undefined' &&
+  Boolean((import.meta as unknown as { env?: Record<string, string> }).env?.VITE_USE_FIRESTORE_QUESTIONS === 'true');
+
 export interface BankSourceConfig {
   id: string;
   name: string;
@@ -201,6 +210,11 @@ export interface SourceHealthDiagnostic {
   name: string;
   healthy: boolean;
   questionCount?: number;
+  publishedCount?: number;
+  needsReviewCount?: number;
+  bySubject?: Record<string, number>;
+  lastImportAt?: string | null;
+  storageBackend?: 'cloudflare-d1' | 'firestore';
   errorCode?: string; // 'permission-denied' | 'not-found' | 'unauthenticated' | 'resource-exhausted' | 'failed-precondition' | etc.
   errorMessage?: string;
   operation?: string;
@@ -367,6 +381,72 @@ export function subscribeBankSourceHealth(
  */
 export async function checkAllBankSourcesHealth(): Promise<SourceHealthDiagnostic[]> {
   const sources = getBankSources();
+
+  if (!USE_FIRESTORE_QUESTION_READER) {
+    const startTime = Date.now();
+    try {
+      const resp = await fetch('/api/questions/health');
+      if (!resp.ok) {
+        throw new Error(`D1 /api/questions/health returned HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      const latencyMs = Date.now() - startTime;
+      const banksData = (data?.banks || {}) as Record<
+        string,
+        {
+          total?: number;
+          published?: number;
+          needsReview?: number;
+          bySubject?: Record<string, number>;
+          lastImportAt?: string | null;
+        }
+      >;
+
+      const results: SourceHealthDiagnostic[] = sources.map((src) => {
+        const b = banksData[src.id] || {};
+        const count = Number(b.total ?? 0);
+        const diag: SourceHealthDiagnostic = {
+          id: src.id,
+          name: src.name,
+          healthy: true,
+          questionCount: count,
+          publishedCount: Number(b.published ?? count),
+          needsReviewCount: Number(b.needsReview ?? 0),
+          bySubject: b.bySubject || {},
+          lastImportAt: b.lastImportAt || data?.lastImportAt || null,
+          storageBackend: 'cloudflare-d1',
+          operation: 'Cloudflare D1 (boardly-posts-db)',
+          lastChecked: new Date(),
+          latencyMs,
+        };
+        sourceHealthMap.set(src.id, diag);
+        return diag;
+      });
+
+      notifyHealthListeners();
+      return results;
+    } catch (err) {
+      const errMsg = (err as { message?: string })?.message || String(err || 'Unknown D1 error');
+      const results: SourceHealthDiagnostic[] = sources.map((src) => {
+        const diag: SourceHealthDiagnostic = {
+          id: src.id,
+          name: src.name,
+          healthy: false,
+          errorCode: 'unavailable',
+          errorMessage: errMsg,
+          storageBackend: 'cloudflare-d1',
+          operation: 'GET /api/questions/health',
+          lastChecked: new Date(),
+          latencyMs: Date.now() - startTime,
+        };
+        sourceHealthMap.set(src.id, diag);
+        return diag;
+      });
+      notifyHealthListeners();
+      return results;
+    }
+  }
+
   const results: SourceHealthDiagnostic[] = [];
 
   for (const src of sources) {
@@ -403,6 +483,7 @@ export async function checkAllBankSourcesHealth(): Promise<SourceHealthDiagnosti
         name: src.name,
         healthy: true,
         questionCount: count,
+        storageBackend: 'firestore',
         lastChecked: new Date(),
         latencyMs,
       });
@@ -410,7 +491,6 @@ export async function checkAllBankSourcesHealth(): Promise<SourceHealthDiagnosti
       const code = extractFirestoreErrorCode(err);
       const errMsg = (err as { message?: string })?.message || String(err || 'Unknown error');
       recordSourceFailure(src.id, err, 'probe check');
-      const existing = sourceHealthMap.get(src.id);
       results.push({
         id: src.id,
         name: src.name,
@@ -418,6 +498,7 @@ export async function checkAllBankSourcesHealth(): Promise<SourceHealthDiagnosti
         questionCount: undefined,
         errorCode: code,
         errorMessage: errMsg,
+        storageBackend: 'firestore',
         operation: 'probe query on questions_mathematics / stats',
         lastChecked: new Date(),
         latencyMs: Date.now() - startTime,
@@ -433,6 +514,7 @@ export async function checkAllBankSourcesHealth(): Promise<SourceHealthDiagnosti
 
 // ─── ALPHA BANK (bank1, boardly-8c0cd)
 export function isBank1Unlocked(): boolean {
+  if (!USE_FIRESTORE_QUESTION_READER) return true;
   if (!ENABLE_MULTI_SOURCE_BANK) return true;
   return Boolean(bank1Auth.currentUser);
 }
@@ -453,6 +535,7 @@ export async function lockBank1(): Promise<void> {
 
 // ─── BETA BANK (bank2, boardly-2)
 export function isBank2Unlocked(): boolean {
+  if (!USE_FIRESTORE_QUESTION_READER) return true;
   if (!ENABLE_MULTI_SOURCE_BANK) return true;
   return Boolean(bank2Auth.currentUser);
 }
@@ -473,6 +556,7 @@ export async function lockBank2(): Promise<void> {
 
 // ─── UNIFIED UNLOCK HELPERS (Supports all sources)
 export function isBankUnlocked(sourceId: string): boolean {
+  if (!USE_FIRESTORE_QUESTION_READER) return true;
   if (!ENABLE_MULTI_SOURCE_BANK) return true;
   if (sourceId === 'legacy') return true;
   if (sourceId === 'bank1') return isBank1Unlocked();

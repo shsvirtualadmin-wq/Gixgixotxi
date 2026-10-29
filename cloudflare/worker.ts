@@ -15,11 +15,21 @@ import {
   isAllowedOrigin,
   sanitizeUploadFileName,
 } from '../src/config/cloudflareConfig';
-import { BOARDLY_BOT_ACCOUNTS, BotAccountConfig } from '../src/config/botsConfig';
+import { BOARDLY_BOT_ACCOUNTS } from '../src/config/botsConfig';
 import {
-  generateVerifiedBotStudyPost,
+  BotKeyPoolState,
+  BotKeyStatusEntry,
+   BotKeyStatusType,
+  buildBotKeyPoolState,
   generateVerifiedBotComment,
+  generateVerifiedBotStudyPost,
+  parseGeminiApiKeys,
+  redactApiKeysFromText,
+  resolvePinnedGeminiModels,
+  toPublicKeyStatusList,
 } from '../src/services/botContentGenerator';
+import { validateAndNormalizeQuestionMath } from '../src/utils/katexValidator';
+
 
 export interface Env {
   DB?: D1Database;
@@ -29,8 +39,10 @@ export interface Env {
   ALLOWED_ORIGIN?: string;
   SUPERADMIN_UIDS?: string;
   SUPERADMIN_EMAILS?: string;
+  GEMINI_API_KEYS?: string;
   GEMINI_API_KEY?: string;
   GEMINI_MODEL?: string;
+  GEMINI_FALLBACK_MODEL?: string;
   BOT_RUN_SECRET?: string;
 }
 
@@ -252,6 +264,23 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
         updated_at INTEGER NOT NULL
       )`),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_bot_accounts_subject ON bot_accounts(subject, enabled)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_bot_accounts_last_run ON bot_accounts(enabled, last_run_at ASC)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS bot_key_status (
+        key_index INTEGER PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'available',
+        cooldown_until INTEGER,
+        last_used_at INTEGER,
+        calls_today INTEGER NOT NULL DEFAULT 0,
+        calls_total INTEGER NOT NULL DEFAULT 0,
+        quota_date TEXT NOT NULL DEFAULT '',
+        last_error TEXT,
+        updated_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS bot_system_state (
+        state_key TEXT PRIMARY KEY,
+        state_value TEXT NOT NULL DEFAULT '',
+        updated_at INTEGER NOT NULL
+      )`),
       db.prepare(`CREATE TABLE IF NOT EXISTS announcements (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
@@ -272,6 +301,36 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
         welcomed_at INTEGER NOT NULL,
         read_at INTEGER
       )`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS questions (
+        id TEXT PRIMARY KEY,
+        bank_id TEXT NOT NULL DEFAULT 'legacy',
+        subject TEXT NOT NULL,
+        topic TEXT NOT NULL DEFAULT 'General Concepts',
+        difficulty TEXT NOT NULL DEFAULT 'medium',
+        status TEXT NOT NULL DEFAULT 'published',
+        needs_review INTEGER NOT NULL DEFAULT 0,
+        question_text TEXT NOT NULL,
+        options_json TEXT NOT NULL,
+        correct_answer INTEGER NOT NULL DEFAULT 0,
+        explanation TEXT NOT NULL DEFAULT '',
+        source_path TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_questions_bank_subj_topic_status ON questions(bank_id, subject, topic, status)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_questions_needs_review ON questions(needs_review)`),
+      db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_questions_bank_source_path ON questions(bank_id, source_path)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS questions_import_log (
+        id TEXT PRIMARY KEY,
+        bank_id TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        total_read INTEGER NOT NULL DEFAULT 0,
+        imported_count INTEGER NOT NULL DEFAULT 0,
+        needs_review_count INTEGER NOT NULL DEFAULT 0,
+        source_type TEXT NOT NULL DEFAULT 'firestore',
+        imported_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_questions_import_log_bank_time ON questions_import_log(bank_id, imported_at DESC)`),
     ]);
 
     // Seed 12 bot accounts in user_roles (role = 'bot') and bot_accounts
@@ -387,6 +446,69 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
         await db.batch(stmts);
       }
     }
+
+    // Seed initial migrated questions if questions table is empty
+    const qCountRow = await db.prepare('SELECT COUNT(*) as cnt FROM questions').first<{ cnt: number }>();
+    if (Number(qCountRow?.cnt ?? 0) === 0 && Array.isArray((seedDataset as any)?.questions)) {
+      const initialQuestions = (seedDataset as any).questions as Record<string, any>[];
+      const qChunkSize = 25;
+      for (let i = 0; i < initialQuestions.length; i += qChunkSize) {
+        const chunk = initialQuestions.slice(i, i + qChunkSize);
+        const qStmts = chunk.map((q) =>
+          db
+            .prepare(
+              `INSERT OR REPLACE INTO questions (
+                id, bank_id, subject, topic, difficulty, status, needs_review,
+                question_text, options_json, correct_answer, explanation, source_path,
+                created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            )
+            .bind(
+              String(q.id),
+              String(q.bank_id || 'legacy'),
+              String(q.subject || 'mathematics'),
+              String(q.topic || 'General Concepts'),
+              String(q.difficulty || 'medium'),
+              String(q.status || 'published'),
+              Number(q.needs_review ? 1 : 0),
+              String(q.question_text || ''),
+              typeof q.options_json === 'string' ? q.options_json : JSON.stringify(q.options || []),
+              Number(q.correct_answer ?? 0),
+              String(q.explanation || ''),
+              String(q.source_path || `questions/${q.id}`),
+              Number(q.created_at || Date.now()),
+              Number(q.updated_at || Date.now())
+            )
+        );
+        await db.batch(qStmts);
+      }
+
+      if (Array.isArray((seedDataset as any)?.questionsImportLog)) {
+        const logs = (seedDataset as any).questionsImportLog as Record<string, any>[];
+        if (logs.length > 0) {
+          const logStmts = logs.map((l) =>
+            db
+              .prepare(
+                `INSERT OR REPLACE INTO questions_import_log (
+                  id, bank_id, subject, total_read, imported_count, needs_review_count, source_type, imported_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+              )
+              .bind(
+                String(l.id),
+                String(l.bank_id || 'legacy'),
+                String(l.subject || 'mathematics'),
+                Number(l.total_read || 0),
+                Number(l.imported_count || 0),
+                Number(l.needs_review_count || 0),
+                String(l.source_type || 'firestore'),
+                Number(l.imported_at || Date.now())
+              )
+          );
+          await db.batch(logStmts);
+        }
+      }
+    }
+
 
     // BUG 1 FIX: Normalize any second-based timestamps (< 1e10) to ms, and clamp any
     // seeded/future timestamps (> Date.now() or commons_anon_topic_*) so newly created posts
@@ -868,7 +990,8 @@ export async function handleHealthCheck(req: Request, env: Env): Promise<Respons
         totalBots: BOARDLY_BOT_ACCOUNTS.length,
         enabledBots: enabledBotsCount,
         botPostsCount,
-        geminiKeyConfigured: Boolean(env.GEMINI_API_KEY),
+        geminiKeyConfigured: parseGeminiApiKeys(env.GEMINI_API_KEYS, env.GEMINI_API_KEY).length > 0,
+        geminiKeysCount: parseGeminiApiKeys(env.GEMINI_API_KEYS, env.GEMINI_API_KEY).length,
         botSecretConfigured: Boolean(env.BOT_RUN_SECRET),
       },
       firebaseAuth: {
@@ -886,6 +1009,686 @@ export async function handleHealthCheck(req: Request, env: Env): Promise<Respons
       'Cache-Control': 'no-store',
     }
   );
+}
+
+interface D1BotKeyStatusRow {
+  key_index: number;
+  status: string;
+  cooldown_until: number | null;
+  calls_today: number;
+  calls_day_key: string;
+  last_error: string | null;
+  updated_at: number;
+}
+
+interface D1BotSystemStateRow {
+  state_key: string;
+  state_value: string;
+  updated_at: number;
+}
+
+async function loadD1BotKeyPoolAndSummary(
+  db: D1Database,
+  env: Env
+): Promise<{
+  pool: BotKeyPoolState;
+  lastRunSummary: any;
+  geminiCallsLastRun: number;
+}> {
+  const apiKeys = parseGeminiApiKeys(env.GEMINI_API_KEYS, env.GEMINI_API_KEY);
+  const [keyRowsRes, stateRowsRes] = await Promise.all([
+    db.prepare('SELECT * FROM bot_key_status ORDER BY key_index ASC').all<D1BotKeyStatusRow>(),
+    db.prepare('SELECT * FROM bot_system_state').all<D1BotSystemStateRow>(),
+  ]);
+
+  const persistedStatuses: Partial<GeminiKeyStatusRecord>[] = (keyRowsRes.results || []).map((r) => ({
+    keyIndex: Number(r.key_index),
+    status: (r.status as any) || 'available',
+    cooldownUntil: r.cooldown_until ? Number(r.cooldown_until) : null,
+    callsToday: Number(r.calls_today || 0),
+    callsDayKey: String(r.calls_day_key || ''),
+    lastError: r.last_error || null,
+  }));
+
+  const stateMap = new Map<string, string>();
+  for (const row of stateRowsRes.results || []) {
+    stateMap.set(row.state_key, row.state_value);
+  }
+
+  const lastUsedKeyIndex = Number(stateMap.get('last_used_key_index') ?? -1);
+  const allKeysExhaustedUntilRaw = Number(stateMap.get('all_keys_exhausted_until') ?? 0);
+  const allKeysExhaustedUntil =
+    Number.isFinite(allKeysExhaustedUntilRaw) && allKeysExhaustedUntilRaw > 0
+      ? allKeysExhaustedUntilRaw
+      : null;
+
+  let lastRunSummary: any = null;
+  const rawSummary = stateMap.get('last_run_summary_json');
+  if (rawSummary) {
+    try {
+      lastRunSummary = JSON.parse(rawSummary);
+    } catch {
+      lastRunSummary = null;
+    }
+  }
+
+  const geminiCallsLastRun = Number(
+    stateMap.get('gemini_calls_last_run') ?? lastRunSummary?.geminiCallsLastRun ?? 0
+  );
+
+  const pool = buildBotKeyPoolState({
+    apiKeys,
+    persistedStatuses,
+    lastUsedKeyIndex: Number.isFinite(lastUsedKeyIndex) ? lastUsedKeyIndex : -1,
+    allKeysExhaustedUntil,
+  });
+
+  return {
+    pool,
+    lastRunSummary,
+    geminiCallsLastRun: Number.isFinite(geminiCallsLastRun) ? geminiCallsLastRun : 0,
+  };
+}
+
+async function saveD1BotKeyPoolAndSummary(
+  db: D1Database,
+  pool: BotKeyPoolState,
+  lastRunSummary?: any
+): Promise<void> {
+  const now = Date.now();
+  const statements: D1PreparedStatement[] = [];
+
+  for (const ks of pool.keyStatuses) {
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO bot_key_status (key_index, status, cooldown_until, calls_today, calls_day_key, last_error, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(key_index) DO UPDATE SET
+             status = excluded.status,
+             cooldown_until = excluded.cooldown_until,
+             calls_today = excluded.calls_today,
+             calls_day_key = excluded.calls_day_key,
+             last_error = excluded.last_error,
+             updated_at = excluded.updated_at`
+        )
+        .bind(
+          ks.keyIndex,
+          ks.status,
+          ks.cooldownUntil,
+          ks.callsToday,
+          ks.callsDayKey,
+          ks.lastError ? redactApiKeysFromText(ks.lastError, pool.keys) : null,
+          now
+        )
+    );
+  }
+
+  const upsertState = (key: string, val: string) =>
+    db
+      .prepare(
+        `INSERT INTO bot_system_state (state_key, state_value, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(state_key) DO UPDATE SET
+           state_value = excluded.state_value,
+           updated_at = excluded.updated_at`
+      )
+      .bind(key, val, now);
+
+  statements.push(upsertState('last_used_key_index', String(pool.lastUsedKeyIndex)));
+  statements.push(
+    upsertState(
+      'all_keys_exhausted_until',
+      pool.allKeysExhaustedUntil ? String(pool.allKeysExhaustedUntil) : '0'
+    )
+  );
+  statements.push(upsertState('gemini_calls_last_run', String(pool.callsThisRun)));
+
+  if (lastRunSummary !== undefined) {
+    statements.push(upsertState('last_run_summary_json', JSON.stringify(lastRunSummary)));
+  }
+
+  if (statements.length > 0) {
+    await db.batch(statements);
+  }
+}
+
+async function executeD1BotRun(
+  db: D1Database,
+  env: Env,
+  options: {
+    targetBotUid?: string | null;
+    maxBots?: number;
+    postsPerBot?: number;
+    triggerSource?: 'manual' | 'cron';
+  }
+): Promise<{
+  httpStatus: number;
+  payload: Record<string, any>;
+}> {
+  const apiKeys = parseGeminiApiKeys(env.GEMINI_API_KEYS, env.GEMINI_API_KEY);
+  const { model, fallbackModel } = resolvePinnedGeminiModels(
+    env.GEMINI_MODEL,
+    env.GEMINI_FALLBACK_MODEL
+  );
+
+  if (apiKeys.length === 0) {
+    return {
+      httpStatus: 500,
+      payload: {
+        success: false,
+        runOutcome: 'error',
+        bannerStatus: 'error',
+        bannerMessage:
+          'No Gemini API keys configured. Set GEMINI_API_KEYS (comma-separated) or GEMINI_API_KEY in Cloudflare secrets.',
+        error:
+          'No Gemini API keys configured. Set GEMINI_API_KEYS (comma-separated) or GEMINI_API_KEY in Cloudflare secrets.',
+      },
+    };
+  }
+
+  const { pool } = await loadD1BotKeyPoolAndSummary(db, env);
+  const nowMs = Date.now();
+
+  // Check if all keys are currently cooling down in D1 before calling Gemini
+  const activeKeyCount = pool.keyStatuses.filter((ks) => ks.status === 'available').length;
+  if (
+    activeKeyCount === 0 ||
+    (pool.allKeysExhaustedUntil && pool.allKeysExhaustedUntil > nowMs)
+  ) {
+    const retryUntilMs =
+      pool.allKeysExhaustedUntil ||
+      Math.min(
+        ...pool.keyStatuses
+          .map((k) => k.cooldownUntil || nowMs + 60_000)
+          .filter((v) => v > nowMs)
+      );
+    const retryIso = new Date(retryUntilMs).toISOString();
+    const retryTimeFormatted = new Date(retryUntilMs).toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Karachi',
+    });
+    const bannerMessage = `Gemini quota exhausted — all ${apiKeys.length} key(s) cooling down. Retrying after ${retryTimeFormatted} PKT (${retryIso}).`;
+
+    const summaryPayload = {
+      success: true,
+      runOutcome: 'quota_exhausted',
+      bannerStatus: 'error',
+      bannerMessage,
+      allKeysExhaustedUntil: retryIso,
+      ranAt: new Date(nowMs).toISOString(),
+      triggerSource: options.triggerSource || 'manual',
+      botsProcessed: 0,
+      postsCreated: 0,
+      commentsCreated: 0,
+      likesAdded: 0,
+      likesCreated: 0,
+      geminiCallsLastRun: 0,
+      geminiCallsToday: getTotalGeminiCallsToday(pool),
+      geminiKeysCount: apiKeys.length,
+      geminiModel: model,
+      geminiFallbackModel: fallbackModel,
+      keyStatuses: toPublicKeyStatusList(pool, BOARDLY_BOT_ACCOUNTS.length),
+      results: [],
+    };
+    await saveD1BotKeyPoolAndSummary(db, pool, summaryPayload);
+    return { httpStatus: 200, payload: summaryPayload };
+  }
+
+  const targetBotUid = options.targetBotUid ? String(options.targetBotUid).trim() : null;
+  // Cap each run to 2-3 bots chosen by least recently run
+  const requestedMaxBots = Number(options.maxBots || (targetBotUid ? 1 : 2));
+  const maxBots = targetBotUid
+    ? 1
+    : Math.min(3, Math.max(1, Number.isFinite(requestedMaxBots) ? requestedMaxBots : 2));
+  const postsPerBotReq = Math.min(2, Math.max(1, Number(options.postsPerBot || 1)));
+
+  let botQuery =
+    'SELECT * FROM bot_accounts WHERE enabled = 1 ORDER BY COALESCE(last_run_at, 0) ASC, uid ASC';
+  const binds: any[] = [];
+  if (targetBotUid) {
+    botQuery = 'SELECT * FROM bot_accounts WHERE uid = ? LIMIT 1';
+    binds.push(targetBotUid);
+  } else {
+    botQuery += ` LIMIT ${maxBots}`;
+  }
+
+  const botRowsResult = await db
+    .prepare(botQuery)
+    .bind(...binds)
+    .all<D1BotAccountRow>();
+  const botRows = botRowsResult.results || [];
+
+  const dayStartMs = new Date().setUTCHours(0, 0, 0, 0);
+  const runResults: Array<{
+    uid: string;
+    botUid: string;
+    displayName: string;
+    subject: string;
+    postsCreated: number;
+    commentsCreated: number;
+    likesCreated: number;
+    likesAdded: number;
+    geminiCallsUsed: number;
+    assignedKeyIndex: number;
+    status: string;
+    error?: string;
+  }> = [];
+
+  let totalPostsCreated = 0;
+  let totalCommentsCreated = 0;
+  let totalLikesCreated = 0;
+  let stoppedDueToAllKeysExhausted = false;
+  let exhaustionBannerMessage: string | null = null;
+
+  for (const botRow of botRows) {
+    const botIndexInConfig = Math.max(
+      0,
+      BOARDLY_BOT_ACCOUNTS.findIndex((b) => b.uid === botRow.uid)
+    );
+    const assignedKeyIndex = apiKeys.length > 0 ? botIndexInConfig % apiKeys.length : 0;
+
+    const botConfig =
+      BOARDLY_BOT_ACCOUNTS[botIndexInConfig] || {
+        uid: botRow.uid,
+        placeholderName: botRow.username,
+        displayName: botRow.display_name,
+        email: `${botRow.username}@bots.boardly.cfd`,
+        subject: botRow.subject as any,
+        classLevel: '11' as const,
+        board: 'Federal' as const,
+        target: 'Board Exams',
+        equippedAvatar: botRow.avatar,
+        bio: botRow.bio,
+        chapters: ['General Revision'],
+      };
+
+    // STEP 2: Respect each bot's "Max 2/day" limit by checking D1 BEFORE calling Gemini
+    const todayPostsRow = await db
+      .prepare(
+        'SELECT COUNT(*) as cnt FROM posts WHERE (author_uid = ? OR real_author_uid = ?) AND created_at >= ?'
+      )
+      .bind(botRow.uid, botRow.uid, dayStartMs)
+      .first<{ cnt: number }>();
+
+    const alreadyPostedToday = Number(todayPostsRow?.cnt ?? 0);
+    const dailyLimit = Math.min(2, Math.max(1, Number(botRow.daily_post_limit || 2)));
+    const remainingQuota = Math.max(0, dailyLimit - alreadyPostedToday);
+
+    let botPostsCreated = 0;
+    let botCommentsCreated = 0;
+    let botLikesCreated = 0;
+    let botGeminiCalls = 0;
+    let botStatus = 'ok';
+    let botError: string | undefined;
+
+    // 1. Plain D1 likes first (zero Gemini calls, always safe even if daily post quota is met)
+    try {
+      const otherPostsRes = await db
+        .prepare(
+          `SELECT id, title, description, subject FROM posts
+           WHERE status = 'published' AND is_hidden = 0
+             AND COALESCE(author_uid, '') != ? AND COALESCE(real_author_uid, '') != ?
+           ORDER BY created_at DESC LIMIT 12`
+        )
+        .bind(botRow.uid, botRow.uid)
+        .all<{ id: string; title: string; description: string; subject: string }>();
+
+      const candidatePosts = otherPostsRes.results || [];
+      for (const candidate of candidatePosts.slice(0, 2)) {
+        const existingLike = await db
+          .prepare('SELECT 1 FROM post_likes WHERE post_id = ? AND user_uid = ?')
+          .bind(candidate.id, botRow.uid)
+          .first();
+        if (!existingLike) {
+          await db.batch([
+            db
+              .prepare('INSERT OR IGNORE INTO post_likes (post_id, user_uid, created_at) VALUES (?, ?, ?)')
+              .bind(candidate.id, botRow.uid, Date.now()),
+            db
+              .prepare('UPDATE posts SET upvotes = upvotes + 1 WHERE id = ?')
+              .bind(candidate.id),
+          ]);
+          botLikesCreated++;
+          totalLikesCreated++;
+        }
+      }
+
+      if (remainingQuota <= 0) {
+        botStatus = 'daily_limit_reached';
+        const nowUpdate = Date.now();
+        await db
+          .prepare(
+            `UPDATE bot_accounts
+             SET likes_count = likes_count + ?,
+                 last_run_at = ?,
+                 last_run_status = ?,
+                 updated_at = ?
+             WHERE uid = ?`
+          )
+          .bind(
+            botLikesCreated,
+            nowUpdate,
+            `Daily post limit reached (${alreadyPostedToday}/${dailyLimit} today); ${botLikesCreated} like(s) added`,
+            nowUpdate,
+            botRow.uid
+          )
+          .run();
+
+        runResults.push({
+          uid: botRow.uid,
+          botUid: botRow.uid,
+          displayName: botRow.display_name,
+          subject: botRow.subject,
+          postsCreated: 0,
+          commentsCreated: 0,
+          likesCreated: botLikesCreated,
+          likesAdded: botLikesCreated,
+          geminiCallsUsed: 0,
+          assignedKeyIndex,
+          status: 'daily_limit_reached',
+        });
+        continue;
+      }
+
+      // 2. Generate study post(s) sequentially (1 single merged Gemini call + local KaTeX check)
+      const targetPostsForBot = Math.min(remainingQuota, postsPerBotReq);
+      for (let i = 0; i < targetPostsForBot; i++) {
+        const genResult = await generateVerifiedBotStudyPost({
+          bot: botConfig,
+          keyPool: pool,
+          botIndex: botIndexInConfig,
+          model,
+          fallbackModel,
+          postIndex: alreadyPostedToday + i,
+        });
+        botGeminiCalls += genResult.geminiCallsUsed || 0;
+
+        if (!genResult.post) {
+          botError = genResult.discardReason || 'Post generation failed';
+          console.error(
+            `[BotRunner] Bot ${botRow.uid} (${botRow.display_name}) post generation failed:`,
+            redactApiKeysFromText(botError, apiKeys)
+          );
+          if (genResult.allKeysExhausted) {
+            stoppedDueToAllKeysExhausted = true;
+            exhaustionBannerMessage = botError;
+            break;
+          }
+          continue;
+        }
+
+        const p = genResult.post;
+        const maxRow = await db
+          .prepare('SELECT MAX(created_at) as max_ts FROM posts')
+          .first<{ max_ts: number | null }>();
+        const now = Math.max(Date.now(), Number(maxRow?.max_ts || 0) + 1);
+        const postId = `post_bot_${now}_${crypto.randomUUID().slice(0, 8)}`;
+        const slug = buildSlug(postId, p.title);
+
+        await db
+          .prepare(
+            `INSERT INTO posts (
+              id, slug, type, title, description, subject, chapter, target,
+              class_level, board, format, tags_json, files_json,
+              is_anonymous, anonymous_alias, author_uid, real_author_uid,
+              author_name, author_avatar, author_frame, author_equipped_avatar,
+              author_photo_url, author_role, author_custom_role,
+              status, visibility, is_hidden, is_pinned, is_featured,
+              upvotes, downvotes, views, comment_count, save_count, shares_count, report_count,
+              created_at, updated_at
+            ) VALUES (
+              ?, ?, ?, ?, ?, ?, ?, ?,
+              ?, ?, 'text', ?, '[]',
+              0, 'Anonymous Student', ?, ?,
+              ?, ?, NULL, ?,
+              NULL, 'bot', ?,
+              'published', 'public', 0, 0, 0,
+              1, 0, 1, 0, 0, 0, 0,
+              ?, ?
+            )`
+          )
+          .bind(
+            postId,
+            slug,
+            p.type,
+            p.title,
+            p.description,
+            botConfig.subject,
+            p.chapter,
+            botConfig.target,
+            botConfig.classLevel,
+            botConfig.board,
+            JSON.stringify(p.tags || []),
+            botRow.uid,
+            botRow.uid,
+            botRow.display_name,
+            botRow.avatar,
+            botRow.avatar,
+            `${botConfig.subject} Study Bot`,
+            now,
+            now
+          )
+          .run();
+
+        botPostsCreated++;
+        totalPostsCreated++;
+      }
+
+      // 3. Optional comment on 1 existing post if keys are still healthy and post succeeded
+      if (!stoppedDueToAllKeysExhausted && candidatePosts.length > 0 && botPostsCreated > 0) {
+        const subjectMatch =
+          candidatePosts.find(
+            (cp) => cp.subject.toLowerCase() === botConfig.subject.toLowerCase()
+          ) || candidatePosts[0];
+
+        if (subjectMatch) {
+          const existingBotComment = await db
+            .prepare(
+              'SELECT 1 FROM post_comments WHERE post_id = ? AND real_author_uid = ? LIMIT 1'
+            )
+            .bind(subjectMatch.id, botRow.uid)
+            .first();
+
+          if (!existingBotComment) {
+            const commentResult = await generateVerifiedBotComment({
+              bot: botConfig,
+              targetPost: subjectMatch,
+              keyPool: pool,
+              botIndex: botIndexInConfig,
+              model,
+              fallbackModel,
+            });
+            botGeminiCalls += commentResult.geminiCallsUsed || 0;
+
+            if (commentResult.comment) {
+              const cNow = Date.now();
+              const commentId = `cmt_bot_${cNow}_${crypto.randomUUID().slice(0, 8)}`;
+              await db.batch([
+                db
+                  .prepare(
+                    `INSERT INTO post_comments (
+                      id, post_id, text, is_anonymous, author_uid, real_author_uid,
+                      author_name, author_avatar, author_frame, author_equipped_avatar,
+                      author_photo_url, author_role, author_custom_role, created_at
+                    ) VALUES (?, ?, ?, 0, ?, ?, ?, ?, NULL, ?, NULL, 'bot', ?, ?)`
+                  )
+                  .bind(
+                    commentId,
+                    subjectMatch.id,
+                    commentResult.comment.text,
+                    botRow.uid,
+                    botRow.uid,
+                    botRow.display_name,
+                    botRow.avatar,
+                    botRow.avatar,
+                    `${botConfig.subject} Study Bot`,
+                    cNow
+                  ),
+                db
+                  .prepare('UPDATE posts SET comment_count = comment_count + 1 WHERE id = ?')
+                  .bind(subjectMatch.id),
+              ]);
+              botCommentsCreated++;
+              totalCommentsCreated++;
+            } else if (commentResult.allKeysExhausted) {
+              stoppedDueToAllKeysExhausted = true;
+              exhaustionBannerMessage =
+                commentResult.discardReason || 'All Gemini API keys are cooling down.';
+            }
+          }
+        }
+      }
+    } catch (botErr: any) {
+      botError = redactApiKeysFromText(
+        String(botErr?.message || botErr || 'Unexpected bot error'),
+        apiKeys
+      );
+      console.error(`[BotRunner] Unexpected error for bot ${botRow.uid}:`, botError);
+    }
+
+    if (botPostsCreated === 0 && botError) {
+      botStatus = stoppedDueToAllKeysExhausted ? 'quota_exhausted' : 'error';
+    } else if (botPostsCreated === 0) {
+      botStatus = 'skipped';
+    } else {
+      botStatus = 'ok';
+    }
+
+    const statusText =
+      botPostsCreated > 0
+        ? `Published ${botPostsCreated} post(s), ${botCommentsCreated} comment(s), ${botLikesCreated} like(s)`
+        : botError
+          ? `Error: ${botError}`
+          : `Skipped (0 posts, ${botLikesCreated} like(s))`;
+
+    const nowDone = Date.now();
+    await db
+      .prepare(
+        `UPDATE bot_accounts
+         SET posts_count = posts_count + ?,
+             comments_count = comments_count + ?,
+             likes_count = likes_count + ?,
+             last_run_at = ?,
+             last_run_status = ?,
+             updated_at = ?
+         WHERE uid = ?`
+      )
+      .bind(
+        botPostsCreated,
+        botCommentsCreated,
+        botLikesCreated,
+        nowDone,
+        statusText,
+        nowDone,
+        botRow.uid
+      )
+      .run();
+
+    runResults.push({
+      uid: botRow.uid,
+      botUid: botRow.uid,
+      displayName: botRow.display_name,
+      subject: botRow.subject,
+      postsCreated: botPostsCreated,
+      commentsCreated: botCommentsCreated,
+      likesCreated: botLikesCreated,
+      likesAdded: botLikesCreated,
+      geminiCallsUsed: botGeminiCalls,
+      assignedKeyIndex,
+      status: botStatus,
+      error: botError,
+    });
+
+    if (stoppedDueToAllKeysExhausted) {
+      break;
+    }
+  }
+
+  const anyErrors = runResults.some((r) => Boolean(r.error));
+  const allDailyLimit =
+    runResults.length > 0 && runResults.every((r) => r.status === 'daily_limit_reached');
+
+  let runOutcome: 'success' | 'partial' | 'quota_exhausted' | 'error' | 'daily_limit' = 'success';
+  let bannerStatus: 'success' | 'warning' | 'error' = 'success';
+  let bannerMessage = `Bot run finished: ${totalPostsCreated} post(s), ${totalCommentsCreated} comment(s), ${totalLikesCreated} like(s) published (${pool.callsThisRun} Gemini call(s) used).`;
+
+  if (stoppedDueToAllKeysExhausted || (totalPostsCreated === 0 && anyErrors)) {
+    const firstError =
+      exhaustionBannerMessage ||
+      runResults.find((r) => r.error)?.error ||
+      'Gemini API error prevented post generation.';
+    if (
+      stoppedDueToAllKeysExhausted ||
+      firstError.toLowerCase().includes('quota') ||
+      firstError.includes('429') ||
+      firstError.toLowerCase().includes('cooling down')
+    ) {
+      runOutcome = 'quota_exhausted';
+      bannerStatus = 'error';
+      const retryUntil =
+        pool.allKeysExhaustedUntil ||
+        Math.min(
+          ...pool.keyStatuses
+            .map((k) => k.cooldownUntil || Date.now() + 60_000)
+            .filter((v) => v > Date.now())
+        );
+      const retryFormatted = Number.isFinite(retryUntil)
+        ? new Date(retryUntil).toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'Asia/Karachi',
+          })
+        : 'cooldown expires';
+      bannerMessage = `Gemini quota exhausted (0 posts published). Retrying after ${retryFormatted} PKT. Full detail: ${firstError}`;
+    } else {
+      runOutcome = 'error';
+      bannerStatus = 'error';
+      bannerMessage = `Bot run published 0 posts due to errors: ${firstError}`;
+    }
+  } else if (totalPostsCreated > 0 && anyErrors) {
+    runOutcome = 'partial';
+    bannerStatus = 'warning';
+    bannerMessage = `Partial bot run: ${totalPostsCreated} post(s), ${totalCommentsCreated} comment(s), ${totalLikesCreated} like(s) published, with some errors (${pool.callsThisRun} Gemini call(s)).`;
+  } else if (totalPostsCreated === 0 && allDailyLimit) {
+    runOutcome = 'daily_limit';
+    bannerStatus = 'warning';
+    bannerMessage = `Selected bots already reached their Max 2/day post limit (${totalLikesCreated} plain D1 like(s) added, 0 Gemini calls used).`;
+  }
+
+  const summaryPayload = {
+    success: true,
+    runOutcome,
+    bannerStatus,
+    bannerMessage,
+    allKeysExhaustedUntil: pool.allKeysExhaustedUntil
+      ? new Date(pool.allKeysExhaustedUntil).toISOString()
+      : null,
+    ranAt: new Date().toISOString(),
+    triggerSource: options.triggerSource || 'manual',
+    botsProcessed: runResults.length,
+    postsCreated: totalPostsCreated,
+    commentsCreated: totalCommentsCreated,
+    likesCreated: totalLikesCreated,
+    likesAdded: totalLikesCreated,
+    geminiCallsLastRun: pool.callsThisRun,
+    geminiCallsToday: getTotalGeminiCallsToday(pool),
+    geminiKeysCount: apiKeys.length,
+    geminiModel: model,
+    geminiFallbackModel: fallbackModel,
+    keyStatuses: toPublicKeyStatusList(pool, BOARDLY_BOT_ACCOUNTS.length),
+    results: runResults,
+  };
+
+  await saveD1BotKeyPoolAndSummary(db, pool, summaryPayload);
+
+  return {
+    httpStatus: 200,
+    payload: summaryPayload,
+  };
 }
 
 export default {
@@ -1219,32 +2022,939 @@ ${urls
       return jsonResponse({ error: 'Announcement endpoint not found' }, 404, cors);
     }
 
-    // 2c. API Routes under /api/bots (12 Subject Bots + Daily Cron Runner + Admin Controls)
+    // 2b-questions. API Routes under /api/questions (D1 Question Bank for Legacy, Bank1, Bank2)
+    if (url.pathname.startsWith('/api/questions')) {
+      if (!env.DB) {
+        return jsonResponse({ success: false, error: 'D1 binding (DB) is missing' }, 503, cors);
+      }
+      const qSub = url.pathname.slice('/api/questions'.length).replace(/\/+$/, '') || '/';
+      const user = await verifyFirebaseIdToken(req, env).catch(() => null);
+      const isStrictQuestionAdmin = Boolean(
+        user && String(user.email || '').trim().toLowerCase() === 'shsvirtualadmin@gmail.com'
+      );
+
+      const normalizeSubSlug = (raw: string): string => {
+        const s = String(raw || '').trim().toLowerCase();
+        if (!s || s === 'all') return s;
+        if (s.includes('math')) return 'mathematics';
+        if (s.includes('phys')) return 'physics';
+        if (s.includes('chem')) return 'chemistry';
+        if (s.includes('comp') || s === 'cs' || s === 'it') return 'computer-science';
+        if (s.includes('eng')) return 'english';
+        if (s.includes('bio')) return 'biology';
+        if (s.includes('analyt') || s.includes('iq') || s.includes('logic')) return 'analytical-reasoning';
+        return s.replace(/[^a-z0-9-]+/g, '-');
+      };
+
+      const rowToQuestionDto = (r: Record<string, any>, includeSecretKey: boolean) => {
+        let parsedOptions: string[] = ['', '', '', ''];
+        try {
+          const parsed = typeof r.options_json === 'string' ? JSON.parse(r.options_json) : r.options;
+          if (Array.isArray(parsed) && parsed.length >= 4) {
+            parsedOptions = [
+              String(parsed[0] ?? ''),
+              String(parsed[1] ?? ''),
+              String(parsed[2] ?? ''),
+              String(parsed[3] ?? ''),
+            ];
+          }
+        } catch {
+          parsedOptions = ['', '', '', ''];
+        }
+
+        const baseDto: Record<string, any> = {
+          id: String(r.id),
+          sourceId: String(r.bank_id || 'legacy'),
+          bank_id: String(r.bank_id || 'legacy'),
+          subject: String(r.subject || 'mathematics'),
+          topic: String(r.topic || 'General Concepts'),
+          chapter: String(r.topic || 'General Concepts'),
+          difficulty: String(r.difficulty || 'medium'),
+          status: String(r.status || 'published'),
+          active: String(r.status || 'published') === 'published',
+          needs_review: Number(r.needs_review || 0),
+          needsReview: Boolean(r.needs_review),
+          question_text: String(r.question_text || ''),
+          q: String(r.question_text || ''),
+          question: String(r.question_text || ''),
+          stem: String(r.question_text || ''),
+          options: parsedOptions,
+          source_path: String(r.source_path || ''),
+          created_at: Number(r.created_at || Date.now()),
+          updated_at: Number(r.updated_at || Date.now()),
+        };
+
+        if (includeSecretKey) {
+          const cIdx = Number(r.correct_answer ?? 0);
+          const exp = String(r.explanation || '');
+          baseDto.correct_answer = cIdx;
+          baseDto.correct = cIdx;
+          baseDto.correctAnswer = cIdx;
+          baseDto.explanation = exp;
+          baseDto.explain = exp;
+        }
+
+        return baseDto;
+      };
+
+      // GET /api/questions/health or /api/questions/stats
+      if ((qSub === '/health' || qSub === '/stats') && req.method === 'GET') {
+        const t0 = Date.now();
+        const [{ results: allRows }, { results: importLogs }] = await Promise.all([
+          env.DB.prepare(
+            'SELECT id, bank_id, subject, topic, difficulty, status, needs_review, options_json, correct_answer FROM questions'
+          ).all(),
+          env.DB.prepare(
+            'SELECT bank_id, subject, imported_count, needs_review_count, imported_at FROM questions_import_log ORDER BY imported_at DESC LIMIT 100'
+          ).all(),
+        ]);
+
+        const rows = (allRows || []) as Record<string, any>[];
+        const logs = (importLogs || []) as Record<string, any>[];
+
+        const byBank: Record<string, number> = { legacy: 0, bank1: 0, bank2: 0 };
+        const needsReviewByBank: Record<string, number> = { legacy: 0, bank1: 0, bank2: 0 };
+        const byBankAndSubject: Record<string, Record<string, number>> = {
+          legacy: {},
+          bank1: {},
+          bank2: {},
+        };
+        const bySubject: Record<string, number> = {};
+        const byTopic: Record<string, Record<string, number>> = {};
+        const byChapter: Record<string, number> = {};
+        const byDifficulty = { easy: 0, medium: 0, hard: 0 };
+        const byStatus = { draft: 0, reviewed: 0, published: 0 };
+        let activeCount = 0;
+        let inactiveCount = 0;
+        let needsReviewCount = 0;
+        let invalidCorrectCount = 0;
+
+        for (const r of rows) {
+          const bId = String(r.bank_id || 'legacy');
+          const sub = String(r.subject || 'mathematics');
+          const top = String(r.topic || 'General Concepts');
+          const diff = String(r.difficulty || 'medium').toLowerCase();
+          const st = String(r.status || 'published').toLowerCase();
+          const nr = Number(r.needs_review || 0);
+
+          byBank[bId] = (byBank[bId] || 0) + 1;
+          if (!byBankAndSubject[bId]) byBankAndSubject[bId] = {};
+          byBankAndSubject[bId][sub] = (byBankAndSubject[bId][sub] || 0) + 1;
+
+          bySubject[sub] = (bySubject[sub] || 0) + 1;
+          if (!byTopic[sub]) byTopic[sub] = {};
+          byTopic[sub][top] = (byTopic[sub][top] || 0) + 1;
+          byChapter[top] = (byChapter[top] || 0) + 1;
+
+          if (diff === 'easy') byDifficulty.easy++;
+          else if (diff === 'hard') byDifficulty.hard++;
+          else byDifficulty.medium++;
+
+          if (st === 'draft') {
+            byStatus.draft++;
+            inactiveCount++;
+          } else if (st === 'reviewed') {
+            byStatus.reviewed++;
+            activeCount++;
+          } else {
+            byStatus.published++;
+            activeCount++;
+          }
+
+          if (nr === 1) {
+            needsReviewCount++;
+            needsReviewByBank[bId] = (needsReviewByBank[bId] || 0) + 1;
+          }
+
+          const cAns = Number(r.correct_answer);
+          if (!Number.isInteger(cAns) || cAns < 0 || cAns > 3) {
+            invalidCorrectCount++;
+          }
+        }
+
+        const lastImportAtByBank: Record<string, string | null> = {
+          legacy: null,
+          bank1: null,
+          bank2: null,
+        };
+        let overallLastImportMs = 0;
+        for (const l of logs) {
+          const bId = String(l.bank_id || 'legacy');
+          const ts = Number(l.imported_at || 0);
+          if (ts > 0 && !lastImportAtByBank[bId]) {
+            lastImportAtByBank[bId] = new Date(ts).toISOString();
+          }
+          if (ts > overallLastImportMs) overallLastImportMs = ts;
+        }
+
+        const latencyMs = Math.max(1, Date.now() - t0);
+        const bankMeta = [
+          { id: 'legacy', name: 'Core Bank' },
+          { id: 'bank1', name: 'Alpha Bank' },
+          { id: 'bank2', name: 'Beta Bank' },
+        ];
+
+        const banks = bankMeta.map((bm) => ({
+          id: bm.id,
+          name: bm.name,
+          healthy: true,
+          status: 'healthy',
+          latencyMs,
+          questionCount: byBank[bm.id] || 0,
+          needsReviewCount: needsReviewByBank[bm.id] || 0,
+          bySubject: byBankAndSubject[bm.id] || {},
+          lastImportAt:
+            lastImportAtByBank[bm.id] ||
+            (overallLastImportMs > 0 ? new Date(overallLastImportMs).toISOString() : null),
+          checkedAt: new Date().toISOString(),
+        }));
+
+        return jsonResponse(
+          {
+            success: true,
+            storageEngine: 'cloudflare-d1',
+            databaseName: 'boardly-posts-db',
+            totalQuestions: rows.length,
+            activeCount,
+            inactiveCount,
+            needsReviewCount,
+            invalidCorrectCount,
+            duplicatesDetected: 0,
+            openReportsCount: 0,
+            byBank,
+            byBankAndSubject,
+            bySubject,
+            byTopic,
+            byChapter,
+            byDifficulty,
+            byStatus,
+            lastImportAt: {
+              ...lastImportAtByBank,
+              overall: overallLastImportMs > 0 ? new Date(overallLastImportMs).toISOString() : null,
+            },
+            banks,
+          },
+          200,
+          { ...cors, 'Cache-Control': 'no-store' }
+        );
+      }
+
+      // GET /api/questions/ids — Lightweight list of published question IDs for a subject
+      if (qSub === '/ids' && req.method === 'GET') {
+        const rawSub = url.searchParams.get('subject') || '';
+        const subject = normalizeSubSlug(rawSub);
+        const bank = (url.searchParams.get('bank') || url.searchParams.get('bank_id') || 'all').trim();
+        const topic = (url.searchParams.get('topic') || '').trim();
+        const difficulty = (url.searchParams.get('difficulty') || '').trim().toLowerCase();
+
+        const clauses: string[] = ["status = 'published'"];
+        const binds: any[] = [];
+
+        if (subject && subject !== 'all') {
+          clauses.push('subject = ?');
+          binds.push(subject);
+        }
+        if (bank && bank !== 'all') {
+          clauses.push('bank_id = ?');
+          binds.push(bank);
+        }
+        if (topic && topic !== 'all') {
+          clauses.push('LOWER(topic) = LOWER(?)');
+          binds.push(topic);
+        }
+        if (difficulty && difficulty !== 'all' && difficulty !== 'mixed') {
+          clauses.push('difficulty = ?');
+          binds.push(difficulty);
+        }
+
+        const sql = `SELECT id FROM questions WHERE ${clauses.join(' AND ')} ORDER BY created_at DESC LIMIT 5000`;
+        const { results } = await env.DB.prepare(sql).bind(...binds).all();
+        const ids = (results || []).map((r: any) => String(r.id));
+        return jsonResponse({ success: true, subject, ids, count: ids.length }, 200, cors);
+      }
+
+      // POST /api/questions/verify — Student answer verification (returns correct_answer ONLY after submitting an answer)
+      if (qSub === '/verify' && req.method === 'POST') {
+        const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+        const answersInput: Array<{
+          questionId: string;
+          selectedAnswer: number | null;
+          displayedOptions?: string[];
+        }> = [];
+
+        if (Array.isArray(body.answers)) {
+          for (const item of body.answers) {
+            if (item && typeof item.questionId === 'string') {
+              answersInput.push({
+                questionId: item.questionId,
+                selectedAnswer:
+                  typeof item.selectedAnswer === 'number'
+                    ? item.selectedAnswer
+                    : typeof item.selectedOption === 'number'
+                    ? item.selectedOption
+                    : null,
+                displayedOptions: Array.isArray(item.displayedOptions)
+                  ? item.displayedOptions
+                  : Array.isArray(item.options)
+                  ? item.options
+                  : undefined,
+              });
+            }
+          }
+        } else if (typeof body.questionId === 'string' && body.selectedAnswer !== undefined) {
+          answersInput.push({
+            questionId: body.questionId,
+            selectedAnswer: typeof body.selectedAnswer === 'number' ? body.selectedAnswer : null,
+            displayedOptions: Array.isArray(body.displayedOptions) ? body.displayedOptions : undefined,
+          });
+        } else {
+          return jsonResponse(
+            {
+              success: false,
+              error: 'A submitted answer (questionId and selectedAnswer, or answers array) is required to verify.',
+            },
+            400,
+            cors
+          );
+        }
+
+        const resultsMap: Record<
+          string,
+          {
+            questionId: string;
+            correct_answer: number;
+            correctIndex: number;
+            correctOptionText: string;
+            selectedAnswer: number | null;
+            isCorrect: boolean;
+            explanation: string;
+          }
+        > = {};
+
+        for (const ans of answersInput) {
+          const qId = ans.questionId.trim();
+          const bareId = qId.includes(':') ? qId.slice(qId.indexOf(':') + 1) : qId;
+          const row = await env.DB.prepare(
+            'SELECT * FROM questions WHERE id = ? OR id LIKE ? LIMIT 1'
+          )
+            .bind(qId, `%:${bareId}`)
+            .first<Record<string, any>>();
+
+          if (!row) continue;
+
+          let storedOptions: string[] = ['', '', '', ''];
+          try {
+            const parsed = JSON.parse(String(row.options_json || '[]'));
+            if (Array.isArray(parsed)) storedOptions = parsed.map((o) => String(o ?? ''));
+          } catch {}
+
+          const storedCorrectIdx = Number(row.correct_answer ?? 0);
+          const correctOptionText = String(storedOptions[storedCorrectIdx] ?? '');
+
+          // If the student's test runner shuffled the displayed options, match by option text first
+          let effectiveCorrectIdx = storedCorrectIdx;
+          if (Array.isArray(ans.displayedOptions) && ans.displayedOptions.length >= 2 && correctOptionText) {
+            const normTarget = correctOptionText.trim();
+            const foundIdx = ans.displayedOptions.findIndex(
+              (o) => String(o || '').trim() === normTarget
+            );
+            if (foundIdx !== -1) {
+              effectiveCorrectIdx = foundIdx;
+            }
+          }
+
+          const isCorrect =
+            typeof ans.selectedAnswer === 'number' && ans.selectedAnswer === effectiveCorrectIdx;
+
+          resultsMap[ans.questionId] = {
+            questionId: ans.questionId,
+            correct_answer: effectiveCorrectIdx,
+            correctIndex: effectiveCorrectIdx,
+            correctOptionText,
+            selectedAnswer: ans.selectedAnswer,
+            isCorrect,
+            explanation: String(row.explanation || ''),
+          };
+        }
+
+        const singleResult =
+          answersInput.length === 1 ? resultsMap[answersInput[0].questionId] || null : null;
+
+        return jsonResponse(
+          {
+            success: true,
+            ...(singleResult || {}),
+            results: resultsMap,
+          },
+          200,
+          cors
+        );
+      }
+
+      // PUT /api/questions/batch — Admin-only batch update (move topic, rename topic, status, fix misfiled)
+      if (qSub === '/batch' && (req.method === 'PUT' || req.method === 'POST')) {
+        if (!user) {
+          return jsonResponse({ success: false, error: 'Authentication required' }, 401, cors);
+        }
+        if (!isStrictQuestionAdmin) {
+          return jsonResponse(
+            { success: false, error: 'Forbidden: Only shsvirtualadmin@gmail.com may modify questions' },
+            403,
+            cors
+          );
+        }
+
+        const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+        const action = String(body.action || 'update');
+        const now = Date.now();
+
+        if (action === 'rename_topic') {
+          const subject = normalizeSubSlug(String(body.subject || ''));
+          const oldTopic = String(body.oldTopic || '').trim();
+          const newTopic = String(body.newTopic || '').trim();
+          if (!subject || !oldTopic || !newTopic) {
+            return jsonResponse({ success: false, error: 'Missing subject, oldTopic, or newTopic' }, 400, cors);
+          }
+          const res = await env.DB.prepare(
+            'UPDATE questions SET topic = ?, updated_at = ? WHERE subject = ? AND topic = ?'
+          )
+            .bind(newTopic, now, subject, oldTopic)
+            .run();
+          return jsonResponse({ success: true, updated: Number(res.meta?.changes ?? 0) }, 200, cors);
+        }
+
+        const ids: string[] = Array.isArray(body.ids) ? body.ids.map(String) : [];
+        if (ids.length === 0) {
+          return jsonResponse({ success: false, error: 'No question IDs provided' }, 400, cors);
+        }
+
+        let updatedCount = 0;
+        for (const rawId of ids) {
+          const bareId = rawId.includes(':') ? rawId.slice(rawId.indexOf(':') + 1) : rawId;
+          const existing = await env.DB.prepare(
+            'SELECT * FROM questions WHERE id = ? OR id LIKE ? LIMIT 1'
+          )
+            .bind(rawId, `%:${bareId}`)
+            .first<Record<string, any>>();
+          if (!existing) continue;
+
+          const nextTopic = body.topic !== undefined ? String(body.topic).trim() : existing.topic;
+          const nextSubject =
+            body.subject !== undefined ? normalizeSubSlug(String(body.subject)) : existing.subject;
+          const nextStatus =
+            body.status !== undefined
+              ? String(body.status).toLowerCase()
+              : body.active === false
+              ? 'draft'
+              : body.active === true
+              ? 'published'
+              : existing.status;
+
+          await env.DB.prepare(
+            'UPDATE questions SET subject = ?, topic = ?, status = ?, updated_at = ? WHERE id = ?'
+          )
+            .bind(nextSubject, nextTopic, nextStatus, now, existing.id)
+            .run();
+          updatedCount++;
+        }
+
+        return jsonResponse({ success: true, updated: updatedCount }, 200, cors);
+      }
+
+      // GET /api/questions — List, filter, search, or fetch by IDs
+      if (qSub === '/' && req.method === 'GET') {
+        const bank = (url.searchParams.get('bank') || url.searchParams.get('bank_id') || 'all').trim();
+        const rawSub = (url.searchParams.get('subject') || 'all').trim();
+        const subject = normalizeSubSlug(rawSub);
+        const topic = (url.searchParams.get('topic') || url.searchParams.get('chapter') || 'all').trim();
+        const difficulty = (url.searchParams.get('difficulty') || 'all').trim().toLowerCase();
+        const statusParam = (url.searchParams.get('status') || 'all').trim().toLowerCase();
+        const needsReviewParam = url.searchParams.get('needs_review');
+        const search = (url.searchParams.get('search') || url.searchParams.get('q') || '').trim().toLowerCase();
+        const idsParam = (url.searchParams.get('ids') || '').trim();
+        const limitCount = Math.min(Math.max(Number(url.searchParams.get('limit')) || 50, 1), 1000);
+        const pageIndex = Math.max(Number(url.searchParams.get('page')) || 0, 0);
+        const offset =
+          url.searchParams.get('offset') !== null
+            ? Math.max(Number(url.searchParams.get('offset')) || 0, 0)
+            : pageIndex * limitCount;
+
+        // If specific IDs requested (e.g. test runner loading questions by ID)
+        if (idsParam) {
+          const requestedIds = idsParam
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const matchedQuestions: Record<string, any>[] = [];
+          for (const reqId of requestedIds) {
+            const bareId = reqId.includes(':') ? reqId.slice(reqId.indexOf(':') + 1) : reqId;
+            const row = await env.DB.prepare(
+              'SELECT * FROM questions WHERE id = ? OR id LIKE ? LIMIT 1'
+            )
+              .bind(reqId, `%:${bareId}`)
+              .first<Record<string, any>>();
+            if (!row) continue;
+            if (!isStrictQuestionAdmin && String(row.status) !== 'published') continue;
+            const dto = rowToQuestionDto(row, isStrictQuestionAdmin);
+            dto.id = reqId;
+            matchedQuestions.push(dto);
+          }
+          return jsonResponse(
+            {
+              success: true,
+              questions: matchedQuestions,
+              total: matchedQuestions.length,
+              hasMore: false,
+            },
+            200,
+            cors
+          );
+        }
+
+        const clauses: string[] = [];
+        const binds: any[] = [];
+
+        if (!isStrictQuestionAdmin) {
+          clauses.push("status = 'published'");
+        } else if (statusParam && statusParam !== 'all') {
+          clauses.push('status = ?');
+          binds.push(statusParam);
+        }
+
+        if (bank && bank !== 'all') {
+          clauses.push('bank_id = ?');
+          binds.push(bank);
+        }
+        if (subject && subject !== 'all') {
+          clauses.push('subject = ?');
+          binds.push(subject);
+        }
+        if (topic && topic !== 'all') {
+          clauses.push('LOWER(topic) = LOWER(?)');
+          binds.push(topic);
+        }
+        if (difficulty && difficulty !== 'all' && difficulty !== 'mixed') {
+          clauses.push('difficulty = ?');
+          binds.push(difficulty);
+        }
+        if (needsReviewParam === '1' || needsReviewParam === 'true') {
+          clauses.push('needs_review = 1');
+        } else if (needsReviewParam === '0' || needsReviewParam === 'false') {
+          clauses.push('needs_review = 0');
+        }
+        if (search) {
+          clauses.push(
+            '(LOWER(question_text) LIKE ? OR LOWER(topic) LIKE ? OR LOWER(id) LIKE ? OR LOWER(options_json) LIKE ?)'
+          );
+          const likeTerm = `%${search}%`;
+          binds.push(likeTerm, likeTerm, likeTerm, likeTerm);
+        }
+
+        const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+        const countRow = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM questions ${whereSql}`)
+          .bind(...binds)
+          .first<{ cnt: number }>();
+        const total = Number(countRow?.cnt ?? 0);
+
+        const { results } = await env.DB.prepare(
+          `SELECT * FROM questions ${whereSql} ORDER BY updated_at DESC, id ASC LIMIT ? OFFSET ?`
+        )
+          .bind(...binds, limitCount, offset)
+          .all();
+
+        const questions = (results || []).map((r: any) =>
+          rowToQuestionDto(r, isStrictQuestionAdmin)
+        );
+
+        return jsonResponse(
+          {
+            success: true,
+            questions,
+            total,
+            limit: limitCount,
+            offset,
+            hasMore: offset + questions.length < total,
+          },
+          200,
+          cors
+        );
+      }
+
+      // POST /api/questions — Admin-only Create or Batch Import
+      if (qSub === '/' && req.method === 'POST') {
+        if (!user) {
+          return jsonResponse({ success: false, error: 'Authentication required' }, 401, cors);
+        }
+        if (!isStrictQuestionAdmin) {
+          return jsonResponse(
+            { success: false, error: 'Forbidden: Only shsvirtualadmin@gmail.com may create or import questions' },
+            403,
+            cors
+          );
+        }
+
+        const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+        const rawItems: Record<string, any>[] = Array.isArray(body.questions)
+          ? body.questions
+          : [body];
+
+        const now = Date.now();
+        let importedCount = 0;
+        let duplicatesSkipped = 0;
+        const createdQuestions: Record<string, any>[] = [];
+        const errors: string[] = [];
+
+        for (const item of rawItems) {
+          const bankId = String(item.bank_id || item.sourceId || body.bank_id || body.sourceId || 'bank2').trim();
+          const subject = normalizeSubSlug(String(item.subject || body.subject || 'mathematics'));
+          const topic = String(item.topic || item.chapter || body.topic || 'General Concepts').trim() || 'General Concepts';
+          const difficulty = String(item.difficulty || 'medium').trim().toLowerCase();
+          const status = String(item.status || 'published').trim().toLowerCase();
+          const rawQ = String(item.question_text || item.text || item.q || item.question || '').trim();
+          const rawOpts = Array.isArray(item.options)
+            ? item.options.map((o: any) => String(o ?? ''))
+            : ['', '', '', ''];
+          const rawExp = String(item.explanation || item.explain || '').trim();
+
+          if (!rawQ || rawOpts.length < 4 || rawOpts.slice(0, 4).some((o: string) => !o.trim())) {
+            errors.push('Question text and 4 non-empty options are required.');
+            continue;
+          }
+
+          const katexRes = validateAndNormalizeQuestionMath(rawQ, rawOpts, rawExp);
+          const correctAns = Number(
+            item.correct_answer !== undefined
+              ? item.correct_answer
+              : item.correct !== undefined
+              ? item.correct
+              : item.correctAnswer ?? 0
+          );
+          const validCorrect = Number.isInteger(correctAns) && correctAns >= 0 && correctAns <= 3;
+          const needsReview = !katexRes.valid || !validCorrect || Boolean(item.needs_review) ? 1 : 0;
+
+          // Compute deterministic hash for ID if not provided
+          const hashInput = `${subject}::${katexRes.questionText}::${katexRes.options.join('||')}`;
+          const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(hashInput));
+          const hashHex = Array.from(new Uint8Array(hashBuf))
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('')
+            .slice(0, 20);
+
+          const rawId = item.id ? String(item.id).trim() : `pool_${subject}_${hashHex}`;
+          const bareId = rawId.includes(':') ? rawId.slice(rawId.indexOf(':') + 1) : rawId;
+          const finalId = `${bankId}:${bareId}`;
+          const sourcePath = String(
+            item.source_path || `questions_${subject.replace(/-/g, '_')}/${bareId}`
+          );
+
+          if (Array.isArray(body.questions)) {
+            const exists = await env.DB.prepare(
+              'SELECT id FROM questions WHERE id = ? OR (bank_id = ? AND source_path = ?) LIMIT 1'
+            )
+              .bind(finalId, bankId, sourcePath)
+              .first();
+            if (exists) {
+              duplicatesSkipped++;
+              continue;
+            }
+          }
+
+          await env.DB.prepare(
+            `INSERT OR REPLACE INTO questions (
+              id, bank_id, subject, topic, difficulty, status, needs_review,
+              question_text, options_json, correct_answer, explanation, source_path,
+              created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+            .bind(
+              finalId,
+              bankId,
+              subject,
+              topic,
+              difficulty,
+              status,
+              needsReview,
+              katexRes.questionText,
+              JSON.stringify(katexRes.options),
+              validCorrect ? correctAns : 0,
+              katexRes.explanation,
+              sourcePath,
+              now,
+              now
+            )
+            .run();
+
+          importedCount++;
+          const savedRow = await env.DB.prepare('SELECT * FROM questions WHERE id = ? LIMIT 1')
+            .bind(finalId)
+            .first<Record<string, any>>();
+          if (savedRow) {
+            createdQuestions.push(rowToQuestionDto(savedRow, true));
+          }
+        }
+
+        if (importedCount > 0 && Array.isArray(body.questions)) {
+          const bankId = String(body.bank_id || body.sourceId || 'bank2');
+          const subject = normalizeSubSlug(String(body.subject || 'mathematics'));
+          await env.DB.prepare(
+            `INSERT INTO questions_import_log (
+              id, bank_id, subject, total_read, imported_count, needs_review_count, source_type, imported_at
+            ) VALUES (?, ?, ?, ?, ?, 0, 'admin_import', ?)`
+          )
+            .bind(
+              `import_${bankId}_${subject}_${now}`,
+              bankId,
+              subject,
+              rawItems.length,
+              importedCount,
+              now
+            )
+            .run();
+        }
+
+        if (!Array.isArray(body.questions) && createdQuestions.length === 0) {
+          return jsonResponse(
+            { success: false, error: errors[0] || 'Invalid question payload' },
+            400,
+            cors
+          );
+        }
+
+        return jsonResponse(
+          {
+            success: true,
+            question: createdQuestions[0] || null,
+            imported: importedCount,
+            duplicatesSkipped,
+            errors,
+          },
+          201,
+          cors
+        );
+      }
+
+      // Single question routes: GET / PUT / PATCH / DELETE /api/questions/:id
+      const targetId = decodeURIComponent(qSub.slice(1));
+      if (targetId) {
+        const bareId = targetId.includes(':') ? targetId.slice(targetId.indexOf(':') + 1) : targetId;
+
+        if (req.method === 'GET') {
+          const row = await env.DB.prepare(
+            'SELECT * FROM questions WHERE id = ? OR id LIKE ? LIMIT 1'
+          )
+            .bind(targetId, `%:${bareId}`)
+            .first<Record<string, any>>();
+          if (!row || (!isStrictQuestionAdmin && String(row.status) !== 'published')) {
+            return jsonResponse({ success: false, error: 'Question not found' }, 404, cors);
+          }
+          return jsonResponse(
+            {
+              success: true,
+              question: rowToQuestionDto(row, isStrictQuestionAdmin),
+            },
+            200,
+            cors
+          );
+        }
+
+        if (req.method === 'PUT' || req.method === 'PATCH') {
+          if (!user) {
+            return jsonResponse({ success: false, error: 'Authentication required' }, 401, cors);
+          }
+          if (!isStrictQuestionAdmin) {
+            return jsonResponse(
+              { success: false, error: 'Forbidden: Only shsvirtualadmin@gmail.com may update questions' },
+              403,
+              cors
+            );
+          }
+
+          const existing = await env.DB.prepare(
+            'SELECT * FROM questions WHERE id = ? OR id LIKE ? LIMIT 1'
+          )
+            .bind(targetId, `%:${bareId}`)
+            .first<Record<string, any>>();
+          if (!existing) {
+            return jsonResponse({ success: false, error: 'Question not found' }, 404, cors);
+          }
+
+          const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+          let existingOpts: string[] = ['', '', '', ''];
+          try {
+            existingOpts = JSON.parse(String(existing.options_json || '[]'));
+          } catch {}
+
+          const nextSubject =
+            body.subject !== undefined ? normalizeSubSlug(String(body.subject)) : existing.subject;
+          const nextTopic =
+            body.topic !== undefined || body.chapter !== undefined
+              ? String(body.topic ?? body.chapter).trim()
+              : existing.topic;
+          const nextDifficulty =
+            body.difficulty !== undefined
+              ? String(body.difficulty).trim().toLowerCase()
+              : existing.difficulty;
+          const nextStatus =
+            body.status !== undefined
+              ? String(body.status).trim().toLowerCase()
+              : existing.status;
+
+          const rawQ =
+            body.question_text !== undefined || body.text !== undefined || body.q !== undefined
+              ? String(body.question_text ?? body.text ?? body.q)
+              : String(existing.question_text);
+          const rawOpts = Array.isArray(body.options)
+            ? body.options.map((o: any) => String(o ?? ''))
+            : existingOpts;
+          const rawExp =
+            body.explanation !== undefined || body.explain !== undefined
+              ? String(body.explanation ?? body.explain)
+              : String(existing.explanation || '');
+
+          const katexRes = validateAndNormalizeQuestionMath(rawQ, rawOpts, rawExp);
+          const nextCorrect =
+            body.correct_answer !== undefined || body.correct !== undefined || body.correctAnswer !== undefined
+              ? Number(body.correct_answer ?? body.correct ?? body.correctAnswer)
+              : Number(existing.correct_answer ?? 0);
+          const needsReview =
+            body.needs_review !== undefined
+              ? Number(body.needs_review ? 1 : 0)
+              : !katexRes.valid
+              ? 1
+              : 0;
+          const now = Date.now();
+
+          await env.DB.prepare(
+            `UPDATE questions
+             SET subject = ?, topic = ?, difficulty = ?, status = ?, needs_review = ?,
+                 question_text = ?, options_json = ?, correct_answer = ?, explanation = ?, updated_at = ?
+             WHERE id = ?`
+          )
+            .bind(
+              nextSubject,
+              nextTopic,
+              nextDifficulty,
+              nextStatus,
+              needsReview,
+              katexRes.questionText,
+              JSON.stringify(katexRes.options),
+              nextCorrect,
+              katexRes.explanation,
+              now,
+              existing.id
+            )
+            .run();
+
+          const updated = await env.DB.prepare('SELECT * FROM questions WHERE id = ? LIMIT 1')
+            .bind(existing.id)
+            .first<Record<string, any>>();
+          return jsonResponse(
+            {
+              success: true,
+              question: updated ? rowToQuestionDto(updated, true) : null,
+            },
+            200,
+            cors
+          );
+        }
+
+        if (req.method === 'DELETE') {
+          if (!user) {
+            return jsonResponse({ success: false, error: 'Authentication required' }, 401, cors);
+          }
+          if (!isStrictQuestionAdmin) {
+            return jsonResponse(
+              { success: false, error: 'Forbidden: Only shsvirtualadmin@gmail.com may delete questions' },
+              403,
+              cors
+            );
+          }
+
+          const existing = await env.DB.prepare(
+            'SELECT id FROM questions WHERE id = ? OR id LIKE ? LIMIT 1'
+          )
+            .bind(targetId, `%:${bareId}`)
+            .first<{ id: string }>();
+          if (!existing) {
+            return jsonResponse({ success: false, error: 'Question not found' }, 404, cors);
+          }
+
+          await env.DB.prepare('DELETE FROM questions WHERE id = ?').bind(existing.id).run();
+          return jsonResponse({ success: true, deletedId: existing.id }, 200, cors);
+        }
+      }
+
+      return jsonResponse({ error: 'Questions endpoint not found' }, 404, cors);
+    }
+
+    // 2c. API Routes under /api/bots (12 Subject Bots + Scheduled/Manual Runner + Multi-Key Pool + Admin Controls)
     if (url.pathname.startsWith('/api/bots')) {
       if (!env.DB) {
         return jsonResponse({ success: false, error: 'D1 binding (DB) is missing' }, 503, cors);
       }
       const botSub = url.pathname.slice('/api/bots'.length).replace(/\/+$/, '') || '/';
 
-      // GET /api/bots — List all 12 bots, stats, and configuration status
+      // GET /api/bots — List all 12 bots, daily limits, multi-key pool status, call counters, and last run summary
       if (botSub === '/' && req.method === 'GET') {
-        const { results } = await env.DB.prepare(
-          'SELECT * FROM bot_accounts ORDER BY uid ASC'
-        ).all();
+        const now = Date.now();
+        const dateKey = new Date(now).toISOString().slice(0, 10);
+        const startOfUtcDayMs = Date.UTC(
+          new Date(now).getUTCFullYear(),
+          new Date(now).getUTCMonth(),
+          new Date(now).getUTCDate()
+        );
+
+        const [{ results }, { results: rateRows }, { results: todayPostRows }, poolAndSummary] =
+          await Promise.all([
+            env.DB.prepare('SELECT * FROM bot_accounts ORDER BY uid ASC').all(),
+            env.DB.prepare("SELECT rate_key, count FROM rate_limits WHERE rate_key LIKE ?")
+              .bind(`bot_daily:%:${dateKey}`)
+              .all(),
+            env.DB.prepare(
+              "SELECT author_uid, COUNT(*) as cnt FROM posts WHERE (author_role = 'bot' OR author_uid LIKE 'bot_%') AND created_at >= ? GROUP BY author_uid"
+            )
+              .bind(startOfUtcDayMs)
+              .all(),
+            loadD1BotKeyPoolAndSummary(env.DB, env),
+          ]);
 
         const dbMap = new Map<string, Record<string, any>>();
         for (const r of results || []) {
           dbMap.set(String((r as any).uid), r as Record<string, any>);
         }
 
-        const bots = BOARDLY_BOT_ACCOUNTS.map((cfg) => {
+        const dailyCountMap = new Map<string, number>();
+        for (const rr of rateRows || []) {
+          const rk = String((rr as any).rate_key || '');
+          const parts = rk.split(':');
+          if (parts.length >= 3) {
+            dailyCountMap.set(parts[1], Number((rr as any).count || 0));
+          }
+        }
+        for (const pr of todayPostRows || []) {
+          const u = String((pr as any).author_uid || '');
+          const c = Number((pr as any).cnt || 0);
+          dailyCountMap.set(u, Math.max(dailyCountMap.get(u) || 0, c));
+        }
+
+        const { pool, lastRunSummary } = poolAndSummary;
+        const { primaryModel, fallbackModel } = resolvePinnedGeminiModels(
+          env.GEMINI_MODEL,
+          env.GEMINI_FALLBACK_MODEL
+        );
+        const numKeys = pool.keys.length;
+
+        const bots = BOARDLY_BOT_ACCOUNTS.map((cfg, idx) => {
           const row = dbMap.get(cfg.uid);
           const postCount = Number(row?.post_count || 0);
           const commentCount = Number(row?.comment_count || 0);
           const likeCount = Number(row?.like_count || 0);
           const lastStatus = row?.last_status || 'Ready';
+          const postsToday = dailyCountMap.get(cfg.uid) || 0;
           return {
             uid: cfg.uid,
+            botIndex: idx + 1,
+            assignedKeyLabel: numKeys > 0 ? `Key #${(idx % numKeys) + 1}` : 'No key',
             username: cfg.placeholderName,
             placeholderName: cfg.placeholderName,
             displayName: row?.display_name || cfg.displayName,
@@ -1256,6 +2966,7 @@ ${urls
             equippedAvatar: row?.equipped_avatar || cfg.equippedAvatar,
             bio: cfg.bio,
             dailyPostLimit: 2,
+            postsToday,
             role: 'bot',
             enabled: row ? Boolean(row.enabled) : true,
             postCount,
@@ -1274,11 +2985,28 @@ ${urls
           {
             success: true,
             bots,
-            geminiConfigured: Boolean(env.GEMINI_API_KEY),
+            geminiConfigured: numKeys > 0,
+            geminiKeysCount: numKeys,
             botRunSecretConfigured: Boolean(env.BOT_RUN_SECRET),
+            geminiKeys: {
+              totalConfigured: numKeys,
+              activeModel: primaryModel,
+              fallbackModel,
+              lastUsedKeyIndex: pool.lastUsedKeyIndex >= 0 ? pool.lastUsedKeyIndex + 1 : null,
+              allKeysExhaustedUntil: pool.allKeysExhaustedUntil
+                ? new Date(pool.allKeysExhaustedUntil).toISOString()
+                : null,
+              allKeysExhaustedUntilMs: pool.allKeysExhaustedUntil,
+              callsLastRun: pool.callsLastRun,
+              callsToday: pool.callsToday,
+              keys: toPublicKeyStatusList(pool),
+            },
+            lastRunSummary,
             config: {
-              geminiKeyConfigured: Boolean(env.GEMINI_API_KEY),
-              geminiModel: env.GEMINI_MODEL || 'gemini-3.5-flash',
+              geminiKeyConfigured: numKeys > 0,
+              geminiKeysCount: numKeys,
+              geminiModel: primaryModel,
+              geminiFallbackModel: fallbackModel,
               botRunSecretConfigured: Boolean(env.BOT_RUN_SECRET),
             },
           },
@@ -1287,7 +3015,7 @@ ${urls
         );
       }
 
-      // POST /api/bots/run — Execute daily or manual bot run (Secured by BOT_RUN_SECRET or Superadmin JWT)
+      // POST /api/bots/run — Execute scheduled or manual bot run (Secured by BOT_RUN_SECRET or Superadmin JWT)
       if (botSub === '/run' && req.method === 'POST') {
         const secretHeader =
           (req.headers.get('x-bot-run-secret') || '').trim() ||
@@ -1315,323 +3043,117 @@ ${urls
           );
         }
 
-        const apiKey = (env.GEMINI_API_KEY || '').trim();
-        if (!apiKey) {
-          return jsonResponse(
-            {
-              success: false,
-              error: 'GEMINI_API_KEY secret is not configured in Cloudflare environment.',
-            },
-            500,
-            cors
-          );
-        }
-
         const body = (await req.json().catch(() => ({}))) as {
           botUid?: string;
+          maxBots?: number;
           postsPerBot?: number;
-          force?: boolean;
+          trigger?: string;
         };
-        const targetBotUid = (body.botUid || '').trim();
-        const forceRun = Boolean(body.force);
-        const dateKey = new Date().toISOString().slice(0, 10);
 
-        const { results: botRows } = await env.DB.prepare(
-          'SELECT * FROM bot_accounts ORDER BY uid ASC'
-        ).all();
-        const enabledMap = new Map<string, boolean>();
-        for (const r of botRows || []) {
-          enabledMap.set(String((r as any).uid), Boolean((r as any).enabled));
-        }
-
-        const candidateBots = BOARDLY_BOT_ACCOUNTS.filter((b) => {
-          if (targetBotUid && b.uid !== targetBotUid) return false;
-          return enabledMap.get(b.uid) ?? true;
+        const runPayload = await executeD1BotRun(env.DB, env, {
+          botUid: body.botUid,
+          maxBots: body.maxBots,
+          postsPerBot: body.postsPerBot,
+          trigger: body.trigger || (isSuperAdminCaller ? 'manual-admin' : 'cron-worker'),
         });
 
-        const runResults: Array<{
-          uid: string;
-          displayName: string;
-          subject: string;
-          postsCreated: number;
-          commentsCreated: number;
-          likesCreated: number;
-          status: string;
-          postIds: string[];
-        }> = [];
-
-        for (const bot of candidateBots) {
-          let postsCreated = 0;
-          let commentsCreated = 0;
-          let likesCreated = 0;
-          const createdPostIds: string[] = [];
-          let statusMsg = 'Completed';
-
-          try {
-            // Check per-bot daily limit in rate_limits (max 2 posts/day per bot)
-            const rateKey = `bot_daily:${bot.uid}:${dateKey}`;
-            const existingRate = await env.DB.prepare(
-              'SELECT count FROM rate_limits WHERE rate_key = ?'
-            )
-              .bind(rateKey)
-              .first<{ count: number }>();
-
-            const alreadyPostedToday = Number(existingRate?.count || 0);
-            if (!forceRun && alreadyPostedToday >= 2) {
-              runResults.push({
-                uid: bot.uid,
-                displayName: bot.displayName,
-                subject: bot.subject,
-                postsCreated: 0,
-                commentsCreated: 0,
-                likesCreated: 0,
-                status: 'Skipped (daily limit 2/2 reached)',
-                postIds: [],
-              });
-              continue;
-            }
-
-            // Random delay (80ms - 220ms)
-            await new Promise((r) => setTimeout(r, 80 + Math.floor(Math.random() * 140)));
-
-            // Determine 1 or 2 posts for this bot (if running all 12 bots in one HTTP request, 1 post/bot keeps total duration fast; if single bot or requested, 1-2 posts)
-            const desiredPosts =
-              typeof body.postsPerBot === 'number'
-                ? Math.min(2, Math.max(1, body.postsPerBot))
-                : targetBotUid
-                ? 2
-                : Math.random() < 0.35
-                ? 2
-                : 1;
-            const maxAllowedNow = forceRun ? desiredPosts : Math.min(desiredPosts, 2 - alreadyPostedToday);
-
-            for (let pIdx = 0; pIdx < maxAllowedNow; pIdx++) {
-              const genRes = await generateVerifiedBotStudyPost({
-                bot,
-                apiKey,
-                model: env.GEMINI_MODEL,
-                postIndex: pIdx,
-              });
-
-              if (!genRes.post) {
-                statusMsg = genRes.discardReason || 'Skipped post';
-                continue;
-              }
-
-              const now = Date.now();
-              const postId = `post_bot_${now}_${crypto.randomUUID().slice(0, 6)}`;
-              const slug = buildSlug(postId, genRes.post.title);
-
-              await env.DB.prepare(
-                `INSERT INTO posts (
-                  id, slug, type, title, description, subject, chapter, target,
-                  class_level, board, format, tags_json, files_json, is_anonymous,
-                  anonymous_alias, author_uid, real_author_uid, author_name,
-                  author_avatar, author_frame, author_equipped_avatar, author_photo_url,
-                  author_role, author_custom_role, status, visibility, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'text', ?, '[]', 0, 'Anonymous Student', ?, ?, ?, ?, NULL, ?, NULL, 'bot', ?, 'published', 'public', ?, ?)`
-              )
-                .bind(
-                  postId,
-                  slug,
-                  genRes.post.type,
-                  genRes.post.title,
-                  genRes.post.description,
-                  bot.subject,
-                  genRes.post.chapter,
-                  bot.target,
-                  bot.classLevel,
-                  bot.board,
-                  JSON.stringify(genRes.post.tags),
-                  bot.uid,
-                  bot.uid,
-                  bot.displayName,
-                  bot.equippedAvatar,
-                  bot.equippedAvatar,
-                  `${bot.subject} Bot`,
-                  now,
-                  now
-                )
-                .run();
-
-              postsCreated++;
-              createdPostIds.push(postId);
-
-              await env.DB.prepare(
-                `INSERT INTO rate_limits (rate_key, count, window_start)
-                 VALUES (?, 1, ?)
-                 ON CONFLICT(rate_key) DO UPDATE SET count = count + 1`
-              )
-                .bind(rateKey, now)
-                .run();
-            }
-
-            // Now like 1-2 posts by other authors (humans' posts included, NEVER its own)
-            const { results: otherPosts } = await env.DB.prepare(
-              `SELECT id, title, description, subject, author_uid, real_author_uid
-               FROM posts
-               WHERE is_hidden = 0
-                 AND (author_uid IS NULL OR author_uid != ?)
-                 AND (real_author_uid IS NULL OR real_author_uid != ?)
-               ORDER BY created_at DESC
-               LIMIT 18`
-            )
-              .bind(bot.uid, bot.uid)
-              .all();
-
-            if (otherPosts && otherPosts.length > 0) {
-              const shuffled = [...otherPosts].sort(() => Math.random() - 0.5);
-              const likeTargets = shuffled.slice(0, 2);
-
-              for (const tPost of likeTargets) {
-                const targetId = String((tPost as any).id);
-                const alreadyLiked = await env.DB.prepare(
-                  'SELECT 1 FROM post_likes WHERE post_id = ? AND user_uid = ?'
-                )
-                  .bind(targetId, bot.uid)
-                  .first();
-
-                if (!alreadyLiked) {
-                  await env.DB.prepare(
-                    'INSERT OR IGNORE INTO post_likes (post_id, user_uid, created_at) VALUES (?, ?, ?)'
-                  )
-                    .bind(targetId, bot.uid, Date.now())
-                    .run();
-                  await env.DB.prepare('UPDATE posts SET upvotes = upvotes + 1 WHERE id = ?')
-                    .bind(targetId)
-                    .run();
-                  likesCreated++;
-                }
-              }
-
-              // Comment on 1 post by another author (prefer same subject if available)
-              const sameSubPost =
-                shuffled.find(
-                  (p: any) => String(p.subject || '').toLowerCase() === bot.subject.toLowerCase()
-                ) || shuffled[0];
-
-              if (sameSubPost) {
-                const cmtRes = await generateVerifiedBotComment({
-                  bot,
-                  targetPost: {
-                    title: String((sameSubPost as any).title || ''),
-                    description: String((sameSubPost as any).description || ''),
-                    subject: String((sameSubPost as any).subject || bot.subject),
-                  },
-                  apiKey,
-                  model: env.GEMINI_MODEL,
-                });
-
-                if (cmtRes.comment) {
-                  const cmtId = `cmt_bot_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`;
-                  const cmtNow = Date.now();
-                  await env.DB.prepare(
-                    `INSERT INTO post_comments (
-                      id, post_id, text, is_anonymous, author_uid, real_author_uid,
-                      author_name, author_avatar, author_frame, author_equipped_avatar,
-                      author_photo_url, author_role, author_custom_role, created_at
-                    ) VALUES (?, ?, ?, 0, ?, ?, ?, ?, NULL, ?, NULL, 'bot', ?, ?)`
-                  )
-                    .bind(
-                      cmtId,
-                      String((sameSubPost as any).id),
-                      cmtRes.comment.text,
-                      bot.uid,
-                      bot.uid,
-                      bot.displayName,
-                      bot.equippedAvatar,
-                      bot.equippedAvatar,
-                      `${bot.subject} Bot`,
-                      cmtNow
-                    )
-                    .run();
-
-                  await env.DB.prepare(
-                    'UPDATE posts SET comment_count = comment_count + 1 WHERE id = ?'
-                  )
-                    .bind(String((sameSubPost as any).id))
-                    .run();
-                  commentsCreated++;
-                }
-              }
-            }
-
-            const runNow = Date.now();
-            await env.DB.prepare(
-              `UPDATE bot_accounts
-               SET post_count = post_count + ?,
-                   comment_count = comment_count + ?,
-                   like_count = like_count + ?,
-                   last_run_at = ?,
-                   last_status = ?,
-                   updated_at = ?
-               WHERE uid = ?`
-            )
-              .bind(
-                postsCreated,
-                commentsCreated,
-                likesCreated,
-                runNow,
-                statusMsg,
-                runNow,
-                bot.uid
-              )
-              .run();
-          } catch (botErr: any) {
-            statusMsg = `Error (skipped): ${botErr?.message || String(botErr)}`;
-            await env.DB.prepare(
-              'UPDATE bot_accounts SET last_run_at = ?, last_status = ?, updated_at = ? WHERE uid = ?'
-            )
-              .bind(Date.now(), statusMsg.slice(0, 160), Date.now(), bot.uid)
-              .run()
-              .catch(() => {});
-          }
-
-          runResults.push({
-            uid: bot.uid,
-            displayName: bot.displayName,
-            subject: bot.subject,
-            postsCreated,
-            commentsCreated,
-            likesCreated,
-            status: statusMsg,
-            postIds: createdPostIds,
-          });
-        }
-
-        return jsonResponse(
-          {
-            success: true,
-            ranAt: new Date().toISOString(),
-            totalBotsProcessed: runResults.length,
-            totalPostsCreated: runResults.reduce((s, r) => s + r.postsCreated, 0),
-            totalCommentsCreated: runResults.reduce((s, r) => s + r.commentsCreated, 0),
-            totalLikesCreated: runResults.reduce((s, r) => s + r.likesCreated, 0),
-            results: runResults,
-          },
-          200,
-          cors
-        );
+        return jsonResponse(runPayload, runPayload.httpStatus || 200, cors);
       }
 
-      // POST /api/bots/delete-content — Admin deletes all bot posts, comments, and likes in one click
+      // POST /api/bots/delete-content — Admin deletes all (or one bot's) posts, comments, and likes
       if (botSub === '/delete-content' && req.method === 'POST') {
         const user = await verifyFirebaseIdToken(req, env);
         if (!user || user.role !== 'superadmin') {
           return jsonResponse({ success: false, error: 'Forbidden: superadmin only' }, 403, cors);
         }
 
+        const body = (await req.json().catch(() => ({}))) as { botUid?: string };
+        const targetBotUid = (body.botUid || '').trim();
+
+        if (targetBotUid) {
+          const [pCnt, cCnt, lCnt] = await Promise.all([
+            env.DB.prepare(
+              'SELECT COUNT(*) as cnt FROM posts WHERE author_uid = ? OR real_author_uid = ?'
+            )
+              .bind(targetBotUid, targetBotUid)
+              .first<{ cnt: number }>(),
+            env.DB.prepare(
+              'SELECT COUNT(*) as cnt FROM post_comments WHERE author_uid = ? OR real_author_uid = ?'
+            )
+              .bind(targetBotUid, targetBotUid)
+              .first<{ cnt: number }>(),
+            env.DB.prepare('SELECT COUNT(*) as cnt FROM post_likes WHERE user_uid = ?')
+              .bind(targetBotUid)
+              .first<{ cnt: number }>(),
+          ]);
+
+          await env.DB.batch([
+            env.DB.prepare(
+              'DELETE FROM posts WHERE author_uid = ? OR real_author_uid = ?'
+            ).bind(targetBotUid, targetBotUid),
+            env.DB.prepare(
+              'DELETE FROM post_comments WHERE author_uid = ? OR real_author_uid = ?'
+            ).bind(targetBotUid, targetBotUid),
+            env.DB.prepare('DELETE FROM post_likes WHERE user_uid = ?').bind(targetBotUid),
+            env.DB.prepare('DELETE FROM rate_limits WHERE rate_key LIKE ?').bind(
+              `bot_daily:${targetBotUid}:%`
+            ),
+            env.DB.prepare(
+              "UPDATE bot_accounts SET post_count = 0, comment_count = 0, like_count = 0, last_status = 'Content cleared by admin', updated_at = ? WHERE uid = ?"
+            ).bind(Date.now(), targetBotUid),
+            env.DB.prepare(
+              'UPDATE posts SET upvotes = (SELECT COUNT(*) FROM post_likes WHERE post_likes.post_id = posts.id), comment_count = (SELECT COUNT(*) FROM post_comments WHERE post_comments.post_id = posts.id)'
+            ),
+          ]);
+
+          return jsonResponse(
+            {
+              success: true,
+              deletedPosts: Number(pCnt?.cnt ?? 0),
+              deletedComments: Number(cCnt?.cnt ?? 0),
+              deletedLikes: Number(lCnt?.cnt ?? 0),
+              message: `Deleted all content for ${targetBotUid}.`,
+            },
+            200,
+            cors
+          );
+        }
+
+        const [pCnt, cCnt, lCnt] = await Promise.all([
+          env.DB.prepare(
+            "SELECT COUNT(*) as cnt FROM posts WHERE author_role = 'bot' OR author_uid LIKE 'bot_%' OR real_author_uid LIKE 'bot_%'"
+          ).first<{ cnt: number }>(),
+          env.DB.prepare(
+            "SELECT COUNT(*) as cnt FROM post_comments WHERE author_role = 'bot' OR author_uid LIKE 'bot_%' OR real_author_uid LIKE 'bot_%'"
+          ).first<{ cnt: number }>(),
+          env.DB.prepare(
+            "SELECT COUNT(*) as cnt FROM post_likes WHERE user_uid LIKE 'bot_%'"
+          ).first<{ cnt: number }>(),
+        ]);
+
         await env.DB.batch([
-          env.DB.prepare("DELETE FROM posts WHERE author_role = 'bot' OR author_uid LIKE 'bot_%' OR real_author_uid LIKE 'bot_%'"),
-          env.DB.prepare("DELETE FROM post_comments WHERE author_role = 'bot' OR author_uid LIKE 'bot_%' OR real_author_uid LIKE 'bot_%'"),
+          env.DB.prepare(
+            "DELETE FROM posts WHERE author_role = 'bot' OR author_uid LIKE 'bot_%' OR real_author_uid LIKE 'bot_%'"
+          ),
+          env.DB.prepare(
+            "DELETE FROM post_comments WHERE author_role = 'bot' OR author_uid LIKE 'bot_%' OR real_author_uid LIKE 'bot_%'"
+          ),
           env.DB.prepare("DELETE FROM post_likes WHERE user_uid LIKE 'bot_%'"),
           env.DB.prepare("DELETE FROM rate_limits WHERE rate_key LIKE 'bot_daily:%'"),
-          env.DB.prepare("UPDATE bot_accounts SET post_count = 0, comment_count = 0, like_count = 0, last_status = 'Content cleared by admin', updated_at = ?").bind(Date.now()),
+          env.DB.prepare(
+            "UPDATE bot_accounts SET post_count = 0, comment_count = 0, like_count = 0, last_status = 'Content cleared by admin', updated_at = ?"
+          ).bind(Date.now()),
+          env.DB.prepare(
+            'UPDATE posts SET upvotes = (SELECT COUNT(*) FROM post_likes WHERE post_likes.post_id = posts.id), comment_count = (SELECT COUNT(*) FROM post_comments WHERE post_comments.post_id = posts.id)'
+          ),
         ]);
 
         return jsonResponse(
           {
             success: true,
+            deletedPosts: Number(pCnt?.cnt ?? 0),
+            deletedComments: Number(cCnt?.cnt ?? 0),
+            deletedLikes: Number(lCnt?.cnt ?? 0),
             message: 'All bot posts, comments, and likes have been deleted.',
           },
           200,
@@ -2633,5 +4155,37 @@ ${urls
         cors
       );
     }
+  },
+
+  async scheduled(
+    event: { cron: string; scheduledTime: number },
+    env: Env,
+    ctx: ExecutionContext
+  ): Promise<void> {
+    if (!env.DB) return;
+    ctx.waitUntil(
+      (async () => {
+        try {
+          await ensureD1Schema(env.DB!);
+          const res = await executeD1BotRun(env.DB!, env, {
+            maxBots: 2,
+            postsPerBot: 1,
+            trigger: `cron:${event.cron || 'scheduled'}`,
+          });
+          console.log('[CloudflareWorker] Scheduled bot run completed:', JSON.stringify({
+            ranAt: res.ranAt,
+            totalBotsProcessed: res.totalBotsProcessed,
+            totalPostsCreated: res.totalPostsCreated,
+            totalCommentsCreated: res.totalCommentsCreated,
+            totalLikesAdded: res.totalLikesAdded,
+            geminiCallsUsed: res.geminiCallsUsed,
+            bannerType: res.bannerType,
+            bannerMessage: res.bannerMessage,
+          }));
+        } catch (err) {
+          console.error('[CloudflareWorker] Scheduled bot run error:', err);
+        }
+      })()
+    );
   },
 };

@@ -6,7 +6,15 @@ import { BOARDLY_BOT_ACCOUNTS, DEFAULT_WELCOME_ANNOUNCEMENT } from '../config/bo
 import {
   generateVerifiedBotStudyPost,
   generateVerifiedBotComment,
+  parseGeminiApiKeys,
+  resolvePinnedGeminiModels,
+  buildBotKeyPoolState,
+  toPublicKeyStatusList,
+  getTotalGeminiCallsToday,
+  redactApiKeysFromText,
+  type GeminiKeyStatusRecord,
 } from '../services/botContentGenerator';
+import { validateAndNormalizeQuestionMath } from '../utils/katexValidator';
 
 const R2_PUBLIC_BASE_URL = (
   process.env.R2_PUBLIC_BASE_URL ||
@@ -183,6 +191,34 @@ interface D1UserWelcomeRow {
   read_at: number | null;
 }
 
+export interface D1QuestionRow {
+  id: string;
+  bank_id: string;
+  subject: string;
+  topic: string;
+  difficulty: string;
+  status: string;
+  needs_review: number;
+  question_text: string;
+  options_json: string;
+  correct_answer: number;
+  explanation: string;
+  source_path: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface D1QuestionsImportLogRow {
+  id: string;
+  bank_id: string;
+  subject: string;
+  total_read: number;
+  imported_count: number;
+  needs_review_count: number;
+  source_type: string;
+  imported_at: number;
+}
+
 interface D1StoreData {
   version: number;
   migratedAt: string;
@@ -194,8 +230,17 @@ interface D1StoreData {
   reports: D1ReportRow[];
   userRoles: D1UserRoleRow[];
   botAccounts?: D1BotAccountRow[];
+  botKeyStatuses?: Partial<GeminiKeyStatusRecord>[];
+  botSystemState?: {
+    lastUsedKeyIndex?: number;
+    allKeysExhaustedUntil?: number | null;
+    geminiCallsLastRun?: number;
+    lastRunSummary?: any;
+  };
   announcements?: D1AnnouncementRow[];
   userWelcomeStatus?: D1UserWelcomeRow[];
+  questions?: D1QuestionRow[];
+  questionsImportLog?: D1QuestionsImportLogRow[];
 }
 
 let d1Cache: D1StoreData | null = null;
@@ -304,8 +349,12 @@ export function loadD1Store(): D1StoreData {
         reports: Array.isArray(parsed.reports) ? parsed.reports : [],
         userRoles: Array.isArray(parsed.userRoles) ? parsed.userRoles : [],
         botAccounts: Array.isArray(parsed.botAccounts) ? parsed.botAccounts : [],
+        botKeyStatuses: Array.isArray(parsed.botKeyStatuses) ? parsed.botKeyStatuses : [],
+        botSystemState: parsed.botSystemState || undefined,
         announcements: Array.isArray(parsed.announcements) ? parsed.announcements : [],
         userWelcomeStatus: Array.isArray(parsed.userWelcomeStatus) ? parsed.userWelcomeStatus : [],
+        questions: Array.isArray(parsed.questions) ? parsed.questions : [],
+        questionsImportLog: Array.isArray(parsed.questionsImportLog) ? parsed.questionsImportLog : [],
       };
       if (ensureStoreDefaults(d1Cache)) {
         saveD1Store(d1Cache);
@@ -331,6 +380,8 @@ export function loadD1Store(): D1StoreData {
     botAccounts: [],
     announcements: [],
     userWelcomeStatus: [],
+    questions: [],
+    questionsImportLog: [],
   };
   ensureStoreDefaults(d1Cache);
   return d1Cache;
@@ -2300,7 +2351,29 @@ ${allUrls
   // ==========================================================================
   app.get('/api/bots', (_req, res) => {
     const store = loadD1Store();
-    const bots = (store.botAccounts || []).map((r) => {
+    const apiKeys = parseGeminiApiKeys(
+      process.env.GEMINI_API_KEYS,
+      process.env.GEMINI_API_KEY
+    );
+    const { model, fallbackModel } = resolvePinnedGeminiModels(
+      process.env.GEMINI_MODEL,
+      process.env.GEMINI_FALLBACK_MODEL
+    );
+    const pool = buildBotKeyPoolState({
+      apiKeys,
+      persistedStatuses: store.botKeyStatuses || [],
+      lastUsedKeyIndex: store.botSystemState?.lastUsedKeyIndex ?? -1,
+      allKeysExhaustedUntil: store.botSystemState?.allKeysExhaustedUntil ?? null,
+    });
+    const publicKeyStatuses = toPublicKeyStatusList(pool, BOARDLY_BOT_ACCOUNTS.length);
+    const geminiCallsToday = getTotalGeminiCallsToday(pool);
+    const geminiCallsLastRun = Number(
+      store.botSystemState?.geminiCallsLastRun ??
+        store.botSystemState?.lastRunSummary?.geminiCallsLastRun ??
+        0
+    );
+
+    const bots = (store.botAccounts || []).map((r, idx) => {
       const actualPostCount = store.posts.filter(
         (p) => p.author_uid === r.uid || p.real_author_uid === r.uid
       ).length;
@@ -2308,6 +2381,7 @@ ${allUrls
         (c) => c.author_uid === r.uid || c.real_author_uid === r.uid
       ).length;
       const actualLikeCount = store.likes.filter((l) => l.user_uid === r.uid).length;
+      const assignedKeyIndex = apiKeys.length > 0 ? idx % apiKeys.length : 0;
       return {
         uid: r.uid,
         username: r.username,
@@ -2322,6 +2396,8 @@ ${allUrls
         likesCount: Math.max(Number(r.likes_count || 0), actualLikeCount),
         lastRunAt: r.last_run_at ? new Date(Number(r.last_run_at)).toISOString() : null,
         lastRunStatus: r.last_run_status || 'ready',
+        assignedKeyIndex,
+        assignedKeyLabel: apiKeys.length > 0 ? `Key #${assignedKeyIndex + 1}` : 'No key',
         role: 'bot',
       };
     });
@@ -2332,13 +2408,26 @@ ${allUrls
       bots,
       totalBots: bots.length,
       enabledBots: bots.filter((b) => b.enabled).length,
-      geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
-      geminiModel: String(process.env.GEMINI_MODEL || 'gemini-3.5-flash').trim(),
+      geminiConfigured: apiKeys.length > 0,
+      geminiKeysCount: apiKeys.length,
+      geminiModel: model,
+      geminiFallbackModel: fallbackModel,
       botRunSecretConfigured: Boolean(process.env.BOT_RUN_SECRET),
+      keyStatuses: publicKeyStatuses,
+      allKeysExhaustedUntil:
+        pool.allKeysExhaustedUntil && pool.allKeysExhaustedUntil > Date.now()
+          ? new Date(pool.allKeysExhaustedUntil).toISOString()
+          : null,
+      geminiCallsLastRun,
+      geminiCallsToday,
+      lastRunSummary: store.botSystemState?.lastRunSummary || null,
       config: {
-        geminiKeyConfigured: Boolean(process.env.GEMINI_API_KEY),
-        geminiModel: String(process.env.GEMINI_MODEL || 'gemini-3.5-flash').trim(),
+        geminiKeyConfigured: apiKeys.length > 0,
+        geminiKeysCount: apiKeys.length,
+        geminiModel: model,
+        geminiFallbackModel: fallbackModel,
         botRunSecretConfigured: Boolean(process.env.BOT_RUN_SECRET),
+        cronSchedule: '0 */2 * * * (Every 2 hours, 2-3 bots/batch)',
       },
     });
   });
@@ -2470,41 +2559,147 @@ ${allUrls
       });
     }
 
-    const geminiApiKey = String(process.env.GEMINI_API_KEY || '').trim();
-    const geminiModel = String(process.env.GEMINI_MODEL || 'gemini-3.5-flash').trim();
-    if (!geminiApiKey) {
+    const apiKeys = parseGeminiApiKeys(
+      process.env.GEMINI_API_KEYS,
+      process.env.GEMINI_API_KEY
+    );
+    const { model, fallbackModel } = resolvePinnedGeminiModels(
+      process.env.GEMINI_MODEL,
+      process.env.GEMINI_FALLBACK_MODEL
+    );
+
+    if (apiKeys.length === 0) {
       return res.status(500).json({
         success: false,
-        error: 'GEMINI_API_KEY is not configured in environment variables.',
+        runOutcome: 'error',
+        bannerStatus: 'error',
+        bannerMessage:
+          'No Gemini API keys configured. Set GEMINI_API_KEYS (comma-separated) or GEMINI_API_KEY in environment variables.',
+        error:
+          'No Gemini API keys configured. Set GEMINI_API_KEYS (comma-separated) or GEMINI_API_KEY in environment variables.',
       });
+    }
+
+    const store = loadD1Store();
+    const pool = buildBotKeyPoolState({
+      apiKeys,
+      persistedStatuses: store.botKeyStatuses || [],
+      lastUsedKeyIndex: store.botSystemState?.lastUsedKeyIndex ?? -1,
+      allKeysExhaustedUntil: store.botSystemState?.allKeysExhaustedUntil ?? null,
+    });
+
+    const persistPoolState = (summary?: any) => {
+      store.botKeyStatuses = pool.keyStatuses.map((ks) => ({
+        ...ks,
+        lastError: ks.lastError ? redactApiKeysFromText(ks.lastError, apiKeys) : null,
+      }));
+      store.botSystemState = {
+        lastUsedKeyIndex: pool.lastUsedKeyIndex,
+        allKeysExhaustedUntil: pool.allKeysExhaustedUntil,
+        geminiCallsLastRun: pool.callsThisRun,
+        lastRunSummary: summary ?? store.botSystemState?.lastRunSummary ?? null,
+      };
+      saveD1Store(store);
+    };
+
+    const nowMs = Date.now();
+    const activeKeyCount = pool.keyStatuses.filter((ks) => ks.status === 'available').length;
+    if (
+      activeKeyCount === 0 ||
+      (pool.allKeysExhaustedUntil && pool.allKeysExhaustedUntil > nowMs)
+    ) {
+      const retryUntilMs =
+        pool.allKeysExhaustedUntil ||
+        Math.min(
+          ...pool.keyStatuses
+            .map((k) => k.cooldownUntil || nowMs + 60_000)
+            .filter((v) => v > nowMs)
+        );
+      const retryIso = new Date(retryUntilMs).toISOString();
+      const retryTimeFormatted = new Date(retryUntilMs).toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Karachi',
+      });
+      const bannerMessage = `Gemini quota exhausted — all ${apiKeys.length} key(s) cooling down. Retrying after ${retryTimeFormatted} PKT (${retryIso}).`;
+
+      const summaryPayload = {
+        success: true,
+        runOutcome: 'quota_exhausted',
+        bannerStatus: 'error',
+        bannerMessage,
+        allKeysExhaustedUntil: retryIso,
+        ranAt: new Date(nowMs).toISOString(),
+        botsProcessed: 0,
+        postsCreated: 0,
+        commentsCreated: 0,
+        likesAdded: 0,
+        likesCreated: 0,
+        geminiCallsLastRun: 0,
+        geminiCallsToday: getTotalGeminiCallsToday(pool),
+        geminiKeysCount: apiKeys.length,
+        geminiModel: model,
+        geminiFallbackModel: fallbackModel,
+        keyStatuses: toPublicKeyStatusList(pool, BOARDLY_BOT_ACCOUNTS.length),
+        results: [],
+      };
+      persistPoolState(summaryPayload);
+      return res.status(200).json(summaryPayload);
     }
 
     const body = req.body || {};
     const targetBotUid = body.botUid ? String(body.botUid).trim() : null;
-    const maxBotsPerCall = Math.min(12, Math.max(1, Number(body.maxBots || (targetBotUid ? 1 : 3))));
+    // Cap each run to 2-3 bots chosen by least recently run
+    const requestedMaxBots = Number(body.maxBots || (targetBotUid ? 1 : 2));
+    const maxBotsPerCall = targetBotUid
+      ? 1
+      : Math.min(3, Math.max(1, Number.isFinite(requestedMaxBots) ? requestedMaxBots : 2));
     const postsPerBotReq = Math.min(2, Math.max(1, Number(body.postsPerBot || 1)));
-    const forceManual = Boolean(body.force || isAdminCaller);
 
-    const store = loadD1Store();
-    const enabledBots = (store.botAccounts || []).filter(
-      (b) => b.enabled === 1 && (!targetBotUid || b.uid === targetBotUid)
+    const candidateBots = (store.botAccounts || []).filter((b) =>
+      targetBotUid ? b.uid === targetBotUid : b.enabled === 1
     );
-    const selectedBots = enabledBots.slice(0, maxBotsPerCall);
+    // Order by least recently run (last_run_at ASC NULLS FIRST)
+    candidateBots.sort((a, b) => {
+      const aRun = Number(a.last_run_at || 0);
+      const bRun = Number(b.last_run_at || 0);
+      if (aRun !== bRun) return aRun - bRun;
+      return a.uid.localeCompare(b.uid);
+    });
+    const selectedBots = candidateBots.slice(0, maxBotsPerCall);
 
+    const dayStartMs = new Date().setUTCHours(0, 0, 0, 0);
     const results: Array<{
+      uid: string;
       botUid: string;
       displayName: string;
       subject: string;
       postsCreated: number;
       commentsCreated: number;
       likesAdded: number;
+      likesCreated: number;
+      geminiCallsUsed: number;
+      assignedKeyIndex: number;
       status: string;
       error?: string;
     }> = [];
 
+    let totalPostsCreated = 0;
+    let totalCommentsCreated = 0;
+    let totalLikesCreated = 0;
+    let stoppedDueToAllKeysExhausted = false;
+    let exhaustionBannerMessage: string | null = null;
+
     for (const botRow of selectedBots) {
+      const botIndexInConfig = Math.max(
+        0,
+        BOARDLY_BOT_ACCOUNTS.findIndex((b) => b.uid === botRow.uid)
+      );
+      const assignedKeyIndex = apiKeys.length > 0 ? botIndexInConfig % apiKeys.length : 0;
+
       const botMeta =
-        BOARDLY_BOT_ACCOUNTS.find((b) => b.uid === botRow.uid) || {
+        BOARDLY_BOT_ACCOUNTS[botIndexInConfig] || {
           uid: botRow.uid,
           placeholderName: botRow.username,
           displayName: botRow.display_name,
@@ -2518,37 +2713,93 @@ ${allUrls
           chapters: [botRow.subject],
         };
 
+      // Check D1 store BEFORE calling Gemini to enforce Max 2/day
+      const alreadyPostedToday = store.posts.filter(
+        (p) =>
+          (p.author_uid === botRow.uid || p.real_author_uid === botRow.uid) &&
+          Number(p.created_at || 0) >= dayStartMs
+      ).length;
       const dailyLimit = Math.min(2, Math.max(1, Number(botRow.daily_post_limit || 2)));
-      const rateKey = `bot_daily:${botRow.uid}:${new Date().toISOString().slice(0, 10)}`;
-      if (!forceManual && !checkWriteRateLimit(rateKey, dailyLimit, 24 * 60 * 60 * 1000)) {
+      const remainingQuota = Math.max(0, dailyLimit - alreadyPostedToday);
+
+      let postsCreated = 0;
+      let commentsCreated = 0;
+      let likesAdded = 0;
+      let botGeminiCalls = 0;
+      let lastError: string | undefined;
+
+      // 1. Plain D1 likes first (no Gemini call)
+      const candidatePosts = store.posts
+        .filter(
+          (p) =>
+            p.is_hidden === 0 &&
+            p.author_uid !== botRow.uid &&
+            p.real_author_uid !== botRow.uid
+        )
+        .slice(0, 12);
+
+      for (const other of candidatePosts.slice(0, 2)) {
+        const alreadyLiked = store.likes.some(
+          (l) => l.post_id === other.id && l.user_uid === botRow.uid
+        );
+        if (!alreadyLiked) {
+          store.likes.push({
+            post_id: other.id,
+            user_uid: botRow.uid,
+            created_at: Date.now(),
+          });
+          other.upvotes = (other.upvotes || 0) + 1;
+          likesAdded++;
+          totalLikesCreated++;
+        }
+      }
+
+      if (remainingQuota <= 0) {
+        botRow.likes_count = Number(botRow.likes_count || 0) + likesAdded;
+        botRow.last_run_at = Date.now();
+        botRow.last_run_status = `Daily post limit reached (${alreadyPostedToday}/${dailyLimit} today); ${likesAdded} like(s) added`;
+        botRow.updated_at = Date.now();
+
         results.push({
+          uid: botRow.uid,
           botUid: botRow.uid,
           displayName: botRow.display_name,
           subject: botRow.subject,
           postsCreated: 0,
           commentsCreated: 0,
-          likesAdded: 0,
+          likesAdded,
+          likesCreated: likesAdded,
+          geminiCallsUsed: 0,
+          assignedKeyIndex,
           status: 'daily_limit_reached',
         });
         continue;
       }
 
-      const postsToCreate = Math.min(postsPerBotReq, dailyLimit);
-      let postsCreated = 0;
-      let commentsCreated = 0;
-      let likesAdded = 0;
-      let lastError: string | undefined;
+      const postsToCreate = Math.min(postsPerBotReq, remainingQuota);
 
       for (let i = 0; i < postsToCreate; i++) {
         const generated = await generateVerifiedBotStudyPost({
           bot: botMeta,
-          apiKey: geminiApiKey,
-          model: geminiModel,
-          postIndex: i,
+          keyPool: pool,
+          botIndex: botIndexInConfig,
+          model,
+          fallbackModel,
+          postIndex: alreadyPostedToday + i,
         });
+        botGeminiCalls += generated.geminiCallsUsed || 0;
 
         if (!generated.post) {
           lastError = generated.discardReason || 'Generation skipped';
+          console.error(
+            `[BotRunner] Bot ${botRow.uid} (${botRow.display_name}) post generation failed:`,
+            redactApiKeysFromText(lastError, apiKeys)
+          );
+          if (generated.allKeysExhausted) {
+            stoppedDueToAllKeysExhausted = true;
+            exhaustionBannerMessage = lastError;
+            break;
+          }
           continue;
         }
 
@@ -2591,7 +2842,7 @@ ${allUrls
           is_hidden: 0,
           is_pinned: 0,
           is_featured: 0,
-          upvotes: 0,
+          upvotes: 1,
           downvotes: 0,
           views: 1,
           comment_count: 0,
@@ -2602,31 +2853,7 @@ ${allUrls
           updated_at: now,
         });
         postsCreated++;
-      }
-
-      // Like & comment on other users' posts (humans included, never its own)
-      const candidatePosts = store.posts
-        .filter(
-          (p) =>
-            p.is_hidden === 0 &&
-            p.author_uid !== botRow.uid &&
-            p.real_author_uid !== botRow.uid
-        )
-        .slice(0, 12);
-
-      for (const other of candidatePosts.slice(0, 2)) {
-        const alreadyLiked = store.likes.some(
-          (l) => l.post_id === other.id && l.user_uid === botRow.uid
-        );
-        if (!alreadyLiked) {
-          store.likes.push({
-            post_id: other.id,
-            user_uid: botRow.uid,
-            created_at: Date.now(),
-          });
-          other.upvotes = (other.upvotes || 0) + 1;
-          likesAdded++;
-        }
+        totalPostsCreated++;
       }
 
       const commentTarget =
@@ -2634,37 +2861,50 @@ ${allUrls
           (p) => p.subject.toLowerCase() === botRow.subject.toLowerCase()
         ) || candidatePosts[0];
 
-      if (commentTarget) {
-        const commentRes = await generateVerifiedBotComment({
-          bot: botMeta,
-          targetPost: {
-            title: commentTarget.title,
-            description: commentTarget.description,
-            subject: commentTarget.subject,
-          },
-          apiKey: geminiApiKey,
-          model: geminiModel,
-        });
-        if (commentRes.comment && commentRes.comment.text) {
-          const commentId = `cmt_bot_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`;
-          store.comments.push({
-            id: commentId,
-            post_id: commentTarget.id,
-            text: commentRes.comment.text,
-            is_anonymous: 0,
-            author_uid: botRow.uid,
-            real_author_uid: botRow.uid,
-            author_name: botRow.display_name,
-            author_avatar: botRow.avatar,
-            author_frame: null,
-            author_equipped_avatar: botRow.avatar,
-            author_photo_url: null,
-            author_role: 'bot',
-            author_custom_role: `${botMeta.subject} Bot`,
-            created_at: Date.now(),
+      if (!stoppedDueToAllKeysExhausted && commentTarget && postsCreated > 0) {
+        const alreadyCommented = store.comments.some(
+          (c) => c.post_id === commentTarget.id && c.real_author_uid === botRow.uid
+        );
+        if (!alreadyCommented) {
+          const commentRes = await generateVerifiedBotComment({
+            bot: botMeta,
+            targetPost: {
+              title: commentTarget.title,
+              description: commentTarget.description,
+              subject: commentTarget.subject,
+            },
+            keyPool: pool,
+            botIndex: botIndexInConfig,
+            model,
+            fallbackModel,
           });
-          commentTarget.comment_count = (commentTarget.comment_count || 0) + 1;
-          commentsCreated++;
+          botGeminiCalls += commentRes.geminiCallsUsed || 0;
+          if (commentRes.comment && commentRes.comment.text) {
+            const commentId = `cmt_bot_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`;
+            store.comments.push({
+              id: commentId,
+              post_id: commentTarget.id,
+              text: commentRes.comment.text,
+              is_anonymous: 0,
+              author_uid: botRow.uid,
+              real_author_uid: botRow.uid,
+              author_name: botRow.display_name,
+              author_avatar: botRow.avatar,
+              author_frame: null,
+              author_equipped_avatar: botRow.avatar,
+              author_photo_url: null,
+              author_role: 'bot',
+              author_custom_role: `${botMeta.subject} Bot`,
+              created_at: Date.now(),
+            });
+            commentTarget.comment_count = (commentTarget.comment_count || 0) + 1;
+            commentsCreated++;
+            totalCommentsCreated++;
+          } else if (commentRes.allKeysExhausted) {
+            stoppedDueToAllKeysExhausted = true;
+            exhaustionBannerMessage =
+              commentRes.discardReason || 'All Gemini API keys are cooling down.';
+          }
         }
       }
 
@@ -2675,28 +2915,903 @@ ${allUrls
       botRow.last_run_status =
         postsCreated > 0
           ? `Published ${postsCreated} post(s), ${commentsCreated} comment(s), ${likesAdded} like(s)`
-          : lastError || 'Completed';
+          : lastError
+            ? `Error: ${lastError}`
+            : `Skipped (0 posts, ${likesAdded} like(s))`;
       botRow.updated_at = Date.now();
 
       results.push({
+        uid: botRow.uid,
         botUid: botRow.uid,
         displayName: botRow.display_name,
         subject: botRow.subject,
         postsCreated,
         commentsCreated,
         likesAdded,
-        status: postsCreated > 0 ? 'ok' : 'skipped',
+        likesCreated: likesAdded,
+        geminiCallsUsed: botGeminiCalls,
+        assignedKeyIndex,
+        status:
+          postsCreated > 0
+            ? 'ok'
+            : stoppedDueToAllKeysExhausted
+              ? 'quota_exhausted'
+              : lastError
+                ? 'error'
+                : 'skipped',
         error: lastError,
+      });
+
+      if (stoppedDueToAllKeysExhausted) {
+        break;
+      }
+    }
+
+    const anyErrors = results.some((r) => Boolean(r.error));
+    const allDailyLimit =
+      results.length > 0 && results.every((r) => r.status === 'daily_limit_reached');
+
+    let runOutcome: 'success' | 'partial' | 'quota_exhausted' | 'error' | 'daily_limit' = 'success';
+    let bannerStatus: 'success' | 'warning' | 'error' = 'success';
+    let bannerMessage = `Bot run finished: ${totalPostsCreated} post(s), ${totalCommentsCreated} comment(s), ${totalLikesCreated} like(s) published (${pool.callsThisRun} Gemini call(s) used).`;
+
+    if (stoppedDueToAllKeysExhausted || (totalPostsCreated === 0 && anyErrors)) {
+      const firstError =
+        exhaustionBannerMessage ||
+        results.find((r) => r.error)?.error ||
+        'Gemini API error prevented post generation.';
+      if (
+        stoppedDueToAllKeysExhausted ||
+        firstError.toLowerCase().includes('quota') ||
+        firstError.includes('429') ||
+        firstError.toLowerCase().includes('cooling down')
+      ) {
+        runOutcome = 'quota_exhausted';
+        bannerStatus = 'error';
+        const retryUntil =
+          pool.allKeysExhaustedUntil ||
+          Math.min(
+            ...pool.keyStatuses
+              .map((k) => k.cooldownUntil || Date.now() + 60_000)
+              .filter((v) => v > Date.now())
+          );
+        const retryFormatted = Number.isFinite(retryUntil)
+          ? new Date(retryUntil).toLocaleTimeString('en-US', {
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true,
+              timeZone: 'Asia/Karachi',
+            })
+          : 'cooldown expires';
+        bannerMessage = `Gemini quota exhausted (0 posts published). Retrying after ${retryFormatted} PKT. Full detail: ${firstError}`;
+      } else {
+        runOutcome = 'error';
+        bannerStatus = 'error';
+        bannerMessage = `Bot run published 0 posts due to errors: ${firstError}`;
+      }
+    } else if (totalPostsCreated > 0 && anyErrors) {
+      runOutcome = 'partial';
+      bannerStatus = 'warning';
+      bannerMessage = `Partial bot run: ${totalPostsCreated} post(s), ${totalCommentsCreated} comment(s), ${totalLikesCreated} like(s) published, with some errors (${pool.callsThisRun} Gemini call(s)).`;
+    } else if (totalPostsCreated === 0 && allDailyLimit) {
+      runOutcome = 'daily_limit';
+      bannerStatus = 'warning';
+      bannerMessage = `Selected bots already reached their Max 2/day post limit (${totalLikesCreated} plain D1 like(s) added, 0 Gemini calls used).`;
+    }
+
+    const summaryPayload = {
+      success: true,
+      runOutcome,
+      bannerStatus,
+      bannerMessage,
+      allKeysExhaustedUntil: pool.allKeysExhaustedUntil
+        ? new Date(pool.allKeysExhaustedUntil).toISOString()
+        : null,
+      ranAt: new Date().toISOString(),
+      botsProcessed: results.length,
+      postsCreated: totalPostsCreated,
+      commentsCreated: totalCommentsCreated,
+      likesAdded: totalLikesCreated,
+      likesCreated: totalLikesCreated,
+      geminiCallsLastRun: pool.callsThisRun,
+      geminiCallsToday: getTotalGeminiCallsToday(pool),
+      geminiKeysCount: apiKeys.length,
+      geminiModel: model,
+      geminiFallbackModel: fallbackModel,
+      keyStatuses: toPublicKeyStatusList(pool, BOARDLY_BOT_ACCOUNTS.length),
+      results,
+    };
+
+    persistPoolState(summaryPayload);
+
+    return res.status(200).json(summaryPayload);
+  });
+
+  // ===========================================================================
+  // /api/questions — Cloudflare D1 Question Bank Endpoints
+  // ===========================================================================
+  const isStrictQuestionBankAdmin = (user: VerifiedFirebaseUser | null): boolean => {
+    return Boolean(user && String(user.email || '').trim().toLowerCase() === 'shsvirtualadmin@gmail.com');
+  };
+
+  const normalizeQSubject = (raw: string): string => {
+    const s = String(raw || '').trim().toLowerCase().replace(/[_\s]+/g, '-');
+    if (s === 'cs' || s === 'computerscience') return 'computer-science';
+    if (s === 'analytical' || s === 'analyticalreasoning') return 'analytical-reasoning';
+    if (s === 'math' || s === 'maths') return 'mathematics';
+    return s;
+  };
+
+  const formatD1QuestionForClient = (row: D1QuestionRow, includeAnswerKey: boolean) => {
+    let options: string[] = [];
+    try {
+      const parsed = JSON.parse(row.options_json || '[]');
+      if (Array.isArray(parsed)) options = parsed.map((o) => String(o ?? ''));
+    } catch {
+      options = [];
+    }
+    const base: Record<string, any> = {
+      id: row.id,
+      bank_id: row.bank_id || 'legacy',
+      sourceId: row.bank_id || 'legacy',
+      subject: row.subject,
+      topic: row.topic,
+      difficulty: row.difficulty || 'medium',
+      status: row.status || 'published',
+      needs_review: Number(row.needs_review || 0),
+      needsReview: Boolean(row.needs_review),
+      question_text: row.question_text,
+      questionText: row.question_text,
+      options,
+      options_json: row.options_json || '[]',
+      source_path: row.source_path || '',
+      created_at: Number(row.created_at || Date.now()),
+      updated_at: Number(row.updated_at || Date.now()),
+      createdAt: new Date(Number(row.created_at || Date.now())).toISOString(),
+      updatedAt: new Date(Number(row.updated_at || Date.now())).toISOString(),
+    };
+    if (includeAnswerKey) {
+      base.correct_answer = Number(row.correct_answer ?? 0);
+      base.correctAnswer = Number(row.correct_answer ?? 0);
+      base.explanation = row.explanation || '';
+    }
+    return base;
+  };
+
+  const handleQuestionsHealthRoute = async (_req: Request, res: Response) => {
+    const store = loadD1Store();
+    const questions = Array.isArray(store.questions) ? store.questions : [];
+    const importLogs = Array.isArray(store.questionsImportLog) ? store.questionsImportLog : [];
+
+    const bankMeta: Record<string, { label: string; projectId: string }> = {
+      legacy: { label: 'Core Bank (D1)', projectId: 'boardly-posts-db (legacy)' },
+      bank1: { label: 'Alpha Bank (D1)', projectId: 'boardly-posts-db (bank1)' },
+      bank2: { label: 'Beta Bank (D1)', projectId: 'boardly-posts-db (bank2)' },
+    };
+
+    const banks: Record<string, any> = {
+      legacy: {
+        bankId: 'legacy',
+        label: bankMeta.legacy.label,
+        total: 0,
+        published: 0,
+        needsReview: 0,
+        bySubject: {},
+        lastImportAt: null as string | null,
+      },
+      bank1: {
+        bankId: 'bank1',
+        label: bankMeta.bank1.label,
+        total: 0,
+        published: 0,
+        needsReview: 0,
+        bySubject: {},
+        lastImportAt: null as string | null,
+      },
+      bank2: {
+        bankId: 'bank2',
+        label: bankMeta.bank2.label,
+        total: 0,
+        published: 0,
+        needsReview: 0,
+        bySubject: {},
+        lastImportAt: null as string | null,
+      },
+    };
+
+    const bySubjectTotal: Record<string, number> = {};
+    const bySubjectPublished: Record<string, number> = {};
+    const topicsBySubject: Record<string, Record<string, number>> = {};
+
+    let totalQuestions = 0;
+    let totalPublished = 0;
+    let totalNeedsReview = 0;
+
+    for (const q of questions) {
+      const bankId = String(q.bank_id || 'legacy');
+      const subject = String(q.subject || 'physics');
+      const topic = String(q.topic || 'General');
+      const status = String(q.status || 'published');
+      const needsRev = Number(q.needs_review || 0) > 0;
+
+      if (!banks[bankId]) {
+        banks[bankId] = {
+          bankId,
+          label: `${bankId} (D1)`,
+          total: 0,
+          published: 0,
+          needsReview: 0,
+          bySubject: {},
+          lastImportAt: null,
+        };
+      }
+
+      banks[bankId].total += 1;
+      if (status === 'published') banks[bankId].published += 1;
+      if (needsRev) banks[bankId].needsReview += 1;
+      banks[bankId].bySubject[subject] = (banks[bankId].bySubject[subject] || 0) + 1;
+
+      bySubjectTotal[subject] = (bySubjectTotal[subject] || 0) + 1;
+      if (status === 'published') {
+        bySubjectPublished[subject] = (bySubjectPublished[subject] || 0) + 1;
+      }
+
+      if (!topicsBySubject[subject]) topicsBySubject[subject] = {};
+      topicsBySubject[subject][topic] = (topicsBySubject[subject][topic] || 0) + 1;
+
+      totalQuestions += 1;
+      if (status === 'published') totalPublished += 1;
+      if (needsRev) totalNeedsReview += 1;
+    }
+
+    let globalLastImportMs = 0;
+    for (const log of importLogs) {
+      const bId = String(log.bank_id || 'legacy');
+      const ts = Number(log.imported_at || 0);
+      if (ts > globalLastImportMs) globalLastImportMs = ts;
+      if (banks[bId]) {
+        const curMs = banks[bId].lastImportAt ? new Date(banks[bId].lastImportAt).getTime() : 0;
+        if (ts > curMs) {
+          banks[bId].lastImportAt = new Date(ts).toISOString();
+        }
+      }
+    }
+
+    const fallbackIso =
+      globalLastImportMs > 0
+        ? new Date(globalLastImportMs).toISOString()
+        : store.migratedAt || new Date().toISOString();
+    for (const bKey of Object.keys(banks)) {
+      if (!banks[bKey].lastImportAt) {
+        banks[bKey].lastImportAt = fallbackIso;
+      }
+    }
+
+    const diagnostics = ['legacy', 'bank1', 'bank2'].map((bId) => ({
+      sourceId: bId,
+      label: banks[bId]?.label || `${bId} (D1)`,
+      projectId: bankMeta[bId]?.projectId || `boardly-posts-db (${bId})`,
+      status: 'healthy',
+      latencyMs: 2,
+      questionCount: banks[bId]?.total || 0,
+      publishedCount: banks[bId]?.published || 0,
+      needsReviewCount: banks[bId]?.needsReview || 0,
+      bySubject: banks[bId]?.bySubject || {},
+      lastImportAt: banks[bId]?.lastImportAt || fallbackIso,
+    }));
+
+    return res.status(200).json({
+      source: 'cloudflare-d1',
+      database: 'boardly-posts-db',
+      totalQuestions,
+      totalPublished,
+      totalNeedsReview,
+      lastImportAt: fallbackIso,
+      bySubject: bySubjectTotal,
+      bySubjectPublished,
+      topicsBySubject,
+      banks,
+      diagnostics,
+      importLogs: importLogs.slice(0, 50),
+    });
+  };
+
+  app.get('/api/questions/health', handleQuestionsHealthRoute);
+  app.get('/api/questions/stats', handleQuestionsHealthRoute);
+
+  app.get('/api/questions/ids', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    const isAdmin = isStrictQuestionBankAdmin(user);
+    const store = loadD1Store();
+    const questions = Array.isArray(store.questions) ? store.questions : [];
+
+    const bankParam = String(req.query.bank || req.query.bank_id || '').trim();
+    const subjectParam = String(req.query.subject || '').trim();
+    const topicParam = String(req.query.topic || '').trim();
+    const difficultyParam = String(req.query.difficulty || '').trim().toLowerCase();
+    const statusParam = String(req.query.status || '').trim().toLowerCase();
+
+    const filtered = questions.filter((q) => {
+      if (bankParam && bankParam !== 'all' && q.bank_id !== bankParam) return false;
+      if (subjectParam && subjectParam !== 'all' && q.subject !== normalizeQSubject(subjectParam)) return false;
+      if (topicParam && topicParam !== 'all' && q.topic !== topicParam) return false;
+      if (difficultyParam && difficultyParam !== 'all' && q.difficulty !== difficultyParam) return false;
+      if (isAdmin) {
+        if (statusParam && statusParam !== 'all' && q.status !== statusParam) return false;
+      } else {
+        if (q.status !== 'published') return false;
+      }
+      return true;
+    });
+
+    const ids = filtered.map((q) => q.id);
+    const items = filtered.map((q) => ({
+      id: q.id,
+      bank_id: q.bank_id,
+      subject: q.subject,
+      topic: q.topic,
+      difficulty: q.difficulty,
+    }));
+
+    return res.status(200).json({
+      ids,
+      items,
+      total: ids.length,
+    });
+  });
+
+  app.post('/api/questions/verify', async (req: Request, res: Response) => {
+    const body = req.body || {};
+    const store = loadD1Store();
+    const questions = Array.isArray(store.questions) ? store.questions : [];
+    const qMap = new Map<string, D1QuestionRow>();
+    for (const q of questions) {
+      qMap.set(q.id, q);
+    }
+
+    const resolveCorrectIndex = (
+      row: D1QuestionRow,
+      displayedOptions?: string[]
+    ): { correctIndex: number; canonicalCorrectText: string | null } => {
+      let canonicalOptions: string[] = [];
+      try {
+        const parsed = JSON.parse(row.options_json || '[]');
+        if (Array.isArray(parsed)) canonicalOptions = parsed.map((o) => String(o ?? ''));
+      } catch {
+        canonicalOptions = [];
+      }
+      const canonicalIdx = Number(row.correct_answer ?? 0);
+      const canonicalCorrectText =
+        canonicalIdx >= 0 && canonicalIdx < canonicalOptions.length
+          ? canonicalOptions[canonicalIdx]
+          : null;
+
+      if (
+        Array.isArray(displayedOptions) &&
+        displayedOptions.length > 0 &&
+        canonicalCorrectText !== null
+      ) {
+        const matchedIdx = displayedOptions.findIndex(
+          (opt) => String(opt ?? '').trim() === canonicalCorrectText.trim()
+        );
+        if (matchedIdx !== -1) {
+          return { correctIndex: matchedIdx, canonicalCorrectText };
+        }
+      }
+      return { correctIndex: canonicalIdx, canonicalCorrectText };
+    };
+
+    if (Array.isArray(body.answers)) {
+      const results: Record<
+        string,
+        {
+          questionId: string;
+          selectedAnswer: number | null;
+          correct_answer: number;
+          correctAnswer: number;
+          canonical_correct_answer: number;
+          isCorrect: boolean;
+          explanation: string;
+        }
+      > = {};
+
+      for (const item of body.answers) {
+        const qId = String(item?.questionId || item?.id || '').trim();
+        if (!qId) continue;
+        const row = qMap.get(qId);
+        if (!row) continue;
+
+        const selected =
+          item.selectedAnswer === null || item.selectedAnswer === undefined
+            ? null
+            : Number(item.selectedAnswer);
+        const { correctIndex } = resolveCorrectIndex(
+          row,
+          Array.isArray(item.displayedOptions) ? item.displayedOptions : undefined
+        );
+        const isCorrect = selected !== null && Number.isFinite(selected) && selected === correctIndex;
+        results[qId] = {
+          questionId: qId,
+          selectedAnswer: selected,
+          correct_answer: correctIndex,
+          correctAnswer: correctIndex,
+          canonical_correct_answer: Number(row.correct_answer ?? 0),
+          isCorrect,
+          explanation: row.explanation || '',
+        };
+      }
+
+      return res.status(200).json({
+        verified: true,
+        results,
       });
     }
 
+    const questionId = String(body.questionId || body.id || '').trim();
+    const hasSelectedAnswer =
+      body.selectedAnswer !== undefined || body.answer !== undefined || body.selectedIndex !== undefined;
+
+    if (!questionId || !hasSelectedAnswer) {
+      return res.status(400).json({
+        error: 'questionId and selectedAnswer are required to verify an answer.',
+      });
+    }
+
+    const row = qMap.get(questionId);
+    if (!row) {
+      return res.status(404).json({ error: 'Question not found.' });
+    }
+
+    const rawAnswer = body.selectedAnswer ?? body.answer ?? body.selectedIndex;
+    const selectedAnswer =
+      rawAnswer === null || rawAnswer === undefined || rawAnswer === '' ? null : Number(rawAnswer);
+    const { correctIndex } = resolveCorrectIndex(
+      row,
+      Array.isArray(body.displayedOptions) ? body.displayedOptions : undefined
+    );
+    const isCorrect =
+      selectedAnswer !== null && Number.isFinite(selectedAnswer) && selectedAnswer === correctIndex;
+
+    return res.status(200).json({
+      questionId: row.id,
+      selectedAnswer,
+      correct_answer: correctIndex,
+      correctAnswer: correctIndex,
+      canonical_correct_answer: Number(row.correct_answer ?? 0),
+      isCorrect,
+      explanation: row.explanation || '',
+    });
+  });
+
+  const handleBatchUpdateQuestions = async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!isStrictQuestionBankAdmin(user)) {
+      return res.status(user ? 403 : 401).json({
+        error: 'Forbidden: Only shsvirtualadmin@gmail.com can modify questions.',
+      });
+    }
+
+    const body = req.body || {};
+    const store = loadD1Store();
+    if (!Array.isArray(store.questions)) store.questions = [];
+    const now = Date.now();
+
+    if (Array.isArray(body.questions)) {
+      let imported = 0;
+      let needsReviewCount = 0;
+
+      for (const rawQ of body.questions) {
+        const bankId = String(rawQ.bank_id || rawQ.sourceId || body.bank_id || 'legacy').trim();
+        const rawId = String(rawQ.id || `q_${crypto.randomUUID().slice(0, 12)}`).trim();
+        const id = rawId.startsWith(`${bankId}__`) || bankId === 'legacy' ? rawId : `${bankId}__${rawId}`;
+        const subject = normalizeQSubject(rawQ.subject || body.subject || 'physics');
+        const topic = String(rawQ.topic || 'General').trim() || 'General';
+        const difficultyRaw = String(rawQ.difficulty || 'medium').trim().toLowerCase();
+        const difficulty = ['easy', 'medium', 'hard'].includes(difficultyRaw) ? difficultyRaw : 'medium';
+        const statusRaw = String(rawQ.status || 'published').trim().toLowerCase();
+        const status = ['published', 'draft', 'archived'].includes(statusRaw) ? statusRaw : 'published';
+
+        const rawQuestionText = String(rawQ.question_text ?? rawQ.questionText ?? '').trim();
+        let rawOptions: string[] = [];
+        if (Array.isArray(rawQ.options)) {
+          rawOptions = rawQ.options.map((o: any) => String(o ?? ''));
+        } else if (typeof rawQ.options_json === 'string') {
+          try {
+            const parsed = JSON.parse(rawQ.options_json);
+            if (Array.isArray(parsed)) rawOptions = parsed.map((o: any) => String(o ?? ''));
+          } catch {
+            rawOptions = [];
+          }
+        }
+        const rawExplanation = String(rawQ.explanation ?? '').trim();
+        const correctAnswer = Number(rawQ.correct_answer ?? rawQ.correctAnswer ?? 0);
+
+        const mathResult = validateAndNormalizeQuestionMath({
+          questionText: rawQuestionText,
+          options: rawOptions,
+          explanation: rawExplanation,
+        });
+        const needsReview =
+          rawQ.needs_review !== undefined
+            ? Number(Boolean(rawQ.needs_review))
+            : mathResult.needsReview
+              ? 1
+              : 0;
+        if (needsReview) needsReviewCount++;
+
+        const sourcePath = String(rawQ.source_path || `${bankId}/questions_${subject}/${id}`);
+        const existingIdx = store.questions.findIndex(
+          (q) => q.id === id || (q.bank_id === bankId && q.source_path === sourcePath)
+        );
+        const row: D1QuestionRow = {
+          id: existingIdx !== -1 ? store.questions[existingIdx].id : id,
+          bank_id: bankId,
+          subject,
+          topic,
+          difficulty,
+          status,
+          needs_review: needsReview,
+          question_text: mathResult.questionText,
+          options_json: JSON.stringify(mathResult.options),
+          correct_answer: Number.isFinite(correctAnswer) ? correctAnswer : 0,
+          explanation: mathResult.explanation,
+          source_path: sourcePath,
+          created_at: existingIdx !== -1 ? store.questions[existingIdx].created_at : now,
+          updated_at: now,
+        };
+        if (existingIdx !== -1) {
+          store.questions[existingIdx] = row;
+        } else {
+          store.questions.push(row);
+        }
+        imported++;
+      }
+
+      saveD1Store(store);
+      return res.status(200).json({
+        success: true,
+        imported,
+        needsReviewCount,
+      });
+    }
+
+    const ids: string[] = Array.isArray(body.ids)
+      ? body.ids.map((x: any) => String(x || '').trim()).filter(Boolean)
+      : [];
+    const updates = body.updates || {};
+    let updatedCount = 0;
+
+    if (ids.length > 0) {
+      const idSet = new Set(ids);
+      for (const q of store.questions) {
+        if (!idSet.has(q.id)) continue;
+        if (updates.topic !== undefined) q.topic = String(updates.topic).trim();
+        if (updates.subject !== undefined) q.subject = normalizeQSubject(updates.subject);
+        if (updates.difficulty !== undefined) q.difficulty = String(updates.difficulty).trim().toLowerCase();
+        if (updates.status !== undefined) q.status = String(updates.status).trim().toLowerCase();
+        if (updates.needs_review !== undefined) q.needs_review = Number(Boolean(updates.needs_review));
+        q.updated_at = now;
+        updatedCount++;
+      }
+    } else if (body.subject && body.oldTopic && body.newTopic) {
+      const subj = normalizeQSubject(body.subject);
+      const oldTopic = String(body.oldTopic).trim();
+      const newTopic = String(body.newTopic).trim();
+      for (const q of store.questions) {
+        if (q.subject === subj && q.topic === oldTopic) {
+          q.topic = newTopic;
+          q.updated_at = now;
+          updatedCount++;
+        }
+      }
+    }
+
+    saveD1Store(store);
+    return res.status(200).json({
+      success: true,
+      updatedCount,
+    });
+  };
+
+  app.put('/api/questions/batch', handleBatchUpdateQuestions);
+  app.post('/api/questions/batch', handleBatchUpdateQuestions);
+
+  app.get('/api/questions', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    const isAdmin = isStrictQuestionBankAdmin(user);
+    const store = loadD1Store();
+    const questions = Array.isArray(store.questions) ? store.questions : [];
+
+    const idsParam = String(req.query.ids || '').trim();
+    const bankParam = String(req.query.bank || req.query.bank_id || '').trim();
+    const subjectParam = String(req.query.subject || '').trim();
+    const topicParam = String(req.query.topic || '').trim();
+    const difficultyParam = String(req.query.difficulty || '').trim().toLowerCase();
+    const statusParam = String(req.query.status || '').trim().toLowerCase();
+    const needsReviewParam = String(req.query.needs_review ?? req.query.needsReview ?? '').trim();
+    const searchParam = String(req.query.search || req.query.q || '').trim().toLowerCase();
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit || '100'), 10) || 100, 1), 1000);
+    const offset = Math.max(parseInt(String(req.query.offset || '0'), 10) || 0, 0);
+
+    const requestedIds = idsParam
+      ? new Set(idsParam.split(',').map((s) => s.trim()).filter(Boolean))
+      : null;
+
+    const matching = questions.filter((q) => {
+      if (requestedIds && !requestedIds.has(q.id)) return false;
+      if (bankParam && bankParam !== 'all' && q.bank_id !== bankParam) return false;
+      if (subjectParam && subjectParam !== 'all' && q.subject !== normalizeQSubject(subjectParam)) return false;
+      if (topicParam && topicParam !== 'all' && q.topic !== topicParam) return false;
+      if (difficultyParam && difficultyParam !== 'all' && q.difficulty !== difficultyParam) return false;
+      if (isAdmin) {
+        if (statusParam && statusParam !== 'all' && q.status !== statusParam) return false;
+      } else {
+        if (q.status !== 'published') return false;
+      }
+      if (needsReviewParam === '1' || needsReviewParam === 'true') {
+        if (Number(q.needs_review || 0) !== 1) return false;
+      } else if (needsReviewParam === '0' || needsReviewParam === 'false') {
+        if (Number(q.needs_review || 0) !== 0) return false;
+      }
+      if (searchParam) {
+        const hay = `${q.id} ${q.question_text} ${q.topic} ${q.subject} ${q.options_json}`.toLowerCase();
+        if (!hay.includes(searchParam)) return false;
+      }
+      return true;
+    });
+
+    matching.sort((a, b) => Number(b.updated_at || 0) - Number(a.updated_at || 0) || a.id.localeCompare(b.id));
+    const total = matching.length;
+    const paged = matching.slice(offset, offset + limit);
+    const formatted = paged.map((r) => formatD1QuestionForClient(r, isAdmin));
+
+    return res.status(200).json({
+      questions: formatted,
+      total,
+      limit,
+      offset,
+      hasMore: offset + formatted.length < total,
+      isAdmin,
+    });
+  });
+
+  app.post('/api/questions', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!isStrictQuestionBankAdmin(user)) {
+      return res.status(user ? 403 : 401).json({
+        error: 'Forbidden: Only shsvirtualadmin@gmail.com can create questions.',
+      });
+    }
+
+    const body = req.body || {};
+    const bankId = String(body.bank_id || body.sourceId || 'legacy').trim() || 'legacy';
+    const rawId = String(body.id || `q_${crypto.randomUUID().slice(0, 12)}`).trim();
+    const id = rawId.startsWith(`${bankId}__`) || bankId === 'legacy' ? rawId : `${bankId}__${rawId}`;
+    const subject = normalizeQSubject(body.subject || 'physics');
+    const topic = String(body.topic || 'General').trim() || 'General';
+    const difficultyRaw = String(body.difficulty || 'medium').trim().toLowerCase();
+    const difficulty = ['easy', 'medium', 'hard'].includes(difficultyRaw) ? difficultyRaw : 'medium';
+    const statusRaw = String(body.status || 'published').trim().toLowerCase();
+    const status = ['published', 'draft', 'archived'].includes(statusRaw) ? statusRaw : 'published';
+
+    const rawQuestionText = String(body.question_text ?? body.questionText ?? '').trim();
+    if (!rawQuestionText) {
+      return res.status(400).json({ error: 'question_text is required.' });
+    }
+
+    let rawOptions: string[] = [];
+    if (Array.isArray(body.options)) {
+      rawOptions = body.options.map((o: any) => String(o ?? ''));
+    } else if (typeof body.options_json === 'string') {
+      try {
+        const parsed = JSON.parse(body.options_json);
+        if (Array.isArray(parsed)) rawOptions = parsed.map((o: any) => String(o ?? ''));
+      } catch {
+        rawOptions = [];
+      }
+    }
+    if (rawOptions.length < 2) {
+      return res.status(400).json({ error: 'At least 2 options are required.' });
+    }
+
+    const rawExplanation = String(body.explanation ?? '').trim();
+    const correctAnswer = Number(body.correct_answer ?? body.correctAnswer ?? 0);
+
+    const mathResult = validateAndNormalizeQuestionMath({
+      questionText: rawQuestionText,
+      options: rawOptions,
+      explanation: rawExplanation,
+    });
+
+    const needsReview =
+      body.needs_review !== undefined
+        ? Number(Boolean(body.needs_review))
+        : mathResult.needsReview
+          ? 1
+          : 0;
+    const sourcePath = String(body.source_path || `${bankId}/questions_${subject}/${id}`).trim();
+    const now = Date.now();
+
+    const store = loadD1Store();
+    if (!Array.isArray(store.questions)) store.questions = [];
+
+    const existingIdx = store.questions.findIndex(
+      (q) => q.id === id || (q.bank_id === bankId && q.source_path === sourcePath)
+    );
+    const savedRow: D1QuestionRow = {
+      id: existingIdx !== -1 ? store.questions[existingIdx].id : id,
+      bank_id: bankId,
+      subject,
+      topic,
+      difficulty,
+      status,
+      needs_review: needsReview,
+      question_text: mathResult.questionText,
+      options_json: JSON.stringify(mathResult.options),
+      correct_answer: Number.isFinite(correctAnswer) ? correctAnswer : 0,
+      explanation: mathResult.explanation,
+      source_path: sourcePath,
+      created_at: existingIdx !== -1 ? store.questions[existingIdx].created_at : now,
+      updated_at: now,
+    };
+
+    if (existingIdx !== -1) {
+      store.questions[existingIdx] = savedRow;
+    } else {
+      store.questions.push(savedRow);
+    }
+    saveD1Store(store);
+
+    return res.status(201).json({
+      success: true,
+      question: formatD1QuestionForClient(savedRow, true),
+      mathValidationErrors: mathResult.errors,
+    });
+  });
+
+  app.get('/api/questions/:id', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    const isAdmin = isStrictQuestionBankAdmin(user);
+    const targetId = decodeURIComponent(String(req.params.id || '').trim());
+    const store = loadD1Store();
+    const questions = Array.isArray(store.questions) ? store.questions : [];
+    const row = questions.find((q) => q.id === targetId);
+
+    if (!row || (!isAdmin && row.status !== 'published')) {
+      return res.status(404).json({ error: 'Question not found.' });
+    }
+    return res.status(200).json({
+      question: formatD1QuestionForClient(row, isAdmin),
+    });
+  });
+
+  const handleUpdateSingleQuestion = async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!isStrictQuestionBankAdmin(user)) {
+      return res.status(user ? 403 : 401).json({
+        error: 'Forbidden: Only shsvirtualadmin@gmail.com can update questions.',
+      });
+    }
+
+    const targetId = decodeURIComponent(String(req.params.id || '').trim());
+    const store = loadD1Store();
+    if (!Array.isArray(store.questions)) store.questions = [];
+    const idx = store.questions.findIndex((q) => q.id === targetId);
+    if (idx === -1) {
+      return res.status(404).json({ error: 'Question not found.' });
+    }
+
+    const existing = store.questions[idx];
+    const body = req.body || {};
+
+    const bankId = String(body.bank_id ?? body.sourceId ?? existing.bank_id ?? 'legacy').trim();
+    const subject =
+      body.subject !== undefined ? normalizeQSubject(body.subject) : String(existing.subject);
+    const topic = body.topic !== undefined ? String(body.topic).trim() : String(existing.topic);
+    const difficultyRaw =
+      body.difficulty !== undefined
+        ? String(body.difficulty).trim().toLowerCase()
+        : String(existing.difficulty || 'medium');
+    const difficulty = ['easy', 'medium', 'hard'].includes(difficultyRaw) ? difficultyRaw : 'medium';
+    const statusRaw =
+      body.status !== undefined
+        ? String(body.status).trim().toLowerCase()
+        : String(existing.status || 'published');
+    const status = ['published', 'draft', 'archived'].includes(statusRaw) ? statusRaw : 'published';
+
+    const rawQuestionText =
+      body.question_text !== undefined || body.questionText !== undefined
+        ? String(body.question_text ?? body.questionText ?? '').trim()
+        : String(existing.question_text || '');
+
+    let rawOptions: string[] = [];
+    if (Array.isArray(body.options)) {
+      rawOptions = body.options.map((o: any) => String(o ?? ''));
+    } else if (typeof body.options_json === 'string') {
+      try {
+        const parsed = JSON.parse(body.options_json);
+        if (Array.isArray(parsed)) rawOptions = parsed.map((o: any) => String(o ?? ''));
+      } catch {
+        rawOptions = [];
+      }
+    } else {
+      try {
+        const parsed = JSON.parse(existing.options_json || '[]');
+        if (Array.isArray(parsed)) rawOptions = parsed.map((o: any) => String(o ?? ''));
+      } catch {
+        rawOptions = [];
+      }
+    }
+
+    const rawExplanation =
+      body.explanation !== undefined ? String(body.explanation).trim() : String(existing.explanation || '');
+    const correctAnswer =
+      body.correct_answer !== undefined || body.correctAnswer !== undefined
+        ? Number(body.correct_answer ?? body.correctAnswer ?? 0)
+        : Number(existing.correct_answer ?? 0);
+
+    const mathResult = validateAndNormalizeQuestionMath({
+      questionText: rawQuestionText,
+      options: rawOptions,
+      explanation: rawExplanation,
+    });
+
+    const needsReview =
+      body.needs_review !== undefined || body.needsReview !== undefined
+        ? Number(Boolean(body.needs_review ?? body.needsReview))
+        : mathResult.needsReview
+          ? 1
+          : 0;
+
+    const updatedRow: D1QuestionRow = {
+      ...existing,
+      bank_id: bankId,
+      subject,
+      topic,
+      difficulty,
+      status,
+      needs_review: needsReview,
+      question_text: mathResult.questionText,
+      options_json: JSON.stringify(mathResult.options),
+      correct_answer: Number.isFinite(correctAnswer) ? correctAnswer : 0,
+      explanation: mathResult.explanation,
+      updated_at: Date.now(),
+    };
+
+    store.questions[idx] = updatedRow;
     saveD1Store(store);
 
     return res.status(200).json({
       success: true,
-      ranAt: new Date().toISOString(),
-      botsProcessed: results.length,
-      results,
+      question: formatD1QuestionForClient(updatedRow, true),
+      mathValidationErrors: mathResult.errors,
+    });
+  };
+
+  app.put('/api/questions/:id', handleUpdateSingleQuestion);
+  app.patch('/api/questions/:id', handleUpdateSingleQuestion);
+
+  app.delete('/api/questions/:id', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!isStrictQuestionBankAdmin(user)) {
+      return res.status(user ? 403 : 401).json({
+        error: 'Forbidden: Only shsvirtualadmin@gmail.com can delete questions.',
+      });
+    }
+
+    const targetId = decodeURIComponent(String(req.params.id || '').trim());
+    const store = loadD1Store();
+    if (!Array.isArray(store.questions)) store.questions = [];
+    const beforeLen = store.questions.length;
+    store.questions = store.questions.filter((q) => q.id !== targetId);
+    if (store.questions.length === beforeLen) {
+      return res.status(404).json({ error: 'Question not found.' });
+    }
+    saveD1Store(store);
+
+    return res.status(200).json({
+      success: true,
+      deletedId: targetId,
     });
   });
 }
@@ -2844,6 +3959,7 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
     if (
       method === 'OPTIONS' &&
       (pathname.startsWith('/api/posts') ||
+        pathname.startsWith('/api/questions') ||
         pathname.startsWith('/api/r2') ||
         pathname.startsWith('/api/auth') ||
         pathname.startsWith('/api/bots') ||

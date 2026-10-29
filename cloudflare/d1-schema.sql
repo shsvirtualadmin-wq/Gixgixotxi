@@ -161,6 +161,26 @@ CREATE TABLE IF NOT EXISTS bot_accounts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_bot_accounts_subject ON bot_accounts(subject, enabled);
+CREATE INDEX IF NOT EXISTS idx_bot_accounts_last_run ON bot_accounts(enabled, last_run_at ASC);
+
+CREATE TABLE IF NOT EXISTS bot_key_status (
+  key_index INTEGER PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'available',
+  cooldown_until INTEGER,
+  last_used_at INTEGER,
+  calls_today INTEGER NOT NULL DEFAULT 0,
+  calls_total INTEGER NOT NULL DEFAULT 0,
+  quota_date TEXT NOT NULL DEFAULT '',
+  last_error TEXT,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS bot_system_state (
+  state_key TEXT PRIMARY KEY,
+  state_value TEXT NOT NULL DEFAULT '',
+  updated_at INTEGER NOT NULL
+);
+
 
 CREATE TABLE IF NOT EXISTS announcements (
   id TEXT PRIMARY KEY,
@@ -185,5 +205,40 @@ CREATE TABLE IF NOT EXISTS user_welcome_status (
   read_at INTEGER
 );
 
+CREATE TABLE IF NOT EXISTS questions (
+  id TEXT PRIMARY KEY,
+  bank_id TEXT NOT NULL DEFAULT 'legacy',
+  subject TEXT NOT NULL,
+  topic TEXT NOT NULL DEFAULT 'General Concepts',
+  difficulty TEXT NOT NULL DEFAULT 'medium',
+  status TEXT NOT NULL DEFAULT 'published',
+  needs_review INTEGER NOT NULL DEFAULT 0,
+  question_text TEXT NOT NULL,
+  options_json TEXT NOT NULL,
+  correct_answer INTEGER NOT NULL DEFAULT 0,
+  explanation TEXT NOT NULL DEFAULT '',
+  source_path TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_questions_bank_subj_topic_status ON questions(bank_id, subject, topic, status);
+CREATE INDEX IF NOT EXISTS idx_questions_needs_review ON questions(needs_review);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_questions_bank_source_path ON questions(bank_id, source_path);
+
+CREATE TABLE IF NOT EXISTS questions_import_log (
+  id TEXT PRIMARY KEY,
+  bank_id TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  total_read INTEGER NOT NULL DEFAULT 0,
+  imported_count INTEGER NOT NULL DEFAULT 0,
+  needs_review_count INTEGER NOT NULL DEFAULT 0,
+  source_type TEXT NOT NULL DEFAULT 'firestore',
+  imported_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_questions_import_log_bank_time ON questions_import_log(bank_id, imported_at DESC);
+
 UPDATE posts SET created_at = created_at * 1000, updated_at = created_at * 1000 WHERE created_at > 0 AND created_at < 10000000000;
 UPDATE posts SET created_at = 1743465600000, updated_at = 1743465600000 WHERE id LIKE 'commons_anon_topic_%' AND created_at > 1743465600000;
+

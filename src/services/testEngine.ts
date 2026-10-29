@@ -21,6 +21,8 @@ import {
 import { getUniversityCriteria, getSectionCriteria } from '@/constants/universityCriteria';
 import {
   ENABLE_MULTI_SOURCE_BANK,
+  USE_FIRESTORE_QUESTION_READER,
+  toD1QuestionId,
   getMultiSourceSubjectQuestionIds,
   fetchMultiSourceQuestionsByIds,
   fetchMultiSourcePoolQuestions,
@@ -629,69 +631,104 @@ export async function submitAttempt(
   const questions = attempt.questions ?? [];
   const totalQuestions = questions.length;
 
-  // 1. Fetch secret answer keys from `questionKeys` with fallback to `questions` doc
+  // 1. Fetch secret answer keys from Cloudflare D1 (`/api/questions/verify`) or Firestore fallback
   const questionKeyMap = new Map<string, { correct: unknown; explain?: string }>();
-  await Promise.all(
-    questions.map(async (q) => {
-      try {
-        if (ENABLE_MULTI_SOURCE_BANK) {
-          const msKey = await fetchMultiSourceQuestionKey(q.id, q.subject);
-          if (msKey) {
-            questionKeyMap.set(q.id, msKey);
-            return;
-          }
-        }
 
-        // First check dedicated subject pool if applicable
-        if (q.subject && isSubjectPoolSupported(q.subject)) {
-          const poolColl = getSubjectPoolCollection(q.subject);
-          const poolSnap = await getDoc(doc(db, poolColl, q.id));
-          if (poolSnap.exists()) {
-            const pData = poolSnap.data();
+  if (!USE_FIRESTORE_QUESTION_READER && questions.length > 0) {
+    try {
+      const resp = await fetch('/api/questions/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          answers: questions.map((q, idx) => ({
+            questionId: toD1QuestionId(q.id),
+            selectedAnswer: userAnswers[String(idx)] ?? null,
+          })),
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const results = (data?.results || {}) as Record<
+          string,
+          { canonical_correct_answer?: number; correct_answer?: number; explanation?: string }
+        >;
+        for (const q of questions) {
+          const d1Id = toD1QuestionId(q.id);
+          const res = results[d1Id] || results[q.id];
+          if (res) {
             questionKeyMap.set(q.id, {
-              correct: pData.correct !== undefined ? pData.correct : pData.correctAnswer,
-              explain: pData.explain || pData.explanation || '',
+              correct: res.canonical_correct_answer ?? res.correct_answer ?? 0,
+              explain: res.explanation || '',
             });
-            return;
           }
         }
-
-        const keySnap = await getDoc(doc(db, 'questionKeys', q.id));
-        if (keySnap.exists()) {
-          const kData = keySnap.data();
-          questionKeyMap.set(q.id, {
-            correct: kData.correct !== undefined ? kData.correct : kData.correctAnswer,
-            explain: kData.explain || kData.explanation || '',
-          });
-          return;
-        }
-
-        // Fallback: check questions doc in case keys collection didn't have it
-        const qSnap = await getDoc(doc(db, 'questions', q.id));
-        if (qSnap.exists()) {
-          const qData = qSnap.data();
-          if (qData.correct !== undefined || qData.correctAnswer !== undefined) {
-            questionKeyMap.set(q.id, {
-              correct: qData.correct !== undefined ? qData.correct : qData.correctAnswer,
-              explain: qData.explain || qData.explanation || '',
-            });
-            return;
-          }
-        }
-
-        // Fallback to in-memory question doc fields if present
-        const anyQ = q as unknown as Record<string, unknown>;
-        if (anyQ.correct !== undefined || anyQ.correctAnswer !== undefined) {
-          questionKeyMap.set(q.id, {
-            correct: anyQ.correct !== undefined ? anyQ.correct : anyQ.correctAnswer,
-            explain: (anyQ.explain as string) || (anyQ.explanation as string) || '',
-          });
-        }
-      } catch (keyErr) {
-        console.warn(`[testEngine] Could not load key for ${q.id}:`, keyErr);
       }
-    })
-  );
+    } catch (verifyErr) {
+      console.warn('[testEngine] Batch D1 verify notice:', verifyErr);
+    }
+  } else {
+    await Promise.all(
+      questions.map(async (q) => {
+        try {
+          if (ENABLE_MULTI_SOURCE_BANK) {
+            const msKey = await fetchMultiSourceQuestionKey(q.id, q.subject);
+            if (msKey) {
+              questionKeyMap.set(q.id, msKey);
+              return;
+            }
+          }
+
+          // First check dedicated subject pool if applicable
+          if (q.subject && isSubjectPoolSupported(q.subject)) {
+            const poolColl = getSubjectPoolCollection(q.subject);
+            const poolSnap = await getDoc(doc(db, poolColl, q.id));
+            if (poolSnap.exists()) {
+              const pData = poolSnap.data();
+              questionKeyMap.set(q.id, {
+                correct: pData.correct !== undefined ? pData.correct : pData.correctAnswer,
+                explain: pData.explain || pData.explanation || '',
+              });
+              return;
+            }
+          }
+
+          const keySnap = await getDoc(doc(db, 'questionKeys', q.id));
+          if (keySnap.exists()) {
+            const kData = keySnap.data();
+            questionKeyMap.set(q.id, {
+              correct: kData.correct !== undefined ? kData.correct : kData.correctAnswer,
+              explain: kData.explain || kData.explanation || '',
+            });
+            return;
+          }
+
+          // Fallback: check questions doc in case keys collection didn't have it
+          const qSnap = await getDoc(doc(db, 'questions', q.id));
+          if (qSnap.exists()) {
+            const qData = qSnap.data();
+            if (qData.correct !== undefined || qData.correctAnswer !== undefined) {
+              questionKeyMap.set(q.id, {
+                correct: qData.correct !== undefined ? qData.correct : qData.correctAnswer,
+                explain: qData.explain || qData.explanation || '',
+              });
+              return;
+            }
+          }
+
+          // Fallback to in-memory question doc fields if present
+          const anyQ = q as unknown as Record<string, unknown>;
+          if (anyQ.correct !== undefined || anyQ.correctAnswer !== undefined) {
+            questionKeyMap.set(q.id, {
+              correct: anyQ.correct !== undefined ? anyQ.correct : anyQ.correctAnswer,
+              explain: (anyQ.explain as string) || (anyQ.explanation as string) || '',
+            });
+          }
+        } catch (keyErr) {
+          console.warn(`[testEngine] Could not load key for ${q.id}:`, keyErr);
+        }
+      })
+    );
+  }
 
   let correctCount = 0;
   let wrongCount = 0;
@@ -950,46 +987,80 @@ export async function regradeAttempt(attemptId: string): Promise<AttemptDoc> {
   const questions = attempt.questions || [];
   const userAnswers = attempt.userAnswers || {};
 
-  // Fetch keys with fallback
+  // Fetch keys with D1 verify or Firestore fallback
   const questionKeyMap = new Map<string, { correct: unknown; explain?: string }>();
-  await Promise.all(
-    questions.map(async (q) => {
-      try {
-        if (q.subject && isSubjectPoolSupported(q.subject)) {
-          const poolColl = getSubjectPoolCollection(q.subject);
-          const poolSnap = await getDoc(doc(db, poolColl, q.id));
-          if (poolSnap.exists()) {
-            const pData = poolSnap.data();
+  if (!USE_FIRESTORE_QUESTION_READER && questions.length > 0) {
+    try {
+      const resp = await fetch('/api/questions/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          answers: questions.map((q, idx) => ({
+            questionId: toD1QuestionId(q.id),
+            selectedAnswer: userAnswers[String(idx)] ?? null,
+          })),
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const results = (data?.results || {}) as Record<
+          string,
+          { canonical_correct_answer?: number; correct_answer?: number; explanation?: string }
+        >;
+        for (const q of questions) {
+          const d1Id = toD1QuestionId(q.id);
+          const res = results[d1Id] || results[q.id];
+          if (res) {
             questionKeyMap.set(q.id, {
-              correct: pData.correct !== undefined ? pData.correct : pData.correctAnswer,
-              explain: pData.explain || pData.explanation || '',
+              correct: res.canonical_correct_answer ?? res.correct_answer ?? 0,
+              explain: res.explanation || '',
+            });
+          }
+        }
+      }
+    } catch (verifyErr) {
+      console.warn('[regradeAttempt] Batch D1 verify notice:', verifyErr);
+    }
+  } else {
+    await Promise.all(
+      questions.map(async (q) => {
+        try {
+          if (q.subject && isSubjectPoolSupported(q.subject)) {
+            const poolColl = getSubjectPoolCollection(q.subject);
+            const poolSnap = await getDoc(doc(db, poolColl, q.id));
+            if (poolSnap.exists()) {
+              const pData = poolSnap.data();
+              questionKeyMap.set(q.id, {
+                correct: pData.correct !== undefined ? pData.correct : pData.correctAnswer,
+                explain: pData.explain || pData.explanation || '',
+              });
+              return;
+            }
+          }
+
+          const keySnap = await getDoc(doc(db, 'questionKeys', q.id));
+          if (keySnap.exists()) {
+            const kData = keySnap.data();
+            questionKeyMap.set(q.id, {
+              correct: kData.correct !== undefined ? kData.correct : kData.correctAnswer,
+              explain: kData.explain || kData.explanation || '',
             });
             return;
           }
+          const qSnap = await getDoc(doc(db, 'questions', q.id));
+          if (qSnap.exists()) {
+            const qData = qSnap.data();
+            questionKeyMap.set(q.id, {
+              correct: qData.correct !== undefined ? qData.correct : qData.correctAnswer,
+              explain: qData.explain || qData.explanation || '',
+            });
+          }
+        } catch (err) {
+          console.warn(`[regradeAttempt] key load error for ${q.id}:`, err);
         }
-
-        const keySnap = await getDoc(doc(db, 'questionKeys', q.id));
-        if (keySnap.exists()) {
-          const kData = keySnap.data();
-          questionKeyMap.set(q.id, {
-            correct: kData.correct !== undefined ? kData.correct : kData.correctAnswer,
-            explain: kData.explain || kData.explanation || '',
-          });
-          return;
-        }
-        const qSnap = await getDoc(doc(db, 'questions', q.id));
-        if (qSnap.exists()) {
-          const qData = qSnap.data();
-          questionKeyMap.set(q.id, {
-            correct: qData.correct !== undefined ? qData.correct : qData.correctAnswer,
-            explain: qData.explain || qData.explanation || '',
-          });
-        }
-      } catch (err) {
-        console.warn(`[regradeAttempt] key load error for ${q.id}:`, err);
-      }
-    })
-  );
+      })
+    );
+  }
 
   let correctCount = 0;
   let wrongCount = 0;

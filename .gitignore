@@ -11,5 +11,8 @@ coverage/
 firebase-applet-config.json
 *service-account*.json
 *firebase-adminsdk*.json
+*credentials*.json
+scripts/migrate-questions/*.key.json
 bun.lock
 bun.lockb
+

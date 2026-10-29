@@ -47,6 +47,8 @@ import { normalizeCorrectAnswer } from './testEngine';
 import { recordCrewPaymentActionServer } from './crewBackend';
 import {
   ENABLE_MULTI_SOURCE_BANK,
+  USE_FIRESTORE_QUESTION_READER,
+  clearMultiSourceCache,
   getMultiSourceQuestionCounts,
   fetchMultiSourceSubjectTopics,
   fetchMultiSourceQuestionsPaginated,
@@ -1230,6 +1232,20 @@ export interface BankHealthStats {
   openReportsCount: number;
   duplicatesDetected: number;
   invalidCorrectCount: number;
+  needsReviewCount?: number;
+  lastImportAt?: string | null;
+  banks?: Record<
+    string,
+    {
+      bankId: string;
+      label: string;
+      total: number;
+      published: number;
+      needsReview: number;
+      bySubject: Record<string, number>;
+      lastImportAt: string | null;
+    }
+  >;
 }
 
 export async function fetchBankHealth(): Promise<BankHealthStats> {
@@ -1244,7 +1260,50 @@ export async function fetchBankHealth(): Promise<BankHealthStats> {
     openReportsCount: 0,
     duplicatesDetected: 0,
     invalidCorrectCount: 0,
+    needsReviewCount: 0,
+    lastImportAt: null,
+    banks: {},
   };
+
+  if (!USE_FIRESTORE_QUESTION_READER) {
+    try {
+      const [healthResp, listResp] = await Promise.all([
+        fetch('/api/questions/health'),
+        fetch('/api/questions?limit=1000'),
+      ]);
+      if (healthResp.ok) {
+        const hData = await healthResp.json();
+        result.totalQuestions = Number(hData?.totalQuestions ?? 0);
+        result.bySubject = hData?.bySubject || {};
+        result.needsReviewCount = Number(hData?.totalNeedsReview ?? 0);
+        result.lastImportAt = hData?.lastImportAt || null;
+        result.banks = hData?.banks || {};
+      }
+      if (listResp.ok) {
+        const lData = await listResp.json();
+        const qList = Array.isArray(lData?.questions) ? lData.questions : [];
+        for (const q of qList) {
+          const ch = String(q.topic || 'General');
+          const diff = String(q.difficulty || 'medium').toLowerCase();
+          const st = String(q.status || 'published').toLowerCase();
+          result.byChapter[ch] = (result.byChapter[ch] || 0) + 1;
+          if (diff === 'easy') result.byDifficulty.easy++;
+          else if (diff === 'hard') result.byDifficulty.hard++;
+          else result.byDifficulty.medium++;
+
+          if (st === 'draft') result.byStatus.draft++;
+          else if (st === 'reviewed') result.byStatus.reviewed++;
+          else result.byStatus.published++;
+
+          if (st !== 'archived') result.activeCount++;
+          else result.inactiveCount++;
+        }
+      }
+    } catch (err) {
+      console.warn('[AdminService] fetchBankHealth D1 error:', err);
+    }
+    return result;
+  }
 
   try {
     const questionsSnap = await getDocs(query(collection(db, 'questions'), limit(2500)));
@@ -1314,6 +1373,32 @@ export async function batchUpdateQuestions(
   questionIds: string[],
   updates: { status?: 'draft' | 'reviewed' | 'published'; active?: boolean; chapter?: string }
 ): Promise<number> {
+  if (!USE_FIRESTORE_QUESTION_READER) {
+    const token = auth?.currentUser ? await auth.currentUser.getIdToken() : '';
+    const resp = await fetch('/api/questions/batch', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        ids: questionIds,
+        updates: {
+          ...(updates.status ? { status: updates.status } : {}),
+          ...(updates.chapter ? { topic: updates.chapter } : {}),
+        },
+      }),
+    });
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      throw new Error(errData?.error || `Failed to batch update questions in D1 (HTTP ${resp.status})`);
+    }
+    const data = await resp.json();
+    clearMultiSourceCache();
+    clearQuestionsCache();
+    return Number(data?.updatedCount ?? questionIds.length);
+  }
+
   const chunkSize = 400;
   let updated = 0;
 
@@ -2239,13 +2324,15 @@ export async function fetchPoolQuestionsPaginated(filters: {
   search?: string;
   difficulty?: string;
   status?: string;
+  bank?: string;
+  needsReview?: boolean;
   limitCount?: number;
   startAfterDoc?: QueryDocumentSnapshot<DocumentData> | null;
   pageIndex?: number;
 }): Promise<PaginatedQuestionsResult> {
   const count = filters.limitCount ?? 20;
   const isFirstPage = !filters.startAfterDoc && !filters.pageIndex;
-  const cacheKey = `${filters.subject}__${filters.topic || 'all'}__${filters.difficulty || 'all'}__${filters.status || 'all'}__${(filters.search || '').trim().toLowerCase()}__p${filters.pageIndex || 0}`;
+  const cacheKey = `${filters.subject}__${filters.topic || 'all'}__${filters.difficulty || 'all'}__${filters.status || 'all'}__${filters.bank || 'all'}__${filters.needsReview === undefined ? 'all' : filters.needsReview ? '1' : '0'}__${(filters.search || '').trim().toLowerCase()}__p${filters.pageIndex || 0}`;
 
   // Session-level in-memory cache check
   if (isFirstPage && questionsPageCache.has(cacheKey)) {
@@ -2259,6 +2346,8 @@ export async function fetchPoolQuestionsPaginated(filters: {
       search: filters.search,
       difficulty: filters.difficulty,
       status: filters.status,
+      bank: filters.bank,
+      needsReview: filters.needsReview,
       pageIndex: filters.pageIndex || 0,
       pageSize: count,
     });
@@ -2529,14 +2618,39 @@ export async function renamePoolTopic(
   oldTopic: string,
   newTopic: string
 ): Promise<number> {
-  const normSub = subject.toLowerCase().trim();
+  const normSub = findSubjectSlug(subject) || subject.toLowerCase().trim();
+  const cleanNew = newTopic.trim();
+
+  if (!USE_FIRESTORE_QUESTION_READER) {
+    const token = auth?.currentUser ? await auth.currentUser.getIdToken() : '';
+    const resp = await fetch('/api/questions/batch', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        subject: normSub,
+        oldTopic,
+        newTopic: cleanNew,
+      }),
+    });
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      throw new Error(errData?.error || `Failed to rename topic in D1 (HTTP ${resp.status})`);
+    }
+    const data = await resp.json();
+    clearMultiSourceCache();
+    clearQuestionsCache();
+    return Number(data?.updatedCount ?? 0);
+  }
+
   const collName = getSubjectPoolCollection(normSub);
 
   // Query ONLY questions matching oldTopic with a safe limit of 200 (never read whole collection)
   const q = query(collection(db, collName), where('topic', '==', oldTopic), limit(200));
   const snap = await getDocs(q);
 
-  const cleanNew = newTopic.trim();
   const batch = writeBatch(db);
   for (const d of snap.docs) {
     batch.update(d.ref, {

@@ -19,6 +19,7 @@ import { SYLLABUS_MAP } from '@/constants/syllabusMap';
 import { formatSubjectName, formatChapterName, slugify } from '@/constants/taxonomy';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
+import { USE_FIRESTORE_QUESTION_READER } from '@/config/questionBankSources';
 
 export interface SampleMcqItem {
   id: string;
@@ -344,12 +345,64 @@ export const McqChapterPage: React.FC = () => {
   );
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({});
 
-  // Attempt to load up to 4 real published Firestore questions for this subject/chapter if available
+  // Attempt to load up to 4 real published D1 questions (or Firestore if feature flag enabled) for this subject/chapter
   useEffect(() => {
     let mounted = true;
     const curated = getCuratedSampleQuestions(subject, matchedChapterTitle);
     setSampleQuestions(curated);
     setSelectedAnswers({});
+
+    if (!USE_FIRESTORE_QUESTION_READER) {
+      fetch(`/api/questions?subject=${encodeURIComponent(subject)}&limit=15`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!mounted || !data || !Array.isArray(data.questions)) return;
+          const matching: SampleMcqItem[] = [];
+          for (const d of data.questions) {
+            const opts = Array.isArray(d.options) ? d.options : [];
+            const qText = String(d.question_text || d.questionText || '');
+            if (opts.length >= 4 && qText) {
+              const topicStr = String(d.topic || '').toLowerCase();
+              if (
+                topicStr.includes(chapter.replace(/-/g, ' ').slice(0, 8)) ||
+                matching.length < 4
+              ) {
+                matching.push({
+                  id: String(d.id),
+                  question: qText,
+                  options: [
+                    String(opts[0]),
+                    String(opts[1]),
+                    String(opts[2]),
+                    String(opts[3]),
+                  ],
+                  correctIndex:
+                    typeof d.correct_answer === 'number' ? d.correct_answer : -1,
+                  explanation:
+                    d.explanation ||
+                    'Step-by-step solution verified by Boardly Academic Review.',
+                  difficulty:
+                    d.difficulty === 'hard'
+                      ? 'Hard'
+                      : d.difficulty === 'easy'
+                      ? 'Easy'
+                      : 'Medium',
+                });
+              }
+            }
+          }
+          if (matching.length >= 3) {
+            setSampleQuestions(matching.slice(0, 4));
+          }
+        })
+        .catch(() => {
+          // Keep curated sample questions with KaTeX derivations
+        });
+
+      return () => {
+        mounted = false;
+      };
+    }
 
     const colName =
       subject.toLowerCase().includes('math')
@@ -581,6 +634,33 @@ export const McqChapterPage: React.FC = () => {
                         key={optIdx}
                         type="button"
                         onClick={() => {
+                          if (!USE_FIRESTORE_QUESTION_READER && mcq.correctIndex < 0) {
+                            fetch('/api/questions/verify', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                questionId: mcq.id,
+                                selectedAnswer: optIdx,
+                              }),
+                            })
+                              .then((r) => (r.ok ? r.json() : null))
+                              .then((vData) => {
+                                if (!vData) return;
+                                setSampleQuestions((prevQs) =>
+                                  prevQs.map((item) =>
+                                    item.id === mcq.id
+                                      ? {
+                                          ...item,
+                                          correctIndex: Number(vData.correct_answer ?? 0),
+                                          explanation:
+                                            vData.explanation || item.explanation,
+                                        }
+                                      : item
+                                  )
+                                );
+                              })
+                              .catch(() => {});
+                          }
                           setSelectedAnswers((prev) => {
                             const wasAlreadyAnswered = prev[mcq.id] !== undefined;
                             const next = { ...prev, [mcq.id]: optIdx };

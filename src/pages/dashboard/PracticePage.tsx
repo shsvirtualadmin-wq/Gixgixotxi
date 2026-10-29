@@ -37,6 +37,10 @@ import {
   TARGET_UNIVERSITY_CRITERIA,
   getUniversityCriteria,
 } from '@/constants/universityCriteria';
+import {
+  USE_FIRESTORE_QUESTION_READER,
+  getMultiSourceQuestionCounts,
+} from '@/services/multiSourceQuestionBank';
 
 const PKTMidnightCountdown = memo(function PKTMidnightCountdown() {
   const [timeToMidnight, setTimeToMidnight] = useState('');
@@ -195,41 +199,59 @@ export function PracticePage() {
 
       // Pre-flight check: verify required subjects have questions
       try {
-        const questionsColl = collection(db, 'questions');
-        for (const split of criteria.subjectsSplit) {
-          const subSlug = split.subject.toLowerCase();
-          let hasQuestions = false;
-
-          if (isSubjectPoolSupported(subSlug)) {
-            const poolColl = getSubjectPoolCollection(subSlug);
-            const poolSnap = await getDocs(
-              query(collection(db, poolColl), where('status', '==', 'published'), limit(1))
-            );
-            hasQuestions = !poolSnap.empty;
+        if (!USE_FIRESTORE_QUESTION_READER) {
+          const countsDoc = await getMultiSourceQuestionCounts();
+          const subCounts = countsDoc.subjectCounts || {};
+          for (const split of criteria.subjectsSplit) {
+            const subSlug = split.subject.toLowerCase();
+            if ((subCounts[subSlug] || 0) <= 0) {
+              if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
+              setLaunchError(
+                `Not enough questions yet for ${formatSubjectName(subSlug)}. Please choose another subject or check back soon.`
+              );
+              setLaunching(false);
+              setLaunchingType(null);
+              setLaunchStatus(null);
+              return;
+            }
           }
+        } else {
+          const questionsColl = collection(db, 'questions');
+          for (const split of criteria.subjectsSplit) {
+            const subSlug = split.subject.toLowerCase();
+            let hasQuestions = false;
 
-          if (!hasQuestions) {
-            const qSnap = await getDocs(
-              query(
-                questionsColl,
-                where('status', '==', 'published'),
-                where('active', '==', true),
-                where('subject', '==', subSlug),
-                limit(1)
-              )
-            );
-            hasQuestions = !qSnap.empty;
-          }
+            if (isSubjectPoolSupported(subSlug)) {
+              const poolColl = getSubjectPoolCollection(subSlug);
+              const poolSnap = await getDocs(
+                query(collection(db, poolColl), where('status', '==', 'published'), limit(1))
+              );
+              hasQuestions = !poolSnap.empty;
+            }
 
-          if (!hasQuestions) {
-            if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
-            setLaunchError(
-              `Not enough questions yet for ${formatSubjectName(subSlug)}. Please choose another subject or check back soon.`
-            );
-            setLaunching(false);
-            setLaunchingType(null);
-            setLaunchStatus(null);
-            return;
+            if (!hasQuestions) {
+              const qSnap = await getDocs(
+                query(
+                  questionsColl,
+                  where('status', '==', 'published'),
+                  where('active', '==', true),
+                  where('subject', '==', subSlug),
+                  limit(1)
+                )
+              );
+              hasQuestions = !qSnap.empty;
+            }
+
+            if (!hasQuestions) {
+              if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
+              setLaunchError(
+                `Not enough questions yet for ${formatSubjectName(subSlug)}. Please choose another subject or check back soon.`
+              );
+              setLaunching(false);
+              setLaunchingType(null);
+              setLaunchStatus(null);
+              return;
+            }
           }
         }
       } catch (err: unknown) {

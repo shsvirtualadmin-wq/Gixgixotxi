@@ -174,6 +174,7 @@ export function AdminQuestionsPage() {
 
   const [difficultyFilter, setDifficultyFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [bankFilter, setBankFilter] = useState('all');
 
   // Multi-selection for batch actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -277,6 +278,9 @@ export function AdminQuestionsPage() {
   useEffect(() => {
     const unsubFailing = subscribeFailingSources(setFailingSources);
     const unsubDiag = subscribeBankSourceHealth(setBankSourceDiagnostics);
+    checkAllBankSourcesHealth()
+      .then((res) => setBankSourceDiagnostics(res))
+      .catch(() => {});
     return () => {
       unsubFailing();
       unsubDiag();
@@ -414,6 +418,8 @@ export function AdminQuestionsPage() {
         topic: selectedTopic !== 'all' ? selectedTopic : undefined,
         difficulty: difficultyFilter !== 'all' ? difficultyFilter : undefined,
         status: statusFilter !== 'all' ? statusFilter : undefined,
+        bank: bankFilter !== 'all' ? bankFilter : undefined,
+        needsReview: needsReviewOnly ? true : undefined,
         search: debouncedSearch,
         limitCount: 20,
         pageIndex: 0,
@@ -437,7 +443,7 @@ export function AdminQuestionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedSubject, selectedTopic, debouncedSearch, difficultyFilter, statusFilter]);
+  }, [selectedSubject, selectedTopic, debouncedSearch, difficultyFilter, statusFilter, bankFilter, needsReviewOnly]);
 
   const loadHealth = useCallback(async () => {
     setHealthLoading(true);
@@ -499,6 +505,8 @@ export function AdminQuestionsPage() {
         topic: selectedTopic !== 'all' ? selectedTopic : undefined,
         difficulty: difficultyFilter !== 'all' ? difficultyFilter : undefined,
         status: statusFilter !== 'all' ? statusFilter : undefined,
+        bank: bankFilter !== 'all' ? bankFilter : undefined,
+        needsReview: needsReviewOnly ? true : undefined,
         search: debouncedSearch,
         limitCount: 20,
         startAfterDoc: lastDoc,
@@ -817,9 +825,19 @@ export function AdminQuestionsPage() {
   };
 
   const displayedQuestions = useMemo(() => {
-    if (!needsReviewOnly) return questions;
-    return questions.filter((q) => containsReasoningResidue(q.explain || q.explanation, q.q || q.question));
-  }, [questions, needsReviewOnly]);
+    let list = questions;
+    if (bankFilter !== 'all') {
+      list = list.filter(
+        (q) => (q.sourceId || (q as any).bank_id || parseQuestionCompoundId(q.id).sourceId) === bankFilter
+      );
+    }
+    if (!needsReviewOnly) return list;
+    return list.filter(
+      (q) =>
+        Boolean((q as any).needsReview || (q as any).needs_review) ||
+        containsReasoningResidue(q.explain || q.explanation, q.q || q.question)
+    );
+  }, [questions, bankFilter, needsReviewOnly]);
 
   // ─── BATCH ACTIONS ──────────────────────────────────────────────────────────
   const toggleSelectAll = () => {
@@ -1635,8 +1653,23 @@ export function AdminQuestionsPage() {
                       </select>
                     </div>
 
-                    {/* "Needs review" filter for reasoning artifact detection */}
-                    <label className="flex items-center gap-1.5 px-2.5 py-1 rounded-[8px] bg-[var(--card-2)] border border-[var(--border)] text-[var(--text)] text-[12px] cursor-pointer hover:border-[var(--brand)] transition-colors select-none" title="Filter questions whose explanation contains 'Wait', 'Re-evaluating' or 'let\'s set'">
+                    {/* Bank Filter */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[var(--muted)] text-[11px]">Bank:</span>
+                      <select
+                        value={bankFilter}
+                        onChange={(e) => setBankFilter(e.target.value)}
+                        className="px-2.5 py-1 rounded-[8px] bg-[var(--card-2)] border border-[var(--border)] text-[var(--text)] text-[12px]"
+                      >
+                        <option value="all">All Banks (D1)</option>
+                        <option value="legacy">Core Bank (legacy)</option>
+                        <option value="bank1">Alpha Bank (bank1)</option>
+                        <option value="bank2">Beta Bank (bank2)</option>
+                      </select>
+                    </div>
+
+                    {/* "Needs review" filter for KaTeX / reasoning artifact detection */}
+                    <label className="flex items-center gap-1.5 px-2.5 py-1 rounded-[8px] bg-[var(--card-2)] border border-[var(--border)] text-[var(--text)] text-[12px] cursor-pointer hover:border-[var(--brand)] transition-colors select-none" title="Filter questions marked needs_review = 1 or containing reasoning residue">
                       <input
                         type="checkbox"
                         checked={needsReviewOnly}
@@ -1785,10 +1818,10 @@ export function AdminQuestionsPage() {
                         <span className="text-[11px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
                           {q.difficulty}
                         </span>
-                        {hasReasoningResidue && (
+                        {(hasReasoningResidue || Boolean((q as any).needsReview || (q as any).needs_review)) && (
                           <span
                             className="text-[10px] font-heading px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-500 font-bold flex items-center gap-1"
-                            title="Explanation or stem contains reasoning artifact ('Wait', 'Re-evaluating', or 'let\'s set')"
+                            title="Flagged needs_review = 1 or contains reasoning artifact"
                           >
                             <AlertTriangle size={10} />
                             <span>Needs review</span>
@@ -1918,10 +1951,10 @@ export function AdminQuestionsPage() {
                 <div>
                   <h3 className="text-[15px] font-bold font-heading text-[var(--text)] flex items-center gap-2">
                     <Database size={16} className="text-[var(--accent)]" />
-                    <span>Multi-Source Question Banks Status (Triple-Project Quota)</span>
+                    <span>Cloudflare D1 Question Banks Status (boardly-posts-db)</span>
                   </h3>
                   <p className="text-[12px] text-[var(--muted)]">
-                    Real-time connectivity, latency, Firestore permissions, and MCQ counts across Core Bank, Alpha Bank, and Beta Bank.
+                    Per-bank D1 question counts, KaTeX review status, and last import time across Core Bank (legacy), Alpha Bank (bank1), and Beta Bank (bank2).
                   </p>
                 </div>
                 <button
@@ -1931,18 +1964,33 @@ export function AdminQuestionsPage() {
                   className="px-3 py-1.5 rounded-[10px] border border-[var(--border)] bg-[var(--card-2)] hover:bg-[var(--surface-hover)] text-[12px] font-heading font-semibold text-[var(--text)] flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw size={12} className={probingBankHealth ? 'animate-spin' : ''} />
-                  <span>{probingBankHealth ? 'Testing Connections…' : 'Probe Bank Sources Now'}</span>
+                  <span>{probingBankHealth ? 'Refreshing D1 Health…' : 'Probe Bank Sources Now'}</span>
                 </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {bankSourceDiagnostics.map((diag) => {
                   const isHealthy = diag.healthy;
-                  let subtitle = 'Core Bank · AI Studio Master Project';
+                  const bankStatsFromHealth = healthStats?.banks?.[diag.id];
+                  const qCount =
+                    diag.questionCount !== undefined
+                      ? diag.questionCount
+                      : bankStatsFromHealth?.total;
+                  const needsReviewCnt =
+                    diag.needsReviewCount !== undefined
+                      ? diag.needsReviewCount
+                      : bankStatsFromHealth?.needsReview ?? 0;
+                  const lastImportIso =
+                    diag.lastImportAt ||
+                    bankStatsFromHealth?.lastImportAt ||
+                    healthStats?.lastImportAt ||
+                    null;
+
+                  let subtitle = 'Core Bank · Cloudflare D1 (legacy)';
                   if (diag.id === 'bank1') {
-                    subtitle = 'Alpha Bank · Extra Daily Quota (boardly-8c0cd)';
+                    subtitle = 'Alpha Bank · Cloudflare D1 (bank1)';
                   } else if (diag.id === 'bank2') {
-                    subtitle = 'Beta Bank · Default Save Target (boardly-2)';
+                    subtitle = 'Beta Bank · Cloudflare D1 (bank2)';
                   }
 
                   return (
@@ -1988,26 +2036,42 @@ export function AdminQuestionsPage() {
                                 isHealthy ? 'bg-emerald-600 dark:bg-emerald-400' : 'bg-rose-600 dark:bg-rose-400 animate-pulse'
                               }`}
                             />
-                            <span>{isHealthy ? 'Healthy' : 'Failing'}</span>
+                            <span>{isHealthy ? 'Healthy (D1)' : 'Failing'}</span>
                           </span>
                         </div>
 
-                        {/* Question Count */}
-                        <div className="mt-3.5 p-2.5 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between">
-                          <span className="text-[11px] font-heading text-[var(--muted)]">Question Count:</span>
-                          <span className="font-dot text-[15px] font-bold text-[var(--text)]">
-                            {!isHealthy ? (
-                              <span className="text-rose-700 dark:text-rose-400 font-sans text-xs font-semibold">
-                                Unavailable
-                              </span>
-                            ) : diag.questionCount !== undefined ? (
-                              `${diag.questionCount.toLocaleString()} MCQs`
-                            ) : (
-                              <span className="text-[var(--muted)] font-sans text-xs">
-                                Unavailable
-                              </span>
-                            )}
-                          </span>
+                        {/* Question Count & Last Import Time */}
+                        <div className="mt-3.5 p-2.5 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-heading text-[var(--muted)]">D1 Question Count:</span>
+                            <span className="font-dot text-[15px] font-bold text-[var(--text)]">
+                              {!isHealthy ? (
+                                <span className="text-rose-700 dark:text-rose-400 font-sans text-xs font-semibold">
+                                  Unavailable
+                                </span>
+                              ) : qCount !== undefined ? (
+                                `${qCount.toLocaleString()} MCQs`
+                              ) : (
+                                <span className="text-[var(--muted)] font-sans text-xs">
+                                  Unavailable
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-[var(--muted)]">Needs Review:</span>
+                            <span className={needsReviewCnt > 0 ? 'text-amber-400 font-semibold font-mono' : 'text-emerald-400 font-mono'}>
+                              {needsReviewCnt}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-[var(--muted)]">Last Import:</span>
+                            <span className="font-mono text-[10px] text-[var(--text)]">
+                              {lastImportIso
+                                ? new Date(lastImportIso).toLocaleString()
+                                : 'N/A'}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -2019,7 +2083,7 @@ export function AdminQuestionsPage() {
                               : 'text-rose-700 dark:text-rose-400'
                           }`}
                         >
-                          {isHealthy ? 'Operational' : 'Isolated'}
+                          {isHealthy ? 'Operational · D1' : 'Isolated'}
                         </span>
                         {diag.latencyMs !== undefined && (
                           <span className="font-mono text-[10px] text-[var(--muted)]">{diag.latencyMs}ms</span>

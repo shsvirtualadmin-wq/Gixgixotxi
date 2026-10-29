@@ -1,0 +1,71 @@
+{
+  "migratedAt": "2026-10-29T09:44:48.123Z",
+  "sourceType": "repository_seed",
+  "bankConnectionStatus": {
+    "legacy": {
+      "connected": false,
+      "reason": "No service account env var set (FIREBASE_SERVICE_ACCOUNT_LEGACY or GOOGLE_APPLICATION_CREDENTIALS)",
+      "firestoreReadCount": 0
+    },
+    "bank1": {
+      "connected": false,
+      "reason": "No service account env var set (FIREBASE_SERVICE_ACCOUNT_BANK1 or GOOGLE_APPLICATION_CREDENTIALS)",
+      "firestoreReadCount": 0
+    },
+    "bank2": {
+      "connected": false,
+      "reason": "No service account env var set (FIREBASE_SERVICE_ACCOUNT_BANK2 or GOOGLE_APPLICATION_CREDENTIALS)",
+      "firestoreReadCount": 0
+    }
+  },
+  "totalQuestions": 42,
+  "needsReviewCount": 0,
+  "countsByBank": {
+    "legacy": 12,
+    "bank1": 13,
+    "bank2": 17
+  },
+  "countsBySubject": {
+    "mathematics": 8,
+    "physics": 7,
+    "chemistry": 6,
+    "computer-science": 6,
+    "english": 5,
+    "analytical-reasoning": 5,
+    "biology": 5
+  },
+  "countsByBankAndSubject": {
+    "legacy": {
+      "mathematics": 3,
+      "physics": 1,
+      "chemistry": 2,
+      "computer-science": 2,
+      "english": 1,
+      "biology": 2,
+      "analytical-reasoning": 1
+    },
+    "bank1": {
+      "mathematics": 3,
+      "physics": 2,
+      "chemistry": 2,
+      "english": 3,
+      "computer-science": 1,
+      "biology": 1,
+      "analytical-reasoning": 1
+    },
+    "bank2": {
+      "mathematics": 2,
+      "physics": 4,
+      "computer-science": 3,
+      "analytical-reasoning": 3,
+      "chemistry": 2,
+      "english": 1,
+      "biology": 2
+    }
+  },
+  "batchFiles": [
+    "scripts/migrate-questions/batches/batch_001.sql",
+    "scripts/migrate-questions/batches/batch_import_log.sql"
+  ],
+  "reviewFile": "scripts/migrate-questions/questions_needs_review.json"
+}

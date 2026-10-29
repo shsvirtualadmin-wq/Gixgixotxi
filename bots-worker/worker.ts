@@ -1,15 +1,16 @@
 /**
  * ============================================================================
- * BOARDLY DAILY BOTS CRON WORKER (/bots-worker)
+ * BOARDLY SMALL-BATCH BOTS CRON WORKER (/bots-worker)
  * ============================================================================
- * Runs once per day via Cloudflare Cron Trigger ("0 3 * * *" UTC) and calls
- * POST https://boardly.cfd/api/bots/run with the secret header `x-bot-run-secret`
- * (read strictly from `env.BOT_RUN_SECRET`).
+ * Runs every 2 hours via Cloudflare Cron Trigger ("0 */2 * * *" UTC) and calls
+ * POST https://boardly.cfd/api/bots/run with a 2-bot cap (`maxBots: 2, postsPerBot: 1`)
+ * and the secret header `x-bot-run-secret` (read strictly from `env.BOT_RUN_SECRET`).
  */
 
 export interface BotsCronEnv {
   BOT_RUN_SECRET?: string;
   TARGET_API_URL?: string;
+  MAX_BOTS_PER_BATCH?: string;
 }
 
 async function triggerMainSiteBotsRun(env: BotsCronEnv, triggerSource: string): Promise<Response> {
@@ -25,6 +26,7 @@ async function triggerMainSiteBotsRun(env: BotsCronEnv, triggerSource: string): 
   }
 
   const targetUrl = (env.TARGET_API_URL || 'https://boardly.cfd/api/bots/run').trim();
+  const maxBots = Math.min(3, Math.max(1, Number(env.MAX_BOTS_PER_BATCH || 2)));
 
   const resp = await fetch(targetUrl, {
     method: 'POST',
@@ -36,6 +38,8 @@ async function triggerMainSiteBotsRun(env: BotsCronEnv, triggerSource: string): 
     body: JSON.stringify({
       trigger: triggerSource,
       triggeredAt: new Date().toISOString(),
+      maxBots,
+      postsPerBot: 1,
     }),
   });
 
@@ -73,7 +77,8 @@ export default {
         JSON.stringify({
           ok: Boolean(env.BOT_RUN_SECRET),
           worker: 'boardly-bots-cron',
-          cronSchedule: '0 3 * * *',
+          cronSchedule: '0 */2 * * *',
+          maxBotsPerBatch: Math.min(3, Math.max(1, Number(env.MAX_BOTS_PER_BATCH || 2))),
           targetApiUrl: env.TARGET_API_URL || 'https://boardly.cfd/api/bots/run',
           secretConfigured: Boolean(env.BOT_RUN_SECRET),
         }),
@@ -100,7 +105,7 @@ export default {
       JSON.stringify({
         worker: 'boardly-bots-cron',
         status: 'active',
-        schedule: '0 3 * * *',
+        schedule: '0 */2 * * *',
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
