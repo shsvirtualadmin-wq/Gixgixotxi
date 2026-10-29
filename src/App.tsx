@@ -18,14 +18,31 @@ const LazyDebugPanel = lazy(() =>
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function lazyWithRetry<T extends React.ComponentType<any>>(
-  factory: () => Promise<{ default: T }>,
+  factory: () => Promise<any>,
   retries = 2
 ): React.LazyExoticComponent<T> {
   return lazy(() => {
     return new Promise<{ default: T }>((resolve, reject) => {
       const attempt = (remaining: number) => {
         factory()
-          .then(resolve)
+          .then((mod) => {
+            if (mod && mod.default) {
+              resolve(mod as { default: T });
+              return;
+            }
+            if (mod && typeof mod === 'object') {
+              const keys = Object.keys(mod).filter((k) => k !== 'default' && k !== '__esModule');
+              const componentKey =
+                keys.find((k) => typeof mod[k] === 'function' && k.endsWith('Page')) ||
+                keys.find((k) => typeof mod[k] === 'function' && /^[A-Z]/.test(k)) ||
+                keys.find((k) => typeof mod[k] === 'function');
+              if (componentKey) {
+                resolve({ default: mod[componentKey] as T });
+                return;
+              }
+            }
+            resolve(mod as { default: T });
+          })
           .catch((error) => {
             if (remaining > 0) {
               setTimeout(() => attempt(remaining - 1), 600);
