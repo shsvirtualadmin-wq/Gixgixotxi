@@ -11,6 +11,7 @@ import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { updateCrewSettings } from '@/services/crewService';
 import { getPast7PKTDateKeys, getPKTDateKey } from '@/hooks/usePKTDate';
+import { useSmartBack } from '@/utils/homeUrl';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import {
@@ -100,6 +101,7 @@ export function CrewDashboardPage() {
   const { profile } = useUserProfile();
   const { openProfile } = useProfileModal();
   const navigate = useNavigate();
+  const handleBack = useSmartBack();
 
   const {
     crew,
@@ -486,9 +488,9 @@ export function CrewDashboardPage() {
         <header className="sticky top-0 z-30 bg-[var(--surface)]/95 backdrop-blur-md border-b border-[var(--border)] -mx-4 px-4 py-3 flex items-center gap-3">
           <button
             type="button"
-            onClick={() => navigate('/dashboard')}
+            onClick={handleBack}
             className="p-2 -ml-2 rounded-xl text-[var(--text-primary)] hover:bg-[var(--surface-muted)] flex items-center justify-center min-w-[44px] min-h-[44px] transition-colors"
-            aria-label="Back to Dashboard"
+            aria-label="Go back"
           >
             <ArrowLeft size={20} />
           </button>
@@ -591,9 +593,9 @@ export function CrewDashboardPage() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => navigate('/dashboard')}
+            onClick={handleBack}
             className="p-2 -ml-2 rounded-xl text-[var(--text-primary)] hover:bg-[var(--surface-muted)] flex items-center justify-center min-w-[44px] min-h-[44px] transition-colors cursor-pointer"
-            aria-label="Back to Dashboard"
+            aria-label="Go back"
           >
             <ArrowLeft size={20} />
           </button>

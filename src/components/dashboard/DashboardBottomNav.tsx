@@ -10,17 +10,23 @@ import {
   Award,
 } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { PillNav, type PillNavItem } from '@/components/ui/PillNav';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 import { HamburgerMenuSheet } from './HamburgerMenuSheet';
+import { getHomeUrl, isUserAuthenticated } from '@/utils/homeUrl';
 
 function DashboardBottomNavComponent() {
   const { user, profile } = useUserProfile();
+  const { profileLoading } = useAuth();
   const { requireAuth } = useAuthGate();
   const unreadCount = useUnreadNotificationsCount();
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const isAuthenticated = isUserAuthenticated(user, profileLoading);
+  const homeUrl = getHomeUrl(user, profileLoading);
 
   // Auto-close drawer on any route change so state never gets stuck or re-triggered
   useEffect(() => {
@@ -33,9 +39,9 @@ function DashboardBottomNavComponent() {
     role === 'ambassador' ||
     Boolean(profile?.isCaptain) ||
     Boolean(profile?.isAmbassador);
-  const crewLink = user ? '/dashboard/crew' : '/crew';
+  const crewLink = isAuthenticated ? '/dashboard/crew' : '/crew';
   const commonsLink =
-    !user || location.pathname.startsWith('/commons')
+    !isAuthenticated || location.pathname.startsWith('/commons')
       ? '/commons'
       : '/dashboard/commons';
 
@@ -48,12 +54,12 @@ function DashboardBottomNavComponent() {
         icon: <Compass size={18} />,
       },
       {
-        to: user ? '/dashboard' : '/',
+        to: isAuthenticated ? '/dashboard' : homeUrl,
         label: 'Home',
         icon: <LayoutDashboard size={18} />,
         end: true,
       },
-      user
+      isAuthenticated
         ? {
             to: '/dashboard/notifications',
             label: 'Notifications',
@@ -66,7 +72,7 @@ function DashboardBottomNavComponent() {
             icon: <Bell size={18} />,
             onClick: () => requireAuth('view your notifications'),
           },
-      user
+      isAuthenticated
         ? {
             to: '/dashboard/streaks',
             label: 'Streaks',
@@ -99,7 +105,7 @@ function DashboardBottomNavComponent() {
         onClick: () => setIsMenuOpen(true),
       },
     ],
-    [user, commonsLink, unreadCount, crewLink, isApprovedCaptain, requireAuth]
+    [isAuthenticated, homeUrl, commonsLink, unreadCount, crewLink, isApprovedCaptain, requireAuth]
   );
 
   return (

@@ -20,12 +20,14 @@ import {
   type GrandLineAttempt,
 } from '@/services/ambassadorTestService';
 import { GRAND_LINE_NAME } from '@/constants/branding';
+import { useHomeUrl } from '@/utils/homeUrl';
 
 export function GrandLineTestRunnerPage() {
   const { testId } = useParams<{ testId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { profile } = useUserProfile();
+  const homeUrl = useHomeUrl();
 
   const [test, setTest] = useState<AmbassadorTestDoc | null>(null);
   const [loading, setLoading] = useState(true);
@@ -251,7 +253,7 @@ export function GrandLineTestRunnerPage() {
             <Button
               variant="outline"
               size="md"
-              onClick={() => navigate('/')}
+              onClick={() => navigate(homeUrl)}
               className="w-full sm:w-auto"
             >
               Return Home

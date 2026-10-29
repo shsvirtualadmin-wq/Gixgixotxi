@@ -1,8 +1,9 @@
 import React from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import { ArrowLeft, Sun, Moon } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
+import { useHomeUrl, useSmartBack } from '@/utils/homeUrl';
 
 interface PublicPageHeaderProps {
   title?: string;
@@ -39,9 +40,10 @@ const ROUTE_TITLE_MAP: Record<string, string> = {
 };
 
 export const PublicPageHeader: React.FC<PublicPageHeaderProps> = ({ title }) => {
-  const navigate = useNavigate();
   const location = useLocation();
   const { theme, toggle } = useTheme();
+  const homeUrl = useHomeUrl();
+  const handleBack = useSmartBack();
 
   // Resolve display title from prop or route path
   const displayTitle =
@@ -62,15 +64,6 @@ export const PublicPageHeader: React.FC<PublicPageHeaderProps> = ({ title }) => 
       : location.pathname.startsWith('/store/')
       ? 'Boardly Store'
       : 'Boardly');
-
-  const handleBack = () => {
-    // Real browser history navigation: returns to previous page, or falls back to home on direct deep links
-    if (typeof window !== 'undefined' && window.history.state && window.history.state.idx > 0) {
-      navigate(-1);
-    } else {
-      navigate('/');
-    }
-  };
 
   const isDark = theme === 'dark';
 
@@ -125,7 +118,7 @@ export const PublicPageHeader: React.FC<PublicPageHeaderProps> = ({ title }) => 
             </button>
 
             <Link
-              to="/"
+              to={homeUrl}
               className={`inline-flex items-center px-3 sm:px-4 py-1.5 sm:py-2 rounded-full border active:scale-95 text-xs font-heading font-semibold text-[var(--text)] transition-all shadow-sm ${
                 isDark
                   ? 'border-white/15 bg-white/[0.05] hover:bg-white/[0.12]'

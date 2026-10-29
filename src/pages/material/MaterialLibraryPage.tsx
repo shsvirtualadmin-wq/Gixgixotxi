@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   FolderOpen,
   FileText,
@@ -33,6 +33,7 @@ const MATERIAL_SUBJECTS = [
 export const MaterialLibraryPage: React.FC = () => {
   const { user } = useAuth();
   const { requireAuth } = useAuthGate();
+  const navigate = useNavigate();
 
   const [posts, setPosts] = useState<CommonsPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,7 +119,11 @@ export const MaterialLibraryPage: React.FC = () => {
           <button
             type="button"
             onClick={() =>
-              requireAuth('upload study material to Boardly Commons', undefined, '/commons/new')
+              requireAuth(
+                'upload study material to Boardly Commons',
+                () => navigate('/commons/new'),
+                '/commons/new'
+              )
             }
             className="btn-primary px-5 py-3 text-xs font-semibold inline-flex items-center gap-2 shrink-0 cursor-pointer"
           >

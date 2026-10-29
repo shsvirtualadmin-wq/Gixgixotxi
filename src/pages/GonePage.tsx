@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Trash2, ArrowLeft, Search, BookOpen } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
+import { useHomeUrl } from '@/utils/homeUrl';
 
 interface GonePageProps {
   title?: string;
@@ -12,6 +13,9 @@ export const GonePage: React.FC<GonePageProps> = ({
   title = 'This content has been removed (410)',
   message = 'The post or study resource you are looking for was removed by its author or moderated under Boardly Community Guidelines.',
 }) => {
+  const homeUrl = useHomeUrl();
+  const commonsTarget = homeUrl === '/dashboard/commons' ? '/dashboard/commons' : '/commons';
+
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-32 pb-24 px-4 flex items-center justify-center">
       <PageMeta
@@ -30,7 +34,7 @@ export const GonePage: React.FC<GonePageProps> = ({
         <p className="text-sm text-white/70 leading-relaxed mb-8">{message}</p>
 
         <div className="flex flex-wrap items-center justify-center gap-3">
-          <Link to="/commons" className="btn-primary px-5 py-2.5 text-xs font-semibold inline-flex items-center gap-2">
+          <Link to={commonsTarget} className="btn-primary px-5 py-2.5 text-xs font-semibold inline-flex items-center gap-2">
             <ArrowLeft size={14} />
             <span>Back to Boardly Commons</span>
           </Link>

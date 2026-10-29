@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight, Home } from 'lucide-react';
+import { useHomeUrl } from '@/utils/homeUrl';
 
 export interface BreadcrumbItem {
   label: string;
@@ -13,10 +14,16 @@ interface BreadcrumbsProps {
 }
 
 export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ items, className = '' }) => {
-  const fullItems = useMemo<BreadcrumbItem[]>(
-    () => [{ label: 'Home', href: '/' }, ...items],
-    [items]
-  );
+  const homeUrl = useHomeUrl();
+  const fullItems = useMemo<BreadcrumbItem[]>(() => {
+    const normalizedItems = items.map((item) => {
+      if (item.href === '/' || (item.href === '/commons' && homeUrl === '/dashboard/commons')) {
+        return { ...item, href: homeUrl };
+      }
+      return item;
+    });
+    return [{ label: 'Home', href: homeUrl }, ...normalizedItems];
+  }, [items, homeUrl]);
 
   useEffect(() => {
     const scriptId = 'boardly-breadcrumb-jsonld';

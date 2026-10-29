@@ -353,7 +353,6 @@ function AppInner() {
         <Route path="/crew/apply" element={<CrewApplyPage />} />
         <Route path="/join/:code" element={<JoinCrewPage />} />
         <Route path="/join" element={<Navigate to="/crew" replace />} />
-        <Route path="/dashboard/crew" element={<CrewDashboardPage />} />
 
         {/* Nakama Captain Portals */}
         <Route path="/captain" element={<Navigate to="/dashboard/captain" replace />} />

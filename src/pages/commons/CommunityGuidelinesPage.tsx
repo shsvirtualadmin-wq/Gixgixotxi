@@ -1,7 +1,10 @@
 import { Shield, CheckCircle2, AlertTriangle, ArrowLeft, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useHomeUrl } from '@/utils/homeUrl';
 
 export function CommunityGuidelinesPage() {
+  const homeUrl = useHomeUrl();
+  const commonsUrl = homeUrl === '/dashboard/commons' ? '/dashboard/commons' : '/commons';
   const sansStyle = { fontFamily: "var(--font-body, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif)" };
 
   return (
@@ -12,7 +15,7 @@ export function CommunityGuidelinesPage() {
         {/* Header Back Link */}
         <div>
           <Link
-            to="/dashboard/commons"
+            to={commonsUrl}
             className="glass-pill inline-flex items-center gap-2 text-xs font-semibold text-[var(--muted)] hover:text-white px-3.5 py-2 transition-all active:scale-[0.98] cursor-pointer"
             title="Back to Commons"
           >

@@ -1,19 +1,20 @@
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { isUserAuthenticated } from '@/utils/homeUrl';
 import { VerificationBanner } from '@/components/auth/VerificationBanner';
 import { DashboardTopBar } from './DashboardTopBar';
 import { DashboardBottomNav } from './DashboardBottomNav';
 import { DashboardErrorBoundary } from './DashboardErrorBoundary';
 import { RoleSelectionPromptModal } from '@/components/profile/RoleSelectionPromptModal';
 import { PageMeta } from '@/components/ui/PageMeta';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { ensureWelcomeNotificationForUser } from '@/services/notificationService';
 
 export function DashboardShell() {
   const { user, profileLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [authGraceFinished, setAuthGraceFinished] = useState(false);
+  const isAuthenticated = isUserAuthenticated(user, profileLoading);
 
   const isProfileRoute = location.pathname.startsWith('/dashboard/profile');
   const isCommonsRoute =
@@ -29,19 +30,17 @@ export function DashboardShell() {
   }, [user?.uid]);
 
   useEffect(() => {
-    // 2.5s grace period so Firebase Auth restores without flashing empty/redirect
-    const t = setTimeout(() => {
-      setAuthGraceFinished(true);
-    }, 2500);
-    return () => clearTimeout(t);
-  }, []);
-
-  useEffect(() => {
-    if (authGraceFinished && !profileLoading && !user) {
+    if (!profileLoading && !user) {
       const target = `${location.pathname}${location.search}`;
       navigate(`/login?redirect=${encodeURIComponent(target)}`, { replace: true });
     }
-  }, [user, profileLoading, authGraceFinished, navigate, location.pathname, location.search]);
+  }, [user, profileLoading, navigate, location.pathname, location.search]);
+
+  // Route guard: Logged-out users visiting /dashboard/* are redirected to login
+  if (!isAuthenticated && !profileLoading && !user) {
+    const target = `${location.pathname}${location.search}`;
+    return <Navigate to={`/login?redirect=${encodeURIComponent(target)}`} replace />;
+  }
 
   // NEVER return null or blank screen — always render shell and bottom nav immediately
   return (

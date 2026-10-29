@@ -8,11 +8,13 @@ import { Card } from '@/components/ui/Card';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useSmartBack } from '@/utils/homeUrl';
 
 export function ContactPage() {
   const navigate = useNavigate();
   const { user, profileLoading } = useAuth();
   const { profile } = useUserProfile();
+  const handleBack = useSmartBack();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -46,14 +48,6 @@ export function ContactPage() {
       }
     }
   }, [user, profileLoading, navigate]);
-
-  const handleBack = () => {
-    if (typeof window !== 'undefined' && window.history.state && window.history.state.idx > 0) {
-      navigate(-1);
-    } else {
-      navigate('/dashboard');
-    }
-  };
 
   const [formLoadedAt] = useState<number>(() => Date.now());
   const [submitting, setSubmitting] = useState(false);

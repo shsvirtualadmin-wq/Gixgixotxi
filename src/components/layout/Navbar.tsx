@@ -4,6 +4,7 @@ import { Menu, X } from 'lucide-react';
 import { Logo } from '@/components/ui/Logo';
 import { useTheme } from '@/hooks/useTheme';
 import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
+import { useHomeUrl } from '@/utils/homeUrl';
 
 const NAV_LINKS = [
   { to: '/grand-line', label: GRAND_LINE_NAME, highlight: true },
@@ -23,6 +24,7 @@ export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const { theme, resolvedTheme, setTheme } = useTheme();
   const location = useLocation();
+  const homeUrl = useHomeUrl();
   const closeTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleOpen = () => {
@@ -88,7 +90,7 @@ export function Navbar() {
           >
             {/* Left side: Noticeably bigger and prominent Boardly logo/wordmark */}
             <Link
-              to="/"
+              to={homeUrl}
               onClick={handleClose}
               className="flex items-center shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] rounded-full text-[var(--text)] group transition-transform hover:scale-[1.02] active:scale-[0.98]"
               aria-label="Boardly Home"

@@ -30,10 +30,12 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useSmartBack } from '@/utils/homeUrl';
 
 export function StreaksPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const handleBack = useSmartBack();
 
   // Streak & User State
   const [loading, setLoading] = useState(true);
@@ -279,7 +281,7 @@ export function StreaksPage() {
       <div className="flex items-start gap-3">
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={handleBack}
           aria-label="Go back"
           className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-full flex items-center justify-center glass-pill text-[var(--text)] active:scale-95 transition-all cursor-pointer shrink-0 mt-0.5"
         >

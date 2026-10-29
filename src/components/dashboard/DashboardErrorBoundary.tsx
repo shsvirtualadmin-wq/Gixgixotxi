@@ -4,6 +4,7 @@ import { AlertCircle, RefreshCw } from 'lucide-react';
 import { Logo } from '@/components/ui/Logo';
 import { auth } from '@/lib/firebase';
 import { isSuperAdminEmailOrRole } from '@/hooks/useEffectivePlan';
+import { getHomeUrl } from '@/utils/homeUrl';
 
 interface Props {
   children: ReactNode;
@@ -70,13 +71,14 @@ export class DashboardErrorBoundary extends Component<Props, State> {
         (currentEmail && currentEmail.toLowerCase() === 'shsvirtualadmin@gmail.com') ||
         currentUid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2';
       const showTechDetails = isDebug || Boolean(isSuper);
+      const homeUrl = getHomeUrl();
 
       if (!showTechDetails) {
         return (
           <div className="min-h-[40vh] p-4 sm:p-6 flex items-center justify-center">
             <div className="w-full max-w-[500px] p-6 rounded-[24px] bg-[var(--surface)] border border-[var(--border)] text-center space-y-4">
               <div className="flex justify-center pb-1">
-                <Link to="/" aria-label="Boardly Home">
+                <Link to={homeUrl} aria-label="Boardly Home">
                   <Logo size={28} className="text-[var(--text)] hover:opacity-80 transition-opacity" />
                 </Link>
               </div>

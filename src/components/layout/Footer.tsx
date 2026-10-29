@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Logo } from '@/components/ui/Logo';
 import { GRAND_LINE_NAME } from '@/constants/branding';
+import { useHomeUrl } from '@/utils/homeUrl';
 
 export function Footer() {
+  const homeUrl = useHomeUrl();
   const wordmarkContainerRef = useRef<HTMLDivElement>(null);
   const wordmarkTextRef = useRef<HTMLSpanElement>(null);
   const [fittedFontSize, setFittedFontSize] = useState<string>('clamp(56px, 24cqw, 320px)');
@@ -69,7 +71,7 @@ export function Footer() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10 w-full [grid-template-columns:repeat(2,minmax(0,1fr))] lg:[grid-template-columns:1.25fr_repeat(3,minmax(0,1fr))] items-start">
           {/* Brand info (Full width on mobile, 1 col on desktop) */}
           <div className="col-span-2 lg:col-span-1 min-w-0">
-            <Link to="/" className="inline-flex items-center mb-5 group text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white rounded-lg" aria-label="Boardly Home">
+            <Link to={homeUrl} className="inline-flex items-center mb-5 group text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white rounded-lg" aria-label="Boardly Home">
               <Logo
                 size="footer"
                 className="h-[52px] sm:h-[60px] w-auto max-w-none text-white transition-transform group-hover:scale-[1.02]"

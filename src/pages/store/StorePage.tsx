@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import type { CosmeticType, CosmeticRarity, EquippedCosmetics } from '@/types';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { useSmartBack } from '@/utils/homeUrl';
 
 type MainView = 'home' | 'browse' | 'collection';
 type AnimationFilter = 'all' | 'animated' | 'static';
@@ -44,6 +45,7 @@ export function StorePage() {
   const { profile } = useUserProfile();
   const navigate = useNavigate();
   const location = useLocation();
+  const handleBack = useSmartBack();
   const { balance, owned, equipped, equipCosmetic, purchaseCosmetic, isSuperAdmin } = useWallet();
 
   // Dynamic pricing map from Firestore store_items collection
@@ -277,7 +279,7 @@ export function StorePage() {
                     setActiveView('home');
                     setSelectedCategory('all');
                   } else {
-                    navigate('/dashboard');
+                    handleBack();
                   }
                 }}
                 className="p-1.5 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-[var(--text)] transition-colors cursor-pointer"

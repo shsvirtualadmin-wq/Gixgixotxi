@@ -1,5 +1,6 @@
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { isUserAuthenticated } from '@/utils/homeUrl';
 import { BackgroundCanvas } from '../BackgroundCanvas';
 import { Navbar } from './Navbar';
 import { PublicPageHeader } from './PublicPageHeader';
@@ -8,14 +9,22 @@ import { DashboardBottomNav } from '../dashboard/DashboardBottomNav';
 
 /**
  * PublicLayout:
- * - Home page ('/'): Displays the floating pill top Navbar + Footer.
- * - Non-home public pages (Features, Store, Pricing, Nakama Captains, Grand Line, Contact, Kobans, Policies):
+ * - Home page ('/'): Redirects authenticated users to '/dashboard/commons'. For public visitors, displays the floating pill top Navbar + Footer.
+ * - Non-home public pages (Features, Store, Pricing, Nakama Captains, Grand Line, Contact, Kobans, Policies, Material):
  *   Display full-page content with compact PublicPageHeader (Back arrow + page title) instead of the floating top Navbar.
  * - Logged-in students visiting /store or /kobans keep the dashboard layout with DashboardBottomNav.
  */
 export function PublicLayout() {
-  const { user } = useAuth();
+  const { user, profileLoading } = useAuth();
   const location = useLocation();
+  const isAuthenticated = isUserAuthenticated(user, profileLoading);
+
+  const isHomePage = location.pathname === '/';
+
+  // Route guard: if a logged-in user manually visits "/", redirect them to /dashboard/commons
+  if (isHomePage && isAuthenticated) {
+    return <Navigate to="/dashboard/commons" replace />;
+  }
 
   const isStoreOrKobans =
     location.pathname.startsWith('/store') ||
@@ -41,8 +50,6 @@ export function PublicLayout() {
     );
   }
 
-  const isHomePage = location.pathname === '/';
-
   return (
     <div
       className="relative min-h-screen flex flex-col"
@@ -60,6 +67,7 @@ export function PublicLayout() {
         </main>
       )}
       <Footer />
+      {!isHomePage && isAuthenticated && <DashboardBottomNav />}
     </div>
   );
 }
