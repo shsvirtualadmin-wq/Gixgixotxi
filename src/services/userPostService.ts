@@ -182,13 +182,13 @@ async function uploadDataUrlToR2(dataUrl: string, fileName = 'post-image.jpg'): 
   return String(data.url);
 }
 
-export async function fetchUserPosts(params: {
+export function fetchUserPosts(params: {
   userId: string;
   page?: number;
   limit?: number;
   currentUserId?: string | null;
 }): Promise<{ posts: UserPost[]; hasMore: boolean }>;
-export async function fetchUserPosts(
+export function fetchUserPosts(
   targetUserId: string,
   includeAnonymous?: boolean
 ): Promise<UserPost[]>;

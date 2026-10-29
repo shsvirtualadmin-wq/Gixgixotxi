@@ -803,7 +803,9 @@ export async function deleteUserAccount(
         for (const d of emailSnap.docs) {
           await deleteDoc(doc(db, collName, d.id)).catch(() => {});
         }
-      } catch {}
+      } catch {
+        // Continue cleaning other collections if one fails
+      }
     }
   }
 
@@ -821,7 +823,9 @@ export async function deleteUserAccount(
         query(collection(db, cq.coll), where(cq.field, '==', cleanUid), limit(200))
       );
       await Promise.all(qSnap.docs.map((d) => deleteDoc(d.ref).catch(() => {})));
-    } catch {}
+    } catch {
+      // Continue cleaning child collections
+    }
   }
 
   // 6. Verify primary Firestore user document is gone

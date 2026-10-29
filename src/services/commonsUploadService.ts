@@ -461,7 +461,9 @@ export function extractR2KeyFromUrl(rawUrl: string): string {
     if (trimmed.startsWith(R2_PUBLIC_BUCKET_URL)) {
       return trimmed.slice(R2_PUBLIC_BUCKET_URL.length + 1);
     }
-  } catch {}
+  } catch {
+    // Ignore invalid URL format
+  }
   return '';
 }
 

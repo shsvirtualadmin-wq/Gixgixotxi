@@ -387,10 +387,14 @@ export function rowToCommonsPost(
   let files: any[] = [];
   try {
     tags = JSON.parse(row.tags_json || '[]');
-  } catch {}
+  } catch {
+    // Ignore JSON parse error, use default empty array
+  }
   try {
     files = JSON.parse(row.files_json || '[]');
-  } catch {}
+  } catch {
+    // Ignore JSON parse error, use default empty array
+  }
 
   // Ensure every attachment has a working URL, r2Key, and authenticated downloadUrl
   const hydratedFiles = files.map((f) => {
@@ -636,7 +640,9 @@ function loadDeletedAccountsRegistry(): DeletedAccountEntry[] {
     if (fs.existsSync(DELETED_ACCOUNTS_PATH)) {
       return JSON.parse(fs.readFileSync(DELETED_ACCOUNTS_PATH, 'utf8'));
     }
-  } catch {}
+  } catch {
+    // Return empty array on read/parse error
+  }
   return [];
 }
 
@@ -644,7 +650,9 @@ function saveDeletedAccountsRegistry(entries: DeletedAccountEntry[]): void {
   try {
     fs.mkdirSync(path.dirname(DELETED_ACCOUNTS_PATH), { recursive: true });
     fs.writeFileSync(DELETED_ACCOUNTS_PATH, JSON.stringify(entries, null, 2), 'utf8');
-  } catch {}
+  } catch {
+    // Ignore write error
+  }
 }
 
 export function getFirebaseWebApiKey(): string {
@@ -724,7 +732,9 @@ ${allUrls
     try {
       const certs = await getGooglePublicCerts();
       jwksReachable = Object.keys(certs).length > 0;
-    } catch {}
+    } catch {
+      // Ignore network cert check error
+    }
 
     let tokenProvided = false;
     let tokenVerified = false;
@@ -737,7 +747,9 @@ ${allUrls
           tokenVerified = true;
           verifiedUser = { uid: u.uid, role: u.role };
         }
-      } catch {}
+      } catch {
+        // Ignore token verification failure for health check
+      }
     }
 
     const r2CredentialsConfigured = Boolean(
@@ -2009,7 +2021,9 @@ ${allUrls
             );
             const checkData = (await checkResp.json().catch(() => ({}))) as any;
             existsInFirebaseAuth = Boolean(checkData?.registered);
-          } catch {}
+          } catch {
+            // Ignore API probe failure
+          }
         }
 
         if (!existsInFirebaseAuth) {

@@ -61,7 +61,9 @@ export function triggerUnreadNotificationsRefresh(): void {
   unreadRefreshSubscribers.forEach((cb) => {
     try {
       cb();
-    } catch {}
+    } catch {
+      // Ignore subscriber execution error
+    }
   });
 }
 
@@ -71,7 +73,9 @@ async function getOptionalBearerHeader(): Promise<Record<string, string>> {
     if (token) {
       return { Authorization: `Bearer ${token}` };
     }
-  } catch {}
+  } catch {
+    // Ignore token retrieval failure
+  }
   return {};
 }
 
@@ -129,7 +133,9 @@ export async function fetchWelcomeAnnouncement(userId?: string): Promise<{
         };
       }
     }
-  } catch {}
+  } catch {
+    // Ignore fetch error, fall back to default
+  }
 
   try {
     const snap = await getDoc(doc(db, 'announcements', WELCOME_ANNOUNCEMENT_ID));
@@ -146,7 +152,9 @@ export async function fetchWelcomeAnnouncement(userId?: string): Promise<{
         createdAt: data.updatedAt || data.createdAt || d1Item?.createdAt || Date.now(),
       };
     }
-  } catch {}
+  } catch {
+    // Fall back to default announcement
+  }
 
   const fallback: AnnouncementItem = d1Item || {
     id: WELCOME_ANNOUNCEMENT_ID,
@@ -209,7 +217,9 @@ export async function updateWelcomeAnnouncement(params: {
       },
       { merge: true }
     );
-  } catch {}
+  } catch {
+    // Continue despite Firestore mirror write error
+  }
 
   invalidateAnnouncementsCache();
   triggerUnreadNotificationsRefresh();
@@ -269,7 +279,9 @@ export async function ensureWelcomeNotificationForUser(userId: string): Promise<
           { merge: true }
         );
       }
-    } catch {}
+    } catch {
+      // Ignore Firestore write error
+    }
 
     // Ensure welcome announcement doc exists in Firestore if possible
     try {
@@ -286,7 +298,9 @@ export async function ensureWelcomeNotificationForUser(userId: string): Promise<
           createdAt: serverTimestamp(),
         });
       }
-    } catch {}
+    } catch {
+      // Ignore announcement creation error
+    }
 
     invalidateAnnouncementsCache();
     triggerUnreadNotificationsRefresh();

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { auth } from '@/lib/firebase';
 import { Shield, AlertTriangle, Eye, EyeOff, Trash2, Ban, CheckCircle2, RefreshCw } from 'lucide-react';
 import { normalizeCloudflarePost } from '@/services/commonsService';
@@ -10,15 +10,15 @@ export function AdminCommonsPage() {
   const [loading, setLoading] = useState(true);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
-  const getAdminHeaders = async () => {
+  const getAdminHeaders = useCallback(async () => {
     const token = await auth.currentUser?.getIdToken(false);
     return {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
-  };
+  }, []);
 
-  const loadModerationQueue = async () => {
+  const loadModerationQueue = useCallback(async () => {
     setLoading(true);
     setActionNotice(null);
     try {
@@ -43,11 +43,11 @@ export function AdminCommonsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [getAdminHeaders]);
 
   useEffect(() => {
     void loadModerationQueue();
-  }, []);
+  }, [loadModerationQueue]);
 
   const handleToggleHide = async (post: CommonsPost) => {
     try {

@@ -66,7 +66,9 @@ async function getOptionalAuthHeader(): Promise<Record<string, string>> {
     if (token) {
       return { Authorization: `Bearer ${token}` };
     }
-  } catch {}
+  } catch {
+    // Ignore unauthenticated or token retrieval error
+  }
   return {};
 }
 
