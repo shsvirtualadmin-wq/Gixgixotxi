@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { FolderOpen, Download, ArrowRight, FileText } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
+import { MaterialCardSkeleton } from '@/components/ui/Skeleton';
 import { fetchCommonsPosts } from '@/services/commonsService';
 import { formatSubjectName } from '@/constants/taxonomy';
 import { useAuth } from '@/contexts/AuthContext';
@@ -88,11 +89,7 @@ export const MaterialSubjectPage: React.FC = () => {
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="glass-card p-6 h-36 animate-pulse" />
-            ))}
-          </div>
+          <MaterialCardSkeleton count={4} />
         ) : materials.length === 0 ? (
           <div className="glass-panel p-10 text-center">
             <FileText size={28} className="text-white/40 mx-auto mb-3" />

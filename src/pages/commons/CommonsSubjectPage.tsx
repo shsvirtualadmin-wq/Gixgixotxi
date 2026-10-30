@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { BookOpen, ArrowRight } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
+import { CommonsPostCardSkeleton } from '@/components/ui/Skeleton';
 import { CommonsPostCard } from '@/components/commons/CommonsPostCard';
 import { CommonsCommentsDrawer } from '@/components/commons/CommonsCommentsDrawer';
 import { CommonsReportModal } from '@/components/commons/CommonsReportModal';
@@ -90,11 +91,7 @@ export const CommonsSubjectPage: React.FC = () => {
         </div>
 
         {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="glass-card p-6 animate-pulse h-36" />
-            ))}
-          </div>
+          <CommonsPostCardSkeleton count={3} />
         ) : posts.length === 0 ? (
           <div className="glass-panel p-10 text-center">
             <BookOpen size={28} className="text-white/40 mx-auto mb-3" />

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
+import { MaterialCardSkeleton } from '@/components/ui/Skeleton';
 import { MathText } from '@/components/ui/MathText';
 import { fetchCommonsPosts } from '@/services/commonsService';
 import { resolveCommonsAttachmentUrl } from '@/services/commonsUploadService';
@@ -185,11 +186,7 @@ export const MaterialLibraryPage: React.FC = () => {
 
         {/* Material Cards Grid */}
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="glass-card p-6 h-40 animate-pulse" />
-            ))}
-          </div>
+          <MaterialCardSkeleton count={4} />
         ) : filteredMaterials.length === 0 ? (
           <div className="glass-panel p-10 text-center">
             <FileText size={28} className="text-white/40 mx-auto mb-3" />

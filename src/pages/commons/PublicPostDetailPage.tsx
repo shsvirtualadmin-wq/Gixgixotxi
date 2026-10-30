@@ -123,12 +123,25 @@ export const PublicPostDetailPage: React.FC = () => {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4">
+      <div
+        role="status"
+        aria-live="polite"
+        className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6"
+      >
+        <span className="sr-only">Loading post</span>
         <div className="max-w-3xl mx-auto space-y-4">
-          <div className="glass-panel p-8 animate-pulse space-y-4">
-            <div className="h-5 w-40 bg-white/10 rounded" />
-            <div className="h-8 w-3/4 bg-white/10 rounded" />
-            <div className="h-24 w-full bg-white/10 rounded" />
+          <div className="h-4 w-48 skeleton rounded" />
+          <div className="glass-panel p-7 sm:p-8 space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="h-6 w-32 skeleton rounded-full" />
+              <div className="h-6 w-20 skeleton rounded-full" />
+            </div>
+            <div className="h-8 w-3/4 skeleton rounded" />
+            <div className="space-y-2.5 pt-1">
+              <div className="h-3.5 w-full skeleton rounded" />
+              <div className="h-3.5 w-5/6 skeleton rounded" />
+              <div className="h-3.5 w-2/3 skeleton rounded" />
+            </div>
           </div>
         </div>
       </div>

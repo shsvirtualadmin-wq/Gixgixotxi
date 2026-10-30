@@ -5,6 +5,7 @@ import { AuthCard } from '@/components/auth/AuthCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { logRedirect } from '@/utils/debugTracker';
 import { PageMeta } from '@/components/ui/PageMeta';
+import { BoardlyLoader } from '@/components/ui/BoardlyLoader';
 
 export function LoginPage() {
   const { user, profile, profileLoading, getRoleRedirectUrl } = useAuth();
@@ -40,7 +41,18 @@ export function LoginPage() {
         description="Sign in to your Boardly account to practice timed MCQs, download study material, join Study Crews, and participate in Boardly Commons."
         canonicalPath="/login"
       />
-      <AuthCard initialMode="signin" />
+      {user ? (
+        <BoardlyLoader
+          variant="inline"
+          messages={[
+            'Signing you in...',
+            'Syncing your subjects...',
+            'Getting your Commons ready...',
+          ]}
+        />
+      ) : (
+        <AuthCard initialMode="signin" />
+      )}
     </AuthLayout>
   );
 }

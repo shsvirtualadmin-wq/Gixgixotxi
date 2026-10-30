@@ -23,6 +23,7 @@ import { CommonsCommentsDrawer } from '@/components/commons/CommonsCommentsDrawe
 import { CommonsReportModal } from '@/components/commons/CommonsReportModal';
 import { CommonsSearchModal } from '@/components/commons/CommonsSearchModal';
 import { PageMeta } from '@/components/ui/PageMeta';
+import { CommonsPostCardSkeleton } from '@/components/ui/Skeleton';
 import {
   fetchCommonsPosts,
   deleteCommonsPost,
@@ -629,32 +630,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       <div className="space-y-3 pt-1">
         {loading && displayedPosts.length === 0 ? (
           /* Skeleton Loaders (No blank screen, no spinner-only state) */
-          <div className="space-y-3">
-            {[1, 2, 3].map((n) => (
-              <div
-                key={n}
-                className="rounded-2xl border border-border bg-surface p-4 sm:p-5 space-y-3 animate-pulse"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-skeleton shrink-0" />
-                  <div className="space-y-1.5 flex-1">
-                    <div className="w-32 h-3.5 bg-skeleton rounded" />
-                    <div className="w-20 h-2.5 bg-skeleton rounded" />
-                  </div>
-                </div>
-                <div className="w-3/4 h-4 bg-skeleton rounded mt-2" />
-                <div className="space-y-2">
-                  <div className="w-full h-3 bg-skeleton rounded" />
-                  <div className="w-5/6 h-3 bg-skeleton rounded" />
-                </div>
-                <div className="pt-2 border-t border-border flex justify-between">
-                  <div className="w-16 h-3.5 bg-skeleton rounded" />
-                  <div className="w-16 h-3.5 bg-skeleton rounded" />
-                  <div className="w-16 h-3.5 bg-skeleton rounded" />
-                </div>
-              </div>
-            ))}
-          </div>
+          <CommonsPostCardSkeleton count={3} />
         ) : loadError ? (
           /* Error state with retry */
           <div className="p-8 text-center rounded-2xl border border-tag-danger-text/30 bg-tag-danger-bg space-y-3 shadow-xs">

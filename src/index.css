@@ -1202,19 +1202,146 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *:not(.boardly-loader-root):not(.boardly-loader-wordmark):not(.boardly-loader-bar-indeterminate):not(.boardly-loader-message):not(.skeleton):not(.skeleton-shimmer),
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }
 
-/* ===== SKELETON LOADERS ===== */
-.skeleton {
-  background-color: var(--surface-2);
-  border: 1px solid var(--border);
+/* ===== BOARDLY LOADER & SKELETON PLACEHOLDERS ===== */
+.boardly-loader-root {
+  background-color: var(--bg);
+  color: var(--text);
+  transition: opacity 300ms ease;
+}
+
+.boardly-loader-fade-in {
+  opacity: 1;
+}
+
+.boardly-loader-fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.boardly-loader-backdrop {
+  background-image:
+    radial-gradient(circle at 50% 46%, var(--glow-red) 0%, transparent 60%),
+    radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 100% 100%, 24px 24px;
+  background-position: center center;
+  opacity: 0.85;
+}
+
+@keyframes boardly-wordmark-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes boardly-bar-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes boardly-simple-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes boardly-simple-pulse {
+  0%, 100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.boardly-loader-wordmark {
+  font-family: var(--font-dot);
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  animation: boardly-wordmark-enter 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.boardly-loader-track {
+  background-color: var(--track-bg);
+  position: relative;
+}
+
+.boardly-loader-bar-determinate {
+  background-color: var(--accent);
+  transition: width 240ms ease;
+}
+
+.boardly-loader-bar-indeterminate {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--accent) 30%,
+    var(--accent-hover) 50%,
+    var(--accent) 70%,
+    transparent 100%
+  );
+  animation: boardly-bar-shimmer 1.35s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform;
+}
+
+.boardly-loader-message {
+  transition: opacity 220ms ease;
+}
+
+.boardly-loader-msg-visible {
+  opacity: 1;
+}
+
+.boardly-loader-msg-hidden {
+  opacity: 0;
+}
+
+.boardly-loader-timeout {
+  animation: boardly-simple-fade 250ms ease both;
+}
+
+/* Shimmering Skeleton Placeholders for in-page data loading */
+.skeleton,
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--skeleton);
   border-radius: var(--r-input);
-  animation: skeleton-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.skeleton::after,
+.skeleton-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--surface-muted) 50%,
+    transparent 100%
+  );
+  opacity: 0.65;
+  animation: boardly-bar-shimmer 1.6s ease-in-out infinite;
 }
 
 @keyframes skeleton-pulse {
@@ -1222,7 +1349,33 @@
     opacity: 1;
   }
   50% {
-    opacity: 0.4;
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boardly-loader-root {
+    transition: opacity 250ms ease !important;
+  }
+  .boardly-loader-wordmark {
+    animation: boardly-simple-fade 250ms ease both !important;
+    transform: none !important;
+  }
+  .boardly-loader-bar-indeterminate {
+    background: var(--accent) !important;
+    animation: boardly-simple-pulse 2s ease-in-out infinite !important;
+    transform: none !important;
+  }
+  .boardly-loader-message {
+    transition: opacity 200ms ease !important;
+  }
+  .skeleton::after,
+  .skeleton-shimmer::after {
+    display: none !important;
+  }
+  .skeleton,
+  .skeleton-shimmer {
+    animation: boardly-simple-pulse 2s ease-in-out infinite !important;
   }
 }
 
@@ -1635,7 +1788,7 @@ body,
 
 /* ===== ACCESSIBILITY & PREFERS REDUCED MOTION ===== */
 @media (prefers-reduced-motion: reduce) {
-  *,
+  *:not(.boardly-loader-root):not(.boardly-loader-wordmark):not(.boardly-loader-bar-indeterminate):not(.boardly-loader-message):not(.skeleton):not(.skeleton-shimmer),
   *::before,
   *::after {
     animation-duration: 0.01ms !important;

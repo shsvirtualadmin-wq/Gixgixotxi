@@ -228,12 +228,8 @@ const CommonsAboutPage = lazyWithRetry(() =>
   import('./pages/commons/CommonsAboutPage').then(m => ({ default: m.CommonsAboutPage }))
 );
 
-import { NinjaFightLoader } from './components/ui/NinjaFightLoader';
+import { BoardlySuspenseBoundary } from './components/ui/BoardlyLoader';
 import { AuthGateProvider } from './contexts/AuthGateContext';
-
-function PageLoader() {
-  return <NinjaFightLoader />;
-}
 
 function AppInner() {
   useReferralCapture();
@@ -242,7 +238,7 @@ function AppInner() {
     <DashboardErrorBoundary fallbackTitle="Boardly encountered an issue">
       <WallpaperBackground />
       <ScrollToTop />
-      <Suspense fallback={<PageLoader />}>
+      <BoardlySuspenseBoundary variant="overlay">
       <Routes>
         {/* Test Engine — full-screen distraction-free, no Navbar/Footer */}
         <Route path="/test/:attemptId/result" element={<TestResultPage />} />
@@ -428,7 +424,7 @@ function AppInner() {
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
-    </Suspense>
+    </BoardlySuspenseBoundary>
     <ProfileModalHost />
     {import.meta.env.DEV && (
       <Suspense fallback={null}>

@@ -6,6 +6,7 @@ import { Navbar } from './Navbar';
 import { PublicPageHeader } from './PublicPageHeader';
 import { Footer } from './Footer';
 import { DashboardBottomNav } from '../dashboard/DashboardBottomNav';
+import { BoardlySuspenseBoundary } from '../ui/BoardlyLoader';
 
 /**
  * PublicLayout:
@@ -41,8 +42,10 @@ export function PublicLayout() {
     return (
       <div className="relative min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)] antialiased overflow-x-hidden">
         <BackgroundCanvas />
-        <main className="flex-1 w-full max-w-6xl mx-auto px-3 sm:px-6 pt-3 sm:pt-4 pb-28">
-          <Outlet />
+        <main className="flex-1 w-full max-w-6xl mx-auto px-3 sm:px-6 pt-3 sm:pt-4 pb-28 flex flex-col">
+          <BoardlySuspenseBoundary variant="page">
+            <Outlet />
+          </BoardlySuspenseBoundary>
         </main>
         {/* Floating bottom nav at the bottom (no top navbar hiding Commons search) */}
         <DashboardBottomNav />
@@ -59,11 +62,15 @@ export function PublicLayout() {
       {isHomePage ? <Navbar /> : <PublicPageHeader />}
       {isHomePage ? (
         <div className="flex-1 flex flex-col">
-          <Outlet />
+          <BoardlySuspenseBoundary variant="page">
+            <Outlet />
+          </BoardlySuspenseBoundary>
         </div>
       ) : (
         <main className="flex-1 flex flex-col pt-20 sm:pt-24">
-          <Outlet />
+          <BoardlySuspenseBoundary variant="page">
+            <Outlet />
+          </BoardlySuspenseBoundary>
         </main>
       )}
       <Footer />

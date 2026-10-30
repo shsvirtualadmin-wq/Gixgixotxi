@@ -7,6 +7,7 @@ import { DashboardBottomNav } from './DashboardBottomNav';
 import { DashboardErrorBoundary } from './DashboardErrorBoundary';
 import { RoleSelectionPromptModal } from '@/components/profile/RoleSelectionPromptModal';
 import { PageMeta } from '@/components/ui/PageMeta';
+import { BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
 import { useEffect } from 'react';
 import { ensureWelcomeNotificationForUser } from '@/services/notificationService';
 
@@ -58,14 +59,16 @@ export function DashboardShell() {
 
       {/* Main Content Container: when on profile route, remove bottom nav padding and use safe-area padding */}
       <main
-        className={`flex-1 w-full max-w-5xl mx-auto transition-all duration-200 ${
+        className={`flex-1 w-full max-w-5xl mx-auto flex flex-col transition-all duration-200 ${
           isProfileRoute
             ? 'px-0 sm:px-4 md:px-6 pt-0 sm:pt-4 pb-[calc(24px+env(safe-area-inset-bottom,0px))]'
             : 'px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-28'
         }`}
       >
         <DashboardErrorBoundary fallbackTitle="Cockpit Section Error">
-          <Outlet />
+          <BoardlySuspenseBoundary variant="page">
+            <Outlet />
+          </BoardlySuspenseBoundary>
         </DashboardErrorBoundary>
       </main>
 

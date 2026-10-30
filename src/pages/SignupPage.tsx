@@ -4,6 +4,7 @@ import { AuthLayout } from '@/components/auth/AuthLayout';
 import { AuthCard } from '@/components/auth/AuthCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { PageMeta } from '@/components/ui/PageMeta';
+import { BoardlyLoader } from '@/components/ui/BoardlyLoader';
 
 export function SignupPage() {
   const { user, profile, profileLoading, getRoleRedirectUrl } = useAuth();
@@ -37,7 +38,18 @@ export function SignupPage() {
         description="Join Boardly for free to practice Class 11 & 12 board and university entrance exam MCQs, download notes, and study with your campus crew."
         canonicalPath="/signup"
       />
-      <AuthCard initialMode="signup" />
+      {user ? (
+        <BoardlyLoader
+          variant="inline"
+          messages={[
+            'Preparing your account...',
+            'Syncing your subjects...',
+            'Getting your Commons ready...',
+          ]}
+        />
+      ) : (
+        <AuthCard initialMode="signup" />
+      )}
     </AuthLayout>
   );
 }
