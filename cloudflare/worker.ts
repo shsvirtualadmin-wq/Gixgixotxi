@@ -240,7 +240,8 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
         role TEXT NOT NULL DEFAULT 'student',
         custom_role TEXT,
         is_posting_banned INTEGER NOT NULL DEFAULT 0,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT 0
       )`),
       db.prepare(`CREATE TABLE IF NOT EXISTS rate_limits (
         rate_key TEXT PRIMARY KEY,
@@ -871,14 +872,14 @@ async function checkRateLimit(
   const now = Date.now();
   try {
     const existing = await env.DB.prepare(
-      'SELECT count, window_start FROM rate_limits WHERE rate_key = ?'
+      'SELECT count, window_start FROM rate_limits WHERE rate_key = ?1'
     )
       .bind(key)
       .first<{ count: number; window_start: number }>();
 
     if (!existing || now - existing.window_start > windowMs) {
       await env.DB.prepare(
-        'INSERT OR REPLACE INTO rate_limits (rate_key, count, window_start) VALUES (?, 1, ?)'
+        'INSERT INTO rate_limits (rate_key, count, window_start) VALUES (?1, 1, ?2) ON CONFLICT(rate_key) DO UPDATE SET count = 1, window_start = ?2'
       )
         .bind(key, now)
         .run();
@@ -889,7 +890,7 @@ async function checkRateLimit(
       return false;
     }
 
-    await env.DB.prepare('UPDATE rate_limits SET count = count + 1 WHERE rate_key = ?')
+    await env.DB.prepare('UPDATE rate_limits SET count = count + 1 WHERE rate_key = ?1')
       .bind(key)
       .run();
     return true;

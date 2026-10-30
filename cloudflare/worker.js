@@ -175,17 +175,132 @@ function cleanStr(val, maxLen = MAX_TITLE_LEN, fallback = '') {
   return String(val).trim().slice(0, maxLen);
 }
 
+let schemaEnsured = false;
+
+async function ensureCaptainSchema(db) {
+  if (schemaEnsured || !db) return;
+  try {
+    await db.batch([
+      db.prepare(`CREATE TABLE IF NOT EXISTS rate_limits (
+        rate_key TEXT PRIMARY KEY,
+        count INTEGER NOT NULL DEFAULT 0,
+        window_start INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS user_roles (
+        uid TEXT PRIMARY KEY,
+        email TEXT NOT NULL DEFAULT '',
+        role TEXT NOT NULL DEFAULT 'student',
+        custom_role TEXT DEFAULT NULL,
+        is_posting_banned INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT 0
+      )`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS crews (
+        id TEXT PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        university TEXT NOT NULL DEFAULT '',
+        captain_uid TEXT NOT NULL,
+        captain_name TEXT NOT NULL,
+        captain_email TEXT NOT NULL DEFAULT '',
+        avatar_url TEXT DEFAULT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        member_count INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS crew_members (
+        id TEXT PRIMARY KEY,
+        crew_id TEXT NOT NULL,
+        user_uid TEXT NOT NULL,
+        user_name TEXT NOT NULL,
+        user_email TEXT NOT NULL DEFAULT '',
+        user_avatar TEXT DEFAULT NULL,
+        role TEXT NOT NULL DEFAULT 'member',
+        status TEXT NOT NULL DEFAULT 'active',
+        joined_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(crew_id, user_uid)
+      )`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS captain_tests (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        subject TEXT NOT NULL,
+        question_count INTEGER NOT NULL DEFAULT 0,
+        duration_minutes INTEGER NOT NULL DEFAULT 20,
+        visibility TEXT NOT NULL DEFAULT 'public',
+        status TEXT NOT NULL DEFAULT 'published',
+        captain_uid TEXT NOT NULL,
+        captain_name TEXT NOT NULL,
+        crew_id TEXT DEFAULT NULL,
+        crew_name TEXT NOT NULL DEFAULT '',
+        attempts_count INTEGER NOT NULL DEFAULT 0,
+        avg_score REAL NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS test_questions (
+        id TEXT PRIMARY KEY,
+        test_id TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
+        question_text TEXT NOT NULL,
+        options_json TEXT NOT NULL DEFAULT '[]',
+        correct_index INTEGER NOT NULL DEFAULT 0,
+        explanation TEXT NOT NULL DEFAULT '',
+        topic TEXT NOT NULL DEFAULT 'General',
+        difficulty TEXT NOT NULL DEFAULT 'medium',
+        created_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS test_attempts (
+        id TEXT PRIMARY KEY,
+        test_id TEXT NOT NULL,
+        test_title TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        captain_uid TEXT NOT NULL,
+        captain_name TEXT NOT NULL,
+        user_uid TEXT NOT NULL,
+        user_name TEXT NOT NULL,
+        user_avatar TEXT DEFAULT NULL,
+        score INTEGER NOT NULL DEFAULT 0,
+        total_questions INTEGER NOT NULL DEFAULT 0,
+        percentage INTEGER NOT NULL DEFAULT 0,
+        time_taken_seconds INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS attempt_answers (
+        id TEXT PRIMARY KEY,
+        attempt_id TEXT NOT NULL,
+        test_id TEXT NOT NULL,
+        question_id TEXT NOT NULL,
+        selected_index INTEGER NOT NULL DEFAULT -1,
+        correct_index INTEGER NOT NULL DEFAULT 0,
+        is_correct INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      )`),
+    ]);
+    await db
+      .prepare('ALTER TABLE user_roles ADD COLUMN created_at INTEGER DEFAULT 0')
+      .run()
+      .catch(() => {});
+    schemaEnsured = true;
+  } catch {
+    // Allow queries to proceed even if schema check partially fails
+  }
+}
+
 async function checkWriteRateLimit(db, key, maxRequests = 60, windowMs = 60000) {
   const now = Date.now();
   const row = await db
-    .prepare('SELECT count, window_start FROM rate_limits WHERE key = ?1')
+    .prepare('SELECT count, window_start FROM rate_limits WHERE rate_key = ?1')
     .bind(key)
     .first();
 
   if (!row || now - Number(row.window_start) > windowMs) {
     await db
       .prepare(
-        'INSERT INTO rate_limits (key, count, window_start) VALUES (?1, 1, ?2) ON CONFLICT(key) DO UPDATE SET count = 1, window_start = ?2'
+        'INSERT INTO rate_limits (rate_key, count, window_start) VALUES (?1, 1, ?2) ON CONFLICT(rate_key) DO UPDATE SET count = 1, window_start = ?2'
       )
       .bind(key, now)
       .run();
@@ -197,7 +312,7 @@ async function checkWriteRateLimit(db, key, maxRequests = 60, windowMs = 60000) 
   }
 
   await db
-    .prepare('UPDATE rate_limits SET count = count + 1 WHERE key = ?1')
+    .prepare('UPDATE rate_limits SET count = count + 1 WHERE rate_key = ?1')
     .bind(key)
     .run();
   return true;
@@ -228,19 +343,33 @@ async function authenticateRequest(request, env, requireAuth = true) {
   }
 
   const roleRow = await env.DB.prepare(
-    'SELECT role, custom_role, is_posting_banned FROM user_roles WHERE uid = ?1'
+    'SELECT uid, email, role, custom_role, is_posting_banned, updated_at, created_at FROM user_roles WHERE uid = ?1'
   )
     .bind(decoded.uid)
-    .first();
+    .first()
+    .catch(() =>
+      env.DB.prepare(
+        'SELECT uid, email, role, custom_role, is_posting_banned, updated_at FROM user_roles WHERE uid = ?1'
+      )
+        .bind(decoded.uid)
+        .first()
+    );
 
   let role = roleRow?.role || 'student';
   if (!roleRow) {
     const now = Date.now();
     await env.DB.prepare(
-      'INSERT OR IGNORE INTO user_roles (uid, email, role, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)'
+      'INSERT OR IGNORE INTO user_roles (uid, email, role, custom_role, is_posting_banned, updated_at, created_at) VALUES (?1, ?2, ?3, NULL, 0, ?4, ?5)'
     )
       .bind(decoded.uid, decoded.email, 'student', now, now)
-      .run();
+      .run()
+      .catch(() =>
+        env.DB.prepare(
+          'INSERT OR IGNORE INTO user_roles (uid, email, role, custom_role, is_posting_banned, updated_at) VALUES (?1, ?2, ?3, NULL, 0, ?4)'
+        )
+          .bind(decoded.uid, decoded.email, 'student', now)
+          .run()
+      );
   }
 
   return {
@@ -284,6 +413,8 @@ export default {
     const db = env.DB;
 
     try {
+      await ensureCaptainSchema(db);
+
       // 1. Health Check
       if (path === '/api/health' && method === 'GET') {
         const check = await db.prepare('SELECT 1 AS ok').first();
@@ -319,7 +450,7 @@ export default {
         const user = await authenticateRequest(request, env, true);
         requireRole(user, ['admin', 'superadmin']);
         const { results } = await db
-          .prepare('SELECT uid, email, role, custom_role, is_posting_banned, created_at, updated_at FROM user_roles ORDER BY updated_at DESC LIMIT 500')
+          .prepare('SELECT uid, email, role, custom_role, is_posting_banned, updated_at, created_at FROM user_roles ORDER BY updated_at DESC LIMIT 500')
           .all();
         return jsonResponse(request, env, { roles: results || [] });
       }
@@ -340,7 +471,7 @@ export default {
         const now = Date.now();
         await db
           .prepare(
-            `INSERT INTO user_roles (uid, email, role, custom_role, is_posting_banned, created_at, updated_at)
+            `INSERT INTO user_roles (uid, email, role, custom_role, is_posting_banned, updated_at, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
              ON CONFLICT(uid) DO UPDATE SET
                email = CASE WHEN ?2 != '' THEN ?2 ELSE user_roles.email END,
@@ -1368,7 +1499,7 @@ export default {
         }
       }
 
-      // 6. MCQ Bank (/api/mcq-bank and /api/questions)
+      // 6. MCQ Bank (/api/mcq-bank and /api/questions) -> uses `questions` table
       if ((path === '/api/mcq-bank' || path === '/api/questions') && method === 'GET') {
         const user = await authenticateRequest(request, env, true);
         const bankId = cleanStr(url.searchParams.get('bank_id') || url.searchParams.get('bankId'), 40);
@@ -1404,7 +1535,7 @@ export default {
                     question_text, options_json,
                     ${user.isAdminOrAbove ? 'correct_answer, explanation,' : ''}
                     created_at, updated_at
-             FROM mcq_bank
+             FROM questions
              ${whereClause}
              ORDER BY updated_at DESC
              LIMIT ?${binds.length - 1} OFFSET ?${binds.length}`
@@ -1437,7 +1568,7 @@ export default {
 
         await db
           .prepare(
-            `INSERT INTO mcq_bank (
+            `INSERT INTO questions (
               id, bank_id, subject, topic, difficulty, status, needs_review,
               question_text, options_json, correct_answer, explanation, source_path,
               created_at, updated_at
@@ -1466,7 +1597,7 @@ export default {
         return jsonResponse(request, env, { ok: true, id }, 201);
       }
 
-      // 7. Community Posts, Comments, Likes
+      // 7. Community Posts, Comments (post_comments), Likes (post_likes)
       if (path === '/api/posts' && method === 'GET') {
         const subject = cleanStr(url.searchParams.get('subject'), 80);
         const limit = Math.max(1, Math.min(100, Number(url.searchParams.get('limit')) || 30));
@@ -1542,7 +1673,7 @@ export default {
         const postId = decodeURIComponent(postLikeMatch[1]);
         const user = await authenticateRequest(request, env, true);
         const existing = await db
-          .prepare('SELECT id FROM likes WHERE post_id = ?1 AND user_uid = ?2')
+          .prepare('SELECT post_id, user_uid FROM post_likes WHERE post_id = ?1 AND user_uid = ?2')
           .bind(postId, user.uid)
           .first();
 
@@ -1550,15 +1681,15 @@ export default {
         let liked = false;
         if (existing) {
           await db.batch([
-            db.prepare('DELETE FROM likes WHERE id = ?1').bind(existing.id),
+            db.prepare('DELETE FROM post_likes WHERE post_id = ?1 AND user_uid = ?2').bind(postId, user.uid),
             db.prepare('UPDATE posts SET upvotes = MAX(0, upvotes - 1), updated_at = ?1 WHERE id = ?2').bind(now, postId),
           ]);
         } else {
           liked = true;
           await db.batch([
             db
-              .prepare('INSERT INTO likes (id, post_id, user_uid, created_at) VALUES (?1, ?2, ?3, ?4)')
-              .bind(crypto.randomUUID(), postId, user.uid, now),
+              .prepare('INSERT INTO post_likes (post_id, user_uid, created_at) VALUES (?1, ?2, ?3)')
+              .bind(postId, user.uid, now),
             db.prepare('UPDATE posts SET upvotes = upvotes + 1, updated_at = ?1 WHERE id = ?2').bind(now, postId),
           ]);
         }
@@ -1571,7 +1702,7 @@ export default {
         const postId = decodeURIComponent(postCommentsMatch[1]);
         if (method === 'GET') {
           const { results } = await db
-            .prepare('SELECT * FROM comments WHERE post_id = ?1 ORDER BY created_at ASC LIMIT 200')
+            .prepare('SELECT * FROM post_comments WHERE post_id = ?1 ORDER BY created_at ASC LIMIT 200')
             .bind(postId)
             .all();
           return jsonResponse(request, env, { comments: results || [] });
@@ -1588,7 +1719,7 @@ export default {
           await db.batch([
             db
               .prepare(
-                `INSERT INTO comments (
+                `INSERT INTO post_comments (
                   id, post_id, text, is_anonymous, author_uid, real_author_uid,
                   author_name, author_avatar, author_role, created_at
                 ) VALUES (?1, ?2, ?3, 0, ?4, ?4, ?5, ?6, ?7, ?8)`
@@ -1602,18 +1733,19 @@ export default {
         }
       }
 
-      // 8. Notifications
+      // 8. Notifications (uses user_id)
       if (path === '/api/notifications' && method === 'GET') {
         const user = await authenticateRequest(request, env, true);
         const { results } = await db
           .prepare(
-            `SELECT id, user_uid AS userUid, type, title, message, link,
+            `SELECT id, user_id AS userId, user_id AS userUid, type, title, message, link,
                     author_id AS authorId, author_name AS authorName,
                     author_avatar AS authorAvatar, author_frame AS authorFrame,
-                    post_id AS postId, post_type AS postType, read, created_at AS createdAt
+                    post_id AS postId, post_type AS postType, is_pinned AS isPinned,
+                    read, created_at AS createdAt, read_at AS readAt
              FROM notifications
-             WHERE user_uid = ?1
-             ORDER BY created_at DESC LIMIT 100`
+             WHERE user_id = ?1
+             ORDER BY is_pinned DESC, created_at DESC LIMIT 100`
           )
           .bind(user.uid)
           .all();
@@ -1627,7 +1759,7 @@ export default {
         return jsonResponse(request, env, { notifications, unreadCount });
       }
 
-      if (path === '/api/notifications/mark-read' && method === 'POST') {
+      if ((path === '/api/notifications/mark-read' || path === '/api/notifications/read') && method === 'POST') {
         const user = await authenticateRequest(request, env, true);
         const body = await request.json();
         const id = cleanStr(body.id || body.notificationId, 128);
@@ -1635,17 +1767,17 @@ export default {
           return errorResponse(request, env, 'Notification ID required.', 'INVALID_ID', 400);
         }
         await db
-          .prepare('UPDATE notifications SET read = 1 WHERE id = ?1 AND user_uid = ?2')
-          .bind(id, user.uid)
+          .prepare('UPDATE notifications SET read = 1, read_at = ?1 WHERE id = ?2 AND user_id = ?3')
+          .bind(Date.now(), id, user.uid)
           .run();
         return jsonResponse(request, env, { ok: true, id });
       }
 
-      if (path === '/api/notifications/mark-all-read' && method === 'POST') {
+      if ((path === '/api/notifications/mark-all-read' || path === '/api/notifications/read-all') && method === 'POST') {
         const user = await authenticateRequest(request, env, true);
         await db
-          .prepare('UPDATE notifications SET read = 1 WHERE user_uid = ?1 AND read = 0')
-          .bind(user.uid)
+          .prepare('UPDATE notifications SET read = 1, read_at = ?1 WHERE user_id = ?2 AND read = 0')
+          .bind(Date.now(), user.uid)
           .run();
         return jsonResponse(request, env, { ok: true });
       }

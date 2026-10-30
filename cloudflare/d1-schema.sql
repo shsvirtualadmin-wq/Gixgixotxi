@@ -134,7 +134,8 @@ CREATE TABLE IF NOT EXISTS user_roles (
   role TEXT NOT NULL DEFAULT 'student',
   custom_role TEXT,
   is_posting_banned INTEGER NOT NULL DEFAULT 0,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS rate_limits (

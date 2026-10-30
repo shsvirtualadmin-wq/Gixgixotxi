@@ -3,11 +3,11 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS user_roles (
   uid TEXT PRIMARY KEY,
   email TEXT NOT NULL DEFAULT '',
-  role TEXT NOT NULL DEFAULT 'student' CHECK (role IN ('student', 'captain', 'admin', 'superadmin')),
+  role TEXT NOT NULL DEFAULT 'student' CHECK (role IN ('student', 'captain', 'admin', 'superadmin', 'bot')),
   custom_role TEXT DEFAULT NULL,
   is_posting_banned INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role);
@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS attempt_answers (
 CREATE INDEX IF NOT EXISTS idx_attempt_answers_attempt_id ON attempt_answers(attempt_id);
 CREATE INDEX IF NOT EXISTS idx_attempt_answers_test_id ON attempt_answers(test_id);
 
-CREATE TABLE IF NOT EXISTS mcq_bank (
+CREATE TABLE IF NOT EXISTS questions (
   id TEXT PRIMARY KEY,
   bank_id TEXT NOT NULL DEFAULT 'legacy',
   subject TEXT NOT NULL,
@@ -147,9 +147,9 @@ CREATE TABLE IF NOT EXISTS mcq_bank (
   updated_at INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_mcq_bank_filter ON mcq_bank(bank_id, subject, topic, status);
-CREATE INDEX IF NOT EXISTS idx_mcq_bank_needs_review ON mcq_bank(needs_review);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mcq_bank_unique_source ON mcq_bank(bank_id, source_path);
+CREATE INDEX IF NOT EXISTS idx_questions_bank_subj_topic_status ON questions(bank_id, subject, topic, status);
+CREATE INDEX IF NOT EXISTS idx_questions_needs_review ON questions(needs_review);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_questions_bank_source_path ON questions(bank_id, source_path);
 
 CREATE TABLE IF NOT EXISTS posts (
   id TEXT PRIMARY KEY,
@@ -196,7 +196,7 @@ CREATE INDEX IF NOT EXISTS idx_posts_feed ON posts(status, visibility, is_hidden
 CREATE INDEX IF NOT EXISTS idx_posts_subject ON posts(subject, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_uid, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS comments (
+CREATE TABLE IF NOT EXISTS post_comments (
   id TEXT PRIMARY KEY,
   post_id TEXT NOT NULL,
   text TEXT NOT NULL,
@@ -214,39 +214,39 @@ CREATE TABLE IF NOT EXISTS comments (
   FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id, created_at ASC);
+CREATE INDEX IF NOT EXISTS idx_post_comments_post_id ON post_comments(post_id, created_at ASC);
 
-CREATE TABLE IF NOT EXISTS likes (
-  id TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS post_likes (
   post_id TEXT NOT NULL,
   user_uid TEXT NOT NULL,
   created_at INTEGER NOT NULL,
-  FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-  UNIQUE(post_id, user_uid)
+  PRIMARY KEY (post_id, user_uid)
 );
 
-CREATE INDEX IF NOT EXISTS idx_likes_post_id ON likes(post_id);
-CREATE INDEX IF NOT EXISTS idx_likes_user_uid ON likes(user_uid);
+CREATE INDEX IF NOT EXISTS idx_post_likes_post ON post_likes(post_id);
+CREATE INDEX IF NOT EXISTS idx_post_likes_user ON post_likes(user_uid, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS notifications (
   id TEXT PRIMARY KEY,
-  user_uid TEXT NOT NULL,
-  type TEXT NOT NULL DEFAULT 'system',
+  user_id TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'following_post',
   title TEXT NOT NULL,
-  message TEXT NOT NULL,
-  link TEXT NOT NULL DEFAULT '/dashboard/commons',
+  message TEXT NOT NULL DEFAULT '',
+  link TEXT DEFAULT '/dashboard/commons',
+  read INTEGER NOT NULL DEFAULT 0,
+  is_pinned INTEGER NOT NULL DEFAULT 0,
   author_id TEXT DEFAULT NULL,
   author_name TEXT DEFAULT NULL,
   author_avatar TEXT DEFAULT NULL,
   author_frame TEXT DEFAULT NULL,
   post_id TEXT DEFAULT NULL,
   post_type TEXT DEFAULT NULL,
-  read INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  read_at INTEGER
 );
 
-CREATE INDEX IF NOT EXISTS idx_notifications_user_uid ON notifications(user_uid, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_uid, read);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created ON notifications(user_id, read, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS bot_settings (
   id TEXT PRIMARY KEY,
@@ -263,7 +263,7 @@ CREATE TABLE IF NOT EXISTS bot_settings (
 );
 
 CREATE TABLE IF NOT EXISTS rate_limits (
-  key TEXT PRIMARY KEY,
+  rate_key TEXT PRIMARY KEY,
   count INTEGER NOT NULL DEFAULT 0,
   window_start INTEGER NOT NULL
 );
