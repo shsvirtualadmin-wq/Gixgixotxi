@@ -211,13 +211,13 @@ export function CommonsCommentsDrawer({
 
                   {/* Bubble & actions */}
                   <div className="flex-1 min-w-0">
-                    <div className="bg-surface-muted rounded-2xl px-3.5 py-2.5 border border-border inline-block max-w-full">
-                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                    <div className="bg-surface-muted rounded-2xl px-3.5 py-2.5 border border-border inline-block max-w-full min-w-0 overflow-x-hidden">
+                      <div className="flex items-center gap-1.5 flex-wrap mb-1 min-w-0">
                         {comment.isAnonymous ? (
                           <span className="font-bold text-muted">Anonymous</span>
                         ) : (
                           <>
-                            <span className="font-bold text-primary">
+                            <span className="font-bold text-primary truncate max-w-full">
                               {sanitizeStudentDisplayName(
                                 comment.authorName,
                                 comment.authorUid
@@ -232,7 +232,7 @@ export function CommonsCommentsDrawer({
                           </>
                         )}
                       </div>
-                      <div className="text-[13px] text-secondary leading-relaxed whitespace-pre-wrap break-words">
+                      <div className="boardly-post-content text-[13px] text-secondary leading-relaxed whitespace-pre-wrap min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
                         <MathText text={maskPublicUserText(comment.text || comment.body)} block />
                       </div>
                     </div>

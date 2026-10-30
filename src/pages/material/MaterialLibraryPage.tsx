@@ -214,7 +214,7 @@ export const MaterialLibraryPage: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="boardly-feed-container grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-full min-w-0 box-border overflow-x-hidden">
             {filteredMaterials.map((item) => {
               const slug = buildEntitySlug(item.id, item.title);
               const typeMeta = COMMONS_POST_TYPES[item.type] || COMMONS_POST_TYPES.notes;
@@ -226,15 +226,15 @@ export const MaterialLibraryPage: React.FC = () => {
               return (
                 <div
                   key={item.id}
-                  className="glass-card p-6 flex flex-col justify-between gap-4"
+                  className="boardly-post-card glass-card p-5 sm:p-6 flex flex-col justify-between gap-4 w-full max-w-full min-w-0 box-border overflow-x-hidden"
                 >
-                  <div>
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-[#D71921]">
+                  <div className="min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-2 min-w-0">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-[#D71921] truncate">
                         {item.subject || 'General'} · {typeMeta.badgeLabel}
                       </span>
                       {firstFile?.size ? (
-                        <span className="glass-pill px-2.5 py-0.5 text-[10px] text-white/60">
+                        <span className="glass-pill px-2.5 py-0.5 text-[10px] text-white/60 shrink-0">
                           {(firstFile.size / 1024).toFixed(0)} KB
                         </span>
                       ) : null}
@@ -242,18 +242,18 @@ export const MaterialLibraryPage: React.FC = () => {
 
                     <Link
                       to={`/material/${slug}`}
-                      className="font-dot text-lg font-bold text-white hover:text-[#D71921] transition-colors block mb-2"
+                      className="boardly-post-title font-dot text-lg font-bold text-white hover:text-[#D71921] transition-colors block mb-2 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]"
                     >
                       <MathText text={item.title} />
                     </Link>
 
-                    <div className="text-xs text-white/65 line-clamp-2 leading-relaxed mb-3">
+                    <div className="boardly-post-content text-xs text-white/65 line-clamp-2 leading-relaxed mb-3 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
                       <MathText text={maskPublicUserText(item.description)} />
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-3 pt-3 border-t border-white/[0.08]">
-                    <span className="text-[11px] text-white/50 truncate">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-white/[0.08] min-w-0">
+                    <span className="text-[11px] text-white/50 truncate min-w-0">
                       Shared by <strong className="text-white/80">{authorLabel}</strong>
                     </span>
 

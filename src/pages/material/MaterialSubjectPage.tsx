@@ -112,7 +112,7 @@ export const MaterialSubjectPage: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="boardly-feed-container grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-full min-w-0 box-border overflow-x-hidden">
             {materials.map((item) => {
               const slug = buildEntitySlug(item.id, item.title);
               const typeMeta = COMMONS_POST_TYPES[item.type] || COMMONS_POST_TYPES.notes;
@@ -122,25 +122,25 @@ export const MaterialSubjectPage: React.FC = () => {
                 : sanitizeStudentDisplayName(item.authorName, item.authorUid);
 
               return (
-                <div key={item.id} className="glass-card p-6 flex flex-col justify-between gap-4">
-                  <div>
+                <div key={item.id} className="boardly-post-card glass-card p-5 sm:p-6 flex flex-col justify-between gap-4 w-full max-w-full min-w-0 box-border overflow-x-hidden">
+                  <div className="min-w-0">
                     <span className="text-[11px] font-semibold uppercase tracking-wider text-[#D71921] block mb-1.5">
                       {typeMeta.badgeLabel}
                     </span>
                     <Link
                       to={`/material/${slug}`}
-                      className="font-dot text-lg font-bold text-white hover:text-[#D71921] transition-colors block mb-2"
+                      className="boardly-post-title font-dot text-lg font-bold text-white hover:text-[#D71921] transition-colors block mb-2 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]"
                     >
                       {item.title}
                     </Link>
-                    <p className="text-xs text-white/65 line-clamp-2">
+                    <p className="boardly-post-content text-xs text-white/65 line-clamp-2 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
                       {maskPublicUserText(item.description)}
                     </p>
                   </div>
 
-                  <div className="flex items-center justify-between pt-3 border-t border-white/[0.08]">
-                    <span className="text-[11px] text-white/50">By {authorLabel}</span>
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-white/[0.08] min-w-0">
+                    <span className="text-[11px] text-white/50 truncate min-w-0">By {authorLabel}</span>
+                    <div className="flex items-center gap-2 shrink-0">
                       <Link
                         to={`/material/${slug}`}
                         className="btn-secondary px-3 py-1.5 text-xs font-semibold"

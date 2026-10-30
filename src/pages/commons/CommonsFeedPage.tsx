@@ -326,7 +326,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      className="pb-28 max-w-2xl mx-auto space-y-3"
+      className="boardly-feed-container w-full max-w-2xl min-w-0 box-border overflow-x-hidden mx-auto space-y-3 pb-[calc(96px+env(safe-area-inset-bottom,0px))]"
     >
       {isPublicRoute && (
         <PageMeta
@@ -337,23 +337,23 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       )}
 
       {/* ── Sticky Top Bar: "Commons", Search, Material Library, Guidelines, Refresh ── */}
-      <header className="sticky top-2 z-30 glass-card allow-backdrop-blur rounded-[24px] px-4 py-3 flex items-center justify-between transition-colors">
-        <div>
+      <header className="sticky top-2 z-30 glass-card allow-backdrop-blur rounded-[24px] px-3.5 sm:px-4 py-3 flex items-center justify-between gap-2 w-full max-w-full min-w-0 box-border overflow-x-hidden transition-colors">
+        <div className="min-w-0 flex-1">
           <h1
-            className="text-lg sm:text-xl font-bold tracking-tight text-primary font-dot"
+            className="text-lg sm:text-xl font-bold tracking-tight text-primary font-dot truncate"
           >
             Boardly Commons
           </h1>
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted truncate">
             Share notes, papers and doubts. Learn together.
           </p>
         </div>
 
         {/* Right Action Icons: Material Library, Search, Guidelines, Refresh */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           <Link
             to="/material"
-            className="p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
+            className="p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors min-w-[38px] min-h-[38px] sm:min-w-[40px] sm:min-h-[40px] flex items-center justify-center"
             title="Study Material Library"
             aria-label="Study Material Library"
           >
@@ -362,7 +362,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
 
           <button
             onClick={() => setSearchModalOpen(true)}
-            className="p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors cursor-pointer min-w-[40px] min-h-[40px] flex items-center justify-center"
+            className="p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors cursor-pointer min-w-[38px] min-h-[38px] sm:min-w-[40px] sm:min-h-[40px] flex items-center justify-center"
             title="Search Commons"
             aria-label="Search"
           >
@@ -371,7 +371,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
 
           <Link
             to="/guidelines"
-            className="p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
+            className="p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors min-w-[38px] min-h-[38px] sm:min-w-[40px] sm:min-h-[40px] flex items-center justify-center"
             title="Community Guidelines"
             aria-label="Guidelines"
           >
@@ -381,7 +381,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           {user && (
             <Link
               to="/dashboard/notifications"
-              className="relative p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
+              className="relative p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors min-w-[38px] min-h-[38px] sm:min-w-[40px] sm:min-h-[40px] flex items-center justify-center"
               title="Notifications"
               aria-label="Notifications"
             >
@@ -397,7 +397,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           <button
             onClick={() => loadPosts()}
             disabled={loading}
-            className="p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors cursor-pointer min-w-[40px] min-h-[40px] flex items-center justify-center"
+            className="p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors cursor-pointer min-w-[38px] min-h-[38px] sm:min-w-[40px] sm:min-h-[40px] flex items-center justify-center"
             title="Refresh feed"
             aria-label="Refresh feed"
           >
@@ -423,8 +423,8 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       )}
 
       {/* ── Post Composer Card (Facebook style: "What's on your mind?") ── */}
-      <div className="glass-card rounded-[28px] p-4 sm:p-5 space-y-3">
-        <div className="flex items-center gap-3">
+      <div className="glass-card rounded-[28px] p-4 sm:p-5 space-y-3 w-full max-w-full min-w-0 box-border overflow-x-hidden">
+        <div className="flex items-center gap-3 min-w-0">
           <div
             onClick={() => (user ? openProfile(user.uid) : openComposerWithGate({ initialStep: 1 }))}
             className="shrink-0 cursor-pointer transition-transform hover:scale-105"
@@ -447,14 +447,14 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           <button
             type="button"
             onClick={() => openComposerWithGate({ initialStep: 1 })}
-            className="flex-1 text-left px-4 py-2.5 rounded-full bg-surface-muted hover:bg-surface-raised border border-border text-muted text-xs sm:text-sm transition-colors cursor-pointer"
+            className="flex-1 min-w-0 text-left px-4 py-2.5 rounded-full bg-surface-muted hover:bg-surface-raised border border-border text-muted text-xs sm:text-sm transition-colors cursor-pointer truncate"
           >
             Share a resource or ask a doubt...
           </button>
         </div>
 
         {/* Quick action buttons row: Photo, File, Doubt, Anonymous */}
-        <div className="flex items-center justify-between gap-1 pt-2 border-t border-border overflow-x-auto no-scrollbar">
+        <div className="flex flex-wrap items-center justify-between gap-1 pt-2 border-t border-border w-full max-w-full min-w-0">
           <button
             type="button"
             onClick={() =>
@@ -463,10 +463,10 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                 triggerUploadOnMount: 'photo',
               })
             }
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap shrink-0"
+            className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap"
           >
-            <ImageIcon size={16} className="text-emerald-500 shrink-0" />
-            <span>Photo</span>
+            <ImageIcon size={15} className="text-emerald-500 shrink-0" />
+            <span className="truncate">Photo</span>
           </button>
 
           <button
@@ -477,10 +477,10 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                 triggerUploadOnMount: 'file',
               })
             }
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap shrink-0"
+            className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap"
           >
-            <Paperclip size={16} className="text-blue-500 shrink-0" />
-            <span>File</span>
+            <Paperclip size={15} className="text-blue-500 shrink-0" />
+            <span className="truncate">File</span>
           </button>
 
           <button
@@ -491,10 +491,10 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                 initialType: 'doubt',
               })
             }
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap shrink-0"
+            className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap"
           >
-            <HelpCircle size={16} className="text-amber-500 shrink-0" />
-            <span>Doubt</span>
+            <HelpCircle size={15} className="text-amber-500 shrink-0" />
+            <span className="truncate">Doubt</span>
           </button>
 
           <button
@@ -505,17 +505,17 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                 initialAnonymous: true,
               })
             }
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap shrink-0"
+            className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap"
           >
-            <EyeOff size={16} className="text-purple-500 shrink-0" />
-            <span>Anonymous</span>
+            <EyeOff size={15} className="text-purple-500 shrink-0" />
+            <span className="truncate">Anonymous</span>
           </button>
         </div>
       </div>
 
       {backendMode === 'preview-demo' && (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-200 flex items-center justify-between gap-2">
-          <span className="font-semibold">
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-200 flex items-center justify-between gap-2 w-full max-w-full min-w-0 box-border">
+          <span className="font-semibold min-w-0 [overflow-wrap:anywhere] [word-break:break-word]">
             Demo Mode (Preview Store) — Bind Cloudflare D1 (<code className="font-mono">DB</code>) &amp; R2 (<code className="font-mono">R2_BUCKET</code>) in Cloudflare Pages to use live cloud storage.
           </span>
           <a
@@ -530,7 +530,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       )}
 
       {/* ── Subject & Class Filters ── */}
-      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+      <div className="flex flex-wrap items-center gap-1.5 pt-1 w-full max-w-full min-w-0">
         {SUBJECT_FILTERS.map((s) => (
           <button
             key={s.slug}
@@ -549,7 +549,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           value={classFilter}
           onChange={(e) => setClassFilter(e.target.value)}
           aria-label="Filter by class or board"
-          className="ml-auto px-3 py-1.5 rounded-full text-xs font-medium bg-surface border border-border text-secondary focus:outline-none"
+          className="ml-auto max-w-full px-3 py-1.5 rounded-full text-xs font-medium bg-surface border border-border text-secondary focus:outline-none"
         >
           <option value="all">All Classes & Boards</option>
           <option value="class 9">Class 9 (SSC-I)</option>
@@ -565,8 +565,8 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       </div>
 
       {/* ── Feed Tabs: "Newest", "Trending", and "Following" ── */}
-      <div className="sticky top-[58px] z-20 bg-background/95 backdrop-blur-md border-b border-border -mx-4 sm:mx-0 px-4 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-6">
+      <div className="sticky top-[58px] z-20 bg-background/95 backdrop-blur-md border-b border-border px-2 sm:px-3 flex flex-wrap items-center justify-between gap-2 w-full max-w-full min-w-0 box-border overflow-x-hidden">
+        <div className="flex items-center gap-4 sm:gap-6 min-w-0">
           <button
             onClick={() => setFeedTab('all')}
             className={`py-2.5 px-1 text-xs sm:text-sm transition-all cursor-pointer select-none ${
@@ -609,14 +609,14 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
 
         <Link
           to="/search"
-          className="text-xs text-muted hover:text-accent font-medium transition-colors"
+          className="text-xs text-muted hover:text-accent font-medium transition-colors shrink-0"
         >
           Full Search →
         </Link>
       </div>
 
       {/* ── Posts Stream (10 at a time, skeleton loaders, Facebook style) ── */}
-      <div className="space-y-3 pt-1">
+      <div className="boardly-feed-container w-full max-w-full min-w-0 box-border overflow-x-hidden space-y-3 pt-1">
         {loading && displayedPosts.length === 0 ? (
           /* Skeleton Loaders (No blank screen, no spinner-only state) */
           <CommonsPostCardSkeleton count={3} />
@@ -703,11 +703,11 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
         )}
       </div>
 
-      {/* ── Floating "Back to top" Chip (When scrolled) ── */}
+      {/* ── Floating "Back to top" Chip (Positioned above mobile bottom nav so they never overlap) ── */}
       {showBackToTop && (
         <button
           onClick={scrollToTop}
-          className="fixed bottom-20 right-4 sm:right-8 z-40 px-3.5 py-2 rounded-full bg-surface-raised border border-border text-primary shadow-lg text-xs font-semibold flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+          className="fixed bottom-[calc(96px+env(safe-area-inset-bottom,0px))] md:bottom-8 right-4 sm:right-8 z-30 px-3.5 py-2 rounded-full bg-surface-raised border border-border text-primary shadow-lg text-xs font-semibold flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer"
           title="Back to top"
         >
           <ArrowUp size={14} />

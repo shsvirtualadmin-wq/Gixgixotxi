@@ -510,7 +510,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="boardly-feed-container flex flex-col gap-3 w-full max-w-full min-w-0 box-border overflow-x-hidden">
           {posts.map((post) => {
             const isMyPost = Boolean(currentUserId && String(post.user_id) === String(currentUserId));
             const isEditingThis = editingPostId === post.id;
@@ -524,11 +524,11 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
             return (
               <div
                 key={post.id}
-                className="p-4 sm:p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] shadow-xs flex flex-col gap-3 transition-colors hover:border-[var(--border)]/80"
+                className="boardly-post-card p-4 sm:p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] shadow-xs flex flex-col gap-3 w-full max-w-full min-w-0 box-border overflow-x-hidden transition-colors hover:border-[var(--border)]/80"
               >
                 {/* ── Post Header: Author info, time & Menu ── */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5 min-w-0">
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <div className="shrink-0">
                       <BoardlyAvatar
                         equippedAvatar={
@@ -549,7 +549,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                         size={32}
                       />
                     </div>
-                    <div className="flex flex-col min-w-0">
+                    <div className="flex flex-col min-w-0 flex-1">
                       <span className="font-heading font-semibold text-xs text-[var(--text)] truncate">
                         {post.author_name || 'Student'}
                       </span>
@@ -565,7 +565,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
 
                   {/* Menu button on own posts (only if NOT in read-only / preview mode) */}
                   {isMyPost && !readOnly && !isEditingThis && (
-                    <div className="relative">
+                    <div className="relative shrink-0">
                       <button
                         type="button"
                         onClick={() => setActiveMenuPostId(activeMenuPostId === post.id ? null : post.id)}
@@ -605,7 +605,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
 
                 {/* ── Post Content (or Edit Form) ── */}
                 {isEditingThis ? (
-                  <div className="flex flex-col gap-3 p-3 rounded-xl bg-[var(--card-2)] border border-[var(--border)]">
+                  <div className="flex flex-col gap-3 p-3 rounded-xl bg-[var(--card-2)] border border-[var(--border)] min-w-0 max-w-full">
                     {editError && (
                       <div className="text-xs text-red-500 p-2 rounded-lg bg-red-500/10 border border-red-500/20">
                         {editError}
@@ -616,14 +616,14 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                       value={editText}
                       onChange={(e) => setEditText(e.target.value)}
                       rows={3}
-                      className="w-full p-2.5 rounded-lg bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--text)] outline-none focus:border-[var(--red)] resize-none"
+                      className="w-full max-w-full p-2.5 rounded-lg bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--text)] outline-none focus:border-[var(--red)] resize-none"
                       placeholder="Edit your post text..."
                     />
 
                     {/* Image handling during edit */}
                     {editImageUrl ? (
                       <div className="relative rounded-lg overflow-hidden border border-[var(--border)] max-w-xs">
-                        <img src={editImageUrl} alt="Post image" className="w-full max-h-48 object-cover" />
+                        <img src={editImageUrl} alt="Post image" className="w-full max-w-full h-auto max-h-48 object-cover" />
                         <button
                           type="button"
                           onClick={() => setEditImageUrl(null)}
@@ -655,7 +655,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                     )}
 
                     {/* Edit actions */}
-                    <div className="flex items-center justify-end gap-2 pt-1 border-t border-[var(--border)]">
+                    <div className="flex flex-wrap items-center justify-end gap-2 pt-1 border-t border-[var(--border)]">
                       <button
                         type="button"
                         onClick={() => setEditingPostId(null)}
@@ -679,18 +679,22 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                   <>
                     {/* Text Body */}
                     {post.text && (
-                      <p className="text-xs sm:text-sm text-[var(--text)] leading-relaxed whitespace-pre-line break-words">
+                      <p className="boardly-post-content text-xs sm:text-sm text-[var(--text)] leading-relaxed whitespace-pre-line min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
                         {post.text}
                       </p>
                     )}
 
                     {/* Image attachment */}
                     {post.image_url && (
-                      <div className="relative group rounded-xl overflow-hidden border border-[var(--border)] bg-black/30 max-h-96">
+                      <div className="relative group rounded-xl overflow-hidden border border-[var(--border)] bg-black/30 max-h-96 w-full max-w-full min-w-0">
                         <img
                           src={post.image_url}
                           alt="Post media"
-                          className="w-full h-auto max-h-96 object-contain cursor-pointer transition-transform group-hover:scale-[1.01]"
+                          onError={(e) => {
+                            const container = e.currentTarget.parentElement;
+                            if (container) container.style.display = 'none';
+                          }}
+                          className="w-full max-w-full h-auto max-h-96 object-contain cursor-pointer transition-transform group-hover:scale-[1.01]"
                           onClick={() => setLightboxImageUrl(post.image_url || null)}
                           loading="lazy"
                         />
@@ -709,7 +713,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                 )}
 
                 {/* ── Footer: Likes & Comments ── */}
-                <div className="flex items-center gap-4 pt-2 border-t border-[var(--border)] text-xs font-mono text-[var(--muted)]">
+                <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-[var(--border)] text-xs font-mono text-[var(--muted)] min-w-0">
                   <button
                     type="button"
                     onClick={() => handleToggleLike(post.id)}

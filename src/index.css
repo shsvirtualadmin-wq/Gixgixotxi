@@ -2258,3 +2258,42 @@ body,
   color: var(--text-primary);
   border-color: var(--border);
 }
+
+/* ===== MOBILE FEED & POST CONTENT OVERFLOW PROTECTION ===== */
+.boardly-feed-container,
+.boardly-post-card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+.boardly-post-title,
+.boardly-post-content {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.boardly-post-title a,
+.boardly-post-content a,
+.katex-root-block a,
+.katex-root-inline a {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.boardly-post-card :is(img, video, iframe, table, pre),
+.boardly-post-content :is(img, video, iframe, table, pre),
+.katex-root-block :is(img, video, iframe, table, pre) {
+  max-width: 100%;
+  height: auto;
+}
+
+.boardly-post-card :is(table, pre),
+.boardly-post-content :is(table, pre) {
+  overflow-x: auto;
+}
+

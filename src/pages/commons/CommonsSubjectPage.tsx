@@ -53,14 +53,14 @@ export const CommonsSubjectPage: React.FC = () => {
   }, [subject, user?.uid]);
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6">
+    <div className="min-h-screen w-full max-w-full min-w-0 box-border overflow-x-hidden bg-[var(--bg)] text-[var(--text)] pt-28 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-4 sm:px-6">
       <PageMeta
         title={`${subjectTitle} Notes, Past Papers & Discussions — Boardly Commons`}
         description={`Browse student-shared ${subjectTitle} notes, solved past papers, formula sheets, and exam doubts for Class 11, Class 12, MDCAT, and ECAT on Boardly Commons.`}
         canonicalPath={`/commons/subject/${subject}`}
       />
 
-      <div className="max-w-3xl mx-auto">
+      <div className="boardly-feed-container max-w-3xl mx-auto w-full min-w-0 box-border overflow-x-hidden">
         <Breadcrumbs
           items={[
             { label: 'Commons', href: '/commons' },
@@ -68,16 +68,16 @@ export const CommonsSubjectPage: React.FC = () => {
           ]}
         />
 
-        <div className="glass-panel p-7 sm:p-9 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
+        <div className="glass-panel p-6 sm:p-9 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full max-w-full min-w-0 box-border overflow-x-hidden">
+          <div className="min-w-0">
             <div className="section-chip-red mb-3">
               <BookOpen size={13} />
               <span>Subject Community</span>
             </div>
-            <h1 className="font-dot text-2xl sm:text-4xl font-bold text-white mb-2">
+            <h1 className="font-dot text-2xl sm:text-4xl font-bold text-white mb-2 [overflow-wrap:anywhere] [word-break:break-word]">
               {subjectTitle} in Boardly Commons
             </h1>
-            <p className="text-sm text-white/70">
+            <p className="text-sm text-white/70 [overflow-wrap:anywhere] [word-break:break-word]">
               Peer-shared notes, solved board papers, and question discussions for {subjectTitle}.
             </p>
           </div>
@@ -106,7 +106,7 @@ export const CommonsSubjectPage: React.FC = () => {
             </Link>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="boardly-feed-container space-y-4 w-full max-w-full min-w-0 box-border overflow-x-hidden">
             {posts.map((post) => (
               <CommonsPostCard
                 key={post.id}

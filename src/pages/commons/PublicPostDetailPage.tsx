@@ -163,12 +163,20 @@ export const PublicPostDetailPage: React.FC = () => {
     : sanitizeStudentDisplayName(post.authorName, post.authorUid);
 
   const typeMeta = COMMONS_POST_TYPES[post.type] || COMMONS_POST_TYPES.notes;
-  const attachments = post.files || [];
+  const attachments = (post.files || []).filter(
+    (f) => Boolean(f && (f.url?.trim() || f.r2Key?.trim()))
+  );
   const imageFiles = attachments.filter(
-    (f) => f.type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/i.test(f.name || '')
+    (f) =>
+      f.type?.startsWith('image/') ||
+      /\.(png|jpe?g|webp|gif|svg)$/i.test(f.name || '') ||
+      /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(f.url || '')
   );
   const docFiles = attachments.filter(
-    (f) => !f.type?.startsWith('image/') && !/\.(png|jpe?g|webp|gif|svg)$/i.test(f.name || '')
+    (f) =>
+      !f.type?.startsWith('image/') &&
+      !/\.(png|jpe?g|webp|gif|svg)$/i.test(f.name || '') &&
+      !/\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(f.url || '')
   );
 
   const createdDateIso = post.createdAt?.toDate
@@ -297,7 +305,7 @@ export const PublicPostDetailPage: React.FC = () => {
   const subjectSlug = (post.subject || 'general').toLowerCase().replace(/\s+/g, '-');
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6">
+    <div className="min-h-screen w-full max-w-full min-w-0 box-border overflow-x-hidden bg-[var(--bg)] text-[var(--text)] pt-28 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-4 sm:px-6">
       <PageMeta
         title={`${post.title} — ${post.subject || 'Boardly Commons'}`}
         description={
@@ -309,7 +317,7 @@ export const PublicPostDetailPage: React.FC = () => {
         jsonLd={jsonLd}
       />
 
-      <div className="max-w-3xl mx-auto">
+      <div className="boardly-feed-container max-w-3xl mx-auto w-full min-w-0 box-border overflow-x-hidden">
         <Breadcrumbs
           items={[
             { label: 'Commons', href: '/commons' },
@@ -320,34 +328,36 @@ export const PublicPostDetailPage: React.FC = () => {
           ]}
         />
 
-        <article className="glass-panel p-6 sm:p-8 mb-8">
+        <article className="boardly-post-card glass-panel p-5 sm:p-8 mb-8 w-full max-w-full min-w-0 box-border overflow-x-hidden">
           {/* Author Header */}
-          <div className="flex items-center justify-between gap-3 mb-5">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between gap-3 mb-5 min-w-0">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
               {post.isAnonymous ? (
-                <div className="w-11 h-11 rounded-full bg-white/[0.05] border border-white/10 flex items-center justify-center text-white/60">
+                <div className="w-11 h-11 rounded-full bg-white/[0.05] border border-white/10 flex items-center justify-center text-white/60 shrink-0">
                   <EyeOff size={18} />
                 </div>
               ) : (
-                <BoardlyAvatar
-                  equippedAvatar={(post as any).authorEquippedAvatar}
-                  avatarUrl={post.authorAvatar || undefined}
-                  frame={(post as any).authorFrame}
-                  name={authorDisplay}
-                  size={44}
-                />
+                <div className="shrink-0">
+                  <BoardlyAvatar
+                    equippedAvatar={(post as any).authorEquippedAvatar}
+                    avatarUrl={post.authorAvatar || undefined}
+                    frame={(post as any).authorFrame}
+                    name={authorDisplay}
+                    size={44}
+                  />
+                </div>
               )}
 
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
                   {post.isAnonymous || !post.authorUid ? (
-                    <span className="font-bold text-white text-sm sm:text-base">
+                    <span className="font-bold text-white text-sm sm:text-base truncate max-w-full">
                       {authorDisplay}
                     </span>
                   ) : (
                     <Link
                       to={`/u/${encodeURIComponent(post.authorUid)}`}
-                      className="font-bold text-white hover:text-[#D71921] transition-colors text-sm sm:text-base"
+                      className="font-bold text-white hover:text-[#D71921] transition-colors text-sm sm:text-base truncate max-w-full"
                     >
                       {authorDisplay}
                     </Link>
@@ -382,7 +392,7 @@ export const PublicPostDetailPage: React.FC = () => {
             <button
               type="button"
               onClick={() => requireAuth('report this post', () => setReportOpen(true))}
-              className="p-2 rounded-xl bg-white/[0.04] border border-white/10 text-white/60 hover:text-[#D71921] transition-colors cursor-pointer"
+              className="p-2 rounded-xl bg-white/[0.04] border border-white/10 text-white/60 hover:text-[#D71921] transition-colors cursor-pointer shrink-0"
               title="Report post"
               aria-label="Report post"
             >
@@ -391,25 +401,25 @@ export const PublicPostDetailPage: React.FC = () => {
           </div>
 
           {/* Post H1 Title */}
-          <h1 className="font-dot text-2xl sm:text-3xl font-bold text-white mb-4 leading-snug">
+          <h1 className="boardly-post-title font-dot text-2xl sm:text-3xl font-bold text-white mb-4 leading-snug min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
             <MathText text={post.title} />
           </h1>
 
           {/* Post Body */}
           {post.description && (
-            <div className="text-sm sm:text-base text-white/80 leading-relaxed whitespace-pre-wrap mb-6">
+            <div className="boardly-post-content text-sm sm:text-base text-white/80 leading-relaxed whitespace-pre-wrap mb-6 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
               <MathText text={maskPublicUserText(post.description)} block />
             </div>
           )}
 
           {/* Tags */}
           {post.tags && post.tags.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-6">
+            <div className="flex flex-wrap gap-2 mb-6 min-w-0 max-w-full">
               {post.tags.map((tag, idx) => (
                 <Link
                   key={idx}
                   to={`/search?q=${encodeURIComponent(tag)}`}
-                  className="glass-pill px-3 py-1 text-xs text-white/70 hover:text-white"
+                  className="glass-pill px-3 py-1 text-xs text-white/70 hover:text-white max-w-full [overflow-wrap:anywhere] [word-break:break-all]"
                 >
                   #{tag}
                 </Link>
@@ -419,7 +429,7 @@ export const PublicPostDetailPage: React.FC = () => {
 
           {/* Images */}
           {imageFiles.length > 0 && (
-            <div className="space-y-3 mb-6">
+            <div className="space-y-3 mb-6 w-full max-w-full min-w-0">
               {imageFiles.map((file, idx) => (
                 <CommonsImageAttachment
                   key={idx}
@@ -433,7 +443,7 @@ export const PublicPostDetailPage: React.FC = () => {
 
           {/* Document Attachments */}
           {docFiles.length > 0 && (
-            <div className="space-y-2.5 mb-6">
+            <div className="space-y-2.5 mb-6 w-full max-w-full min-w-0">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-white/50 mb-2">
                 Attached Study Material
               </h2>
@@ -443,13 +453,13 @@ export const PublicPostDetailPage: React.FC = () => {
                 return (
                   <div
                     key={idx}
-                    className="glass-row flex items-center justify-between gap-3 p-3.5 rounded-xl"
+                    className="glass-row flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl min-w-0"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="w-9 h-9 rounded-lg bg-[#D71921]/15 border border-[#D71921]/30 flex items-center justify-center text-[#D71921] shrink-0">
                         {isPdf ? <FileText size={18} /> : <File size={18} />}
                       </div>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="text-xs sm:text-sm font-semibold text-white truncate">
                           {file.name}
                         </p>
@@ -488,12 +498,12 @@ export const PublicPostDetailPage: React.FC = () => {
           )}
 
           {/* Action Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-white/10">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-white/10 w-full max-w-full min-w-0">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
               <button
                 type="button"
                 onClick={handleLike}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-2 border transition-colors cursor-pointer ${
+                className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-2 border transition-colors cursor-pointer ${
                   hasVoted
                     ? 'bg-[#D71921]/20 border-[#D71921] text-white'
                     : 'bg-white/[0.04] border-white/10 text-white/75 hover:text-white'
@@ -506,7 +516,7 @@ export const PublicPostDetailPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleBookmark}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-2 border transition-colors cursor-pointer ${
+                className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-2 border transition-colors cursor-pointer ${
                   isSaved
                     ? 'bg-[#D71921]/20 border-[#D71921] text-white'
                     : 'bg-white/[0.04] border-white/10 text-white/75 hover:text-white'
@@ -520,7 +530,7 @@ export const PublicPostDetailPage: React.FC = () => {
             <button
               type="button"
               onClick={handleShare}
-              className="px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-2 bg-white/[0.04] border border-white/10 text-white/75 hover:text-white transition-colors cursor-pointer"
+              className="px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-2 bg-white/[0.04] border border-white/10 text-white/75 hover:text-white transition-colors cursor-pointer"
             >
               {copied ? <Check size={15} className="text-emerald-400" /> : <Share2 size={15} />}
               <span>{copied ? 'Link Copied!' : 'Share Permalink'}</span>
@@ -529,8 +539,8 @@ export const PublicPostDetailPage: React.FC = () => {
         </article>
 
         {/* Public Comments Section */}
-        <section className="glass-panel p-6 sm:p-8 mb-8">
-          <div className="flex items-center justify-between mb-6">
+        <section className="glass-panel p-5 sm:p-8 mb-8 w-full max-w-full min-w-0 box-border overflow-x-hidden">
+          <div className="flex items-center justify-between mb-6 min-w-0">
             <h2 className="font-dot text-xl font-bold text-white flex items-center gap-2">
               <MessageSquare size={18} className="text-[#D71921]" />
               <span>Discussion ({comments.length})</span>
@@ -538,7 +548,7 @@ export const PublicPostDetailPage: React.FC = () => {
           </div>
 
           {/* Comment Composer (Requires Login on Submit/Focus) */}
-          <form onSubmit={handleCommentSubmit} className="mb-6 space-y-3">
+          <form onSubmit={handleCommentSubmit} className="mb-6 space-y-3 min-w-0">
             <textarea
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
@@ -551,9 +561,9 @@ export const PublicPostDetailPage: React.FC = () => {
                   : 'Sign in to post a comment or answer...'
               }
               rows={3}
-              className="w-full rounded-xl bg-white/[0.04] border border-white/10 p-3.5 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#D71921]"
+              className="w-full max-w-full rounded-xl bg-white/[0.04] border border-white/10 p-3.5 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#D71921]"
             />
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <label className="inline-flex items-center gap-2 text-xs text-white/65 cursor-pointer">
                 <input
                   type="checkbox"
@@ -580,17 +590,17 @@ export const PublicPostDetailPage: React.FC = () => {
               No comments yet. Be the first to contribute to this discussion.
             </p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3 w-full max-w-full min-w-0">
               {comments.map((c) => {
                 const cAuthor = c.isAnonymous
                   ? c.anonymousAlias || 'Anonymous Student'
                   : sanitizeStudentDisplayName(c.authorName, c.authorUid);
                 return (
-                  <div key={c.id} className="glass-card p-4">
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <span className="text-xs font-bold text-white">{cAuthor}</span>
+                  <div key={c.id} className="boardly-post-card glass-card p-4 w-full max-w-full min-w-0 box-border overflow-x-hidden">
+                    <div className="flex items-center justify-between gap-2 mb-1.5 min-w-0">
+                      <span className="text-xs font-bold text-white truncate">{cAuthor}</span>
                     </div>
-                    <div className="text-xs sm:text-sm text-white/80 whitespace-pre-wrap leading-relaxed">
+                    <div className="boardly-post-content text-xs sm:text-sm text-white/80 whitespace-pre-wrap leading-relaxed min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
                       <MathText text={maskPublicUserText(c.body || c.text)} block />
                     </div>
                   </div>
@@ -602,24 +612,24 @@ export const PublicPostDetailPage: React.FC = () => {
 
         {/* Related Posts */}
         {relatedPosts.length > 0 && (
-          <section className="glass-panel p-6 sm:p-8">
+          <section className="glass-panel p-5 sm:p-8 w-full max-w-full min-w-0 box-border overflow-x-hidden">
             <h2 className="font-dot text-xl font-bold text-white mb-4">
               More in Boardly Commons
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
               {relatedPosts.map((rp) => (
                 <Link
                   key={rp.id}
                   to={`/commons/post/${buildEntitySlug(rp.id, rp.title)}`}
-                  className="glass-card-interactive p-4 block"
+                  className="boardly-post-card glass-card-interactive p-4 block min-w-0 max-w-full box-border overflow-x-hidden"
                 >
                   <span className="text-[11px] text-[#D71921] font-semibold uppercase">
                     {rp.subject || 'Commons'}
                   </span>
-                  <h3 className="text-sm font-bold text-white mt-1 line-clamp-2">
+                  <h3 className="boardly-post-title text-sm font-bold text-white mt-1 line-clamp-2 [overflow-wrap:anywhere] [word-break:break-word]">
                     <MathText text={rp.title} />
                   </h3>
-                  <div className="text-xs text-white/60 mt-1 line-clamp-2">
+                  <div className="boardly-post-content text-xs text-white/60 mt-1 line-clamp-2 [overflow-wrap:anywhere] [word-break:break-word]">
                     <MathText text={maskPublicUserText(rp.description)} />
                   </div>
                 </Link>

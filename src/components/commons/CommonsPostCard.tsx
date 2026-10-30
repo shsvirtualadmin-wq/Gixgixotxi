@@ -261,17 +261,21 @@ export const CommonsPostCard = memo(function CommonsPostCard({
     ? '#0F766E'
     : '#B91C1C';
 
-  // Separate image attachments from document attachments
-  const attachments = post.files || [];
+  // Separate image attachments from document attachments (only include attachments with a real URL or r2Key)
+  const attachments = (post.files || []).filter(
+    (f) => Boolean(f && (f.url?.trim() || f.r2Key?.trim()))
+  );
   const imageFiles = attachments.filter(
     (f) =>
       f.type?.startsWith('image/') ||
-      /\.(png|jpe?g|webp|gif|svg)$/i.test(f.name || '')
+      /\.(png|jpe?g|webp|gif|svg)$/i.test(f.name || '') ||
+      /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(f.url || '')
   );
   const docFiles = attachments.filter(
     (f) =>
       !f.type?.startsWith('image/') &&
-      !/\.(png|jpe?g|webp|gif|svg)$/i.test(f.name || '')
+      !/\.(png|jpe?g|webp|gif|svg)$/i.test(f.name || '') &&
+      !/\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(f.url || '')
   );
 
   // Stats row content
@@ -301,7 +305,10 @@ export const CommonsPostCard = memo(function CommonsPostCard({
     (post.description.length > 220 || post.description.split('\n').length > 4);
 
   return (
-    <article ref={cardRef} className="group relative glass-card rounded-[28px] p-4 sm:p-6 transition-all duration-200 hover:border-[var(--glass-border-hover)]">
+    <article
+      ref={cardRef}
+      className="boardly-post-card group relative glass-card rounded-[28px] p-4 sm:p-6 w-full max-w-full min-w-0 box-border overflow-x-hidden transition-all duration-200 hover:border-[var(--glass-border-hover)]"
+    >
       {/* ── Pinned Post Indicator (Super Admin) ── */}
       {isPinned && (
         <div className="flex items-center gap-1.5 text-xs font-semibold text-accent mb-3 pb-2.5 border-b border-[var(--glass-border)] font-sans">
@@ -311,8 +318,8 @@ export const CommonsPostCard = memo(function CommonsPostCard({
       )}
 
       {/* ── Header: Avatar, Author, Time + Globe/Mask, Type Pill, Menu ── */}
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-start justify-between gap-2.5 sm:gap-3 mb-3 min-w-0">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
           {/* Avatar */}
           {post.isAnonymous ? (
             <div className="w-10 h-10 rounded-full bg-surface-muted border border-border flex items-center justify-center text-muted shrink-0 select-none">
@@ -351,9 +358,9 @@ export const CommonsPostCard = memo(function CommonsPostCard({
           )}
 
           {/* Author Name, Role Badge, Time & Privacy Icon, Type Pill */}
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             {post.isAnonymous ? (
-              <div>
+              <div className="min-w-0">
                 <span className="text-[15px] font-bold text-primary">Anonymous</span>
                 <div className="flex items-center gap-1.5 text-xs text-muted mt-0.5 flex-wrap">
                   <span>{formatTime(post.createdAt)}</span>
@@ -376,11 +383,11 @@ export const CommonsPostCard = memo(function CommonsPostCard({
                 </div>
               </div>
             ) : (
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
                   <span
                     onClick={handleAuthorClick}
-                    className="text-[15px] font-bold text-primary hover:text-accent transition-colors truncate cursor-pointer"
+                    className="text-[15px] font-bold text-primary hover:text-accent transition-colors truncate max-w-full cursor-pointer"
                   >
                     {sanitizeStudentDisplayName(post.authorName, post.authorUid)}
                   </span>
@@ -486,18 +493,21 @@ export const CommonsPostCard = memo(function CommonsPostCard({
 
       {/* ── Post Title (Clickable Permalink to real Post Detail URL) ── */}
       <h2
-        className="text-[17px] font-bold text-primary mb-2 leading-snug font-sans"
+        className="boardly-post-title text-[17px] font-bold text-primary mb-2 leading-snug font-sans min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]"
         style={{ fontFamily: 'var(--font-heading)' }}
       >
-        <Link to={postPermalink} className="hover:text-accent transition-colors">
+        <Link
+          to={postPermalink}
+          className="hover:text-accent transition-colors [overflow-wrap:anywhere] [word-break:break-word]"
+        >
           <MathText text={post.title} />
         </Link>
       </h2>
 
       {/* ── Post Body (Preserve line breaks, paragraphs, KaTeX math, 4 lines + See more) ── */}
       {post.description && (
-        <div className="text-[15px] text-secondary leading-relaxed whitespace-pre-wrap font-normal mb-3 font-sans">
-          <div className={expanded ? '' : 'line-clamp-4'}>
+        <div className="boardly-post-content text-[15px] text-secondary leading-relaxed whitespace-pre-wrap font-normal mb-3 font-sans min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
+          <div className={`min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word] ${expanded ? '' : 'line-clamp-4'}`}>
             <MathText text={maskPublicUserText(post.description)} block />
           </div>
           {!expanded && isLongDescription && (
@@ -513,12 +523,12 @@ export const CommonsPostCard = memo(function CommonsPostCard({
 
       {/* ── Tags (Clean subtle hashtag chips) ── */}
       {post.tags && post.tags.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+        <div className="flex flex-wrap items-center gap-1.5 mb-3 min-w-0 max-w-full">
           {post.tags.map((tag, idx) => (
             <Link
               key={idx}
               to={`/search?q=${encodeURIComponent(tag)}`}
-              className="text-muted bg-surface-muted hover:text-primary px-2 py-0.5 rounded-md text-xs font-medium border border-border font-sans transition-colors"
+              className="text-muted bg-surface-muted hover:text-primary px-2 py-0.5 rounded-md text-xs font-medium border border-border font-sans transition-colors max-w-full [overflow-wrap:anywhere] [word-break:break-all]"
             >
               #{tag}
             </Link>
@@ -526,9 +536,9 @@ export const CommonsPostCard = memo(function CommonsPostCard({
         </div>
       )}
 
-      {/* ── Image Attachments (with skeleton, retry placeholder & lightbox) ── */}
+      {/* ── Image Attachments (with compact skeleton & lightbox) ── */}
       {imageFiles.length > 0 && (
-        <div className="mb-3 space-y-2.5">
+        <div className="mb-3 space-y-2.5 w-full max-w-full min-w-0">
           {imageFiles.map((file, i) => (
             <CommonsImageAttachment
               key={i}
@@ -542,7 +552,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
 
       {/* ── Shared Document File Chips ── */}
       {docFiles.length > 0 && (
-        <div className="space-y-2 mb-3">
+        <div className="space-y-2 mb-3 w-full max-w-full min-w-0">
           {docFiles.map((file, i) => (
             <FileAttachmentChip
               key={i}
@@ -556,8 +566,8 @@ export const CommonsPostCard = memo(function CommonsPostCard({
 
       {/* ── Stats Row ("👍 12 · 4 comments · 2 shares", hide zero parts) ── */}
       {statsParts.length > 0 && (
-        <div className="flex items-center justify-between text-xs text-muted pt-2 pb-2">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted pt-2 pb-2 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
             <span>{statsParts.join(' · ')}</span>
           </div>
           {copied && (
@@ -570,11 +580,11 @@ export const CommonsPostCard = memo(function CommonsPostCard({
       )}
 
       {/* ── Action Bar: Divider + Like, Comment, Share, Save ── */}
-      <div className="flex items-center justify-between pt-1 border-t border-border">
+      <div className="flex flex-wrap items-center justify-between gap-1 pt-1 border-t border-border w-full max-w-full min-w-0">
         {/* Like */}
         <button
           onClick={handleVote}
-          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors cursor-pointer ${
+          className={`flex-1 min-w-0 flex items-center justify-center gap-1.5 sm:gap-2 px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors cursor-pointer ${
             hasVoted
               ? 'text-accent font-bold bg-accent-soft'
               : 'text-secondary hover:text-primary hover:bg-surface-muted'
@@ -582,42 +592,42 @@ export const CommonsPostCard = memo(function CommonsPostCard({
           title={currentUserId ? 'Like post' : 'Sign in to like'}
         >
           <ThumbsUp
-            size={16}
-            className={hasVoted ? 'fill-current text-accent' : ''}
+            size={15}
+            className={`shrink-0 ${hasVoted ? 'fill-current text-accent' : ''}`}
           />
-          <span>Like</span>
+          <span className="truncate">Like</span>
         </button>
 
         {/* Comment */}
         <button
           onClick={() => onOpenComments(post)}
-          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs sm:text-sm font-medium text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer"
+          className="flex-1 min-w-0 flex items-center justify-center gap-1.5 sm:gap-2 px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer"
         >
-          <MessageSquare size={16} />
-          <span>Comment</span>
+          <MessageSquare size={15} className="shrink-0" />
+          <span className="truncate">Comment</span>
         </button>
 
         {/* Share */}
         <button
           onClick={handleShare}
-          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs sm:text-sm font-medium text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer"
+          className="flex-1 min-w-0 flex items-center justify-center gap-1.5 sm:gap-2 px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer"
           title="Share link"
         >
-          <Share2 size={16} />
-          <span>Share</span>
+          <Share2 size={15} className="shrink-0" />
+          <span className="truncate">Share</span>
         </button>
 
         {/* Save Bookmark */}
         <button
           onClick={handleSave}
-          className={`p-2.5 rounded-xl text-xs sm:text-sm transition-colors cursor-pointer ${
+          className={`shrink-0 p-2 sm:p-2.5 rounded-xl text-xs sm:text-sm transition-colors cursor-pointer ${
             isSaved
               ? 'text-accent bg-accent-soft'
               : 'text-muted hover:text-primary hover:bg-surface-muted'
           }`}
           title={isSaved ? 'Saved' : 'Save post'}
         >
-          <Bookmark size={16} className={isSaved ? 'fill-current text-accent' : ''} />
+          <Bookmark size={15} className={isSaved ? 'fill-current text-accent' : ''} />
         </button>
       </div>
 

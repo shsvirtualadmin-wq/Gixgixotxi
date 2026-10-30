@@ -361,12 +361,12 @@ export function CommonsSearchModal({
                         onClose();
                         onOpenComments(post);
                       }}
-                      className="p-3.5 rounded-xl border border-border bg-surface hover:border-border-strong hover:bg-surface-muted/60 transition-all cursor-pointer group space-y-1.5"
+                      className="boardly-post-card p-3.5 rounded-xl border border-border bg-surface hover:border-border-strong hover:bg-surface-muted/60 transition-all cursor-pointer group space-y-1.5 w-full max-w-full min-w-0 box-border overflow-x-hidden"
                     >
                       {/* Top row: Type Pill & Time */}
-                      <div className="flex items-center justify-between text-xs text-muted">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-surface-muted border border-border text-secondary">
+                      <div className="flex items-center justify-between text-xs text-muted min-w-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-surface-muted border border-border text-secondary shrink-0">
                             {typeMeta.badgeLabel}
                           </span>
                           {post.subject && (
@@ -375,31 +375,31 @@ export function CommonsSearchModal({
                             </span>
                           )}
                         </div>
-                        <span>{formatTime(post.createdAt)}</span>
+                        <span className="shrink-0">{formatTime(post.createdAt)}</span>
                       </div>
 
                       {/* Title: Bold */}
-                      <h4 className="text-sm font-bold text-primary group-hover:text-accent transition-colors line-clamp-1">
+                      <h4 className="boardly-post-title text-sm font-bold text-primary group-hover:text-accent transition-colors line-clamp-1 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
                         {post.title}
                       </h4>
 
                       {/* Short 1-line preview */}
                       {post.description && (
-                        <p className="text-xs text-secondary line-clamp-1 leading-relaxed">
+                        <p className="boardly-post-content text-xs text-secondary line-clamp-1 leading-relaxed min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
                           {post.description}
                         </p>
                       )}
 
                       {/* Bottom line: Author with role badge */}
-                      <div className="flex items-center justify-between pt-1 text-xs text-muted">
-                        <div className="flex items-center gap-1.5">
+                      <div className="flex items-center justify-between pt-1 text-xs text-muted min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
                           {post.isAnonymous ? (
                             <span className="flex items-center gap-1 font-medium text-muted">
                               <EyeOff size={12} /> Anonymous
                             </span>
                           ) : (
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-semibold text-primary">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="font-semibold text-primary truncate">
                                 {sanitizeStudentDisplayName(
                                   post.authorName,
                                   post.authorUid
@@ -414,7 +414,7 @@ export function CommonsSearchModal({
                             </div>
                           )}
                         </div>
-                        <span className="text-[11px] text-accent font-semibold group-hover:underline flex items-center gap-0.5">
+                        <span className="text-[11px] text-accent font-semibold group-hover:underline flex items-center gap-0.5 shrink-0">
                           <span>View post</span>
                           <ChevronRight size={12} />
                         </span>

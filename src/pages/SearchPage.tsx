@@ -252,23 +252,23 @@ export const SearchPage: React.FC = () => {
               No community posts or study materials matched your search query.
             </p>
           ) : (
-            <div className="space-y-3">
+            <div className="boardly-feed-container space-y-3 w-full max-w-full min-w-0 box-border overflow-x-hidden">
               {matchedPosts.map((post) => {
                 const slug = buildEntitySlug(post.id, post.title);
                 const hasFile = Boolean(post.files && post.files.length > 0);
                 const dest = hasFile ? `/material/${slug}` : `/commons/post/${slug}`;
                 return (
-                  <Link key={post.id} to={dest} className="glass-card-interactive p-4 block">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-[11px] font-semibold uppercase text-[#D71921]">
+                  <Link key={post.id} to={dest} className="boardly-post-card glass-card-interactive p-4 block w-full max-w-full min-w-0 box-border overflow-x-hidden">
+                    <div className="flex items-center justify-between gap-2 mb-1 min-w-0">
+                      <span className="text-[11px] font-semibold uppercase text-[#D71921] truncate">
                         {post.subject || 'General'} · {hasFile ? 'Study Material' : 'Commons Post'}
                       </span>
-                      <span className="text-[11px] text-[var(--muted)]">
+                      <span className="text-[11px] text-[var(--muted)] shrink-0">
                         👍 {post.upvotes || 0}
                       </span>
                     </div>
-                    <h3 className="text-sm font-bold text-[var(--text)] mb-1">{post.title}</h3>
-                    <p className="text-xs text-[var(--muted)] line-clamp-2">
+                    <h3 className="boardly-post-title text-sm font-bold text-[var(--text)] mb-1 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">{post.title}</h3>
+                    <p className="boardly-post-content text-xs text-[var(--muted)] line-clamp-2 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
                       {maskPublicUserText(post.description)}
                     </p>
                   </Link>

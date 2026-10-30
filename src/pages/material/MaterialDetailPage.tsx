@@ -137,12 +137,20 @@ export const MaterialDetailPage: React.FC = () => {
     ? material.anonymousAlias || 'Anonymous Student'
     : sanitizeStudentDisplayName(material.authorName, material.authorUid);
 
-  const files = material.files || [];
+  const files = (material.files || []).filter(
+    (f) => Boolean(f && (f.url?.trim() || f.r2Key?.trim()))
+  );
   const imageFiles = files.filter(
-    (f) => f.type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/i.test(f.name || '')
+    (f) =>
+      f.type?.startsWith('image/') ||
+      /\.(png|jpe?g|webp|gif|svg)$/i.test(f.name || '') ||
+      /\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(f.url || '')
   );
   const docFiles = files.filter(
-    (f) => !f.type?.startsWith('image/') && !/\.(png|jpe?g|webp|gif|svg)$/i.test(f.name || '')
+    (f) =>
+      !f.type?.startsWith('image/') &&
+      !/\.(png|jpe?g|webp|gif|svg)$/i.test(f.name || '') &&
+      !/\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(f.url || '')
   );
 
   const subjectSlug = (material.subject || 'physics').toLowerCase().replace(/\s+/g, '-');
@@ -162,7 +170,7 @@ export const MaterialDetailPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6">
+    <div className="min-h-screen w-full max-w-full min-w-0 box-border overflow-x-hidden bg-[var(--bg)] text-[var(--text)] pt-28 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-4 sm:px-6">
       <PageMeta
         title={`${material.title} — ${material.subject || 'Study Material'} PDF & Notes`}
         description={
@@ -174,7 +182,7 @@ export const MaterialDetailPage: React.FC = () => {
         jsonLd={jsonLd}
       />
 
-      <div className="max-w-3xl mx-auto">
+      <div className="boardly-feed-container max-w-3xl mx-auto w-full min-w-0 box-border overflow-x-hidden">
         <Breadcrumbs
           items={[
             { label: 'Study Material', href: '/material' },
@@ -185,8 +193,8 @@ export const MaterialDetailPage: React.FC = () => {
           ]}
         />
 
-        <article className="glass-panel p-7 sm:p-9 mb-8">
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <article className="boardly-post-card glass-panel p-5 sm:p-9 mb-8 w-full max-w-full min-w-0 box-border overflow-x-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4 min-w-0">
             <div className="section-chip-red">
               <FileText size={13} />
               <span>{typeMeta.badgeLabel}</span>
@@ -217,29 +225,29 @@ export const MaterialDetailPage: React.FC = () => {
             </div>
           </div>
 
-          <h1 className="font-dot text-2xl sm:text-3xl font-bold text-white mb-3">
+          <h1 className="boardly-post-title font-dot text-2xl sm:text-3xl font-bold text-white mb-3 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
             <MathText text={material.title} />
           </h1>
 
           {/* Public Metadata Table */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            <div className="glass-card p-3.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 min-w-0">
+            <div className="glass-card p-3.5 min-w-0">
               <span className="text-[10px] uppercase tracking-wider text-white/45 block">
                 Subject
               </span>
-              <span className="text-xs sm:text-sm font-bold text-white">
+              <span className="text-xs sm:text-sm font-bold text-white truncate block">
                 {material.subject || 'General'}
               </span>
             </div>
-            <div className="glass-card p-3.5">
+            <div className="glass-card p-3.5 min-w-0">
               <span className="text-[10px] uppercase tracking-wider text-white/45 block">
                 Resource Type
               </span>
-              <span className="text-xs sm:text-sm font-bold text-white">
+              <span className="text-xs sm:text-sm font-bold text-white truncate block">
                 {typeMeta.badgeLabel}
               </span>
             </div>
-            <div className="glass-card p-3.5">
+            <div className="glass-card p-3.5 min-w-0">
               <span className="text-[10px] uppercase tracking-wider text-white/45 block">
                 Uploader
               </span>
@@ -247,11 +255,11 @@ export const MaterialDetailPage: React.FC = () => {
                 {uploaderName}
               </span>
             </div>
-            <div className="glass-card p-3.5">
+            <div className="glass-card p-3.5 min-w-0">
               <span className="text-[10px] uppercase tracking-wider text-white/45 block">
                 Attachments
               </span>
-              <span className="text-xs sm:text-sm font-bold text-white">
+              <span className="text-xs sm:text-sm font-bold text-white truncate block">
                 {files.length > 0 ? `${files.length} File(s)` : 'Text Note'}
               </span>
             </div>
@@ -259,12 +267,12 @@ export const MaterialDetailPage: React.FC = () => {
 
           {/* Public Description / Preview */}
           {material.description && (
-            <div className="glass-card p-5 mb-6">
+            <div className="glass-card p-4 sm:p-5 mb-6 min-w-0 max-w-full overflow-x-hidden">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/50 mb-2">
                 <Eye size={14} className="text-[#D71921]" />
                 <span>Public Overview &amp; Notes Preview</span>
               </div>
-              <div className="text-sm text-white/80 whitespace-pre-wrap leading-relaxed">
+              <div className="boardly-post-content text-sm text-white/80 whitespace-pre-wrap leading-relaxed min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
                 <MathText text={maskPublicUserText(material.description)} block />
               </div>
             </div>
@@ -272,7 +280,7 @@ export const MaterialDetailPage: React.FC = () => {
 
           {/* Public Image Previews */}
           {imageFiles.length > 0 && (
-            <div className="space-y-3 mb-6">
+            <div className="space-y-3 mb-6 w-full max-w-full min-w-0">
               {imageFiles.map((file, idx) => (
                 <CommonsImageAttachment
                   key={idx}
@@ -287,7 +295,7 @@ export const MaterialDetailPage: React.FC = () => {
           )}
 
           {/* Downloadable Files Section (Requires Login) */}
-          <div className="space-y-3">
+          <div className="space-y-3 w-full max-w-full min-w-0">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-white/50">
               Download Files
             </h2>
@@ -295,13 +303,13 @@ export const MaterialDetailPage: React.FC = () => {
               docFiles.map((file, idx) => (
                 <div
                   key={idx}
-                  className="glass-row flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl"
+                  className="glass-row flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl min-w-0"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 rounded-xl bg-[#D71921]/15 border border-[#D71921]/30 flex items-center justify-center text-[#D71921] shrink-0">
                       <FileText size={20} />
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold text-white truncate">{file.name}</p>
                       <p className="text-xs text-white/50">
                         {file.type || 'Document'} ·{' '}
@@ -346,8 +354,8 @@ export const MaterialDetailPage: React.FC = () => {
                 </div>
               ))
             ) : (
-              <div className="glass-card p-4 flex items-center justify-between gap-4">
-                <span className="text-xs text-white/65">
+              <div className="glass-card p-4 flex flex-wrap items-center justify-between gap-4 min-w-0">
+                <span className="text-xs text-white/65 min-w-0">
                   View full community discussion and comments on this study note:
                 </span>
                 <Link
@@ -362,10 +370,10 @@ export const MaterialDetailPage: React.FC = () => {
         </article>
 
         {/* Related Practice Link */}
-        <div className="glass-panel p-6 flex flex-col sm:flex-row items-center justify-between gap-4 mb-8">
-          <div className="flex items-center gap-3">
+        <div className="glass-panel p-5 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 mb-8 w-full max-w-full min-w-0 box-border overflow-x-hidden">
+          <div className="flex items-center gap-3 min-w-0">
             <BookOpen size={20} className="text-[#D71921] shrink-0" />
-            <div>
+            <div className="min-w-0">
               <h2 className="font-dot text-lg font-bold text-white">
                 Practice {material.subject || 'Subject'} MCQs
               </h2>
@@ -384,30 +392,30 @@ export const MaterialDetailPage: React.FC = () => {
 
         {/* Related Study Materials */}
         {relatedMaterials.length > 0 && (
-          <section className="glass-panel p-6 sm:p-8">
+          <section className="glass-panel p-5 sm:p-8 w-full max-w-full min-w-0 box-border overflow-x-hidden">
             <div className="flex items-center justify-between gap-2 mb-4">
               <h2 className="font-dot text-xl font-bold text-white">
                 More Study Materials in Library
               </h2>
               <Link
                 to="/material"
-                className="text-xs text-[#D71921] hover:underline font-semibold"
+                className="text-xs text-[#D71921] hover:underline font-semibold shrink-0"
               >
                 Browse All →
               </Link>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
               {relatedMaterials.map((rm) => (
                 <Link
                   key={rm.id}
                   to={`/material/${buildEntitySlug(rm.id, rm.title)}`}
-                  className="glass-card-interactive p-4 block"
+                  className="boardly-post-card glass-card-interactive p-4 block min-w-0 max-w-full box-border overflow-x-hidden"
                 >
                   <span className="text-[11px] text-[#D71921] font-semibold uppercase">
                     {rm.subject || 'Study Material'}
                   </span>
-                  <h3 className="text-sm font-bold text-white mt-1 line-clamp-2">{rm.title}</h3>
-                  <p className="text-xs text-white/60 mt-1 line-clamp-2">
+                  <h3 className="boardly-post-title text-sm font-bold text-white mt-1 line-clamp-2 [overflow-wrap:anywhere] [word-break:break-word]">{rm.title}</h3>
+                  <p className="boardly-post-content text-xs text-white/60 mt-1 line-clamp-2 [overflow-wrap:anywhere] [word-break:break-word]">
                     {maskPublicUserText(rm.description)}
                   </p>
                 </Link>

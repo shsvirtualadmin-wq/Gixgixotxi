@@ -115,6 +115,33 @@ function parseMathText(raw: string): ParsedSegment[] {
 }
 
 /**
+ * Renders plain text with auto-linked URLs that wrap cleanly on narrow screens.
+ */
+function renderTextWithLinks(text: string, keyPrefix: string): React.ReactNode[] {
+  if (!text) return [];
+  const urlRegex = /(https?:\/\/[^\s<>()]+)/g;
+  const parts = text.split(urlRegex);
+  return parts.map((part, idx) => {
+    if (!part) return null;
+    if (/^https?:\/\//i.test(part)) {
+      return (
+        <a
+          key={`${keyPrefix}-url-${idx}`}
+          href={part}
+          target="_blank"
+          rel="ugc nofollow noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="text-[var(--accent,#D71921)] underline hover:opacity-85 [overflow-wrap:anywhere] [word-break:break-all]"
+        >
+          {part}
+        </a>
+      );
+    }
+    return <React.Fragment key={`${keyPrefix}-txt-${idx}`}>{part}</React.Fragment>;
+  });
+}
+
+/**
  * Renders inline markdown formatting: bold (**text**), italic (*text*), code (`code`).
  * Strips raw markdown syntax characters and outputs React elements.
  */
@@ -131,15 +158,15 @@ function renderInlineMarkdown(text: string, keyPrefix: string): React.ReactNode[
 
     if (part.startsWith('**') && part.endsWith('**') && part.length >= 4) {
       return (
-        <strong key={subKey} className="font-bold text-[var(--text)]">
-          {part.slice(2, -2)}
+        <strong key={subKey} className="font-bold text-[var(--text)] [overflow-wrap:anywhere] [word-break:break-word]">
+          {renderTextWithLinks(part.slice(2, -2), subKey)}
         </strong>
       );
     }
     if (part.startsWith('*') && part.endsWith('*') && part.length >= 2) {
       return (
-        <em key={subKey} className="italic text-[var(--text-muted)]">
-          {part.slice(1, -1)}
+        <em key={subKey} className="italic text-[var(--text-muted)] [overflow-wrap:anywhere] [word-break:break-word]">
+          {renderTextWithLinks(part.slice(1, -1), subKey)}
         </em>
       );
     }
@@ -147,14 +174,14 @@ function renderInlineMarkdown(text: string, keyPrefix: string): React.ReactNode[
       return (
         <code
           key={subKey}
-          className="font-mono text-xs px-1 py-0.5 rounded bg-[var(--surface-2)] text-[var(--accent,#D71921)]"
+          className="font-mono text-xs px-1 py-0.5 rounded bg-[var(--surface-2)] text-[var(--accent,#D71921)] [overflow-wrap:anywhere] [word-break:break-word]"
         >
           {part.slice(1, -1)}
         </code>
       );
     }
 
-    return <React.Fragment key={subKey}>{part}</React.Fragment>;
+    return <React.Fragment key={subKey}>{renderTextWithLinks(part, subKey)}</React.Fragment>;
   });
 }
 
@@ -204,7 +231,7 @@ function renderMathSegment(seg: ParsedSegment, index: number, prefix: string) {
     return (
       <span
         key={`${prefix}-err-${index}`}
-        className="katex-fallback text-[var(--accent,#D71921)] font-mono text-sm px-1 py-0.5 rounded bg-[var(--surface-2)]"
+        className="katex-fallback text-[var(--accent,#D71921)] font-mono text-sm px-1 py-0.5 rounded bg-[var(--surface-2)] [overflow-wrap:anywhere] [word-break:break-word]"
       >
         {isDisplay ? `$$${seg.content}$$` : `$${seg.content}$`}
       </span>
@@ -276,7 +303,7 @@ export const MathText = React.memo(function MathText({ children, text, className
         return (
           <h4
             key={lineKey}
-            className="font-bold text-xs uppercase tracking-wider text-[var(--accent,#D71921)] mt-3.5 mb-1.5 font-mono select-none"
+            className="font-bold text-xs uppercase tracking-wider text-[var(--accent,#D71921)] mt-3.5 mb-1.5 font-mono select-none [overflow-wrap:anywhere] [word-break:break-word]"
           >
             {renderLineSegments(title, lineKey)}
           </h4>
@@ -289,7 +316,7 @@ export const MathText = React.memo(function MathText({ children, text, className
         return (
           <h3
             key={lineKey}
-            className="font-bold text-sm uppercase tracking-wide text-[var(--accent,#D71921)] mt-4 mb-2 font-display"
+            className="font-bold text-sm uppercase tracking-wide text-[var(--accent,#D71921)] mt-4 mb-2 font-display [overflow-wrap:anywhere] [word-break:break-word]"
           >
             {renderLineSegments(title, lineKey)}
           </h3>
@@ -302,7 +329,7 @@ export const MathText = React.memo(function MathText({ children, text, className
         return (
           <h2
             key={lineKey}
-            className="font-bold text-base text-[var(--text)] mt-4 mb-2 font-display"
+            className="font-bold text-base text-[var(--text)] mt-4 mb-2 font-display [overflow-wrap:anywhere] [word-break:break-word]"
           >
             {renderLineSegments(title, lineKey)}
           </h2>
@@ -315,11 +342,11 @@ export const MathText = React.memo(function MathText({ children, text, className
         const num = orderedMatch[1];
         const body = orderedMatch[2];
         return (
-          <div key={lineKey} className="flex items-start gap-2 my-1 text-sm leading-relaxed">
-            <span className="font-bold text-xs text-[var(--accent,#D71921)] min-w-[20px] select-none pt-0.5">
+          <div key={lineKey} className="flex items-start gap-2 my-1 text-sm leading-relaxed min-w-0 max-w-full">
+            <span className="font-bold text-xs text-[var(--accent,#D71921)] min-w-[20px] select-none pt-0.5 shrink-0">
               {num}.
             </span>
-            <div className="flex-1 break-words">{renderLineSegments(body, lineKey)}</div>
+            <div className="flex-1 min-w-0 [overflow-wrap:anywhere] [word-break:break-word]">{renderLineSegments(body, lineKey)}</div>
           </div>
         );
       }
@@ -329,11 +356,11 @@ export const MathText = React.memo(function MathText({ children, text, className
       if (bulletMatch) {
         const body = bulletMatch[1];
         return (
-          <div key={lineKey} className="flex items-start gap-2 my-1 text-sm leading-relaxed">
-            <span className="text-[var(--accent,#D71921)] select-none text-base leading-none pt-0.5">
+          <div key={lineKey} className="flex items-start gap-2 my-1 text-sm leading-relaxed min-w-0 max-w-full">
+            <span className="text-[var(--accent,#D71921)] select-none text-base leading-none pt-0.5 shrink-0">
               &bull;
             </span>
-            <div className="flex-1 break-words">{renderLineSegments(body, lineKey)}</div>
+            <div className="flex-1 min-w-0 [overflow-wrap:anywhere] [word-break:break-word]">{renderLineSegments(body, lineKey)}</div>
           </div>
         );
       }
@@ -345,7 +372,7 @@ export const MathText = React.memo(function MathText({ children, text, className
 
       // Normal paragraph line
       return (
-        <div key={lineKey} className="my-1 text-sm leading-relaxed break-words">
+        <div key={lineKey} className="my-1 text-sm leading-relaxed min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
           {renderLineSegments(line, lineKey)}
         </div>
       );
@@ -354,19 +381,21 @@ export const MathText = React.memo(function MathText({ children, text, className
 
   const baseStyle: CSSProperties = {
     color: 'inherit',
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-word',
     ...style,
   };
 
   if (block) {
     return (
-      <div className={`katex-root-block max-w-full min-w-0 overflow-x-auto ${className}`} style={baseStyle}>
+      <div className={`katex-root-block w-full max-w-full min-w-0 overflow-x-hidden [overflow-wrap:anywhere] [word-break:break-word] ${className}`} style={baseStyle}>
         {renderedContent}
       </div>
     );
   }
 
   return (
-    <span className={`katex-root-inline max-w-full min-w-0 ${className}`} style={baseStyle}>
+    <span className={`katex-root-inline max-w-full min-w-0 [overflow-wrap:anywhere] [word-break:break-word] ${className}`} style={baseStyle}>
       {renderedContent}
     </span>
   );

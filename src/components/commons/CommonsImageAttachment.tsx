@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Image as ImageIcon, RefreshCw } from 'lucide-react';
 import {
   resolveCommonsAttachmentUrl,
   R2_PUBLIC_BUCKET_URL,
@@ -16,31 +15,40 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
   file,
   onOpenViewer,
 }) => {
+  const rawUrl = file?.url?.trim() || '';
+  const r2Key = file?.r2Key?.trim() || '';
+  const hasSource = Boolean(rawUrl || r2Key);
+
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
-  const [retryKey, setRetryKey] = useState(0);
+  const [isLoading, setIsLoading] = useState(hasSource);
+  const [hasError, setHasError] = useState(!hasSource);
 
   useEffect(() => {
+    if (!hasSource) {
+      setHasError(true);
+      setIsLoading(false);
+      return;
+    }
+
     let isCancelled = false;
     setIsLoading(true);
     setHasError(false);
 
-    async function resolveSource() {
-      const rawUrl = file?.url?.trim() || '';
-      const r2Key = file?.r2Key?.trim() || '';
+    const timeoutId = window.setTimeout(() => {
+      if (!isCancelled) {
+        setIsLoading((stillLoading) => {
+          if (stillLoading) {
+            setHasError(true);
+          }
+          return false;
+        });
+      }
+    }, 7000);
 
+    async function resolveSource() {
       if (r2Key && r2Key.startsWith('posts/')) {
         if (!isCancelled) {
           setResolvedUrl(`/api/posts/file?key=${encodeURIComponent(r2Key)}`);
-        }
-        return;
-      }
-
-      if (!rawUrl && !r2Key) {
-        if (!isCancelled) {
-          setHasError(true);
-          setIsLoading(false);
         }
         return;
       }
@@ -90,15 +98,9 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
 
     return () => {
       isCancelled = true;
+      window.clearTimeout(timeoutId);
     };
-  }, [file, retryKey]);
-
-  const handleRetry = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsLoading(true);
-    setHasError(false);
-    setRetryKey((k) => k + 1);
-  };
+  }, [rawUrl, r2Key, hasSource]);
 
   const handleImageLoad = () => {
     setIsLoading(false);
@@ -110,30 +112,8 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
     setHasError(true);
   };
 
-  if (hasError || (!resolvedUrl && !isLoading)) {
-    return (
-      <div className="rounded-xl border border-border bg-surface-muted/60 p-5 sm:p-6 text-center flex flex-col items-center justify-center space-y-2.5 my-1.5 transition-all">
-        <div className="w-10 h-10 rounded-full bg-surface border border-border flex items-center justify-center text-muted shadow-2xs">
-          <ImageIcon size={20} className="opacity-80" />
-        </div>
-        <div>
-          <p className="text-xs sm:text-sm font-semibold text-secondary">
-            Image couldn&apos;t load
-          </p>
-          <p className="text-[11px] text-muted mt-0.5 max-w-xs">
-            The image is unavailable or expired.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={handleRetry}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-surface hover:bg-surface-raised border border-border text-primary hover:text-accent transition-colors shadow-2xs cursor-pointer active:scale-95"
-        >
-          <RefreshCw size={12} />
-          <span>Retry</span>
-        </button>
-      </div>
-    );
+  if (!hasSource || hasError || (!resolvedUrl && !isLoading)) {
+    return null;
   }
 
   return (
@@ -144,12 +124,13 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
           onOpenViewer(resolvedUrl, file.name);
         }
       }}
-      className="relative rounded-xl overflow-hidden border border-border bg-surface-muted/40 cursor-zoom-in group my-1.5"
+      className="relative w-full max-w-full min-w-0 rounded-xl overflow-hidden border border-border bg-surface-muted/40 cursor-zoom-in group my-1.5"
     >
       {isLoading && (
-        <div className="w-full h-52 sm:h-64 animate-pulse bg-surface-muted flex items-center justify-center text-xs text-muted">
-          Loading image...
-        </div>
+        <div
+          aria-hidden="true"
+          className="w-full h-24 sm:h-32 animate-pulse bg-surface-muted"
+        />
       )}
       {resolvedUrl && (
         <img
@@ -158,11 +139,12 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
           loading="lazy"
           onLoad={handleImageLoad}
           onError={handleImageError}
-          className={`w-full max-h-[420px] object-contain bg-black/20 transition-opacity duration-200 ${
-            isLoading ? 'opacity-0 h-0' : 'opacity-100'
+          className={`w-full max-w-full h-auto max-h-[420px] object-contain bg-black/20 transition-opacity duration-200 ${
+            isLoading ? 'opacity-0 h-0 overflow-hidden' : 'opacity-100'
           }`}
         />
       )}
     </div>
   );
 };
+
