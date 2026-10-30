@@ -1,12 +1,5 @@
 import { auth } from './firebase';
 
-/**
- * Single Cloudflare Worker API base URL constant (no trailing slash).
- * Every API request uses `${API_BASE}/api/...`.
- */
-export const API_BASE = 'https://api.boardly.cfd';
-export const WORKER_API_URL = API_BASE;
-
 export interface ApiError extends Error {
   status?: number;
   code?: string;
@@ -64,19 +57,16 @@ export function showApiToast(message: string, kind: ToastKind = 'error'): void {
 }
 
 /**
- * Builds the full Cloudflare Worker URL (`https://api.boardly.cfd/api/...`)
- * with no trailing-slash or double-slash issues.
+ * Normalizes any API path into a relative same-site `/api/...` path.
  */
-export function buildWorkerUrl(path: string): string {
+function resolveApiPath(path: string): string {
   const cleanPath = String(path || '').trim();
-  if (/^https?:\/\//i.test(cleanPath)) {
-    return cleanPath;
+  if (!cleanPath) return '/api';
+  const withLeadingSlash = cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`;
+  if (withLeadingSlash.startsWith('/api/') || withLeadingSlash === '/api') {
+    return withLeadingSlash;
   }
-  const normalizedPath = cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`;
-  const apiPath = normalizedPath.startsWith('/api/') || normalizedPath === '/api'
-    ? normalizedPath
-    : `/api${normalizedPath}`;
-  return `${API_BASE}${apiPath}`;
+  return `/api${withLeadingSlash}`;
 }
 
 export async function getBearerToken(forceRefresh = false): Promise<string | null> {
@@ -98,9 +88,9 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
 }
 
 /**
- * Shared Cloudflare Worker REST API helper.
+ * Shared REST API helper using relative `/api/...` paths on the same site.
  * Sends `Authorization: Bearer <Firebase ID token>` and `Content-Type: application/json`
- * on every request, and surfaces `{ error, code }` from the response body on failure.
+ * on every request, and surfaces `{ error, code }` from the response body in a toast on failure.
  */
 export async function apiRequest<T = any>(
   path: string,
@@ -119,7 +109,7 @@ export async function apiRequest<T = any>(
     const err: ApiError = new Error('Authentication required. Please sign in.');
     err.status = 401;
     err.code = 'UNAUTHENTICATED';
-    if (!silentErrorToast) showApiToast(`${err.message} (${err.code})`, 'error');
+    if (!silentErrorToast) showApiToast(`${err.message} [UNAUTHENTICATED]`, 'error');
     throw err;
   }
 
@@ -146,7 +136,7 @@ export async function apiRequest<T = any>(
     }
   }
 
-  const url = buildWorkerUrl(path);
+  const url = resolveApiPath(path);
   let response: Response;
   try {
     response = await fetch(url, {
@@ -155,7 +145,7 @@ export async function apiRequest<T = any>(
       body: serializedBody,
     });
   } catch (networkErr: any) {
-    const msg = networkErr?.message || 'Network error while contacting https://api.boardly.cfd.';
+    const msg = networkErr?.message || 'Network error while contacting server.';
     if (!silentErrorToast) showApiToast(msg, 'error');
     throw networkErr;
   }
@@ -180,7 +170,7 @@ export async function apiRequest<T = any>(
     const serverCode =
       typeof data?.code === 'string' && data.code.trim() ? data.code.trim() : undefined;
 
-    const fullMessage = serverCode ? `${serverError} [${serverCode}]` : serverError;
+    const fullMessage = serverCode ? `${serverError} (${serverCode})` : serverError;
     const err: ApiError = new Error(fullMessage);
     err.status = response.status;
     err.code = serverCode || `HTTP_${response.status}`;
@@ -203,3 +193,4 @@ export const api = {
   delete: <T = any>(path: string, options?: ApiRequestOptions) =>
     apiRequest<T>(path, { ...options, method: 'DELETE' }),
 };
+

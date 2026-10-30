@@ -4586,6 +4586,52 @@ ${allUrls
     });
   });
 
+  app.post('/api/tests/:id/questions', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    if (!Array.isArray(store.captainTests)) store.captainTests = [];
+    const testId = decodeURIComponent(String(req.params.id || ''));
+    const existing = store.captainTests.find((t: any) => t.id === testId);
+    if (!existing) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
+
+    const roleRow = resolveD1Role(store, user);
+    if (existing.captainUid !== user.uid && !['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+
+    const body = req.body || {};
+    if (!Array.isArray(body.questions) || body.questions.length === 0) {
+      return res.status(400).json({ error: 'At least 1 question is required.', code: 'EMPTY_QUESTIONS' });
+    }
+    if (body.questions.length > 200) {
+      return res.status(400).json({ error: 'Maximum 200 questions allowed per test.', code: 'MAX_QUESTIONS_EXCEEDED' });
+    }
+
+    const mapped = body.questions.map((q: any, i: number) => ({
+      id: q.id || crypto.randomUUID(),
+      position: i,
+      question: String(q.question || q.question_text || ''),
+      options: Array.isArray(q.options) ? q.options.slice(0, 4).map(String) : ['', '', '', ''],
+      correctIndex: Number(q.correctIndex ?? q.correct_index ?? 0),
+      explanation: String(q.explanation || ''),
+      topic: String(q.topic || existing.subject || 'General'),
+      difficulty: q.difficulty || 'medium',
+    }));
+
+    existing.questions = body.replace === false ? [...(existing.questions || []), ...mapped].slice(0, 200) : mapped;
+    existing.questionCount = existing.questions.length;
+    existing.updatedAt = Date.now();
+    saveD1Store(store);
+
+    return res.status(200).json({
+      ok: true,
+      testId,
+      questionCount: existing.questionCount,
+    });
+  });
+
+
   app.post('/api/tests/:id/attempts', async (req: Request, res: Response) => {
     const user = await verifyFirebaseJwtZeroFirestore(req);
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });

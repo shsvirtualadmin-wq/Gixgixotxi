@@ -320,10 +320,9 @@ export function AmbassadorDashboardPage() {
     } catch (err: any) {
       const errorMsg =
         err?.code && !String(err?.message || '').includes(err.code)
-          ? `${err?.message || 'Request failed'} (${err.code})`
-          : err?.message || 'Failed to save test.';
+          ? `${err?.message || 'Error'} (${err.code})`
+          : err?.message || 'Could not save test.';
       setSubmitError(errorMsg);
-      showApiToast(errorMsg, 'error');
     } finally {
       setSavingTest(false);
     }
