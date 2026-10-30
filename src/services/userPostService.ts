@@ -1,5 +1,7 @@
 import { auth } from '@/lib/firebase';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { getFollowerIds } from '@/services/followService';
+import { notifyFollowersOfPost } from '@/services/notificationService';
 
 /**
  * ============================================================================
@@ -313,7 +315,7 @@ export async function createUserPost(params: {
     throw new Error(data?.error || 'Could not create post.');
   }
 
-  return mapD1PostToUserPost(
+  const created = mapD1PostToUserPost(
     data.post || {
       id: data.postId,
       authorUid: params.userId,
@@ -327,6 +329,32 @@ export async function createUserPost(params: {
     },
     params.userId
   );
+
+  if (!isAnon && params.userId) {
+    void (async () => {
+      try {
+        const followerUids = await getFollowerIds(params.userId);
+        if (followerUids.length > 0) {
+          await notifyFollowersOfPost({
+            followerUids,
+            authorId: params.userId,
+            authorName: cleanPublicName,
+            authorAvatar: params.authorAvatar || null,
+            postId: created.id,
+            postSlug: data?.post?.slug || created.id,
+            postTitle: created.title,
+            postType: 'notes',
+            postDescription: bodyContent,
+            isAnonymous: false,
+          });
+        }
+      } catch (err) {
+        console.warn('[userPostService] Follower notification notice:', err);
+      }
+    })();
+  }
+
+  return created;
 }
 
 export async function updateUserPost(

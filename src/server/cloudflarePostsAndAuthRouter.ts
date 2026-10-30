@@ -219,6 +219,37 @@ export interface D1QuestionsImportLogRow {
   imported_at: number;
 }
 
+export interface D1FollowRow {
+  follower_uid: string;
+  following_uid: string;
+  created_at: number;
+}
+
+export interface D1NotificationRow {
+  id: string;
+  user_id: string;
+  type: string;
+  title: string;
+  message: string;
+  link: string | null;
+  read: number;
+  is_pinned: number;
+  author_id: string | null;
+  author_name: string | null;
+  author_avatar: string | null;
+  author_frame: string | null;
+  post_id: string | null;
+  post_type: string | null;
+  created_at: number;
+  read_at: number | null;
+}
+
+export interface D1UserReadAnnouncementRow {
+  user_uid: string;
+  announcement_id: string;
+  read_at: number;
+}
+
 interface D1StoreData {
   version: number;
   migratedAt: string;
@@ -239,6 +270,9 @@ interface D1StoreData {
   };
   announcements?: D1AnnouncementRow[];
   userWelcomeStatus?: D1UserWelcomeRow[];
+  userReadAnnouncements?: D1UserReadAnnouncementRow[];
+  follows?: D1FollowRow[];
+  notifications?: D1NotificationRow[];
   questions?: D1QuestionRow[];
   questionsImportLog?: D1QuestionsImportLogRow[];
 }
@@ -325,6 +359,15 @@ function ensureStoreDefaults(store: D1StoreData): boolean {
   if (!Array.isArray(store.userWelcomeStatus)) {
     store.userWelcomeStatus = [];
   }
+  if (!Array.isArray(store.userReadAnnouncements)) {
+    store.userReadAnnouncements = [];
+  }
+  if (!Array.isArray(store.follows)) {
+    store.follows = [];
+  }
+  if (!Array.isArray(store.notifications)) {
+    store.notifications = [];
+  }
 
   return mutated;
 }
@@ -353,6 +396,11 @@ export function loadD1Store(): D1StoreData {
         botSystemState: parsed.botSystemState || undefined,
         announcements: Array.isArray(parsed.announcements) ? parsed.announcements : [],
         userWelcomeStatus: Array.isArray(parsed.userWelcomeStatus) ? parsed.userWelcomeStatus : [],
+        userReadAnnouncements: Array.isArray(parsed.userReadAnnouncements)
+          ? parsed.userReadAnnouncements
+          : [],
+        follows: Array.isArray(parsed.follows) ? parsed.follows : [],
+        notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
         questions: Array.isArray(parsed.questions) ? parsed.questions : [],
         questionsImportLog: Array.isArray(parsed.questionsImportLog) ? parsed.questionsImportLog : [],
       };
@@ -380,6 +428,9 @@ export function loadD1Store(): D1StoreData {
     botAccounts: [],
     announcements: [],
     userWelcomeStatus: [],
+    userReadAnnouncements: [],
+    follows: [],
+    notifications: [],
     questions: [],
     questionsImportLog: [],
   };
@@ -1434,6 +1485,54 @@ ${allUrls
       newRow.updated_at = safeCreatedAt;
 
       store.posts.unshift(newRow);
+
+      // Automatically notify followers when a non-anonymous post is created (never on edit, never if anonymous)
+      if (!isAnon && newRow.author_uid) {
+        if (!Array.isArray(store.follows)) store.follows = [];
+        if (!Array.isArray(store.notifications)) store.notifications = [];
+        const followerUids = Array.from(
+          new Set(
+            store.follows
+              .filter(
+                (f) =>
+                  f.following_uid === newRow.author_uid &&
+                  f.follower_uid &&
+                  f.follower_uid !== newRow.author_uid
+              )
+              .map((f) => f.follower_uid)
+          )
+        );
+        const avatarVal =
+          newRow.author_avatar ||
+          newRow.author_photo_url ||
+          newRow.author_equipped_avatar ||
+          null;
+        const snippet = String(newRow.description || '').trim().slice(0, 140);
+        for (const followerUid of followerUids) {
+          const notifId = `post_${newRow.id}_follower_${followerUid}`;
+          if (!store.notifications.some((n) => n.id === notifId)) {
+            store.notifications.unshift({
+              id: notifId,
+              user_id: followerUid,
+              type: 'following_post',
+              title: `${newRow.author_name} posted: ${newRow.title}`,
+              message: snippet || `New ${newRow.type || 'post'} in ${newRow.subject || 'Commons'}`,
+              link: `/commons/post/${newRow.slug || newRow.id}`,
+              read: 0,
+              is_pinned: 0,
+              author_id: newRow.author_uid,
+              author_name: newRow.author_name,
+              author_avatar: avatarVal,
+              author_frame: newRow.author_frame || null,
+              post_id: newRow.id,
+              post_type: newRow.type || 'notes',
+              created_at: safeCreatedAt,
+              read_at: null,
+            });
+          }
+        }
+      }
+
       saveD1Store(store);
 
       return res.status(201).json({
@@ -2190,6 +2289,7 @@ ${allUrls
     }
 
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    const statusObj = queryUid ? { userId: queryUid, welcomed, read: readWelcome } : null;
     return res.status(200).json({
       success: true,
       announcement: {
@@ -2203,7 +2303,8 @@ ${allUrls
         createdAtMs: Number(welcomeRow.created_at || Date.now()),
         updatedAtMs: Number(welcomeRow.updated_at || Date.now()),
       },
-      userStatus: queryUid ? { userId: queryUid, welcomed, read: readWelcome } : null,
+      userStatus: statusObj,
+      welcomeStatus: statusObj || { welcomed: false, read: false },
     });
   });
 
@@ -2264,6 +2365,7 @@ ${allUrls
 
     const store = loadD1Store();
     if (!Array.isArray(store.userWelcomeStatus)) store.userWelcomeStatus = [];
+    if (!Array.isArray(store.userReadAnnouncements)) store.userReadAnnouncements = [];
     const now = Date.now();
     let existing = store.userWelcomeStatus.find((u) => u.user_uid === targetUid);
     if (!existing) {
@@ -2280,9 +2382,364 @@ ${allUrls
       existing.read_welcome = 1;
       existing.read_at = now;
     }
+
+    if (
+      !store.userReadAnnouncements.some(
+        (r) => r.user_uid === targetUid && r.announcement_id === DEFAULT_WELCOME_ANNOUNCEMENT.id
+      )
+    ) {
+      store.userReadAnnouncements.push({
+        user_uid: targetUid,
+        announcement_id: DEFAULT_WELCOME_ANNOUNCEMENT.id,
+        read_at: now,
+      });
+    }
+
     saveD1Store(store);
 
     return res.status(200).json({ success: true, userId: targetUid, read: true });
+  });
+
+  // ==========================================================================
+  // D1 FOLLOWS & NOTIFICATIONS ROUTES (/api/follows & /api/notifications)
+  // ==========================================================================
+  app.get('/api/follows', async (req, res) => {
+    const store = loadD1Store();
+    if (!Array.isArray(store.follows)) store.follows = [];
+    const followerUid = String(req.query.followerUid || '').trim();
+    const followingUid = String(req.query.followingUid || '').trim();
+
+    if (followerUid && followingUid) {
+      const isFollowing = store.follows.some(
+        (f) => f.follower_uid === followerUid && f.following_uid === followingUid
+      );
+      return res.status(200).json({ success: true, isFollowing });
+    }
+    if (followingUid) {
+      const followerIds = store.follows
+        .filter((f) => f.following_uid === followingUid)
+        .map((f) => f.follower_uid);
+      return res.status(200).json({
+        success: true,
+        followerIds,
+        followersCount: followerIds.length,
+      });
+    }
+    if (followerUid) {
+      const followingIds = store.follows
+        .filter((f) => f.follower_uid === followerUid)
+        .map((f) => f.following_uid);
+      return res.status(200).json({
+        success: true,
+        followingIds,
+        followingCount: followingIds.length,
+      });
+    }
+    return res.status(200).json({ success: true, follows: [] });
+  });
+
+  app.post('/api/follows', async (req, res) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
+    const body = req.body || {};
+    const followerUid = String(user?.uid || body.followerUid || '').trim();
+    const followingUid = String(body.followingUid || body.targetUserId || '').trim();
+    const action = String(body.action || 'follow').toLowerCase();
+
+    if (!followerUid || !followingUid || followerUid === followingUid) {
+      return res.status(400).json({ success: false, error: 'Invalid follow parameters.' });
+    }
+
+    const store = loadD1Store();
+    if (!Array.isArray(store.follows)) store.follows = [];
+    if (!Array.isArray(store.notifications)) store.notifications = [];
+    const now = Date.now();
+    const existingIdx = store.follows.findIndex(
+      (f) => f.follower_uid === followerUid && f.following_uid === followingUid
+    );
+
+    let following = false;
+    if (action === 'unfollow' || (action === 'toggle' && existingIdx !== -1)) {
+      if (existingIdx !== -1) {
+        store.follows.splice(existingIdx, 1);
+      }
+      following = false;
+    } else {
+      if (existingIdx === -1) {
+        store.follows.push({
+          follower_uid: followerUid,
+          following_uid: followingUid,
+          created_at: now,
+        });
+      }
+      following = true;
+
+      const followerName = String(body.followerName || user?.name || 'A student').trim();
+      const followerAvatar = body.followerAvatar || user?.picture || null;
+      const followerFrame = body.followerFrame || null;
+      const notifId = `follow_${followerUid}_${followingUid}`;
+      const existingNotif = store.notifications.find((n) => n.id === notifId);
+      if (!existingNotif) {
+        store.notifications.unshift({
+          id: notifId,
+          user_id: followingUid,
+          type: 'new_follower',
+          title: `${followerName} started following you`,
+          message: 'Tap to view their profile.',
+          link: `/user/${followerUid}`,
+          read: 0,
+          is_pinned: 0,
+          author_id: followerUid,
+          author_name: followerName,
+          author_avatar: followerAvatar,
+          author_frame: followerFrame,
+          post_id: null,
+          post_type: null,
+          created_at: now,
+          read_at: null,
+        });
+      }
+    }
+
+    saveD1Store(store);
+    const followersCount = store.follows.filter((f) => f.following_uid === followingUid).length;
+    return res.status(200).json({ success: true, following, followersCount });
+  });
+
+  app.get('/api/notifications', async (req, res) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
+    const userId = String(req.query.userId || user?.uid || '').trim();
+    if (!userId) {
+      return res.status(400).json({ success: false, error: 'Missing userId.' });
+    }
+
+    const store = loadD1Store();
+    if (!Array.isArray(store.notifications)) store.notifications = [];
+    if (!Array.isArray(store.userReadAnnouncements)) store.userReadAnnouncements = [];
+    if (!Array.isArray(store.userWelcomeStatus)) store.userWelcomeStatus = [];
+
+    const userNotifs = store.notifications
+      .filter((n) => n.user_id === userId)
+      .sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0))
+      .slice(0, 100)
+      .map((n) => ({
+        id: n.id,
+        userId: n.user_id,
+        type: n.type || 'following_post',
+        title: n.title,
+        message: n.message || '',
+        link: n.link || undefined,
+        read: Boolean(n.read),
+        isPinned: Boolean(n.is_pinned),
+        authorId: n.author_id || undefined,
+        authorName: n.author_name || undefined,
+        authorAvatar: n.author_avatar || null,
+        authorFrame: n.author_frame || null,
+        postId: n.post_id || undefined,
+        postType: n.post_type || undefined,
+        createdAtMs: Number(n.created_at || Date.now()),
+      }));
+
+    const readAnnouncementIds = new Set<string>(
+      store.userReadAnnouncements
+        .filter((r) => r.user_uid === userId)
+        .map((r) => r.announcement_id)
+    );
+    const welcomeSt = store.userWelcomeStatus.find((u) => u.user_uid === userId);
+    if (welcomeSt?.read_welcome) {
+      readAnnouncementIds.add(DEFAULT_WELCOME_ANNOUNCEMENT.id);
+    }
+
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    return res.status(200).json({
+      success: true,
+      notifications: userNotifs,
+      readAnnouncementIds: Array.from(readAnnouncementIds),
+      welcomeRead: Boolean(welcomeSt?.read_welcome) || readAnnouncementIds.has(DEFAULT_WELCOME_ANNOUNCEMENT.id),
+    });
+  });
+
+  app.post('/api/notifications', async (req, res) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
+    const body = req.body || {};
+    const items: any[] = Array.isArray(body.notifications)
+      ? body.notifications
+      : body.userId
+      ? [body]
+      : [];
+
+    if (items.length === 0) {
+      return res.status(400).json({ success: false, error: 'No notifications provided.' });
+    }
+
+    const store = loadD1Store();
+    if (!Array.isArray(store.notifications)) store.notifications = [];
+    const now = Date.now();
+    let created = 0;
+
+    for (const item of items) {
+      const targetUserId = String(item.userId || '').trim();
+      const authorId = item.authorId ? String(item.authorId).trim() : user?.uid || null;
+      if (!targetUserId || (authorId && targetUserId === authorId)) continue;
+      if (item.isAnonymous) continue;
+
+      const id = String(
+        item.id ||
+          (item.postId
+            ? `post_${item.postId}_follower_${targetUserId}`
+            : `notif_${now}_${crypto.randomUUID().slice(0, 8)}`)
+      ).trim();
+
+      if (store.notifications.some((n) => n.id === id)) continue;
+
+      store.notifications.unshift({
+        id,
+        user_id: targetUserId,
+        type: String(item.type || 'following_post'),
+        title: String(item.title || 'New update'),
+        message: String(item.message || ''),
+        link: item.link ? String(item.link) : null,
+        read: item.read ? 1 : 0,
+        is_pinned: item.isPinned ? 1 : 0,
+        author_id: authorId,
+        author_name: item.authorName ? String(item.authorName) : null,
+        author_avatar: item.authorAvatar || null,
+        author_frame: item.authorFrame || null,
+        post_id: item.postId ? String(item.postId) : null,
+        post_type: item.postType ? String(item.postType) : null,
+        created_at: Number(item.createdAtMs || now),
+        read_at: item.read ? now : null,
+      });
+      created++;
+    }
+
+    if (created > 0) {
+      saveD1Store(store);
+    }
+
+    return res.status(200).json({ success: true, created });
+  });
+
+  app.post('/api/notifications/read', async (req, res) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
+    const body = req.body || {};
+    const userId = String(user?.uid || body.userId || '').trim();
+    const notificationId = String(body.notificationId || body.id || '').trim();
+    const isAnnouncement = Boolean(body.isAnnouncement);
+
+    if (!userId || !notificationId) {
+      return res.status(400).json({ success: false, error: 'Missing userId or notificationId.' });
+    }
+
+    const store = loadD1Store();
+    if (!Array.isArray(store.notifications)) store.notifications = [];
+    if (!Array.isArray(store.userReadAnnouncements)) store.userReadAnnouncements = [];
+    if (!Array.isArray(store.userWelcomeStatus)) store.userWelcomeStatus = [];
+    const now = Date.now();
+
+    if (notificationId === DEFAULT_WELCOME_ANNOUNCEMENT.id || isAnnouncement) {
+      if (
+        !store.userReadAnnouncements.some(
+          (r) => r.user_uid === userId && r.announcement_id === notificationId
+        )
+      ) {
+        store.userReadAnnouncements.push({
+          user_uid: userId,
+          announcement_id: notificationId,
+          read_at: now,
+        });
+      }
+      if (notificationId === DEFAULT_WELCOME_ANNOUNCEMENT.id) {
+        const welcomeSt = store.userWelcomeStatus.find((u) => u.user_uid === userId);
+        if (!welcomeSt) {
+          store.userWelcomeStatus.push({
+            user_uid: userId,
+            welcomed: 1,
+            read_welcome: 1,
+            welcomed_at: now,
+            read_at: now,
+          });
+        } else {
+          welcomeSt.welcomed = 1;
+          welcomeSt.read_welcome = 1;
+          welcomeSt.read_at = now;
+        }
+      }
+    }
+
+    const notif = store.notifications.find(
+      (n) => n.id === notificationId && n.user_id === userId
+    );
+    if (notif) {
+      notif.read = 1;
+      notif.read_at = now;
+    }
+
+    saveD1Store(store);
+    return res.status(200).json({ success: true, notificationId, read: true });
+  });
+
+  app.post('/api/notifications/read-all', async (req, res) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
+    const body = req.body || {};
+    const userId = String(user?.uid || body.userId || '').trim();
+    const announcementIds: string[] = Array.isArray(body.announcementIds)
+      ? body.announcementIds.map(String)
+      : [];
+
+    if (!userId) {
+      return res.status(400).json({ success: false, error: 'Missing userId.' });
+    }
+
+    const store = loadD1Store();
+    if (!Array.isArray(store.notifications)) store.notifications = [];
+    if (!Array.isArray(store.userReadAnnouncements)) store.userReadAnnouncements = [];
+    if (!Array.isArray(store.userWelcomeStatus)) store.userWelcomeStatus = [];
+    const now = Date.now();
+
+    for (const n of store.notifications) {
+      if (n.user_id === userId && !n.read) {
+        n.read = 1;
+        n.read_at = now;
+      }
+    }
+
+    const allAnns = new Set<string>([
+      DEFAULT_WELCOME_ANNOUNCEMENT.id,
+      ...(store.announcements || []).map((a) => a.id),
+      ...announcementIds,
+    ]);
+    for (const annId of allAnns) {
+      if (!annId) continue;
+      if (
+        !store.userReadAnnouncements.some(
+          (r) => r.user_uid === userId && r.announcement_id === annId
+        )
+      ) {
+        store.userReadAnnouncements.push({
+          user_uid: userId,
+          announcement_id: annId,
+          read_at: now,
+        });
+      }
+    }
+
+    const welcomeSt = store.userWelcomeStatus.find((u) => u.user_uid === userId);
+    if (!welcomeSt) {
+      store.userWelcomeStatus.push({
+        user_uid: userId,
+        welcomed: 1,
+        read_welcome: 1,
+        welcomed_at: now,
+        read_at: now,
+      });
+    } else {
+      welcomeSt.welcomed = 1;
+      welcomeSt.read_welcome = 1;
+      welcomeSt.read_at = now;
+    }
+
+    saveD1Store(store);
+    return res.status(200).json({ success: true, userId, readAll: true });
   });
 
   app.put('/api/announcements/welcome', async (req, res) => {

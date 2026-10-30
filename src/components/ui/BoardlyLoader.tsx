@@ -1,11 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 
-const DEFAULT_MESSAGES = [
-  'Loading your notes...',
-  'Syncing your subjects...',
-  'Getting your Commons ready...',
+export const APP_LOADER_MESSAGES = [
+  'Loading Boardly...',
+  'Setting up your workspace...',
+  'Getting things ready...',
+  'Almost there...',
 ];
+
+const DEFAULT_MESSAGES = APP_LOADER_MESSAGES;
 
 const MIN_DISPLAY_MS = 400;
 const FADE_OUT_MS = 300;
@@ -31,8 +34,8 @@ export interface BoardlyLoaderProps {
   messages?: string[];
   /**
    * Layout mode:
-   * - `'page'` (default): fills the page/viewport area without overlapping the mobile bottom nav
-   * - `'overlay'`: fixed overlay above page content (stays below mobile bottom nav z-40)
+   * - `'page'` (default): full-screen fixed viewport cover (`fixed inset-0 z-[9999]`) covering header, footer, and bottom nav with zero layout shift
+   * - `'overlay'`: full-screen fixed viewport cover (`fixed inset-0 z-[9999]`) covering header, footer, and bottom nav with zero layout shift
    * - `'inline'`: compact container for modals or embedded sections
    */
   variant?: 'page' | 'overlay' | 'inline';
@@ -102,6 +105,8 @@ export const BoardlyLoader: React.FC<BoardlyLoaderProps> = ({
 
   // Rotate status message every ~2 seconds with a soft fade
   useEffect(() => {
+    setMsgIndex(0);
+    setMsgVisible(true);
     if (!rendered || fadingOut || timedOut || safeMessages.length <= 1) return;
 
     let swapTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -117,7 +122,7 @@ export const BoardlyLoader: React.FC<BoardlyLoaderProps> = ({
       clearInterval(interval);
       if (swapTimeout) clearTimeout(swapTimeout);
     };
-  }, [rendered, fadingOut, timedOut, safeMessages.length]);
+  }, [rendered, fadingOut, timedOut, safeMessages]);
 
   // 10-second timeout fallback
   useEffect(() => {
@@ -152,12 +157,12 @@ export const BoardlyLoader: React.FC<BoardlyLoaderProps> = ({
     ? Math.min(100, Math.max(0, progress))
     : undefined;
 
+  // Full-screen loader ('page' or 'overlay') uses fixed inset-0 z-[9999] so it covers
+  // the entire viewport including footer, navbar, and mobile bottom nav with zero layout shift.
   const containerLayoutClass =
-    variant === 'overlay'
-      ? 'fixed inset-x-0 top-0 bottom-0 z-30 min-h-[100dvh] pb-[calc(84px+env(safe-area-inset-bottom,0px))] sm:pb-0'
-      : variant === 'inline'
+    variant === 'inline'
       ? 'relative w-full min-h-[280px] py-12 rounded-2xl'
-      : 'relative w-full flex-1 min-h-[calc(100dvh-140px)] pb-[calc(84px+env(safe-area-inset-bottom,0px))] sm:pb-12';
+      : 'fixed inset-0 z-[9999] w-screen h-[100dvh]';
 
   return (
     <div
@@ -251,13 +256,31 @@ export interface BoardlySuspenseBoundaryProps {
   messages?: string[];
 }
 
+function getSectionMessagesForPath(pathname: string, variant: 'page' | 'overlay' | 'inline'): string[] {
+  // Full app load (variant === 'page') always shows app-level rotating messages
+  if (variant === 'page') {
+    return APP_LOADER_MESSAGES;
+  }
+  const clean = pathname.toLowerCase();
+  if (clean.startsWith('/material') || clean.startsWith('/dashboard/notes')) {
+    return ['Loading study material...'];
+  }
+  if (clean.startsWith('/commons') || clean.startsWith('/dashboard/commons')) {
+    return ['Loading Commons...'];
+  }
+  if (clean.startsWith('/dashboard/notifications')) {
+    return ['Loading notifications...'];
+  }
+  return APP_LOADER_MESSAGES;
+}
+
 /**
  * Wraps `<React.Suspense>` so that:
  * - If a route chunk is already loaded in memory, the loader never flashes at all.
  * - If a route chunk is genuinely loading, `BoardlyLoader` appears immediately,
- *   respects the ~400ms minimum display time so it never flickers on fast connections,
- *   fades out smoothly over ~300ms once content is ready, and removes itself from the DOM
- *   with zero layout shift.
+ *   covers the full viewport (`fixed inset-0 z-[9999]`), respects the ~400ms minimum
+ *   display time so it never flickers on fast connections, fades out smoothly over ~300ms
+ *   once content is ready, and removes itself from the DOM with zero layout shift.
  */
 export const BoardlySuspenseBoundary: React.FC<BoardlySuspenseBoundaryProps> = ({
   children,
@@ -266,12 +289,19 @@ export const BoardlySuspenseBoundary: React.FC<BoardlySuspenseBoundaryProps> = (
 }) => {
   const [isSuspended, setIsSuspended] = useState(false);
 
+  const resolvedMessages =
+    messages && messages.length > 0
+      ? messages
+      : typeof window !== 'undefined'
+      ? getSectionMessagesForPath(window.location.pathname, variant)
+      : APP_LOADER_MESSAGES;
+
   return (
     <>
       <BoardlyLoader
         loading={isSuspended}
         variant={variant}
-        messages={messages}
+        messages={resolvedMessages}
       />
       <React.Suspense
         fallback={<SuspenseFallbackSignal onSuspendChange={setIsSuspended} />}
@@ -283,3 +313,4 @@ export const BoardlySuspenseBoundary: React.FC<BoardlySuspenseBoundaryProps> = (
 };
 
 export default BoardlyLoader;
+

@@ -42,9 +42,10 @@ export function SignupPage() {
         <BoardlyLoader
           variant="inline"
           messages={[
-            'Preparing your account...',
-            'Syncing your subjects...',
-            'Getting your Commons ready...',
+            'Loading Boardly...',
+            'Setting up your workspace...',
+            'Getting things ready...',
+            'Almost there...',
           ]}
         />
       ) : (

@@ -55,7 +55,9 @@ export function SkeletonCard({ className = '' }: { className?: string }) {
 export function CommonsPostCardSkeleton({ count = 3 }: { count?: number }) {
   return (
     <div role="status" aria-live="polite" className="space-y-3">
-      <span className="sr-only">Loading posts</span>
+      <p className="text-xs font-mono text-[var(--text-muted)] px-1">
+        Loading Commons...
+      </p>
       {Array.from({ length: count }).map((_, n) => (
         <div
           key={n}
@@ -103,15 +105,18 @@ export function MaterialCardSkeleton({ count = 4 }: { count?: number }) {
     <div
       role="status"
       aria-live="polite"
-      className="grid grid-cols-1 md:grid-cols-2 gap-4"
+      className="space-y-3"
     >
-      <span className="sr-only">Loading study materials</span>
-      {Array.from({ length: count }).map((_, i) => (
-        <div
-          key={i}
-          aria-hidden="true"
-          className="glass-card p-6 flex flex-col justify-between gap-4"
-        >
+      <p className="text-xs font-mono text-[var(--text-muted)] px-1">
+        Loading study material...
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {Array.from({ length: count }).map((_, i) => (
+          <div
+            key={i}
+            aria-hidden="true"
+            className="glass-card p-6 flex flex-col justify-between gap-4"
+          >
           <div>
             {/* Subject / type label + file size pill */}
             <div className="flex items-center justify-between gap-2 mb-3">
@@ -138,7 +143,8 @@ export function MaterialCardSkeleton({ count = 4 }: { count?: number }) {
             </div>
           </div>
         </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }

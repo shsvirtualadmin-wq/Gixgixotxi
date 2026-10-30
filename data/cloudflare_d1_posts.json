@@ -2560,6 +2560,7 @@
       "updated_at": 1743465600000
     }
   ],
+  "botKeyStatuses": [],
   "announcements": [
     {
       "id": "welcome_to_boardly",
@@ -2574,6 +2575,9 @@
     }
   ],
   "userWelcomeStatus": [],
+  "userReadAnnouncements": [],
+  "follows": [],
+  "notifications": [],
   "questions": [
     {
       "id": "legacy:mcq-m-01",

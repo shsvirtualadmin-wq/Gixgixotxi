@@ -3,30 +3,29 @@ import { useNavigate } from 'react-router-dom';
 import {
   Bell,
   Megaphone,
-  Compass,
+  FileText,
+  UserPlus,
+  Check,
   CheckCheck,
   RotateCcw,
-  ExternalLink,
   ChevronRight,
   Shield,
-  Sparkles,
   X,
   Pin,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { PageMeta } from '@/components/ui/PageMeta';
-import { Badge } from '@/components/ui/Badge';
-import { Card } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import {
+  subscribeToNotificationStore,
+  syncUserNotificationsStore,
+  getNotificationStoreSnapshot,
   fetchUserNotificationsPage,
-  fetchAnnouncements,
-  fetchReadAnnouncementIds,
   markNotificationAsRead,
   markAnnouncementAsRead,
   markAllNotificationsAsRead,
-  ensureWelcomeNotificationForUser,
   WELCOME_ANNOUNCEMENT_ID,
   type AppNotification,
   type AnnouncementItem,
@@ -59,52 +58,47 @@ export function NotificationsPage() {
   const navigate = useNavigate();
 
   const [filter, setFilter] = useState<FilterType>('all');
-  const [loading, setLoading] = useState(true);
+  const [storeSnapshot, setStoreSnapshot] = useState(() =>
+    getNotificationStoreSnapshot(user?.uid)
+  );
+  const [extraNotifications, setExtraNotifications] = useState<AppNotification[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Raw items
-  const [userNotifications, setUserNotifications] = useState<AppNotification[]>([]);
-  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
-  const [readAnnouncementIds, setReadAnnouncementIds] = useState<Set<string>>(new Set());
   const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
   const [hasMoreNotifications, setHasMoreNotifications] = useState(false);
 
   // Announcement detail modal
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<AnnouncementItem | null>(null);
 
-  // Initial load
-  const loadInitial = useCallback(async () => {
+  // Subscribe to the single-source-of-truth notification store
+  useEffect(() => {
+    if (!user?.uid) {
+      setStoreSnapshot(getNotificationStoreSnapshot(''));
+      return;
+    }
+
+    const unsub = subscribeToNotificationStore(user.uid, (snap) => {
+      setStoreSnapshot(snap);
+    });
+
+    return () => unsub();
+  }, [user?.uid]);
+
+  const handleRefresh = useCallback(async () => {
     if (!user?.uid) return;
-    setLoading(true);
+    setRefreshing(true);
     setError(null);
-
     try {
-      await ensureWelcomeNotificationForUser(user.uid);
-      const [notifRes, announcementsRes, readIds] = await Promise.all([
-        fetchUserNotificationsPage({ userId: user.uid, pageSize: 20 }),
-        fetchAnnouncements(50),
-        fetchReadAnnouncementIds(user.uid),
-      ]);
-
-      setUserNotifications(notifRes.notifications);
-      setLastDoc(notifRes.lastDoc);
-      setHasMoreNotifications(notifRes.hasMore);
-      setAnnouncements(announcementsRes);
-      setReadAnnouncementIds(readIds);
-    } catch (err: unknown) {
-      console.error('[NotificationsPage] Error loading notifications:', err);
-      setError('Could not load notifications. Please try again.');
+      await syncUserNotificationsStore(user.uid);
+    } catch {
+      setError('Could not refresh notifications. Please try again.');
     } finally {
-      setLoading(false);
+      setRefreshing(false);
     }
   }, [user?.uid]);
 
-  useEffect(() => {
-    loadInitial();
-  }, [loadInitial]);
-
-  // Load more user notifications
+  // Load older paginated user notifications if any
   const handleLoadMore = async () => {
     if (!user?.uid || loadingMore || !lastDoc) return;
     setLoadingMore(true);
@@ -116,7 +110,14 @@ export function NotificationsPage() {
         lastDoc,
       });
 
-      setUserNotifications((prev) => [...prev, ...notifRes.notifications]);
+      setExtraNotifications((prev) => {
+        const seen = new Set(prev.map((p) => p.id));
+        const next = [...prev];
+        for (const item of notifRes.notifications) {
+          if (!seen.has(item.id)) next.push(item);
+        }
+        return next;
+      });
       setLastDoc(notifRes.lastDoc);
       setHasMoreNotifications(notifRes.hasMore);
     } catch (err: unknown) {
@@ -126,45 +127,44 @@ export function NotificationsPage() {
     }
   };
 
-  // Convert announcements to unified notification shape
-  const announcementNotifications = useMemo<AppNotification[]>(() => {
-    return announcements.map((a) => ({
-      id: `announcement_${a.id}`,
-      type: 'announcement' as const,
-      title: a.title,
-      message: a.message,
-      createdAt: a.createdAt,
-      read: readAnnouncementIds.has(a.id),
-      isPinned: Boolean(a.isPinned || a.id === WELCOME_ANNOUNCEMENT_ID),
-      isAnnouncement: true,
-      announcementId: a.id,
-      publishedBy: a.authorName || 'Superadmin',
-    }));
-  }, [announcements, readAnnouncementIds]);
-
-  // Combined and sorted: pinned first, then newest first
+  // All notifications from the single source of truth (+ any older paginated items)
   const allNotifications = useMemo<AppNotification[]>(() => {
-    const combined = [...userNotifications, ...announcementNotifications];
-    return combined.sort((a, b) => {
-      const aPinned = Boolean(a.isPinned || a.announcementId === WELCOME_ANNOUNCEMENT_ID);
-      const bPinned = Boolean(b.isPinned || b.announcementId === WELCOME_ANNOUNCEMENT_ID);
-      if (aPinned && !bPinned) return -1;
-      if (!aPinned && bPinned) return 1;
-      const getMillis = (val: any) => {
-        if (!val) return 0;
-        if (typeof val.toDate === 'function') return val.toDate().getTime();
-        if (val instanceof Date) return val.getTime();
-        if (typeof val === 'number') return val;
-        return new Date(val).getTime() || 0;
-      };
-      return getMillis(b.createdAt) - getMillis(a.createdAt);
-    });
-  }, [userNotifications, announcementNotifications]);
+    if (extraNotifications.length === 0) {
+      return storeSnapshot.notifications;
+    }
+    const existingIds = new Set(storeSnapshot.notifications.map((n) => n.id));
+    const merged = [
+      ...storeSnapshot.notifications,
+      ...extraNotifications.filter((n) => !existingIds.has(n.id)),
+    ];
+    return merged;
+  }, [storeSnapshot.notifications, extraNotifications]);
+
+  const followingCount = useMemo(
+    () =>
+      allNotifications.filter(
+        (n) =>
+          n.type === 'following_post' ||
+          n.type === 'following' ||
+          n.type === 'new_follower'
+      ).length,
+    [allNotifications]
+  );
+
+  const announcementCount = useMemo(
+    () => allNotifications.filter((n) => n.type === 'announcement').length,
+    [allNotifications]
+  );
 
   // Filtered view
   const displayedNotifications = useMemo<AppNotification[]>(() => {
     if (filter === 'following') {
-      return allNotifications.filter((n) => n.type === 'following');
+      return allNotifications.filter(
+        (n) =>
+          n.type === 'following_post' ||
+          n.type === 'following' ||
+          n.type === 'new_follower'
+      );
     }
     if (filter === 'announcements') {
       return allNotifications.filter((n) => n.type === 'announcement');
@@ -172,55 +172,105 @@ export function NotificationsPage() {
     return allNotifications;
   }, [allNotifications, filter]);
 
-  // Unread count
+  // Single source of truth unread count
   const unreadCount = useMemo(() => {
     return allNotifications.filter((n) => !n.read).length;
   }, [allNotifications]);
 
+  // Mark a single notification as read (without necessarily navigating)
+  const handleMarkSingleAsRead = async (
+    notif: AppNotification,
+    e?: React.MouseEvent
+  ) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    if (!user?.uid || notif.read) return;
+    setError(null);
+
+    try {
+      if (notif.type === 'announcement' || notif.isAnnouncement) {
+        const annId = notif.announcementId || notif.id.replace(/^announcement_/, '');
+        await markAnnouncementAsRead(user.uid, annId);
+      } else {
+        await markNotificationAsRead(notif.id, user.uid);
+      }
+    } catch {
+      setError('Could not mark notification as read. Please try again.');
+    }
+  };
+
   // Handle tap on a card: mark as read and open destination
   const handleNotificationClick = async (notif: AppNotification) => {
     if (!user?.uid) return;
+    setError(null);
 
-    if (notif.type === 'announcement' && notif.announcementId) {
-      // Mark announcement as read
+    if (notif.type === 'announcement' || notif.isAnnouncement) {
+      const annId = notif.announcementId || notif.id.replace(/^announcement_/, '');
       if (!notif.read) {
-        setReadAnnouncementIds((prev) => new Set([...prev, notif.announcementId!]));
-        await markAnnouncementAsRead(user.uid, notif.announcementId);
+        void markAnnouncementAsRead(user.uid, annId).catch(() => {
+          setError('Could not mark announcement as read. Please try again.');
+        });
       }
-      // Open announcement preview modal
-      const original = announcements.find((a) => a.id === notif.announcementId);
-      if (original) {
-        setSelectedAnnouncement(original);
-      }
-    } else {
-      // User notification (Following)
-      if (!notif.read) {
-        setUserNotifications((prev) =>
-          prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n))
-        );
-        await markNotificationAsRead(notif.id);
-      }
-      if (notif.link) {
-        navigate(notif.link);
-      }
+      const original = storeSnapshot.announcements.find((a) => a.id === annId) || {
+        id: annId,
+        title: notif.title,
+        message: notif.message,
+        isPinned: notif.isPinned,
+        authorId: '',
+        authorEmail: '',
+        authorName: notif.publishedBy || 'Superadmin',
+        createdAt: notif.createdAt,
+      };
+      setSelectedAnnouncement(original);
+      return;
+    }
+
+    if (!notif.read) {
+      void markNotificationAsRead(notif.id, user.uid).catch(() => {
+        setError('Could not mark notification as read. Please try again.');
+      });
+    }
+
+    const targetUrl =
+      notif.link ||
+      (notif.postId
+        ? `/commons/post/${notif.postId}`
+        : notif.type === 'new_follower' && notif.authorId
+        ? `/user/${notif.authorId}`
+        : '/dashboard/commons');
+
+    if (targetUrl) {
+      navigate(targetUrl);
     }
   };
 
   // Mark all as read
   const handleMarkAllAsRead = async () => {
     if (!user?.uid || unreadCount === 0) return;
+    setError(null);
 
-    // Optimistic local state update
-    setUserNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    setReadAnnouncementIds(new Set(announcements.map((a) => a.id)));
-
-    await markAllNotificationsAsRead(user.uid, userNotifications, announcements);
+    try {
+      await markAllNotificationsAsRead(
+        user.uid,
+        storeSnapshot.userNotifications,
+        storeSnapshot.announcements
+      );
+    } catch {
+      setError('Could not mark all notifications as read. Please try again.');
+    }
   };
+
+  const isInitialLoading = storeSnapshot.loading && !storeSnapshot.initialized;
 
   return (
     <>
       <PageMeta
-        title="Notifications — Boardly"
+        title={
+          unreadCount > 0
+            ? `(${unreadCount}) Notifications — Boardly`
+            : 'Notifications — Boardly'
+        }
         description="Stay updated with follower activity in Commons and official superadmin announcements."
       />
 
@@ -235,7 +285,7 @@ export function NotificationsPage() {
           paddingBottom: '6rem',
         }}
       >
-        {/* ── Header Matching Old Page Header Style ───────────────────────── */}
+        {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-2 border-b border-[var(--border)]">
           <div>
             <span
@@ -289,13 +339,16 @@ export function NotificationsPage() {
             </button>
             <button
               type="button"
-              onClick={loadInitial}
-              disabled={loading}
+              onClick={handleRefresh}
+              disabled={refreshing || isInitialLoading}
               title="Refresh"
               aria-label="Refresh notifications"
               className="p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--border-strong)] transition-colors cursor-pointer"
             >
-              <RotateCcw size={14} className={loading ? 'animate-spin' : ''} />
+              <RotateCcw
+                size={14}
+                className={refreshing || isInitialLoading ? 'animate-spin' : ''}
+              />
             </button>
           </div>
         </div>
@@ -324,7 +377,7 @@ export function NotificationsPage() {
             }`}
             style={{ fontFamily: 'var(--font-heading)' }}
           >
-            Following ({allNotifications.filter((n) => n.type === 'following').length})
+            Following ({followingCount})
           </button>
           <button
             type="button"
@@ -336,7 +389,7 @@ export function NotificationsPage() {
             }`}
             style={{ fontFamily: 'var(--font-heading)' }}
           >
-            Announcements ({announcements.length})
+            Announcements ({announcementCount})
           </button>
         </div>
 
@@ -346,7 +399,7 @@ export function NotificationsPage() {
             <span>{error}</span>
             <button
               type="button"
-              onClick={loadInitial}
+              onClick={handleRefresh}
               className="text-white underline font-semibold hover:opacity-90 cursor-pointer"
             >
               Retry
@@ -355,8 +408,11 @@ export function NotificationsPage() {
         )}
 
         {/* ── Content List ──────────────────────────────────────────────── */}
-        {loading ? (
-          <div className="space-y-3">
+        {isInitialLoading ? (
+          <div className="space-y-3" role="status" aria-label="Loading notifications...">
+            <p className="text-xs font-mono text-[var(--text-muted)] px-1">
+              Loading notifications...
+            </p>
             <Skeleton height={74} count={4} />
           </div>
         ) : displayedNotifications.length === 0 ? (
@@ -369,7 +425,12 @@ export function NotificationsPage() {
           <div className="space-y-2.5">
             {displayedNotifications.map((notif) => {
               const isUnread = !notif.read;
-              const isAnnouncement = notif.type === 'announcement';
+              const isAnnouncement = notif.type === 'announcement' || notif.isAnnouncement;
+              const isNewFollower = notif.type === 'new_follower';
+              const isFollowingPost =
+                notif.type === 'following_post' || notif.type === 'following';
+              const hasAuthorAvatar =
+                !isAnnouncement && Boolean(notif.authorId || notif.authorName || notif.authorAvatar);
 
               return (
                 <div
@@ -381,16 +442,60 @@ export function NotificationsPage() {
                       : 'bg-[var(--surface-2)]/60 border-[var(--border)] opacity-85 hover:opacity-100'
                   }`}
                 >
-                  {/* Icon Box */}
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                      isAnnouncement
-                        ? 'bg-red-500/15 border border-red-500/30 text-[var(--red)]'
-                        : 'bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)]'
-                    }`}
-                  >
-                    {isAnnouncement ? <Megaphone size={19} /> : <Compass size={19} />}
-                  </div>
+                  {/* Avatar or Type Icon Box */}
+                  {hasAuthorAvatar ? (
+                    <div className="relative shrink-0">
+                      <BoardlyAvatar
+                        uid={notif.authorId}
+                        name={notif.authorName || 'Student'}
+                        equippedAvatar={
+                          notif.authorAvatar?.startsWith('pfp_')
+                            ? notif.authorAvatar
+                            : undefined
+                        }
+                        avatarUrl={
+                          notif.authorAvatar &&
+                          !notif.authorAvatar.startsWith('pfp_') &&
+                          !notif.authorAvatar.includes('googleusercontent')
+                            ? notif.authorAvatar
+                            : undefined
+                        }
+                        photoURL={
+                          notif.authorAvatar?.includes('googleusercontent')
+                            ? notif.authorAvatar
+                            : undefined
+                        }
+                        frame={notif.authorFrame || undefined}
+                        size={40}
+                      />
+                      <span
+                        className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[var(--card)] border border-[var(--border)] flex items-center justify-center text-[var(--red)] shadow-sm"
+                        aria-hidden="true"
+                      >
+                        {isNewFollower ? <UserPlus size={11} /> : <FileText size={11} />}
+                      </span>
+                    </div>
+                  ) : (
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                        isAnnouncement
+                          ? 'bg-red-500/15 border border-red-500/30 text-[var(--red)]'
+                          : isNewFollower
+                          ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
+                          : 'bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)]'
+                      }`}
+                    >
+                      {isAnnouncement ? (
+                        <Megaphone size={19} />
+                      ) : isNewFollower ? (
+                        <UserPlus size={19} />
+                      ) : isFollowingPost ? (
+                        <FileText size={19} />
+                      ) : (
+                        <Bell size={19} />
+                      )}
+                    </div>
+                  )}
 
                   {/* Card Content */}
                   <div className="flex-1 min-w-0 space-y-1">
@@ -407,6 +512,16 @@ export function NotificationsPage() {
                             Announcement
                           </span>
                         )}
+                        {isFollowingPost && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-muted)] uppercase tracking-wider shrink-0">
+                            New Post
+                          </span>
+                        )}
+                        {isNewFollower && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 uppercase tracking-wider shrink-0">
+                            Follower
+                          </span>
+                        )}
                         <h2
                           className="font-bold text-sm text-[var(--text)] truncate"
                           style={{ fontFamily: 'var(--font-heading)' }}
@@ -419,6 +534,18 @@ export function NotificationsPage() {
                         <span className="text-[11px] text-[var(--muted)]">
                           {formatRelativeTime(notif.createdAt)}
                         </span>
+                        {isUnread && (
+                          <button
+                            type="button"
+                            onClick={(e) => handleMarkSingleAsRead(notif, e)}
+                            title="Mark as read"
+                            aria-label="Mark as read"
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--red)] transition-colors cursor-pointer"
+                          >
+                            <Check size={10} className="text-[var(--red)]" />
+                            <span className="hidden sm:inline">Mark as read</span>
+                          </button>
+                        )}
                         {isUnread && (
                           <span
                             className="w-2 h-2 rounded-full bg-[var(--red)] shrink-0"
@@ -478,9 +605,7 @@ export function NotificationsPage() {
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--red)] text-white uppercase tracking-wider">
                       Official Announcement
                     </span>
-                    <h3
-                      className="text-lg font-bold text-[var(--text)] mt-1 font-dot"
-                    >
+                    <h3 className="text-lg font-bold text-[var(--text)] mt-1 font-dot">
                       {selectedAnnouncement.title}
                     </h3>
                   </div>

@@ -34,7 +34,7 @@ import type { CommonsPost, CommonsPostType } from '@/types/commons';
 import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
-import { subscribeToUnreadNotifications } from '@/services/notificationService';
+import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 
 const SUBJECT_FILTERS = [
   { slug: 'all', label: 'All Subjects' },
@@ -67,19 +67,8 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
   const [lastDoc, setLastDoc] = useState<any>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [backendMode, setBackendMode] = useState<'cloudflare-d1-r2' | 'preview-demo' | null>(null);
-  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+  const unreadNotifCount = useUnreadNotificationsCount();
   const recentCreatedPostRef = useRef<CommonsPost | null>(null);
-
-  useEffect(() => {
-    if (!user?.uid) {
-      setUnreadNotifCount(0);
-      return;
-    }
-    const unsubscribe = subscribeToUnreadNotifications(user.uid, (count) => {
-      setUnreadNotifCount(count);
-    });
-    return () => unsubscribe();
-  }, [user?.uid]);
 
   // Modals & Composer Config
   const [wizardConfig, setWizardConfig] = useState<{

@@ -301,6 +301,34 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
         welcomed_at INTEGER NOT NULL,
         read_at INTEGER
       )`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS user_read_announcements (
+        user_uid TEXT NOT NULL,
+        announcement_id TEXT NOT NULL,
+        read_at INTEGER NOT NULL,
+        PRIMARY KEY (user_uid, announcement_id)
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_user_read_announcements_user ON user_read_announcements(user_uid, read_at DESC)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'following_post',
+        title TEXT NOT NULL,
+        message TEXT NOT NULL DEFAULT '',
+        link TEXT,
+        read INTEGER NOT NULL DEFAULT 0,
+        is_pinned INTEGER NOT NULL DEFAULT 0,
+        author_id TEXT,
+        author_name TEXT,
+        author_avatar TEXT,
+        author_frame TEXT,
+        post_id TEXT,
+        post_type TEXT,
+        created_at INTEGER NOT NULL,
+        read_at INTEGER
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created ON notifications(user_id, read, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_notifications_post_id ON notifications(post_id)`),
       db.prepare(`CREATE TABLE IF NOT EXISTS questions (
         id TEXT PRIMARY KEY,
         bank_id TEXT NOT NULL DEFAULT 'legacy',
@@ -1887,9 +1915,12 @@ ${urls
                   isWelcome: Boolean(welcomeRow.is_welcome),
                   createdAt: welcomeRow.created_at,
                   updatedAt: welcomeRow.updated_at,
+                  createdAtMs: Number(welcomeRow.created_at || Date.now()),
+                  updatedAtMs: Number(welcomeRow.updated_at || Date.now()),
                 }
               : null,
             welcomeStatus,
+            userStatus: uid ? { userId: uid, ...welcomeStatus } : null,
           },
           200,
           { ...cors, 'Cache-Control': 'no-store' }
@@ -1936,6 +1967,7 @@ ${urls
             success: true,
             welcomed: true,
             newlyCreated,
+            newlyWelcomed: newlyCreated,
             read: isRead,
             announcement: welcomeRow
               ? {
@@ -1949,6 +1981,7 @@ ${urls
                   isWelcome: true,
                   createdAt: existing?.welcomed_at || now,
                   updatedAt: welcomeRow.updated_at,
+                  createdAtMs: Number(existing?.welcomed_at || now),
                 }
               : null,
           },
@@ -1967,13 +2000,17 @@ ${urls
         }
 
         const now = Date.now();
-        await env.DB.prepare(
-          `INSERT INTO user_welcome_status (user_uid, welcomed, read, welcomed_at, read_at)
-           VALUES (?, 1, 1, ?, ?)
-           ON CONFLICT(user_uid) DO UPDATE SET read = 1, read_at = excluded.read_at`
-        )
-          .bind(uid, now, now)
-          .run();
+        await env.DB.batch([
+          env.DB.prepare(
+            `INSERT INTO user_welcome_status (user_uid, welcomed, read, welcomed_at, read_at)
+             VALUES (?, 1, 1, ?, ?)
+             ON CONFLICT(user_uid) DO UPDATE SET read = 1, read_at = excluded.read_at`
+          ).bind(uid, now, now),
+          env.DB.prepare(
+            `INSERT OR REPLACE INTO user_read_announcements (user_uid, announcement_id, read_at)
+             VALUES (?, 'welcome_to_boardly', ?)`
+          ).bind(uid, now),
+        ]);
 
         return jsonResponse({ success: true, read: true }, 200, { ...cors, 'Cache-Control': 'no-store' });
       }
@@ -2020,6 +2057,348 @@ ${urls
       }
 
       return jsonResponse({ error: 'Announcement endpoint not found' }, 404, cors);
+    }
+
+    // 2b-follows. API Routes under /api/follows
+    if (url.pathname.startsWith('/api/follows')) {
+      if (!env.DB) {
+        return jsonResponse({ success: false, error: 'D1 binding missing' }, 503, cors);
+      }
+      if (req.method === 'GET') {
+        const followerUid = (url.searchParams.get('followerUid') || '').trim();
+        const followingUid = (url.searchParams.get('followingUid') || '').trim();
+        if (followerUid && followingUid) {
+          const row = await env.DB.prepare(
+            'SELECT 1 as ok FROM follows WHERE follower_uid = ? AND following_uid = ? LIMIT 1'
+          )
+            .bind(followerUid, followingUid)
+            .first<{ ok: number }>();
+          return jsonResponse(
+            { success: true, isFollowing: Boolean(row?.ok) },
+            200,
+            { ...cors, 'Cache-Control': 'no-store' }
+          );
+        }
+        if (followingUid) {
+          const { results } = await env.DB.prepare(
+            'SELECT follower_uid FROM follows WHERE following_uid = ? ORDER BY created_at DESC'
+          )
+            .bind(followingUid)
+            .all();
+          const followerIds = (results || []).map((r: any) => String(r.follower_uid));
+          return jsonResponse(
+            { success: true, followerIds, followersCount: followerIds.length },
+            200,
+            { ...cors, 'Cache-Control': 'no-store' }
+          );
+        }
+        if (followerUid) {
+          const { results } = await env.DB.prepare(
+            'SELECT following_uid FROM follows WHERE follower_uid = ? ORDER BY created_at DESC'
+          )
+            .bind(followerUid)
+            .all();
+          const followingIds = (results || []).map((r: any) => String(r.following_uid));
+          return jsonResponse(
+            { success: true, followingIds, followingCount: followingIds.length },
+            200,
+            { ...cors, 'Cache-Control': 'no-store' }
+          );
+        }
+        return jsonResponse({ success: true, follows: [] }, 200, cors);
+      }
+
+      if (req.method === 'POST') {
+        const user = await verifyFirebaseIdToken(req, env).catch(() => null);
+        const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+        const followerUid = String(user?.uid || body.followerUid || '').trim();
+        const followingUid = String(body.followingUid || body.targetUserId || '').trim();
+        const action = String(body.action || 'follow').toLowerCase();
+
+        if (!followerUid || !followingUid || followerUid === followingUid) {
+          return jsonResponse({ success: false, error: 'Invalid follow parameters' }, 400, cors);
+        }
+
+        const now = Date.now();
+        const existing = await env.DB.prepare(
+          'SELECT 1 as ok FROM follows WHERE follower_uid = ? AND following_uid = ? LIMIT 1'
+        )
+          .bind(followerUid, followingUid)
+          .first<{ ok: number }>();
+
+        let following = false;
+        if (action === 'unfollow' || (action === 'toggle' && existing)) {
+          await env.DB.prepare(
+            'DELETE FROM follows WHERE follower_uid = ? AND following_uid = ?'
+          )
+            .bind(followerUid, followingUid)
+            .run();
+          following = false;
+        } else {
+          await env.DB.prepare(
+            'INSERT OR IGNORE INTO follows (follower_uid, following_uid, created_at) VALUES (?, ?, ?)'
+          )
+            .bind(followerUid, followingUid, now)
+            .run();
+          following = true;
+
+          const followerName = String(body.followerName || user?.name || 'A student').trim();
+          const followerAvatar = body.followerAvatar || user?.picture || null;
+          const followerFrame = body.followerFrame || null;
+          const notifId = `follow_${followerUid}_${followingUid}`;
+          await env.DB.prepare(
+            `INSERT OR IGNORE INTO notifications (
+              id, user_id, type, title, message, link, read, is_pinned,
+              author_id, author_name, author_avatar, author_frame, post_id, post_type, created_at
+            ) VALUES (?, ?, 'new_follower', ?, 'Tap to view their profile.', ?, 0, 0, ?, ?, ?, ?, NULL, NULL, ?)`
+          )
+            .bind(
+              notifId,
+              followingUid,
+              `${followerName} started following you`,
+              `/user/${followerUid}`,
+              followerUid,
+              followerName,
+              followerAvatar,
+              followerFrame,
+              now
+            )
+            .run();
+        }
+
+        const cntRow = await env.DB.prepare(
+          'SELECT COUNT(*) as cnt FROM follows WHERE following_uid = ?'
+        )
+          .bind(followingUid)
+          .first<{ cnt: number }>();
+        return jsonResponse(
+          {
+            success: true,
+            following,
+            followersCount: Number(cntRow?.cnt ?? 0),
+          },
+          200,
+          { ...cors, 'Cache-Control': 'no-store' }
+        );
+      }
+
+      return jsonResponse({ error: 'Follows endpoint not found' }, 404, cors);
+    }
+
+    // 2b-notifications. API Routes under /api/notifications
+    if (url.pathname.startsWith('/api/notifications')) {
+      if (!env.DB) {
+        return jsonResponse({ success: false, error: 'D1 binding missing' }, 503, cors);
+      }
+      const nSub = url.pathname.slice('/api/notifications'.length).replace(/\/+$/, '') || '/';
+      const user = await verifyFirebaseIdToken(req, env).catch(() => null);
+
+      if (nSub === '/' && req.method === 'GET') {
+        const userId = String(url.searchParams.get('userId') || user?.uid || '').trim();
+        if (!userId) {
+          return jsonResponse({ success: false, error: 'Missing userId' }, 400, cors);
+        }
+
+        const [{ results: notifRows }, { results: readAnnRows }, welcomeSt] = await Promise.all([
+          env.DB.prepare(
+            'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100'
+          )
+            .bind(userId)
+            .all(),
+          env.DB.prepare(
+            'SELECT announcement_id FROM user_read_announcements WHERE user_uid = ?'
+          )
+            .bind(userId)
+            .all(),
+          env.DB.prepare(
+            'SELECT welcomed, read FROM user_welcome_status WHERE user_uid = ? LIMIT 1'
+          )
+            .bind(userId)
+            .first<{ welcomed: number; read: number }>(),
+        ]);
+
+        const notifications = (notifRows || []).map((r: any) => ({
+          id: String(r.id),
+          userId: String(r.user_id),
+          type: String(r.type || 'following_post'),
+          title: String(r.title || ''),
+          message: String(r.message || ''),
+          link: r.link ? String(r.link) : undefined,
+          read: Boolean(r.read),
+          isPinned: Boolean(r.is_pinned),
+          authorId: r.author_id ? String(r.author_id) : undefined,
+          authorName: r.author_name ? String(r.author_name) : undefined,
+          authorAvatar: r.author_avatar || null,
+          authorFrame: r.author_frame || null,
+          postId: r.post_id ? String(r.post_id) : undefined,
+          postType: r.post_type ? String(r.post_type) : undefined,
+          createdAtMs: Number(r.created_at || Date.now()),
+        }));
+
+        const readSet = new Set<string>(
+          (readAnnRows || []).map((r: any) => String(r.announcement_id))
+        );
+        if (welcomeSt?.read) {
+          readSet.add('welcome_to_boardly');
+        }
+
+        return jsonResponse(
+          {
+            success: true,
+            notifications,
+            readAnnouncementIds: Array.from(readSet),
+            welcomeRead: Boolean(welcomeSt?.read) || readSet.has('welcome_to_boardly'),
+          },
+          200,
+          { ...cors, 'Cache-Control': 'no-store' }
+        );
+      }
+
+      if (nSub === '/' && req.method === 'POST') {
+        const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+        const items: any[] = Array.isArray(body.notifications)
+          ? body.notifications
+          : body.userId
+          ? [body]
+          : [];
+        if (items.length === 0) {
+          return jsonResponse({ success: false, error: 'No notifications provided' }, 400, cors);
+        }
+
+        const now = Date.now();
+        const stmts: any[] = [];
+        for (const item of items) {
+          const targetUserId = String(item.userId || '').trim();
+          const authorId = item.authorId ? String(item.authorId).trim() : user?.uid || null;
+          if (!targetUserId || (authorId && targetUserId === authorId)) continue;
+          if (item.isAnonymous) continue;
+
+          const id = String(
+            item.id ||
+              (item.postId
+                ? `post_${item.postId}_follower_${targetUserId}`
+                : `notif_${now}_${crypto.randomUUID().slice(0, 8)}`)
+          ).trim();
+
+          stmts.push(
+            env.DB.prepare(
+              `INSERT OR IGNORE INTO notifications (
+                id, user_id, type, title, message, link, read, is_pinned,
+                author_id, author_name, author_avatar, author_frame, post_id, post_type, created_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            ).bind(
+              id,
+              targetUserId,
+              String(item.type || 'following_post'),
+              String(item.title || 'New update'),
+              String(item.message || ''),
+              item.link ? String(item.link) : null,
+              item.read ? 1 : 0,
+              item.isPinned ? 1 : 0,
+              authorId,
+              item.authorName ? String(item.authorName) : null,
+              item.authorAvatar || null,
+              item.authorFrame || null,
+              item.postId ? String(item.postId) : null,
+              item.postType ? String(item.postType) : null,
+              Number(item.createdAtMs || now)
+            )
+          );
+        }
+
+        if (stmts.length > 0) {
+          await env.DB.batch(stmts);
+        }
+        return jsonResponse({ success: true, created: stmts.length }, 200, cors);
+      }
+
+      if (nSub === '/read' && req.method === 'POST') {
+        const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+        const userId = String(user?.uid || body.userId || '').trim();
+        const notificationId = String(body.notificationId || body.id || '').trim();
+        const isAnnouncement = Boolean(body.isAnnouncement);
+
+        if (!userId || !notificationId) {
+          return jsonResponse({ success: false, error: 'Missing userId or notificationId' }, 400, cors);
+        }
+
+        const now = Date.now();
+        const stmts: any[] = [
+          env.DB.prepare(
+            'UPDATE notifications SET read = 1, read_at = ? WHERE id = ? AND user_id = ?'
+          ).bind(now, notificationId, userId),
+        ];
+
+        if (notificationId === 'welcome_to_boardly' || isAnnouncement) {
+          stmts.push(
+            env.DB.prepare(
+              'INSERT OR REPLACE INTO user_read_announcements (user_uid, announcement_id, read_at) VALUES (?, ?, ?)'
+            ).bind(userId, notificationId, now)
+          );
+          if (notificationId === 'welcome_to_boardly') {
+            stmts.push(
+              env.DB.prepare(
+                `INSERT INTO user_welcome_status (user_uid, welcomed, read, welcomed_at, read_at)
+                 VALUES (?, 1, 1, ?, ?)
+                 ON CONFLICT(user_uid) DO UPDATE SET read = 1, read_at = excluded.read_at`
+              ).bind(userId, now, now)
+            );
+          }
+        }
+
+        await env.DB.batch(stmts);
+        return jsonResponse(
+          { success: true, notificationId, read: true },
+          200,
+          { ...cors, 'Cache-Control': 'no-store' }
+        );
+      }
+
+      if (nSub === '/read-all' && req.method === 'POST') {
+        const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+        const userId = String(user?.uid || body.userId || '').trim();
+        const announcementIds: string[] = Array.isArray(body.announcementIds)
+          ? body.announcementIds.map(String)
+          : [];
+
+        if (!userId) {
+          return jsonResponse({ success: false, error: 'Missing userId' }, 400, cors);
+        }
+
+        const now = Date.now();
+        const stmts: any[] = [
+          env.DB.prepare(
+            'UPDATE notifications SET read = 1, read_at = ? WHERE user_id = ? AND read = 0'
+          ).bind(now, userId),
+          env.DB.prepare(
+            `INSERT INTO user_welcome_status (user_uid, welcomed, read, welcomed_at, read_at)
+             VALUES (?, 1, 1, ?, ?)
+             ON CONFLICT(user_uid) DO UPDATE SET read = 1, read_at = excluded.read_at`
+          ).bind(userId, now, now),
+          env.DB.prepare(
+            `INSERT OR REPLACE INTO user_read_announcements (user_uid, announcement_id, read_at)
+             VALUES (?, 'welcome_to_boardly', ?)`
+          ).bind(userId, now),
+        ];
+
+        for (const annId of announcementIds) {
+          if (!annId || annId === 'welcome_to_boardly') continue;
+          stmts.push(
+            env.DB.prepare(
+              'INSERT OR REPLACE INTO user_read_announcements (user_uid, announcement_id, read_at) VALUES (?, ?, ?)'
+            ).bind(userId, annId, now)
+          );
+        }
+
+        await env.DB.batch(stmts);
+        return jsonResponse(
+          { success: true, userId, readAll: true },
+          200,
+          { ...cors, 'Cache-Control': 'no-store' }
+        );
+      }
+
+      return jsonResponse({ error: 'Notifications endpoint not found' }, 404, cors);
     }
 
     // 2b-questions. API Routes under /api/questions (D1 Question Bank for Legacy, Bank1, Bank2)
@@ -3741,6 +4120,54 @@ ${urls
             500,
             cors
           );
+        }
+
+        // Automatically create follower notifications in D1 when a non-anonymous post is published
+        if (!isAnon && user.uid) {
+          try {
+            const { results: followerRows } = await env.DB.prepare(
+              'SELECT DISTINCT follower_uid FROM follows WHERE following_uid = ? AND follower_uid != ?'
+            )
+              .bind(user.uid, user.uid)
+              .all();
+            const followerUids = (followerRows || [])
+              .map((r: any) => String(r.follower_uid || '').trim())
+              .filter(Boolean);
+
+            if (followerUids.length > 0) {
+              const authorDisplay = String(body.authorName || user.name || 'Student');
+              const authorAvatarVal =
+                body.authorAvatar || body.authorPhotoURL || body.authorEquippedAvatar || user.picture || null;
+              const authorFrameVal = body.authorFrame || null;
+              const postTypeVal = String(body.type || 'notes');
+              const snippet = description.slice(0, 140) || `New ${postTypeVal} in ${String(body.subject || 'Commons')}`;
+
+              const notifStmts = followerUids.map((followerUid) =>
+                env.DB!.prepare(
+                  `INSERT OR IGNORE INTO notifications (
+                    id, user_id, type, title, message, link, read, is_pinned,
+                    author_id, author_name, author_avatar, author_frame, post_id, post_type, created_at
+                  ) VALUES (?, ?, 'following_post', ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?)`
+                ).bind(
+                  `post_${id}_follower_${followerUid}`,
+                  followerUid,
+                  `${authorDisplay} posted: ${title}`,
+                  snippet,
+                  `/commons/post/${slug}`,
+                  user.uid,
+                  authorDisplay,
+                  authorAvatarVal,
+                  authorFrameVal,
+                  id,
+                  postTypeVal,
+                  now
+                )
+              );
+              await env.DB.batch(notifStmts);
+            }
+          } catch (notifErr) {
+            console.warn('[CloudflareWorker] Follower notification insert notice:', notifErr);
+          }
         }
 
         const createdRow = await env.DB.prepare('SELECT * FROM posts WHERE id = ?')

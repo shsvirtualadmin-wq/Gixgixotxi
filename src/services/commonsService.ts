@@ -13,6 +13,8 @@ import type {
   CommonsUserPreview,
 } from '@/types/commons';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { getFollowerIds, getFollowingIds } from '@/services/followService';
+import { notifyFollowersOfPost } from '@/services/notificationService';
 
 /**
  * ============================================================================
@@ -259,6 +261,38 @@ export async function createCommonsPost(params: {
   }
 
   const normalized = normalizeCloudflarePost(data.post || { id: data.postId, ...params });
+
+  // Notify followers when a non-anonymous post is published (never if anonymous)
+  if (!isAnonymous && author.uid) {
+    void (async () => {
+      try {
+        const followerUids = await getFollowerIds(author.uid);
+        if (followerUids.length > 0) {
+          await notifyFollowersOfPost({
+            followerUids,
+            authorId: author.uid,
+            authorName: normalized.authorName || cleanAuthorName,
+            authorAvatar:
+              author.avatarUrl ||
+              author.photoURL ||
+              author.equippedAvatar ||
+              normalized.authorAvatar ||
+              null,
+            authorFrame: author.frame || normalized.authorFrame || null,
+            postId: normalized.id,
+            postSlug: normalized.slug || normalized.id,
+            postTitle: normalized.title,
+            postType: normalized.type,
+            postDescription: normalized.description,
+            isAnonymous: false,
+          });
+        }
+      } catch (err) {
+        console.warn('[CommonsService] Follower notification notice:', err);
+      }
+    })();
+  }
+
   return {
     postId: normalized.id,
     post: normalized,
@@ -322,9 +356,18 @@ export async function fetchCommonsPosts(options: {
   const cursor = options.lastDoc ?? options.lastVisibleDoc;
   const offset = typeof cursor === 'number' ? cursor : 0;
 
+  let effectiveFollowingUids = options.followingUids;
   if (
     options.feedTab === 'following' &&
-    (!options.followingUids || options.followingUids.length === 0)
+    (!effectiveFollowingUids || effectiveFollowingUids.length === 0) &&
+    options.currentUid
+  ) {
+    effectiveFollowingUids = await getFollowingIds(options.currentUid);
+  }
+
+  if (
+    options.feedTab === 'following' &&
+    (!effectiveFollowingUids || effectiveFollowingUids.length === 0)
   ) {
     return { posts: [], lastDoc: null, hasMore: false };
   }
@@ -348,8 +391,8 @@ export async function fetchCommonsPosts(options: {
   if (options.searchQuery?.trim()) {
     params.set('q', options.searchQuery.trim());
   }
-  if (options.feedTab === 'following' && options.followingUids?.length) {
-    params.set('followingUids', options.followingUids.join(','));
+  if (options.feedTab === 'following' && effectiveFollowingUids?.length) {
+    params.set('followingUids', effectiveFollowingUids.join(','));
   }
 
   const headers = await getOptionalAuthHeader();
