@@ -1,887 +1,1257 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useUserProfile } from '@/hooks/useUserProfile';
-import { GlassCard } from '@/components/ui/GlassCard';
-import { Button } from '@/components/ui/Button';
-import { Skeleton } from '@/components/ui/Skeleton';
-import { Badge } from '@/components/ui/Badge';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import {
-  Users,
-  Copy,
-  Check,
-  Share2,
-  Calendar,
-  Sparkles,
-  Trophy,
   Plus,
-  FileText,
   Upload,
-  Globe,
-  Lock,
+  FileSpreadsheet,
   Trash2,
   Eye,
-  AlertCircle,
-  Clock,
-  Download,
+  EyeOff,
+  Pencil,
   CheckCircle2,
+  AlertCircle,
+  Loader2,
+  Compass,
+  Copy,
+  Check,
+  Download,
+  Award,
+  Users,
+  Trophy,
+  BarChart3,
+  Globe,
+  Lock,
+  ShieldAlert,
+  UserMinus,
+  Ban,
+  X,
+  RefreshCw,
+  ChevronRight,
 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 import {
-  getAmbassadorDashboardData,
-  type AmbassadorStats,
-} from '@/services/referralService';
-import {
+  parseAmbassadorQuestionsCsv,
   createAmbassadorTest,
-  deleteAmbassadorTest,
+  updateAmbassadorTest,
   togglePublishAmbassadorTest,
-  getAmbassadorTestsForCreator,
-  getTestAttemptsForCreator,
-  type AmbassadorTestDoc,
-  type AmbassadorQuestion,
-  type GrandLineAttempt,
+  getTestsByCaptain,
+  getAmbassadorTestById,
+  deleteAmbassadorTest,
+  getTestResultsForCaptain,
+  SAMPLE_CSV_TEMPLATE,
+  type AmbassadorCustomTest,
+  type AmbassadorTestQuestion,
+  type AmbassadorTestAttempt,
 } from '@/services/ambassadorTestService';
-import { GRAND_LINE_NAME, NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
+import {
+  getMyCrewD1,
+  createCrewD1,
+  toggleSuspendCrewMemberD1,
+  removeCrewMemberD1,
+  type D1Crew,
+  type D1CrewMember,
+} from '@/services/crewService';
+import { NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
+import { showApiToast } from '@/lib/api';
 
 const SUBJECT_OPTIONS = [
-  { value: 'mathematics', label: 'Mathematics' },
-  { value: 'physics', label: 'Physics' },
-  { value: 'chemistry', label: 'Chemistry' },
-  { value: 'biology', label: 'Biology' },
-  { value: 'english', label: 'English' },
-  { value: 'computer-science', label: 'Computer Science' },
-  { value: 'intelligence', label: 'Intelligence / Analytical' },
+  'Physics',
+  'Mathematics',
+  'Chemistry',
+  'Biology',
+  'English',
+  'Computer Science',
+  'IQ / Analytical',
+  'Full Mock',
 ];
 
-const QUESTION_COUNT_OPTIONS = [10, 20, 30, 40, 50] as const;
+type CaptainTab = 'tests' | 'results' | 'crew';
 
 export function AmbassadorDashboardPage() {
-  const { user } = useAuth();
-  const { profile } = useUserProfile();
+  const { user, profile, isAdmin } = useAuth();
 
-  const [stats, setStats] = useState<AmbassadorStats | null>(null);
+  // Active tab: My Tests | Results | Crew
+  const [activeTab, setActiveTab] = useState<CaptainTab>('tests');
+
+  // Data state
+  const [myTests, setMyTests] = useState<AmbassadorCustomTest[]>([]);
+  const [crew, setCrew] = useState<D1Crew | null>(null);
+  const [crewMembers, setCrewMembers] = useState<D1CrewMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [copiedLink, setCopiedLink] = useState(false);
-  const [copiedId, setCopiedId] = useState(false);
-  const [copiedMessage, setCopiedMessage] = useState(false);
 
-  // Ambassador Tests State
-  const [tests, setTests] = useState<AmbassadorTestDoc[]>([]);
-  const [loadingTests, setLoadingTests] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  // Results tab state
+  const [selectedResultTestId, setSelectedResultTestId] = useState<string>('');
+  const [testResults, setTestResults] = useState<AmbassadorTestAttempt[]>([]);
+  const [loadingResults, setLoadingResults] = useState(false);
 
-  // Test Creator Form State
-  const [testTitle, setTestTitle] = useState('');
-  const [subject, setSubject] = useState('mathematics');
-  const [questionCount, setQuestionCount] = useState<10 | 20 | 30 | 40 | 50>(10);
-  const [isPublic, setIsPublic] = useState(true);
+  // Create / Edit Test Modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingTestId, setEditingTestId] = useState<string | null>(null);
+  const [title, setTitle] = useState('');
+  const [subject, setSubject] = useState('Physics');
+  const [targetQuestionCount, setTargetQuestionCount] = useState<number>(20);
+  const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [csvText, setCsvText] = useState('');
-  const [parsedQuestions, setParsedQuestions] = useState<AmbassadorQuestion[]>([]);
+  const [parsedQuestions, setParsedQuestions] = useState<AmbassadorTestQuestion[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
-  const [submittingTest, setSubmittingTest] = useState(false);
+  const [savingTest, setSavingTest] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Attempts Modal for specific test
-  const [viewingAttemptsTest, setViewingAttemptsTest] = useState<AmbassadorTestDoc | null>(null);
-  const [testAttempts, setTestAttempts] = useState<GrandLineAttempt[]>([]);
-  const [loadingAttempts, setLoadingAttempts] = useState(false);
+  // Delete confirmation modal state
+  const [deleteConfirmTest, setDeleteConfirmTest] = useState<AmbassadorCustomTest | null>(null);
+  const [deletingTestId, setDeletingTestId] = useState<string | null>(null);
+  const [togglingPublishId, setTogglingPublishId] = useState<string | null>(null);
 
-  // Load ambassador data
-  const loadStats = useCallback(async () => {
-    if (!user) return;
+  // Crew actions state
+  const [newCrewName, setNewCrewName] = useState('');
+  const [newCrewUniversity, setNewCrewUniversity] = useState('');
+  const [creatingCrew, setCreatingCrew] = useState(false);
+  const [memberActionUid, setMemberActionUid] = useState<string | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  const captainName =
+    profile?.displayName || user?.displayName || user?.email?.split('@')[0] || 'Captain';
+  const crewNameDisplay =
+    crew?.name || (profile as any)?.crewName || `${captainName}'s Grand Line Crew`;
+
+  const loadCaptainWorkspace = useCallback(async () => {
+    if (!user?.uid) return;
     setLoading(true);
     try {
-      const data = await getAmbassadorDashboardData(user.uid);
-      setStats(data);
-    } catch (err) {
-      console.warn('[AmbassadorDashboard] Error loading data:', err);
+      const [testsList, crewBundle] = await Promise.all([
+        getTestsByCaptain(user.uid).catch(() => []),
+        getMyCrewD1().catch(() => ({ crew: null, members: [] })),
+      ]);
+      setMyTests(testsList);
+      setCrew(crewBundle.crew);
+      setCrewMembers(crewBundle.members);
+      if (testsList.length > 0 && !selectedResultTestId) {
+        setSelectedResultTestId(testsList[0].id);
+      }
+    } catch (err: any) {
+      showApiToast(err?.message || 'Failed to load Captain workspace.', 'error');
     } finally {
       setLoading(false);
     }
-  }, [user]);
-
-  const loadTests = useCallback(async () => {
-    if (!user) return;
-    setLoadingTests(true);
-    try {
-      const data = await getAmbassadorTestsForCreator(user.uid);
-      setTests(data);
-    } catch (err) {
-      console.warn('[AmbassadorDashboard] Error loading tests:', err);
-    } finally {
-      setLoadingTests(false);
-    }
-  }, [user]);
+  }, [user?.uid, selectedResultTestId]);
 
   useEffect(() => {
-    loadStats();
-    loadTests();
-  }, [loadStats, loadTests]);
+    loadCaptainWorkspace();
+  }, [loadCaptainWorkspace]);
 
-  const shortId = stats?.shortId || profile?.shortId || user?.uid.slice(0, 5) || '00000';
-  const referralLink = `${window.location.origin}/signup?ref=${shortId}`;
-  const shareMessage = `Join Boardly — Pakistan's #1 Entrance Exam Prep Platform (FAST, NUST, MDCAT, GIKI, ECAT)! Use my official ${NAKAMA_CAPTAIN_SINGULAR} code #${shortId} or link to register: ${referralLink}`;
-
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(referralLink);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2500);
-  };
-
-  const handleCopyId = () => {
-    navigator.clipboard.writeText(shortId);
-    setCopiedId(true);
-    setTimeout(() => setCopiedId(false), 2500);
-  };
-
-  const handleCopyMessage = () => {
-    navigator.clipboard.writeText(shareMessage);
-    setCopiedMessage(true);
-    setTimeout(() => setCopiedMessage(false), 2500);
-  };
-
-  const handleWhatsAppShare = () => {
-    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareMessage)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  // CSV Parsing and validation (same format as admin CSV import)
-  const handleParseCsv = (text: string) => {
-    setCsvText(text);
-    setParseErrors([]);
-    setParsedQuestions([]);
-
-    if (!text.trim()) return;
-
-    const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-    if (lines.length < 2) {
-      setParseErrors(['CSV must have at least 1 header row and 1 question row.']);
+  // Load per-test student results when Results tab or selected test changes
+  useEffect(() => {
+    if (activeTab !== 'results' || !selectedResultTestId) {
       return;
     }
-
-    const parseLine = (line: string): string[] => {
-      const result: string[] = [];
-      let cur = '';
-      let inQuotes = false;
-      for (let i = 0; i < line.length; i++) {
-        const c = line[i];
-        if (c === '"') {
-          if (inQuotes && line[i + 1] === '"') {
-            cur += '"';
-            i++;
-          } else {
-            inQuotes = !inQuotes;
-          }
-        } else if (c === ',' && !inQuotes) {
-          result.push(cur.trim());
-          cur = '';
-        } else {
-          cur += c;
-        }
-      }
-      result.push(cur.trim());
-      return result;
-    };
-
-    const header = parseLine(lines[0]).map((h) => h.toLowerCase().replace(/[^a-z0-9_]/g, ''));
-    const errors: string[] = [];
-    const questions: AmbassadorQuestion[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const rowNum = i + 1;
-      const row = parseLine(lines[i]);
-      if (row.length < 5) {
-        errors.push(`Row ${rowNum}: Insufficient columns (expected question, 4 options, and correct index).`);
-        continue;
-      }
-
-      const getCol = (name: string): string => {
-        const idx = header.indexOf(name);
-        return idx !== -1 && row[idx] !== undefined ? row[idx] : '';
-      };
-
-      const q = getCol('question') || getCol('q') || row[3] || '';
-      const optA = getCol('option_a') || getCol('optiona') || getCol('opt1') || row[4] || '';
-      const optB = getCol('option_b') || getCol('optionb') || getCol('opt2') || row[5] || '';
-      const optC = getCol('option_c') || getCol('optionc') || getCol('opt3') || row[6] || '';
-      const optD = getCol('option_d') || getCol('optiond') || getCol('opt4') || row[7] || '';
-      const rawCorrect = getCol('correct') || getCol('correct_answer') || row[8] || '0';
-      const explain = getCol('explanation') || getCol('explain') || row[9] || '';
-      const ch = getCol('chapter') || '';
-      const diff = ((getCol('difficulty') || 'medium').toLowerCase()) as 'easy' | 'medium' | 'hard';
-
-      if (!q.trim()) {
-        errors.push(`Row ${rowNum}: Question text is missing.`);
-        continue;
-      }
-      if (!optA || !optB || !optC || !optD) {
-        errors.push(`Row ${rowNum}: Missing one or more of the 4 required options (A, B, C, D).`);
-        continue;
-      }
-
-      let correctIdx = 0;
-      if (/^[0-3]$/.test(rawCorrect.trim())) {
-        correctIdx = parseInt(rawCorrect.trim(), 10);
-      } else if (/^[a-dA-D]$/.test(rawCorrect.trim())) {
-        correctIdx = rawCorrect.trim().toUpperCase().charCodeAt(0) - 65;
-      } else {
-        errors.push(`Row ${rowNum}: Invalid correct option '${rawCorrect}' (must be 0-3 or A-D).`);
-        continue;
-      }
-
-      questions.push({
-        id: `amb-q-${i}`,
-        subject,
-        chapter: ch,
-        difficulty: diff,
-        q: q.trim(),
-        options: [optA.trim(), optB.trim(), optC.trim(), optD.trim()],
-        correct: correctIdx,
-        explanation: explain.trim() || 'Correct answer verified.',
+    let active = true;
+    setLoadingResults(true);
+    getTestResultsForCaptain(selectedResultTestId)
+      .then((rows) => {
+        if (active) setTestResults(rows);
+      })
+      .catch(() => {
+        if (active) setTestResults([]);
+      })
+      .finally(() => {
+        if (active) setLoadingResults(false);
       });
-    }
+    return () => {
+      active = false;
+    };
+  }, [activeTab, selectedResultTestId]);
 
-    if (errors.length > 0) {
-      setParseErrors(errors);
+  // Re-parse CSV whenever csvText changes
+  useEffect(() => {
+    if (!csvText.trim()) {
+      if (!editingTestId) {
+        setParsedQuestions([]);
+      }
+      setParseErrors([]);
+      return;
     }
+    const { questions, errors } = parseAmbassadorQuestionsCsv(csvText);
     setParsedQuestions(questions);
+    setParseErrors(errors);
+    if (questions.length > 0) {
+      setTargetQuestionCount(questions.length);
+    }
+  }, [csvText, editingTestId]);
+
+  // Computed stats for the 4 top stat cards
+  const testsCreatedCount = myTests.length;
+  const totalAttemptsCount = myTests.reduce((acc, t) => acc + (Number(t.attemptsCount) || 0), 0);
+  const averageScorePct = (() => {
+    const withAttempts = myTests.filter((t) => (Number(t.attemptsCount) || 0) > 0);
+    if (withAttempts.length === 0) return 0;
+    const weightedSum = withAttempts.reduce(
+      (acc, t) => acc + (Number(t.avgScore) || 0) * (Number(t.attemptsCount) || 1),
+      0
+    );
+    const countSum = withAttempts.reduce((acc, t) => acc + (Number(t.attemptsCount) || 1), 0);
+    return countSum > 0 ? Math.round(weightedSum / countSum) : 0;
+  })();
+  const crewMembersCount =
+    crewMembers.filter((m) => m.status === 'active').length || (crew?.memberCount ?? 0);
+
+  const openCreateModal = () => {
+    setEditingTestId(null);
+    setTitle('');
+    setSubject('Physics');
+    setTargetQuestionCount(20);
+    setVisibility('public');
+    setCsvText('');
+    setParsedQuestions([]);
+    setParseErrors([]);
+    setModalOpen(true);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const openEditModal = async (testItem: AmbassadorCustomTest) => {
+    setEditingTestId(testItem.id);
+    setTitle(testItem.title);
+    setSubject(testItem.subject);
+    setTargetQuestionCount(testItem.questionCount || 20);
+    setVisibility(testItem.visibility || 'public');
+    setCsvText('');
+    setParseErrors([]);
+    setParsedQuestions(testItem.questions || []);
+    setModalOpen(true);
+
+    try {
+      const fullTest = await getAmbassadorTestById(testItem.id, true);
+      if (fullTest && fullTest.questions.length > 0) {
+        setParsedQuestions(fullTest.questions);
+        setTargetQuestionCount(fullTest.questions.length);
+      }
+    } catch {
+      // keep existing metadata
+    }
+  };
+
+  const handleCsvFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      handleParseCsv(content);
+    reader.onload = (ev) => {
+      const content = String(ev.target?.result || '');
+      setCsvText(content);
     };
     reader.readAsText(file);
   };
 
-  const handleDownloadTemplate = () => {
-    const headers = ['subject', 'chapter', 'difficulty', 'question', 'option_a', 'option_b', 'option_c', 'option_d', 'correct', 'explanation'];
-    const row1 = ['mathematics', 'Integration', 'medium', '"Evaluate integral of x*cos(x) dx"', '"x*sin(x) + cos(x) + C"', '"x*sin(x) - cos(x) + C"', '"-x*cos(x) + C"', '"x^2 + C"', '0', '"Apply integration by parts."'];
-    const row2 = ['physics', 'Vectors', 'easy', '"If A . B = 0, the two vectors are:"', '"Parallel"', '"Perpendicular"', '"Antiparallel"', '"Zero vectors"', '1', '"Dot product of orthogonal vectors is zero."'];
-    const content = [headers.join(','), row1.join(','), row2.join(',')].join('\n');
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const handleDownloadSampleCsv = () => {
+    const blob = new Blob([SAMPLE_CSV_TEMPLATE], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'ambassador_mcq_template.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'boardly_captain_test_template.csv';
+    a.click();
     URL.revokeObjectURL(url);
   };
 
-  const handleCreateTestSubmit = async (e: React.FormEvent) => {
+  const handleSaveAndPublishTest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || submittingTest) return;
+    if (!user) return;
 
-    if (!testTitle.trim()) {
-      alert('Please enter a test title.');
-      return;
-    }
-    if (parsedQuestions.length < questionCount) {
-      alert(`This test requires ${questionCount} questions, but only ${parsedQuestions.length} valid questions were parsed from the CSV.`);
+    if (!title.trim()) {
+      showApiToast('Please enter a test title.', 'error');
       return;
     }
 
-    setSubmittingTest(true);
+    const questionsToSave =
+      targetQuestionCount > 0 && parsedQuestions.length > targetQuestionCount
+        ? parsedQuestions.slice(0, targetQuestionCount)
+        : parsedQuestions;
+
+    if (questionsToSave.length === 0) {
+      showApiToast('Please upload or paste at least 1 valid question.', 'error');
+      return;
+    }
+
+    setSavingTest(true);
     try {
-      const selectedSlice = parsedQuestions.slice(0, questionCount);
-      await createAmbassadorTest({
-        title: testTitle.trim(),
-        subject,
-        questionCount,
-        questions: selectedSlice,
-        isPublic,
-        creatorUid: user.uid,
-        creatorName: profile?.displayName || user.displayName || NAKAMA_CAPTAIN_SINGULAR,
-        creatorShortId: shortId,
-        creatorEmail: user.email || '',
+      if (editingTestId) {
+        await updateAmbassadorTest(editingTestId, {
+          title: title.trim(),
+          subject,
+          visibility,
+          status: 'published',
+          questions: questionsToSave,
+        });
+        showApiToast('Test updated successfully.', 'success');
+      } else {
+        await createAmbassadorTest({
+          title: title.trim(),
+          subject,
+          visibility,
+          status: 'published',
+          questions: questionsToSave,
+          captainUid: user.uid,
+          captainName,
+          crewName: crewNameDisplay,
+        });
+        showApiToast(
+          `Published "${title.trim()}" (${questionsToSave.length} questions)!`,
+          'success'
+        );
+      }
+
+      setModalOpen(false);
+      await loadCaptainWorkspace();
+    } catch (err: any) {
+      showApiToast(err?.message || 'Failed to save test.', 'error');
+    } finally {
+      setSavingTest(false);
+    }
+  };
+
+  const handleTogglePublish = async (testItem: AmbassadorCustomTest) => {
+    setTogglingPublishId(testItem.id);
+    const nextStatus = testItem.status === 'published' ? 'unpublished' : 'published';
+    try {
+      await togglePublishAmbassadorTest(testItem.id, { status: nextStatus });
+      setMyTests((prev) =>
+        prev.map((t) =>
+          t.id === testItem.id
+            ? {
+                ...t,
+                status: nextStatus,
+                isPublic: t.visibility === 'public' && nextStatus === 'published',
+              }
+            : t
+        )
+      );
+      showApiToast(
+        nextStatus === 'published' ? 'Test is now published.' : 'Test unpublished.',
+        'success'
+      );
+    } catch (err: any) {
+      showApiToast(err?.message || 'Could not update publish status.', 'error');
+    } finally {
+      setTogglingPublishId(null);
+    }
+  };
+
+  const handleConfirmDeleteTest = async () => {
+    if (!deleteConfirmTest) return;
+    setDeletingTestId(deleteConfirmTest.id);
+    try {
+      await deleteAmbassadorTest(deleteConfirmTest.id);
+      setMyTests((prev) => prev.filter((t) => t.id !== deleteConfirmTest.id));
+      if (selectedResultTestId === deleteConfirmTest.id) {
+        setSelectedResultTestId('');
+      }
+      showApiToast('Test deleted.', 'success');
+      setDeleteConfirmTest(null);
+    } catch (err: any) {
+      showApiToast(err?.message || 'Failed to delete test.', 'error');
+    } finally {
+      setDeletingTestId(null);
+    }
+  };
+
+  const handleCreateCrew = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCrewName.trim()) {
+      showApiToast('Please enter a crew name.', 'error');
+      return;
+    }
+    setCreatingCrew(true);
+    try {
+      const created = await createCrewD1({
+        name: newCrewName.trim(),
+        university: newCrewUniversity.trim(),
+        captainName,
+        captainEmail: user?.email || '',
       });
-
-      setShowCreateModal(false);
-      setTestTitle('');
-      setCsvText('');
-      setParsedQuestions([]);
-      setParseErrors([]);
-      await loadTests();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to create test');
+      setCrew(created);
+      setNewCrewName('');
+      setNewCrewUniversity('');
+      showApiToast(`Crew "${created.name}" created!`, 'success');
+      await loadCaptainWorkspace();
+    } catch (err: any) {
+      showApiToast(err?.message || 'Failed to create crew.', 'error');
     } finally {
-      setSubmittingTest(false);
+      setCreatingCrew(false);
     }
   };
 
-  const handleDeleteTest = async (testId: string) => {
-    if (!user) return;
-    if (!confirm('Are you sure you want to delete this test? All its attempt records will also be removed.')) return;
+  const handleToggleSuspendMember = async (member: D1CrewMember) => {
+    if (!crew) return;
+    setMemberActionUid(member.userUid);
     try {
-      await deleteAmbassadorTest(testId, user.uid);
-      await loadTests();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete test');
-    }
-  };
-
-  const handleTogglePublish = async (test: AmbassadorTestDoc) => {
-    if (!user) return;
-    try {
-      await togglePublishAmbassadorTest(test.id, !test.isPublic, user.uid);
-      await loadTests();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to update test status');
-    }
-  };
-
-  const handleViewAttempts = async (test: AmbassadorTestDoc) => {
-    setViewingAttemptsTest(test);
-    setLoadingAttempts(true);
-    try {
-      const attempts = await getTestAttemptsForCreator(test.id);
-      setTestAttempts(attempts);
-    } catch (err) {
-      console.warn('Error loading attempts:', err);
+      const res = await toggleSuspendCrewMemberD1(crew.id, member.userUid);
+      setCrewMembers((prev) =>
+        prev.map((m) => (m.userUid === member.userUid ? { ...m, status: res.status } : m))
+      );
+      showApiToast(
+        res.status === 'suspended'
+          ? `${member.userName} suspended.`
+          : `${member.userName} reactivated.`,
+        'success'
+      );
+    } catch (err: any) {
+      showApiToast(err?.message || 'Failed to update member status.', 'error');
     } finally {
-      setLoadingAttempts(false);
+      setMemberActionUid(null);
     }
+  };
+
+  const handleRemoveMember = async (member: D1CrewMember) => {
+    if (!crew) return;
+    setMemberActionUid(member.userUid);
+    try {
+      await removeCrewMemberD1(crew.id, member.userUid);
+      setCrewMembers((prev) => prev.filter((m) => m.userUid !== member.userUid));
+      showApiToast(`${member.userName} removed from crew.`, 'success');
+    } catch (err: any) {
+      showApiToast(err?.message || 'Failed to remove member.', 'error');
+    } finally {
+      setMemberActionUid(null);
+    }
+  };
+
+  const copyCrewCode = () => {
+    if (!crew?.code) return;
+    navigator.clipboard.writeText(crew.code);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
   };
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24, padding: '1rem' }}>
-      {/* ── Header & Ambassador Status Banner ── */}
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <Badge color="red">Official Role</Badge>
-          <span className="text-xs font-mono uppercase text-[var(--accent)] font-bold">
-            Program Period Active · Pro Unlocked
-          </span>
-        </div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-[var(--text)] tracking-tight">
-          {NAKAMA_CAPTAIN_SINGULAR} Cockpit
-        </h1>
-        <p className="text-xs sm:text-sm text-[var(--muted)] mt-1">
-          Represent Boardly across colleges and coaching circles. Share your unique invite ID, track referred students in real-time, earn bonus Pro weeks, and author public {GRAND_LINE_NAME} mocks.
-        </p>
-      </div>
-
-      {loading ? (
-        <Skeleton height={140} />
-      ) : (
-        <>
-          {/* ── Key Metrics Cards ── */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-            <GlassCard style={{ padding: '16px' }}>
-              <div className="flex items-center justify-between text-[var(--muted)] mb-1">
-                <span className="text-[11px] font-mono uppercase">Total Enrolled</span>
-                <Users size={16} className="text-[#D71921]" />
-              </div>
-              <span className="text-2xl font-display font-bold text-[var(--text)]">
-                {stats?.totalReferrals ?? 0}
-              </span>
-              <span className="text-[10px] text-[var(--text-faint)] block mt-0.5">Students brought</span>
-            </GlassCard>
-
-            <GlassCard style={{ padding: '16px' }}>
-              <div className="flex items-center justify-between text-[var(--muted)] mb-1">
-                <span className="text-[11px] font-mono uppercase">Pro Reward</span>
-                <Sparkles size={16} className="text-amber-400" />
-              </div>
-              <span className="text-2xl font-display font-bold text-[var(--text)]">
-                +{stats?.bonusWeeksEarned ?? 0} Wks
-              </span>
-              <span className="text-[10px] text-[var(--text-faint)] block mt-0.5">1 week per student</span>
-            </GlassCard>
-
-            <GlassCard style={{ padding: '16px' }}>
-              <div className="flex items-center justify-between text-[var(--muted)] mb-1">
-                <span className="text-[11px] font-mono uppercase">This Month</span>
-                <Calendar size={16} className="text-emerald-400" />
-              </div>
-              <span className="text-2xl font-display font-bold text-[var(--text)]">
-                {stats?.thisMonth ?? 0}
-              </span>
-              <span className="text-[10px] text-[var(--text-faint)] block mt-0.5">
-                {stats?.thisWeek ?? 0} this week
-              </span>
-            </GlassCard>
-
-            <GlassCard style={{ padding: '16px' }}>
-              <div className="flex items-center justify-between text-[var(--muted)] mb-1">
-                <span className="text-[11px] font-mono uppercase">National Rank</span>
-                <Trophy size={16} className="text-yellow-400" />
-              </div>
-              <span className="text-2xl font-display font-bold text-[var(--text)]">
-                #{stats?.rank ?? 1}
-              </span>
-              <span className="text-[10px] text-[var(--text-faint)] block mt-0.5">Among Captains</span>
-            </GlassCard>
+    <div className="w-full max-w-full min-w-0 overflow-x-hidden space-y-5 pb-10">
+      {/* ── CAPTAIN HOME HEADER ──────────────────────────────────────────────── */}
+      <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#D71921]/15 border border-[#D71921]/30 text-[#D71921] text-[11px] font-mono uppercase tracking-wider mb-2">
+              <Award size={12} />
+              <span>{NAKAMA_CAPTAIN_SINGULAR} Deck</span>
+            </div>
+            <h1 className="text-lg sm:text-2xl font-bold text-[var(--text)] truncate">
+              {captainName}
+            </h1>
+            <p className="text-xs sm:text-sm text-[var(--muted)] mt-0.5 truncate">
+              Crew: <span className="text-[var(--text)] font-medium">{crewNameDisplay}</span>
+            </p>
           </div>
 
-          {/* ── Referral Link & Short ID Section ── */}
-          <GlassCard style={{ padding: '24px' }}>
-            <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
-              <div>
-                <h3 className="text-base font-bold text-[var(--text)] font-display">
-                  Your Personal Referral Link &amp; Short ID
-                </h3>
-                <p className="text-xs text-[var(--muted)] mt-0.5">
-                  When new students sign up using your link or 5-digit code, you are permanently recorded as their referrer.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-[var(--muted)] font-mono">Short ID:</span>
-                <span className="font-mono text-sm font-bold text-[#D71921] px-2.5 py-1 rounded bg-[var(--surface-2)] border border-[var(--border)]">
-                  #{shortId}
-                </span>
-                <button
-                  onClick={handleCopyId}
-                  className="p-1.5 rounded-lg border border-[var(--border)] hover:bg-[var(--surface-hover)] text-[var(--text)] cursor-pointer"
-                  title="Copy Short ID"
-                >
-                  {copiedId ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
-                </button>
-              </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              to="/grand-line"
+              className="px-3 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1.5 transition-colors"
+            >
+              <Compass size={14} className="text-[#D71921]" />
+              <span className="hidden xs:inline">Grand Line</span>
+            </Link>
+
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="px-4 py-2.5 rounded-xl bg-[#D71921] text-white text-xs sm:text-sm font-bold hover:opacity-95 flex items-center gap-1.5 cursor-pointer shadow-sm shrink-0"
+            >
+              <Plus size={16} />
+              <span>Create Test</span>
+            </button>
+          </div>
+        </div>
+
+        {/* ── 4 STAT CARDS ───────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mt-5">
+          <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] min-w-0">
+            <div className="flex items-center justify-between gap-1 text-[var(--muted)]">
+              <span className="text-[11px] font-medium truncate">Tests created</span>
+              <FileSpreadsheet size={14} className="text-[#D71921] shrink-0" />
             </div>
+            <p className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-1.5 font-sans tabular-nums">
+              {loading ? '—' : testsCreatedCount}
+            </p>
+          </div>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-4">
-              <input
-                type="text"
-                readOnly
-                value={referralLink}
-                className="flex-1 px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm font-mono text-[var(--text)] select-all"
-              />
-              <div className="flex items-center gap-2 shrink-0">
-                <Button variant="secondary" size="sm" onClick={handleCopyLink} className="flex-1 sm:flex-none">
-                  {copiedLink ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
-                  <span>{copiedLink ? 'Copied Link' : 'Copy Link'}</span>
-                </Button>
-                <Button variant="primary" size="sm" onClick={handleWhatsAppShare} className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700">
-                  <Share2 size={14} />
-                  <span>Share on WhatsApp</span>
-                </Button>
-              </div>
+          <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] min-w-0">
+            <div className="flex items-center justify-between gap-1 text-[var(--muted)]">
+              <span className="text-[11px] font-medium truncate">Total attempts</span>
+              <BarChart3 size={14} className="text-amber-400 shrink-0" />
             </div>
+            <p className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-1.5 font-sans tabular-nums">
+              {loading ? '—' : totalAttemptsCount}
+            </p>
+          </div>
 
-            {/* Ready-made Share SHS section */}
-            <div className="p-3.5 rounded-xl bg-[var(--surface)] border border-[var(--border)]">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[11px] font-mono uppercase text-[var(--text-faint)]">
-                  Ready-Made Share Message:
-                </span>
-                <button
-                  onClick={handleCopyMessage}
-                  className="text-xs font-bold text-[var(--accent)] hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  {copiedMessage ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
-                  <span>{copiedMessage ? 'Copied Message!' : 'Copy Message'}</span>
-                </button>
-              </div>
-              <p className="text-xs text-[var(--muted)] leading-relaxed italic bg-[var(--surface-2)] p-2.5 rounded-lg border border-[var(--border)]">
-                "{shareMessage}"
-              </p>
+          <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] min-w-0">
+            <div className="flex items-center justify-between gap-1 text-[var(--muted)]">
+              <span className="text-[11px] font-medium truncate">Average score</span>
+              <Trophy size={14} className="text-emerald-400 shrink-0" />
             </div>
-          </GlassCard>
+            <p className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-1.5 font-sans tabular-nums">
+              {loading ? '—' : `${averageScorePct}%`}
+            </p>
+          </div>
 
-          {/* ── My Referrals List ── */}
-          <GlassCard style={{ padding: '24px' }}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-base font-bold text-[var(--text)] font-display">
-                  My Referrals
-                </h3>
-                <p className="text-xs text-[var(--muted)] mt-0.5">
-                  Students enrolled through your referral link (newest first).
-                </p>
-              </div>
-              <span className="text-xs font-mono text-[var(--text-faint)]">
-                {stats?.referralsList.length ?? 0} Students
-              </span>
+          <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] min-w-0">
+            <div className="flex items-center justify-between gap-1 text-[var(--muted)]">
+              <span className="text-[11px] font-medium truncate">Crew members</span>
+              <Users size={14} className="text-cyan-400 shrink-0" />
             </div>
+            <p className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-1.5 font-sans tabular-nums">
+              {loading ? '—' : crewMembersCount}
+            </p>
+          </div>
+        </div>
+      </div>
 
-            {stats?.referralsList.length === 0 ? (
-              <div className="p-8 text-center rounded-xl bg-[var(--surface)] border border-[var(--border)] text-[var(--muted)] text-xs">
-                No students enrolled via your link yet. Share your code with classmates to start earning Pro access!
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {stats?.referralsList.map((ref) => (
-                  <div
-                    key={ref.id}
-                    className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between flex-wrap gap-2 text-xs"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-[var(--card)] border border-[var(--border)] flex items-center justify-center font-bold text-[var(--text)]">
-                        {ref.studentName[0]?.toUpperCase() || 'S'}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-[var(--text)]">{ref.studentName}</span>
-                          <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-[var(--surface)] text-[var(--muted)] border border-[var(--border)]">
-                            #{ref.studentShortId}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-[var(--muted)]">{ref.track}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <span className="text-[11px] font-mono text-[var(--text-faint)]">
-                        Joined: {ref.dateJoined}
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
-                        +1 Wk Pro
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </GlassCard>
-
-          {/* ── Section 6: AMBASSADOR TEST CREATOR ── */}
-          <GlassCard style={{ padding: '24px' }}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-              <div>
-                <div className="flex items-center gap-2">
-                  <FileText size={18} className="text-[#D71921]" />
-                  <h3 className="text-base sm:text-lg font-bold text-[var(--text)] font-display">
-                    Captain Test Creator
-                  </h3>
-                </div>
-                <p className="text-xs text-[var(--muted)] mt-1 max-w-xl leading-relaxed">
-                  Author dedicated practice tests for students. Questions are stored separately from the main MCQ bank. Published public tests appear directly on the <strong>{GRAND_LINE_NAME}</strong> page for anyone in Pakistan to challenge.
-                </p>
-              </div>
-
-              <Button
-                variant="primary"
-                size="md"
-                onClick={() => setShowCreateModal(true)}
-                className="shrink-0 cursor-pointer"
+      {/* ── NAVIGATION TABS: My Tests | Results | Crew ───────────────────────── */}
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] pb-2">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          {(
+            [
+              { id: 'tests', label: 'My Tests', count: testsCreatedCount },
+              { id: 'results', label: 'Results', count: totalAttemptsCount },
+              { id: 'crew', label: 'Crew', count: crewMembersCount },
+            ] as const
+          ).map((t) => {
+            const active = activeTab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setActiveTab(t.id)}
+                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer shrink-0 ${
+                  active
+                    ? 'bg-[#D71921] text-white'
+                    : 'bg-[var(--card)] text-[var(--muted)] hover:text-[var(--text)] border border-[var(--border)]'
+                }`}
               >
-                <Plus size={16} />
-                <span>Create New Test</span>
-              </Button>
-            </div>
+                <span>{t.label}</span>
+                <span
+                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono tabular-nums ${
+                    active ? 'bg-black/25 text-white' : 'bg-[var(--surface-2)] text-[var(--muted)]'
+                  }`}
+                >
+                  {t.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
-            {/* List of Created Tests */}
-            {loadingTests ? (
-              <div className="space-y-3">
-                <Skeleton height={60} />
-                <Skeleton height={60} />
-              </div>
-            ) : tests.length === 0 ? (
-              <div className="p-8 text-center rounded-xl bg-[var(--surface)] border border-[var(--border)] text-[var(--muted)] text-xs space-y-2">
-                <FileText size={24} className="mx-auto text-[var(--text-faint)]" />
-                <p>You haven't authored any tests yet. Click "Create New Test" to import questions from CSV.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {tests.map((t) => (
+        <button
+          type="button"
+          onClick={loadCaptainWorkspace}
+          disabled={loading}
+          className="p-2 rounded-xl bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] cursor-pointer shrink-0"
+          title="Refresh"
+        >
+          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+        </button>
+      </div>
+
+      {/* ── TAB 1: MY TESTS ──────────────────────────────────────────────────── */}
+      {activeTab === 'tests' && (
+        <div className="space-y-3">
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((n) => (
+                <div
+                  key={n}
+                  className="h-28 rounded-2xl bg-[var(--card)] border border-[var(--border)] animate-pulse p-4 flex flex-col justify-between"
+                >
+                  <div className="h-4 w-2/3 rounded bg-[var(--surface-2)]" />
+                  <div className="h-3 w-1/3 rounded bg-[var(--surface-2)]" />
+                </div>
+              ))}
+            </div>
+          ) : myTests.length === 0 ? (
+            <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-8 text-center">
+              <FileSpreadsheet size={32} className="mx-auto text-[var(--muted)] mb-2.5" />
+              <p className="text-sm font-bold text-[var(--text)]">No Captain tests created yet</p>
+              <p className="text-xs text-[var(--muted)] mt-1 max-w-md mx-auto">
+                Click &ldquo;Create Test&rdquo; above to upload questions and publish your first test to the Grand Line.
+              </p>
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="mt-4 inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#D71921] text-white text-xs font-bold cursor-pointer"
+              >
+                <Plus size={14} />
+                Create Your First Test
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3">
+              {myTests.map((t) => {
+                const isPublished = t.status === 'published';
+                const isPublic = t.visibility === 'public';
+                return (
                   <div
                     key={t.id}
-                    className="p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                   >
-                    <div>
+                    <div className="min-w-0 space-y-1.5">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-sm text-[var(--text)]">{t.title}</span>
-                        <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-[var(--surface)] border border-[var(--border)] text-[var(--text-faint)]">
+                        <span className="px-2 py-0.5 rounded-md bg-[#D71921]/15 text-[#D71921] text-[10px] font-mono font-semibold uppercase">
                           {t.subject}
                         </span>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--surface)] border border-[var(--border)] text-[var(--muted)]">
-                          {t.questionCount} MCQs
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-semibold ${
+                            isPublic
+                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                              : 'bg-zinc-500/15 text-zinc-300 border border-zinc-500/30'
+                          }`}
+                        >
+                          {isPublic ? <Globe size={10} /> : <Lock size={10} />}
+                          {isPublic ? 'Public' : 'Private'}
                         </span>
-                        {t.isPublic ? (
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1">
-                            <Globe size={10} /> Public ({GRAND_LINE_NAME})
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center gap-1">
-                            <Lock size={10} /> Private
+                        {!isPublished && (
+                          <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-mono font-semibold">
+                            Unpublished
                           </span>
                         )}
                       </div>
-                      <span className="text-[11px] text-[var(--text-faint)] block mt-1">
-                        Authored by you ({t.creatorShortId})
-                      </span>
+
+                      <h3 className="text-sm sm:text-base font-bold text-[var(--text)] break-words">
+                        {t.title}
+                      </h3>
+
+                      <div className="flex items-center gap-3 text-xs text-[var(--muted)] flex-wrap tabular-nums">
+                        <span>{t.questionCount} questions</span>
+                        <span>•</span>
+                        <span>{t.attemptsCount || 0} attempts</span>
+                        {typeof t.avgScore === 'number' && t.attemptsCount > 0 && (
+                          <>
+                            <span>•</span>
+                            <span>Avg {Math.round(t.avgScore)}%</span>
+                          </>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => handleViewAttempts(t)}
-                        title="View student attempts"
-                      >
-                        <Eye size={13} />
-                        <span>Attempts</span>
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleTogglePublish(t)}
-                        title={t.isPublic ? 'Make Private' : 'Publish to Grand Line'}
-                      >
-                        {t.isPublic ? 'Unpublish' : 'Publish'}
-                      </Button>
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 flex-wrap shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[var(--border)]">
                       <button
-                        onClick={() => handleDeleteTest(t.id)}
-                        className="p-2 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors cursor-pointer"
-                        title="Delete test"
+                        type="button"
+                        onClick={() => handleTogglePublish(t)}
+                        disabled={togglingPublishId === t.id}
+                        className="px-3 py-1.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                       >
-                        <Trash2 size={15} />
+                        {togglingPublishId === t.id ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : isPublished ? (
+                          <EyeOff size={13} />
+                        ) : (
+                          <Eye size={13} />
+                        )}
+                        <span>{isPublished ? 'Unpublish' : 'Publish'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(t)}
+                        className="px-3 py-1.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Pencil size={13} />
+                        <span>Edit</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedResultTestId(t.id);
+                          setActiveTab('results');
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <BarChart3 size={13} />
+                        <span>Results</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirmTest(t)}
+                        className="p-2 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 hover:bg-red-500/20 cursor-pointer"
+                        title="Delete Test"
+                      >
+                        <Trash2 size={14} />
                       </button>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </GlassCard>
-        </>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
-      {/* ── CREATE TEST MODAL ── */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-[var(--card)] border border-[var(--border)] p-6 shadow-2xl flex flex-col gap-4">
-            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+      {/* ── TAB 2: RESULTS ───────────────────────────────────────────────────── */}
+      {activeTab === 'results' && (
+        <div className="space-y-4">
+          {myTests.length === 0 ? (
+            <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-8 text-center">
+              <Trophy size={32} className="mx-auto text-[var(--muted)] mb-2.5" />
+              <p className="text-sm font-bold text-[var(--text)]">No tests to show results for</p>
+              <p className="text-xs text-[var(--muted)] mt-1">
+                Create and publish a test first so students can attempt it.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Per-test selector list */}
+              <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-4 space-y-3">
+                <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
+                  Select Test to View Student Rankings
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {myTests.map((t) => {
+                    const isSelected = selectedResultTestId === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setSelectedResultTestId(t.id)}
+                        className={`p-3 rounded-xl border text-left transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                          isSelected
+                            ? 'border-[#D71921] bg-[#D71921]/10 text-[var(--text)]'
+                            : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)]'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs sm:text-sm font-bold text-[var(--text)] truncate">
+                            {t.title}
+                          </p>
+                          <p className="text-[11px] text-[var(--muted)] mt-0.5 tabular-nums">
+                            {t.subject} • {t.attemptsCount || 0} attempts
+                          </p>
+                        </div>
+                        <ChevronRight
+                          size={15}
+                          className={isSelected ? 'text-[#D71921] shrink-0' : 'text-[var(--muted)] shrink-0'}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Per-student scores and ranking */}
+              <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-4 sm:p-5 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-[var(--text)]">
+                    Student Scores &amp; Ranking
+                  </h3>
+                  <span className="text-xs text-[var(--muted)] font-mono tabular-nums">
+                    {testResults.length} {testResults.length === 1 ? 'submission' : 'submissions'}
+                  </span>
+                </div>
+
+                {loadingResults ? (
+                  <div className="space-y-2 py-2">
+                    {[1, 2, 3].map((i) => (
+                      <div
+                        key={i}
+                        className="h-14 rounded-xl bg-[var(--surface-2)] animate-pulse"
+                      />
+                    ))}
+                  </div>
+                ) : testResults.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <Users size={28} className="mx-auto text-[var(--muted)] mb-2" />
+                    <p className="text-xs font-semibold text-[var(--text)]">
+                      No attempts recorded for this test yet
+                    </p>
+                    <p className="text-[11px] text-[var(--muted)] mt-0.5">
+                      Share this test with your crew or on the Grand Line to see student rankings here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {testResults.map((r, index) => {
+                      const rank = r.rank ?? index + 1;
+                      const mins = Math.floor((r.timeTakenSeconds || 0) / 60);
+                      const secs = (r.timeTakenSeconds || 0) % 60;
+                      return (
+                        <div
+                          key={r.id}
+                          className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span
+                              className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-mono font-bold shrink-0 tabular-nums ${
+                                rank === 1
+                                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                                  : rank === 2
+                                  ? 'bg-zinc-400/20 text-zinc-300 border border-zinc-400/40'
+                                  : rank === 3
+                                  ? 'bg-amber-700/20 text-amber-500 border border-amber-700/40'
+                                  : 'bg-[var(--card)] text-[var(--muted)] border border-[var(--border)]'
+                              }`}
+                            >
+                              #{rank}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs sm:text-sm font-bold text-[var(--text)] truncate">
+                                {r.studentName}
+                              </p>
+                              <p className="text-[11px] text-[var(--muted)] font-mono tabular-nums">
+                                Time: {mins}m {secs}s
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0 tabular-nums">
+                            <p className="text-sm font-bold text-[#D71921]">
+                              {r.percentage}%
+                            </p>
+                            <p className="text-[11px] text-[var(--muted)] font-mono">
+                              {r.score}/{r.totalQuestions}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── TAB 3: CREW ──────────────────────────────────────────────────────── */}
+      {activeTab === 'crew' && (
+        <div className="space-y-4">
+          {loading ? (
+            <div className="space-y-2.5">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="h-16 rounded-2xl bg-[var(--card)] border border-[var(--border)] animate-pulse"
+                />
+              ))}
+            </div>
+          ) : !crew ? (
+            <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 sm:p-6 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#D71921]/15 text-[#D71921] flex items-center justify-center shrink-0">
+                  <Users size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-[var(--text)]">
+                    Launch Your Nakama Crew
+                  </h3>
+                  <p className="text-xs text-[var(--muted)] mt-0.5">
+                    Create your official crew to invite students, share private or public tests, and manage your roster.
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={handleCreateCrew} className="space-y-3 pt-2">
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text)] mb-1">
+                    Crew Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newCrewName}
+                    onChange={(e) => setNewCrewName(e.target.value)}
+                    placeholder="e.g. NUST Seeker Squadron"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text)] mb-1">
+                    Target University / Campus (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={newCrewUniversity}
+                    onChange={(e) => setNewCrewUniversity(e.target.value)}
+                    placeholder="e.g. NUST / FAST / MDCAT"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={creatingCrew}
+                  className="px-5 py-2.5 rounded-xl bg-[#D71921] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {creatingCrew ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                  <span>Create Crew</span>
+                </button>
+              </form>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Crew Summary Card */}
+              <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-bold text-[var(--text)] truncate">{crew.name}</h3>
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-semibold uppercase ${
+                        crew.status === 'suspended'
+                          ? 'bg-red-500/15 text-red-400'
+                          : 'bg-emerald-500/15 text-emerald-400'
+                      }`}
+                    >
+                      {crew.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--muted)] mt-0.5">
+                    Invite Code:{' '}
+                    <span className="font-mono font-bold text-[var(--text)]">{crew.code}</span>
+                    {crew.university ? ` • ${crew.university}` : ''}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={copyCrewCode}
+                  className="px-3.5 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+                >
+                  {copiedCode ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                  <span>{copiedCode ? 'Copied Code' : 'Copy Invite Code'}</span>
+                </button>
+              </div>
+
+              {/* Crew Members List */}
+              <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-4 sm:p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-[var(--text)]">
+                    Crew Members ({crewMembers.length})
+                  </h4>
+                </div>
+
+                {crewMembers.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <Users size={28} className="mx-auto text-[var(--muted)] mb-2" />
+                    <p className="text-xs font-semibold text-[var(--text)]">No members yet</p>
+                    <p className="text-[11px] text-[var(--muted)] mt-0.5">
+                      Share invite code <span className="font-mono font-bold">{crew.code}</span> with students to grow your crew.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {crewMembers.map((m) => {
+                      const isCaptainRow = m.role === 'captain' || m.userUid === crew.captainUid;
+                      const canManage =
+                        !isCaptainRow && (crew.captainUid === user?.uid || isAdmin);
+                      const isSuspended = m.status === 'suspended';
+
+                      return (
+                        <div
+                          key={m.id || m.userUid}
+                          className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex flex-col xs:flex-row xs:items-center justify-between gap-3"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs sm:text-sm font-bold text-[var(--text)] truncate">
+                                {m.userName}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-semibold uppercase ${
+                                  isCaptainRow
+                                    ? 'bg-[#D71921]/15 text-[#D71921]'
+                                    : 'bg-[var(--card)] text-[var(--muted)]'
+                                }`}
+                              >
+                                {isCaptainRow ? 'Captain' : 'Member'}
+                              </span>
+                              {isSuspended && (
+                                <span className="px-2 py-0.5 rounded-md bg-red-500/15 text-red-400 text-[10px] font-mono font-semibold">
+                                  Suspended
+                                </span>
+                              )}
+                            </div>
+                            {m.userEmail && (
+                              <p className="text-[11px] text-[var(--muted)] truncate mt-0.5">
+                                {m.userEmail}
+                              </p>
+                            )}
+                          </div>
+
+                          {canManage && (
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                disabled={memberActionUid === m.userUid}
+                                onClick={() => handleToggleSuspendMember(m)}
+                                className="px-2.5 py-1.5 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[11px] font-semibold text-amber-400 hover:bg-amber-500/10 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                              >
+                                <Ban size={12} />
+                                <span>{isSuspended ? 'Unsuspend' : 'Suspend'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={memberActionUid === m.userUid}
+                                onClick={() => handleRemoveMember(m)}
+                                className="px-2.5 py-1.5 rounded-lg bg-red-500/10 border border-red-500/25 text-[11px] font-semibold text-red-400 hover:bg-red-500/20 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                              >
+                                <UserMinus size={12} />
+                                <span>Remove</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── CREATE / EDIT TEST MODAL (Full-screen sheet on mobile) ──────────── */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="w-full h-[100dvh] sm:h-auto sm:max-h-[90dvh] sm:max-w-2xl bg-[var(--card)] sm:rounded-2xl border-0 sm:border border-[var(--border)] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-4 sm:px-6 py-4 border-b border-[var(--border)] flex items-center justify-between gap-3 shrink-0">
               <div>
-                <h3 className="text-lg font-bold font-display text-[var(--text)]">Create Captain Test</h3>
-                <p className="text-xs text-[var(--muted)]">Separate from main MCQ bank. Will not overwrite academy questions.</p>
+                <h2 className="text-base sm:text-lg font-bold text-[var(--text)]">
+                  {editingTestId ? 'Edit Captain Test' : 'Create & Publish Test'}
+                </h2>
+                <p className="text-xs text-[var(--muted)]">
+                  Configure test details and import questions
+                </p>
               </div>
               <button
-                onClick={() => setShowCreateModal(false)}
-                className="text-[var(--muted)] hover:text-white cursor-pointer"
+                type="button"
+                onClick={() => !savingTest && setModalOpen(false)}
+                className="p-2 rounded-xl bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
               >
-                ✕
+                <X size={16} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateTestSubmit} className="space-y-4">
+            {/* Scrollable Body */}
+            <form
+              id="captain-create-test-form"
+              onSubmit={handleSaveAndPublishTest}
+              className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4"
+            >
               <div>
-                <label className="text-xs font-semibold text-[var(--text-muted)] block mb-1">
-                  Test Title
+                <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
+                  Test Title *
                 </label>
                 <input
                   type="text"
                   required
-                  value={testTitle}
-                  onChange={(e) => setTestTitle(e.target.value)}
-                  placeholder="e.g. NUST NET High-Yield Physics Sprint #1"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g. NUST NET-4 Physics High-Yield Mock #1"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[#D71921]"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-[var(--text-muted)] block mb-1">
+                  <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
                     Subject
                   </label>
                   <select
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
                   >
                     {SUBJECT_OPTIONS.map((s) => (
-                      <option key={s.value} value={s.value}>
-                        {s.label}
+                      <option key={s} value={s}>
+                        {s}
                       </option>
                     ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-[var(--text-muted)] block mb-1">
+                  <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
                     Number of Questions
                   </label>
-                  <select
-                    value={questionCount}
-                    onChange={(e) => setQuestionCount(Number(e.target.value) as 10 | 20 | 30 | 40 | 50)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
-                  >
-                    {QUESTION_COUNT_OPTIONS.map((count) => (
-                      <option key={count} value={count}>
-                        {count} Questions
-                      </option>
-                    ))}
-                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={targetQuestionCount}
+                    onChange={(e) =>
+                      setTargetQuestionCount(Math.max(1, Math.min(200, Number(e.target.value) || 1)))
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] font-sans tabular-nums focus:outline-none focus:border-[#D71921]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
+                    Visibility
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                    <button
+                      type="button"
+                      onClick={() => setVisibility('public')}
+                      className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors ${
+                        visibility === 'public'
+                          ? 'bg-[#D71921] text-white'
+                          : 'text-[var(--muted)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      <Globe size={12} />
+                      Public
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVisibility('private')}
+                      className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors ${
+                        visibility === 'private'
+                          ? 'bg-[#D71921] text-white'
+                          : 'text-[var(--muted)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      <Lock size={12} />
+                      Private
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-[var(--text-muted)] block mb-1">
-                  Visibility
-                </label>
-                <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-2 text-xs text-[var(--text)] cursor-pointer">
-                    <input
-                      type="radio"
-                      name="visibility"
-                      checked={isPublic}
-                      onChange={() => setIsPublic(true)}
-                    />
-                    <span>Public (Display on {GRAND_LINE_NAME} page)</span>
+              {/* CSV Upload or Paste */}
+              <div className="space-y-2 pt-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="block text-xs font-semibold text-[var(--text)]">
+                    Upload or Paste Questions (CSV)
                   </label>
-                  <label className="flex items-center gap-2 text-xs text-[var(--text)] cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDownloadSampleCsv}
+                      className="px-2.5 py-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[11px] font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1 cursor-pointer"
+                    >
+                      <Download size={12} />
+                      Template
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-2.5 py-1.5 rounded-lg bg-[#D71921]/15 border border-[#D71921]/30 text-[11px] font-semibold text-[#D71921] hover:bg-[#D71921]/25 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Upload size={12} />
+                      Choose File
+                    </button>
                     <input
-                      type="radio"
-                      name="visibility"
-                      checked={!isPublic}
-                      onChange={() => setIsPublic(false)}
-                    />
-                    <span>Private (Captain Tab Only)</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* CSV Import Flow */}
-              <div className="space-y-2 pt-2 border-t border-[var(--border)]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[var(--text)]">Import Questions via CSV</span>
-                  <button
-                    type="button"
-                    onClick={handleDownloadTemplate}
-                    className="text-[11px] font-bold text-[var(--accent)] hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <Download size={13} />
-                    <span>Download CSV Template</span>
-                  </button>
-                </div>
-
-                <div className="p-4 rounded-xl border-2 border-dashed border-[var(--border)] hover:border-[#D71921] transition-colors text-center">
-                  <Upload size={24} className="mx-auto text-[var(--muted)] mb-2" />
-                  <label className="text-xs font-bold text-[#D71921] cursor-pointer hover:underline block">
-                    Choose CSV File to Upload
-                    <input
+                      ref={fileInputRef}
                       type="file"
-                      accept=".csv"
-                      onChange={handleFileUpload}
+                      accept=".csv,text/csv,text/plain"
+                      onChange={handleCsvFileUpload}
                       className="hidden"
                     />
-                  </label>
-                  <span className="text-[11px] text-[var(--text-faint)] block mt-1">
-                    Or paste raw CSV text below
-                  </span>
+                  </div>
                 </div>
 
                 <textarea
-                  rows={4}
+                  rows={5}
                   value={csvText}
-                  onChange={(e) => handleParseCsv(e.target.value)}
-                  placeholder="Paste CSV text here..."
-                  className="w-full p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-mono text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                  onChange={(e) => setCsvText(e.target.value)}
+                  placeholder={`question,optionA,optionB,optionC,optionD,correctOption,explanation\n"What is the SI unit of force?","Joule","Newton","Watt","Pascal","B","F = ma is measured in Newtons."`}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-mono text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[#D71921]"
                 />
 
+                {/* Clear "X questions parsed" status banner */}
+                <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2
+                      size={16}
+                      className={
+                        parsedQuestions.length > 0 ? 'text-emerald-400 shrink-0' : 'text-[var(--muted)] shrink-0'
+                      }
+                    />
+                    <span className="text-xs font-bold text-[var(--text)] tabular-nums">
+                      {parsedQuestions.length} questions parsed
+                    </span>
+                  </div>
+                  {parseErrors.length > 0 && (
+                    <span className="text-[11px] font-semibold text-amber-400 flex items-center gap-1">
+                      <AlertCircle size={13} />
+                      {parseErrors.length} row issue{parseErrors.length === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </div>
+
                 {parseErrors.length > 0 && (
-                  <div className="p-3 rounded-xl bg-red-950/40 border border-red-500/50 text-xs text-red-400 space-y-1">
-                    <span className="font-bold flex items-center gap-1">
-                      <AlertCircle size={14} /> Validation Warnings ({parseErrors.length} issues):
-                    </span>
-                    <ul className="list-disc pl-4 space-y-0.5 text-[11px]">
-                      {parseErrors.slice(0, 5).map((err, idx) => (
-                        <li key={idx}>{err}</li>
-                      ))}
-                      {parseErrors.length > 5 && (
-                        <li>...and {parseErrors.length - 5} more issues</li>
-                      )}
-                    </ul>
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300 space-y-1 max-h-28 overflow-y-auto">
+                    {parseErrors.slice(0, 5).map((err, i) => (
+                      <p key={i}>• {err}</p>
+                    ))}
                   </div>
                 )}
-
-                {parsedQuestions.length > 0 && (
-                  <div className="flex items-center justify-between p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-500/40 text-emerald-400 text-xs">
-                    <span className="flex items-center gap-1.5 font-bold">
-                      <CheckCircle2 size={14} /> {parsedQuestions.length} Questions parsed successfully
-                    </span>
-                    <span className="text-[11px] font-mono">
-                      (Requires {questionCount} MCQs)
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[var(--border)]">
-                <Button variant="ghost" size="sm" type="button" onClick={() => setShowCreateModal(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  size="md"
-                  type="submit"
-                  loading={submittingTest}
-                  disabled={parsedQuestions.length < questionCount}
-                >
-                  Create &amp; Publish Test
-                </Button>
               </div>
             </form>
+
+            {/* Sticky Safe-Area Footer — never clipped */}
+            <div className="px-4 sm:px-6 pt-3 pb-[calc(16px+env(safe-area-inset-bottom,0px))] border-t border-[var(--border)] bg-[var(--card)] flex items-center justify-end gap-2.5 shrink-0">
+              <button
+                type="button"
+                disabled={savingTest}
+                onClick={() => setModalOpen(false)}
+                className="px-4 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="captain-create-test-form"
+                disabled={savingTest || parsedQuestions.length === 0}
+                className="px-5 py-2.5 rounded-xl bg-[#D71921] text-white text-xs sm:text-sm font-bold hover:opacity-95 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {savingTest ? (
+                  <>
+                    <Loader2 size={15} className="animate-spin" />
+                    <span>Publishing...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={15} />
+                    <span>{editingTestId ? 'Save Changes' : 'Create & Publish Test'}</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* ── ATTEMPTS MODAL (SECTION 7 REQUIREMENT) ── */}
-      {viewingAttemptsTest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-[var(--card)] border border-[var(--border)] p-6 shadow-2xl flex flex-col gap-4">
-            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+      {/* ── DELETE CONFIRMATION MODAL ────────────────────────────────────────── */}
+      {deleteConfirmTest && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-500/15 text-red-400 flex items-center justify-center shrink-0">
+                <ShieldAlert size={20} />
+              </div>
               <div>
-                <h3 className="text-lg font-bold font-display text-[var(--text)]">
-                  Student Attempts: {viewingAttemptsTest.title}
-                </h3>
-                <p className="text-xs text-[var(--muted)]">
-                  Private attempt records (Name, Email, Test Title, Score, Time).
+                <h3 className="text-base font-bold text-[var(--text)]">Delete Test?</h3>
+                <p className="text-xs text-[var(--muted)] mt-1">
+                  Are you sure you want to delete{' '}
+                  <strong className="text-[var(--text)]">{deleteConfirmTest.title}</strong>? This will also remove all questions and student results for this test.
                 </p>
               </div>
-              <button
-                onClick={() => setViewingAttemptsTest(null)}
-                className="text-[var(--muted)] hover:text-white cursor-pointer"
-              >
-                ✕
-              </button>
             </div>
-
-            {loadingAttempts ? (
-              <Skeleton height={100} />
-            ) : testAttempts.length === 0 ? (
-              <div className="p-8 text-center text-xs text-[var(--muted)] bg-[var(--surface)] rounded-xl border border-[var(--border)]">
-                No student attempts recorded for this test yet.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {testAttempts.map((att, i) => (
-                  <div
-                    key={att.id || i}
-                    className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between flex-wrap gap-2 text-xs"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-[var(--text)]">{att.name}</span>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--surface)] text-[var(--text-faint)] border border-[var(--border)]">
-                          {att.entryTest}
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-[var(--muted)]">{att.email}</span>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <span className="font-bold text-sm text-[var(--text)] font-mono">
-                          {att.score} / {att.totalQuestions}
-                        </span>
-                        <span className="text-[10px] font-mono text-[var(--text-faint)] block flex items-center gap-1 justify-end">
-                          <Clock size={10} /> {att.timeTakenSeconds}s · {att.date}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="flex justify-end pt-2 border-t border-[var(--border)]">
-              <Button variant="ghost" size="sm" onClick={() => setViewingAttemptsTest(null)}>
-                Close
-              </Button>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                disabled={Boolean(deletingTestId)}
+                onClick={() => setDeleteConfirmTest(null)}
+                className="px-4 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(deletingTestId)}
+                onClick={handleConfirmDeleteTest}
+                className="px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {deletingTestId ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                <span>Delete Permanently</span>
+              </button>
             </div>
           </div>
         </div>

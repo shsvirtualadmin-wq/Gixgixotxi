@@ -137,22 +137,29 @@ export function ArenaDashboardPage() {
     setCircleCode(newCode);
     setCircleCreated(true);
     try {
-      await setDoc(doc(db, 'crews', newCode), {
+      const { createCrewD1 } = await import('@/services/crewService');
+      await createCrewD1({
+        name: `${user.displayName || 'Captain'}'s Circle`,
         code: newCode,
-        leaderId: user.uid,
-        leaderName: user.displayName || 'Lead',
-        createdAt: serverTimestamp(),
+        captainName: user.displayName || 'Lead',
+        captainEmail: user.email || '',
       });
     } catch (e) {
       console.warn('Circle create:', e);
     }
   };
 
-  const handleJoinCircle = (e: React.FormEvent) => {
+  const handleJoinCircle = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!circleInput.trim()) return;
     const cleanCode = circleInput.trim().toUpperCase();
     setCircleCode(cleanCode);
+    try {
+      const { joinCrewD1 } = await import('@/services/crewService');
+      await joinCrewD1(cleanCode);
+    } catch (err) {
+      console.warn('Circle join:', err);
+    }
     setCircleMembers(prev => [
       ...prev,
       { uid: 'u_new', name: 'Study Buddy', dailyMcqs: 12, streak: 2 },

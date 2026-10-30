@@ -4271,6 +4271,594 @@ ${allUrls
       deletedId: targetId,
     });
   });
+
+  // ── D1 Health Check ────────────────────────────────────────────────────────
+  app.get('/api/health', (_req: Request, res: Response) => {
+    return res.status(200).json({
+      ok: true,
+      service: 'boardly-d1-worker',
+      timestamp: Date.now(),
+    });
+  });
+
+  // ── D1 User Roles ──────────────────────────────────────────────────────────
+  const resolveD1Role = (store: any, user: { uid: string; email: string }) => {
+    if (!Array.isArray(store.userRoles)) store.userRoles = [];
+    let row = store.userRoles.find((r: any) => r.uid === user.uid);
+    const isSuper =
+      SUPERADMIN_UIDS.has(user.uid) || SUPERADMIN_EMAILS.has(user.email.toLowerCase());
+    if (!row) {
+      row = {
+        uid: user.uid,
+        email: user.email,
+        role: isSuper ? 'superadmin' : 'captain',
+        custom_role: null,
+        is_posting_banned: 0,
+        updated_at: Date.now(),
+      };
+      store.userRoles.push(row);
+      saveD1Store(store);
+    } else if (isSuper && row.role !== 'superadmin') {
+      row.role = 'superadmin';
+      saveD1Store(store);
+    }
+    return row;
+  };
+
+  app.get('/api/me/role', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    const roleRow = resolveD1Role(store, user);
+    return res.status(200).json({
+      uid: user.uid,
+      email: user.email,
+      role: roleRow.role,
+      customRole: roleRow.custom_role,
+      isPostingBanned: Boolean(roleRow.is_posting_banned),
+    });
+  });
+
+  app.get('/api/admin/roles', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+    return res.status(200).json({ roles: store.userRoles || [] });
+  });
+
+  app.put('/api/admin/roles', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+    const body = req.body || {};
+    const targetUid = String(body.uid || '').trim();
+    const newRole = String(body.role || 'student').trim();
+    if (!targetUid || !['student', 'captain', 'admin', 'superadmin'].includes(newRole)) {
+      return res.status(400).json({ error: 'Valid uid and role are required.', code: 'INVALID_INPUT' });
+    }
+    let existing = store.userRoles.find((r: any) => r.uid === targetUid);
+    if (!existing) {
+      existing = {
+        uid: targetUid,
+        email: String(body.email || '').trim().toLowerCase(),
+        role: newRole,
+        custom_role: body.customRole || null,
+        is_posting_banned: body.isPostingBanned ? 1 : 0,
+        updated_at: Date.now(),
+      };
+      store.userRoles.push(existing);
+    } else {
+      existing.role = newRole;
+      if (body.email) existing.email = String(body.email).trim().toLowerCase();
+      if (body.customRole !== undefined) existing.custom_role = body.customRole;
+      existing.updated_at = Date.now();
+    }
+    saveD1Store(store);
+    return res.status(200).json({ ok: true, uid: targetUid, role: newRole });
+  });
+
+  // ── D1 Captain Tests & Grand Line Public Tests ─────────────────────────────
+  app.get('/api/tests/public', (req: Request, res: Response) => {
+    const store = loadD1Store() as any;
+    if (!Array.isArray(store.captainTests)) store.captainTests = [];
+    const subject = String(req.query.subject || '').trim().toLowerCase();
+    const list = store.captainTests
+      .filter((t: any) => t.visibility === 'public' && t.status === 'published')
+      .filter((t: any) => !subject || subject === 'all' || String(t.subject || '').toLowerCase() === subject)
+      .sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0))
+      .map((t: any) => ({
+        id: t.id,
+        title: t.title,
+        description: t.description || '',
+        subject: t.subject,
+        questionCount: Number(t.questionCount ?? (t.questions?.length || 0)),
+        durationMinutes: Number(t.durationMinutes || 20),
+        visibility: t.visibility,
+        status: t.status,
+        captainUid: t.captainUid,
+        captainName: t.captainName,
+        crewId: t.crewId || null,
+        crewName: t.crewName || 'Grand Line Crew',
+        attemptsCount: Number(t.attemptsCount || 0),
+        avgScore: Number(t.avgScore || 0),
+        createdAt: t.createdAt,
+      }));
+    return res.status(200).json({ tests: list });
+  });
+
+  app.get('/api/tests/mine', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    if (!Array.isArray(store.captainTests)) store.captainTests = [];
+    const roleRow = resolveD1Role(store, user);
+    const targetUid =
+      ['admin', 'superadmin'].includes(roleRow.role) && req.query.captainUid
+        ? String(req.query.captainUid)
+        : user.uid;
+    const list = store.captainTests
+      .filter((t: any) => t.captainUid === targetUid)
+      .sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
+    return res.status(200).json({ tests: list });
+  });
+
+  app.post('/api/tests', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    if (!Array.isArray(store.captainTests)) store.captainTests = [];
+    if (!Array.isArray(store.crews)) store.crews = [];
+
+    const body = req.body || {};
+    const title = String(body.title || '').trim().slice(0, 200);
+    if (!title) {
+      return res.status(400).json({ error: 'Test title is required.', code: 'INVALID_TITLE' });
+    }
+    const questions = Array.isArray(body.questions) ? body.questions.slice(0, 200) : [];
+    const now = Date.now();
+    const crew = store.crews.find((c: any) => c.captainUid === user.uid);
+    const newTest = {
+      id: crypto.randomUUID(),
+      title,
+      description: String(body.description || '').trim(),
+      subject: String(body.subject || 'Physics').trim(),
+      durationMinutes: Number(body.durationMinutes || Math.max(10, questions.length * 1.5)),
+      visibility: body.visibility === 'private' ? 'private' : 'public',
+      status: body.status || 'published',
+      captainUid: user.uid,
+      captainName: String(body.captainName || user.email?.split('@')[0] || 'Captain'),
+      crewId: crew?.id || null,
+      crewName: String(body.crewName || crew?.name || 'Grand Line Crew'),
+      questionCount: questions.length,
+      questions: questions.map((q: any, idx: number) => ({
+        id: crypto.randomUUID(),
+        position: idx,
+        question: String(q.question || q.question_text || ''),
+        options: Array.isArray(q.options) ? q.options.slice(0, 4).map(String) : ['', '', '', ''],
+        correctIndex: Number(q.correctIndex ?? q.correct_index ?? 0),
+        explanation: String(q.explanation || ''),
+        topic: String(q.topic || body.subject || 'General'),
+        difficulty: q.difficulty || 'medium',
+      })),
+      attemptsCount: 0,
+      avgScore: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    store.captainTests.unshift(newTest);
+    saveD1Store(store);
+    return res.status(201).json(newTest);
+  });
+
+  app.get('/api/tests/:id', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    if (!Array.isArray(store.captainTests)) store.captainTests = [];
+    const testId = decodeURIComponent(String(req.params.id || ''));
+    const test = store.captainTests.find((t: any) => t.id === testId);
+    if (!test) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
+
+    const roleRow = resolveD1Role(store, user);
+    const isOwnerOrAdmin =
+      test.captainUid === user.uid || ['admin', 'superadmin'].includes(roleRow.role);
+    if (test.visibility === 'private' && !isOwnerOrAdmin) {
+      return res.status(403).json({ error: 'This test is private.', code: 'FORBIDDEN' });
+    }
+
+    const includeAnswers = isOwnerOrAdmin && req.query.includeAnswers === '1';
+    const sanitizedQuestions = (test.questions || []).map((q: any, idx: number) => {
+      const base: any = {
+        id: q.id || `q_${idx}`,
+        position: idx,
+        question: q.question,
+        options: q.options,
+        topic: q.topic,
+        difficulty: q.difficulty,
+      };
+      if (includeAnswers) {
+        base.correctIndex = q.correctIndex;
+        base.explanation = q.explanation;
+      }
+      return base;
+    });
+
+    return res.status(200).json({
+      test: {
+        ...test,
+        questions: sanitizedQuestions,
+      },
+    });
+  });
+
+  app.put('/api/tests/:id', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    if (!Array.isArray(store.captainTests)) store.captainTests = [];
+    const testId = decodeURIComponent(String(req.params.id || ''));
+    const idx = store.captainTests.findIndex((t: any) => t.id === testId);
+    if (idx === -1) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
+
+    const existing = store.captainTests[idx];
+    const roleRow = resolveD1Role(store, user);
+    if (existing.captainUid !== user.uid && !['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+
+    const body = req.body || {};
+    if (body.title !== undefined) existing.title = String(body.title).trim();
+    if (body.description !== undefined) existing.description = String(body.description).trim();
+    if (body.subject !== undefined) existing.subject = String(body.subject).trim();
+    if (body.visibility !== undefined) existing.visibility = body.visibility === 'private' ? 'private' : 'public';
+    if (body.status !== undefined) existing.status = body.status;
+    if (Array.isArray(body.questions)) {
+      existing.questions = body.questions.slice(0, 200).map((q: any, i: number) => ({
+        id: q.id || crypto.randomUUID(),
+        position: i,
+        question: String(q.question || ''),
+        options: Array.isArray(q.options) ? q.options.slice(0, 4).map(String) : ['', '', '', ''],
+        correctIndex: Number(q.correctIndex ?? 0),
+        explanation: String(q.explanation || ''),
+        topic: String(q.topic || existing.subject),
+        difficulty: q.difficulty || 'medium',
+      }));
+      existing.questionCount = existing.questions.length;
+    }
+    existing.updatedAt = Date.now();
+    saveD1Store(store);
+    return res.status(200).json({ ok: true, id: testId });
+  });
+
+  app.delete('/api/tests/:id', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    if (!Array.isArray(store.captainTests)) store.captainTests = [];
+    const testId = decodeURIComponent(String(req.params.id || ''));
+    const existing = store.captainTests.find((t: any) => t.id === testId);
+    if (!existing) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
+
+    const roleRow = resolveD1Role(store, user);
+    if (existing.captainUid !== user.uid && !['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+    store.captainTests = store.captainTests.filter((t: any) => t.id !== testId);
+    if (Array.isArray(store.testAttempts)) {
+      store.testAttempts = store.testAttempts.filter((a: any) => a.testId !== testId);
+    }
+    saveD1Store(store);
+    return res.status(200).json({ ok: true, id: testId });
+  });
+
+  app.post('/api/tests/:id/publish', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    if (!Array.isArray(store.captainTests)) store.captainTests = [];
+    const testId = decodeURIComponent(String(req.params.id || ''));
+    const existing = store.captainTests.find((t: any) => t.id === testId);
+    if (!existing) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
+
+    const roleRow = resolveD1Role(store, user);
+    if (existing.captainUid !== user.uid && !['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+    const body = req.body || {};
+    existing.status =
+      body.status || (existing.status === 'published' ? 'unpublished' : 'published');
+    if (body.visibility) existing.visibility = body.visibility;
+    existing.updatedAt = Date.now();
+    saveD1Store(store);
+    return res.status(200).json({
+      ok: true,
+      id: testId,
+      status: existing.status,
+      visibility: existing.visibility,
+    });
+  });
+
+  app.post('/api/tests/:id/attempts', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    if (!Array.isArray(store.captainTests)) store.captainTests = [];
+    if (!Array.isArray(store.testAttempts)) store.testAttempts = [];
+
+    const testId = decodeURIComponent(String(req.params.id || ''));
+    const test = store.captainTests.find((t: any) => t.id === testId);
+    if (!test) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
+
+    const questions = test.questions || [];
+    const body = req.body || {};
+    const rawAnswers = body.answers || {};
+    let score = 0;
+
+    const gradedQuestions = questions.map((q: any, idx: number) => {
+      let selectedIndex = -1;
+      if (Array.isArray(rawAnswers)) {
+        selectedIndex = Number(rawAnswers[idx] ?? -1);
+      } else if (rawAnswers && typeof rawAnswers === 'object') {
+        selectedIndex = Number(rawAnswers[q.id] ?? rawAnswers[idx] ?? -1);
+      }
+      const correctIndex = Number(q.correctIndex ?? 0);
+      const isCorrect = selectedIndex === correctIndex;
+      if (isCorrect) score++;
+      return {
+        id: q.id || `q_${idx}`,
+        position: idx,
+        question: q.question,
+        options: q.options,
+        selectedIndex,
+        correctIndex,
+        isCorrect,
+        explanation: q.explanation || '',
+      };
+    });
+
+    const totalQuestions = questions.length;
+    const percentage = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 0;
+    const attempt = {
+      id: crypto.randomUUID(),
+      testId: test.id,
+      testTitle: test.title,
+      subject: test.subject,
+      captainUid: test.captainUid,
+      captainName: test.captainName,
+      userUid: user.uid,
+      userName: String(body.userName || user.email?.split('@')[0] || 'Student'),
+      userAvatar: body.userAvatar || null,
+      score,
+      totalQuestions,
+      percentage,
+      timeTakenSeconds: Number(body.timeTakenSeconds || 0),
+      createdAt: Date.now(),
+      gradedQuestions,
+    };
+
+    store.testAttempts.unshift(attempt);
+    const prevAttempts = Number(test.attemptsCount || 0);
+    const prevAvg = Number(test.avgScore || 0);
+    test.attemptsCount = prevAttempts + 1;
+    test.avgScore = Math.round(((prevAvg * prevAttempts + percentage) / test.attemptsCount) * 10) / 10;
+    saveD1Store(store);
+
+    return res.status(201).json({ attempt });
+  });
+
+  app.get('/api/attempts/mine', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    const attempts = (store.testAttempts || []).filter((a: any) => a.userUid === user.uid);
+    return res.status(200).json({ attempts });
+  });
+
+  const handleTestResultsOrLeaderboard = async (req: Request, res: Response) => {
+    const store = loadD1Store() as any;
+    const testId = decodeURIComponent(String(req.params.id || ''));
+    const list = (store.testAttempts || [])
+      .filter((a: any) => a.testId === testId)
+      .sort((a: any, b: any) => b.percentage - a.percentage || a.timeTakenSeconds - b.timeTakenSeconds)
+      .map((a: any, idx: number) => ({ ...a, rank: idx + 1 }));
+    return res.status(200).json({ results: list });
+  };
+
+  app.get('/api/tests/:id/results', handleTestResultsOrLeaderboard);
+  app.get('/api/tests/:id/leaderboard', handleTestResultsOrLeaderboard);
+
+  app.get('/api/leaderboard/grand-line', (_req: Request, res: Response) => {
+    const store = loadD1Store() as any;
+    const attempts = store.testAttempts || [];
+    const byUser = new Map<string, any>();
+    for (const a of attempts) {
+      const existing = byUser.get(a.userUid);
+      if (!existing) {
+        byUser.set(a.userUid, {
+          uid: a.userUid,
+          displayName: a.userName,
+          testsCompleted: 1,
+          totalScore: a.score,
+          totalQuestions: a.totalQuestions,
+          bestPercentage: a.percentage,
+          lastTestTitle: a.testTitle,
+          updatedAt: a.createdAt,
+        });
+      } else {
+        existing.testsCompleted += 1;
+        existing.totalScore += a.score;
+        existing.totalQuestions += a.totalQuestions;
+        existing.bestPercentage = Math.max(existing.bestPercentage, a.percentage);
+      }
+    }
+    const leaderboard = Array.from(byUser.values()).sort(
+      (a, b) => b.bestPercentage - a.bestPercentage || b.totalScore - a.totalScore
+    );
+    return res.status(200).json({ leaderboard });
+  });
+
+  // ── D1 Crews & Crew Members ────────────────────────────────────────────────
+  app.get('/api/crews', (_req: Request, res: Response) => {
+    const store = loadD1Store() as any;
+    if (!Array.isArray(store.crews)) store.crews = [];
+    return res.status(200).json({ crews: store.crews });
+  });
+
+  app.get('/api/crews/mine', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    if (!Array.isArray(store.crews)) store.crews = [];
+    if (!Array.isArray(store.crewMembers)) store.crewMembers = [];
+
+    let crew = store.crews.find((c: any) => c.captainUid === user.uid);
+    if (!crew) {
+      const m = store.crewMembers.find((cm: any) => cm.userUid === user.uid && cm.status === 'active');
+      if (m) crew = store.crews.find((c: any) => c.id === m.crewId);
+    }
+    if (!crew) return res.status(200).json({ crew: null, members: [] });
+    const members = store.crewMembers.filter((cm: any) => cm.crewId === crew.id);
+    return res.status(200).json({ crew, members });
+  });
+
+  app.post('/api/crews', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    if (!Array.isArray(store.crews)) store.crews = [];
+    if (!Array.isArray(store.crewMembers)) store.crewMembers = [];
+
+    const body = req.body || {};
+    const name = String(body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Crew name is required.' });
+    const now = Date.now();
+    const crewId = crypto.randomUUID();
+    const code =
+      String(body.code || '').trim().toUpperCase() ||
+      `NK-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const captainName = String(body.captainName || user.email?.split('@')[0] || 'Captain');
+
+    const newCrew = {
+      id: crewId,
+      code,
+      name,
+      description: String(body.description || ''),
+      university: String(body.university || ''),
+      captainUid: user.uid,
+      captainName,
+      captainEmail: user.email || '',
+      status: 'active',
+      memberCount: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    store.crews.unshift(newCrew);
+    store.crewMembers.push({
+      id: crypto.randomUUID(),
+      crewId,
+      userUid: user.uid,
+      userName: captainName,
+      userEmail: user.email || '',
+      role: 'captain',
+      status: 'active',
+      joinedAt: now,
+    });
+    saveD1Store(store);
+    return res.status(201).json({ crew: newCrew });
+  });
+
+  app.post('/api/crews/join', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    if (!Array.isArray(store.crews)) store.crews = [];
+    if (!Array.isArray(store.crewMembers)) store.crewMembers = [];
+
+    const codeOrId = String(req.body?.code || req.body?.crewId || '').trim().toUpperCase();
+    const crew = store.crews.find(
+      (c: any) => c.id === codeOrId || String(c.code || '').toUpperCase() === codeOrId
+    );
+    if (!crew) return res.status(404).json({ error: 'Crew not found.' });
+
+    const existing = store.crewMembers.find(
+      (m: any) => m.crewId === crew.id && m.userUid === user.uid
+    );
+    if (!existing) {
+      store.crewMembers.push({
+        id: crypto.randomUUID(),
+        crewId: crew.id,
+        userUid: user.uid,
+        userName: user.email?.split('@')[0] || 'Student',
+        userEmail: user.email || '',
+        role: 'member',
+        status: 'active',
+        joinedAt: Date.now(),
+      });
+      crew.memberCount = store.crewMembers.filter(
+        (m: any) => m.crewId === crew.id && m.status === 'active'
+      ).length;
+      saveD1Store(store);
+    }
+    return res.status(200).json({ ok: true, crewId: crew.id, crewName: crew.name });
+  });
+
+  app.get('/api/crews/:id/members', async (req: Request, res: Response) => {
+    const store = loadD1Store() as any;
+    const crewId = decodeURIComponent(String(req.params.id || ''));
+    const members = (store.crewMembers || []).filter((m: any) => m.crewId === crewId);
+    return res.status(200).json({ members });
+  });
+
+  app.post('/api/crews/:id/suspend', async (req: Request, res: Response) => {
+    const store = loadD1Store() as any;
+    const crewId = decodeURIComponent(String(req.params.id || ''));
+    const crew = (store.crews || []).find((c: any) => c.id === crewId);
+    if (!crew) return res.status(404).json({ error: 'Crew not found.' });
+    crew.status = crew.status === 'active' ? 'suspended' : 'active';
+    saveD1Store(store);
+    return res.status(200).json({ ok: true, id: crewId, status: crew.status });
+  });
+
+  app.delete('/api/crews/:id', async (req: Request, res: Response) => {
+    const store = loadD1Store() as any;
+    const crewId = decodeURIComponent(String(req.params.id || ''));
+    store.crews = (store.crews || []).filter((c: any) => c.id !== crewId);
+    store.crewMembers = (store.crewMembers || []).filter((m: any) => m.crewId !== crewId);
+    saveD1Store(store);
+    return res.status(200).json({ ok: true, id: crewId });
+  });
+
+  app.post('/api/crews/:id/members/:uid/suspend', async (req: Request, res: Response) => {
+    const store = loadD1Store() as any;
+    const crewId = decodeURIComponent(String(req.params.id || ''));
+    const memberUid = decodeURIComponent(String(req.params.uid || ''));
+    const member = (store.crewMembers || []).find(
+      (m: any) => m.crewId === crewId && m.userUid === memberUid
+    );
+    if (!member) return res.status(404).json({ error: 'Member not found.' });
+    member.status = member.status === 'active' ? 'suspended' : 'active';
+    saveD1Store(store);
+    return res.status(200).json({ ok: true, userUid: memberUid, status: member.status });
+  });
+
+  app.delete('/api/crews/:id/members/:uid', async (req: Request, res: Response) => {
+    const store = loadD1Store() as any;
+    const crewId = decodeURIComponent(String(req.params.id || ''));
+    const memberUid = decodeURIComponent(String(req.params.uid || ''));
+    store.crewMembers = (store.crewMembers || []).filter(
+      (m: any) => !(m.crewId === crewId && m.userUid === memberUid && m.role !== 'captain')
+    );
+    saveD1Store(store);
+    return res.status(200).json({ ok: true, userUid: memberUid });
+  });
 }
 
 function escapeHtmlAttr(str: string): string {

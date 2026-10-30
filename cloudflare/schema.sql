@@ -1,0 +1,269 @@
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS user_roles (
+  uid TEXT PRIMARY KEY,
+  email TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT 'student' CHECK (role IN ('student', 'captain', 'admin', 'superadmin')),
+  custom_role TEXT DEFAULT NULL,
+  is_posting_banned INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role);
+CREATE INDEX IF NOT EXISTS idx_user_roles_email ON user_roles(email);
+
+CREATE TABLE IF NOT EXISTS crews (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  university TEXT NOT NULL DEFAULT '',
+  captain_uid TEXT NOT NULL,
+  captain_name TEXT NOT NULL,
+  captain_email TEXT NOT NULL DEFAULT '',
+  avatar_url TEXT DEFAULT NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
+  member_count INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_crews_captain_uid ON crews(captain_uid);
+CREATE INDEX IF NOT EXISTS idx_crews_status ON crews(status);
+CREATE INDEX IF NOT EXISTS idx_crews_code ON crews(code);
+
+CREATE TABLE IF NOT EXISTS crew_members (
+  id TEXT PRIMARY KEY,
+  crew_id TEXT NOT NULL,
+  user_uid TEXT NOT NULL,
+  user_name TEXT NOT NULL,
+  user_email TEXT NOT NULL DEFAULT '',
+  user_avatar TEXT DEFAULT NULL,
+  role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('captain', 'member')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
+  joined_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY (crew_id) REFERENCES crews(id) ON DELETE CASCADE,
+  UNIQUE(crew_id, user_uid)
+);
+
+CREATE INDEX IF NOT EXISTS idx_crew_members_crew_id ON crew_members(crew_id, status);
+CREATE INDEX IF NOT EXISTS idx_crew_members_user_uid ON crew_members(user_uid);
+
+CREATE TABLE IF NOT EXISTS captain_tests (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  subject TEXT NOT NULL,
+  question_count INTEGER NOT NULL DEFAULT 0,
+  duration_minutes INTEGER NOT NULL DEFAULT 20,
+  visibility TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'private')),
+  status TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('draft', 'published', 'unpublished')),
+  captain_uid TEXT NOT NULL,
+  captain_name TEXT NOT NULL,
+  crew_id TEXT DEFAULT NULL,
+  crew_name TEXT NOT NULL DEFAULT '',
+  attempts_count INTEGER NOT NULL DEFAULT 0,
+  avg_score REAL NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY (crew_id) REFERENCES crews(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_captain_tests_captain_uid ON captain_tests(captain_uid, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_captain_tests_public ON captain_tests(visibility, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_captain_tests_subject ON captain_tests(subject, visibility, status);
+
+CREATE TABLE IF NOT EXISTS test_questions (
+  id TEXT PRIMARY KEY,
+  test_id TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0,
+  question_text TEXT NOT NULL,
+  options_json TEXT NOT NULL DEFAULT '[]',
+  correct_index INTEGER NOT NULL DEFAULT 0,
+  explanation TEXT NOT NULL DEFAULT '',
+  topic TEXT NOT NULL DEFAULT 'General',
+  difficulty TEXT NOT NULL DEFAULT 'medium',
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (test_id) REFERENCES captain_tests(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_test_questions_test_id ON test_questions(test_id, position ASC);
+
+CREATE TABLE IF NOT EXISTS test_attempts (
+  id TEXT PRIMARY KEY,
+  test_id TEXT NOT NULL,
+  test_title TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  captain_uid TEXT NOT NULL,
+  captain_name TEXT NOT NULL,
+  user_uid TEXT NOT NULL,
+  user_name TEXT NOT NULL,
+  user_avatar TEXT DEFAULT NULL,
+  score INTEGER NOT NULL DEFAULT 0,
+  total_questions INTEGER NOT NULL DEFAULT 0,
+  percentage INTEGER NOT NULL DEFAULT 0,
+  time_taken_seconds INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (test_id) REFERENCES captain_tests(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_test_attempts_test_id ON test_attempts(test_id, percentage DESC, time_taken_seconds ASC);
+CREATE INDEX IF NOT EXISTS idx_test_attempts_user_uid ON test_attempts(user_uid, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_test_attempts_captain_uid ON test_attempts(captain_uid, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS attempt_answers (
+  id TEXT PRIMARY KEY,
+  attempt_id TEXT NOT NULL,
+  test_id TEXT NOT NULL,
+  question_id TEXT NOT NULL,
+  selected_index INTEGER NOT NULL DEFAULT -1,
+  correct_index INTEGER NOT NULL DEFAULT 0,
+  is_correct INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (attempt_id) REFERENCES test_attempts(id) ON DELETE CASCADE,
+  FOREIGN KEY (test_id) REFERENCES captain_tests(id) ON DELETE CASCADE,
+  FOREIGN KEY (question_id) REFERENCES test_questions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_attempt_answers_attempt_id ON attempt_answers(attempt_id);
+CREATE INDEX IF NOT EXISTS idx_attempt_answers_test_id ON attempt_answers(test_id);
+
+CREATE TABLE IF NOT EXISTS mcq_bank (
+  id TEXT PRIMARY KEY,
+  bank_id TEXT NOT NULL DEFAULT 'legacy',
+  subject TEXT NOT NULL,
+  topic TEXT NOT NULL DEFAULT 'General',
+  difficulty TEXT NOT NULL DEFAULT 'medium',
+  status TEXT NOT NULL DEFAULT 'published',
+  needs_review INTEGER NOT NULL DEFAULT 0,
+  question_text TEXT NOT NULL,
+  options_json TEXT NOT NULL DEFAULT '[]',
+  correct_answer INTEGER NOT NULL DEFAULT 0,
+  explanation TEXT NOT NULL DEFAULT '',
+  source_path TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_mcq_bank_filter ON mcq_bank(bank_id, subject, topic, status);
+CREATE INDEX IF NOT EXISTS idx_mcq_bank_needs_review ON mcq_bank(needs_review);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mcq_bank_unique_source ON mcq_bank(bank_id, source_path);
+
+CREATE TABLE IF NOT EXISTS posts (
+  id TEXT PRIMARY KEY,
+  slug TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'notes',
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  subject TEXT NOT NULL DEFAULT 'General',
+  chapter TEXT NOT NULL DEFAULT 'General',
+  target TEXT NOT NULL DEFAULT 'General',
+  class_level TEXT NOT NULL DEFAULT '12',
+  board TEXT NOT NULL DEFAULT 'Federal',
+  format TEXT NOT NULL DEFAULT 'Text',
+  tags_json TEXT NOT NULL DEFAULT '[]',
+  files_json TEXT NOT NULL DEFAULT '[]',
+  is_anonymous INTEGER NOT NULL DEFAULT 0,
+  anonymous_alias TEXT NOT NULL DEFAULT 'Anonymous Student',
+  author_uid TEXT DEFAULT NULL,
+  real_author_uid TEXT DEFAULT NULL,
+  author_name TEXT NOT NULL DEFAULT 'Student',
+  author_avatar TEXT DEFAULT NULL,
+  author_frame TEXT DEFAULT NULL,
+  author_equipped_avatar TEXT DEFAULT NULL,
+  author_photo_url TEXT DEFAULT NULL,
+  author_role TEXT NOT NULL DEFAULT 'student',
+  author_custom_role TEXT DEFAULT NULL,
+  status TEXT NOT NULL DEFAULT 'published',
+  visibility TEXT NOT NULL DEFAULT 'public',
+  is_hidden INTEGER NOT NULL DEFAULT 0,
+  is_pinned INTEGER NOT NULL DEFAULT 0,
+  is_featured INTEGER NOT NULL DEFAULT 0,
+  upvotes INTEGER NOT NULL DEFAULT 0,
+  downvotes INTEGER NOT NULL DEFAULT 0,
+  views INTEGER NOT NULL DEFAULT 0,
+  comment_count INTEGER NOT NULL DEFAULT 0,
+  save_count INTEGER NOT NULL DEFAULT 0,
+  shares_count INTEGER NOT NULL DEFAULT 0,
+  report_count INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_posts_feed ON posts(status, visibility, is_hidden, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_posts_subject ON posts(subject, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_uid, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS comments (
+  id TEXT PRIMARY KEY,
+  post_id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  is_anonymous INTEGER NOT NULL DEFAULT 0,
+  author_uid TEXT DEFAULT NULL,
+  real_author_uid TEXT NOT NULL,
+  author_name TEXT NOT NULL DEFAULT 'Student',
+  author_avatar TEXT DEFAULT NULL,
+  author_frame TEXT DEFAULT NULL,
+  author_equipped_avatar TEXT DEFAULT NULL,
+  author_photo_url TEXT DEFAULT NULL,
+  author_role TEXT NOT NULL DEFAULT 'student',
+  author_custom_role TEXT DEFAULT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id, created_at ASC);
+
+CREATE TABLE IF NOT EXISTS likes (
+  id TEXT PRIMARY KEY,
+  post_id TEXT NOT NULL,
+  user_uid TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+  UNIQUE(post_id, user_uid)
+);
+
+CREATE INDEX IF NOT EXISTS idx_likes_post_id ON likes(post_id);
+CREATE INDEX IF NOT EXISTS idx_likes_user_uid ON likes(user_uid);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  user_uid TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'system',
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  link TEXT NOT NULL DEFAULT '/dashboard/commons',
+  author_id TEXT DEFAULT NULL,
+  author_name TEXT DEFAULT NULL,
+  author_avatar TEXT DEFAULT NULL,
+  author_frame TEXT DEFAULT NULL,
+  post_id TEXT DEFAULT NULL,
+  post_type TEXT DEFAULT NULL,
+  read INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_uid ON notifications(user_uid, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_uid, read);
+
+CREATE TABLE IF NOT EXISTS bot_settings (
+  id TEXT PRIMARY KEY,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  daily_post_limit INTEGER NOT NULL DEFAULT 6,
+  posts_per_run INTEGER NOT NULL DEFAULT 2,
+  comments_per_run INTEGER NOT NULL DEFAULT 2,
+  likes_per_run INTEGER NOT NULL DEFAULT 4,
+  active_bot_uids_json TEXT NOT NULL DEFAULT '[]',
+  last_run_at INTEGER DEFAULT NULL,
+  last_run_status TEXT DEFAULT NULL,
+  last_run_summary_json TEXT NOT NULL DEFAULT '{}',
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rate_limits (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 0,
+  window_start INTEGER NOT NULL
+);

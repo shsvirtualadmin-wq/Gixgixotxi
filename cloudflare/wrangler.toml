@@ -1,39 +1,12 @@
-name = "boardly-posts-worker"
-main = "worker.ts"
+name = "boardly-d1-api-worker"
+main = "worker.js"
 compatibility_date = "2025-02-01"
-
-[vars]
-FIREBASE_PROJECT_ID = "gen-lang-client-0365509316"
-R2_PUBLIC_BASE_URL = "https://pub-51ccade1f191417389ac7df61830c670.r2.dev"
-GEMINI_MODEL = "gemini-2.5-flash"
-GEMINI_FALLBACK_MODEL = "gemini-2.5-flash-lite"
-ALLOWED_ORIGIN = "https://boardly.cfd"
-SUPERADMIN_UIDS = "A5YMRimdHRcmeDWutxtUGt2e4hf2"
-SUPERADMIN_EMAILS = "shsvirtualadmin@gmail.com,support@boardly.cfd"
-
-# Run small bot batches (2 bots per batch) every 2 hours across the day
-[triggers]
-crons = ["0 */2 * * *"]
-
-# Secrets to configure via Wrangler CLI:
-# npx wrangler secret put GEMINI_API_KEYS
-# npx wrangler secret put BOT_RUN_SECRET
-# (Optional fallback: npx wrangler secret put GEMINI_API_KEY)
-
 
 [[d1_databases]]
 binding = "DB"
 database_name = "boardly-posts-db"
 database_id = "e37a41ff-c73c-4ab7-9784-6e635205cdf7"
 
-[[r2_buckets]]
-binding = "R2_BUCKET"
-bucket_name = "boardly-commons-media"
-
-# Route bindings when deployed onto boardly.cfd zone in Cloudflare:
-# routes = [
-#   { pattern = "boardly.cfd/api/posts*", zone_name = "boardly.cfd" },
-#   { pattern = "boardly.cfd/commons/post/*", zone_name = "boardly.cfd" },
-#   { pattern = "boardly.cfd/material/*", zone_name = "boardly.cfd" },
-#   { pattern = "boardly.cfd/sitemap.xml", zone_name = "boardly.cfd" }
-# ]
+[vars]
+FIREBASE_PROJECT_ID = "gen-lang-client-0365509316"
+ALLOWED_ORIGIN = "https://boardly.cfd"
