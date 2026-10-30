@@ -20,8 +20,12 @@ export const FrameRenderer: React.FC<FrameProps> = ({
   children,
   className = '',
 }) => {
+  const innerSize = Math.max(16, Math.round(size * 0.66));
   const innerContent = (
-    <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center p-1 relative z-10">
+    <div
+      className="rounded-full overflow-hidden flex items-center justify-center relative z-10 shrink-0 [&>*]:!w-full [&>*]:!h-full [&>*]:!max-w-full [&>*]:!max-h-full [&>*]:!rounded-full"
+      style={{ width: innerSize, height: innerSize }}
+    >
       {children}
     </div>
   );
@@ -31,8 +35,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-bronze-ronin':
       // Hammered bronze octagon with dual katana tsuba discs, brass studs and aged verdigris bevel
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-2 w-[calc(100%+16px)] h-[calc(100%+16px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="br-oct" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#D97706" />
@@ -70,8 +74,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-carved-obsidian':
       // Volcanic razor obsidian shards with violet prismatic facet cuts
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-3 w-[calc(100%+24px)] h-[calc(100%+24px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="obs-facet" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#4C1D95" />
@@ -93,8 +97,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-bamboo-weave':
       // Split green bamboo stalks bound by hemp cord with fresh spring leaf shoots
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-2.5 w-[calc(100%+20px)] h-[calc(100%+20px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             {/* Quad Curved Bamboo Segments */}
             <circle cx="50" cy="50" r="41" stroke="#14532D" strokeWidth="7" strokeLinecap="round" />
             <circle cx="50" cy="50" r="41" stroke="#22C55E" strokeWidth="4.5" strokeDasharray="22 5" strokeLinecap="round" />
@@ -117,8 +121,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-jade-border':
       // Imperial nephrite jade torus with 4 engraved gold beast-claw clasps and pearl beads
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-2.5 w-[calc(100%+20px)] h-[calc(100%+20px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="jade-grad" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#34D399" />
@@ -160,8 +164,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-lacquered-mahogany':
       // Japanese Urushi black-crimson lacquer with maki-e gold crane crescent crest
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-2.5 w-[calc(100%+20px)] h-[calc(100%+20px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="urushi-wood" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#450A0A" />
@@ -186,8 +190,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-iron-shuriken':
       // Dark cast-iron ninja frame with 4 massive angled fuma-shuriken throwing blades
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-3.5 w-[calc(100%+28px)] h-[calc(100%+28px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="steel-blade" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#94A3B8" />
@@ -221,8 +225,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-talisman-seal':
       // Twisted sacred Shimenawa rope with vermilion ofuda warding paper charms & zigzag shide
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-3 w-[calc(100%+24px)] h-[calc(100%+24px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             {/* Twisted Straw Shimenawa Rope Ring */}
             <circle cx="50" cy="50" r="41" stroke="#78350F" strokeWidth="6.5" strokeDasharray="9 4" />
             <circle cx="50" cy="50" r="41" stroke="#D97706" strokeWidth="4" strokeDasharray="9 4" />
@@ -249,8 +253,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-kintsugi-gold':
       // Matte charcoal ceramic with bold branching fractures filled with molten 24k gold leaf
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-2.5 w-[calc(100%+20px)] h-[calc(100%+20px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="kg-gold" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#FEF08A" />
@@ -282,8 +286,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-stone-torii':
       // Weathered mossy granite shrine Torii gate with kasagi lintel, pillars and stone lanterns
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-3 w-[calc(100%+24px)] h-[calc(100%+24px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="torii-stone" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#94A3B8" />
@@ -312,8 +316,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-forged-steel':
       // Damascus layered steel ring with samurai hamon wave temper line & 8 recessed industrial rivets
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-2.5 w-[calc(100%+20px)] h-[calc(100%+20px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="dm-steel" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#F1F5F9" />
@@ -342,8 +346,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-cherry-bark':
       // Polished dark kabazaiku wild cherry bark cylinder with brass momiji leaves & wood grains
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-2.5 w-[calc(100%+20px)] h-[calc(100%+20px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="cb-bark" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#78350F" />
@@ -371,8 +375,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-midnight-titanium':
       // Stealth aerospace titanium casing with slotted angular wings & cyan radar tick markers
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-3 w-[calc(100%+24px)] h-[calc(100%+24px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             {/* Outer Hex-Chamfered Titanium Ring */}
             <polygon points="25,5 75,5 95,25 95,75 75,95 25,95 5,75 5,25" stroke="#1E293B" strokeWidth="6" fill="none" strokeLinejoin="round" />
             <polygon points="26,7 74,7 93,26 93,74 74,93 26,93 7,74 7,26" stroke="#475569" strokeWidth="1.5" fill="none" strokeLinejoin="round" />
@@ -392,8 +396,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-ivory-lotus':
       // Tiered sculpted ivory and pearl lotus flower petals cradling the circular base
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-3 w-[calc(100%+24px)] h-[calc(100%+24px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="ivory-petal" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#FFFFFF" />
@@ -419,8 +423,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-neon-cyber':
       // Glowing high-contrast neon conduits with animated magenta/cyan pulse and plasma grid
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-3.5 w-[calc(100%+28px)] h-[calc(100%+28px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="neon-conduit" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#00F0FF" />
@@ -459,8 +463,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-crimson-flame':
       // Curling Kitsune foxfire blazing flames with rising embers and animated fire pulse
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-3.5 w-[calc(100%+28px)] h-[calc(100%+28px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="flame-grad" x1="0" y1="1" x2="0" y2="0">
                 <stop offset="0%" stopColor="#7F1D1D" />
@@ -505,8 +509,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-sakura-blossom':
       // Gnarled flowering cherry branch with blooming 5-petal sakura & drifting animated petals
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-3.5 w-[calc(100%+28px)] h-[calc(100%+28px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             {/* Curving Woody Cherry Branch */}
             <circle cx="50" cy="50" r="41" stroke="#451A03" strokeWidth="6" />
             <circle cx="50" cy="50" r="41" stroke="#78350F" strokeWidth="3" />
@@ -547,8 +551,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-void-shinobi':
       // Dimensional shadow rift with silver kunai daggers and swirling amethyst abyssal pulse
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-3.5 w-[calc(100%+28px)] h-[calc(100%+28px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="void-ring" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#A855F7" />
@@ -593,8 +597,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-imperial-laurel':
       // Gilded anime laurel victory wreath with crowned sun crest and royal ruby gem
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-3.5 w-[calc(100%+28px)] h-[calc(100%+28px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="laurel-gold" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#FEF08A" />
@@ -633,8 +637,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-thunder-arc':
       // Raijin storm drums with electric crackling lightning discharges and thunder clouds
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-3.5 w-[calc(100%+28px)] h-[calc(100%+28px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             {/* Heavy Storm Cobalt Ring */}
             <circle cx="50" cy="50" r="41" stroke="#0C4A6E" strokeWidth="6.5" />
             <circle cx="50" cy="50" r="37.8" stroke="#082F49" strokeWidth="2" />
@@ -659,8 +663,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-celestial-orbit':
       // Astrological brass armillary sphere with concentric rings and orbiting celestial planetoids
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-3.5 w-[calc(100%+28px)] h-[calc(100%+28px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             {/* Outer Astrolabe Brass Bezel */}
             <circle cx="50" cy="50" r="41" stroke="#B45309" strokeWidth="5.5" />
             <circle cx="50" cy="50" r="43.5" stroke="#FDE047" strokeWidth="0.8" strokeDasharray="3 3" />
@@ -683,8 +687,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-aurora-pulse':
       // Polar ice crystals with cascading dancing emerald and violet northern lights
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-3.5 w-[calc(100%+28px)] h-[calc(100%+28px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="aurora-curtain" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#10B981" />
@@ -713,8 +717,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-demon-fire':
       // Demonic Oni horns soaring from the crown with flared fangs & smoldering embers
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-4 w-[calc(100%+32px)] h-[calc(100%+32px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="oni-horn" x1="0" y1="1" x2="0" y2="0">
                 <stop offset="0%" stopColor="#450A0A" />
@@ -742,8 +746,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-quantum-circuit':
       // Hexagonal quantum silicon chip with glowing green photon nodes & traveling light
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-3 w-[calc(100%+24px)] h-[calc(100%+24px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             {/* Hexagonal Cyber Processor Rim */}
             <polygon points="50,6 88,27 88,73 50,94 12,73 12,27" stroke="#064E3B" strokeWidth="6" fill="none" strokeLinejoin="round" />
             <polygon points="50,8 86,28 86,72 50,92 14,72 14,28" stroke="#10B981" strokeWidth="1.5" fill="none" strokeLinejoin="round" />
@@ -778,8 +782,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-deepsea-vortex':
       // Great ocean wave whirlpool with cresting foam droplets and swirling cerulean currents
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-3.5 w-[calc(100%+28px)] h-[calc(100%+28px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="wave-grad" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#38BDF8" />
@@ -806,8 +810,8 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     case 'frame-solar-corona':
       // Total solar eclipse with dark umbra disc, blazing golden corona flares and looping solar prominences
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute -inset-4 w-[calc(100%+32px)] h-[calc(100%+32px)] pointer-events-none z-20 overflow-visible" viewBox="0 0 100 100" fill="none">
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
             <defs>
               <linearGradient id="corona-fire" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#FEF08A" />
@@ -842,7 +846,7 @@ export const FrameRenderer: React.FC<FrameProps> = ({
 
     default:
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
           {innerContent}
         </div>
       );

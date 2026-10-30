@@ -50,11 +50,11 @@ export function DotRowStreak({
       })();
 
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
+    <div className={`flex items-center justify-between sm:justify-start gap-2 w-full max-w-[210px] ${className}`}>
       {renderItems.map((item, idx) => (
-        <div key={item.date || idx} className="flex flex-col items-center gap-1.5">
+        <div key={item.date || idx} className="flex flex-col items-center justify-center gap-1.5 w-5 shrink-0">
           <div
-            className={`w-4 h-4 rounded-full flex items-center justify-center transition-all ${
+            className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 transition-all ${
               item.isActive
                 ? 'bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.4)]'
                 : 'border border-[var(--border)] bg-[var(--surface)]'
@@ -68,7 +68,7 @@ export function DotRowStreak({
             )}
           </div>
           <span
-            className={`text-[10px] font-mono tracking-tighter ${
+            className={`text-[10px] font-mono leading-none text-center tracking-tighter ${
               item.isToday ? 'font-bold text-[var(--red)] underline decoration-[var(--red)]' : ''
             }`}
             style={{ color: item.isToday ? 'var(--red)' : item.isActive ? 'var(--text)' : 'var(--text-faint)' }}

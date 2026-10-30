@@ -354,7 +354,7 @@ export function StreaksPage() {
 
           {/* Centered Number and Label */}
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="font-dot text-4xl sm:text-5xl font-extrabold text-[var(--text)] tracking-tight">
+            <span className="tabular-nums text-4xl sm:text-5xl font-extrabold text-[var(--text)] tracking-tight">
               {currentStreak}
             </span>
             <span className="text-xs font-semibold text-[var(--text-muted)] mt-0.5">
@@ -376,7 +376,7 @@ export function StreaksPage() {
               : `Milestone reached: ${nextBadge.name}!`}
           </span>
           {longestStreak > 0 && (
-            <span className="text-xs text-[var(--text-muted)] font-dot">
+            <span className="text-xs text-[var(--text-muted)] tabular-nums">
               Longest: {longestStreak} {longestStreak === 1 ? 'day' : 'days'}
             </span>
           )}
@@ -642,7 +642,7 @@ export function StreaksPage() {
                     ? `${daysToNextBadge} more ${daysToNextBadge === 1 ? 'day' : 'days'} to unlock`
                     : 'Milestone reached!'}
                 </span>
-                <span className="font-dot font-bold">{nextBadgeProgress}%</span>
+                <span className="tabular-nums font-bold">{nextBadgeProgress}%</span>
               </div>
             </div>
           </div>

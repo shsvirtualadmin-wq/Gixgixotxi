@@ -113,13 +113,14 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
   const hasFrame = Boolean(frame && frame !== 'none' && frame !== '' && getCosmeticById(frame));
 
   if (hasFrame) {
-    const frameSize = Math.round(size * 1.28);
     return (
-      <div className={`inline-flex items-center justify-center shrink-0 ${className}`}>
-        <AvatarFrame itemId={frame!} size={frameSize} forceStatic={forceStatic}>
+      <div
+        className={`inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`}
+        style={{ width: size, height: size }}
+      >
+        <AvatarFrame itemId={frame!} size={size} forceStatic={forceStatic}>
           <div
-            className="rounded-full overflow-hidden flex items-center justify-center"
-            style={{ width: size, height: size }}
+            className="w-full h-full rounded-full overflow-hidden flex items-center justify-center"
           >
             {innerAvatar}
           </div>

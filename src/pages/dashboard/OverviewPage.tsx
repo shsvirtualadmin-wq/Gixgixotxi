@@ -47,7 +47,17 @@ export function OverviewPage() {
 
   const effectivePlan = useEffectivePlan();
   const isPro = effectivePlan.isUnlimited;
-  const streak = Number(profile?.streak ?? 0);
+  const rawStreak = Number(profile?.streak ?? 0);
+  const streak = Number.isFinite(rawStreak) && rawStreak >= 0 ? Math.floor(rawStreak) : 0;
+  const rawQuestionsSolved = Number(
+    (profile as { stats?: { mcqs?: unknown } } | null)?.stats?.mcqs ??
+      profile?.totalQuestionsSolved ??
+      0
+  );
+  const questionsSolved =
+    Number.isFinite(rawQuestionsSolved) && rawQuestionsSolved >= 0
+      ? Math.floor(rawQuestionsSolved)
+      : 0;
   const rawName =
     profile?.displayName ||
     profile?.name ||
@@ -221,9 +231,9 @@ export function OverviewPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-full min-w-0 overflow-x-hidden pb-12">
+    <div className="flex flex-col gap-6 w-full max-w-full min-w-0 overflow-x-hidden pb-[calc(96px+env(safe-area-inset-bottom,0px))]">
       {/* ── Greeting Header ────────────────────────────────────────── */}
-      <div className="flex items-center justify-between flex-wrap gap-4 min-w-0">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3.5 sm:gap-4 min-w-0 w-full">
         <div className="min-w-0">
           <span className="badge-pill mb-2">Student Home</span>
           <h1
@@ -243,7 +253,7 @@ export function OverviewPage() {
             const el = document.getElementById('complete-test-card');
             if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }}
-          className="btn-red group cursor-pointer inline-flex items-center gap-2"
+          className="btn-red group cursor-pointer w-full sm:w-auto inline-flex items-center justify-center gap-2 shrink-0"
           style={{ height: '48px', padding: '12px 22px' }}
         >
           <span>Go to Complete Test</span>
@@ -289,8 +299,15 @@ export function OverviewPage() {
           </div>
           <div>
             <div className="flex items-baseline gap-2 mb-2">
-              <span className="font-doto text-3xl font-bold text-[var(--text)]">
-                {(profile as any)?.stats?.mcqs || profile?.totalQuestionsSolved || 0}
+              <span
+                className="tabular-nums text-3xl font-bold text-[var(--text)]"
+                style={{
+                  fontFamily:
+                    "var(--font-heading), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {String(questionsSolved)}
               </span>
               <span className="text-xs text-[var(--muted)]">MCQs</span>
             </div>
@@ -308,8 +325,15 @@ export function OverviewPage() {
           </div>
           <div>
             <div className="flex items-baseline gap-2 mb-2">
-              <span className="font-doto text-3xl font-bold text-[var(--text)]">
-                {streak}
+              <span
+                className="tabular-nums text-3xl font-bold text-[var(--text)]"
+                style={{
+                  fontFamily:
+                    "var(--font-heading), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {String(streak)}
               </span>
               <span className="text-xs text-[var(--muted)]">Days</span>
             </div>
@@ -570,7 +594,7 @@ export function OverviewPage() {
               type="button"
               onClick={() => handleStartCompleteTest()}
               disabled={launching}
-              className="btn-red px-6 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-md min-w-[200px]"
+              className="btn-red w-full sm:w-auto px-6 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-md sm:min-w-[200px]"
               style={{ height: '48px' }}
             >
               {launching ? (

@@ -62,7 +62,7 @@ export function DashboardShell() {
         className={`flex-1 w-full max-w-5xl min-w-0 box-border overflow-x-hidden mx-auto flex flex-col transition-all duration-200 ${
           isProfileRoute
             ? 'px-0 sm:px-4 md:px-6 pt-0 sm:pt-4 pb-[calc(24px+env(safe-area-inset-bottom,0px))]'
-            : 'px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-[calc(96px+env(safe-area-inset-bottom,0px))]'
+            : 'px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-[calc(112px+env(safe-area-inset-bottom,0px))]'
         }`}
       >
         <DashboardErrorBoundary fallbackTitle="Cockpit Section Error">

@@ -224,11 +224,22 @@ const AvatarFrameInner: React.FC<BaseCosmeticProps> = ({
   const exists = Boolean(itemId && itemId !== 'none' && getCosmeticById(itemId));
 
   if (!exists) {
-    return <>{children}</>;
+    return (
+      <div
+        className={`inline-flex items-center justify-center shrink-0 overflow-hidden rounded-full ${className}`}
+        style={{ width: size, height: size }}
+      >
+        {children}
+      </div>
+    );
   }
 
   return (
-    <div ref={containerRef} className="inline-flex items-center justify-center">
+    <div
+      ref={containerRef}
+      className="inline-flex items-center justify-center shrink-0 overflow-hidden relative"
+      style={{ width: size, height: size }}
+    >
       <FrameRenderer
         itemId={itemId}
         size={size}

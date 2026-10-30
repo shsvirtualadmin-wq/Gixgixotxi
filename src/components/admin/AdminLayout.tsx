@@ -170,9 +170,24 @@ export function AdminLayout() {
       </aside>
 
       {/* ─── MOBILE TOP BAR ─────────────────────────────────────────────────── */}
-      <header className="md:hidden sticky top-0 z-30 h-16 bg-[var(--nav-bg)] allow-backdrop-blur border-b border-[var(--glass-border)] px-4 flex items-center">
-        <Link to="/admin" className="flex items-center" aria-label="Boardly Admin">
-          <Logo size="admin" />
+      <header className="md:hidden sticky top-0 z-30 h-14 w-full max-w-full min-w-0 box-border bg-[var(--nav-bg)] allow-backdrop-blur border-b border-[var(--glass-border)] px-3.5 flex items-center justify-between gap-2 overflow-hidden">
+        <div className="flex items-center gap-2 min-w-0 shrink">
+          <Link to="/admin" className="flex items-center shrink-0" aria-label="Boardly Admin">
+            <Logo size="admin" className="!h-[28px] min-[400px]:!h-[30px] w-auto shrink-0" />
+          </Link>
+          <span className="badge-pill-red text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap">
+            PRO
+          </span>
+          <span className="hidden min-[400px]:inline-flex items-center text-[11px] font-semibold text-[var(--red)] truncate">
+            Admin Portal
+          </span>
+        </div>
+        <Link
+          to="/dashboard"
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full glass-pill text-[11px] font-heading font-semibold text-[var(--text-muted)] hover:text-[var(--text)] shrink-0 whitespace-nowrap"
+        >
+          <ExternalLink size={12} className="shrink-0" />
+          <span>Student Home</span>
         </Link>
       </header>
 

@@ -53,48 +53,65 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   const cleanName = sanitizeStudentDisplayName(profile?.displayName || user?.displayName, profile?.shortId || user?.uid);
 
   return (
-    <header className="sticky top-0 z-[50] w-full px-3 sm:px-6 pt-3 pb-1 shrink-0 pointer-events-none">
+    <header className="sticky top-0 z-[50] w-full max-w-full px-3 sm:px-6 pt-3 pb-1 shrink-0 pointer-events-none box-border">
       <div
-        className="max-w-5xl mx-auto h-14 sm:h-16 px-3.5 sm:px-5 rounded-full allow-backdrop-blur border flex items-center justify-between pointer-events-auto transition-all duration-200"
+        className="w-full max-w-5xl min-w-0 box-border mx-auto h-14 sm:h-16 px-3 sm:px-5 rounded-full allow-backdrop-blur border flex items-center justify-between gap-2 pointer-events-auto transition-all duration-200"
         style={{
           backgroundColor: 'var(--nav-bg)',
           borderColor: 'var(--glass-border)',
           boxShadow: 'var(--glass-card-shadow)',
         }}
       >
-        {/* Left side: Brand logo + Pro badge */}
-        <div className="flex items-center gap-2.5 min-w-0">
-          <Link to="/dashboard" className="flex items-center shrink-0" aria-label="Boardly Dashboard">
-            <Logo size="navbar" />
-          </Link>
+        {/* Left side: Brand logo, PRO badge, and Admin Portal label in one non-overlapping group */}
+        <div className="flex items-center gap-2 min-w-0 shrink">
+          <div className="flex flex-col justify-center min-w-0 shrink-0">
+            <Link to="/dashboard" className="flex items-center shrink-0" aria-label="Boardly Dashboard">
+              <Logo
+                size="navbar"
+                className="!h-[26px] min-[400px]:!h-[30px] sm:!h-[40px] md:!h-[44px] w-auto shrink-0"
+              />
+            </Link>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => navigate('/admin')}
+                className="hidden min-[400px]:inline-flex sm:hidden items-center text-[9px] leading-none font-bold text-[var(--red)] hover:underline tracking-tight mt-0.5 text-left cursor-pointer w-fit"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                Admin Portal
+              </button>
+            )}
+          </div>
+
           <span
-            className={`hidden xs:inline-flex items-center text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full shrink-0 ${
+            className={`inline-flex items-center text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 rounded-full shrink-0 whitespace-nowrap ${
               isPro ? 'badge-pill-red' : 'glass-pill text-[var(--text-muted)]'
             }`}
           >
             {isPro ? 'PRO' : 'FREE'}
           </span>
-        </div>
 
-        {/* Right side: Kobans wallet chip, notification bell, theme toggle, upgrade button, and Avatar Menu */}
-        <div className="flex items-center gap-2 sm:gap-2.5 ml-auto">
-          {/* Superadmin button */}
+          {/* Superadmin button on sm+ in the same non-overlapping left group */}
           {isAdmin && (
             <button
+              type="button"
               onClick={() => navigate('/admin')}
-              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold glass-pill border border-[var(--red)]/50 text-[var(--red)] hover:bg-[var(--red)] hover:text-white transition-colors cursor-pointer"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold glass-pill border border-[var(--red)]/50 text-[var(--red)] hover:bg-[var(--red)] hover:text-white transition-colors cursor-pointer shrink-0 whitespace-nowrap"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
-              <Shield size={13} />
+              <Shield size={13} className="shrink-0" />
               <span>Admin Portal</span>
             </button>
           )}
+        </div>
 
+        {/* Right side: Kobans wallet chip, notification bell, theme toggle, upgrade button, and Avatar Menu */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 ml-auto">
           {/* Upgrade pill for free students */}
           {!isPro && !isAdmin && (
             <Link
               to="/dashboard/plans"
-              className="hidden sm:inline-flex btn-primary text-xs py-1.5 px-3.5 rounded-full items-center"
+              className="hidden md:inline-flex btn-primary text-xs py-1.5 px-3.5 rounded-full items-center shrink-0 whitespace-nowrap"
               style={{ height: '34px', fontSize: '12px' }}
             >
               Upgrade to Pro
@@ -105,7 +122,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
           <Link
             to="/store"
             title="Boardly Store & Kobans Wallet"
-            className="flex items-center transition-transform hover:scale-105"
+            className="flex items-center shrink-0 transition-transform hover:scale-105"
           >
             <KobanChip balance={kobanBalance} loading={walletLoading} />
           </Link>
@@ -115,11 +132,11 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
             to="/dashboard/notifications"
             aria-label="Notifications"
             title="Notifications"
-            className="relative w-9 h-9 rounded-full glass-pill flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+            className="relative w-8 h-8 sm:w-9 sm:h-9 rounded-full glass-pill flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer shrink-0"
           >
             <Bell size={16} />
             {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-[#D71921] text-white text-[9px] font-bold flex items-center justify-center leading-none border border-black/30 shadow-sm">
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-[#D71921] text-white text-[9px] font-bold flex items-center justify-center leading-none border border-black/30 shadow-sm tabular-nums">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
@@ -127,20 +144,22 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
 
           {/* Theme Toggle */}
           <button
+            type="button"
             onClick={toggleTheme}
             aria-label="Toggle theme"
             title="Toggle theme"
-            className="w-9 h-9 rounded-full glass-pill flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full glass-pill flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer shrink-0"
           >
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
 
           {/* Avatar Dropdown Menu */}
-          <div className="relative" ref={menuRef}>
+          <div className="relative shrink-0" ref={menuRef}>
             <button
+              type="button"
               onClick={() => setMenuOpen(!menuOpen)}
               aria-label="User profile menu"
-              className="flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-full overflow-hidden shrink-0 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
             >
               <AvatarFrame itemId={equipped?.frame || 'none'} size={40}>
                 <AvatarPicture
@@ -148,7 +167,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
                   avatarKey={profile?.avatarKey}
                   variant={profile?.avatarVariant}
                   seed={user?.uid}
-                  size={32}
+                  size={28}
                 />
               </AvatarFrame>
             </button>
@@ -156,7 +175,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
             {/* Avatar Dropdown Menu */}
             {menuOpen && (
               <div
-                className="absolute right-0 mt-2.5 w-64 rounded-[24px] glass-card allow-backdrop-blur p-2 z-50 flex flex-col gap-1"
+                className="absolute right-0 mt-2.5 w-64 max-w-[calc(100vw-24px)] rounded-[24px] glass-card allow-backdrop-blur p-2 z-50 flex flex-col gap-1"
               >
                 {/* User summary header (No Email) */}
                 <div
