@@ -71,8 +71,8 @@ export function RecentAttempts({ uid }: Props) {
   return (
     <div className="flex flex-col gap-2.5">
       {(attempts || []).map((a, idx) => {
-        const score = Number(a?.score ?? 0);
-        const total = Number(a?.totalQuestions ?? a?.total ?? 10);
+        const score = Number.isFinite(Number(a?.score)) ? Math.max(0, Number(a?.score)) : 0;
+        const total = Number.isFinite(Number(a?.totalQuestions ?? a?.total)) ? Math.max(1, Number(a?.totalQuestions ?? a?.total)) : 10;
         const pct = total > 0 ? Math.round((score / total) * 100) : 0;
 
         const rawStatus = String(a?.status || 'completed').toLowerCase();
@@ -102,10 +102,10 @@ export function RecentAttempts({ uid }: Props) {
             </div>
 
             <div className="text-right shrink-0">
-              <div className="font-doto font-bold text-sm text-[var(--text)]">
+              <div className="tabular-nums font-bold text-sm text-[var(--text)]">
                 {score} / {total}
               </div>
-              <div className="font-doto text-[11px] text-[var(--text-muted)]">
+              <div className="tabular-nums text-[11px] text-[var(--text-muted)]">
                 {pct}%
               </div>
             </div>

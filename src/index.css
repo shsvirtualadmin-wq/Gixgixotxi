@@ -51,6 +51,15 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: 'DotoSafeDigits';
+  src: local('Space Grotesk'), local('Inter'), local('Segoe UI'), local('Roboto'), local('Helvetica Neue'), local('Arial'), local('sans-serif');
+  unicode-range: U+0030-0039;
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ===== SEMANTIC DESIGN TOKENS (SINGLE SOURCE OF TRUTH) ===== */
 :root {
   /* LIGHT THEME (Default) */
@@ -163,7 +172,7 @@
   --space-96: 96px;
 
   /* Fonts */
-  --font-dot: 'Doto', monospace;
+  --font-dot: 'DotoSafeDigits', 'Doto', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-heading: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 

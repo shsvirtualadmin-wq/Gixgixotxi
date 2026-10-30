@@ -239,11 +239,12 @@ export const KobanChip: React.FC<KobanChipProps> = ({
     requestAnimationFrame(animate);
   }, [balance]);
 
+  const safeBalance = Number.isFinite(Number(displayBalance)) ? Math.max(0, Math.floor(Number(displayBalance))) : 0;
   const content = (
     <>
       <KobanIcon size={18} />
-      <span className="font-mono text-xs font-bold text-[#FFD66B]">
-        {loading ? '…' : displayBalance.toLocaleString('en-US')}
+      <span className="font-mono tabular-nums text-xs font-bold text-[#FFD66B]">
+        {loading ? '0' : safeBalance.toLocaleString('en-US')}
       </span>
     </>
   );

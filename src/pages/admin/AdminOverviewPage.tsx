@@ -179,11 +179,11 @@ export function AdminOverviewPage() {
             </span>
             <Users size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {loading ? (
+          {loading && !stats ? (
             <Skeleton height={40} width="60%" />
           ) : (
-            <p className="font-dot text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {(stats?.totalUsers ?? 0).toLocaleString()}
+            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {(Number.isFinite(Number(stats?.totalUsers)) ? Number(stats?.totalUsers) : 0).toLocaleString()}
             </p>
           )}
           <Link
@@ -203,11 +203,11 @@ export function AdminOverviewPage() {
             </span>
             <Database size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {loading ? (
+          {loading && !stats ? (
             <Skeleton height={40} width="60%" />
           ) : (
-            <p className="font-dot text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {(stats?.totalQuestions ?? 0).toLocaleString()}
+            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {(Number.isFinite(Number(stats?.totalQuestions)) ? Number(stats?.totalQuestions) : 0).toLocaleString()}
             </p>
           )}
           <Link
@@ -227,11 +227,11 @@ export function AdminOverviewPage() {
             </span>
             <Activity size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {loading ? (
+          {loading && !stats ? (
             <Skeleton height={40} width="60%" />
           ) : (
-            <p className="font-dot text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {(stats?.totalAttempts ?? 0).toLocaleString()}
+            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {(Number.isFinite(Number(stats?.totalAttempts)) ? Number(stats?.totalAttempts) : 0).toLocaleString()}
             </p>
           )}
           <span className="font-heading text-[12px] text-[var(--muted)] mt-auto pt-1">
@@ -247,11 +247,14 @@ export function AdminOverviewPage() {
             </span>
             <Award size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {loading ? (
+          {loading && !stats ? (
             <Skeleton height={40} width="60%" />
           ) : (
-            <p className="font-dot text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {((stats?.pendingCaptains ?? 0) + (stats?.pendingCrew ?? 0)).toLocaleString()}
+            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {(
+                (Number.isFinite(Number(stats?.pendingCaptains)) ? Number(stats?.pendingCaptains) : 0) +
+                (Number.isFinite(Number(stats?.pendingCrew)) ? Number(stats?.pendingCrew) : 0)
+              ).toLocaleString()}
             </p>
           )}
           <Link
@@ -271,11 +274,11 @@ export function AdminOverviewPage() {
             </span>
             <CreditCard size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {loading ? (
+          {loading && !stats ? (
             <Skeleton height={40} width="60%" />
           ) : (
-            <p className="font-dot text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {(stats?.pendingPayments ?? 0).toLocaleString()}
+            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {(Number.isFinite(Number(stats?.pendingPayments)) ? Number(stats?.pendingPayments) : 0).toLocaleString()}
             </p>
           )}
           <Link
@@ -295,11 +298,11 @@ export function AdminOverviewPage() {
             </span>
             <FileCheck2 size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {loading ? (
+          {loading && !stats ? (
             <Skeleton height={40} width="60%" />
           ) : (
-            <p className="font-dot text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {(stats?.pendingReviews ?? 0).toLocaleString()}
+            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {(Number.isFinite(Number(stats?.pendingReviews)) ? Number(stats?.pendingReviews) : 0).toLocaleString()}
             </p>
           )}
           <Link
@@ -336,7 +339,8 @@ export function AdminOverviewPage() {
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
           {CORE_SUBJECTS.map((subj) => {
-            const count = stats?.subjectCounts?.[subj] ?? stats?.subjectCounts?.[subj.toLowerCase()] ?? 0;
+            const rawCount = stats?.subjectCounts?.[subj] ?? stats?.subjectCounts?.[subj.toLowerCase()] ?? 0;
+            const count = Number.isFinite(Number(rawCount)) ? Number(rawCount) : 0;
             return (
               <div
                 key={subj}
@@ -345,7 +349,7 @@ export function AdminOverviewPage() {
                 <span className="font-heading text-[12px] text-[var(--muted)] truncate">
                   {subj}
                 </span>
-                <span className="font-dot text-[22px] font-bold text-[var(--text)] mt-2">
+                <span className="tabular-nums text-[22px] font-bold text-[var(--text)] mt-2">
                   {loading && !stats ? (
                     <span className="inline-block w-8 h-5 rounded bg-[var(--card)] animate-pulse" />
                   ) : (

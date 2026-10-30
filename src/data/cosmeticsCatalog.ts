@@ -1564,9 +1564,21 @@ export const COSMETICS_MAP = new Map<string, CosmeticItem>(
   COSMETICS_CATALOG.map((item) => [item.id, item])
 );
 
+const LEGACY_COSMETIC_ID_ALIASES: Record<string, string> = {
+  frame_torii_gate: 'frame-stone-torii',
+  'frame-torii-gate': 'frame-stone-torii',
+  frame_hanko_seal: 'frame-talisman-seal',
+  frame_sakura_ring: 'frame-sakura-blossom',
+  frame_neon_katana: 'frame-neon-cyber',
+  frame_ronin_crest: 'frame-bronze-ronin',
+  frame_shogun_gold: 'frame-imperial-laurel',
+  frame_celestial_dragon: 'frame-celestial-orbit',
+};
+
 export function getCosmeticById(id?: string | null): CosmeticItem | undefined {
   if (!id || id === 'none') return undefined;
-  return COSMETICS_MAP.get(id);
+  const resolvedId = LEGACY_COSMETIC_ID_ALIASES[id] || id;
+  return COSMETICS_MAP.get(resolvedId);
 }
 
 export function getCosmeticsByType(type: CosmeticType): CosmeticItem[] {

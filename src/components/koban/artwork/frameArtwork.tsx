@@ -13,6 +13,17 @@ interface FrameProps {
  * Static items have ZERO movement or shimmer anywhere.
  * Animated items animate using transform and opacity only.
  */
+const LEGACY_FRAME_ID_ALIASES: Record<string, string> = {
+  frame_torii_gate: 'frame-stone-torii',
+  'frame-torii-gate': 'frame-stone-torii',
+  frame_hanko_seal: 'frame-talisman-seal',
+  frame_sakura_ring: 'frame-sakura-blossom',
+  frame_neon_katana: 'frame-neon-cyber',
+  frame_ronin_crest: 'frame-bronze-ronin',
+  frame_shogun_gold: 'frame-imperial-laurel',
+  frame_celestial_dragon: 'frame-celestial-orbit',
+};
+
 export const FrameRenderer: React.FC<FrameProps> = ({
   itemId,
   size = 56,
@@ -20,6 +31,7 @@ export const FrameRenderer: React.FC<FrameProps> = ({
   children,
   className = '',
 }) => {
+  const normalizedItemId = LEGACY_FRAME_ID_ALIASES[itemId] || itemId;
   const innerSize = Math.max(16, Math.round(size * 0.66));
   const innerContent = (
     <div
@@ -30,7 +42,7 @@ export const FrameRenderer: React.FC<FrameProps> = ({
     </div>
   );
 
-  switch (itemId) {
+  switch (normalizedItemId) {
     // ─── BATCH 1: 8 STATIC FRAMES (Items 1-8) ──────────────────────────────
     case 'frame-bronze-ronin':
       // Hammered bronze octagon with dual katana tsuba discs, brass studs and aged verdigris bevel
