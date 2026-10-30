@@ -308,6 +308,24 @@ export function parseAmbassadorQuestionsCsv(csvText: string): {
   return { questions, errors };
 }
 
+function formatQuestionPayload(q: AmbassadorTestQuestion, defaultTopic = 'General') {
+  const opts = Array.isArray(q.options) ? q.options : [];
+  const fourOptions: [string, string, string, string] = [
+    String(opts[0] ?? ''),
+    String(opts[1] ?? ''),
+    String(opts[2] ?? ''),
+    String(opts[3] ?? ''),
+  ];
+  return {
+    question: String(q.question || '').trim(),
+    options: fourOptions,
+    correctIndex: Number(q.correctIndex ?? 0),
+    explanation: String(q.explanation || ''),
+    topic: String(q.topic || defaultTopic || 'General'),
+    difficulty: (q.difficulty || 'medium') as 'easy' | 'medium' | 'hard',
+  };
+}
+
 export async function createAmbassadorTest(params: {
   title: string;
   description?: string;
@@ -324,27 +342,22 @@ export async function createAmbassadorTest(params: {
   const visibility =
     params.visibility || (params.isPublic === false ? 'private' : 'public');
   const status = params.status || 'published';
+  const subject = params.subject.trim();
+  const formattedQuestions = params.questions
+    .slice(0, 200)
+    .map((q) => formatQuestionPayload(q, subject));
 
   const res = await api.post<{ id: string }>(
     '/api/tests',
     {
       title: params.title.trim(),
+      subject,
       description: (params.description || '').trim(),
-      subject: params.subject.trim(),
-      durationMinutes: params.durationMinutes || Math.max(10, params.questions.length * 1.5),
       visibility,
       status,
-      captainName: params.captainName,
-      crewName: params.crewName,
-      questions: params.questions.map((q, idx) => ({
-        position: idx,
-        question: q.question,
-        options: q.options,
-        correctIndex: q.correctIndex ?? 0,
-        explanation: q.explanation || '',
-        topic: q.topic || params.subject,
-        difficulty: q.difficulty || 'medium',
-      })),
+      durationMinutes:
+        params.durationMinutes || Math.max(10, Math.round(formattedQuestions.length * 1.5)),
+      questions: formattedQuestions,
     },
     { requireAuth: true }
   );
@@ -364,21 +377,21 @@ export async function updateAmbassadorTest(
     questions?: AmbassadorTestQuestion[];
   }
 ): Promise<void> {
+  const defaultTopic = params.subject || 'General';
   await api.put(
     `/api/tests/${encodeURIComponent(testId)}`,
     {
-      ...params,
+      title: params.title,
+      subject: params.subject,
+      description: params.description,
+      visibility: params.visibility,
+      status: params.status,
+      durationMinutes: params.durationMinutes,
       ...(params.questions
         ? {
-            questions: params.questions.map((q, idx) => ({
-              position: idx,
-              question: q.question,
-              options: q.options,
-              correctIndex: q.correctIndex ?? 0,
-              explanation: q.explanation || '',
-              topic: q.topic || params.subject || 'General',
-              difficulty: q.difficulty || 'medium',
-            })),
+            questions: params.questions
+              .slice(0, 200)
+              .map((q) => formatQuestionPayload(q, defaultTopic)),
           }
         : {}),
     },
@@ -392,7 +405,10 @@ export async function togglePublishAmbassadorTest(
 ): Promise<{ status: string; visibility: string }> {
   return api.post(
     `/api/tests/${encodeURIComponent(testId)}/publish`,
-    options || {},
+    {
+      status: options?.status || 'published',
+      ...(options?.visibility ? { visibility: options.visibility } : {}),
+    },
     { requireAuth: true }
   );
 }
@@ -400,21 +416,13 @@ export async function togglePublishAmbassadorTest(
 export async function bulkInsertTestQuestions(
   testId: string,
   questions: AmbassadorTestQuestion[],
-  replace = false
+  replace = true
 ): Promise<{ inserted: number; questionCount: number }> {
   return api.post(
     `/api/tests/${encodeURIComponent(testId)}/questions`,
     {
+      questions: questions.slice(0, 200).map((q) => formatQuestionPayload(q, 'General')),
       replace,
-      questions: questions.map((q, idx) => ({
-        position: idx,
-        question: q.question,
-        options: q.options,
-        correctIndex: q.correctIndex ?? 0,
-        explanation: q.explanation || '',
-        topic: q.topic || 'General',
-        difficulty: q.difficulty || 'medium',
-      })),
     },
     { requireAuth: true }
   );

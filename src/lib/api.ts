@@ -1,14 +1,11 @@
 import { auth } from './firebase';
 
 /**
- * Single Worker API URL configuration variable.
- * Set VITE_WORKER_API_URL in your environment (or edit the fallback below)
- * to point to your deployed Cloudflare Worker (e.g. "https://boardly-d1-api-worker.<subdomain>.workers.dev").
- * When empty, requests use relative `/api/...` routes.
+ * Single Cloudflare Worker API base URL constant (no trailing slash).
+ * Every API request uses `${API_BASE}/api/...`.
  */
-export const WORKER_API_URL: string = (
-  (import.meta as any).env?.VITE_WORKER_API_URL || ''
-).replace(/\/+$/, '');
+export const API_BASE = 'https://api.boardly.cfd';
+export const WORKER_API_URL = API_BASE;
 
 export interface ApiError extends Error {
   status?: number;
@@ -19,7 +16,7 @@ export type ToastKind = 'error' | 'success' | 'info';
 
 /**
  * Lightweight, zero-dependency DOM toast notification so real API error
- * messages are always shown clearly without using `window.alert`.
+ * messages ({ error, code }) are always shown clearly in the UI.
  */
 export function showApiToast(message: string, kind: ToastKind = 'error'): void {
   if (typeof document === 'undefined' || !message) return;
@@ -63,19 +60,30 @@ export function showApiToast(message: string, kind: ToastKind = 'error'): void {
     if (toast.parentNode) {
       toast.remove();
     }
-  }, 4500);
+  }, 5000);
 }
 
+/**
+ * Builds the full Cloudflare Worker URL (`https://api.boardly.cfd/api/...`)
+ * with no trailing-slash or double-slash issues.
+ */
 export function buildWorkerUrl(path: string): string {
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  if (!WORKER_API_URL) return normalizedPath;
-  return `${WORKER_API_URL}${normalizedPath}`;
+  const cleanPath = String(path || '').trim();
+  if (/^https?:\/\//i.test(cleanPath)) {
+    return cleanPath;
+  }
+  const normalizedPath = cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`;
+  const apiPath = normalizedPath.startsWith('/api/') || normalizedPath === '/api'
+    ? normalizedPath
+    : `/api${normalizedPath}`;
+  return `${API_BASE}${apiPath}`;
 }
 
 export async function getBearerToken(forceRefresh = false): Promise<string | null> {
   try {
-    if (auth.currentUser) {
-      return await auth.currentUser.getIdToken(forceRefresh);
+    const user = auth.currentUser;
+    if (user) {
+      return await user.getIdToken(forceRefresh);
     }
   } catch {
     // ignore token lookup error
@@ -91,7 +99,8 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
 
 /**
  * Shared Cloudflare Worker REST API helper.
- * Automatically attaches `Authorization: Bearer <token>` and handles JSON errors.
+ * Sends `Authorization: Bearer <Firebase ID token>` and `Content-Type: application/json`
+ * on every request, and surfaces `{ error, code }` from the response body on failure.
  */
 export async function apiRequest<T = any>(
   path: string,
@@ -107,14 +116,15 @@ export async function apiRequest<T = any>(
 
   const token = await getBearerToken(false);
   if (requireAuth && !token) {
-    const err: ApiError = new Error('Please sign in to continue.');
+    const err: ApiError = new Error('Authentication required. Please sign in.');
     err.status = 401;
     err.code = 'UNAUTHENTICATED';
-    if (!silentErrorToast) showApiToast(err.message, 'error');
+    if (!silentErrorToast) showApiToast(`${err.message} (${err.code})`, 'error');
     throw err;
   }
 
   const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
     ...(customHeaders as Record<string, string>),
   };
 
@@ -132,7 +142,6 @@ export async function apiRequest<T = any>(
     ) {
       serializedBody = body as BodyInit;
     } else {
-      headers['Content-Type'] = 'application/json';
       serializedBody = JSON.stringify(body);
     }
   }
@@ -146,23 +155,37 @@ export async function apiRequest<T = any>(
       body: serializedBody,
     });
   } catch (networkErr: any) {
-    const msg = networkErr?.message || 'Network error while contacting the server.';
+    const msg = networkErr?.message || 'Network error while contacting https://api.boardly.cfd.';
     if (!silentErrorToast) showApiToast(msg, 'error');
     throw networkErr;
   }
 
-  const data = await response.json().catch(() => ({}));
+  const rawText = await response.text().catch(() => '');
+  let data: any = {};
+  if (rawText) {
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = { error: rawText.slice(0, 300) };
+    }
+  }
 
   if (!response.ok) {
-    const message =
-      data?.error ||
-      data?.message ||
-      `Request failed (${response.status})`;
-    const err: ApiError = new Error(message);
+    const serverError =
+      typeof data?.error === 'string' && data.error.trim()
+        ? data.error.trim()
+        : typeof data?.message === 'string' && data.message.trim()
+        ? data.message.trim()
+        : `HTTP ${response.status} ${response.statusText || ''}`.trim();
+    const serverCode =
+      typeof data?.code === 'string' && data.code.trim() ? data.code.trim() : undefined;
+
+    const fullMessage = serverCode ? `${serverError} [${serverCode}]` : serverError;
+    const err: ApiError = new Error(fullMessage);
     err.status = response.status;
-    err.code = data?.code || `HTTP_${response.status}`;
+    err.code = serverCode || `HTTP_${response.status}`;
     if (!silentErrorToast) {
-      showApiToast(message, 'error');
+      showApiToast(fullMessage, 'error');
     }
     throw err;
   }

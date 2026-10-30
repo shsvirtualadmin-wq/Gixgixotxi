@@ -89,13 +89,22 @@ export function AmbassadorDashboardPage() {
   const [editingTestId, setEditingTestId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [subject, setSubject] = useState('Physics');
-  const [targetQuestionCount, setTargetQuestionCount] = useState<number>(20);
+  const [targetQuestionCount, setTargetQuestionCount] = useState<string>('20');
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [csvText, setCsvText] = useState('');
   const [parsedQuestions, setParsedQuestions] = useState<AmbassadorTestQuestion[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [savingTest, setSavingTest] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const clampQuestionCount = (raw: string): number => {
+    const trimmed = raw.trim();
+    if (!trimmed) return 20;
+    const parsed = parseInt(trimmed, 10);
+    if (!Number.isFinite(parsed)) return 20;
+    return Math.max(1, Math.min(200, parsed));
+  };
 
   // Delete confirmation modal state
   const [deleteConfirmTest, setDeleteConfirmTest] = useState<AmbassadorCustomTest | null>(null);
@@ -174,7 +183,7 @@ export function AmbassadorDashboardPage() {
     setParsedQuestions(questions);
     setParseErrors(errors);
     if (questions.length > 0) {
-      setTargetQuestionCount(questions.length);
+      setTargetQuestionCount(String(Math.max(1, Math.min(200, questions.length))));
     }
   }, [csvText, editingTestId]);
 
@@ -198,11 +207,12 @@ export function AmbassadorDashboardPage() {
     setEditingTestId(null);
     setTitle('');
     setSubject('Physics');
-    setTargetQuestionCount(20);
+    setTargetQuestionCount('20');
     setVisibility('public');
     setCsvText('');
     setParsedQuestions([]);
     setParseErrors([]);
+    setSubmitError(null);
     setModalOpen(true);
   };
 
@@ -210,10 +220,11 @@ export function AmbassadorDashboardPage() {
     setEditingTestId(testItem.id);
     setTitle(testItem.title);
     setSubject(testItem.subject);
-    setTargetQuestionCount(testItem.questionCount || 20);
+    setTargetQuestionCount(String(Math.max(1, Math.min(200, testItem.questionCount || 20))));
     setVisibility(testItem.visibility || 'public');
     setCsvText('');
     setParseErrors([]);
+    setSubmitError(null);
     setParsedQuestions(testItem.questions || []);
     setModalOpen(true);
 
@@ -221,7 +232,7 @@ export function AmbassadorDashboardPage() {
       const fullTest = await getAmbassadorTestById(testItem.id, true);
       if (fullTest && fullTest.questions.length > 0) {
         setParsedQuestions(fullTest.questions);
-        setTargetQuestionCount(fullTest.questions.length);
+        setTargetQuestionCount(String(Math.max(1, Math.min(200, fullTest.questions.length))));
       }
     } catch {
       // keep existing metadata
@@ -252,19 +263,27 @@ export function AmbassadorDashboardPage() {
   const handleSaveAndPublishTest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    setSubmitError(null);
 
     if (!title.trim()) {
-      showApiToast('Please enter a test title.', 'error');
+      const msg = 'Please enter a test title.';
+      setSubmitError(msg);
+      showApiToast(msg, 'error');
       return;
     }
 
+    const clampedCount = clampQuestionCount(targetQuestionCount);
+    setTargetQuestionCount(String(clampedCount));
+
     const questionsToSave =
-      targetQuestionCount > 0 && parsedQuestions.length > targetQuestionCount
-        ? parsedQuestions.slice(0, targetQuestionCount)
-        : parsedQuestions;
+      parsedQuestions.length > clampedCount
+        ? parsedQuestions.slice(0, clampedCount)
+        : parsedQuestions.slice(0, 200);
 
     if (questionsToSave.length === 0) {
-      showApiToast('Please upload or paste at least 1 valid question.', 'error');
+      const msg = 'Please upload or paste at least 1 valid question.';
+      setSubmitError(msg);
+      showApiToast(msg, 'error');
       return;
     }
 
@@ -299,7 +318,12 @@ export function AmbassadorDashboardPage() {
       setModalOpen(false);
       await loadCaptainWorkspace();
     } catch (err: any) {
-      showApiToast(err?.message || 'Failed to save test.', 'error');
+      const errorMsg =
+        err?.code && !String(err?.message || '').includes(err.code)
+          ? `${err?.message || 'Request failed'} (${err.code})`
+          : err?.message || 'Failed to save test.';
+      setSubmitError(errorMsg);
+      showApiToast(errorMsg, 'error');
     } finally {
       setSavingTest(false);
     }
@@ -1069,12 +1093,13 @@ export function AmbassadorDashboardPage() {
                     Number of Questions
                   </label>
                   <input
-                    type="number"
-                    min={1}
-                    max={200}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={targetQuestionCount}
-                    onChange={(e) =>
-                      setTargetQuestionCount(Math.max(1, Math.min(200, Number(e.target.value) || 1)))
+                    onChange={(e) => setTargetQuestionCount(e.target.value.replace(/\D/g, ''))}
+                    onBlur={() =>
+                      setTargetQuestionCount(String(clampQuestionCount(targetQuestionCount)))
                     }
                     className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] font-sans tabular-nums focus:outline-none focus:border-[#D71921]"
                   />
@@ -1180,6 +1205,13 @@ export function AmbassadorDashboardPage() {
                     {parseErrors.slice(0, 5).map((err, i) => (
                       <p key={i}>• {err}</p>
                     ))}
+                  </div>
+                )}
+
+                {submitError && (
+                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 flex items-start gap-2">
+                    <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                    <span className="break-words">{submitError}</span>
                   </div>
                 )}
               </div>
