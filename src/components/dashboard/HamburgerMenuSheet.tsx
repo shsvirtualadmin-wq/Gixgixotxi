@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Compass,
-  Bell,
   ShoppingBag,
   Award,
-  User,
+  Trophy,
   Sparkles,
   Settings,
   Shield,
@@ -14,7 +13,8 @@ import {
   Monitor,
   LogOut,
   ChevronRight,
-  AlertCircle,
+  Coins,
+  User,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -22,10 +22,8 @@ import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useWallet } from '@/hooks/useWallet';
 import { useTheme, type ThemeSetting } from '@/hooks/useTheme';
-import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
-import { KobanChip } from '@/components/koban/KobanIcon';
 import { AvatarPicture, AvatarFrame } from '@/components/koban/CosmeticRenderers';
-import { RoleBadge } from '@/components/ui/RoleBadge';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
 export interface HamburgerMenuSheetProps {
@@ -33,64 +31,169 @@ export interface HamburgerMenuSheetProps {
   onClose: () => void;
 }
 
+const APP_VERSION = 'v1.0.0';
+
+function clearCachedAuthAndAdminStorage() {
+  try {
+    const lsKeysToRemove: string[] = [
+      'boardly_user_authenticated',
+      'boardly_cached_role',
+      'boardly_admin_token',
+      'boardly_admin_cache',
+      'boardly_last_route',
+    ];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (
+        k &&
+        k !== 'boardly-theme' &&
+        (k.startsWith('boardly_admin') ||
+          k.startsWith('boardly_role') ||
+          k.startsWith('boardly_auth') ||
+          k.startsWith('boardly_token') ||
+          k.startsWith('firebase:authUser'))
+      ) {
+        lsKeysToRemove.push(k);
+      }
+    }
+    lsKeysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // ignore storage errors
+  }
+
+  try {
+    sessionStorage.clear();
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
   isOpen,
   onClose,
 }) => {
   const navigate = useNavigate();
-  const { user, isAdmin, signOutUser } = useAuth();
+  const location = useLocation();
+  const { user, profileLoading, isAdmin, signOutUser } = useAuth();
   const { profile } = useUserProfile();
   const { openProfile } = useProfileModal();
   const effectivePlan = useEffectivePlan();
-  const { balance: kobanBalance, loading: walletLoading, equipped } = useWallet();
+  const { balance: kobanBalance, equipped } = useWallet();
   const { themeSetting, resolvedTheme, setTheme } = useTheme();
-  const unreadCount = useUnreadNotificationsCount();
 
-  // Animation mounting state
+  // Animation & sign-out states
   const [isRendered, setIsRendered] = useState(isOpen);
   const [isVisible, setIsVisible] = useState(false);
-  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
-  // Swipe-to-dismiss touch tracking
+  // Swipe-to-dismiss & focus trap refs
   const touchStartY = useRef<number>(0);
   const touchDeltaY = useRef<number>(0);
   const sheetRef = useRef<HTMLDivElement | null>(null);
+  const previousActiveElementRef = useRef<HTMLElement | null>(null);
+  const pushedHistoryRef = useRef<boolean>(false);
 
-  // Handle open / close slide animation
+  // Open (240ms ease-out) & close (200ms) lifecycle
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    let timer: ReturnType<typeof setTimeout>;
     if (isOpen) {
+      previousActiveElementRef.current = document.activeElement as HTMLElement | null;
       setIsRendered(true);
-      setShowSignOutConfirm(false);
-      // Wait for next frame before triggering CSS transition
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setIsVisible(true);
+          // Focus first focusable element inside the sheet for focus trap
+          const firstFocusable = sheetRef.current?.querySelector<HTMLElement>(
+            'button, [href], [tabindex]:not([tabindex="-1"])'
+          );
+          firstFocusable?.focus({ preventScroll: true });
         });
       });
-    } else {
+    } else if (!isSigningOut) {
       setIsVisible(false);
       timer = setTimeout(() => {
         setIsRendered(false);
-        setShowSignOutConfirm(false);
-      }, 230);
+        previousActiveElementRef.current?.focus?.({ preventScroll: true });
+      }, 200);
     }
     return () => clearTimeout(timer);
-  }, [isOpen]);
+  }, [isOpen, isSigningOut]);
 
-  // Close on Escape key
+  // Android back button support via history popstate
   useEffect(() => {
     if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+
+    try {
+      window.history.pushState(
+        { ...(window.history.state || {}), boardlyMoreSheet: true },
+        ''
+      );
+      pushedHistoryRef.current = true;
+    } catch {
+      pushedHistoryRef.current = false;
+    }
+
+    const handlePopState = () => {
+      if (pushedHistoryRef.current) {
+        pushedHistoryRef.current = false;
         onClose();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, [isOpen, onClose]);
 
-  // Touch handlers for swipe down to dismiss
+  const dismissSheet = useCallback(() => {
+    if (pushedHistoryRef.current) {
+      pushedHistoryRef.current = false;
+      try {
+        window.history.back();
+      } catch {
+        // ignore history error
+      }
+    }
+    onClose();
+  }, [onClose]);
+
+  // Escape key & Tab focus trap inside the sheet
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        dismissSheet();
+        return;
+      }
+
+      if (e.key === 'Tab' && sheetRef.current) {
+        const focusables = Array.from(
+          sheetRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+          )
+        );
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, dismissSheet]);
+
+  // Touch handlers for swipe-down to close
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY;
     touchDeltaY.current = 0;
@@ -102,7 +205,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
     if (delta > 0) {
       touchDeltaY.current = delta;
       if (sheetRef.current) {
-        sheetRef.current.style.transform = `translateY(${Math.min(delta * 0.7, 180)}px)`;
+        sheetRef.current.style.transform = `translateY(${Math.min(delta * 0.75, 200)}px)`;
       }
     }
   };
@@ -111,697 +214,533 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
     if (sheetRef.current) {
       sheetRef.current.style.transform = '';
     }
-    if (touchDeltaY.current > 65) {
-      onClose();
+    if (touchDeltaY.current > 60) {
+      dismissSheet();
     }
     touchDeltaY.current = 0;
   };
 
+  // Navigate & close (replaces the temporary sheet history entry if present)
   const handleNav = useCallback(
     (target: string) => {
+      const shouldReplace = pushedHistoryRef.current;
+      pushedHistoryRef.current = false;
       onClose();
-      navigate(target);
+      navigate(target, { replace: shouldReplace });
     },
     [onClose, navigate]
   );
 
-  const handleConfirmSignOut = async () => {
-    setShowSignOutConfirm(false);
-    onClose();
-    await signOutUser();
-    navigate('/login');
+  // Sign out: clear user, role, token, cached routes & admin data, show LineLoader (login context), then navigate to /login
+  const handleSignOut = async () => {
+    pushedHistoryRef.current = false;
+    setIsSigningOut(true);
+    clearCachedAuthAndAdminStorage();
+    try {
+      await Promise.all([
+        signOutUser(),
+        new Promise((resolve) => setTimeout(resolve, 450)),
+      ]);
+    } finally {
+      setIsSigningOut(false);
+      setIsRendered(false);
+      onClose();
+      navigate('/login', { replace: true });
+    }
   };
+
+  if (isSigningOut) {
+    return <LineLoader context="login" variant="page" immediate />;
+  }
 
   if (!isRendered) return null;
 
-  // Identity & permissions
-  const role = profile?.role || 'student';
-  const customRole = profile?.customRole;
-  const isSuperAdmin = Boolean(
-    isAdmin ||
-    effectivePlan.isSuperAdmin ||
-    (user && user.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2')
+  // Strict role confirmation (default role = null until confirmed)
+  const confirmedRole: string | null =
+    !profileLoading && user && profile?.role ? profile.role : null;
+
+  const isConfirmedAdmin = Boolean(
+    !profileLoading &&
+      user &&
+      (confirmedRole === 'admin' ||
+        confirmedRole === 'superadmin' ||
+        isAdmin)
   );
 
-  const rawNickname = profile?.nickname || profile?.displayName || user?.displayName || 'Student';
-  const cleanNickname = sanitizeStudentDisplayName(rawNickname, profile?.shortId || user?.uid);
-  const username = profile?.username || (profile?.shortId ? profile.shortId : '');
+  const isConfirmedSuperAdmin = Boolean(
+    isConfirmedAdmin &&
+      (confirmedRole === 'superadmin' ||
+        effectivePlan.isSuperAdmin ||
+        user?.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2')
+  );
 
-  const isPro = effectivePlan.isUnlimited;
-  const isApprovedCaptain =
-    role === 'captain' ||
-    role === 'ambassador' ||
-    Boolean(profile?.isCaptain) ||
-    Boolean(profile?.isAmbassador);
+  const isApprovedCaptain = Boolean(
+    !profileLoading &&
+      user &&
+      (confirmedRole === 'captain' ||
+        confirmedRole === 'ambassador' ||
+        profile?.isCaptain ||
+        profile?.isAmbassador)
+  );
+
+  const isPro = Boolean(effectivePlan.isUnlimited || isConfirmedAdmin);
+  const canUpgrade = Boolean(user && !isPro && !isConfirmedAdmin);
+
+  // Single Role/Plan badge (shown ONCE in the profile card)
+  const singleBadgeLabel = !user
+    ? 'Guest'
+    : isConfirmedSuperAdmin
+    ? 'Super Admin'
+    : isConfirmedAdmin
+    ? 'Admin'
+    : isApprovedCaptain
+    ? 'Captain'
+    : isPro
+    ? 'Pro'
+    : 'Free';
+
+  const isBadgeAccent = Boolean(isConfirmedAdmin || isPro);
+
+  // Full display name & @handle
+  const rawName =
+    profile?.nickname || profile?.displayName || user?.displayName || 'Student';
+  const displayName = user
+    ? sanitizeStudentDisplayName(rawName, profile?.shortId || user?.uid)
+    : 'Guest Student';
+  const handleText = user
+    ? `@${profile?.username || profile?.shortId || user.uid.slice(0, 6)}`
+    : '@guest';
+
+  // Coin balance pill is shown ONLY if DashboardTopBar is hidden on the current route
+  const isHeaderVisible =
+    !location.pathname.startsWith('/dashboard/profile') &&
+    !location.pathname.startsWith('/dashboard/commons') &&
+    !location.pathname.startsWith('/commons') &&
+    location.pathname !== '/messages' &&
+    location.pathname !== '/saved';
+  const showCoinPillInSheet = Boolean(user && !isHeaderVisible);
+
+  // Active route checks for faint red tint
+  const pathname = location.pathname;
+  const commonsTarget = user ? '/dashboard/commons' : '/commons';
+  const isCommonsActive =
+    pathname.startsWith('/commons') || pathname.startsWith('/dashboard/commons');
+  const isGrandLineActive = pathname.startsWith('/grand-line');
+  const isStoreActive =
+    pathname.startsWith('/store') || pathname.startsWith('/dashboard/store');
+  const isLeaderboardActive =
+    pathname.startsWith('/leaderboard') || pathname.includes('leaderboard');
+  const isSettingsActive =
+    pathname.startsWith('/settings') || pathname.startsWith('/dashboard/settings');
+  const isUpgradeActive =
+    pathname.startsWith('/dashboard/plans') ||
+    pathname.startsWith('/plans') ||
+    pathname.startsWith('/pricing');
+  const isAdminActive = pathname.startsWith('/admin');
+
+  const handleOpenProfile = () => {
+    if (user) {
+      pushedHistoryRef.current = false;
+      onClose();
+      openProfile();
+    } else {
+      handleNav('/login');
+    }
+  };
 
   return (
     <div
       className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Boardly Menu"
+      aria-label="More menu"
     >
-      {/* Light dim backdrop */}
+      {/* Dimmed, lightly blurred backdrop */}
       <div
-        onClick={onClose}
-        className={`fixed inset-0 bg-black/60 transition-opacity duration-200 ease-out z-0 cursor-pointer ${
+        onClick={dismissSheet}
+        className={`fixed inset-0 z-0 cursor-pointer more-sheet-backdrop ${
           isVisible ? 'opacity-100' : 'opacity-0'
         }`}
         aria-hidden="true"
       />
 
-      {/* Screen reader close button */}
-      <button
-        type="button"
-        onClick={onClose}
-        className="sr-only"
-        aria-label="Close menu"
-      >
-        Close menu
-      </button>
-
-      {/* Sheet Container */}
+      {/* Glassmorphic Bottom Sheet */}
       <div
         ref={sheetRef}
         onClick={(e) => e.stopPropagation()}
-        className={`relative w-full sm:max-w-md bg-surface text-primary border-t sm:border border-border rounded-t-[24px] sm:rounded-2xl flex flex-col max-h-[90vh] max-h-[90dvh] shadow-2xl z-10 transition-all duration-200 ease-out transform overflow-hidden ${
-          isVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
+        className={`z-10 more-sheet-panel ${
+          isVisible ? 'more-sheet-panel--open' : 'more-sheet-panel--closed'
         }`}
       >
-        {/* Drag Handle (Swipe Area) */}
+        {/* 1. Drag Handle */}
         <div
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          className="pt-3 pb-1.5 flex justify-center cursor-grab active:cursor-grabbing select-none shrink-0"
+          onClick={dismissSheet}
+          className="pt-2.5 pb-1.5 flex justify-center cursor-grab active:cursor-grabbing select-none shrink-0"
+          aria-label="Drag down or tap to close menu"
         >
-          <div className="w-10 h-1 bg-border-strong rounded-full" />
+          <div
+            className="w-10 h-1 rounded-full"
+            style={{ backgroundColor: 'var(--border)' }}
+          />
         </div>
 
-        {/* Scrollable Sheet Content */}
-        <div
-          className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 pt-1 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))] space-y-4"
-        >
-          {/* ── 2. HEADER: Profile Summary (Single Tappable Row) ── */}
-          <div
-            onClick={() => {
-              onClose();
-              if (user) {
-                openProfile();
-              } else {
-                navigate('/login');
-              }
-            }}
-            className="flex items-center justify-between p-3 rounded-2xl bg-surface-muted/60 hover:bg-surface-muted border border-border transition-colors cursor-pointer group"
-            title={user ? 'Open Profile' : 'Sign In'}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onClose();
-                if (user) {
-                  openProfile();
-                } else {
-                  navigate('/login');
-                }
-              }
-            }}
+        {/* Scrollable Sheet Content (fits without scrolling on most phones) */}
+        <div className="flex-1 overflow-y-auto overscroll-contain px-3.5 sm:px-4 pt-1 pb-[calc(14px+env(safe-area-inset-bottom,0px))] space-y-2.5">
+          {/* 2. Profile Card (tap opens profile) */}
+          <button
+            type="button"
+            onClick={handleOpenProfile}
+            className="w-full p-3 text-left flex items-center justify-between gap-3 more-glass-card more-glass-card--interactive group"
           >
-            {/* Left: Avatar with equipped frame (~56px) */}
             <div className="flex items-center gap-3 min-w-0 flex-1">
               <div className="shrink-0">
-                <AvatarFrame itemId={equipped?.frame || 'none'} size={56}>
+                <AvatarFrame itemId={equipped?.frame || 'none'} size={50}>
                   <AvatarPicture
                     avatarId={equipped?.avatar}
                     avatarKey={profile?.avatarKey}
                     variant={profile?.avatarVariant}
                     seed={user?.uid}
-                    size={44}
+                    size={40}
                   />
                 </AvatarFrame>
               </div>
 
-              {/* Middle: Nickname (bold plain text), Username (muted), Role badge + Plan */}
-              <div className="min-w-0 flex-1 pr-2">
-                <h2 className="font-semibold text-[16px] text-primary truncate leading-tight group-hover:text-accent transition-colors">
-                  {user ? cleanNickname : 'Guest Student'}
-                </h2>
+              <div className="min-w-0 flex-1">
+                {/* Full display name: wraps up to 2 lines, never truncated with single-line "..." */}
+                <div
+                  className="font-dot text-[15px] sm:text-[16px] leading-snug line-clamp-2 break-words whitespace-normal"
+                  style={{ color: 'var(--text)' }}
+                >
+                  {displayName}
+                </div>
 
-                {user && username ? (
-                  <p className="text-[13px] text-muted truncate mt-0.5 leading-tight">
-                    @{username}
-                  </p>
-                ) : (
-                  <p className="text-[13px] text-muted truncate mt-0.5 leading-tight">
-                    {user ? 'Student' : 'Tap to sign in or create account'}
-                  </p>
-                )}
+                {/* @handle + ONE single role/plan badge */}
+                <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                  <span
+                    className="text-xs font-medium"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    {handleText}
+                  </span>
 
-                {/* Role badge & Plan pill */}
-                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                  <RoleBadge
-                    role={role}
-                    customRole={customRole}
-                    isSuperAdmin={isSuperAdmin}
-                    size="sm"
-                  />
-
-                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full border border-border text-muted bg-surface">
-                    {isPro ? 'Unlimited' : 'Free'}
+                  <span
+                    className={`more-glass-pill ${
+                      isBadgeAccent ? 'more-glass-pill--accent' : ''
+                    }`}
+                  >
+                    {singleBadgeLabel}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Right: Koban balance chip + Chevron */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              {user && (
-                <div
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Coin balance pill ONLY when header is not visible */}
+              {showCoinPillInSheet && (
+                <span
                   onClick={(e) => {
                     e.stopPropagation();
                     handleNav('/store');
                   }}
-                  title="Boardly Store"
-                  className="cursor-pointer transition-transform hover:scale-105"
+                  className="more-glass-pill cursor-pointer"
+                  title="Kobans balance"
                 >
-                  <KobanChip balance={kobanBalance} loading={walletLoading} />
-                </div>
+                  <Coins size={12} strokeWidth={1.8} />
+                  <span>{(kobanBalance ?? 0).toLocaleString()}</span>
+                </span>
               )}
+
               <ChevronRight
-                size={18}
-                className="text-muted group-hover:text-primary group-hover:translate-x-0.5 transition-all"
-                strokeWidth={1.75}
+                size={17}
+                strokeWidth={1.8}
+                style={{ color: 'var(--text-muted)' }}
+                className="transition-transform duration-200 group-hover:translate-x-0.5"
               />
             </div>
-          </div>
+          </button>
 
-          {/* ── 3. GROUPED LIST: Explore ── */}
-          <div className="space-y-1.5">
-            <p className="text-[12px] uppercase font-semibold text-muted tracking-wider px-1">
-              Explore
-            </p>
-
-            <div className="bg-surface border border-border rounded-2xl overflow-hidden divide-y divide-border shadow-xs">
-              {/* Boardly Commons */}
-              <button
-                type="button"
-                onClick={() => handleNav(user ? '/dashboard/commons' : '/commons')}
-                className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between text-left hover:bg-surface-muted active:bg-surface-muted/80 transition-colors cursor-pointer group"
+          {/* 3. Main Links — Compact 2-Column Grid of Glass Tiles */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* Tile 1: Boardly Commons */}
+            <button
+              type="button"
+              onClick={() => handleNav(commonsTarget)}
+              className={`more-glass-tile ${
+                isCommonsActive ? 'more-glass-tile--active' : ''
+              }`}
+            >
+              <span
+                className={`more-icon-circle ${
+                  isCommonsActive ? 'more-icon-circle--accent' : ''
+                }`}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <Compass
-                    size={20}
-                    className="text-secondary shrink-0 group-hover:text-primary transition-colors"
-                    strokeWidth={1.75}
-                  />
-                  <div className="min-w-0">
-                    <p className="text-[15px] sm:text-[16px] font-medium text-primary leading-snug">
-                      Boardly Commons
-                    </p>
-                    <p className="text-[12px] sm:text-[13px] text-muted truncate leading-snug">
-                      Study material, notes & doubts
-                    </p>
-                  </div>
-                </div>
-                <ChevronRight
-                  size={16}
-                  className="text-muted group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0 ml-2"
-                  strokeWidth={1.75}
-                />
-              </button>
+                <Compass size={17} strokeWidth={1.8} />
+              </span>
+              <span className="text-[13px] font-semibold leading-tight truncate">
+                Boardly Commons
+              </span>
+            </button>
 
-              {/* Grand Line Public Tests */}
-              <button
-                type="button"
-                onClick={() => handleNav('/grand-line')}
-                className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between text-left hover:bg-surface-muted active:bg-surface-muted/80 transition-colors cursor-pointer group"
+            {/* Tile 2: Grand Line (with small "Mock Tests" tag) */}
+            <button
+              type="button"
+              onClick={() => handleNav('/grand-line')}
+              className={`more-glass-tile ${
+                isGrandLineActive ? 'more-glass-tile--active' : ''
+              }`}
+            >
+              <span
+                className={`more-icon-circle ${
+                  isGrandLineActive ? 'more-icon-circle--accent' : ''
+                }`}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <Award
-                    size={20}
-                    className="text-accent shrink-0 transition-colors"
-                    strokeWidth={1.75}
-                  />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-[15px] sm:text-[16px] font-medium text-primary leading-snug">
-                        Grand Line
-                      </p>
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-accent/15 text-accent leading-none">
-                        Mock Tests
-                      </span>
-                    </div>
-                    <p className="text-[12px] sm:text-[13px] text-muted truncate leading-snug">
-                      Captain-authored tests & national leaderboard
-                    </p>
-                  </div>
-                </div>
-                <ChevronRight
-                  size={16}
-                  className="text-muted group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0 ml-2"
-                  strokeWidth={1.75}
-                />
-              </button>
-
-              {/* Notifications */}
-              <button
-                type="button"
-                onClick={() => handleNav('/dashboard/notifications')}
-                className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between text-left hover:bg-surface-muted active:bg-surface-muted/80 transition-colors cursor-pointer group"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <Bell
-                    size={20}
-                    className="text-secondary shrink-0 group-hover:text-primary transition-colors"
-                    strokeWidth={1.75}
-                  />
-                  <div className="min-w-0">
-                    <p className="text-[15px] sm:text-[16px] font-medium text-primary leading-snug">
-                      Notifications
-                    </p>
-                    <p className="text-[12px] sm:text-[13px] text-muted truncate leading-snug">
-                      Followers & announcements
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0 ml-2">
-                  {unreadCount > 0 && (
-                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-accent text-on-accent leading-none">
-                      {unreadCount > 99 ? '99+' : unreadCount}
-                    </span>
-                  )}
-                  <ChevronRight
-                    size={16}
-                    className="text-muted group-hover:text-primary group-hover:translate-x-0.5 transition-all"
-                    strokeWidth={1.75}
-                  />
-                </div>
-              </button>
-
-              {/* Boardly Store */}
-              <button
-                type="button"
-                onClick={() => handleNav('/store')}
-                className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between text-left hover:bg-surface-muted active:bg-surface-muted/80 transition-colors cursor-pointer group"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <ShoppingBag
-                    size={20}
-                    className="text-secondary shrink-0 group-hover:text-primary transition-colors"
-                    strokeWidth={1.75}
-                  />
-                  <div className="min-w-0">
-                    <p className="text-[15px] sm:text-[16px] font-medium text-primary leading-snug">
-                      Boardly Store
-                    </p>
-                    <p className="text-[12px] sm:text-[13px] text-muted truncate leading-snug">
-                      Cosmetics, frames & effects
-                    </p>
-                  </div>
-                </div>
-                <ChevronRight
-                  size={16}
-                  className="text-muted group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0 ml-2"
-                  strokeWidth={1.75}
-                />
-              </button>
-
-              {/* Nakama Captains Hub (if captain) */}
-              {isApprovedCaptain && (
-                <button
-                  type="button"
-                  onClick={() => handleNav('/dashboard/captain')}
-                  className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between text-left hover:bg-surface-muted active:bg-surface-muted/80 transition-colors cursor-pointer group"
+                <Award size={17} strokeWidth={1.8} />
+              </span>
+              <div className="min-w-0 flex flex-col items-start">
+                <span className="text-[13px] font-semibold leading-tight truncate max-w-full">
+                  Grand Line
+                </span>
+                <span
+                  className="text-[10px] font-semibold leading-tight mt-0.5"
+                  style={{ color: 'var(--accent)' }}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Award
-                      size={20}
-                      className="text-secondary shrink-0 group-hover:text-primary transition-colors"
-                      strokeWidth={1.75}
-                    />
-                    <div className="min-w-0">
-                      <p className="text-[15px] sm:text-[16px] font-medium text-primary leading-snug">
-                        Nakama Captains Hub
-                      </p>
-                      <p className="text-[12px] sm:text-[13px] text-muted truncate leading-snug">
-                        Crew ambassador & student perks
-                      </p>
-                    </div>
-                  </div>
-                  <ChevronRight
-                    size={16}
-                    className="text-muted group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0 ml-2"
-                    strokeWidth={1.75}
-                  />
-                </button>
-              )}
-            </div>
+                  Mock Tests
+                </span>
+              </div>
+            </button>
+
+            {/* Tile 3: Boardly Store */}
+            <button
+              type="button"
+              onClick={() => handleNav('/store')}
+              className={`more-glass-tile ${
+                isStoreActive ? 'more-glass-tile--active' : ''
+              }`}
+            >
+              <span
+                className={`more-icon-circle ${
+                  isStoreActive ? 'more-icon-circle--accent' : ''
+                }`}
+              >
+                <ShoppingBag size={17} strokeWidth={1.8} />
+              </span>
+              <span className="text-[13px] font-semibold leading-tight truncate">
+                Boardly Store
+              </span>
+            </button>
+
+            {/* Tile 4: Leaderboard (Squad/Crew is already in the bottom nav) */}
+            <button
+              type="button"
+              onClick={() => handleNav('/leaderboard')}
+              className={`more-glass-tile ${
+                isLeaderboardActive ? 'more-glass-tile--active' : ''
+              }`}
+            >
+              <span
+                className={`more-icon-circle ${
+                  isLeaderboardActive ? 'more-icon-circle--accent' : ''
+                }`}
+              >
+                <Trophy size={17} strokeWidth={1.8} />
+              </span>
+              <span className="text-[13px] font-semibold leading-tight truncate">
+                Leaderboard
+              </span>
+            </button>
           </div>
 
-          {/* ── 3. GROUPED LIST: Account ── */}
-          <div className="space-y-1.5">
-            <p className="text-[12px] uppercase font-semibold text-muted tracking-wider px-1">
-              Account
-            </p>
-
-            <div className="glass-row rounded-[22px] overflow-hidden divide-y divide-[var(--glass-border)]">
-              {/* Profile */}
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  openProfile();
-                }}
-                className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between text-left hover:bg-surface-muted active:bg-surface-muted/80 transition-colors cursor-pointer group"
+          {/* 4. Account Group: Settings (+ Upgrade only if not on Unlimited) */}
+          <div className="space-y-1">
+            {canUpgrade && (
+              <p
+                className="text-[11px] uppercase font-semibold tracking-wider px-1"
+                style={{ color: 'var(--text-muted)' }}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <User
-                    size={20}
-                    className="text-secondary shrink-0 group-hover:text-primary transition-colors"
-                    strokeWidth={1.75}
-                  />
-                  <div className="min-w-0">
-                    <p className="text-[15px] sm:text-[16px] font-medium text-primary leading-snug">
-                      Profile
-                    </p>
-                    <p className="text-[12px] sm:text-[13px] text-muted truncate leading-snug">
-                      View & customize your card
-                    </p>
-                  </div>
-                </div>
-                <ChevronRight
-                  size={16}
-                  className="text-muted group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0 ml-2"
-                  strokeWidth={1.75}
-                />
-              </button>
+                Account
+              </p>
+            )}
 
-              {/* Plans & Upgrade */}
-              <button
-                type="button"
-                onClick={() => handleNav('/dashboard/plans')}
-                className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between text-left hover:bg-surface-muted active:bg-surface-muted/80 transition-colors cursor-pointer group"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <Sparkles
-                    size={20}
-                    className="text-secondary shrink-0 group-hover:text-primary transition-colors"
-                    strokeWidth={1.75}
-                  />
-                  <div className="min-w-0">
-                    <p className="text-[15px] sm:text-[16px] font-medium text-primary leading-snug">
-                      Plans & Upgrade
-                    </p>
-                    <p className="text-[12px] sm:text-[13px] text-muted truncate leading-snug">
-                      {isPro
-                        ? effectivePlan.source === 'crew'
-                          ? 'Unlimited with Crew'
-                          : 'Unlimited plan active'
-                        : 'Free plan · Tap to upgrade'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0 ml-2">
-                  {!isPro ? (
-                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-accent text-on-accent leading-tight shadow-xs">
-                      Upgrade
-                    </span>
-                  ) : (
-                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-surface-muted text-muted leading-tight border border-border">
-                      Unlimited
-                    </span>
-                  )}
-                  <ChevronRight
-                    size={16}
-                    className="text-muted group-hover:text-primary group-hover:translate-x-0.5 transition-all"
-                    strokeWidth={1.75}
-                  />
-                </div>
-              </button>
-
+            <div
+              className="more-glass-card overflow-hidden divide-y"
+              style={{ borderColor: 'var(--glass-border)' }}
+            >
               {/* Settings */}
               <button
                 type="button"
                 onClick={() => handleNav('/settings')}
-                className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between text-left hover:bg-surface-muted active:bg-surface-muted/80 transition-colors cursor-pointer group"
+                className={`more-glass-row ${
+                  isSettingsActive ? 'more-glass-row--active' : ''
+                }`}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <Settings
-                    size={20}
-                    className="text-secondary shrink-0 group-hover:text-primary transition-colors"
-                    strokeWidth={1.75}
-                  />
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span
+                    className={`more-icon-circle ${
+                      isSettingsActive ? 'more-icon-circle--accent' : ''
+                    }`}
+                  >
+                    <Settings size={17} strokeWidth={1.8} />
+                  </span>
                   <div className="min-w-0">
-                    <p className="text-[15px] sm:text-[16px] font-medium text-primary leading-snug">
+                    <p className="text-[14px] font-semibold leading-tight">
                       Settings
                     </p>
-                    <p className="text-[12px] sm:text-[13px] text-muted truncate leading-snug">
-                      Plan, account & sign out
+                    <p
+                      className="text-[11px] leading-tight mt-0.5 truncate"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      Plan, account &amp; sign out
                     </p>
                   </div>
                 </div>
                 <ChevronRight
                   size={16}
-                  className="text-muted group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0 ml-2"
-                  strokeWidth={1.75}
+                  strokeWidth={1.8}
+                  style={{ color: 'var(--text-muted)' }}
+                  className="shrink-0"
                 />
               </button>
-            </div>
-          </div>
 
-          {/* ── 3. GROUPED LIST: Admin (Visible only to superadmin account) ── */}
-          {isSuperAdmin && (
-            <div className="space-y-1.5">
-              <p className="text-[12px] uppercase font-semibold text-muted tracking-wider px-1">
-                Admin
-              </p>
-
-              <div className="glass-row rounded-[22px] overflow-hidden">
+              {/* Upgrade (shown ONLY if user is not on Unlimited / Superadmin) */}
+              {canUpgrade && (
                 <button
                   type="button"
-                  onClick={() => handleNav('/admin')}
-                  className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between text-left hover:bg-surface-muted active:bg-surface-muted/80 transition-colors cursor-pointer group"
+                  onClick={() => handleNav('/dashboard/plans')}
+                  className={`more-glass-row ${
+                    isUpgradeActive ? 'more-glass-row--active' : ''
+                  }`}
+                  style={{ borderTopColor: 'var(--glass-border)' }}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Shield
-                      size={20}
-                      className="text-accent shrink-0"
-                      strokeWidth={1.75}
-                    />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-[15px] sm:text-[16px] font-medium text-primary leading-snug">
-                          Superadmin Portal
-                        </p>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-[#D71921] dark:bg-red-950/70 dark:text-red-400 border border-red-200 dark:border-red-900/60 leading-none">
-                          Super Admin
-                        </span>
-                      </div>
-                      <p className="text-[12px] sm:text-[13px] text-muted truncate leading-snug">
-                        Users, question bank, approvals & audit log
-                      </p>
-                    </div>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="more-icon-circle more-icon-circle--accent">
+                      <Sparkles size={17} strokeWidth={1.8} />
+                    </span>
+                    <span className="text-[14px] font-semibold leading-tight">
+                      Upgrade
+                    </span>
                   </div>
                   <ChevronRight
                     size={16}
-                    className="text-muted group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0 ml-2"
-                    strokeWidth={1.75}
+                    strokeWidth={1.8}
+                    style={{ color: 'var(--text-muted)' }}
+                    className="shrink-0"
                   />
                 </button>
-              </div>
-            </div>
-          )}
-
-          {/* ── 3. GROUPED LIST: Preferences (Appearance Segmented Control) ── */}
-          <div className="space-y-1.5">
-            <p className="text-[12px] uppercase font-semibold text-muted tracking-wider px-1">
-              Preferences
-            </p>
-
-            <div className="bg-surface border border-border rounded-2xl overflow-hidden shadow-xs">
-              <div className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-3 min-w-0 pr-2">
-                  {resolvedTheme === 'dark' ? (
-                    <Moon
-                      size={20}
-                      className="text-secondary shrink-0"
-                      strokeWidth={1.75}
-                    />
-                  ) : (
-                    <Sun
-                      size={20}
-                      className="text-secondary shrink-0"
-                      strokeWidth={1.75}
-                    />
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-[15px] sm:text-[16px] font-medium text-primary leading-snug">
-                      Appearance
-                    </p>
-                    <p className="text-[12px] sm:text-[13px] text-muted truncate leading-snug">
-                      {themeSetting === 'system'
-                        ? `System (${resolvedTheme === 'dark' ? 'Dark' : 'Light'})`
-                        : resolvedTheme === 'dark'
-                        ? 'Dark Mode'
-                        : 'Light Mode'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Compact 3-option Segmented Control */}
-                <div
-                  className="flex items-center p-1 rounded-xl bg-surface-muted border border-border shrink-0 select-none"
-                  role="radiogroup"
-                  aria-label="Theme selection"
-                >
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setTheme('light');
-                    }}
-                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer min-h-[32px] ${
-                      themeSetting === 'light'
-                        ? 'bg-surface text-primary shadow-xs border border-border font-bold'
-                        : 'text-muted hover:text-primary border border-transparent'
-                    }`}
-                    aria-checked={themeSetting === 'light'}
-                    role="radio"
-                    title="Light theme"
-                  >
-                    <Sun size={13} strokeWidth={2} />
-                    <span className="text-[11px]">Light</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setTheme('dark');
-                    }}
-                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer min-h-[32px] ${
-                      themeSetting === 'dark'
-                        ? 'bg-surface text-primary shadow-xs border border-border font-bold'
-                        : 'text-muted hover:text-primary border border-transparent'
-                    }`}
-                    aria-checked={themeSetting === 'dark'}
-                    role="radio"
-                    title="Dark theme"
-                  >
-                    <Moon size={13} strokeWidth={2} />
-                    <span className="text-[11px]">Dark</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setTheme('system');
-                    }}
-                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer min-h-[32px] ${
-                      themeSetting === 'system'
-                        ? 'bg-surface text-primary shadow-xs border border-border font-bold'
-                        : 'text-muted hover:text-primary border border-transparent'
-                    }`}
-                    aria-checked={themeSetting === 'system'}
-                    role="radio"
-                    title="System theme"
-                  >
-                    <Monitor size={13} strokeWidth={2} />
-                    <span className="text-[11px]">Auto</span>
-                  </button>
-                </div>
-              </div>
+              )}
             </div>
           </div>
 
-          {/* ── 4. FOOTER: Links, Version & Sign Out ── */}
-          <div className="pt-2 pb-1 space-y-3.5">
-            {!user ? (
+          {/* 5. Admin Group (confirmed admin/superadmin only; role badge not repeated) */}
+          {isConfirmedAdmin && (
+            <div className="more-glass-card overflow-hidden">
+              <button
+                type="button"
+                onClick={() => handleNav('/admin')}
+                className={`more-glass-row ${
+                  isAdminActive ? 'more-glass-row--active' : ''
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="more-icon-circle more-icon-circle--accent">
+                    <Shield size={17} strokeWidth={1.8} />
+                  </span>
+                  <span className="text-[14px] font-semibold leading-tight">
+                    Admin Portal
+                  </span>
+                </div>
+                <ChevronRight
+                  size={16}
+                  strokeWidth={1.8}
+                  style={{ color: 'var(--text-muted)' }}
+                  className="shrink-0"
+                />
+              </button>
+            </div>
+          )}
+
+          {/* 6. Preferences: Theme Segmented Glass Control (Light / Dark / System) */}
+          <div className="more-glass-card px-3 py-2.5 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="more-icon-circle">
+                {resolvedTheme === 'dark' ? (
+                  <Moon size={17} strokeWidth={1.8} />
+                ) : (
+                  <Sun size={17} strokeWidth={1.8} />
+                )}
+              </span>
+              <span className="text-[14px] font-semibold leading-tight">
+                Theme
+              </span>
+            </div>
+
+            <div
+              className="more-theme-segmented shrink-0 select-none"
+              role="radiogroup"
+              aria-label="Theme preference"
+            >
+              {(
+                [
+                  { id: 'light', label: 'Light', Icon: Sun },
+                  { id: 'dark', label: 'Dark', Icon: Moon },
+                  { id: 'system', label: 'System', Icon: Monitor },
+                ] as { id: ThemeSetting; label: string; Icon: typeof Sun }[]
+              ).map(({ id, label, Icon }) => {
+                const isActive = themeSetting === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTheme(id);
+                    }}
+                    className={`more-theme-segment ${
+                      isActive ? 'more-theme-segment--active' : ''
+                    }`}
+                  >
+                    <Icon size={13} strokeWidth={1.8} />
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 7. Footer: Quiet Red "Sign out" Text Button + App Version */}
+          <div className="pt-1 flex items-center justify-between px-1">
+            {user ? (
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="min-h-[40px] px-2.5 py-1.5 -ml-2 rounded-xl inline-flex items-center gap-1.5 text-[13px] font-semibold transition-transform duration-150 active:scale-[0.97] cursor-pointer"
+                style={{ color: 'var(--accent)' }}
+              >
+                <LogOut size={15} strokeWidth={1.8} />
+                <span>Sign out</span>
+              </button>
+            ) : (
               <button
                 type="button"
                 onClick={() => handleNav('/login')}
-                className="w-full min-h-[48px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-accent hover:bg-accent-hover text-white font-semibold text-[15px] sm:text-[16px] transition-colors cursor-pointer select-none shadow-xs"
+                className="min-h-[40px] px-2.5 py-1.5 -ml-2 rounded-xl inline-flex items-center gap-1.5 text-[13px] font-semibold transition-transform duration-150 active:scale-[0.97] cursor-pointer"
+                style={{ color: 'var(--accent)' }}
               >
-                <User size={18} strokeWidth={1.75} />
-                <span>Sign In / Create Account</span>
+                <User size={15} strokeWidth={1.8} />
+                <span>Sign in</span>
               </button>
-            ) : !showSignOutConfirm ? (
-              <button
-                type="button"
-                onClick={() => setShowSignOutConfirm(true)}
-                className="w-full min-h-[48px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-accent hover:bg-accent-soft active:bg-accent-soft/80 font-medium text-[15px] sm:text-[16px] transition-colors cursor-pointer select-none"
-              >
-                <LogOut size={18} strokeWidth={1.75} />
-                <span>Sign Out</span>
-              </button>
-            ) : (
-              /* Inline Safe Sign Out Confirmation Card */
-              <div className="p-3.5 rounded-2xl bg-surface border border-border shadow-xs space-y-2.5 animate-in fade-in zoom-in-95 duration-150">
-                <div className="flex items-center gap-2 text-primary text-sm font-semibold">
-                  <AlertCircle size={16} className="text-accent shrink-0" />
-                  <span>Sign out of Boardly?</span>
-                </div>
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowSignOutConfirm(false)}
-                    className="flex-1 min-h-[40px] py-2 px-3 rounded-xl bg-surface-muted hover:bg-surface-raised border border-border text-secondary font-medium text-xs transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleConfirmSignOut}
-                    className="flex-1 min-h-[40px] py-2 px-3 rounded-xl bg-accent hover:bg-accent-hover text-on-accent font-bold text-xs transition-colors cursor-pointer shadow-xs"
-                  >
-                    Sign Out
-                  </button>
-                </div>
-              </div>
             )}
 
-            {/* Muted Navigation Links in One Line */}
-            <div className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[12px] text-muted">
-              <button
-                type="button"
-                onClick={() => handleNav('/commons/about')}
-                className="hover:text-primary transition-colors cursor-pointer"
-              >
-                About
-              </button>
-              <span aria-hidden="true" className="select-none">·</span>
-              <button
-                type="button"
-                onClick={() => handleNav('/privacy')}
-                className="hover:text-primary transition-colors cursor-pointer"
-              >
-                Privacy Policy
-              </button>
-              <span aria-hidden="true" className="select-none">·</span>
-              <button
-                type="button"
-                onClick={() => handleNav('/terms')}
-                className="hover:text-primary transition-colors cursor-pointer"
-              >
-                Terms
-              </button>
-              <span aria-hidden="true" className="select-none">·</span>
-              <button
-                type="button"
-                onClick={() => handleNav('/contact')}
-                className="hover:text-primary transition-colors cursor-pointer"
-              >
-                Help & Contact
-              </button>
-            </div>
-
-            {/* App Version & Credits */}
-            <p className="text-[11px] text-muted text-center leading-normal">
-              v1.0.0 · A project of SHS Virtual Academy
-            </p>
+            <span
+              className="text-[11px] font-medium select-none"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              {APP_VERSION}
+            </span>
           </div>
         </div>
       </div>
@@ -810,3 +749,4 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
 };
 
 export default HamburgerMenuSheet;
+

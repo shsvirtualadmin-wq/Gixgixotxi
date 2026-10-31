@@ -70,7 +70,7 @@
   --surface-muted: #f0f0f5;
   --surface-2: #e8e8f0;
 
-  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-bg: rgba(255, 255, 255, 0.65);
   --glass-surface: rgba(255, 255, 255, 0.78);
   --glass-surface-strong: rgba(255, 255, 255, 0.88);
   --glass-surface-highlight: linear-gradient(180deg, rgba(254, 242, 242, 0.92) 0%, rgba(255, 255, 255, 0.88) 100%);
@@ -296,7 +296,7 @@
   --surface-muted: #f0f0f5;
   --surface-2: #e8e8f0;
 
-  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-bg: rgba(255, 255, 255, 0.65);
   --glass-surface: rgba(255, 255, 255, 0.78);
   --glass-surface-strong: rgba(255, 255, 255, 0.88);
   --glass-surface-highlight: linear-gradient(180deg, rgba(254, 242, 242, 0.92) 0%, rgba(255, 255, 255, 0.88) 100%);
@@ -2607,5 +2607,304 @@ body,
     display: none !important;
   }
 }
+
+/* ==========================================================================
+   MORE MENU BOTTOM SHEET — GLASSMORPHISM & DUAL-THEME SYSTEM
+   Uses only existing tokens: --bg, --surface, --text, --text-muted,
+   --border, --accent, --glass-bg, --glass-border, --glass-highlight, --glass-shadow
+   ========================================================================== */
+
+.more-sheet-backdrop {
+  background-color: color-mix(in srgb, var(--bg) 58%, rgba(0, 0, 0, 0.42));
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: opacity 200ms ease-out;
+}
+
+.more-sheet-panel {
+  position: relative;
+  width: 100%;
+  max-height: 78vh;
+  max-height: 78dvh;
+  border-radius: 30px 30px 0 0;
+  background-color: color-mix(in srgb, var(--surface) 74%, var(--glass-bg));
+  background-image: linear-gradient(
+    145deg,
+    var(--glass-highlight) 0%,
+    transparent 42%
+  );
+  border: 1px solid var(--glass-border);
+  border-top-color: var(--glass-highlight);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  color: var(--text);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 640px) {
+  .more-sheet-panel {
+    max-width: 430px;
+    border-radius: 30px;
+  }
+}
+
+.more-sheet-panel--open {
+  transform: translateY(0);
+  opacity: 1;
+  transition:
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 240ms ease-out;
+}
+
+.more-sheet-panel--closed {
+  transform: translateY(100%);
+  opacity: 0;
+  transition:
+    transform 200ms cubic-bezier(0.4, 0, 1, 1),
+    opacity 200ms ease-in;
+}
+
+/* Profile Card, Glass Tiles & List Containers (no nested backdrop-filter) */
+.more-glass-card {
+  position: relative;
+  border-radius: 22px;
+  background-color: var(--glass-bg);
+  background-image: linear-gradient(
+    135deg,
+    var(--glass-highlight) 0%,
+    transparent 58%
+  );
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  color: var(--text);
+  transition:
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease,
+    color 200ms ease;
+}
+
+.more-glass-card--interactive {
+  cursor: pointer;
+}
+
+.more-glass-card--interactive:hover {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--glass-border));
+}
+
+.more-glass-card--interactive:active {
+  transform: scale(0.97);
+}
+
+/* 2-Column Compact Glass Tiles */
+.more-glass-tile {
+  position: relative;
+  min-height: 54px;
+  padding: 10px 12px;
+  border-radius: 20px;
+  background-color: var(--glass-bg);
+  background-image: linear-gradient(
+    135deg,
+    var(--glass-highlight) 0%,
+    transparent 60%
+  );
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease,
+    color 200ms ease;
+}
+
+.more-glass-tile:hover {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--glass-border));
+}
+
+.more-glass-tile:active {
+  transform: scale(0.97);
+}
+
+.more-glass-tile--active {
+  background-color: color-mix(in srgb, var(--accent) 12%, var(--glass-bg));
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--glass-border));
+  color: var(--accent);
+}
+
+/* Glass Row (min touch target 48px, press effect scale(0.97)) */
+.more-glass-row {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  color: var(--text);
+  background-color: transparent;
+  cursor: pointer;
+  transition:
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 200ms ease,
+    color 200ms ease;
+}
+
+.more-glass-row:hover {
+  background-color: color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+.more-glass-row:active {
+  transform: scale(0.97);
+}
+
+.more-glass-row--active {
+  background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+/* Small Frosted Icon Circle */
+.more-icon-circle {
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background-color: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  color: var(--text);
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
+}
+
+.more-icon-circle--accent {
+  background-color: color-mix(in srgb, var(--accent) 12%, var(--glass-bg));
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--glass-border));
+  color: var(--accent);
+}
+
+/* Small Glass Pill (Role/Plan badge, Mock Tests tag, Coin pill) */
+.more-glass-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background-color: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.more-glass-pill--accent {
+  background-color: color-mix(in srgb, var(--accent) 12%, var(--glass-bg));
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--glass-border));
+  color: var(--accent);
+}
+
+/* Segmented Glass Control for Theme */
+.more-theme-segmented {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border-radius: 14px;
+  background-color: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  gap: 2px;
+}
+
+.more-theme-segment {
+  min-height: 32px;
+  padding: 4px 9px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 200ms ease,
+    border-color 200ms ease,
+    color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.more-theme-segment:hover {
+  color: var(--text);
+}
+
+.more-theme-segment:active {
+  transform: scale(0.97);
+}
+
+.more-theme-segment--active {
+  background-color: color-mix(in srgb, var(--accent) 13%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--glass-border));
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* Fallback when backdrop-filter is not supported */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .more-sheet-backdrop {
+    background-color: rgba(0, 0, 0, 0.65);
+  }
+  .more-sheet-panel {
+    background-color: var(--surface);
+  }
+  .more-glass-card,
+  .more-glass-tile {
+    background-color: var(--surface);
+  }
+}
+
+/* Reduced motion accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .more-sheet-panel--open {
+    transform: none !important;
+    opacity: 1;
+    transition: opacity 160ms linear !important;
+  }
+  .more-sheet-panel--closed {
+    transform: none !important;
+    opacity: 0;
+    transition: opacity 140ms linear !important;
+  }
+  .more-glass-card,
+  .more-glass-tile,
+  .more-glass-row,
+  .more-theme-segment,
+  .more-glass-card--interactive:active,
+  .more-glass-tile:active,
+  .more-glass-row:active,
+  .more-theme-segment:active {
+    transform: none !important;
+    transition: none !important;
+  }
+}
+
 
 
