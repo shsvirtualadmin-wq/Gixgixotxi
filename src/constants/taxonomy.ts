@@ -1,4 +1,5 @@
-import { api } from '@/lib/api';
+import { doc, getDoc, setDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export interface ChapterTaxonomyItem {
   slug: string;
@@ -241,16 +242,14 @@ export function formatChapterName(subjectSlug: string, chapterSlug: string): str
 }
 
 /**
- * Loads custom chapters added by admins from D1 `/api/config/taxonomy`.
+ * Loads custom chapters added by admins from Firestore config doc `config/taxonomy`.
  */
 export async function syncTaxonomyFromFirestore(): Promise<SubjectTaxonomyItem[]> {
   try {
-    const res = await api.get<{ value?: { customChapters?: Record<string, ChapterTaxonomyItem[]> } }>(
-      '/api/config/taxonomy',
-      { silentToast: true }
-    );
-    const data = res?.value || (res as { customChapters?: Record<string, ChapterTaxonomyItem[]> });
-    if (data && data.customChapters) {
+    const configDocRef = doc(db, 'config', 'taxonomy');
+    const snap = await getDoc(configDocRef);
+    if (snap.exists()) {
+      const data = snap.data();
       const customChapters: Record<string, ChapterTaxonomyItem[]> = data.customChapters || {};
 
       runtimeTaxonomy = DEFAULT_TAXONOMY.map((sub) => {
@@ -278,7 +277,7 @@ export async function syncTaxonomyFromFirestore(): Promise<SubjectTaxonomyItem[]
 }
 
 /**
- * Admin action: Adds a new chapter under a subject and persists to D1 `/api/config/taxonomy`.
+ * Admin action: Adds a new chapter under a subject and persists to Firestore.
  */
 export async function addAdminChapter(
   subjectSlug: string,
@@ -297,7 +296,7 @@ export async function addAdminChapter(
   const cSlug = slugify(cleanName);
   const existingChapters = getChaptersForSubject(sSlug);
   if (existingChapters.some((c) => c.slug === cSlug)) {
-    return { ok: true, slug: cSlug };
+    return { ok: true, slug: cSlug }; // Already exists
   }
 
   const newChapterItem: ChapterTaxonomyItem = {
@@ -305,6 +304,7 @@ export async function addAdminChapter(
     name: cleanName,
   };
 
+  // 1. Update runtime local taxonomy immediately
   runtimeTaxonomy = runtimeTaxonomy.map((sub) => {
     if (sub.slug === sSlug) {
       return {
@@ -315,24 +315,19 @@ export async function addAdminChapter(
     return sub;
   });
 
+  // 2. Persist to Firestore config document
   try {
-    const customMap: Record<string, ChapterTaxonomyItem[]> = {};
-    for (const sub of runtimeTaxonomy) {
-      const defaultSlugs = new Set(
-        (DEFAULT_TAXONOMY.find((d) => d.slug === sub.slug)?.chapters || []).map((c) => c.slug)
-      );
-      const custom = sub.chapters.filter((c) => !defaultSlugs.has(c.slug));
-      if (custom.length > 0) {
-        customMap[sub.slug] = custom;
-      }
-    }
-    await api.put(
-      '/api/config/taxonomy',
-      { customChapters: customMap, updatedAt: Date.now() },
-      { silentToast: true }
+    const configDocRef = doc(db, 'config', 'taxonomy');
+    await setDoc(
+      configDocRef,
+      {
+        [`customChapters.${sSlug}`]: arrayUnion(newChapterItem),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
     );
   } catch (err) {
-    console.warn('[Taxonomy] Failed to persist custom chapter to D1:', err);
+    console.warn('[Taxonomy] Failed to persist custom chapter to Firestore:', err);
   }
 
   return { ok: true, slug: cSlug };

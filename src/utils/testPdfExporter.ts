@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import katex from 'katex';
-import { api } from '@/lib/api';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { getSectionCriteria, getUniversityRulesSummary } from '@/constants/universityCriteria';
 import { formatSubjectName } from '@/constants/taxonomy';
 import type { AttemptQuestion } from '@/types/index';
@@ -103,21 +104,22 @@ async function resolveQuestionKeys(questions: AttemptQuestion[]): Promise<Attemp
   const keyMap = new Map<string, { correct: number; explain?: string }>();
 
   if (unresolved.length > 0) {
-    try {
-      const res = await api.post<{
-        keys?: Record<string, { correctIndex: number; explanation?: string }>;
-      }>('/api/questions/verify', { ids: unresolved.map((q) => q.id) }, { silentToast: true });
-      if (res?.keys) {
-        for (const [id, val] of Object.entries(res.keys)) {
-          keyMap.set(id, {
-            correct: typeof val.correctIndex === 'number' ? val.correctIndex : 0,
-            explain: val.explanation || '',
-          });
+    await Promise.all(
+      unresolved.map(async (q) => {
+        try {
+          const snap = await getDoc(doc(db, 'questionKeys', q.id));
+          if (snap.exists()) {
+            const data = snap.data();
+            keyMap.set(q.id, {
+              correct: typeof data.correct === 'number' ? data.correct : 0,
+              explain: data.explain || data.explanation || '',
+            });
+          }
+        } catch (err) {
+          console.warn(`[testPdfExporter] Key load fallback for ${q.id}:`, err);
         }
-      }
-    } catch (err) {
-      console.warn('[testPdfExporter] Key load fallback via /api/questions/verify:', err);
-    }
+      })
+    );
   }
 
   return questions.map((q) => {

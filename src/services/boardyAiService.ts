@@ -3,6 +3,8 @@
  * Single source of truth for AI-powered step-by-step question derivations.
  */
 
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { reportQuestion } from './testEngine';
 import type { AttemptQuestion } from '@/types/index';
@@ -11,6 +13,7 @@ export const BOARDY_AI_MODEL = 'gemini-3.8-flash';
 export const BOARDY_AI_FALLBACK_MODEL = 'gemini-flash-latest';
 export const FREE_DAILY_AI_TOKENS = 5;
 
+// In-memory cache to guarantee successful explanations are never re-fetched
 const explanationMemoryCache = new Map<string, string>();
 
 export interface BoardyDerivationParams {
@@ -32,6 +35,9 @@ export interface BoardyDerivationResult {
   error?: string;
 }
 
+/**
+ * Checks remaining daily AI tokens for a free tier student.
+ */
 export function getRemainingDailyAiTokens(uid: string): { used: number; remaining: number } {
   if (!uid) return { used: 0, remaining: FREE_DAILY_AI_TOKENS };
   const dateKey = getPKTDateKey();
@@ -41,6 +47,9 @@ export function getRemainingDailyAiTokens(uid: string): { used: number; remainin
   return { used, remaining };
 }
 
+/**
+ * Consumes 1 daily AI token for a free tier student.
+ */
 export function consumeDailyAiToken(uid: string): number {
   if (!uid) return 0;
   const dateKey = getPKTDateKey();
@@ -51,6 +60,9 @@ export function consumeDailyAiToken(uid: string): number {
   return updated;
 }
 
+/**
+ * Generates or retrieves cached step-by-step derivation for an MCQ.
+ */
 export async function getBoardyExplanation(
   params: BoardyDerivationParams
 ): Promise<BoardyDerivationResult> {
@@ -63,10 +75,12 @@ export async function getBoardyExplanation(
     forceRefresh = false,
   } = params;
 
+  // 1. Safety check: Verify stored correct answer exists and is valid
   const options = Array.isArray(question.options) ? question.options : [];
   const correctIdx = typeof question.correct === 'number' ? question.correct : undefined;
 
   if (correctIdx === undefined || correctIdx < 0 || correctIdx >= options.length) {
+    // Flag this question for admin review
     if (question.id && uid) {
       reportQuestion({
         questionId: question.id,
@@ -92,6 +106,7 @@ export async function getBoardyExplanation(
 
   const cacheKey = `boardy_cache_q_${question.id || question.q?.slice(0, 30)}`;
 
+  // 2. Caching check: If not forceRefresh, check for existing cached explanation
   if (!forceRefresh) {
     const memoryCached = explanationMemoryCache.get(cacheKey);
     if (memoryCached && memoryCached.trim().length > 20) {
@@ -116,6 +131,7 @@ export async function getBoardyExplanation(
     }
   }
 
+  // 3. Token check: Free tier limited to 5 AI calls per calendar day (PKT)
   if (!isUnlimited && uid) {
     const { remaining, used } = getRemainingDailyAiTokens(uid);
     if (remaining <= 0) {
@@ -129,6 +145,7 @@ export async function getBoardyExplanation(
     }
   }
 
+  // 4. Request from backend `/api/ai-tutor` with retry & exponential backoff
   const requestPayload = {
     mode: 'mcq_derivation',
     questionText: question.q || question.stem || '',
@@ -151,11 +168,11 @@ export async function getBoardyExplanation(
     track,
   };
 
-  interface ServiceHttpError extends Error {
-    status?: number;
-    code?: string;
-    reason?: string;
-  }
+interface ServiceHttpError extends Error {
+  status?: number;
+  code?: string;
+  reason?: string;
+}
 
   const executeCall = async () => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -203,17 +220,27 @@ export async function getBoardyExplanation(
     } catch (firstErr: unknown) {
       const fe = firstErr as ServiceHttpError;
       console.warn('[boardyAiService] First derivation attempt failed, retrying with backoff:', fe?.status, fe?.message);
+      // Backoff 1200ms before retry
       await new Promise((resolve) => setTimeout(resolve, 1200));
       rawReply = await executeCall();
     }
 
+    // Cache the explanation locally and in memory
     explanationMemoryCache.set(cacheKey, rawReply);
     try {
       localStorage.setItem(cacheKey, rawReply);
+      if (question.id) {
+        const qRef = doc(db, 'questions', question.id);
+        const qSnap = await getDoc(qRef);
+        if (qSnap.exists()) {
+          updateDoc(qRef, { cachedAiExplanation: rawReply }).catch(() => {});
+        }
+      }
     } catch {
       // Ignore storage/caching errors
     }
 
+    // Consume 1 token for free tier
     if (!isUnlimited && uid) {
       consumeDailyAiToken(uid);
     }
@@ -233,6 +260,7 @@ export async function getBoardyExplanation(
     const reason = errorObj?.reason || errorObj?.message || 'Unknown network error';
     const code = errorObj?.code;
 
+    // Log the real error (status code and reason) to the console
     console.error('[boardyAiService] Derivation failure:', {
       statusCode: status,
       reason,
@@ -241,6 +269,7 @@ export async function getBoardyExplanation(
       timestamp: new Date().toISOString(),
     });
 
+    // Provide student with a specific, helpful message
     let studentMessage = 'Could not generate step-by-step solution right now. Tap "Re-derive" to try again.';
 
     if (code === 'OFFLINE' || (typeof navigator !== 'undefined' && !navigator.onLine) || reason.includes('Failed to fetch')) {

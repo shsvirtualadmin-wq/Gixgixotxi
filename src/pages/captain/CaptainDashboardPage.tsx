@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
-import { api } from '@/lib/api';
+import { collection, query, where, getDocs, orderBy, limit, type QueryDocumentSnapshot, type DocumentData } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -64,19 +65,44 @@ export function CaptainDashboardPage() {
 
     async function loadCaptainStats() {
       try {
-        const [refRes, crewRes, capRes] = await Promise.all([
-          api.get<{ referrals?: ReferredStudent[] }>(`/api/referrals?referrerCode=${encodeURIComponent(captainCode)}&referrerUid=${encodeURIComponent(user!.uid)}`).catch(() => ({ referrals: [] })),
-          api.get<{ crews?: Array<Record<string, unknown>> }>(`/api/crews?leaderId=${encodeURIComponent(user!.uid)}`).catch(() => ({ crews: [] })),
-          api.get<{ captains?: CaptainRankItem[] }>('/api/captains?limit=10').catch(() => ({ captains: [] })),
-        ]);
+        // 1. Fetch referred students matching this captain's code or uid
+        const refQ = query(
+          collection(db, 'referrals'),
+          where('referrerCode', '==', captainCode)
+        );
+        const refSnap = await getDocs(refQ);
+        let refs: ReferredStudent[] = refSnap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        } as ReferredStudent));
 
-        const refs = refRes.referrals || [];
+        // If empty by code, fallback query by referrerUid
+        if (refs.length === 0) {
+          const refQ2 = query(
+            collection(db, 'referrals'),
+            where('referrerUid', '==', user!.uid)
+          );
+          const refSnap2 = await getDocs(refQ2);
+          refs = refSnap2.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          } as ReferredStudent));
+        }
+
         setReferredStudents(refs);
-        setCrewsLedCount((crewRes.crews || []).length);
 
-        if ((capRes.captains || []).length > 0) {
-          setCaptainRankings(capRes.captains!);
+        // 2. Fetch crews led by this captain
+        const crewQ = query(collection(db, 'crews'), where('leaderId', '==', user!.uid));
+        const crewSnap = await getDocs(crewQ);
+        setCrewsLedCount(crewSnap.size);
+
+        // 3. Fetch captain rankings from real Firestore 'captains' collection
+        const capQ = query(collection(db, 'captains'), orderBy('referralCount', 'desc'), limit(10));
+        const capSnap = await getDocs(capQ).catch(() => ({ docs: [] as QueryDocumentSnapshot<DocumentData>[] }));
+        if (capSnap.docs.length > 0) {
+          setCaptainRankings(capSnap.docs.map((d) => ({ id: d.id, ...d.data() } as CaptainRankItem)));
         } else {
+          // Fallback if captains collection hasn't been populated yet
           setCaptainRankings([
             { id: user!.uid, name: profile?.displayName || 'You', university: profile?.targetUniversity || 'Campus', referralCount: refs.length, points: refs.length * 50, tier: 'Bronze' },
           ]);

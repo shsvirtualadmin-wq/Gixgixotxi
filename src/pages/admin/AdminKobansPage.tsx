@@ -25,7 +25,8 @@ import {
   fetchUserLedger,
 } from '@/services/kobanService';
 import { fetchUsersPaginated } from '@/services/adminService';
-import { api } from '@/lib/api';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { COSMETICS_CATALOG } from '@/data/cosmeticsCatalog';
 import {
   AvatarPicture,
@@ -134,8 +135,13 @@ export function AdminKobansPage() {
     setLedgerLoading(true);
 
     try {
-      const res = await api.get<{ wallet?: { balance?: number } }>(`/api/wallet?uid=${encodeURIComponent(u.uid)}`);
-      setSelectedUserBalance(typeof res.wallet?.balance === 'number' ? res.wallet.balance : 0);
+      const wSnap = await getDoc(doc(db, 'wallets', u.uid));
+      if (wSnap.exists()) {
+        const wData = wSnap.data();
+        setSelectedUserBalance(typeof wData.balance === 'number' ? wData.balance : 0);
+      } else {
+        setSelectedUserBalance(0);
+      }
 
       const ledger = await fetchUserLedger(u.uid);
       setSelectedUserLedger(ledger);

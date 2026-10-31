@@ -1,5 +1,6 @@
+import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState, memo, useRef } from 'react';
-import { api } from '@/lib/api';
+import { db } from '@/lib/firebase';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useAuth } from '@/contexts/AuthContext';
@@ -60,11 +61,10 @@ export const DailyLimitsMeter = memo(function DailyLimitsMeter({
     setLoading(true);
     setHasError(false);
 
-    api
-      .get<{ usage?: UsageData }>(`/api/usage?uid=${encodeURIComponent(effectiveUid)}&dateKey=${encodeURIComponent(dateKey)}`)
-      .then((res) => {
+    getDoc(doc(db, 'users', effectiveUid, 'usage', dateKey))
+      .then((snap) => {
         if (cancelled) return;
-        const u = res.usage || {};
+        const u = snap.exists() ? (snap.data() as UsageData) : {};
         setUsage(u);
         const count = Number(u.questionsUsed ?? u.testsStarted ?? u.practiceAttempts ?? 0);
         if (onUsageChangeRef.current) onUsageChangeRef.current(count);

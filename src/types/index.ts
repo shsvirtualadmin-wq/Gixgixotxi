@@ -1,12 +1,4 @@
-export type Timestamp =
-  | number
-  | string
-  | {
-      seconds: number;
-      nanoseconds?: number;
-      toMillis?: () => number;
-      toDate?: () => Date;
-    };
+import type { Timestamp } from 'firebase/firestore';
 
 export type UserRole = 'student' | 'crew' | 'captain' | 'ambassador' | 'admin' | 'superadmin';
 export type UserPlan = 'free' | 'pro';
@@ -326,7 +318,7 @@ export interface ReferralDoc {
   referredEmail: string;
   status: 'pending' | 'activated';
   activated: boolean;
-  signedUpAt: Timestamp | number | string | null;
+  signedUpAt: import('firebase/firestore').FieldValue;
   emailVerified: boolean;
   firstTestCompleted: boolean;
 }

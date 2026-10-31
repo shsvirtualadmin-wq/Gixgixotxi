@@ -22,6 +22,7 @@ import { fetchCrewDetails, removeMemberFromCrew } from '@/services/crewService';
 import { isCrewPaidActive } from '@/services/crewBackend';
 import { maskEmail } from '@/utils/privacy';
 import type { CrewDoc } from '@/types/crew';
+import { Timestamp } from 'firebase/firestore';
 
 interface RecentAttemptItem {
   id: string;
@@ -175,12 +176,7 @@ export function UserOverrideDrawer({
           }
         }
 
-        const exp = {
-          seconds: Math.floor(targetMillis / 1000),
-          nanoseconds: 0,
-          toMillis: () => targetMillis,
-          toDate: () => new Date(targetMillis),
-        };
+        const exp = Timestamp.fromMillis(targetMillis);
         updates.premiumExpiresAt = exp;
         updates.planExpiresAt = exp;
       } else {

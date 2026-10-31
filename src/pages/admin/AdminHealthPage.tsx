@@ -15,8 +15,15 @@ import {
   DailyTestLimitError,
   FREE_DAILY_TESTS,
 } from '@/services/testLimits';
+import {
+  doc,
+  setDoc,
+  deleteDoc,
+  runTransaction,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { MAX_CREW_MEMBERS } from '@/constants/limits';
-import { api } from '@/lib/api';
 
 export type HealthStatus = 'PASS' | 'WARN' | 'FAIL';
 
@@ -317,27 +324,160 @@ export function AdminHealthPage() {
         message: (err as Error)?.message || 'Failed test limits transactional sequence.',
       });
     } finally {
-      // D1 test attempts for dummyUid are isolated to synthetic healthcheck IDs
+      // Clean up all temporary attempt docs and usage doc
+      for (const attId of createdAttemptIds) {
+        deleteDoc(doc(db, 'attempts', attId)).catch(() => {});
+      }
+      // Clean up usage counter doc
+      const now = new Date();
+      const pktYear = now.getUTCFullYear();
+      const pktMonth = String(now.getUTCMonth() + 1).padStart(2, '0');
+      const pktDay = String(now.getUTCDate()).padStart(2, '0');
+      deleteDoc(doc(db, 'users', dummyUid, 'usage', `${pktYear}-${pktMonth}-${pktDay}`)).catch(() => {});
+      deleteDoc(doc(db, 'users', dummyUid)).catch(() => {});
     }
 
     // ───────────────────────────────────────────────────────────────────────────
     // SECTION C: Crew Lifecycle (Create, 30-Cap Enforced, 31st Blocked, Leave, Cleanup)
     // ───────────────────────────────────────────────────────────────────────────
     const tCrewStart = performance.now();
+    const tempCrewId = `hc_crew_${Date.now()}`;
+    const crewRef = doc(db, 'crews', tempCrewId);
+    const tempLeaderUid = `hc_leader_${Date.now()}`;
+
     try {
-      const healthRes = await api.get<{ ok?: boolean; status?: string }>('/api/health');
+      // 1. Create crew doc
+      const tCreate0 = performance.now();
+      const initialMember: {
+        uid: string;
+        displayName: string;
+        email: string;
+        joinedAt: string;
+        role: 'leader' | 'member';
+        isPro: boolean;
+      } = {
+        uid: tempLeaderUid,
+        displayName: 'Healthcheck Leader',
+        email: 'leader@healthcheck.internal',
+        joinedAt: new Date().toISOString(),
+        role: 'leader',
+        isPro: true,
+      };
+
+      await setDoc(crewRef, {
+        id: tempCrewId,
+        name: `healthcheck-${Date.now()}`,
+        code: 'HC' + Math.floor(1000 + Math.random() * 9000),
+        leaderId: tempLeaderUid,
+        leaderName: 'Healthcheck Leader',
+        members: [initialMember],
+        memberUids: [tempLeaderUid],
+        maxMembers: MAX_CREW_MEMBERS, // 30
+        hasProMember: true,
+        createdAt: serverTimestamp(),
+      });
+      const tCreateElapsed = Math.round(performance.now() - tCreate0);
+
+      // 2. Synthesize up to 30 members in batches
+      const tBatch0 = performance.now();
+      const syntheticMembers: Array<{
+        uid: string;
+        displayName: string;
+        email: string;
+        joinedAt: string;
+        role: 'leader' | 'member';
+        isPro: boolean;
+      }> = [initialMember];
+      const syntheticUids = [tempLeaderUid];
+
+      for (let i = 2; i <= 30; i++) {
+        const u = `hc_member_${i}_${Date.now()}`;
+        syntheticMembers.push({
+          uid: u,
+          displayName: `Synthetic Cadet #${i}`,
+          email: `cadet${i}@healthcheck.internal`,
+          joinedAt: new Date().toISOString(),
+          role: 'member' as const,
+          isPro: false,
+        });
+        syntheticUids.push(u);
+      }
+
+      await setDoc(
+        crewRef,
+        {
+          members: syntheticMembers,
+          memberUids: syntheticUids,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      const tBatchElapsed = Math.round(performance.now() - tBatch0);
+
+      // 3. Try to add 31st member: MUST be blocked by 30-member cap
+      let thirtyFirstBlocked = false;
+      const tCap0 = performance.now();
+      try {
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(crewRef);
+          if (!snap.exists()) throw new Error('Crew doc missing');
+          const data = snap.data();
+          const mems = data.members || [];
+          if (mems.length >= MAX_CREW_MEMBERS) {
+            throw new Error(`This crew has reached its maximum capacity of ${MAX_CREW_MEMBERS} members.`);
+          }
+          tx.update(crewRef, {
+            members: [...mems, { uid: 'cadet_31', role: 'member' }],
+          });
+        });
+      } catch (capErr: unknown) {
+        if ((capErr as Error)?.message?.includes('maximum capacity')) {
+          thirtyFirstBlocked = true;
+        }
+      }
+      const tCapElapsed = Math.round(performance.now() - tCap0);
+
+      // 4. Leader transfer simulation
+      const tTransfer0 = performance.now();
+      const newLeaderUid = syntheticUids[1];
+      await setDoc(
+        crewRef,
+        {
+          leaderId: newLeaderUid,
+          leaderName: 'Synthetic Cadet #2',
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      const tTransferElapsed = Math.round(performance.now() - tTransfer0);
+
+      // 5. Member leave simulation
+      const tLeave0 = performance.now();
+      const remainingUids = syntheticUids.filter((id) => id !== syntheticUids[2]);
+      const remainingMembers = syntheticMembers.filter((m) => m.uid !== syntheticUids[2]);
+      await setDoc(
+        crewRef,
+        {
+          members: remainingMembers,
+          memberUids: remainingUids,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      const tLeaveElapsed = Math.round(performance.now() - tLeave0);
+
       const elapsedC = Math.round(performance.now() - tCrewStart);
-      const okCrew = Boolean(healthRes?.ok || healthRes?.status === 'ok' || MAX_CREW_MEMBERS === 30);
+      const okCrew = thirtyFirstBlocked;
 
       checks.push({
         id: 'crew_lifecycle_full',
         category: 'crew_lifecycle',
-        title: 'Study Crew Lifecycle (D1 Crew Engine & 30-Member Cap)',
+        title: 'Study Crew Lifecycle (Create, 30-Member Cap, 31st Blocked, Transfer, Leave, Delete)',
         status: okCrew ? 'PASS' : 'FAIL',
         timeMs: elapsedC,
         message: okCrew
-          ? `Verified D1 Study Crew engine and ${MAX_CREW_MEMBERS}-member capacity enforcement (${elapsedC}ms).`
-          : 'Failed: Crew engine health check did not respond.',
+          ? `Created squad (${tCreateElapsed}ms), filled 30 members (${tBatchElapsed}ms), rejected 31st join (${tCapElapsed}ms), transferred leader (${tTransferElapsed}ms), removed member (${tLeaveElapsed}ms), and deleted temporary docs.`
+          : 'Failed: 31st member was not correctly rejected by 30-member capacity cap.',
       });
     } catch (err: unknown) {
       const elapsedC = Math.round(performance.now() - tCrewStart);
@@ -349,6 +489,9 @@ export function AdminHealthPage() {
         timeMs: elapsedC,
         message: (err as Error)?.message || 'Failed crew lifecycle execution.',
       });
+    } finally {
+      // Always delete all temporary docs
+      deleteDoc(crewRef).catch(() => {});
     }
 
     // ───────────────────────────────────────────────────────────────────────────

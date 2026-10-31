@@ -216,9 +216,6 @@ const AdminBotsPage = lazyWithRetry(() =>
 const AdminPricingPage = lazyWithRetry(() =>
   import('./pages/admin/AdminPricingPage').then(m => ({ default: m.AdminPricingPage }))
 );
-const AdminImportFirestorePage = lazyWithRetry(() =>
-  import('./pages/admin/AdminImportFirestorePage').then(m => ({ default: m.AdminImportFirestorePage }))
-);
 
 // Boardly Commons
 const CommonsFeedPage = lazyWithRetry(() =>
@@ -271,7 +268,6 @@ function AppInner() {
           <Route path="crews" element={<AdminCrewsPage />} />
           <Route path="commons" element={<AdminCommonsPage />} />
           <Route path="health" element={<AdminHealthPage />} />
-          <Route path="import-firestore" element={<AdminImportFirestorePage />} />
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Route>
 

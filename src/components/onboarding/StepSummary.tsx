@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { api } from '@/lib/api';
+import { doc, setDoc, getDocFromServer, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -34,10 +35,36 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
       onboardingComplete: true,
       onboardingCompleted: true,
       profileCompleted: true,
+      updatedAt: serverTimestamp(),
+      profileCompletedAt: serverTimestamp(),
+      onboardingCompletedAt: serverTimestamp(),
     };
 
+    if (import.meta.env.DEV) {
+      console.log(`[StepSummary] Starting server-confirmed save for ${path}:`, safePayload);
+    }
+
     try {
-      await api.put('/api/users/me', safePayload);
+      const docRef = doc(db, 'users', user.uid);
+
+      const writeAndVerify = async () => {
+        await setDoc(docRef, safePayload, { merge: true });
+        const snap = await getDocFromServer(docRef);
+        if (!snap.exists()) {
+          throw new Error('Profile write could not be confirmed on the server.');
+        }
+        return snap.data();
+      };
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          const tErr = new Error('Database write timed out after 15 seconds. Please verify your connection.');
+          (tErr as { code?: string }).code = 'TIMEOUT_15S';
+          reject(tErr);
+        }, 15000);
+      });
+
+      await Promise.race([writeAndVerify(), timeoutPromise]);
 
       updateLocalProfile({
         subjects: data.subjects,

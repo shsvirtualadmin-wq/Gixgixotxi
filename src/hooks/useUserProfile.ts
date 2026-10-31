@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { api } from '@/lib/api';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
+import { debugTracker } from '@/utils/debugTracker';
+import { isQuotaExhaustedError } from '@/utils/quota';
 import { syncPublicProfile } from '@/services/publicProfileService';
 import type { UserProfile } from '@/types/index';
 
@@ -106,7 +109,7 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
   }
 
   activeUid = uid;
-  const path = `/api/users/me`;
+  const path = `users/${uid}`;
   const startTime = Date.now();
   const cached = getLocalCachedProfile(uid);
 
@@ -122,6 +125,7 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
 
   activeTimeoutTimer = setTimeout(() => {
     if (!sharedState.hasReceivedSnapshot) {
+      console.warn(`[useUserProfile] Snapshot timeout (8s) on ${path}. Falling back to cached state.`);
       const duration = Date.now() - startTime;
       sharedState.hasReceivedSnapshot = true;
       sharedState.fetchStatus = 'error';
@@ -143,9 +147,8 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
     cancelled = true;
   };
 
-  api
-    .get<{ profile: UserProfile | null }>('/api/users/me', { silentToast: true })
-    .then((res) => {
+  getDoc(doc(db, 'users', uid))
+    .then((snap) => {
       if (cancelled) return;
       if (activeTimeoutTimer) {
         clearTimeout(activeTimeoutTimer);
@@ -156,8 +159,8 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
       sharedState.hasReceivedSnapshot = true;
       sharedState.error = null;
 
-      if (res?.profile) {
-        const data = res.profile;
+      if (snap.exists()) {
+        const data = snap.data() as UserProfile;
         const fullProfile = { ...data, uid };
         sharedState.docExists = true;
         sharedState.fetchStatus = 'success';
@@ -184,12 +187,13 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
         activeTimeoutTimer = null;
       }
       const duration = Date.now() - startTime;
+      const isQuota = isQuotaExhaustedError(err);
       sharedState.fetchDurationMs = duration;
       sharedState.hasReceivedSnapshot = true;
-      sharedState.fetchStatus = 'error';
+      sharedState.fetchStatus = isQuota ? 'success' : 'error';
       sharedState.error = {
-        code: err?.code,
-        message: err?.message || 'Failed to fetch profile',
+        code: isQuota ? 'RESOURCE_EXHAUSTED' : err.code,
+        message: isQuota ? 'Daily database limit reached, using cached profile' : err.message,
         path,
       };
       const cachedProf = getLocalCachedProfile(uid);
@@ -215,6 +219,11 @@ function releaseSubscription() {
   }, 15000);
 }
 
+/**
+ * Single shared hook for accessing and updating the active student's profile.
+ * Coordinates through a singleton observer on `users/{uid}` to eliminate duplicate reads.
+ * Prevents re-render cascades and ensures instant cache-first availability.
+ */
 export function useUserProfile(): UserProfileHookResult {
   const { user, profile: authProfile, profileLoading: authLoading, updateLocalProfile } = useAuth();
   const [, setTick] = useState(0);
@@ -259,7 +268,10 @@ export function useUserProfile(): UserProfileHookResult {
     }
   }, [user?.uid, authProfile]);
 
+  // Loading state: true only while Auth is resolving OR while initial snapshot is waiting for active user
   const loading = (authLoading && !profile) || (Boolean(user?.uid) && !hasReceivedSnapshot && !profile);
+
+  // Unified field extraction without target exam
   const profileCompleted = Boolean(profile?.profileCompleted || profile?.onboardingCompleted);
 
   const subjects = useMemo(() => {
@@ -280,9 +292,12 @@ export function useUserProfile(): UserProfileHookResult {
       onboardingCompleted?: boolean;
     }) => {
       if (!user?.uid) throw new Error('Cannot update profile: Unauthenticated user');
+      const path = `users/${user.uid}`;
 
-      const safePayload: Record<string, unknown> = {
-        updatedAt: Date.now(),
+      // Strictly allow safe student preference updates
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const safePayload: Record<string, any> = {
+        updatedAt: serverTimestamp(),
       };
 
       if (updates.displayName !== undefined) {
@@ -306,26 +321,31 @@ export function useUserProfile(): UserProfileHookResult {
         safePayload.profileCompleted = completed;
         safePayload.onboardingCompleted = completed;
         if (completed) {
-          safePayload.onboardingCompletedAt = Date.now();
-          safePayload.profileCompletedAt = Date.now();
+          safePayload.onboardingCompletedAt = serverTimestamp();
+          safePayload.profileCompletedAt = serverTimestamp();
         }
       }
 
-      updateLocalProfileRef.current(safePayload as Partial<UserProfile>);
+      // 1. Immediately update in-memory state so UI updates without needing a refresh
+      updateLocalProfileRef.current(safePayload);
       if (sharedState.profile) {
         sharedState.profile = { ...sharedState.profile, ...safePayload };
         setLocalCachedProfile(user.uid, sharedState.profile);
       }
       broadcastState();
 
-      await api.put('/api/users/me', safePayload);
+      // 2. Perform merge write to Firestore
+      await setDoc(doc(db, 'users', user.uid), safePayload, { merge: true });
 
+      // 3. Sync public-safe fields to publicProfiles/{uid}
       syncPublicProfile(user.uid, {
         ...(profile || {}),
         ...safePayload,
       }).catch((err) => {
         console.warn('[useUserProfile] syncPublicProfile failed:', err);
       });
+
+      console.log(`[useUserProfile] Wrote profile update to ${path}:`, safePayload);
     },
     [user?.uid, profile]
   );

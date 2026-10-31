@@ -85,6 +85,7 @@ import {
   computeContentHash,
 } from '@/constants/taxonomy';
 import type { Question, QuestionReport } from '@/types';
+import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 
 // ─── LATEX TOOLBAR SYMBOLS ────────────────────────────────────────────────────
 interface LatexSnippet {
@@ -154,8 +155,7 @@ export function AdminQuestionsPage() {
 
   // Question list state
   const [questions, setQuestions] = useState<Question[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [lastDoc, setLastDoc] = useState<any>(null);
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);

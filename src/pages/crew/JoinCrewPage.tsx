@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { useStudyCrew, type CrewDoc } from '@/hooks/useStudyCrew';
@@ -44,14 +45,15 @@ export function JoinCrewPage() {
       try {
         setLoading(true);
         setError(null);
-        const res = await api.get<{ crew?: CrewDoc }>(`/api/crews/by-code/${encodeURIComponent(cleanCode)}`).catch(() => null);
-        const foundCrew = res?.crew || (res && 'id' in res ? (res as unknown as CrewDoc) : null);
+        const q = query(collection(db, 'crews'), where('code', '==', cleanCode));
+        const snap = await getDocs(q);
 
-        if (!foundCrew) {
+        if (snap.empty) {
           setError(`No study crew found with code "${cleanCode}".`);
           setCrewPreview(null);
         } else {
-          setCrewPreview(foundCrew);
+          const docSnap = snap.docs[0];
+          setCrewPreview({ id: docSnap.id, ...docSnap.data() } as CrewDoc);
         }
       } catch (err: unknown) {
         console.warn('[JoinCrewPage] Fetch error:', err);

@@ -1,5 +1,6 @@
+import { collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { db } from '@/lib/firebase';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { BookOpen } from 'lucide-react';
@@ -42,10 +43,9 @@ export function RecentAttempts({ uid }: Props) {
 
     setLoading(true);
 
-    api
-      .get<{ attempts?: Attempt[] }>(`/api/practice-attempts?uid=${encodeURIComponent(uid)}&limit=5`)
-      .then((res) => {
-        const list = res.attempts || [];
+    getDocs(query(collection(db, 'attempts'), where('userId', '==', uid), limit(5)))
+      .then((snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Attempt));
         cachedRecentAttemptsByUid.set(uid, list);
         setAttempts(list);
         setLoading(false);

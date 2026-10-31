@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { api } from '@/lib/api';
+import { collection, query, where, orderBy, getDocs, limit, startAfter, type DocumentSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -10,13 +11,18 @@ import { BookOpen, CheckCircle, Clock, ArrowRight, RefreshCw, BarChart2 } from '
 import { useNavigate } from 'react-router-dom';
 import type { AttemptDoc } from '@/types/index';
 
+function getTimestampSeconds(val: unknown): number {
+  if (!val || typeof val !== 'object') return 0;
+  if ('seconds' in val && typeof (val as { seconds: unknown }).seconds === 'number') {
+    return (val as { seconds: number }).seconds;
+  }
+  return 0;
+}
+
 function formatTimestampDate(val: unknown): string {
   if (!val) return 'Recent';
   let ms = Date.now();
-  if (typeof val === 'string' || typeof val === 'number') {
-    const d = new Date(val);
-    if (!isNaN(d.getTime())) ms = d.getTime();
-  } else if (typeof val === 'object' && val !== null) {
+  if (typeof val === 'object' && val !== null) {
     if ('toMillis' in val && typeof (val as { toMillis: () => number }).toMillis === 'function') {
       ms = (val as { toMillis: () => number }).toMillis();
     } else if ('seconds' in val && typeof (val as { seconds: number }).seconds === 'number') {
@@ -38,7 +44,7 @@ export function ResultsListPage() {
   const [attempts, setAttempts] = useState<AttemptDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [offset, setOffset] = useState(0);
+  const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<{ code?: string; message: string; path?: string } | null>(null);
 
@@ -47,33 +53,60 @@ export function ResultsListPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get<{ attempts?: AttemptDoc[] }>(
-        `/api/practice-attempts?uid=${encodeURIComponent(user.uid)}&limit=20&offset=0`
+      // Query attempts matching user ID with limit 20
+      const q = query(
+        collection(db, 'attempts'),
+        where('userId', '==', user.uid),
+        orderBy('createdAt', 'desc'),
+        limit(20)
       );
-      const docs = res.attempts || [];
+      const snap = await getDocs(q);
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as AttemptDoc));
       setAttempts(docs.filter((a) => a.status === 'completed' || a.score !== undefined));
-      setOffset(docs.length);
-      setHasMore(docs.length === 20);
+      setLastDoc(snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null);
+      setHasMore(snap.docs.length === 20);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to load test history';
-      setError({ message: msg });
+      console.warn('[ResultsListPage] Attempt query error:', err);
+      // Fallback without compound index if needed
+      try {
+        const snap = await getDocs(
+          query(collection(db, 'attempts'), where('userId', '==', user.uid), limit(20))
+        );
+        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as AttemptDoc));
+        docs.sort((a, b) => {
+          const tA = getTimestampSeconds(a.createdAt);
+          const tB = getTimestampSeconds(b.createdAt);
+          return tB - tA;
+        });
+        setAttempts(docs.filter((a) => a.status === 'completed' || a.score !== undefined));
+        setLastDoc(snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null);
+        setHasMore(snap.docs.length === 20);
+      } catch (fallbackErr: unknown) {
+        const msg = fallbackErr instanceof Error ? fallbackErr.message : 'Failed to load test history';
+        setError({ message: msg });
+      }
     } finally {
       setLoading(false);
     }
   }, [user]);
 
   const handleLoadMore = async () => {
-    if (!user || !hasMore || loadingMore) return;
+    if (!user || !lastDoc || loadingMore) return;
     setLoadingMore(true);
     try {
-      const res = await api.get<{ attempts?: AttemptDoc[] }>(
-        `/api/practice-attempts?uid=${encodeURIComponent(user.uid)}&limit=20&offset=${offset}`
+      const q = query(
+        collection(db, 'attempts'),
+        where('userId', '==', user.uid),
+        orderBy('createdAt', 'desc'),
+        startAfter(lastDoc),
+        limit(20)
       );
-      const docs = res.attempts || [];
+      const snap = await getDocs(q);
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as AttemptDoc));
       const filtered = docs.filter((a) => a.status === 'completed' || a.score !== undefined);
       setAttempts((prev) => [...prev, ...filtered]);
-      setOffset((prev) => prev + docs.length);
-      setHasMore(docs.length === 20);
+      setLastDoc(snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null);
+      setHasMore(snap.docs.length === 20);
     } catch (err) {
       console.warn('[ResultsListPage] Load more error:', err);
     } finally {

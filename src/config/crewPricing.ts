@@ -1,4 +1,5 @@
-import { api } from '../lib/api';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 export interface CrewPricingConfig {
   freeMemberLimit: number;
@@ -20,16 +21,14 @@ let cachedPricing: CrewPricingConfig = { ...DEFAULT_CREW_PRICING };
 let lastFetched = 0;
 
 export async function fetchCrewPricing(): Promise<CrewPricingConfig> {
+  // 60-second cache
   if (Date.now() - lastFetched < 60000 && lastFetched > 0) {
     return cachedPricing;
   }
   try {
-    const res = await api.get<{ value?: Partial<CrewPricingConfig> }>(
-      '/api/config/crewPricing',
-      { silentToast: true }
-    );
-    const data = res?.value || (res as Partial<CrewPricingConfig>);
-    if (data && (data.freeMemberLimit || data.largeCrewPricePKR)) {
+    const snap = await getDoc(doc(db, 'config', 'crewPricing'));
+    if (snap.exists()) {
+      const data = snap.data();
       cachedPricing = {
         freeMemberLimit: Number(data.freeMemberLimit) || DEFAULT_CREW_PRICING.freeMemberLimit,
         largeCrewPricePKR: Number(data.largeCrewPricePKR) || DEFAULT_CREW_PRICING.largeCrewPricePKR,
@@ -42,7 +41,7 @@ export async function fetchCrewPricing(): Promise<CrewPricingConfig> {
       return cachedPricing;
     }
   } catch (err) {
-    console.warn('[CrewPricing] Failed to fetch config from D1, using default:', err);
+    console.warn('[CrewPricing] Failed to fetch config, using default:', err);
   }
   return cachedPricing;
 }
@@ -60,7 +59,7 @@ export async function updateCrewPricing(
     updatedBy: adminEmail,
   };
 
-  await api.put('/api/config/crewPricing', updated);
+  await setDoc(doc(db, 'config', 'crewPricing'), updated, { merge: true });
   cachedPricing = updated;
   lastFetched = Date.now();
   return updated;

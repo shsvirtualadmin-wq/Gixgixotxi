@@ -1,5 +1,7 @@
+import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { db } from '@/lib/firebase';
+import { isQuotaExhaustedError } from '@/utils/quota';
 import type { UserProfile } from '@/types/index';
 
 interface ProfileState {
@@ -33,14 +35,13 @@ export function useProfile(uid: string | null): ProfileState {
     }
 
     let cancelled = false;
-    const path = `/api/users/${uid}`;
+    const path = `users/${uid}`;
 
-    api
-      .get<{ profile?: UserProfile | null }>(`/api/users/${encodeURIComponent(uid)}`, { silentToast: true })
-      .then((res) => {
+    getDoc(doc(db, 'users', uid))
+      .then((snap) => {
         if (cancelled) return;
-        if (res?.profile) {
-          const profileData = { ...res.profile, uid } as UserProfile;
+        if (snap.exists()) {
+          const profileData = { uid, ...snap.data() } as UserProfile;
           try {
             localStorage.setItem(`cached_profile_${uid}`, JSON.stringify(profileData));
           } catch {
@@ -53,6 +54,13 @@ export function useProfile(uid: string | null): ProfileState {
       })
       .catch((err) => {
         if (cancelled) return;
+        const isQuota = isQuotaExhaustedError(err);
+        if (isQuota) {
+          console.warn(`[useProfile] Daily quota limit reached on ${path}.`);
+        } else {
+          console.error(`[useProfile] Failed to read ${path}:`, err.code, err.message);
+        }
+
         let fallback: UserProfile | null = null;
         try {
           const raw = localStorage.getItem(`cached_profile_${uid}`);
@@ -64,7 +72,7 @@ export function useProfile(uid: string | null): ProfileState {
         setState({
           profile: fallback,
           loading: false,
-          error: { code: err?.code, message: err?.message || 'Failed to load profile', path },
+          error: isQuota ? null : { code: err.code, message: err.message, path },
         });
       });
 

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { auth } from '@/lib/firebase';
-import { api } from '@/lib/api';
+import { doc, getDoc } from 'firebase/firestore';
+import { db, auth } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from './useUserProfile';
+import { debugTracker } from '@/utils/debugTracker';
 
 export interface EffectivePlanResult {
   isPro: boolean;
@@ -16,6 +17,7 @@ export interface EffectivePlanResult {
   error?: string | null;
 }
 
+// ── Superadmin Identity Checker ─────────────────────────────────────────────
 export const SUPER_ADMIN_EMAILS = [
   'shsvirtualadmin@gmail.com',
   'support@boardly.cfd',
@@ -35,6 +37,7 @@ export function isSuperAdminEmailOrRole(
   return false;
 }
 
+// ── In-Memory Plan Cache to Eliminate Flickers ─────────────────────────────
 const planMemoryCache = new Map<string, EffectivePlanResult>();
 
 export function clearPlanCache(uid?: string) {
@@ -45,6 +48,7 @@ export function clearPlanCache(uid?: string) {
   }
 }
 
+// ── Pure Plan Resolver (used by hook and by /admin/health pure logic tests) ──
 export interface PlanResolverInput {
   email?: string | null;
   role?: string | null;
@@ -73,6 +77,7 @@ export function isCrewPaidActive(paidUntil?: string | null): boolean {
 export function resolveEffectivePlan(input: PlanResolverInput): EffectivePlanResult {
   const isSuper = isSuperAdminEmailOrRole(input.email, input.role, input.uid);
 
+  // 1. Superadmin ALWAYS has Pro / Unlimited everywhere with zero exceptions
   if (isSuper) {
     return {
       isPro: true,
@@ -86,6 +91,7 @@ export function resolveEffectivePlan(input: PlanResolverInput): EffectivePlanRes
     };
   }
 
+  // 2. Personal Plan check with Expiration Guard
   const rawPlan = input.plan;
   const isPrem = Boolean(input.isPremium || rawPlan === 'pro');
   const expiryRaw = input.planExpiresAt || input.premiumExpiresAt;
@@ -124,6 +130,7 @@ export function resolveEffectivePlan(input: PlanResolverInput): EffectivePlanRes
     };
   }
 
+  // 3. Crew shared Pro check (only if user is actually in crew)
   if (input.inCrew && input.crew) {
     const crewData = input.crew;
     const isPaidLargeCrew = crewData.tier === 'paid' && isCrewPaidActive(crewData.paid_until);
@@ -150,6 +157,7 @@ export function resolveEffectivePlan(input: PlanResolverInput): EffectivePlanRes
     }
   }
 
+  // 4. Free starter
   return {
     isPro: false,
     isUnlimited: false,
@@ -172,10 +180,16 @@ interface SharedCrewEntry {
 
 const crewSubscriptionRegistry = new Map<string, SharedCrewEntry>();
 
+/**
+ * Single source of truth hook for user's effective plan.
+ * Guarantees zero flicker for Superadmin, 3 states (loading, ready, error),
+ * and in-memory plan caching per uid with shared crew doc subscription.
+ */
 export function useEffectivePlan(): EffectivePlanResult {
   const { user: authUser } = useAuth();
   const { profile, loading: profileLoading, error: profileError } = useUserProfile();
 
+  // Immediate synchronous Superadmin resolution before ANY Firestore load
   const currentEmail = authUser?.email || auth.currentUser?.email || profile?.email;
   const currentUid = authUser?.uid || auth.currentUser?.uid || profile?.uid;
   const currentRole = profile?.role;
@@ -196,6 +210,7 @@ export function useEffectivePlan(): EffectivePlanResult {
       : { data: null, loading: true, error: null };
   });
 
+  // Single shared listener to crew doc if user is in a crew and not personally Pro
   useEffect(() => {
     if (isSuper || !crewId) {
       setCrewState({ data: null, loading: false, error: null });
@@ -220,32 +235,33 @@ export function useEffectivePlan(): EffectivePlanResult {
       };
       crewSubscriptionRegistry.set(crewId, entry);
 
-      api
-        .get<{ crew?: PlanResolverInput['crew'] }>(`/api/crews/mine`, { silentToast: true })
-        .then((res) => {
+      const crewRef = doc(db, 'crews', crewId);
+      getDoc(crewRef)
+        .then((snap) => {
           const cur = crewSubscriptionRegistry.get(crewId);
           if (!cur) return;
-          cur.data = res?.crew || null;
+          cur.data = snap.exists() ? (snap.data() as PlanResolverInput['crew']) : null;
           cur.loading = false;
           cur.error = null;
           for (const cb of cur.subscribers) {
             try {
               cb();
-            } catch {
-              // ignore
+            } catch (notifyErr) {
+              console.warn('[useEffectivePlan] subscriber notify error:', notifyErr);
             }
           }
         })
         .catch((err) => {
+          console.warn('[useEffectivePlan] Error reading crew plan:', err);
           const cur = crewSubscriptionRegistry.get(crewId);
           if (!cur) return;
-          cur.error = err?.message || 'Failed to read crew plan';
+          cur.error = err.message;
           cur.loading = false;
           for (const cb of cur.subscribers) {
             try {
               cb();
-            } catch {
-              // ignore
+            } catch (notifyErr) {
+              console.warn('[useEffectivePlan] subscriber notify error:', notifyErr);
             }
           }
         });
@@ -263,6 +279,7 @@ export function useEffectivePlan(): EffectivePlanResult {
 
   const { data: crewData, loading: crewLoading, error: crewError } = crewState;
 
+  // Immediate synchronous Superadmin resolution before ANY Firestore load
   if (isSuper) {
     const superResult: EffectivePlanResult = {
       isPro: true,
@@ -280,6 +297,7 @@ export function useEffectivePlan(): EffectivePlanResult {
 
   const isLoading = profileLoading || (inCrew && crewLoading && !crewData);
 
+  // If loading and we have a cached plan for this UID, return cached plan with status: 'loading'
   if (isLoading && currentUid && planMemoryCache.has(currentUid)) {
     const cached = planMemoryCache.get(currentUid)!;
     return {
@@ -289,6 +307,7 @@ export function useEffectivePlan(): EffectivePlanResult {
     };
   }
 
+  // Neutral loading state placeholder (never defaults to free while loading)
   if (isLoading) {
     return {
       isPro: false,

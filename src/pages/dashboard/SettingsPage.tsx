@@ -1,13 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  doc,
+  setDoc,
+  runTransaction,
+  serverTimestamp,
+} from 'firebase/firestore';
+import {
   EmailAuthProvider,
   linkWithCredential,
   reauthenticateWithCredential,
   updatePassword,
 } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
-import { api } from '@/lib/api';
+import { db, auth } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
@@ -137,17 +142,30 @@ export function SettingsPage() {
     setNameSaved(false);
 
     try {
+      const userRef = doc(db, 'users', user.uid);
+      const pubRef = doc(db, 'publicProfiles', user.uid);
+
       await Promise.all([
-        api.put('/api/users/me', {
-          displayName: cleanName,
-          nickname: cleanName,
-          name: cleanName,
-        }),
-        api.put(`/api/public-profiles/${encodeURIComponent(user.uid)}`, {
-          uid: user.uid,
-          displayName: cleanName,
-          nickname: cleanName,
-        }).catch(() => {}),
+        setDoc(
+          userRef,
+          {
+            displayName: cleanName,
+            nickname: cleanName,
+            name: cleanName,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ),
+        setDoc(
+          pubRef,
+          {
+            uid: user.uid,
+            displayName: cleanName,
+            nickname: cleanName,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ).catch(() => {}),
       ]);
 
       updateLocalProfile({
@@ -210,17 +228,56 @@ export function SettingsPage() {
     try {
       const oldUsername = (profile?.username || '').trim().toLowerCase();
       if (cleanUsername && cleanUsername !== oldUsername) {
-        await api.post('/api/usernames/claim', {
-          username: cleanUsername,
-          customRole: selectedRole,
+        await runTransaction(db, async (tx) => {
+          const newUsernameRef = doc(db, 'usernames', cleanUsername);
+          const existingSnap = await tx.get(newUsernameRef);
+          if (existingSnap.exists() && existingSnap.data()?.uid !== user.uid) {
+            throw new Error(`@${cleanUsername} is already taken by another student.`);
+          }
+          if (oldUsername && oldUsername !== cleanUsername) {
+            const oldRef = doc(db, 'usernames', oldUsername);
+            const oldSnap = await tx.get(oldRef);
+            if (oldSnap.exists() && oldSnap.data()?.uid === user.uid) {
+              tx.delete(oldRef);
+            }
+          }
+          tx.set(newUsernameRef, {
+            uid: user.uid,
+            username: cleanUsername,
+            updatedAt: serverTimestamp(),
+          });
+          tx.set(
+            doc(db, 'users', user.uid),
+            {
+              username: cleanUsername,
+              customRole: selectedRole,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+          tx.set(
+            doc(db, 'publicProfiles', user.uid),
+            {
+              uid: user.uid,
+              username: cleanUsername,
+              customRole: selectedRole,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
         });
       } else {
         await Promise.all([
-          api.put('/api/users/me', { customRole: selectedRole }),
-          api.put(`/api/public-profiles/${encodeURIComponent(user.uid)}`, {
-            uid: user.uid,
-            customRole: selectedRole,
-          }).catch(() => {}),
+          setDoc(
+            doc(db, 'users', user.uid),
+            { customRole: selectedRole, updatedAt: serverTimestamp() },
+            { merge: true }
+          ),
+          setDoc(
+            doc(db, 'publicProfiles', user.uid),
+            { uid: user.uid, customRole: selectedRole, updatedAt: serverTimestamp() },
+            { merge: true }
+          ).catch(() => {}),
         ]);
       }
 

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Award, Trophy, BookOpen, ArrowRight } from 'lucide-react';
-import { api } from '@/lib/api';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
@@ -24,13 +25,13 @@ export const CaptainPublicProfilePage: React.FC = () => {
       setLoading(true);
       try {
         let resolvedUid = username.trim();
-        const unameRes = await api.get<{ uid?: string }>(`/api/usernames/${encodeURIComponent(resolvedUid.toLowerCase())}`).catch(() => null);
-        if (unameRes?.uid) {
-          resolvedUid = unameRes.uid;
+        const unameSnap = await getDoc(doc(db, 'usernames', resolvedUid.toLowerCase()));
+        if (unameSnap.exists() && unameSnap.data()?.uid) {
+          resolvedUid = unameSnap.data().uid;
         }
 
-        const [pubRes, creatorTests] = await Promise.all([
-          api.get<{ profile?: Record<string, any> }>(`/api/public-profiles/${encodeURIComponent(resolvedUid)}`).catch(() => null),
+        const [pubSnap, creatorTests] = await Promise.all([
+          getDoc(doc(db, 'publicProfiles', resolvedUid)).catch(() => null),
           getAmbassadorTestsForCreator(resolvedUid).catch(() => []),
         ]);
 
@@ -38,9 +39,8 @@ export const CaptainPublicProfilePage: React.FC = () => {
         const publishedTests = creatorTests.filter((t) => t.isPublic && t.status !== 'unpublished');
         setTests(publishedTests);
 
-        const pubData = pubRes?.profile || (pubRes && 'uid' in pubRes ? (pubRes as unknown as Record<string, any>) : null);
-        if (pubData) {
-          setCaptainProfile({ uid: resolvedUid, ...pubData });
+        if (pubSnap && pubSnap.exists()) {
+          setCaptainProfile({ uid: resolvedUid, ...pubSnap.data() });
         } else if (publishedTests.length > 0) {
           setCaptainProfile({
             uid: resolvedUid,

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { api } from '@/lib/api';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { CheckCircle2, ArrowLeft } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
@@ -40,10 +41,16 @@ export function CrewApplyPage() {
       academicLevel,
       promotionPlan: promotionPlan.trim(),
       status: 'pending',
+      createdAt: serverTimestamp(),
+      submittedAt: serverTimestamp(),
     };
 
     try {
-      await api.post('/api/applications', payload);
+      // Save to unified applications collection and crewApplications
+      await Promise.all([
+        addDoc(collection(db, 'applications'), payload),
+        addDoc(collection(db, 'crewApplications'), payload),
+      ]);
       setSubmitted(true);
     } catch (err: unknown) {
       const e = err as { message?: string };
