@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import {
   FileText,
   Download,
@@ -9,6 +9,8 @@ import {
   BookOpen,
   Eye,
   Lock,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
@@ -28,61 +30,60 @@ import {
   extractIdFromSlug,
   buildEntitySlug,
 } from '@/utils/privacy';
+import { routes } from '@/utils/routes';
 import type { CommonsPost } from '@/types/commons';
 import { COMMONS_POST_TYPES } from '@/types/commons';
 
 export const MaterialDetailPage: React.FC = () => {
   const { idSlug, itemId } = useParams<{ idSlug?: string; itemId?: string }>();
+  const location = useLocation();
+  const basePrefix: '/material' | '/study-material' = location.pathname.startsWith('/study-material')
+    ? '/study-material'
+    : '/material';
   const materialId = extractIdFromSlug(idSlug || itemId || '');
   const { user } = useAuth();
   const { requireAuth } = useAuthGate();
 
   const [material, setMaterial] = useState<CommonsPost | null>(null);
   const [relatedMaterials, setRelatedMaterials] = useState<CommonsPost[]>([]);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'not_found' | 'gone'>('loading');
+  const [status, setStatus] = useState<'loading' | 'ready' | 'not_found' | 'gone' | 'error'>('loading');
   const [copied, setCopied] = useState(false);
   const [viewerImage, setViewerImage] = useState<{ url: string; name?: string } | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
+  const loadMaterial = useCallback(async () => {
     if (!materialId) {
       setStatus('not_found');
       return;
     }
     setStatus('loading');
-    fetchCommonsPostById(materialId)
-      .then(async (doc) => {
-        if (!mounted) return;
-        if (!doc) {
-          setStatus('not_found');
-          return;
-        }
-        if ((doc as any).isHidden || (doc as any).status === 'removed') {
-          setStatus('gone');
-          return;
-        }
-        setMaterial(doc);
-        setStatus('ready');
+    try {
+      const doc = await fetchCommonsPostById(materialId);
+      if (!doc) {
+        setStatus('not_found');
+        return;
+      }
+      if ((doc as any).isHidden || (doc as any).status === 'removed') {
+        setStatus('gone');
+        return;
+      }
+      setMaterial(doc);
+      setStatus('ready');
 
-        try {
-          const feed = await fetchCommonsPosts({ feedTab: 'all', pageSize: 8 });
-          if (mounted) {
-            setRelatedMaterials(
-              feed.posts.filter((p) => p.id !== doc.id).slice(0, 4)
-            );
-          }
-        } catch {
-          // ignore
-        }
-      })
-      .catch(() => {
-        if (mounted) setStatus('not_found');
-      });
-    return () => {
-      mounted = false;
-    };
+      try {
+        const feed = await fetchCommonsPosts({ feedTab: 'all', pageSize: 8 });
+        setRelatedMaterials(feed.posts.filter((p) => p.id !== doc.id).slice(0, 4));
+      } catch {
+        // non-fatal related feed error
+      }
+    } catch {
+      setStatus('error');
+    }
   }, [materialId]);
+
+  useEffect(() => {
+    void loadMaterial();
+  }, [loadMaterial]);
 
   if (status === 'loading') {
     return (
@@ -122,6 +123,33 @@ export const MaterialDetailPage: React.FC = () => {
     );
   }
 
+  if (status === 'error') {
+    return (
+      <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6 flex items-center justify-center">
+        <div className="glass-panel p-8 max-w-md w-full text-center">
+          <AlertTriangle size={28} className="text-[#D71921] mx-auto mb-3" />
+          <h1 className="font-dot text-xl font-bold text-white mb-2">Could not load study material</h1>
+          <p className="text-xs text-white/65 mb-6">
+            Please check your connection and try again.
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => void loadMaterial()}
+              className="btn-primary px-5 py-2.5 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw size={14} />
+              <span>Retry</span>
+            </button>
+            <Link to={basePrefix} className="btn-secondary px-5 py-2.5 text-xs font-semibold">
+              Back to Study Material
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (status === 'gone') {
     return <GonePage />;
   }
@@ -131,7 +159,7 @@ export const MaterialDetailPage: React.FC = () => {
   }
 
   const canonicalSlug = buildEntitySlug(material.id, material.title);
-  const canonicalPath = `/material/${canonicalSlug}`;
+  const canonicalPath = `${basePrefix}/${canonicalSlug}`;
   const typeMeta = COMMONS_POST_TYPES[material.type] || COMMONS_POST_TYPES.notes;
   const uploaderName = material.isAnonymous
     ? material.anonymousAlias || 'Anonymous Student'
@@ -153,7 +181,7 @@ export const MaterialDetailPage: React.FC = () => {
       !/\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(f.url || '')
   );
 
-  const subjectSlug = (material.subject || 'physics').toLowerCase().replace(/\s+/g, '-');
+  const practiceTarget = routes.practiceFromMaterial(material);
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -172,10 +200,10 @@ export const MaterialDetailPage: React.FC = () => {
   return (
     <div className="min-h-screen w-full max-w-full min-w-0 box-border overflow-x-hidden bg-[var(--bg)] text-[var(--text)] pt-28 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-4 sm:px-6">
       <PageMeta
-        title={`${material.title} — ${material.subject || 'Study Material'} PDF & Notes`}
+        title={`${material.title} — ${practiceTarget.subjectSlug ? practiceTarget.label : material.subject || 'Study Material'} PDF & Notes`}
         description={
           maskPublicUserText(material.description).slice(0, 155) ||
-          `Preview and download ${material.title} (${typeMeta.badgeLabel}) for ${material.subject || 'exam'} preparation on Boardly.`
+          `Preview and download ${material.title} (${typeMeta.badgeLabel}) for ${practiceTarget.label || 'exam'} preparation on Boardly.`
         }
         canonicalPath={canonicalPath}
         ogType="article"
@@ -185,9 +213,14 @@ export const MaterialDetailPage: React.FC = () => {
       <div className="boardly-feed-container max-w-3xl mx-auto w-full min-w-0 box-border overflow-x-hidden">
         <Breadcrumbs
           items={[
-            { label: 'Study Material', href: '/material' },
-            ...(material.subject
-              ? [{ label: material.subject, href: `/material/subject/${subjectSlug}` }]
+            { label: 'Study Material', href: basePrefix },
+            ...(practiceTarget.subjectSlug
+              ? [
+                  {
+                    label: practiceTarget.label,
+                    href: routes.studyMaterial(practiceTarget.subjectSlug, basePrefix),
+                  },
+                ]
               : []),
             { label: material.title },
           ]}
@@ -375,7 +408,7 @@ export const MaterialDetailPage: React.FC = () => {
             <BookOpen size={20} className="text-[#D71921] shrink-0" />
             <div className="min-w-0">
               <h2 className="font-dot text-lg font-bold text-white">
-                Practice {material.subject || 'Subject'} MCQs
+                Practice {practiceTarget.label} MCQs
               </h2>
               <p className="text-xs text-white/65">
                 Test your understanding with chapter-by-chapter MCQs and step-by-step KaTeX derivations.
@@ -383,10 +416,10 @@ export const MaterialDetailPage: React.FC = () => {
             </div>
           </div>
           <Link
-            to={`/mcqs/${subjectSlug}`}
+            to={practiceTarget.href}
             className="btn-primary px-5 py-2.5 text-xs font-semibold shrink-0"
           >
-            Practice {material.subject || 'MCQs'} →
+            Practice {practiceTarget.label} →
           </Link>
         </div>
 
@@ -398,7 +431,7 @@ export const MaterialDetailPage: React.FC = () => {
                 More Study Materials in Library
               </h2>
               <Link
-                to="/material"
+                to={basePrefix}
                 className="text-xs text-[#D71921] hover:underline font-semibold shrink-0"
               >
                 Browse All →
@@ -408,7 +441,7 @@ export const MaterialDetailPage: React.FC = () => {
               {relatedMaterials.map((rm) => (
                 <Link
                   key={rm.id}
-                  to={`/material/${buildEntitySlug(rm.id, rm.title)}`}
+                  to={routes.studyMaterialItem(rm.id, rm.title, basePrefix)}
                   className="boardly-post-card glass-card-interactive p-4 block min-w-0 max-w-full box-border overflow-x-hidden"
                 >
                   <span className="text-[11px] text-[#D71921] font-semibold uppercase">

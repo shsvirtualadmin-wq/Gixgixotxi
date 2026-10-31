@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { BookOpen, ArrowRight } from 'lucide-react';
+import { BookOpen, ArrowRight, AlertTriangle, RefreshCw } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { CommonsPostCardSkeleton } from '@/components/ui/Skeleton';
@@ -11,46 +11,58 @@ import { fetchCommonsPosts } from '@/services/commonsService';
 import { formatSubjectName } from '@/constants/taxonomy';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { routes, resolveValidMcqSubject } from '@/utils/routes';
 import type { CommonsPost } from '@/types/commons';
 
 export const CommonsSubjectPage: React.FC = () => {
   const { subject = 'physics' } = useParams<{ subject: string }>();
-  const subjectTitle = formatSubjectName(subject);
+  const isGeneralOrAll = ['general', 'all'].includes(subject.trim().toLowerCase());
+  const resolvedPractice = resolveValidMcqSubject(subject);
+  const subjectTitle = isGeneralOrAll ? 'All Subjects' : formatSubjectName(subject);
   const { user, isAdmin } = useAuth();
   const { profile } = useUserProfile();
 
   const [posts, setPosts] = useState<CommonsPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [commentsPost, setCommentsPost] = useState<CommonsPost | null>(null);
   const [reportPost, setReportPost] = useState<CommonsPost | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
+  const loadPosts = useCallback(async () => {
     setLoading(true);
-    fetchCommonsPosts({ feedTab: 'all', pageSize: 30, currentUid: user?.uid })
-      .then((res) => {
-        if (!mounted) return;
-        const cleanSlug = subject.toLowerCase().replace(/-/g, ' ');
+    setLoadError(false);
+    try {
+      const res = await fetchCommonsPosts({ feedTab: 'all', pageSize: 30, currentUid: user?.uid });
+      if (isGeneralOrAll) {
+        setPosts(res.posts);
+      } else {
+        const cleanSlug = (resolvedPractice.subjectSlug || subject).toLowerCase().replace(/-/g, ' ');
         const filtered = res.posts.filter((p) => {
           const s = (p.subject || '').toLowerCase();
+          const inferred = resolveValidMcqSubject(
+            p.subject,
+            `${p.title || ''} ${p.chapter || ''} ${(p.tags || []).join(' ')}`
+          );
           return (
             s.includes(cleanSlug) ||
             cleanSlug.includes(s) ||
+            inferred.subjectSlug === resolvedPractice.subjectSlug ||
             (p.tags || []).some((t) => t.toLowerCase().includes(cleanSlug))
           );
         });
         setPosts(filtered);
-      })
-      .catch(() => {
-        if (mounted) setPosts([]);
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [subject, user?.uid]);
+      }
+    } catch {
+      setLoadError(true);
+      setPosts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [subject, isGeneralOrAll, resolvedPractice.subjectSlug, user?.uid]);
+
+  useEffect(() => {
+    void loadPosts();
+  }, [loadPosts]);
 
   return (
     <div className="min-h-screen w-full max-w-full min-w-0 box-border overflow-x-hidden bg-[var(--bg)] text-[var(--text)] pt-28 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-4 sm:px-6">
@@ -82,16 +94,34 @@ export const CommonsSubjectPage: React.FC = () => {
             </p>
           </div>
           <Link
-            to={`/mcqs/${subject}`}
+            to={routes.mcqs(subject)}
             className="btn-primary px-5 py-2.5 text-xs font-semibold inline-flex items-center gap-2 shrink-0"
           >
-            <span>Practice {subjectTitle} MCQs</span>
+            <span>Practice {resolvedPractice.label} MCQs</span>
             <ArrowRight size={14} />
           </Link>
         </div>
 
         {loading ? (
           <CommonsPostCardSkeleton count={3} />
+        ) : loadError ? (
+          <div className="glass-panel p-10 text-center">
+            <AlertTriangle size={28} className="text-[#D71921] mx-auto mb-3" />
+            <h2 className="font-dot text-xl font-bold text-white mb-2">
+              Could not load {subjectTitle} posts
+            </h2>
+            <p className="text-xs text-white/60 mb-6">
+              Please check your connection and try again.
+            </p>
+            <button
+              type="button"
+              onClick={() => void loadPosts()}
+              className="btn-primary px-5 py-2.5 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw size={14} />
+              <span>Retry</span>
+            </button>
+          </div>
         ) : posts.length === 0 ? (
           <div className="glass-panel p-10 text-center">
             <BookOpen size={28} className="text-white/40 mx-auto mb-3" />

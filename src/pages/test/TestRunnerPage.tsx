@@ -34,6 +34,7 @@ export function TestRunnerPage() {
   const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
   const [error, setError] = useState<{ code?: string; message: string; path?: string } | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
@@ -99,6 +100,16 @@ export function TestRunnerPage() {
       try {
         setLoading(true);
         setError(null);
+        setAttempt(null);
+        setQuestions([]);
+        setCurrentIndex(0);
+        setUserAnswers({});
+        setFlagged([]);
+        setSecondsRemaining(null);
+        setPaletteOpen(false);
+        setConfirmModalOpen(false);
+        setSubmitting(false);
+        autoSubmittedRef.current = false;
 
         let currentAttempt: AttemptDoc;
         try {
@@ -183,7 +194,7 @@ export function TestRunnerPage() {
       isMounted = false;
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [attemptId, user, navigate, location.state]);
+  }, [attemptId, user, navigate, location.state, retryCount]);
 
   // 2. Submission Handler
   const handleFinalSubmit = useCallback(async () => {
@@ -444,7 +455,7 @@ export function TestRunnerPage() {
               : error
           }
           path={error?.path}
-          onRetry={() => window.location.reload()}
+          onRetry={() => setRetryCount((c) => c + 1)}
           onBack={() => navigate('/dashboard/practice')}
           backLabel="Back to Practice Vault"
         />
@@ -452,7 +463,7 @@ export function TestRunnerPage() {
     );
   }
 
-  const currentQ = questions[currentIndex];
+  const currentQ = questions[currentIndex] || questions[0];
   const title = [
     attempt.subject && attempt.subject !== 'Any' ? attempt.subject : 'Practice Drill',
     attempt.university && attempt.university !== 'Any' ? `(${attempt.university})` : '',

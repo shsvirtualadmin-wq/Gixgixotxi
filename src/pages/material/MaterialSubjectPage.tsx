@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { FolderOpen, Download, ArrowRight, FileText } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useParams, Link, useLocation } from 'react-router-dom';
+import { FolderOpen, Download, ArrowRight, FileText, AlertTriangle, RefreshCw } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { MaterialCardSkeleton } from '@/components/ui/Skeleton';
@@ -9,58 +9,74 @@ import { formatSubjectName } from '@/constants/taxonomy';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { sanitizeStudentDisplayName, maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
+import { routes, resolveValidMcqSubject } from '@/utils/routes';
 import type { CommonsPost } from '@/types/commons';
 import { COMMONS_POST_TYPES } from '@/types/commons';
 
 export const MaterialSubjectPage: React.FC = () => {
   const { subject = 'physics' } = useParams<{ subject: string }>();
-  const subjectTitle = formatSubjectName(subject);
+  const location = useLocation();
+  const basePrefix: '/material' | '/study-material' = location.pathname.startsWith('/study-material')
+    ? '/study-material'
+    : '/material';
+  const isGeneralOrAll = ['general', 'all'].includes(subject.trim().toLowerCase());
+  const resolvedPractice = resolveValidMcqSubject(subject);
+  const subjectTitle = isGeneralOrAll ? 'All Subjects' : formatSubjectName(subject);
   const { user } = useAuth();
   const { requireAuth } = useAuthGate();
 
   const [materials, setMaterials] = useState<CommonsPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
+  const loadMaterials = useCallback(async () => {
     setLoading(true);
-    fetchCommonsPosts({ feedTab: 'all', pageSize: 40, currentUid: user?.uid })
-      .then((res) => {
-        if (!mounted) return;
-        const cleanSub = subject.toLowerCase().replace(/-/g, ' ');
+    setLoadError(false);
+    try {
+      const res = await fetchCommonsPosts({ feedTab: 'all', pageSize: 40, currentUid: user?.uid });
+      if (isGeneralOrAll) {
+        setMaterials(res.posts);
+      } else {
+        const cleanSub = (resolvedPractice.subjectSlug || subject).toLowerCase().replace(/-/g, ' ');
         const filtered = res.posts.filter((p) => {
           const s = (p.subject || '').toLowerCase();
+          const inferred = resolveValidMcqSubject(
+            p.subject,
+            `${p.title || ''} ${p.chapter || ''} ${(p.tags || []).join(' ')}`
+          );
           return (
             s.includes(cleanSub) ||
             cleanSub.includes(s) ||
+            inferred.subjectSlug === resolvedPractice.subjectSlug ||
             (p.tags || []).some((t) => t.toLowerCase().includes(cleanSub))
           );
         });
         setMaterials(filtered);
-      })
-      .catch(() => {
-        if (mounted) setMaterials([]);
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [subject, user?.uid]);
+      }
+    } catch {
+      setLoadError(true);
+      setMaterials([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [subject, isGeneralOrAll, resolvedPractice.subjectSlug, user?.uid]);
+
+  useEffect(() => {
+    void loadMaterials();
+  }, [loadMaterials]);
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6">
       <PageMeta
         title={`${subjectTitle} Study Material, Notes & Past Papers — Boardly`}
         description={`Browse free Class 11 & 12 ${subjectTitle} handwritten notes, formula sheets, and solved board past papers on Boardly.`}
-        canonicalPath={`/material/subject/${subject}`}
+        canonicalPath={`${basePrefix}/subject/${subject}`}
       />
 
       <div className="max-w-5xl mx-auto">
         <Breadcrumbs
           items={[
-            { label: 'Study Material', href: '/material' },
+            { label: 'Study Material', href: basePrefix },
             { label: `${subjectTitle} Material` },
           ]}
         />
@@ -80,16 +96,34 @@ export const MaterialSubjectPage: React.FC = () => {
           </div>
 
           <Link
-            to={`/mcqs/${subject}`}
+            to={routes.mcqs(subject)}
             className="btn-primary px-5 py-2.5 text-xs font-semibold inline-flex items-center gap-2 shrink-0"
           >
-            <span>Practice {subjectTitle} MCQs</span>
+            <span>Practice {resolvedPractice.label} MCQs</span>
             <ArrowRight size={14} />
           </Link>
         </div>
 
         {loading ? (
           <MaterialCardSkeleton count={4} />
+        ) : loadError ? (
+          <div className="glass-panel p-10 text-center">
+            <AlertTriangle size={28} className="text-[#D71921] mx-auto mb-3" />
+            <h2 className="font-dot text-xl font-bold text-white mb-2">
+              Could not load {subjectTitle} study materials
+            </h2>
+            <p className="text-xs text-white/60 mb-6">
+              Please check your connection and try again.
+            </p>
+            <button
+              type="button"
+              onClick={() => void loadMaterials()}
+              className="btn-primary px-5 py-2.5 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw size={14} />
+              <span>Retry</span>
+            </button>
+          </div>
         ) : materials.length === 0 ? (
           <div className="glass-panel p-10 text-center">
             <FileText size={28} className="text-white/40 mx-auto mb-3" />
@@ -97,17 +131,17 @@ export const MaterialSubjectPage: React.FC = () => {
               No {subjectTitle} study materials uploaded yet
             </h2>
             <p className="text-xs text-white/60 mb-6">
-              Explore all study materials or practice {subjectTitle} chapters right away.
+              Explore all study materials or practice {resolvedPractice.label} chapters right away.
             </p>
             <div className="flex flex-wrap justify-center gap-3">
-              <Link to="/material" className="btn-primary px-5 py-2.5 text-xs font-semibold">
+              <Link to={basePrefix} className="btn-primary px-5 py-2.5 text-xs font-semibold">
                 All Study Material
               </Link>
               <Link
-                to={`/mcqs/${subject}`}
+                to={routes.mcqs(subject)}
                 className="btn-secondary px-5 py-2.5 text-xs font-semibold"
               >
-                {subjectTitle} Chapters
+                {resolvedPractice.label} Chapters
               </Link>
             </div>
           </div>

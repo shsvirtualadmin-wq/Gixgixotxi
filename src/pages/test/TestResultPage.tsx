@@ -26,6 +26,7 @@ import {
 import { getUniversityCriteria, getSectionCriteria } from '@/constants/universityCriteria';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { getBoardyExplanation } from '@/services/boardyAiService';
+import { routes } from '@/utils/routes';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
 
 type ReviewFilter = 'all' | 'mistakes' | 'flagged';
@@ -38,6 +39,7 @@ export function TestResultPage() {
 
   const [attempt, setAttempt] = useState<AttemptDoc | null>(null);
   const [loading, setLoading] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
   const [error, setError] = useState<{ code?: string; message: string } | null>(null);
   const [filter, setFilter] = useState<ReviewFilter>('all');
   const [aiExplaining, setAiExplaining] = useState<Record<number, boolean>>({});
@@ -78,13 +80,22 @@ export function TestResultPage() {
 
   useEffect(() => {
     if (!attemptId) return;
+    let mounted = true;
+    setLoading(true);
+    setError(null);
+    setAttempt(null);
+    setFilter('all');
+    setAiExplaining({});
+    setAiExplanations({});
 
     getAttempt(attemptId)
       .then((data) => {
+        if (!mounted) return;
         setAttempt(data);
         setLoading(false);
       })
       .catch((err: unknown) => {
+        if (!mounted) return;
         const e = err as { code?: string; message?: string };
         console.error('[TestResultPage] Error fetching attempt:', err);
         setError({
@@ -93,7 +104,10 @@ export function TestResultPage() {
         });
         setLoading(false);
       });
-  }, [attemptId]);
+    return () => {
+      mounted = false;
+    };
+  }, [attemptId, retryCount]);
 
   if (loading) {
     return (
@@ -111,9 +125,9 @@ export function TestResultPage() {
         <ErrorState
           title="Could not load test results"
           error={error}
-          onRetry={() => window.location.reload()}
-          onBack={() => navigate('/dashboard')}
-          backLabel="Return to Dashboard"
+          onRetry={() => setRetryCount((c) => c + 1)}
+          onBack={() => navigate('/dashboard/practice')}
+          backLabel="Return to Practice"
         />
       </div>
     );
@@ -259,16 +273,38 @@ export function TestResultPage() {
         </div>
 
         {/* Action CTAs: stacked full-width on mobile */}
-        <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-3 mt-3">
+        <div className="flex flex-col sm:flex-row flex-wrap justify-center w-full sm:w-auto gap-3 mt-3">
           <Button
             variant="primary"
             size="md"
-            onClick={() => navigate('/dashboard/practice')}
+            onClick={() =>
+              navigate(
+                routes.dashboardPractice({
+                  subject: attempt.subject && attempt.subject !== 'Any' ? attempt.subject : undefined,
+                  chapter: (attempt as any).chapter || undefined,
+                  university:
+                    attempt.university && attempt.university !== 'Any'
+                      ? attempt.university
+                      : undefined,
+                })
+              )
+            }
+            className="w-full sm:w-auto justify-center"
+            style={{ gap: 8 }}
+          >
+            <RotateCcw size={16} />
+            <span>Retake / New Drill</span>
+          </Button>
+
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={() => navigate('/dashboard/results')}
             className="w-full sm:w-auto justify-center"
             style={{ gap: 8 }}
           >
             <BookOpen size={16} />
-            <span>Practice Another Drill</span>
+            <span>All My Results</span>
           </Button>
 
           <Button

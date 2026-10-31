@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
 import {
   Clock,
   ChevronLeft,
@@ -10,38 +10,50 @@ import {
   Compass,
   AlertCircle,
   ArrowLeft,
+  ArrowRight,
   Loader2,
   Download,
   FileCheck2,
   Eye,
+  RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getAmbassadorTestById,
+  getAllPublicGrandLineTests,
   getMyTestAttemptForTest,
   submitAmbassadorTestAttempt,
   type AmbassadorCustomTest,
+  type AmbassadorTestDoc,
   type AmbassadorTestAttempt,
   type GradedAttemptQuestion,
 } from '@/services/ambassadorTestService';
 import { MathText } from '@/components/ui/MathText';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { exportDrillResultToPdf } from '@/utils/testPdfExporter';
+import { extractIdFromSlug } from '@/utils/privacy';
+import { routes } from '@/utils/routes';
 import { showApiToast } from '@/lib/api';
 
 const DEFAULT_ALREADY_ATTEMPTED_MSG =
   'You have already taken this drill. Only one verified attempt per student is permitted for each drill.';
 
 export function GrandLineTestRunnerPage() {
-  const { testId } = useParams<{ testId: string }>();
+  const { testId: rawTestId } = useParams<{ testId: string }>();
+  const testId = extractIdFromSlug(rawTestId || '');
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const isResultMode =
-    searchParams.get('mode') === 'result' || searchParams.get('view') === 'result';
+    searchParams.get('mode') === 'result' ||
+    searchParams.get('view') === 'result' ||
+    location.pathname.endsWith('/result');
   const navigate = useNavigate();
   const { user, profile } = useAuth();
 
   const [test, setTest] = useState<AmbassadorCustomTest | null>(null);
+  const [otherTests, setOtherTests] = useState<AmbassadorTestDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
   const [notFound, setNotFound] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [alreadyAttemptedInfo, setAlreadyAttemptedInfo] = useState<{
@@ -130,13 +142,37 @@ export function GrandLineTestRunnerPage() {
   }, [testId, test, resolveStudentProfileName]);
 
   useEffect(() => {
+    let active = true;
+    getAllPublicGrandLineTests()
+      .then((list) => {
+        if (active) {
+          setOtherTests(list.filter((t) => t.id !== testId));
+        }
+      })
+      .catch(() => {
+        // non-fatal
+      });
+    return () => {
+      active = false;
+    };
+  }, [testId]);
+
+  useEffect(() => {
     if (!testId) {
       setNotFound(true);
       setLoading(false);
       return;
     }
     let active = true;
+    // Reset ALL test states so switching from Test A to Test B never retains stale answers/results
     setLoading(true);
+    setTest(null);
+    setCurrentIndex(0);
+    setAnswers({});
+    setSubmitting(false);
+    submittingRef.current = false;
+    setSubmitted(false);
+    setScoreResult(null);
     setNotFound(false);
     setLoadError(null);
     setAlreadyAttemptedInfo(null);
@@ -213,7 +249,7 @@ export function GrandLineTestRunnerPage() {
     return () => {
       active = false;
     };
-  }, [testId, isResultMode, resolveStudentProfileName]);
+  }, [testId, isResultMode, resolveStudentProfileName, retryCount]);
 
   const handleFinish = useCallback(async () => {
     if (!test || submitted || submitting || submittingRef.current) return;
@@ -389,7 +425,7 @@ export function GrandLineTestRunnerPage() {
             </div>
           )}
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3 pt-2">
             <button
               type="button"
               onClick={handleViewMyExistingResult}
@@ -403,6 +439,16 @@ export function GrandLineTestRunnerPage() {
               )}
               <span>View my result</span>
             </button>
+
+            {otherTests.length > 0 && (
+              <Link
+                to={routes.grandLineTestRun(otherTests[0].id)}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] inline-flex items-center justify-center gap-2"
+              >
+                <span>Next Drill: {otherTests[0].title}</span>
+                <ArrowRight size={15} />
+              </Link>
+            )}
 
             <Link
               to="/grand-line"
@@ -480,6 +526,16 @@ export function GrandLineTestRunnerPage() {
                 <Trophy size={14} />
                 <span>View Leaderboard</span>
               </Link>
+
+              {otherTests.length > 0 && (
+                <Link
+                  to={routes.grandLineTestRun(otherTests[0].id)}
+                  className="px-4 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1.5"
+                >
+                  <span>Next Drill</span>
+                  <ArrowRight size={14} />
+                </Link>
+              )}
 
               <Link
                 to="/grand-line"
@@ -589,20 +645,32 @@ export function GrandLineTestRunnerPage() {
           <p className="text-xs text-[var(--muted)] mt-1">
             {loadError || 'This test has no questions yet.'}
           </p>
-          <Link
-            to="/grand-line"
-            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-bold"
-          >
-            <ArrowLeft size={14} />
-            Back to Grand Line
-          </Link>
+          <div className="mt-4 flex items-center justify-center gap-3 flex-wrap">
+            {loadError && (
+              <button
+                type="button"
+                onClick={() => setRetryCount((c) => c + 1)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-bold cursor-pointer"
+              >
+                <RefreshCw size={14} />
+                <span>Retry</span>
+              </button>
+            )}
+            <Link
+              to="/grand-line"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-xs font-bold"
+            >
+              <ArrowLeft size={14} />
+              <span>Back to Grand Line</span>
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
 
   const totalQ = test.questions.length;
-  const currentQ = test.questions[currentIndex];
+  const currentQ = test.questions[currentIndex] || test.questions[0];
   const mins = Math.floor(timeLeftSec / 60);
   const secs = timeLeftSec % 60;
 

@@ -306,7 +306,7 @@ export function AdminOverviewPage() {
             </p>
           )}
           <Link
-            to="/admin/reviews"
+            to="/admin/commons"
             className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
           >
             <span>Moderate reviews</span>

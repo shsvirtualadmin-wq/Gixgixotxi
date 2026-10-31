@@ -26,14 +26,20 @@ import { NotFoundPage } from '@/pages/NotFoundPage';
 
 const VALID_SUBJECT_KEYS = new Set([
   'physics',
+  'phy',
   'chemistry',
+  'chem',
   'biology',
+  'bio',
   'mathematics',
   'math',
+  'maths',
   'computer-science',
   'computer',
   'cs',
+  'ics',
   'english',
+  'eng',
 ]);
 
 export interface SampleMcqItem {
@@ -352,10 +358,20 @@ export const McqChapterPage: React.FC = () => {
 
   // Resolve exact human chapter title from SYLLABUS_MAP if available
   const syllabusKey =
-    subject.toLowerCase() === 'computer' || subject.toLowerCase() === 'cs'
+    subject.toLowerCase() === 'computer' ||
+    subject.toLowerCase() === 'cs' ||
+    subject.toLowerCase() === 'ics'
       ? 'computer-science'
-      : subject.toLowerCase() === 'math'
+      : subject.toLowerCase() === 'math' || subject.toLowerCase() === 'maths'
       ? 'mathematics'
+      : subject.toLowerCase() === 'phy'
+      ? 'physics'
+      : subject.toLowerCase() === 'chem'
+      ? 'chemistry'
+      : subject.toLowerCase() === 'bio'
+      ? 'biology'
+      : subject.toLowerCase() === 'eng'
+      ? 'english'
       : subject.toLowerCase();
   const syllabusEntry = SYLLABUS_MAP[syllabusKey];
   const allSyllabusChapters = syllabusEntry
@@ -370,10 +386,18 @@ export const McqChapterPage: React.FC = () => {
         slugify(c) === chapter.toLowerCase() ||
         slugify(c).includes(chapter.toLowerCase()) ||
         chapter.toLowerCase().includes(slugify(c))
-    ) || formatChapterName(subject, chapter);
+    ) || formatChapterName(syllabusKey, chapter);
   const relatedChapters = allSyllabusChapters
     .filter((c) => slugify(c) !== slugify(matchedChapterTitle))
     .slice(0, 6);
+  const nextChapterName = relatedChapters[0] || null;
+  const nextChapterHref = nextChapterName
+    ? uniMeta
+      ? `/mcqs/${universityKey}/${syllabusKey}/${slugify(nextChapterName)}`
+      : `/mcqs/${syllabusKey}/${slugify(nextChapterName)}`
+    : uniMeta
+    ? `/mcqs/${universityKey}/${syllabusKey}`
+    : `/mcqs/${syllabusKey}`;
 
   const [sampleQuestions, setSampleQuestions] = useState<SampleMcqItem[]>(() =>
     getCuratedSampleQuestions(subject, matchedChapterTitle)
@@ -516,6 +540,20 @@ export const McqChapterPage: React.FC = () => {
     );
   }
 
+  if (
+    subject === 'general' ||
+    subject === 'all' ||
+    chapter === 'general' ||
+    chapter === 'all'
+  ) {
+    return (
+      <McqSubjectPage
+        universityOverride={universityKey || undefined}
+        subjectOverride={subject === 'general' || subject === 'all' ? 'general' : syllabusKey}
+      />
+    );
+  }
+
   if (!VALID_SUBJECT_KEYS.has(subject) || (universityKey && !uniMeta)) {
     return <NotFoundPage />;
   }
@@ -650,16 +688,27 @@ export const McqChapterPage: React.FC = () => {
             <h2 className="font-dot text-xl sm:text-2xl font-bold text-white">
               Interactive Sample Questions
             </h2>
-            {Object.keys(selectedAnswers).length > 0 && (
-              <button
-                type="button"
-                onClick={() => setSelectedAnswers({})}
-                className="text-xs text-white/60 hover:text-white inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <RotateCcw size={13} />
-                <span>Reset Sample Answers</span>
-              </button>
-            )}
+            <div className="flex items-center gap-3 flex-wrap">
+              {Object.keys(selectedAnswers).length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedAnswers({})}
+                  className="text-xs text-white/60 hover:text-white inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RotateCcw size={13} />
+                  <span>Reset Sample Answers</span>
+                </button>
+              )}
+              {nextChapterName && (
+                <Link
+                  to={nextChapterHref}
+                  className="text-xs text-[#D71921] hover:underline font-semibold inline-flex items-center gap-1"
+                >
+                  <span>Next Test: {nextChapterName}</span>
+                  <ArrowRight size={12} />
+                </Link>
+              )}
+            </div>
           </div>
 
           {sampleQuestions.map((mcq, qIdx) => {

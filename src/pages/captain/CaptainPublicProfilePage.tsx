@@ -25,8 +25,10 @@ export const CaptainPublicProfilePage: React.FC = () => {
       setLoading(true);
       try {
         let resolvedUid = username.trim();
-        const unameSnap = await getDoc(doc(db, 'usernames', resolvedUid.toLowerCase()));
-        if (unameSnap.exists() && unameSnap.data()?.uid) {
+        const unameSnap = await getDoc(doc(db, 'usernames', resolvedUid.toLowerCase())).catch(
+          () => null
+        );
+        if (unameSnap && unameSnap.exists() && unameSnap.data()?.uid) {
           resolvedUid = unameSnap.data().uid;
         }
 

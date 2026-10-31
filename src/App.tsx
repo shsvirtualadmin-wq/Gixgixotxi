@@ -241,9 +241,14 @@ function AppInner() {
       <BoardlySuspenseBoundary variant="overlay">
       <Routes>
         {/* Test Engine — full-screen distraction-free, no Navbar/Footer */}
+        <Route path="/test" element={<Navigate to="/dashboard/practice" replace />} />
         <Route path="/test/:attemptId/result" element={<TestResultPage />} />
         <Route path="/test/:attemptId" element={<TestRunnerPage />} />
+        <Route path="/results/:attemptId" element={<TestResultPage />} />
         <Route path="/grand-line/test/:testId/run" element={<GrandLineTestRunnerPage />} />
+        <Route path="/grand-line/test/:testId/result" element={<GrandLineTestRunnerPage />} />
+        <Route path="/grand-line/tests/:testId/run" element={<GrandLineTestRunnerPage />} />
+        <Route path="/grand-line/tests/:testId/result" element={<GrandLineTestRunnerPage />} />
 
         {/* Super-Admin Portal — strictly guarded for admin, no public Navbar/Footer */}
         <Route
@@ -267,6 +272,7 @@ function AppInner() {
           <Route path="audit-logs" element={<AdminAuditLogsPage />} />
           <Route path="crews" element={<AdminCrewsPage />} />
           <Route path="commons" element={<AdminCommonsPage />} />
+          <Route path="reviews" element={<AdminCommonsPage />} />
           <Route path="health" element={<AdminHealthPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
@@ -280,7 +286,9 @@ function AppInner() {
           <Route path="weak-chapters" element={<Navigate to="/dashboard/notifications" replace />} />
           <Route path="streaks" element={<StreaksPage />} />
           <Route path="history" element={<ResultsListPage />} />
+          <Route path="history/:attemptId" element={<TestResultPage />} />
           <Route path="results" element={<ResultsListPage />} />
+          <Route path="results/:attemptId" element={<TestResultPage />} />
           <Route path="store" element={<StorePage />} />
           <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />
           <Route path="arena" element={<ArenaDashboardPage />} />
@@ -301,6 +309,9 @@ function AppInner() {
         <Route path="/practice" element={<DashboardShell />}>
           <Route index element={<PracticePage />} />
         </Route>
+        <Route path="/practice/:subject" element={<McqSubjectPage />} />
+        <Route path="/practice/:subject/:chapter" element={<McqChapterPage />} />
+        <Route path="/practice/:university/:subject/:chapter" element={<McqChapterPage />} />
         <Route path="/results" element={<DashboardShell />}>
           <Route index element={<ResultsListPage />} />
         </Route>
@@ -410,6 +421,9 @@ function AppInner() {
           <Route path="/grand-line/about" element={<GrandLineAboutPage />} />
           <Route path="/grand-line/leaderboard" element={<GrandLineLeaderboardPage />} />
           <Route path="/grand-line/test/:idSlug" element={<GrandLineTestInfoPage />} />
+          <Route path="/grand-line/tests/:idSlug" element={<GrandLineTestInfoPage />} />
+          <Route path="/tests" element={<Navigate to="/grand-line" replace />} />
+          <Route path="/tests/:idSlug" element={<GrandLineTestInfoPage />} />
           <Route path="/arena" element={<ArenaPage />} />
 
           {/* Public Nakama Captains Overview, Leaderboard & Public Captain Profiles */}

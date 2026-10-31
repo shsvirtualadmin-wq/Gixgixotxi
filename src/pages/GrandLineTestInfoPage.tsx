@@ -13,6 +13,8 @@ import {
   CheckCircle2,
   Download,
   Loader2,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
@@ -29,6 +31,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { sanitizeStudentDisplayName, extractIdFromSlug, buildEntitySlug } from '@/utils/privacy';
+import { routes } from '@/utils/routes';
 import { downloadDrillResultPdfByTestId } from '@/utils/testPdfExporter';
 import { showApiToast } from '@/lib/api';
 
@@ -50,6 +53,8 @@ export const GrandLineTestInfoPage: React.FC = () => {
   const [leaderboard, setLeaderboard] = useState<PublicLeaderboardEntry[]>([]);
   const [myAttempt, setMyAttempt] = useState<AmbassadorTestAttempt | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [copied, setCopied] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
@@ -60,10 +65,13 @@ export const GrandLineTestInfoPage: React.FC = () => {
       return;
     }
     setLoading(true);
+    setLoadError(null);
+    setTest(null);
+
     Promise.all([
       getAmbassadorTestById(testId, false, { view: 'info', silentErrorToast: true }),
-      getTestLeaderboard(testId),
-      user ? getMyTestAttempts() : Promise.resolve([]),
+      getTestLeaderboard(testId).catch(() => [] as PublicLeaderboardEntry[]),
+      user ? getMyTestAttempts().catch(() => [] as AmbassadorTestAttempt[]) : Promise.resolve([] as AmbassadorTestAttempt[]),
     ])
       .then(([docData, lb, attempts]) => {
         if (!mounted) return;
@@ -76,13 +84,21 @@ export const GrandLineTestInfoPage: React.FC = () => {
           setMyAttempt(null);
         }
       })
+      .catch((err: any) => {
+        if (!mounted) return;
+        if (err?.status === 404 || err?.code === 'NOT_FOUND') {
+          setTest(null);
+        } else {
+          setLoadError(err?.rawMessage || err?.message || 'Could not load test details.');
+        }
+      })
       .finally(() => {
         if (mounted) setLoading(false);
       });
     return () => {
       mounted = false;
     };
-  }, [testId, user]);
+  }, [testId, user, retryCount]);
 
   if (loading) {
     return (
@@ -93,6 +109,31 @@ export const GrandLineTestInfoPage: React.FC = () => {
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className="h-14 rounded-xl bg-white/5 animate-pulse" />
             ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 flex items-center justify-center">
+        <div className="glass-panel p-8 max-w-md w-full text-center">
+          <AlertTriangle size={28} className="text-[#D71921] mx-auto mb-3" />
+          <h1 className="font-dot text-xl font-bold text-white mb-2">Could not load Grand Line drill</h1>
+          <p className="text-xs text-white/65 mb-6">{loadError}</p>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => setRetryCount((c) => c + 1)}
+              className="btn-primary px-5 py-2.5 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw size={14} />
+              <span>Retry</span>
+            </button>
+            <Link to="/grand-line" className="btn-secondary px-5 py-2.5 text-xs font-semibold">
+              Back to Grand Line
+            </Link>
           </div>
         </div>
       </div>
@@ -116,15 +157,15 @@ export const GrandLineTestInfoPage: React.FC = () => {
 
   const handleStartTest = () => {
     if (myAttempt) {
-      navigate(`/grand-line/test/${test.id}/run?mode=result`);
+      navigate(routes.grandLineTestRun(test.id, 'result'));
       return;
     }
     requireAuth(
       `take the "${test.title}" Grand Line test and record your ranking`,
       () => {
-        navigate(`/grand-line/test/${test.id}/run`);
+        navigate(routes.grandLineTestRun(test.id));
       },
-      `/grand-line/test/${test.id}/run`
+      routes.grandLineTestRun(test.id)
     );
   };
 

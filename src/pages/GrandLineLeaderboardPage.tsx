@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Trophy, ArrowRight, Sparkles } from 'lucide-react';
+import { Trophy, ArrowRight, Sparkles, AlertTriangle, RefreshCw } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
@@ -25,26 +25,28 @@ export const GrandLineLeaderboardPage: React.FC = () => {
   const [scorers, setScorers] = useState<GlobalTopScorerEntry[]>([]);
   const [tests, setTests] = useState<AmbassadorTestDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+
+  const loadLeaderboardData = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const [topList, publicTests] = await Promise.all([
+        getGlobalGrandLineTopScorers(25),
+        getAllPublicGrandLineTests().catch(() => [] as AmbassadorTestDoc[]),
+      ]);
+      setScorers(topList);
+      setTests(publicTests.slice(0, 6));
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let mounted = true;
-    setLoading(true);
-    Promise.all([
-      getGlobalGrandLineTopScorers(25),
-      getAllPublicGrandLineTests(),
-    ])
-      .then(([topList, publicTests]) => {
-        if (!mounted) return;
-        setScorers(topList);
-        setTests(publicTests.slice(0, 6));
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
+    void loadLeaderboardData();
+  }, [loadLeaderboardData]);
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6 overflow-x-hidden">
@@ -94,6 +96,24 @@ export const GrandLineLeaderboardPage: React.FC = () => {
               {[1, 2, 3, 4, 5].map((i) => (
                 <div key={i} className="glass-card h-16 animate-pulse" />
               ))}
+            </div>
+          ) : loadError ? (
+            <div className="glass-card p-8 text-center">
+              <AlertTriangle size={26} className="text-[#D71921] mx-auto mb-2" />
+              <p className="text-sm font-bold text-white mb-1">
+                Could not load leaderboard standings
+              </p>
+              <p className="text-xs text-white/60 mb-4">
+                Please check your connection and try again.
+              </p>
+              <button
+                type="button"
+                onClick={() => void loadLeaderboardData()}
+                className="btn-primary px-5 py-2 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw size={13} />
+                <span>Retry</span>
+              </button>
             </div>
           ) : scorers.length === 0 ? (
             <div className="glass-card p-8 text-center">

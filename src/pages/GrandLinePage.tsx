@@ -30,6 +30,8 @@ import { downloadDrillResultPdfByTestId } from '@/utils/testPdfExporter';
 import { showApiToast } from '@/lib/api';
 import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
 import { useAuthGate } from '@/contexts/AuthGateContext';
+import { routes } from '@/utils/routes';
+import { RefreshCw } from 'lucide-react';
 
 function formatTimeTaken(seconds?: number): string {
   const sec = Math.max(0, Math.round(Number(seconds || 0)));
@@ -48,6 +50,8 @@ export function GrandLinePage() {
   const [tests, setTests] = useState<AmbassadorTestDoc[]>([]);
   const [myAttemptsMap, setMyAttemptsMap] = useState<Record<string, AmbassadorTestAttempt>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [search, setSearch] = useState('');
   const [subjectFilter, setSubjectFilter] = useState('all');
   const [downloadingTestId, setDownloadingTestId] = useState<string | null>(null);
@@ -62,6 +66,7 @@ export function GrandLinePage() {
     let active = true;
     async function load() {
       setLoading(true);
+      setLoadError(null);
       try {
         const data = await getAllPublicGrandLineTests();
         if (!active) return;
@@ -69,8 +74,11 @@ export function GrandLinePage() {
         if (data.length > 0) {
           setActiveLeaderboardTestId((prev) => prev || data[0].id);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn('Error loading Grand Line tests:', err);
+        if (active) {
+          setLoadError(err?.rawMessage || err?.message || 'Could not load Grand Line drills.');
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -79,7 +87,7 @@ export function GrandLinePage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [retryCount]);
 
   // Load current student's attempts and map by testId
   useEffect(() => {
@@ -151,7 +159,7 @@ export function GrandLinePage() {
         entryTest: 'General Prep',
       })
     );
-    navigate(`/grand-line/test/${test.id}/run`);
+    navigate(routes.grandLineTestRun(test.id));
   };
 
   const handleDownloadPdfForTest = async (
@@ -290,6 +298,24 @@ export function GrandLinePage() {
               <Skeleton height={80} />
               <Skeleton height={80} />
             </div>
+          ) : loadError ? (
+            <div className="p-10 text-center rounded-[28px] glass-panel space-y-3">
+              <AlertCircle size={32} className="mx-auto text-[#D71921]" />
+              <p className="text-sm font-bold text-[var(--text)]">{loadError}</p>
+              <p className="text-xs text-[var(--muted)]">
+                Please check your connection and try again.
+              </p>
+              <div className="pt-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setRetryCount((c) => c + 1)}
+                >
+                  <RefreshCw size={13} />
+                  <span>Retry</span>
+                </Button>
+              </div>
+            </div>
           ) : filteredTests.length === 0 ? (
             <div className="p-12 text-center rounded-[28px] glass-panel text-[var(--muted)] text-sm space-y-2">
               <Compass size={32} className="mx-auto text-[var(--text-faint)]" />
@@ -312,9 +338,12 @@ export function GrandLinePage() {
                   >
                     <div className="space-y-1.5 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-base font-bold text-[var(--text)] font-heading break-words">
+                        <Link
+                          to={routes.grandLineTest(test.id, test.title)}
+                          className="text-base font-bold text-[var(--text)] hover:text-[#D71921] transition-colors font-heading break-words"
+                        >
                           {test.title}
-                        </span>
+                        </Link>
                         <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-[#D71921]/15 border border-[#D71921]/30 text-[#D71921]">
                           {test.subject}
                         </span>
@@ -361,7 +390,7 @@ export function GrandLinePage() {
                           <Button
                             variant="secondary"
                             size="sm"
-                            onClick={() => navigate(`/grand-line/test/${test.id}/run?mode=result`)}
+                            onClick={() => navigate(routes.grandLineTestRun(test.id, 'result'))}
                           >
                             <Eye size={13} />
                             <span>View Result</span>

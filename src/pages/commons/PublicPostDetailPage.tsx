@@ -41,6 +41,7 @@ import {
   checkUserSaved,
 } from '@/services/commonsService';
 import { resolveCommonsAttachmentUrl } from '@/services/commonsUploadService';
+import { routes } from '@/utils/routes';
 import type { CommonsPost, CommonsComment } from '@/types/commons';
 import { COMMONS_POST_TYPES } from '@/types/commons';
 import {
@@ -395,15 +396,19 @@ export const PublicPostDetailPage: React.FC = () => {
     }
   };
 
-  const subjectSlug = (post.subject || 'general').toLowerCase().replace(/\s+/g, '-');
+  const resolvedPractice = routes.practiceFromMaterial(post);
+  const commonsSubjectHref = routes.commonsSubject(
+    post.subject,
+    `${post.title || ''} ${post.chapter || ''} ${(post.tags || []).join(' ')}`
+  );
 
   return (
     <div className="min-h-screen w-full max-w-full min-w-0 box-border overflow-x-hidden bg-[var(--bg)] text-[var(--text)] pt-28 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-4 sm:px-6">
       <PageMeta
-        title={`${post.title} — ${post.subject || 'Boardly Commons'}`}
+        title={`${post.title} — ${resolvedPractice.subjectSlug ? resolvedPractice.label : post.subject || 'Boardly Commons'}`}
         description={
           maskPublicUserText(post.description).slice(0, 155) ||
-          `Read ${post.title} shared in Boardly Commons for ${post.subject || 'exam'} preparation.`
+          `Read ${post.title} shared in Boardly Commons for ${resolvedPractice.label || 'exam'} preparation.`
         }
         canonicalPath={canonicalPath}
         ogType="article"
@@ -414,8 +419,8 @@ export const PublicPostDetailPage: React.FC = () => {
         <Breadcrumbs
           items={[
             { label: 'Commons', href: '/commons' },
-            ...(post.subject
-              ? [{ label: post.subject, href: `/commons/subject/${subjectSlug}` }]
+            ...(resolvedPractice.subjectSlug
+              ? [{ label: resolvedPractice.label, href: commonsSubjectHref }]
               : []),
             { label: post.title },
           ]}
@@ -471,10 +476,10 @@ export const PublicPostDetailPage: React.FC = () => {
                     <>
                       <span>·</span>
                       <Link
-                        to={`/commons/subject/${subjectSlug}`}
+                        to={commonsSubjectHref}
                         className="hover:text-white underline underline-offset-2"
                       >
-                        {post.subject}
+                        {resolvedPractice.subjectSlug ? resolvedPractice.label : post.subject}
                       </Link>
                     </>
                   )}
@@ -808,10 +813,10 @@ export const PublicPostDetailPage: React.FC = () => {
           <section className="glass-panel p-5 sm:p-8 w-full max-w-full min-w-0 box-border overflow-x-hidden">
             <div className="flex items-center justify-between gap-2 mb-4">
               <h2 className="font-dot text-xl font-bold text-white">
-                Related Posts in {post.subject || 'Boardly Commons'}
+                Related Posts in {resolvedPractice.subjectSlug ? resolvedPractice.label : post.subject || 'Boardly Commons'}
               </h2>
               <Link
-                to={post.subject ? `/commons/subject/${subjectSlug}` : '/commons'}
+                to={commonsSubjectHref}
                 className="text-xs text-[#D71921] hover:underline font-semibold"
               >
                 View All →

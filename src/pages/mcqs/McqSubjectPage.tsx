@@ -7,6 +7,7 @@ import { NotFoundPage } from '@/pages/NotFoundPage';
 import { SYLLABUS_MAP, TOPIC_LISTS } from '@/constants/syllabusMap';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { UNIVERSITY_META } from '@/utils/routeSeoMeta';
+import { McqsHubPage } from './McqsHubPage';
 
 function slugify(text: string): string {
   return text
@@ -30,13 +31,31 @@ const SUBJECT_META: Record<
     topicKey: 'physics',
     canonicalSlug: 'physics',
   },
+  phy: {
+    name: 'Physics',
+    syllabusKey: 'physics',
+    topicKey: 'physics',
+    canonicalSlug: 'physics',
+  },
   chemistry: {
     name: 'Chemistry',
     syllabusKey: 'chemistry',
     topicKey: 'chemistry',
     canonicalSlug: 'chemistry',
   },
+  chem: {
+    name: 'Chemistry',
+    syllabusKey: 'chemistry',
+    topicKey: 'chemistry',
+    canonicalSlug: 'chemistry',
+  },
   biology: {
+    name: 'Biology',
+    syllabusKey: 'biology',
+    topicKey: 'biology',
+    canonicalSlug: 'biology',
+  },
+  bio: {
     name: 'Biology',
     syllabusKey: 'biology',
     topicKey: 'biology',
@@ -49,6 +68,12 @@ const SUBJECT_META: Record<
     canonicalSlug: 'mathematics',
   },
   math: {
+    name: 'Mathematics',
+    syllabusKey: 'mathematics',
+    topicKey: 'mathematics',
+    canonicalSlug: 'mathematics',
+  },
+  maths: {
     name: 'Mathematics',
     syllabusKey: 'mathematics',
     topicKey: 'mathematics',
@@ -72,7 +97,19 @@ const SUBJECT_META: Record<
     topicKey: 'computer',
     canonicalSlug: 'computer-science',
   },
+  ics: {
+    name: 'Computer Science',
+    syllabusKey: 'computer-science',
+    topicKey: 'computer',
+    canonicalSlug: 'computer-science',
+  },
   english: {
+    name: 'English',
+    syllabusKey: 'english',
+    topicKey: 'english',
+    canonicalSlug: 'english',
+  },
+  eng: {
     name: 'English',
     syllabusKey: 'english',
     topicKey: 'english',
@@ -244,7 +281,12 @@ export const McqSubjectPage: React.FC<McqSubjectPageProps> = ({
     );
   }
 
-  // Case 2: Standard Subject Page (/mcqs/:subject, /subjects/:subjectId, or /mcqs/:university/:subject)
+  // Case 2: General / All Subjects fallback (/mcqs/general, /mcqs/all, /subjects/general)
+  if (!rawUniversity && (rawSubject === 'general' || rawSubject === 'all' || !rawSubject)) {
+    return <McqsHubPage />;
+  }
+
+  // Case 3: Standard Subject Page (/mcqs/:subject, /subjects/:subjectId, or /mcqs/:university/:subject)
   const meta = SUBJECT_META[rawSubject];
   const uniMeta = rawUniversity ? UNIVERSITY_META[rawUniversity] : undefined;
 
