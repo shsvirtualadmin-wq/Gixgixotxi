@@ -34,6 +34,7 @@ import { exportDrillResultToPdf } from '@/utils/testPdfExporter';
 import { extractIdFromSlug } from '@/utils/privacy';
 import { routes } from '@/utils/routes';
 import { showApiToast } from '@/lib/api';
+import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
 
 const DEFAULT_ALREADY_ATTEMPTED_MSG =
   'You have already taken this drill. Only one verified attempt per student is permitted for each drill.';
@@ -507,24 +508,26 @@ export function GrandLineTestRunnerPage() {
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
-              <button
-                type="button"
-                onClick={handleDownloadPdf}
-                disabled={downloadingPdf}
-                className="px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white text-xs font-bold hover:opacity-95 disabled:opacity-60 flex items-center gap-1.5 cursor-pointer"
-              >
-                {downloadingPdf ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin" />
-                    <span>{pdfProgressText || 'Generating PDF...'}</span>
-                  </>
-                ) : (
-                  <>
-                    <Download size={14} />
-                    <span>Download PDF</span>
-                  </>
-                )}
-              </button>
+              <PdfDownloadButton
+                label="Download Verified Report"
+                onDownload={async (onProgress) => {
+                  if (!scoreResult) return;
+                  await exportDrillResultToPdf({
+                    testId: testId || test?.id,
+                    testTitle: scoreResult.testTitle,
+                    subject: scoreResult.subject,
+                    studentName: scoreResult.studentName || resolveStudentProfileName(),
+                    date: scoreResult.date,
+                    score: scoreResult.score,
+                    totalQuestions: scoreResult.totalQuestions,
+                    percentage: scoreResult.percentage,
+                    timeTakenSeconds: scoreResult.timeTakenSeconds,
+                    gradedQuestions: scoreResult.gradedQuestions,
+                    onProgress,
+                  });
+                  showApiToast('Result PDF downloaded successfully!', 'success');
+                }}
+              />
 
               <Link
                 to="/grand-line/leaderboard"

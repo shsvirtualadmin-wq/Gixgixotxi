@@ -32,6 +32,7 @@ import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { routes } from '@/utils/routes';
 import { RefreshCw } from 'lucide-react';
+import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
 
 function formatTimeTaken(seconds?: number): string {
   const sec = Math.max(0, Math.round(Number(seconds || 0)));
@@ -396,19 +397,20 @@ export function GrandLinePage() {
                             <span>View Result</span>
                           </Button>
 
-                          <Button
+                          <PdfDownloadButton
                             variant="outline"
-                            size="sm"
-                            disabled={isDownloadingThis}
-                            onClick={() => handleDownloadPdfForTest(test.id, myAttempt)}
-                          >
-                            {isDownloadingThis ? (
-                              <Loader2 size={13} className="animate-spin" />
-                            ) : (
-                              <Download size={13} />
-                            )}
-                            <span>{isDownloadingThis ? 'PDF...' : 'Download PDF'}</span>
-                          </Button>
+                            label="PDF"
+                            className="text-xs py-1 px-2.5 h-8 font-semibold"
+                            onDownload={async (onProgress) => {
+                              await downloadDrillResultPdfByTestId(
+                                test.id,
+                                myAttempt,
+                                user?.displayName || 'Student',
+                                onProgress
+                              );
+                              showApiToast('Result PDF downloaded successfully!', 'success');
+                            }}
+                          />
                         </>
                       ) : (
                         <Button

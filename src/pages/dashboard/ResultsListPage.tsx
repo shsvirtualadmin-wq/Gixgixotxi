@@ -13,6 +13,7 @@ import type { AttemptDoc } from '@/types/index';
 import { getMyTestAttempts, type AmbassadorTestAttempt } from '@/services/ambassadorTestService';
 import { downloadDrillResultPdfByTestId } from '@/utils/testPdfExporter';
 import { showApiToast } from '@/lib/api';
+import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
 
 function getTimestampSeconds(val: unknown): number {
   if (!val || typeof val !== 'object') return 0;
@@ -345,22 +346,21 @@ export function ResultsListPage() {
                         </span>
                       </div>
 
-                      <Button
+                      <PdfDownloadButton
                         variant="secondary"
-                        size="sm"
-                        disabled={isDownloading}
-                        onClick={(e) => handleDownloadDrillPdf(e, glAtt)}
-                      >
-                        {isDownloading ? (
-                          <>
-                            <Loader2 size={13} className="animate-spin" /> {pdfProgressText || 'Generating PDF...'}
-                          </>
-                        ) : (
-                          <>
-                            <Download size={13} /> Download PDF
-                          </>
-                        )}
-                      </Button>
+                        label="Download PDF"
+                        className="text-xs py-1.5 px-3 h-8 font-semibold"
+                        onDownload={async (onProgress) => {
+                          if (!glAtt.testId) return;
+                          await downloadDrillResultPdfByTestId(
+                            glAtt.testId,
+                            glAtt,
+                            studentFallbackName,
+                            onProgress
+                          );
+                          showApiToast('Result PDF downloaded successfully!', 'success');
+                        }}
+                      />
 
                       <Button
                         variant="primary"

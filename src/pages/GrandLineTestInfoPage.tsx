@@ -34,6 +34,7 @@ import { sanitizeStudentDisplayName, extractIdFromSlug, buildEntitySlug } from '
 import { routes } from '@/utils/routes';
 import { downloadDrillResultPdfByTestId } from '@/utils/testPdfExporter';
 import { showApiToast } from '@/lib/api';
+import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
 
 function formatTimeTaken(seconds: number): string {
   const safe = Math.max(0, Math.floor(Number(seconds) || 0));
@@ -297,15 +298,20 @@ export const GrandLineTestInfoPage: React.FC = () => {
                   <CheckCircle2 size={15} />
                   <span>View my result</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={handleDownloadPdf}
-                  disabled={downloadingPdf}
-                  className="btn-secondary px-5 py-3 text-xs sm:text-sm font-semibold inline-flex items-center gap-2 cursor-pointer disabled:opacity-60"
-                >
-                  {downloadingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                  <span>{downloadingPdf ? (pdfProgressText || 'Generating PDF...') : 'Download PDF'}</span>
-                </button>
+                <PdfDownloadButton
+                  label="Download PDF Report"
+                  variant="secondary"
+                  className="px-5 py-3 text-xs sm:text-sm font-semibold"
+                  onDownload={async (onProgress) => {
+                    await downloadDrillResultPdfByTestId(
+                      test.id,
+                      myAttempt,
+                      studentFallbackName,
+                      onProgress
+                    );
+                    showApiToast('Result PDF downloaded successfully!', 'success');
+                  }}
+                />
               </>
             ) : (
               <button
