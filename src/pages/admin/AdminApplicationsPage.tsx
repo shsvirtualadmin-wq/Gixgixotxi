@@ -7,9 +7,9 @@ import {
   MapPin,
   X,
   CheckCircle2,
-  Loader2,
   Sparkles,
 } from 'lucide-react';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   fetchCaptainApplications,
@@ -212,7 +212,7 @@ export function AdminApplicationsPage() {
           disabled={loading}
           className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-xs sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
         >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={14} />
           <span>Refresh</span>
         </button>
       </div>
@@ -292,6 +292,9 @@ export function AdminApplicationsPage() {
 
       {/* ─── APPLICATIONS LIST ──────────────────────────────────────────────── */}
       <div className="space-y-3">
+        {loading && (
+          <BubbleLoader variant="top-bar" customMessages={['Loading candidate applications...']} />
+        )}
         {loading ? (
           Array.from({ length: 3 }).map((_, i) => (
             <div
@@ -404,14 +407,16 @@ export function AdminApplicationsPage() {
                         type="button"
                         disabled={grantingCaptainId === app.userId}
                         onClick={() => handleGrantCaptainAllotment(app.userId, app.name, app.email)}
-                        className="btn-red text-xs px-3.5 py-1.5 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50 shrink-0"
+                        className="btn-red text-xs px-3.5 py-1.5 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50 shrink-0 min-w-[150px]"
                       >
                         {grantingCaptainId === app.userId ? (
-                          <Loader2 size={13} className="animate-spin" />
+                          <BubbleLoader variant="inline" customMessages={['Granting...']} />
                         ) : (
-                          <Sparkles size={13} />
+                          <>
+                            <Sparkles size={13} />
+                            <span>Grant 5,000 Kobans</span>
+                          </>
                         )}
-                        <span>Grant 5,000 Kobans</span>
                       </button>
                     )}
                   </div>
@@ -436,9 +441,13 @@ export function AdminApplicationsPage() {
                       onClick={() =>
                         isCaptain ? handleApproveCaptain(capApp) : handleApproveCrew(crewApp)
                       }
-                      className="px-4 py-2 rounded-xl border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-xs font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer shadow-sm"
+                      className="px-4 py-2 rounded-xl border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-xs font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer shadow-sm flex items-center justify-center min-w-[150px]"
                     >
-                      {actionInProgress === app.id ? 'Approving...' : 'Approve & grant role'}
+                      {actionInProgress === app.id ? (
+                        <BubbleLoader variant="inline" customMessages={['Approving...']} />
+                      ) : (
+                        'Approve & grant role'
+                      )}
                     </button>
                   </div>
                 )}
@@ -502,10 +511,16 @@ export function AdminApplicationsPage() {
                 type="button"
                 disabled={grantingAll || pendingCaptainsForMonth.length === 0}
                 onClick={handleGrantAllApprovedCaptains}
-                className="btn-red flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                className="btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
               >
-                {grantingAll ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                <span>Confirm &amp; Credit All</span>
+                {grantingAll ? (
+                  <BubbleLoader variant="inline" customMessages={['Crediting all captains...']} />
+                ) : (
+                  <>
+                    <Sparkles size={14} />
+                    <span>Confirm &amp; Credit All</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

@@ -11,10 +11,10 @@ import {
   Check,
   ChevronRight,
   CheckCircle2,
-  Loader2,
   X,
   Eye,
 } from 'lucide-react';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import {
   getAllCaptainsAdminData,
   type CaptainAdminSummary,
@@ -183,7 +183,7 @@ export function AdminCaptainsPage() {
             className="p-2.5 rounded-xl border border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors disabled:opacity-50 cursor-pointer"
             title="Refresh Data"
           >
-            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={15} />
           </button>
         </div>
       </div>
@@ -247,7 +247,8 @@ export function AdminCaptainsPage() {
 
       {/* Captains Table / List */}
       {loading ? (
-        <div className="space-y-2.5">
+        <div className="space-y-3">
+          <BubbleLoader variant="top-bar" customMessages={['Loading Nakama Captains...']} />
           {[1, 2, 3, 4, 5].map((i) => (
             <div
               key={i}
@@ -339,11 +340,13 @@ export function AdminCaptainsPage() {
                       className="btn-red w-full py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm cursor-pointer whitespace-nowrap disabled:opacity-50"
                     >
                       {grantingId === c.captainUid ? (
-                        <Loader2 size={13} className="animate-spin" />
+                        <BubbleLoader variant="inline" customMessages={['Granting 5,000 Kobans...']} />
                       ) : (
-                        <KobanIcon size={14} />
+                        <>
+                          <KobanIcon size={14} />
+                          <span>Grant 5,000 Kobans</span>
+                        </>
                       )}
-                      <span>Grant 5,000 Kobans</span>
                     </button>
                   ) : (
                     <button
@@ -418,14 +421,16 @@ export function AdminCaptainsPage() {
                                 type="button"
                                 disabled={grantingId === c.captainUid}
                                 onClick={() => handleGrantSingle(c)}
-                                className="btn-red text-[11px] px-2.5 py-0.5 rounded-lg font-bold flex items-center gap-1 shadow-xs cursor-pointer disabled:opacity-50"
+                                className="btn-red text-[11px] px-2.5 py-1 rounded-lg font-bold flex items-center justify-center gap-1 shadow-xs cursor-pointer disabled:opacity-50 min-w-[140px]"
                               >
                                 {grantingId === c.captainUid ? (
-                                  <Loader2 size={11} className="animate-spin" />
+                                  <BubbleLoader variant="inline" customMessages={['Granting...']} />
                                 ) : (
-                                  <Sparkles size={11} />
+                                  <>
+                                    <Sparkles size={11} />
+                                    <span>Grant 5,000 Kobans</span>
+                                  </>
                                 )}
-                                <span>Grant 5,000 Kobans</span>
                               </button>
                             )}
                           </div>
@@ -539,10 +544,16 @@ export function AdminCaptainsPage() {
                 type="button"
                 disabled={grantingAll || pendingCaptainsCount === 0}
                 onClick={handleGrantAll}
-                className="btn-red flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                className="btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
               >
-                {grantingAll ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                <span>Confirm &amp; Credit All</span>
+                {grantingAll ? (
+                  <BubbleLoader variant="inline" customMessages={['Crediting all captains...']} />
+                ) : (
+                  <>
+                    <Sparkles size={14} />
+                    <span>Confirm &amp; Credit All</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

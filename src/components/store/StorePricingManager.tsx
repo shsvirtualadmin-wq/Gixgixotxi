@@ -8,7 +8,6 @@ import {
   History,
   CheckCircle2,
   AlertCircle,
-  Loader2,
   RefreshCw,
   Search,
   Filter,
@@ -23,6 +22,7 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   fetchStoreItems,
@@ -293,11 +293,17 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
             type="button"
             onClick={handleSeed}
             disabled={seeding}
-            className="px-3 py-2 rounded-xl text-xs font-heading font-semibold border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            className="px-3 py-2 rounded-xl text-xs font-heading font-semibold border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 min-w-[130px]"
             title="Seed any missing catalog items into Firestore"
           >
-            {seeding ? <Loader2 size={14} className="animate-spin text-red-500" /> : <RefreshCw size={14} />}
-            <span>Sync Catalog</span>
+            {seeding ? (
+              <BubbleLoader variant="inline" customMessages={['Syncing catalog...']} />
+            ) : (
+              <>
+                <RefreshCw size={14} />
+                <span>Sync Catalog</span>
+              </>
+            )}
           </button>
 
           {onBack && (
@@ -484,9 +490,13 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
 
           {/* Items Table / Cards */}
           {loading ? (
-            <div className="p-12 text-center text-[var(--muted)] flex flex-col items-center justify-center gap-2">
-              <Loader2 size={24} className="animate-spin text-red-500" />
-              <p className="text-xs">Loading store catalog pricing...</p>
+            <div className="p-6 rounded-2xl bg-[var(--card)] border border-[var(--border)]">
+              <BubbleLoader
+                variant="section"
+                showSkeletons
+                skeletonCount={3}
+                customMessages={['Loading store catalog pricing...']}
+              />
             </div>
           ) : filteredItems.length === 0 ? (
             <div className="p-12 text-center rounded-2xl bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] space-y-2">
@@ -570,7 +580,13 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
                             className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer disabled:opacity-50"
                             title="Save new price"
                           >
-                            {isSavingSingle ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                            {isSavingSingle ? (
+                              <div className="w-20">
+                                <BubbleLoader variant="inline" customMessages={['Saving...']} />
+                              </div>
+                            ) : (
+                              <Check size={13} />
+                            )}
                           </button>
 
                           <button
@@ -822,14 +838,18 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
               className="p-2 rounded-xl bg-[var(--card-2)] border border-[var(--border)] hover:bg-[var(--surface-hover)] text-xs text-[var(--text)] transition-colors cursor-pointer"
               title="Refresh history"
             >
-              <RefreshCw size={14} className={loadingHistory ? 'animate-spin text-red-500' : ''} />
+              <RefreshCw size={14} />
             </button>
           </div>
 
           {loadingHistory ? (
-            <div className="p-10 text-center flex flex-col items-center justify-center gap-2 text-[var(--muted)]">
-              <Loader2 size={20} className="animate-spin text-red-500" />
-              <p className="text-xs">Loading audit records...</p>
+            <div className="p-6">
+              <BubbleLoader
+                variant="section"
+                showSkeletons
+                skeletonCount={2}
+                customMessages={['Loading audit records...']}
+              />
             </div>
           ) : historyRecords.length === 0 ? (
             <div className="p-10 text-center rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-[var(--muted)] text-xs">
@@ -993,13 +1013,10 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
                 type="button"
                 disabled={isExecutingBulk || bulkPreview.totalMatches === 0}
                 onClick={handleExecuteBulkUpdate}
-                className="px-5 py-2.5 rounded-xl text-xs font-heading font-bold bg-red-600 hover:bg-red-500 text-white shadow-md transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                className="px-5 py-2.5 rounded-xl text-xs font-heading font-bold bg-red-600 hover:bg-red-500 text-white shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 min-w-[200px]"
               >
                 {isExecutingBulk ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin" />
-                    <span>Committing Firestore Batches...</span>
-                  </>
+                  <BubbleLoader variant="inline" customMessages={['Committing Firestore batches...']} />
                 ) : (
                   <>
                     <Check size={14} />

@@ -18,6 +18,7 @@ import { auth } from '@/lib/firebase';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 
@@ -371,13 +372,10 @@ export function AdminBotsPage() {
             type="button"
             onClick={() => handleTriggerRun()}
             disabled={runningAll || Boolean(runningBotUid)}
-            className="btn-red text-xs px-4 py-2.5 rounded-xl flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            className="btn-red text-xs px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 min-w-[180px]"
           >
             {runningAll ? (
-              <>
-                <RotateCcw size={14} className="animate-spin" />
-                <span>Running Batch (2 Bots)...</span>
-              </>
+              <BubbleLoader variant="inline" customMessages={['Running 2-bot batch...']} />
             ) : (
               <>
                 <Play size={14} />
@@ -390,13 +388,10 @@ export function AdminBotsPage() {
             type="button"
             onClick={() => handleDeleteAllBotContent()}
             disabled={deletingContent}
-            className="px-4 py-2.5 rounded-xl border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+            className="px-4 py-2.5 rounded-xl border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50 min-w-[170px]"
           >
             {deletingContent ? (
-              <>
-                <RotateCcw size={14} className="animate-spin" />
-                <span>Deleting...</span>
-              </>
+              <BubbleLoader variant="inline" customMessages={['Deleting bot content...']} />
             ) : (
               <>
                 <Trash2 size={14} />
@@ -412,10 +407,14 @@ export function AdminBotsPage() {
             className="p-2.5 rounded-xl bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
             title="Refresh"
           >
-            <RotateCcw size={16} className={loading ? 'animate-spin' : ''} />
+            <RotateCcw size={16} />
           </button>
         </div>
       </div>
+
+      {loading && (
+        <BubbleLoader variant="top-bar" customMessages={['Loading Commons study bots...']} />
+      )}
 
       {/* ── Summary Metrics ── */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
@@ -734,14 +733,16 @@ export function AdminBotsPage() {
                         type="button"
                         onClick={() => handleTriggerRun(bot.uid)}
                         disabled={isRunningThis || runningAll || !bot.enabled}
-                        className="px-2.5 py-1 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-300 hover:bg-sky-500/25 font-semibold flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-40"
+                        className="px-2.5 py-1 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-300 hover:bg-sky-500/25 font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-40 min-w-[100px]"
                       >
                         {isRunningThis ? (
-                          <RotateCcw size={11} className="animate-spin" />
+                          <BubbleLoader variant="inline" customMessages={['Running...']} />
                         ) : (
-                          <Play size={11} />
+                          <>
+                            <Play size={11} />
+                            <span>Run Now</span>
+                          </>
                         )}
-                        <span>Run Now</span>
                       </button>
 
                       {(bot.postsCount > 0 || bot.commentsCount > 0 || bot.likesCount > 0) && (

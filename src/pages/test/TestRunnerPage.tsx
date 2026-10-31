@@ -18,6 +18,7 @@ import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { exportTestToPdf } from '@/utils/testPdfExporter';
 import { getUniversityRulesSummary } from '@/constants/universityCriteria';
 import { Sparkles, Lock, X, AlertCircle, Check } from 'lucide-react';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
 
 export function TestRunnerPage() {
@@ -439,6 +440,10 @@ export function TestRunnerPage() {
           gap: 24,
         }}
       >
+        <BubbleLoader
+          variant="top-bar"
+          messages={['Preparing your study material, please wait...']}
+        />
         <Skeleton height={48} width="50%" />
         <Skeleton height={320} />
         <Skeleton height={60} />

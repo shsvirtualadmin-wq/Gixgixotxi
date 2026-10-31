@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { X, Sparkles, ShoppingBag, Check, Send, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { X, Sparkles, ShoppingBag, Check, Send, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import { useNavigate } from 'react-router-dom';
 import { ACCENT_PRESETS, DefaultDotMatrixBanner } from '@/components/koban/artwork/bannerArtwork';
 import { AvatarPicture, AvatarFrame } from '@/components/koban/CosmeticRenderers';
@@ -135,10 +136,7 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
                   className="self-start mt-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-heading font-semibold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
                 >
                   {isSendingRequest ? (
-                    <>
-                      <Loader2 size={13} className="animate-spin" />
-                      <span>Sending Request...</span>
-                    </>
+                    <BubbleLoader variant="inline" customMessages={['Sending request...']} />
                   ) : (
                     <>
                       <Send size={13} />
@@ -342,9 +340,13 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
             <button
               type="submit"
               disabled={isSaving}
-              className="h-11 px-6 rounded-xl bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold transition-colors cursor-pointer flex items-center gap-2"
+              className="h-11 px-6 rounded-xl bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold transition-colors cursor-pointer flex items-center justify-center gap-2 min-w-[140px]"
             >
-              {isSaving ? 'Saving...' : 'Save Profile'}
+              {isSaving ? (
+                <BubbleLoader variant="inline" customMessages={['Saving profile...']} />
+              ) : (
+                'Save Profile'
+              )}
             </button>
           </div>
         </form>

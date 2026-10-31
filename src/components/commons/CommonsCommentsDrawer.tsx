@@ -7,6 +7,7 @@ import { MathText } from '@/components/ui/MathText';
 import { sanitizeStudentDisplayName, maskPublicUserText } from '@/utils/privacy';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { useAuthGate } from '@/contexts/AuthGateContext';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 interface CommonsCommentsDrawerProps {
   post: CommonsPost | null;
@@ -155,9 +156,13 @@ export function CommonsCommentsDrawer({
         {/* Comment list */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
           {loading ? (
-            <div className="py-12 text-center text-xs text-muted space-y-2">
-              <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto" />
-              <p>Loading comments...</p>
+            <div className="py-6">
+              <BubbleLoader
+                variant="section"
+                showSkeletons
+                skeletonCount={2}
+                customMessages={['Loading comments...']}
+              />
             </div>
           ) : comments.length === 0 ? (
             <div className="py-12 text-center text-xs text-muted">
@@ -320,10 +325,12 @@ export function CommonsCommentsDrawer({
             <button
               type="submit"
               disabled={!currentUser || submitting || !newText.trim()}
-              className="px-4 py-2.5 bg-accent hover:opacity-90 disabled:bg-surface-muted disabled:text-muted disabled:cursor-not-allowed text-on-accent rounded-xl transition-all shrink-0 cursor-pointer shadow-xs active:scale-95 flex items-center justify-center min-w-[44px] min-h-[44px]"
+              className={`px-4 py-2.5 bg-accent hover:opacity-90 disabled:bg-surface-muted disabled:text-muted disabled:cursor-not-allowed text-on-accent rounded-xl transition-all shrink-0 cursor-pointer shadow-xs active:scale-95 flex items-center justify-center min-h-[44px] ${
+                submitting ? 'min-w-[140px]' : 'min-w-[44px]'
+              }`}
             >
               {submitting ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <BubbleLoader variant="inline" customMessages={['Posting comment...']} />
               ) : (
                 <Send size={15} />
               )}

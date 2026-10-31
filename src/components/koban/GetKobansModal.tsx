@@ -4,11 +4,11 @@ import {
   Copy,
   Check,
   AlertCircle,
-  Loader2,
   CheckCircle2,
   ArrowRight,
   ShieldCheck,
 } from 'lucide-react';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import { KobanIcon, KobanStack } from './KobanIcon';
 import { PAYMENT_METHODS } from '@/constants/branding';
 import { submitKobanRequest } from '@/services/kobanService';
@@ -343,13 +343,10 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
               <button
                 type="submit"
                 disabled={submitting}
-                className="btn-red w-full py-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:opacity-50"
+                className="btn-red w-full py-3 px-4 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:opacity-50"
               >
                 {submitting ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>Submitting Request...</span>
-                  </>
+                  <BubbleLoader variant="inline" customMessages={['Submitting payment verification...']} />
                 ) : (
                   <>
                     <span>Submit Payment Verification</span>

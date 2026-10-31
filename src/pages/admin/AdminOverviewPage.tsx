@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import {
   fetchAdminStats,
@@ -155,10 +156,14 @@ export function AdminOverviewPage() {
           disabled={loading}
           className="flex items-center gap-2 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
         >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={14} />
           <span>Refresh</span>
         </button>
       </div>
+
+      {loading && (
+        <BubbleLoader variant="top-bar" customMessages={['Refreshing system metrics...']} />
+      )}
 
       <AdminDiagnosticBanner
         error={error}
@@ -332,7 +337,7 @@ export function AdminOverviewPage() {
               className="p-1 rounded-md text-[var(--muted)] hover:text-white hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
               title="Refresh subject counts"
             >
-              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+              <RefreshCw size={13} />
             </button>
           </div>
         </div>

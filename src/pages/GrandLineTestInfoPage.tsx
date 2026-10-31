@@ -11,8 +11,6 @@ import {
   Check,
   Award,
   CheckCircle2,
-  Download,
-  Loader2,
   AlertTriangle,
   RefreshCw,
 } from 'lucide-react';
@@ -35,6 +33,7 @@ import { routes } from '@/utils/routes';
 import { downloadDrillResultPdfByTestId } from '@/utils/testPdfExporter';
 import { showApiToast } from '@/lib/api';
 import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 function formatTimeTaken(seconds: number): string {
   const safe = Math.max(0, Math.floor(Number(seconds) || 0));
@@ -57,8 +56,6 @@ export const GrandLineTestInfoPage: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [copied, setCopied] = useState(false);
-  const [downloadingPdf, setDownloadingPdf] = useState(false);
-  const [pdfProgressText, setPdfProgressText] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -106,6 +103,10 @@ export const GrandLineTestInfoPage: React.FC = () => {
     return (
       <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4">
         <div className="max-w-4xl mx-auto space-y-6">
+          <BubbleLoader
+            variant="top-bar"
+            messages={['Loading drill syllabus & rankings...']}
+          />
           <div className="glass-panel p-8 h-64 animate-pulse" />
           <div className="glass-panel p-8 space-y-3">
             {[1, 2, 3, 4].map((i) => (
@@ -169,27 +170,6 @@ export const GrandLineTestInfoPage: React.FC = () => {
       },
       routes.grandLineTestRun(test.id)
     );
-  };
-
-  const handleDownloadPdf = async () => {
-    if (!myAttempt || downloadingPdf) return;
-    setDownloadingPdf(true);
-    setPdfProgressText('Formatting PDF...');
-    try {
-      await downloadDrillResultPdfByTestId(
-        test.id,
-        myAttempt,
-        studentFallbackName,
-        (prog) => setPdfProgressText(prog.message)
-      );
-      showApiToast('Result PDF downloaded successfully!', 'success');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to generate PDF. Tap to retry.';
-      showApiToast(msg, 'error');
-    } finally {
-      setDownloadingPdf(false);
-      setPdfProgressText(null);
-    }
   };
 
   return (

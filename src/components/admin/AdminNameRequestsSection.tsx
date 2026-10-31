@@ -10,9 +10,9 @@ import {
   RefreshCw,
   User,
   ShieldAlert,
-  Loader2,
   Copy,
 } from 'lucide-react';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import {
   fetchNameRequests,
   approveNameRequest,
@@ -244,7 +244,7 @@ export const AdminNameRequestsSection: React.FC<AdminNameRequestsSectionProps> =
             className="h-9 px-3 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-[var(--text)] hover:bg-[var(--surface-hover)] text-xs font-heading font-medium flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
             title="Refresh requests"
           >
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={13} />
           </button>
         </div>
       </div>
@@ -252,9 +252,13 @@ export const AdminNameRequestsSection: React.FC<AdminNameRequestsSectionProps> =
       {/* ── Requests Table / Cards ── */}
       <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] overflow-hidden shadow-xs">
         {loading ? (
-          <div className="py-16 flex flex-col items-center justify-center gap-2 text-xs text-[var(--muted)] font-mono">
-            <Loader2 size={20} className="animate-spin text-[var(--red)]" />
-            <span>Loading name requests...</span>
+          <div className="p-6">
+            <BubbleLoader
+              variant="section"
+              showSkeletons
+              skeletonCount={3}
+              customMessages={['Loading name requests...']}
+            />
           </div>
         ) : filteredRequests.length === 0 ? (
           <div className="py-16 text-center text-xs text-[var(--muted)] font-heading space-y-1">
@@ -354,14 +358,16 @@ export const AdminNameRequestsSection: React.FC<AdminNameRequestsSectionProps> =
                               type="button"
                               disabled={isProcessing}
                               onClick={() => handleApprove(req)}
-                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-heading font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-sm"
+                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-heading font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-sm min-w-[100px]"
                             >
                               {isProcessing ? (
-                                <Loader2 size={12} className="animate-spin" />
+                                <BubbleLoader variant="inline" customMessages={['Approving...']} />
                               ) : (
-                                <Check size={13} />
+                                <>
+                                  <Check size={13} />
+                                  <span>Approve</span>
+                                </>
                               )}
-                              <span>Approve</span>
                             </button>
 
                             <button

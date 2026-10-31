@@ -10,7 +10,6 @@ import {
   Pencil,
   CheckCircle2,
   AlertCircle,
-  Loader2,
   Compass,
   Copy,
   Check,
@@ -28,6 +27,7 @@ import {
   RefreshCw,
   ChevronRight,
 } from 'lucide-react';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   parseAmbassadorQuestionsCsv,
@@ -566,7 +566,7 @@ export function AmbassadorDashboardPage() {
           className="p-2 rounded-xl bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] cursor-pointer shrink-0"
           title="Refresh"
         >
-          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={15} />
         </button>
       </div>
 
@@ -575,6 +575,10 @@ export function AmbassadorDashboardPage() {
         <div className="space-y-3">
           {loading ? (
             <div className="space-y-3">
+              <BubbleLoader
+                variant="top-bar"
+                messages={['Loading Captain tests & student analytics...']}
+              />
               {[1, 2, 3].map((n) => (
                 <div
                   key={n}
@@ -652,21 +656,25 @@ export function AmbassadorDashboardPage() {
 
                     {/* Actions */}
                     <div className="flex items-center gap-2 flex-wrap shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[var(--border)]">
-                      <button
-                        type="button"
-                        onClick={() => handleTogglePublish(t)}
-                        disabled={togglingPublishId === t.id}
-                        className="px-3 py-1.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                      >
-                        {togglingPublishId === t.id ? (
-                          <Loader2 size={13} className="animate-spin" />
-                        ) : isPublished ? (
-                          <EyeOff size={13} />
-                        ) : (
-                          <Eye size={13} />
-                        )}
-                        <span>{isPublished ? 'Unpublish' : 'Publish'}</span>
-                      </button>
+                      {togglingPublishId === t.id ? (
+                        <div className="w-40 p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                          <BubbleLoader
+                            variant="inline"
+                            loading={true}
+                            messages={['Updating test visibility...']}
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePublish(t)}
+                          disabled={togglingPublishId === t.id}
+                          className="px-3 py-1.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                          {isPublished ? <EyeOff size={13} /> : <Eye size={13} />}
+                          <span>{isPublished ? 'Unpublish' : 'Publish'}</span>
+                        </button>
+                      )}
 
                       <button
                         type="button"
@@ -915,14 +923,24 @@ export function AmbassadorDashboardPage() {
                     className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
                   />
                 </div>
-                <button
-                  type="submit"
-                  disabled={creatingCrew}
-                  className="px-5 py-2.5 rounded-xl bg-[#D71921] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                >
-                  {creatingCrew ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                  <span>Create Crew</span>
-                </button>
+                {creatingCrew ? (
+                  <div className="w-56 p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                    <BubbleLoader
+                      variant="inline"
+                      loading={creatingCrew}
+                      messages={['Creating your Captain Crew...']}
+                    />
+                  </div>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={creatingCrew}
+                    className="px-5 py-2.5 rounded-xl bg-[#D71921] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Plus size={14} />
+                    <span>Create Crew</span>
+                  </button>
+                )}
               </form>
             </div>
           ) : (
@@ -1248,24 +1266,25 @@ export function AmbassadorDashboardPage() {
               >
                 Cancel
               </button>
-              <button
-                type="submit"
-                form="captain-create-test-form"
-                disabled={savingTest || parsedQuestions.length === 0}
-                className="px-5 py-2.5 rounded-xl bg-[#D71921] text-white text-xs sm:text-sm font-bold hover:opacity-95 flex items-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                {savingTest ? (
-                  <>
-                    <Loader2 size={15} className="animate-spin" />
-                    <span>Publishing...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={15} />
-                    <span>{editingTestId ? 'Save Changes' : 'Create & Publish Test'}</span>
-                  </>
-                )}
-              </button>
+              {savingTest ? (
+                <div className="w-56 p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                  <BubbleLoader
+                    variant="inline"
+                    loading={savingTest}
+                    messages={['Publishing Captain test...']}
+                  />
+                </div>
+              ) : (
+                <button
+                  type="submit"
+                  form="captain-create-test-form"
+                  disabled={savingTest || parsedQuestions.length === 0}
+                  className="px-5 py-2.5 rounded-xl bg-[#D71921] text-white text-xs sm:text-sm font-bold hover:opacity-95 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <CheckCircle2 size={15} />
+                  <span>{editingTestId ? 'Save Changes' : 'Create & Publish Test'}</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1296,15 +1315,25 @@ export function AmbassadorDashboardPage() {
               >
                 Cancel
               </button>
-              <button
-                type="button"
-                disabled={Boolean(deletingTestId)}
-                onClick={handleConfirmDeleteTest}
-                className="px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                {deletingTestId ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                <span>Delete Permanently</span>
-              </button>
+              {deletingTestId ? (
+                <div className="w-48 p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                  <BubbleLoader
+                    variant="inline"
+                    loading={Boolean(deletingTestId)}
+                    messages={['Deleting test...']}
+                  />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={Boolean(deletingTestId)}
+                  onClick={handleConfirmDeleteTest}
+                  className="px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Trash2 size={14} />
+                  <span>Delete Permanently</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

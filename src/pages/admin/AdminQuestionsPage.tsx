@@ -24,6 +24,7 @@ import {
   AlertTriangle,
   Copy,
 } from 'lucide-react';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   ENABLE_MULTI_SOURCE_BANK,
@@ -1306,7 +1307,7 @@ export function AdminQuestionsPage() {
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading font-medium text-[var(--text)] transition-colors cursor-pointer"
             title="Recomputes counts with Firestore count() aggregation, rebuilds question_index for every subject and bank, and writes stats/questionCounts"
           >
-            <RefreshCw size={14} className={rebuildingCounts ? 'animate-spin' : ''} />
+            <RefreshCw size={14} />
             <span>Rebuild counts & index</span>
           </button>
 
@@ -1320,7 +1321,7 @@ export function AdminQuestionsPage() {
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading font-medium text-[var(--text)] transition-colors cursor-pointer"
             title="Scan for questions placed in the wrong subject pool and move them with confirmation"
           >
-            <FolderEdit size={14} className={scanningMisfiled ? 'animate-spin' : ''} />
+            <FolderEdit size={14} />
             <span>Fix misfiled questions</span>
           </button>
 
@@ -1330,7 +1331,7 @@ export function AdminQuestionsPage() {
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={14} />
             <span className="hidden sm:inline">Refresh</span>
           </button>
         </div>
@@ -1687,7 +1688,7 @@ export function AdminQuestionsPage() {
                       disabled={loading}
                       className="ml-auto text-[11px] text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1 cursor-pointer"
                     >
-                      <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+                      <RefreshCw size={11} />
                       <span>Refresh Filtered</span>
                     </button>
                   </div>
@@ -1768,6 +1769,9 @@ export function AdminQuestionsPage() {
 
           {/* Question Cards Feed */}
           <div className="space-y-3">
+            {loading && (
+              <BubbleLoader variant="top-bar" customMessages={['Loading question bank...']} />
+            )}
             {loading ? (
               Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-3">
@@ -1908,13 +1912,10 @@ export function AdminQuestionsPage() {
                 type="button"
                 onClick={handleLoadMore}
                 disabled={loadingMore}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-full border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] text-sm font-semibold text-[var(--text)] transition-colors cursor-pointer disabled:opacity-50"
+                className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-full border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] text-sm font-semibold text-[var(--text)] transition-colors cursor-pointer disabled:opacity-50 min-w-[200px]"
               >
                 {loadingMore ? (
-                  <>
-                    <RefreshCw size={14} className="animate-spin" />
-                    <span>Loading more questions…</span>
-                  </>
+                  <BubbleLoader variant="inline" customMessages={['Loading more questions...']} />
                 ) : (
                   <span>Load More (Next 20)</span>
                 )}
@@ -1939,10 +1940,14 @@ export function AdminQuestionsPage() {
               disabled={healthLoading}
               className="px-3 py-1.5 rounded-[10px] border border-[var(--border)] bg-[var(--card)] text-[12px] font-heading text-[var(--text)] flex items-center gap-1.5"
             >
-              <RefreshCw size={12} className={healthLoading ? 'animate-spin' : ''} />
+              <RefreshCw size={12} />
               <span>Refresh Metrics</span>
             </button>
           </div>
+
+          {healthLoading && (
+            <BubbleLoader variant="top-bar" customMessages={['Refreshing bank health metrics...']} />
+          )}
 
           {/* ─── MULTI-SOURCE QUESTION BANK CONNECTIVITY & DIAGNOSTICS (TASK 6) ──── */}
           {ENABLE_MULTI_SOURCE_BANK && (
@@ -1961,10 +1966,16 @@ export function AdminQuestionsPage() {
                   type="button"
                   onClick={handleProbeBankSources}
                   disabled={probingBankHealth}
-                  className="px-3 py-1.5 rounded-[10px] border border-[var(--border)] bg-[var(--card-2)] hover:bg-[var(--surface-hover)] text-[12px] font-heading font-semibold text-[var(--text)] flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-[10px] border border-[var(--border)] bg-[var(--card-2)] hover:bg-[var(--surface-hover)] text-[12px] font-heading font-semibold text-[var(--text)] flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 min-w-[180px]"
                 >
-                  <RefreshCw size={12} className={probingBankHealth ? 'animate-spin' : ''} />
-                  <span>{probingBankHealth ? 'Refreshing D1 Health…' : 'Probe Bank Sources Now'}</span>
+                  {probingBankHealth ? (
+                    <BubbleLoader variant="inline" customMessages={['Refreshing D1 health...']} />
+                  ) : (
+                    <>
+                      <RefreshCw size={12} />
+                      <span>Probe Bank Sources Now</span>
+                    </>
+                  )}
                 </button>
               </div>
 
@@ -2216,14 +2227,19 @@ export function AdminQuestionsPage() {
               disabled={reportsLoading}
               className="px-3 py-1.5 rounded-[10px] border border-[var(--border)] bg-[var(--card)] text-[12px] font-heading text-[var(--text)] flex items-center gap-1.5"
             >
-              <RefreshCw size={12} className={reportsLoading ? 'animate-spin' : ''} />
+              <RefreshCw size={12} />
               <span>Refresh</span>
             </button>
           </div>
 
           {reportsLoading ? (
-            <div className="p-6 text-center text-[var(--muted)] font-heading">
-              Loading student reports…
+            <div className="p-6 rounded-[24px] bg-[var(--card)] border border-[var(--border)]">
+              <BubbleLoader
+                variant="section"
+                showSkeletons
+                skeletonCount={3}
+                customMessages={['Loading student reports...']}
+              />
             </div>
           ) : reports.length === 0 ? (
             <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center">
@@ -3406,7 +3422,7 @@ export function AdminQuestionsPage() {
             <div className="flex items-start justify-between gap-3 pb-3 border-b border-[var(--border)]">
               <div>
                 <div className="flex items-center gap-2">
-                  <RefreshCw size={18} className={`text-[var(--accent)] ${rebuildingCounts ? 'animate-spin' : ''}`} />
+                  <RefreshCw size={18} className="text-[var(--accent)]" />
                   <h3 className="font-heading font-bold text-base text-[var(--text)]">
                     Rebuild Counts & Index
                   </h3>
@@ -3433,14 +3449,13 @@ export function AdminQuestionsPage() {
             )}
 
             {rebuildingCounts && (
-              <div className="p-6 rounded-[18px] bg-[var(--card-2)] border border-[var(--border)] text-center space-y-3">
-                <RefreshCw size={28} className="animate-spin mx-auto text-[var(--accent)]" />
-                <p className="font-heading font-semibold text-sm text-[var(--text)]">
-                  Recomputing counts & rebuilding indexes...
-                </p>
-                <p className="font-heading text-xs text-[var(--muted)] max-w-md mx-auto">
-                  Performing Firestore count() aggregations across active banks (Core Bank, Alpha Bank, Beta Bank) and syncing stats/questionCounts.
-                </p>
+              <div className="p-6 rounded-[18px] bg-[var(--card-2)] border border-[var(--border)]">
+                <BubbleLoader
+                  variant="section"
+                  showSkeletons
+                  skeletonCount={2}
+                  customMessages={['Recomputing counts & rebuilding indexes...']}
+                />
               </div>
             )}
 
@@ -3570,10 +3585,16 @@ export function AdminQuestionsPage() {
                   type="button"
                   onClick={handleRunRebuild}
                   disabled={rebuildingCounts}
-                  className="px-4 py-2 rounded-[12px] bg-[var(--text)] text-[var(--bg)] font-heading font-semibold text-[13px] hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer flex items-center gap-2"
+                  className="px-4 py-2 rounded-[12px] bg-[var(--text)] text-[var(--bg)] font-heading font-semibold text-[13px] hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2 min-w-[170px]"
                 >
-                  <RefreshCw size={14} className={rebuildingCounts ? 'animate-spin' : ''} />
-                  <span>{rebuildingCounts ? 'Rebuilding...' : 'Run Rebuild & Sync'}</span>
+                  {rebuildingCounts ? (
+                    <BubbleLoader variant="inline" customMessages={['Rebuilding...']} />
+                  ) : (
+                    <>
+                      <RefreshCw size={14} />
+                      <span>Run Rebuild & Sync</span>
+                    </>
+                  )}
                 </button>
               )}
             </div>
@@ -3588,7 +3609,7 @@ export function AdminQuestionsPage() {
             <div className="flex items-start justify-between gap-3 pb-3 border-b border-[var(--border)]">
               <div>
                 <div className="flex items-center gap-2">
-                  <FolderEdit size={18} className={`text-[var(--accent)] ${scanningMisfiled || fixingMisfiled ? 'animate-spin' : ''}`} />
+                  <FolderEdit size={18} className="text-[var(--accent)]" />
                   <h3 className="font-heading font-bold text-base text-[var(--text)]">
                     Fix Misfiled Questions
                   </h3>
@@ -3615,26 +3636,24 @@ export function AdminQuestionsPage() {
             )}
 
             {scanningMisfiled && (
-              <div className="p-8 rounded-[18px] bg-[var(--card-2)] border border-[var(--border)] text-center space-y-3">
-                <RefreshCw size={28} className="animate-spin mx-auto text-[var(--accent)]" />
-                <p className="font-heading font-semibold text-sm text-[var(--text)]">
-                  Scanning question pools across all banks...
-                </p>
-                <p className="font-heading text-xs text-[var(--muted)] max-w-md mx-auto">
-                  Inspecting stems, topics, and explicit metadata to detect misfiled questions across active question sources.
-                </p>
+              <div className="p-6 rounded-[18px] bg-[var(--card-2)] border border-[var(--border)]">
+                <BubbleLoader
+                  variant="section"
+                  showSkeletons
+                  skeletonCount={2}
+                  customMessages={['Scanning question pools across all banks...']}
+                />
               </div>
             )}
 
             {fixingMisfiled && (
-              <div className="p-8 rounded-[18px] bg-[var(--card-2)] border border-[var(--border)] text-center space-y-3">
-                <RefreshCw size={28} className="animate-spin mx-auto text-emerald-400" />
-                <p className="font-heading font-semibold text-sm text-[var(--text)]">
-                  Relocating questions & syncing indices...
-                </p>
-                <p className="font-heading text-xs text-[var(--muted)] max-w-md mx-auto">
-                  Moving documents to canonical collections, updating question_index arrays, and committing stats/questionCounts atomically.
-                </p>
+              <div className="p-6 rounded-[18px] bg-[var(--card-2)] border border-[var(--border)]">
+                <BubbleLoader
+                  variant="section"
+                  showSkeletons
+                  skeletonCount={2}
+                  customMessages={['Relocating questions & syncing indices...']}
+                />
               </div>
             )}
 

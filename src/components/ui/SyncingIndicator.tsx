@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw } from 'lucide-react';
+import { BubbleLoader } from './BubbleLoader';
 
 interface SyncingIndicatorProps {
   isSyncing: boolean;
@@ -16,12 +16,15 @@ export const SyncingIndicator: React.FC<SyncingIndicatorProps> = ({
 
   return (
     <div
-      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-mono animate-pulse ${className}`}
-      role="status"
-      aria-live="polite"
+      className={`inline-flex items-center px-3.5 py-2 rounded-2xl bg-[var(--surface)] border border-[var(--border)] shadow-sm ${className}`}
+      style={{ willChange: 'transform, opacity' }}
     >
-      <RefreshCw size={13} className="animate-spin text-amber-400" />
-      <span>{message}</span>
+      <BubbleLoader
+        variant="inline"
+        loading={isSyncing}
+        messages={[message]}
+        successText="Synced!"
+      />
     </div>
   );
 };
