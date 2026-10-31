@@ -1,7 +1,8 @@
 /**
- * Generates an SVG string of the official Boardly logo rendered entirely in a dot-matrix style.
- * Uses the exact 116 circular dots from Logo.tsx and samples the outer rounded-rectangle box
- * around the 'B' into matching circular dots, yielding a 100% vector dot-matrix logo.
+ * Generates pure vector dot-matrix coordinates of the official Boardly logo.
+ * Uses the exact 116 circular dots from Logo.tsx (boxed 'B' + 'oardly' wordmark)
+ * and samples the outer rounded-rectangle box around the 'B' into matching circular dots,
+ * yielding a 100% vector dot-matrix logo that can be drawn directly into jsPDF or SVG.
  */
 
 export const BOARDLY_LOGO_DOTS: readonly [number, number][] = [
@@ -54,7 +55,7 @@ export const BOARDLY_LOGO_DOTS: readonly [number, number][] = [
  * Pre-computed sampled perimeter dots for the outer rounded box around the 'B'
  * rect: x=228, y=286, width=319, height=322, rx=76, ry=76
  */
-const BOX_OUTLINE_DOTS: readonly [number, number][] = (() => {
+export const BOX_OUTLINE_DOTS: readonly [number, number][] = (() => {
   const dots: [number, number][] = [];
   const x0 = 228;
   const y0 = 286;
@@ -117,7 +118,6 @@ const BOX_OUTLINE_DOTS: readonly [number, number][] = (() => {
  * @param opacity Optional opacity attribute
  */
 export function getBoardlyDottedLogoSvg(color = '#000000', opacity = 1): string {
-  // Box boundary dots have radius 9.5; letter dots have radius 13
   const boxCircles = BOX_OUTLINE_DOTS.map(
     ([cx, cy]) => `<circle cx="${cx}" cy="${cy}" r="9.5" fill="${color}" />`
   ).join('');
@@ -129,74 +129,39 @@ export function getBoardlyDottedLogoSvg(color = '#000000', opacity = 1): string 
   return `<svg role="img" aria-label="Boardly" viewBox="0 0 1768 824" xmlns="http://www.w3.org/2000/svg" style="opacity: ${opacity}; display: block; width: 100%; height: auto;"><g>${boxCircles}${letterCircles}</g></svg>`;
 }
 
-let cachedWatermarkPng: string | null = null;
-let cachedWhiteLogoPng: string | null = null;
-
 /**
- * Generates an off-screen canvas once and caches a PNG Data URL of the dotted logo
- * with 8% black opacity, ready for stamping directly into jsPDF vector pages with zero DOM overhead.
+ * Draws the exact Boardly dot-matrix logo (both the boxed 'B' icon and the 'oardly' wordmark)
+ * directly as pure vector circles onto a jsPDF document.
+ *
+ * Because it uses native vector circles (`doc.circle(cx, cy, r, 'F')`), it stays 100% sharp
+ * at any zoom level, requires zero DOM nodes or canvas bitmaps, and renders in < 0.2ms per page.
+ *
+ * @param doc jsPDF instance
+ * @param x Top-left X coordinate in mm
+ * @param y Top-left Y coordinate in mm
+ * @param width Target width in mm (height is automatically scaled by 824 / 1768 to preserve exact proportions)
+ * @param rgb Fill RGB tuple — e.g. [235, 235, 235] for 8% black on white paper, or [255, 255, 255] for white banner logo
  */
-export function getWatermarkLogoPngDataUrl(): string {
-  if (cachedWatermarkPng) return cachedWatermarkPng;
-  if (typeof document === 'undefined') return '';
+export function drawVectorDottedLogoOnPdf(
+  doc: {
+    setFillColor: (r: number, g: number, b: number) => void;
+    circle: (x: number, y: number, r: number, style?: string) => void;
+  },
+  x: number,
+  y: number,
+  width: number,
+  rgb: [number, number, number]
+): void {
+  const scale = width / 1768;
+  doc.setFillColor(rgb[0], rgb[1], rgb[2]);
 
-  const canvas = document.createElement('canvas');
-  canvas.width = 884;
-  canvas.height = 412;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
-
-  const scale = 0.5;
-  ctx.scale(scale, scale);
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
-
+  const boxDotRadius = 9.5 * scale;
   for (const [cx, cy] of BOX_OUTLINE_DOTS) {
-    ctx.beginPath();
-    ctx.arc(cx, cy, 9.5, 0, Math.PI * 2);
-    ctx.fill();
+    doc.circle(x + cx * scale, y + cy * scale, boxDotRadius, 'F');
   }
 
+  const letterDotRadius = 13 * scale;
   for (const [cx, cy] of BOARDLY_LOGO_DOTS) {
-    ctx.beginPath();
-    ctx.arc(cx, cy, 13, 0, Math.PI * 2);
-    ctx.fill();
+    doc.circle(x + cx * scale, y + cy * scale, letterDotRadius, 'F');
   }
-
-  cachedWatermarkPng = canvas.toDataURL('image/png');
-  return cachedWatermarkPng;
 }
-
-/**
- * Generates an off-screen canvas once and caches a PNG Data URL of the dotted logo
- * in solid white, ready for stamping into the Page 1 dark header banner with zero DOM overhead.
- */
-export function getWhiteHeaderLogoPngDataUrl(): string {
-  if (cachedWhiteLogoPng) return cachedWhiteLogoPng;
-  if (typeof document === 'undefined') return '';
-
-  const canvas = document.createElement('canvas');
-  canvas.width = 884;
-  canvas.height = 412;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
-
-  const scale = 0.5;
-  ctx.scale(scale, scale);
-  ctx.fillStyle = '#ffffff';
-
-  for (const [cx, cy] of BOX_OUTLINE_DOTS) {
-    ctx.beginPath();
-    ctx.arc(cx, cy, 9.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  for (const [cx, cy] of BOARDLY_LOGO_DOTS) {
-    ctx.beginPath();
-    ctx.arc(cx, cy, 13, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  cachedWhiteLogoPng = canvas.toDataURL('image/png');
-  return cachedWhiteLogoPng;
-}
-

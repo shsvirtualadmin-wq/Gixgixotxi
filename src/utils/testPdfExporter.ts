@@ -9,10 +9,7 @@ import {
   type GradedAttemptQuestion,
 } from '@/services/ambassadorTestService';
 import type { AttemptQuestion } from '@/types/index';
-import {
-  getWatermarkLogoPngDataUrl,
-  getWhiteHeaderLogoPngDataUrl,
-} from './logoDottedSvg';
+import { drawVectorDottedLogoOnPdf } from './logoDottedSvg';
 
 export interface PdfExportProgress {
   current: number;
@@ -177,11 +174,13 @@ async function resolveQuestionKeys(questions: AttemptQuestion[]): Promise<Attemp
 }
 
 /**
- * Stamps the background layers (centered black dotted Boardly logo at 8% opacity +
- * faint diagonal "Boardly · boardly.cfd" text watermark) onto the currently active page
- * BEFORE foreground question cards are drawn so cards never get covered.
+ * Stamps the background watermarks onto the currently active page BEFORE foreground cards are drawn:
+ * 1. Faint repeating diagonal text watermark ("Boardly · boardly.cfd")
+ * 2. Large centered BLACK dotted Boardly logo (both the boxed 'B' icon and the 'oardly' wordmark)
+ *    drawn as pure vector circles at ~8% black opacity (RGB [233, 233, 233] on white paper)
+ *    so it stays 100% sharp at any zoom level and repeats on EVERY page behind the content.
  */
-function stampPageBackgroundWatermarks(doc: jsPDF, watermarkLogoPng: string, pageWidth = 210): void {
+function stampPageBackgroundWatermarks(doc: jsPDF, pageWidth = 210): void {
   // 1. Faint Diagonal Watermark Text: Boardly · boardly.cfd
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
@@ -195,25 +194,27 @@ function stampPageBackgroundWatermarks(doc: jsPDF, watermarkLogoPng: string, pag
     }
   }
 
-  // 2. Centered Black Dotted Boardly Logo (pre-rasterized once at 8% opacity)
-  if (watermarkLogoPng) {
-    const wmW = 132;
-    const wmH = wmW * (824 / 1768);
-    const wmX = (pageWidth - wmW) / 2;
-    const wmY = (297 - wmH) / 2;
-    doc.addImage(watermarkLogoPng, 'PNG', wmX, wmY, wmW, wmH, undefined, 'FAST');
-  }
+  // 2. Centered Black Dotted Boardly Logo (Icon + "Boardly" wordmark) at ~8% opacity
+  const wmW = 148;
+  const wmH = wmW * (824 / 1768);
+  const wmX = (pageWidth - wmW) / 2;
+  const wmY = (297 - wmH) / 2;
+  drawVectorDottedLogoOnPdf(doc, wmX, wmY, wmW, [233, 233, 233]);
 }
 
 /**
  * Pure Vector Grand Line Verified Drill Report Exporter:
- * - 100% direct jsPDF drawing: text, badges, cards, tables, bars rendered as crisp vectors.
- * - Zero html2canvas, zero DOM staging, zero browser freezing or layout shifts.
- * - Dotted Boardly logo rasterized once as small PNG and stamped behind content on each page.
- * - Diagonal watermark ("Boardly · boardly.cfd") drawn natively in jsPDF.
- * - Chunked processing (5 questions per yield) with setTimeout(28) keeps UI & messages smooth.
- * - AbortSignal & 60-second timeout support with safe scroll lock release.
- * - Tightly packs ~83 questions into ~9 pages (~24 KB vector PDF).
+ * - 100% direct jsPDF vector drawing: zero html2canvas, zero DOM staging, zero clipped text.
+ * - All badges (UNANSWERED, CORRECT, WRONG, FULL MOCK) and option boxes use exact baseline
+ *   math (`boxY + boxH/2 + capHeight/2` or generous top/bottom padding) so no text ever touches
+ *   or gets sliced by a border.
+ * - Only ONE "FULL MOCK" pill (the red one) in the Page 1 dark header banner.
+ * - Full dotted Boardly logo (icon + "Boardly" wordmark) drawn in black dots at ~8% opacity
+ *   centered behind the content on EVERY page, while the logo inside the Page 1 dark header
+ *   banner is drawn in solid white dots.
+ * - Question cards and option boxes let the background dotted logo show through cleanly.
+ * - Student name has ample single-line width on Page 1.
+ * - Tightly packs 83 questions into ~8 to 10 pages with only ONE slim running header on Page 2+.
  */
 export async function exportDrillResultToPdf(options: ExportDrillResultPdfOptions): Promise<void> {
   const {
@@ -326,11 +327,7 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
 
     const isFullMock =
       /mock|mdcat|nums|etea|ecat/i.test(testTitle) || totalQuestions >= 60;
-    const modePillText = isFullMock ? 'Full Mock' : 'Chapter Drill';
-
-    // Retrieve cached lightweight PNG Data URLs for the dotted logo (generated once)
-    const watermarkLogoPng = getWatermarkLogoPngDataUrl();
-    const whiteHeaderLogoPng = getWhiteHeaderLogoPngDataUrl();
+    const modePillText = isFullMock ? 'FULL MOCK' : 'CHAPTER DRILL';
 
     // Initialize A4 PDF document
     const doc = new jsPDF({
@@ -350,116 +347,113 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
 
     const pageWidth = 210;
     const contentWidth = 186;
-    const maxUsableY = 280;
+    const maxUsableY = 281.5;
 
     // Stamp background watermarks on Page 1 BEFORE drawing foreground
-    stampPageBackgroundWatermarks(doc, watermarkLogoPng, pageWidth);
+    stampPageBackgroundWatermarks(doc, pageWidth);
 
     // ==========================================
-    // Page 1 Header Banner (Dark + Dot-Grid Texture + White Dotted Logo)
+    // Page 1 Header Banner (Dark + Dot-Grid Texture + White Dotted Logo + Single Red Pill)
     // ==========================================
-    let currentY = 12;
+    let currentY = 10;
+    const bannerH = 18.5;
 
     doc.setFillColor(15, 23, 42); // #0f172a
-    doc.roundedRect(12, currentY, contentWidth, 20, 2, 2, 'F');
+    doc.roundedRect(12, currentY, contentWidth, bannerH, 2, 2, 'F');
 
     // Faint dot-grid texture inside the dark banner
     doc.setFillColor(38, 49, 71);
     for (let gx = 15; gx < 195; gx += 4.5) {
-      for (let gy = currentY + 2.5; gy < currentY + 18.5; gy += 4.5) {
+      for (let gy = currentY + 2.2; gy < currentY + bannerH - 1.5; gy += 4.5) {
         doc.circle(gx, gy, 0.22, 'F');
       }
     }
 
-    // Stamp white dotted logo
-    if (whiteHeaderLogoPng) {
-      doc.addImage(
-        whiteHeaderLogoPng,
-        'PNG',
-        15,
-        currentY + 3.2,
-        24,
-        24 * (824 / 1768),
-        undefined,
-        'FAST'
-      );
-    }
+    // Draw white dotted Boardly logo (Icon + "Boardly" wordmark) in pure vectors
+    drawVectorDottedLogoOnPdf(doc, 14.5, currentY + 2.6, 26, [255, 255, 255]);
 
-    // Header divider line
+    // Header vertical divider line
     doc.setDrawColor(255, 255, 255);
     doc.setLineWidth(0.2);
-    doc.line(42, currentY + 3, 42, currentY + 17);
+    doc.line(43, currentY + 3, 43, currentY + bannerH - 3);
 
-    // Banner Text
+    // Banner Title & Subtitle
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
+    doc.setFontSize(6.2);
     doc.setTextColor(203, 213, 225);
-    doc.text('GRAND LINE VERIFIED DRILL REPORT', 45, currentY + 7);
+    doc.text('GRAND LINE VERIFIED DRILL REPORT', 46, currentY + 6.4);
 
     doc.setFontSize(10.5);
     doc.setTextColor(255, 255, 255);
-    const titleSnippet = doc.splitTextToSize(testTitle, 105);
-    doc.text(titleSnippet[0] || testTitle, 45, currentY + 14.5);
+    const titleSnippet = doc.splitTextToSize(testTitle, 110);
+    doc.text(titleSnippet[0] || testTitle, 46, currentY + 13.8);
 
-    // Mode Pill on right
+    // Single RED Mode Pill on the right (no duplicate grey pill, vertically centered baseline)
+    const pillW = 31;
+    const pillH = 6.2;
+    const pillX = 163;
+    const pillY = currentY + (bannerH - pillH) / 2;
     doc.setFillColor(215, 25, 33); // #D71921
-    doc.roundedRect(162, currentY + 4, 32, 5, 2, 2, 'F');
-    doc.setFontSize(6);
+    doc.roundedRect(pillX, pillY, pillW, pillH, 1.6, 1.6, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.2);
     doc.setTextColor(255, 255, 255);
-    doc.text(modePillText.toUpperCase(), 178, currentY + 7.5, { align: 'center' });
+    // Exact vertical centering: pillY + pillH/2 + 0.78mm
+    doc.text(modePillText, pillX + pillW / 2, pillY + pillH / 2 + 0.78, { align: 'center' });
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6);
-    doc.setTextColor(203, 213, 225);
-    doc.text(formatSubjectName(subject || 'General'), 178, currentY + 14, { align: 'center' });
-
-    currentY += 23;
+    currentY += bannerH + 2.2;
 
     // ==========================================
-    // Page 1 Summary Strip + Accuracy Bar
+    // Page 1 Summary Strip + Accuracy Bar (Single-line Student Name, No Wrapping)
     // ==========================================
-    doc.setFillColor(248, 250, 252);
-    doc.setDrawColor(226, 232, 240);
+    const summaryH = 13.5;
+    doc.setDrawColor(203, 213, 225);
     doc.setLineWidth(0.25);
-    doc.roundedRect(12, currentY, contentWidth, 14, 2, 2, 'FD');
+    doc.roundedRect(12, currentY, contentWidth, summaryH, 1.8, 1.8, 'S');
 
-    doc.setFontSize(6.5);
+    // Row 1: Student Name (given plenty of width so "SHS Virtual Academy" never wraps), Score, Correct, Wrong, Skipped
+    const row1Baseline = currentY + 4.8;
+    doc.setFontSize(6.6);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(100, 116, 139);
-    doc.text('Student:', 15, currentY + 4.5);
+    doc.text('Student:', 15, row1Baseline);
     doc.setTextColor(15, 23, 42);
-    doc.text(studentName, 26, currentY + 4.5);
+    // Keep student name on one single line (up to 56mm width)
+    const cleanStudent = String(studentName || 'Student').replace(/\s+/g, ' ').trim();
+    const singleLineStudent = doc.splitTextToSize(cleanStudent, 56)[0] || cleanStudent;
+    doc.text(singleLineStudent, 25.5, row1Baseline);
 
     doc.setTextColor(100, 116, 139);
-    doc.text('Score:', 65, currentY + 4.5);
+    doc.text('Score:', 84, row1Baseline);
     doc.setTextColor(15, 23, 42);
-    doc.text(`${score} / ${totalQuestions} (${percentage}%)`, 74, currentY + 4.5);
+    doc.text(`${score} / ${totalQuestions} (${percentage}%)`, 92.5, row1Baseline);
 
     doc.setTextColor(100, 116, 139);
-    doc.text('Correct:', 115, currentY + 4.5);
+    doc.text('Correct:', 126, row1Baseline);
     doc.setTextColor(21, 128, 61);
-    doc.text(String(correctCount), 126, currentY + 4.5);
+    doc.text(String(correctCount), 136, row1Baseline);
 
     doc.setTextColor(100, 116, 139);
-    doc.text('Wrong:', 140, currentY + 4.5);
+    doc.text('Wrong:', 147, row1Baseline);
     doc.setTextColor(220, 38, 38);
-    doc.text(String(wrongCount), 150, currentY + 4.5);
+    doc.text(String(wrongCount), 156, row1Baseline);
 
     doc.setTextColor(100, 116, 139);
-    doc.text('Skipped:', 165, currentY + 4.5);
+    doc.text('Skipped:', 167, row1Baseline);
     doc.setTextColor(71, 85, 105);
-    doc.text(String(skippedCount), 177, currentY + 4.5);
+    doc.text(String(skippedCount), 178, row1Baseline);
 
+    // Row 2: Time & Date + Segmented Accuracy Bar
+    const row2Baseline = currentY + 10.2;
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6);
+    doc.setFontSize(6.2);
     doc.setTextColor(100, 116, 139);
-    doc.text(`Time: ${formattedTime}   |   Date: ${formattedDate}`, 15, currentY + 9.5);
+    doc.text(`Time: ${formattedTime}   |   Date: ${formattedDate}`, 15, row2Baseline);
 
-    // Segmented progress bar
     const barX = 115;
-    const barY = currentY + 7.5;
-    const barW = 76;
-    const barH = 2.4;
+    const barY = currentY + 8.1;
+    const barW = 78;
+    const barH = 2.5;
 
     doc.setFillColor(226, 232, 240);
     doc.roundedRect(barX, barY, barW, barH, 1, 1, 'F');
@@ -481,72 +475,73 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       doc.rect(barX + cW + wW, barY, sW, barH, 'F');
     }
 
-    currentY += 16.5;
+    currentY += summaryH + 2.0;
 
     // ==========================================
     // Page 1 Subject-Wise Breakdown Table
     // ==========================================
+    const thH = 4.6;
     doc.setFillColor(241, 245, 249);
-    doc.setDrawColor(226, 232, 240);
-    doc.roundedRect(12, currentY, contentWidth, 4.2, 1, 1, 'FD');
+    doc.setDrawColor(203, 213, 225);
+    doc.roundedRect(12, currentY, contentWidth, thH, 1, 1, 'FD');
 
+    const thBaseline = currentY + thH / 2 + 0.75;
     doc.setFontSize(6);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(71, 85, 105);
-    doc.text('SUBJECT AREA', 15, currentY + 3);
-    doc.text('TOTAL MCQS', 75, currentY + 3, { align: 'center' });
-    doc.text('CORRECT', 105, currentY + 3, { align: 'center' });
-    doc.text('WRONG', 130, currentY + 3, { align: 'center' });
-    doc.text('SKIPPED', 155, currentY + 3, { align: 'center' });
-    doc.text('ACCURACY', 193, currentY + 3, { align: 'right' });
+    doc.text('SUBJECT AREA', 15, thBaseline);
+    doc.text('TOTAL MCQS', 75, thBaseline, { align: 'center' });
+    doc.text('CORRECT', 105, thBaseline, { align: 'center' });
+    doc.text('WRONG', 130, thBaseline, { align: 'center' });
+    doc.text('SKIPPED', 155, thBaseline, { align: 'center' });
+    doc.text('ACCURACY', 193, thBaseline, { align: 'right' });
 
-    currentY += 4.2;
+    currentY += thH;
 
+    const rowH = 4.0;
     for (const [subName, stats] of Object.entries(subjectGroups)) {
       const subAcc = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
-      doc.setFillColor(255, 255, 255);
-      doc.rect(12, currentY, contentWidth, 3.8, 'F');
-      doc.setDrawColor(241, 245, 249);
-      doc.line(12, currentY + 3.8, 198, currentY + 3.8);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(12, currentY + rowH, 198, currentY + rowH);
 
+      const trBaseline = currentY + rowH / 2 + 0.75;
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6);
+      doc.setFontSize(6.2);
       doc.setTextColor(30, 41, 59);
-      doc.text(subName, 15, currentY + 2.7);
+      doc.text(subName, 15, trBaseline);
 
-      doc.text(String(stats.total), 75, currentY + 2.7, { align: 'center' });
+      doc.text(String(stats.total), 75, trBaseline, { align: 'center' });
 
       doc.setTextColor(21, 128, 61);
       doc.setFont('helvetica', 'bold');
-      doc.text(String(stats.correct), 105, currentY + 2.7, { align: 'center' });
+      doc.text(String(stats.correct), 105, trBaseline, { align: 'center' });
 
       doc.setTextColor(220, 38, 38);
-      doc.text(String(stats.wrong), 130, currentY + 2.7, { align: 'center' });
+      doc.text(String(stats.wrong), 130, trBaseline, { align: 'center' });
 
       doc.setTextColor(100, 116, 139);
       doc.setFont('helvetica', 'normal');
-      doc.text(String(stats.skipped), 155, currentY + 2.7, { align: 'center' });
+      doc.text(String(stats.skipped), 155, trBaseline, { align: 'center' });
 
       doc.setTextColor(15, 23, 42);
       doc.setFont('helvetica', 'bold');
-      doc.text(`${subAcc}%`, 193, currentY + 2.7, { align: 'right' });
+      doc.text(`${subAcc}%`, 193, trBaseline, { align: 'right' });
 
-      currentY += 3.8;
+      currentY += rowH;
     }
 
-    currentY += 3.5;
+    currentY += 2.5;
 
     // ==========================================
-    // Compact Question Cards Layout (Vector)
+    // Compact Question Cards Layout (Vector, High Density, Unclipped Text)
     // ==========================================
     const CHUNK_SIZE = 5;
 
     for (let i = 0; i < totalQCount; i++) {
       if (signal?.aborted) throw new Error('PDF export cancelled.');
 
-      // Yield event loop every CHUNK_SIZE items so scrolling and progress bar stay silky smooth
       if (i % CHUNK_SIZE === 0) {
-        await new Promise((r) => setTimeout(r, 28));
+        await new Promise((r) => setTimeout(r, 25));
         onProgress?.({
           current: i + 1,
           totalPages: totalQCount,
@@ -565,22 +560,28 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
 
       const cleanStem = cleanMathForPdf(q.question || 'Question content');
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.2);
+      doc.setFontSize(6.8);
+      const stemLineH = 2.65;
       const stemLines = doc.splitTextToSize(cleanStem, 178);
-      const stemH = Math.max(3.5, stemLines.length * 3.1);
+      const stemH = Math.max(2.8, stemLines.length * stemLineH);
 
       const opts = Array.isArray(q.options) && q.options.length >= 2 ? q.options : ['A', 'B', 'C', 'D'];
       const cleanOpts = opts.slice(0, 4).map((o) => cleanMathForPdf(String(o || '')));
 
-      doc.setFontSize(6.2);
-      const opt0Lines = doc.splitTextToSize(cleanOpts[0] || '', 78);
-      const opt1Lines = doc.splitTextToSize(cleanOpts[1] || '', 78);
-      const opt2Lines = doc.splitTextToSize(cleanOpts[2] || '', 78);
-      const opt3Lines = doc.splitTextToSize(cleanOpts[3] || '', 78);
+      doc.setFontSize(6.0);
+      const optLineH = 2.45;
+      const opt0Lines = doc.splitTextToSize(cleanOpts[0] || '', 77);
+      const opt1Lines = doc.splitTextToSize(cleanOpts[1] || '', 77);
+      const opt2Lines = doc.splitTextToSize(cleanOpts[2] || '', 77);
+      const opt3Lines = doc.splitTextToSize(cleanOpts[3] || '', 77);
 
-      const row1H = Math.max(3.8, Math.max(opt0Lines.length, opt1Lines.length) * 2.8 + 1.2);
-      const row2H = Math.max(3.8, Math.max(opt2Lines.length, opt3Lines.length) * 2.8 + 1.2);
-      const optionsTotalH = row1H + row2H + 1.5;
+      const row1MaxLines = Math.max(1, opt0Lines.length, opt1Lines.length);
+      const row2MaxLines = Math.max(1, opt2Lines.length, opt3Lines.length);
+
+      // Generous vertical padding inside option boxes so text never touches top or bottom border
+      const row1H = row1MaxLines * optLineH + 1.85;
+      const row2H = row2MaxLines * optLineH + 1.85;
+      const optionsTotalH = row1H + row2H + 0.9;
 
       const selectedLetter = selectedIdx >= 0 ? OPT_LABELS[selectedIdx] || String(selectedIdx + 1) : 'Skipped';
       const correctLetter = OPT_LABELS[correctIdx] || 'A';
@@ -588,54 +589,63 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       const cleanExp = cleanMathForPdf(
         q.explanation || 'Step-by-step derivation verified by Boardly Grand Line.'
       );
-      doc.setFontSize(6.0);
-      const expLines = doc.splitTextToSize(cleanExp, 172);
-      const expH = Math.min(8.5, Math.max(3.2, expLines.length * 2.6 + 1.2));
+      doc.setFontSize(5.8);
+      const expLineH = 2.4;
+      const expLines = doc.splitTextToSize(cleanExp, 162).slice(0, 2);
+      const expBoxH = Math.max(1, expLines.length) * expLineH + 1.7;
 
-      const cardHeight = 4.5 + stemH + optionsTotalH + 3.2 + expH + 2;
+      // Total height of question card (~25.5mm so 8 questions fit on Page 1 and 9-10 fit on Pages 2+)
+      const headerRowH = 4.9;
+      const answerStripH = 3.4;
+      const cardHeight = headerRowH + stemH + 0.8 + optionsTotalH + answerStripH + expBoxH + 1.2;
 
-      // Overflow check: if card overflows current page, add new page and stamp watermark FIRST
+      // Only start a new page if this question card would cross maxUsableY
       if (currentY + cardHeight > maxUsableY) {
         doc.addPage();
-        stampPageBackgroundWatermarks(doc, watermarkLogoPng, pageWidth);
-        currentY = 16;
+        stampPageBackgroundWatermarks(doc, pageWidth);
+        currentY = 14.0; // Starts right below the single slim running header on Page 2+
       }
 
-      // 1. Draw Card Border (without solid white fill so the faint background dotted logo shines through)
-      doc.setDrawColor(226, 232, 240);
+      // 1. Draw Card Outer Border (stroke only so the black dotted background logo shows through)
+      doc.setDrawColor(203, 213, 225);
       doc.setLineWidth(0.25);
-      doc.roundedRect(12, currentY, contentWidth, cardHeight, 1.5, 1.5, 'S');
+      doc.roundedRect(12, currentY, contentWidth, cardHeight, 1.4, 1.4, 'S');
 
-      // 2. Question Header & Status Badge
+      // 2. Question Number & Status Badge (centered baseline inside badge)
+      const badgeW = 22.0;
+      const badgeH = 4.0;
+      const badgeX = 173.0;
+      const badgeY = currentY + 0.85;
+
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
+      doc.setFontSize(7.2);
       doc.setTextColor(15, 23, 42);
-      doc.text(`Q${i + 1}.`, 15, currentY + 3.8);
-
-      const badgeW = 20;
-      const badgeH = 3.6;
-      const badgeX = 174;
-      const badgeY = currentY + 1.2;
+      doc.text(`Q${i + 1}.`, 15, badgeY + badgeH / 2 + 0.85);
 
       doc.setFillColor(statusColor[0], statusColor[1], statusColor[2]);
-      doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1, 1, 'F');
-      doc.setFontSize(5.8);
+      doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.0, 1.0, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(5.6);
       doc.setTextColor(255, 255, 255);
-      doc.text(statusLabel, badgeX + badgeW / 2, badgeY + 2.5, { align: 'center' });
+      // Exact vertical center for 5.6pt uppercase text inside badgeH
+      doc.text(statusLabel, badgeX + badgeW / 2, badgeY + badgeH / 2 + 0.68, {
+        align: 'center',
+      });
 
       // 3. Question Stem Text
+      const stemTopY = currentY + headerRowH;
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.2);
-      doc.setTextColor(30, 41, 59);
-      doc.text(stemLines, 15, currentY + 7.2);
+      doc.setFontSize(6.8);
+      doc.setTextColor(15, 23, 42);
+      doc.text(stemLines, 15, stemTopY + 2.0, { lineHeightFactor: 1.15 });
 
-      // 4. 2x2 Options Grid
-      const optY = currentY + 7.2 + stemH + 0.5;
+      // 4. 2x2 Options Grid (vertically centered text baselines, never touching borders)
+      const optY = stemTopY + stemH + 0.8;
       const col1X = 15;
       const col2X = 106;
-      const optColW = 88;
+      const optColW = 89;
 
-      const drawOptionPill = (
+      const drawOptionBox = (
         optIdx: number,
         x: number,
         y: number,
@@ -646,45 +656,51 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
         const isOptCorrect = optIdx === correctIdx;
         const isOptSelected = optIdx === selectedIdx;
 
-        doc.setLineWidth(0.2);
+        doc.setLineWidth(0.22);
 
         if (isOptCorrect) {
-          doc.setFillColor(236, 253, 245); // #ecfdf5
+          doc.setFillColor(236, 253, 245); // light emerald tint
           doc.setDrawColor(16, 185, 129); // #10b981
-          doc.roundedRect(x, y, optColW, h, 1, 1, 'FD');
+          doc.roundedRect(x, y, optColW, h, 1.0, 1.0, 'FD');
           doc.setTextColor(6, 95, 70);
         } else if (isOptSelected) {
-          doc.setFillColor(254, 242, 242); // #fef2f2
+          doc.setFillColor(254, 242, 242); // light red tint
           doc.setDrawColor(239, 68, 68); // #ef4444
-          doc.roundedRect(x, y, optColW, h, 1, 1, 'FD');
+          doc.roundedRect(x, y, optColW, h, 1.0, 1.0, 'FD');
           doc.setTextColor(153, 27, 27);
         } else {
-          doc.setDrawColor(226, 232, 240); // #e2e8f0
-          doc.roundedRect(x, y, optColW, h, 1, 1, 'S');
-          doc.setTextColor(51, 65, 85);
+          // Stroke-only box so the background dotted Boardly logo remains visible behind options
+          doc.setDrawColor(203, 213, 225);
+          doc.roundedRect(x, y, optColW, h, 1.0, 1.0, 'S');
+          doc.setTextColor(30, 41, 59);
         }
 
+        // Compute centered first-line baseline so single-line or multi-line options sit cleanly inside [y, y+h]
+        const nLines = Math.max(1, lines.length);
+        const blockH = (nLines - 1) * optLineH;
+        const firstLineBaseline = y + (h - blockH) / 2 + 0.68;
+
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(6.2);
-        doc.text(`(${letter})`, x + 2, y + 2.6);
+        doc.setFontSize(6.0);
+        doc.text(`(${letter})`, x + 2.2, firstLineBaseline);
 
         doc.setFont('helvetica', isOptCorrect ? 'bold' : 'normal');
-        doc.text(lines, x + 8, y + 2.6);
+        doc.text(lines, x + 8.0, firstLineBaseline, { lineHeightFactor: 1.16 });
       };
 
-      drawOptionPill(0, col1X, optY, row1H, opt0Lines);
-      drawOptionPill(1, col2X, optY, row1H, opt1Lines);
-      drawOptionPill(2, col1X, optY + row1H + 1.2, row2H, opt2Lines);
-      drawOptionPill(3, col2X, optY + row1H + 1.2, row2H, opt3Lines);
+      drawOptionBox(0, col1X, optY, row1H, opt0Lines);
+      drawOptionBox(1, col2X, optY, row1H, opt1Lines);
+      drawOptionBox(2, col1X, optY + row1H + 0.9, row2H, opt2Lines);
+      drawOptionBox(3, col2X, optY + row1H + 0.9, row2H, opt3Lines);
 
-      // 5. Answer Strip
-      const ansY = optY + optionsTotalH + 2.6;
-      doc.setFontSize(6.2);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(71, 85, 105);
-      doc.text('Your Answer:', 15, ansY);
-
+      // 5. "Your Answer | Correct Answer" Strip (well-spaced baseline)
+      const ansRowTop = optY + optionsTotalH;
+      const ansBaseline = ansRowTop + 2.4;
+      doc.setFontSize(6.0);
       doc.setFont('helvetica', 'bold');
+      doc.setTextColor(71, 85, 105);
+      doc.text('Your Answer:', 15, ansBaseline);
+
       if (selectedIdx < 0) {
         doc.setTextColor(71, 85, 105);
       } else if (isCorrect) {
@@ -692,50 +708,56 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       } else {
         doc.setTextColor(220, 38, 38);
       }
-      doc.text(`[ ${selectedLetter} ]`, 30, ansY);
+      doc.text(`[ ${selectedLetter} ]`, 30.0, ansBaseline);
 
       doc.setFont('helvetica', 'normal');
-      doc.setTextColor(71, 85, 105);
-      doc.text('|   Correct Answer:', 46, ansY);
+      doc.setTextColor(148, 163, 184);
+      doc.text('|', 44.5, ansBaseline);
 
       doc.setFont('helvetica', 'bold');
+      doc.setTextColor(71, 85, 105);
+      doc.text('Correct Answer:', 48.0, ansBaseline);
+
       doc.setTextColor(21, 128, 61);
-      doc.text(`[ ${correctLetter} ]`, 68, ansY);
+      doc.text(`[ ${correctLetter} ]`, 65.5, ansBaseline);
 
-      // 6. Short Explanation Box
-      const expY = ansY + 2.2;
-      doc.setDrawColor(226, 232, 240);
+      // 6. Short Explanation Box (stroke-only with left accent bar and centered text baseline)
+      const expY = ansRowTop + answerStripH;
+      doc.setDrawColor(203, 213, 225);
       doc.setLineWidth(0.2);
-      doc.roundedRect(15, expY, 180, expH, 0.8, 0.8, 'S');
+      doc.roundedRect(15, expY, 180, expBoxH, 0.8, 0.8, 'S');
 
-      doc.setFillColor(148, 163, 184);
-      doc.rect(15, expY, 1.2, expH, 'F');
+      doc.setFillColor(100, 116, 139);
+      doc.rect(15, expY, 1.2, expBoxH, 'F');
+
+      const nExpLines = Math.max(1, expLines.length);
+      const expBlockH = (nExpLines - 1) * expLineH;
+      const expFirstBaseline = expY + (expBoxH - expBlockH) / 2 + 0.66;
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(5.8);
       doc.setTextColor(15, 23, 42);
-      doc.text('Explanation:', 18, expY + 2.4);
+      doc.text('Explanation:', 18, expFirstBaseline);
 
       doc.setFont('helvetica', 'normal');
-      doc.setTextColor(71, 85, 105);
-      doc.text(expLines.slice(0, 3), 32, expY + 2.4);
+      doc.setTextColor(51, 65, 85);
+      doc.text(expLines, 31.5, expFirstBaseline, { lineHeightFactor: 1.15 });
 
-      currentY += cardHeight + 2.2;
+      currentY += cardHeight + 1.35;
     }
 
     // ==========================================
     // Final Page Copyright & Academic Verification Notice
     // ==========================================
-    if (currentY + 13 > maxUsableY) {
+    if (currentY + 12.5 > maxUsableY) {
       doc.addPage();
-      stampPageBackgroundWatermarks(doc, watermarkLogoPng, pageWidth);
-      currentY = 16;
+      stampPageBackgroundWatermarks(doc, pageWidth);
+      currentY = 14.5;
     }
 
-    doc.setFillColor(248, 250, 252);
-    doc.setDrawColor(226, 232, 240);
+    doc.setDrawColor(203, 213, 225);
     doc.setLineWidth(0.25);
-    doc.roundedRect(12, currentY, contentWidth, 12, 1.5, 1.5, 'FD');
+    doc.roundedRect(12, currentY, contentWidth, 11.5, 1.5, 1.5, 'S');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.2);
@@ -748,37 +770,38 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     doc.text(
       `© ${new Date().getFullYear()} Boardly by SHS Virtual Academy (boardly.cfd). All rights reserved. Generated exclusively for ${studentName} on ${formattedDate}.`,
       15,
-      currentY + 7.2
+      currentY + 7.1
     );
     doc.text(
       'For personal study use only. Commercial distribution, unauthorized copying, or online scraping is strictly prohibited.',
       15,
-      currentY + 10.2
+      currentY + 10.0
     );
 
     // ==========================================
-    // Stamp Running Headers & Running Footers on ALL Pages
+    // Stamp Single Slim Running Header (Pages 2+) & Running Footer on ALL Pages
     // ==========================================
     const totalPages = doc.getNumberOfPages();
 
     for (let p = 0; p < totalPages; p++) {
       doc.setPage(p + 1);
 
-      // Slim Running Header (Pages 2+)
+      // ONE Slim Running Header on Pages 2+
       if (p > 0) {
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7);
-        doc.setTextColor(100, 116, 139);
-        doc.text(`Boardly Grand Line Verified Drill Report · ${testTitle}`, 12, 10);
+        doc.setFontSize(6.8);
+        doc.setTextColor(71, 85, 105);
+        doc.text(`Boardly Grand Line · ${testTitle}`, 12, 9.5);
 
         doc.setFont('helvetica', 'normal');
-        doc.text(`${formatSubjectName(subject || 'General')} · ${formattedDate}`, 198, 10, {
+        doc.setTextColor(100, 116, 139);
+        doc.text(`${formatSubjectName(subject || 'General')} · Page ${p + 1} of ${totalPages}`, 198, 9.5, {
           align: 'right',
         });
 
         doc.setDrawColor(226, 232, 240);
-        doc.setLineWidth(0.2);
-        doc.line(12, 12, 198, 12);
+        doc.setLineWidth(0.22);
+        doc.line(12, 11.5, 198, 11.5);
       }
 
       // Running Footer on EVERY page
@@ -787,20 +810,20 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       doc.line(12, 285, 198, 285);
 
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.8);
+      doc.setFontSize(6.6);
       doc.setTextColor(100, 116, 139);
       doc.text(
         `Boardly Grand Line · ${testTitle} · Page ${p + 1} of ${totalPages} · Student: ${studentName} · ${formattedDate}`,
         12,
-        289
+        288.8
       );
 
-      doc.setFontSize(5.8);
+      doc.setFontSize(5.7);
       doc.setTextColor(148, 163, 184);
       doc.text(
         `© ${new Date().getFullYear()} Boardly by SHS Virtual Academy · boardly.cfd · All rights reserved. For personal study use only. Reproduction or distribution without permission is prohibited.`,
         12,
-        292.5
+        292.3
       );
     }
 
@@ -907,9 +930,6 @@ export async function exportTestToPdf(
   const OPT_LABELS = ['A', 'B', 'C', 'D'];
   const formattedDate = new Date().toLocaleDateString('en-GB');
 
-  const watermarkLogoPng = getWatermarkLogoPngDataUrl();
-  const whiteHeaderLogoPng = getWhiteHeaderLogoPngDataUrl();
-
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -927,73 +947,79 @@ export async function exportTestToPdf(
 
   const pageWidth = 210;
   const contentWidth = 186;
-  const maxUsableY = 280;
-  let currentY = 12;
+  const maxUsableY = 281.5;
+  let currentY = 10;
 
-  stampPageBackgroundWatermarks(doc, watermarkLogoPng, pageWidth);
+  stampPageBackgroundWatermarks(doc, pageWidth);
 
   // Header Banner
+  const bannerH = 18.5;
   doc.setFillColor(15, 23, 42);
-  doc.roundedRect(12, currentY, contentWidth, 20, 2, 2, 'F');
+  doc.roundedRect(12, currentY, contentWidth, bannerH, 2, 2, 'F');
 
   doc.setFillColor(38, 49, 71);
   for (let gx = 15; gx < 195; gx += 4.5) {
-    for (let gy = currentY + 2.5; gy < currentY + 18.5; gy += 4.5) {
+    for (let gy = currentY + 2.2; gy < currentY + bannerH - 1.5; gy += 4.5) {
       doc.circle(gx, gy, 0.22, 'F');
     }
   }
 
-  if (whiteHeaderLogoPng) {
-    doc.addImage(whiteHeaderLogoPng, 'PNG', 15, currentY + 3.2, 24, 24 * (824 / 1768), undefined, 'FAST');
-  }
+  drawVectorDottedLogoOnPdf(doc, 14.5, currentY + 2.6, 26, [255, 255, 255]);
 
   doc.setDrawColor(255, 255, 255);
   doc.setLineWidth(0.2);
-  doc.line(42, currentY + 3, 42, currentY + 17);
+  doc.line(43, currentY + 3, 43, currentY + bannerH - 3);
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(6.5);
+  doc.setFontSize(6.2);
   doc.setTextColor(203, 213, 225);
-  doc.text('OFFICIAL ENTRANCE TEST PAPER', 45, currentY + 7);
+  doc.text('OFFICIAL ENTRANCE TEST PAPER', 46, currentY + 6.4);
 
   doc.setFontSize(10.5);
   doc.setTextColor(255, 255, 255);
-  const titleSnippet = doc.splitTextToSize(title, 105);
-  doc.text(titleSnippet[0] || title, 45, currentY + 14.5);
+  const titleSnippet = doc.splitTextToSize(title, 110);
+  doc.text(titleSnippet[0] || title, 46, currentY + 13.8);
 
+  const pillW = 31;
+  const pillH = 6.2;
+  const pillX = 163;
+  const pillY = currentY + (bannerH - pillH) / 2;
   doc.setFillColor(215, 25, 33);
-  doc.roundedRect(162, currentY + 4, 32, 5, 2, 2, 'F');
+  doc.roundedRect(pillX, pillY, pillW, pillH, 1.6, 1.6, 'F');
   doc.setFontSize(6);
   doc.setTextColor(255, 255, 255);
-  doc.text(university.substring(0, 18).toUpperCase(), 178, currentY + 7.5, { align: 'center' });
+  doc.text(university.substring(0, 16).toUpperCase(), pillX + pillW / 2, pillY + pillH / 2 + 0.78, {
+    align: 'center',
+  });
 
-  currentY += 23;
+  currentY += bannerH + 2.2;
 
   // Candidate Metadata Strip
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
+  doc.setDrawColor(203, 213, 225);
   doc.setLineWidth(0.25);
-  doc.roundedRect(12, currentY, contentWidth, 10, 1.5, 1.5, 'FD');
+  doc.roundedRect(12, currentY, contentWidth, 9.5, 1.5, 1.5, 'S');
 
+  const metaBaseline = currentY + 5.5;
   doc.setFontSize(6.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(100, 116, 139);
-  doc.text('Candidate:', 15, currentY + 4.5);
+  doc.text('Candidate:', 15, metaBaseline);
   doc.setTextColor(15, 23, 42);
-  doc.text(studentName, 28, currentY + 4.5);
+  const singleCandidate = doc.splitTextToSize(String(studentName || 'Candidate'), 55)[0] || studentName;
+  doc.text(singleCandidate, 28, metaBaseline);
 
   doc.setTextColor(100, 116, 139);
-  doc.text('MCQs:', 75, currentY + 4.5);
+  doc.text('MCQs:', 86, metaBaseline);
   doc.setTextColor(15, 23, 42);
-  doc.text(`${resolvedQuestions.length} Questions`, 85, currentY + 4.5);
+  doc.text(`${resolvedQuestions.length} Questions`, 95, metaBaseline);
 
   doc.setTextColor(100, 116, 139);
-  doc.text('Rules:', 125, currentY + 4.5);
+  doc.text('Rules:', 130, metaBaseline);
   doc.setTextColor(15, 23, 42);
   const rulesSnippet = doc.splitTextToSize(resolvedMarkingScheme, 55);
-  doc.text(rulesSnippet[0] || resolvedMarkingScheme, 134, currentY + 4.5);
+  doc.text(rulesSnippet[0] || resolvedMarkingScheme, 138, metaBaseline);
 
-  currentY += 13;
+  currentY += 12;
 
   // Questions
   for (let i = 0; i < resolvedQuestions.length; i++) {
@@ -1008,63 +1034,71 @@ export async function exportTestToPdf(
     const cleanStem = cleanMathForPdf(stemRaw);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.2);
+    doc.setFontSize(7.0);
+    const stemLineH = 2.85;
     const stemLines = doc.splitTextToSize(cleanStem, 178);
-    const stemH = Math.max(3.5, stemLines.length * 3.1);
+    const stemH = Math.max(3.2, stemLines.length * stemLineH);
 
     const opts = Array.isArray(q.options) && q.options.length >= 2 ? q.options : ['A', 'B', 'C', 'D'];
     const cleanOpts = opts.slice(0, 4).map((o) => cleanMathForPdf(String(o || '')));
 
     doc.setFontSize(6.2);
-    const opt0Lines = doc.splitTextToSize(cleanOpts[0] || '', 78);
-    const opt1Lines = doc.splitTextToSize(cleanOpts[1] || '', 78);
-    const opt2Lines = doc.splitTextToSize(cleanOpts[2] || '', 78);
-    const opt3Lines = doc.splitTextToSize(cleanOpts[3] || '', 78);
+    const optLineH = 2.65;
+    const opt0Lines = doc.splitTextToSize(cleanOpts[0] || '', 77);
+    const opt1Lines = doc.splitTextToSize(cleanOpts[1] || '', 77);
+    const opt2Lines = doc.splitTextToSize(cleanOpts[2] || '', 77);
+    const opt3Lines = doc.splitTextToSize(cleanOpts[3] || '', 77);
 
-    const row1H = Math.max(3.8, Math.max(opt0Lines.length, opt1Lines.length) * 2.8 + 1.2);
-    const row2H = Math.max(3.8, Math.max(opt2Lines.length, opt3Lines.length) * 2.8 + 1.2);
-    const optionsTotalH = row1H + row2H + 1.5;
+    const row1Max = Math.max(1, opt0Lines.length, opt1Lines.length);
+    const row2Max = Math.max(1, opt2Lines.length, opt3Lines.length);
+    const row1H = row1Max * optLineH + 2.2;
+    const row2H = row2Max * optLineH + 2.2;
+    const optionsTotalH = row1H + row2H + 1.2;
 
-    const cardHeight = 4.5 + stemH + optionsTotalH + 2.5;
+    const cardHeight = 4.8 + stemH + optionsTotalH + 2.2;
 
     if (currentY + cardHeight > maxUsableY) {
       doc.addPage();
-      stampPageBackgroundWatermarks(doc, watermarkLogoPng, pageWidth);
-      currentY = 16;
+      stampPageBackgroundWatermarks(doc, pageWidth);
+      currentY = 14.5;
     }
 
-    doc.setDrawColor(226, 232, 240);
+    doc.setDrawColor(203, 213, 225);
     doc.setLineWidth(0.25);
     doc.roundedRect(12, currentY, contentWidth, cardHeight, 1.5, 1.5, 'S');
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
+    doc.setFontSize(7.4);
     doc.setTextColor(15, 23, 42);
-    doc.text(`Q${i + 1}.`, 15, currentY + 3.8);
+    doc.text(`Q${i + 1}.`, 15, currentY + 4.0);
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.2);
-    doc.setTextColor(30, 41, 59);
-    doc.text(stemLines, 15, currentY + 7.2);
+    doc.setFontSize(7.0);
+    doc.setTextColor(15, 23, 42);
+    doc.text(stemLines, 15, currentY + 7.2, { lineHeightFactor: 1.15 });
 
-    const optY = currentY + 7.2 + stemH + 0.5;
+    const optY = currentY + 5.2 + stemH + 0.6;
     const col1X = 15;
     const col2X = 106;
-    const optColW = 88;
+    const optColW = 89;
 
     const drawPaperOpt = (optIdx: number, x: number, y: number, h: number, lines: string[]) => {
       const letter = OPT_LABELS[optIdx] || String(optIdx + 1);
-      doc.setDrawColor(226, 232, 240);
-      doc.setTextColor(51, 65, 85);
+      doc.setDrawColor(203, 213, 225);
+      doc.setTextColor(30, 41, 59);
       doc.setLineWidth(0.2);
-      doc.roundedRect(x, y, optColW, h, 1, 1, 'S');
+      doc.roundedRect(x, y, optColW, h, 1.1, 1.1, 'S');
+
+      const nLines = Math.max(1, lines.length);
+      const blockH = (nLines - 1) * optLineH;
+      const firstBaseline = y + (h - blockH) / 2 + 0.72;
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.2);
-      doc.text(`(${letter})`, x + 2, y + 2.6);
+      doc.text(`(${letter})`, x + 2.2, firstBaseline);
 
       doc.setFont('helvetica', 'normal');
-      doc.text(lines, x + 8, y + 2.6);
+      doc.text(lines, x + 8.2, firstBaseline, { lineHeightFactor: 1.18 });
     };
 
     drawPaperOpt(0, col1X, optY, row1H, opt0Lines);
@@ -1072,24 +1106,24 @@ export async function exportTestToPdf(
     drawPaperOpt(2, col1X, optY + row1H + 1.2, row2H, opt2Lines);
     drawPaperOpt(3, col2X, optY + row1H + 1.2, row2H, opt3Lines);
 
-    currentY += cardHeight + 2.2;
+    currentY += cardHeight + 1.8;
   }
 
   // Answer Key Section
-  if (currentY + 20 > maxUsableY) {
+  if (currentY + 18 > maxUsableY) {
     doc.addPage();
-    stampPageBackgroundWatermarks(doc, watermarkLogoPng, pageWidth);
-    currentY = 16;
+    stampPageBackgroundWatermarks(doc, pageWidth);
+    currentY = 14.5;
   }
 
   doc.setFillColor(215, 25, 33);
-  doc.roundedRect(12, currentY, contentWidth, 7, 1.5, 1.5, 'F');
+  doc.roundedRect(12, currentY, contentWidth, 6.8, 1.5, 1.5, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
+  doc.setFontSize(7.2);
   doc.setTextColor(255, 255, 255);
-  doc.text('OFFICIAL ANSWER KEY & EXPLANATIONS', 16, currentY + 4.8);
-  doc.text(`${resolvedQuestions.length} Questions`, 192, currentY + 4.8, { align: 'right' });
-  currentY += 9;
+  doc.text('OFFICIAL ANSWER KEY & EXPLANATIONS', 16, currentY + 4.3);
+  doc.text(`${resolvedQuestions.length} Questions`, 192, currentY + 4.3, { align: 'right' });
+  currentY += 8.5;
 
   for (let i = 0; i < resolvedQuestions.length; i++) {
     const q = resolvedQuestions[i];
@@ -1098,35 +1132,42 @@ export async function exportTestToPdf(
     const explanationRaw = q.explain || q.explanation || 'Step-by-step derivation verified by Boardly study portal.';
     const cleanExp = cleanMathForPdf(explanationRaw);
 
-    doc.setFontSize(6.2);
+    doc.setFontSize(6.0);
     const expLines = doc.splitTextToSize(cleanExp, 172);
-    const keyCardH = 4.5 + expLines.length * 2.8 + 2;
+    const keyCardH = 5.2 + expLines.length * 2.6 + 2.0;
 
     if (currentY + keyCardH > maxUsableY) {
       doc.addPage();
-      stampPageBackgroundWatermarks(doc, watermarkLogoPng, pageWidth);
-      currentY = 16;
+      stampPageBackgroundWatermarks(doc, pageWidth);
+      currentY = 14.5;
     }
 
-    doc.setDrawColor(226, 232, 240);
-    doc.roundedRect(12, currentY, contentWidth, keyCardH, 1, 1, 'S');
+    doc.setDrawColor(203, 213, 225);
+    doc.roundedRect(12, currentY, contentWidth, keyCardH, 1.1, 1.1, 'S');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.8);
     doc.setTextColor(15, 23, 42);
     doc.text(`Q${i + 1}.`, 15, currentY + 3.8);
 
+    const kBadgeX = 23;
+    const kBadgeY = currentY + 1.0;
+    const kBadgeW = 9.5;
+    const kBadgeH = 4.0;
     doc.setFillColor(215, 25, 33);
-    doc.roundedRect(23, currentY + 1.2, 9, 3.6, 0.8, 0.8, 'F');
+    doc.roundedRect(kBadgeX, kBadgeY, kBadgeW, kBadgeH, 0.9, 0.9, 'F');
+    doc.setFontSize(5.8);
     doc.setTextColor(255, 255, 255);
-    doc.text(`[ ${correctLetter} ]`, 27.5, currentY + 3.7, { align: 'center' });
+    doc.text(`[ ${correctLetter} ]`, kBadgeX + kBadgeW / 2, kBadgeY + kBadgeH / 2 + 0.72, {
+      align: 'center',
+    });
 
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6);
-    doc.setTextColor(71, 85, 105);
-    doc.text(expLines, 15, currentY + 6.8);
+    doc.setFontSize(6.0);
+    doc.setTextColor(51, 65, 85);
+    doc.text(expLines, 15, currentY + 7.2, { lineHeightFactor: 1.15 });
 
-    currentY += keyCardH + 1.8;
+    currentY += keyCardH + 1.6;
   }
 
   // Stamp Running Headers and Footers on all pages
@@ -1136,24 +1177,25 @@ export async function exportTestToPdf(
 
     if (p > 0) {
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      doc.setTextColor(100, 116, 139);
-      doc.text(`Boardly Entry Test Engine · ${title}`, 12, 10);
+      doc.setFontSize(6.8);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`Boardly Entry Test Engine · ${title}`, 12, 9.5);
       doc.setFont('helvetica', 'normal');
-      doc.text(`${university} · ${formattedDate}`, 198, 10, { align: 'right' });
+      doc.setTextColor(100, 116, 139);
+      doc.text(`${university} · Page ${p + 1} of ${totalPages}`, 198, 9.5, { align: 'right' });
       doc.setDrawColor(226, 232, 240);
-      doc.line(12, 12, 198, 12);
+      doc.line(12, 11.5, 198, 11.5);
     }
 
     doc.setDrawColor(226, 232, 240);
     doc.line(12, 285, 198, 285);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.8);
+    doc.setFontSize(6.6);
     doc.setTextColor(100, 116, 139);
-    doc.text(`Boardly Entry Test Engine · ${title} · Page ${p + 1} of ${totalPages} · Candidate: ${studentName}`, 12, 289);
-    doc.setFontSize(5.8);
+    doc.text(`Boardly Entry Test Engine · ${title} · Page ${p + 1} of ${totalPages} · Candidate: ${studentName}`, 12, 288.8);
+    doc.setFontSize(5.7);
     doc.setTextColor(148, 163, 184);
-    doc.text(`© ${new Date().getFullYear()} Boardly by SHS Virtual Academy · boardly.cfd · All rights reserved.`, 12, 292.5);
+    doc.text(`© ${new Date().getFullYear()} Boardly by SHS Virtual Academy · boardly.cfd · All rights reserved.`, 12, 292.3);
   }
 
   const filename = `${title.replace(/[^a-zA-Z0-9_-]/g, '_')}_Boardly.pdf`;
