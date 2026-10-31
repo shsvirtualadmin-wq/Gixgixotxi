@@ -412,6 +412,7 @@ export async function fetchUsersPaginated(options?: {
   const startTime = performance.now();
   const ref = collection(db, 'users');
   const count = options?.limitCount ?? 20;
+  const hasSearch = Boolean(options?.searchQuery && options.searchQuery.trim());
   const queryConstraints: QueryConstraint[] = [];
 
   if (options?.role && options.role !== 'all') {
@@ -420,11 +421,12 @@ export async function fetchUsersPaginated(options?: {
     queryConstraints.push(where('plan', '==', options.plan));
   }
 
-  if (options?.startAfterDoc) {
+  if (options?.startAfterDoc && !hasSearch) {
     queryConstraints.push(startAfter(options.startAfterDoc));
   }
 
-  queryConstraints.push(limit(count));
+  // Never cut off the collection at limit(10) before in-memory search filtering runs!
+  queryConstraints.push(limit(hasSearch ? 1000 : count));
 
   try {
     const q = query(ref, ...queryConstraints);
@@ -438,18 +440,33 @@ export async function fetchUsersPaginated(options?: {
     let users = snap.docs
       .map((d) => ({ uid: d.id, ...d.data() } as UserProfile))
       .filter((u) => !u.uid.startsWith('bot_') && (u as any).role !== 'bot');
-    if (options?.searchQuery) {
+    if (hasSearch && options?.searchQuery) {
       const qLower = options.searchQuery.toLowerCase().trim();
-      users = users.filter((u) =>
-        (u.email && u.email.toLowerCase().includes(qLower)) ||
-        (u.displayName && u.displayName.toLowerCase().includes(qLower)) ||
-        (u.name && u.name.toLowerCase().includes(qLower)) ||
-        (u.shortId && u.shortId.toLowerCase().includes(qLower)) ||
-        (u.uid && u.uid.toLowerCase().includes(qLower))
-      );
+      const qNoSpaces = qLower.replace(/\s+/g, '');
+      const qHandle = qNoSpaces.replace(/^@+/, '');
+      users = users.filter((u) => {
+        const email = (u.email || '').toLowerCase().trim();
+        const displayName = (u.displayName || '').toLowerCase().trim();
+        const name = (u.name || '').toLowerCase().trim();
+        const username = String((u as any).username || (u as any).handle || '')
+          .toLowerCase()
+          .trim()
+          .replace(/^@+/, '');
+        const shortId = (u.shortId || '').toLowerCase().trim();
+        const uid = (u.uid || '').toLowerCase().trim();
+        return (
+          (email && (email.includes(qNoSpaces) || email.includes(qLower))) ||
+          (displayName && (displayName.includes(qLower) || displayName.includes(qNoSpaces))) ||
+          (name && (name.includes(qLower) || name.includes(qNoSpaces))) ||
+          (username && (username.includes(qHandle) || username.includes(qNoSpaces))) ||
+          (shortId && shortId.includes(qNoSpaces.replace(/^#/, ''))) ||
+          (uid && uid.includes(qNoSpaces))
+        );
+      });
+      users = users.slice(0, count);
     }
     const lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
-    const hasMore = snap.docs.length >= count;
+    const hasMore = hasSearch ? users.length >= count : snap.docs.length >= count;
     const queryTimeMs = Math.round(performance.now() - startTime);
 
     console.log(`%c[AdminService] fetchUsersPaginated (${users.length} users) in ${queryTimeMs}ms`, 'color: #10b981;');
@@ -464,6 +481,480 @@ export async function fetchUsersPaginated(options?: {
       'fetchUsersPaginated'
     );
   }
+}
+
+// ─── ADMIN KOBANS STUDENT SEARCH (CANONICAL USERS + LEFT JOIN WALLETS) ───────
+export type KobanStudentStatus = 'active' | 'suspended' | 'inactive' | 'orphan' | 'missing-name';
+
+export interface KobanStudentSearchResult {
+  id: string;
+  uid: string;
+  name: string;
+  displayName: string;
+  handle: string;
+  email: string;
+  avatar: string | null;
+  shortId: string;
+  plan: 'free' | 'pro';
+  role: string;
+  status: KobanStudentStatus;
+  kobans: number;
+  hasWallet: boolean;
+}
+
+export class AdminSearchHttpError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'AdminSearchHttpError';
+    this.status = status;
+  }
+}
+
+export async function searchStudentsForKobans(
+  rawQuery: string,
+  options?: {
+    limit?: number;
+    offset?: number;
+    includeInactive?: boolean;
+    signal?: AbortSignal;
+  }
+): Promise<{
+  users: KobanStudentSearchResult[];
+  total: number;
+  hasMore: boolean;
+}> {
+  const qTrimmed = String(rawQuery || '').trim();
+  const qNorm = qTrimmed.toLowerCase().replace(/\s+/g, ' ');
+  const qNoSpaces = qTrimmed.toLowerCase().replace(/\s+/g, '');
+  const qHandle = qNoSpaces.replace(/^@+/, '');
+  const qShortId = qNoSpaces.replace(/^#/, '');
+  const limitCount = Math.min(50, Math.max(1, options?.limit ?? 20));
+  const offsetCount = Math.max(0, options?.offset ?? 0);
+
+  if (qNoSpaces.length < 2) {
+    return { users: [], total: 0, hasMore: false };
+  }
+
+  if (options?.signal?.aborted) {
+    throw new DOMException('Search aborted', 'AbortError');
+  }
+
+  // 1. Verify Admin/Superadmin role server-side via /api/admin/kobans/users/search
+  const currentUser = auth?.currentUser;
+  if (!currentUser) {
+    throw new AdminSearchHttpError('Search failed (401): Not signed in.', 401);
+  }
+
+  const token = await currentUser.getIdToken();
+  const serverUrl = `/api/admin/kobans/users/search?q=${encodeURIComponent(qTrimmed)}&limit=50&includeInactive=true`;
+  const serverResp = await fetch(serverUrl, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+    signal: options?.signal,
+  });
+
+  if (!serverResp.ok) {
+    let serverErrMsg = `Search failed (${serverResp.status})`;
+    try {
+      const errBody = await serverResp.json();
+      if (errBody?.error) {
+        serverErrMsg = `Search failed (${serverResp.status}): ${errBody.error}`;
+      }
+    } catch {
+      // Ignore JSON parse error
+    }
+    throw new AdminSearchHttpError(serverErrMsg, serverResp.status);
+  }
+
+  const serverJson = (await serverResp.json().catch(() => ({ users: [] }))) as {
+    users?: Array<{
+      id: string;
+      name: string;
+      handle: string;
+      email: string;
+      avatar: string | null;
+      plan: string;
+      role: string;
+      status: KobanStudentStatus;
+      kobans: number;
+    }>;
+  };
+
+  if (options?.signal?.aborted) {
+    throw new DOMException('Search aborted', 'AbortError');
+  }
+
+  // 2. Query Firestore canonical `users` collection + LEFT JOIN `publicProfiles`, `wallets`, and requests
+  const [usersSnap, pubSnap, walletsSnap, kobanReqSnap, paymentReqSnap] = await Promise.all([
+    getDocs(query(collection(db, 'users'), limit(1000))),
+    getDocs(query(collection(db, 'publicProfiles'), limit(1000))).catch(() => null),
+    getDocs(query(collection(db, 'wallets'), limit(1000))).catch(() => null),
+    getDocs(query(collection(db, 'kobanRequests'), limit(300))).catch(() => null),
+    getDocs(query(collection(db, 'paymentRequests'), limit(300))).catch(() => null),
+  ]);
+
+  if (options?.signal?.aborted) {
+    throw new DOMException('Search aborted', 'AbortError');
+  }
+
+  // Map wallets by uid for LEFT JOIN
+  const walletMap = new Map<string, number>();
+  if (walletsSnap) {
+    for (const wDoc of walletsSnap.docs) {
+      const wData = wDoc.data();
+      const bal = typeof wData.balance === 'number' && Number.isFinite(wData.balance) ? wData.balance : 0;
+      walletMap.set(wDoc.id, bal);
+    }
+  }
+
+  // Map publicProfiles by uid
+  const pubProfileMap = new Map<string, Record<string, any>>();
+  if (pubSnap) {
+    for (const pDoc of pubSnap.docs) {
+      pubProfileMap.set(pDoc.id, pDoc.data());
+    }
+  }
+
+  const candidatesByUid = new Map<string, KobanStudentSearchResult & { phone?: string }>();
+  const uidByEmail = new Map<string, string>();
+
+  const registerCandidate = (cand: KobanStudentSearchResult & { phone?: string }) => {
+    const uid = String(cand.uid || cand.id || '').trim();
+    if (!uid || uid.startsWith('bot_') || cand.role === 'bot') return;
+
+    const cleanEmail = String(cand.email || '').trim().toLowerCase();
+    const existingUidForEmail = cleanEmail ? uidByEmail.get(cleanEmail) : undefined;
+    const targetKey = existingUidForEmail && candidatesByUid.has(existingUidForEmail) ? existingUidForEmail : uid;
+
+    const existing = candidatesByUid.get(targetKey);
+    if (!existing) {
+      candidatesByUid.set(targetKey, { ...cand, id: targetKey, uid: targetKey });
+      if (cleanEmail) uidByEmail.set(cleanEmail, targetKey);
+    } else {
+      const hasRealExistingName =
+        Boolean(existing.name) &&
+        existing.name !== 'Unnamed Student' &&
+        existing.name !== existing.email;
+      const mergedName = hasRealExistingName ? existing.name : cand.name || existing.name;
+      const mergedEmail = existing.email || cleanEmail;
+      const mergedHandle = existing.handle || cand.handle || (mergedEmail ? mergedEmail.split('@')[0] : '');
+      const hasWallet = existing.hasWallet || cand.hasWallet || walletMap.has(targetKey);
+      const kobans = walletMap.has(targetKey)
+        ? walletMap.get(targetKey)!
+        : Math.max(existing.kobans, cand.kobans);
+
+      let mergedStatus: KobanStudentStatus = existing.status;
+      if (existing.status === 'orphan' && cand.status !== 'orphan') {
+        mergedStatus = cand.status;
+      }
+
+      candidatesByUid.set(targetKey, {
+        ...existing,
+        name: mergedName,
+        displayName: mergedName || mergedEmail || 'Student',
+        handle: mergedHandle,
+        email: mergedEmail,
+        avatar: existing.avatar || cand.avatar,
+        shortId: existing.shortId || cand.shortId || targetKey.slice(0, 5).toUpperCase(),
+        plan: existing.plan === 'pro' || cand.plan === 'pro' ? 'pro' : 'free',
+        role: existing.role !== 'student' ? existing.role : cand.role,
+        status: mergedStatus,
+        kobans,
+        hasWallet,
+        phone: existing.phone || cand.phone,
+      });
+      if (mergedEmail) uidByEmail.set(mergedEmail, targetKey);
+    }
+  };
+
+  // A. Canonical Firestore `users` collection
+  const userIdsInUsersCollection = new Set<string>();
+  for (const uDoc of usersSnap.docs) {
+    const uid = uDoc.id;
+    if (uid.startsWith('bot_')) continue;
+    const data = uDoc.data() as Record<string, any>;
+    if (data.role === 'bot' || data.deleted === true || data.status === 'deleted') continue;
+
+    userIdsInUsersCollection.add(uid);
+    const pub = pubProfileMap.get(uid) || {};
+    const email = String(data.email || pub.email || '').trim().toLowerCase();
+    const rawName = String(
+      data.displayName || data.fullName || data.name || pub.displayName || pub.name || ''
+    ).trim();
+    const hasMissingName = !rawName || rawName === 'Unnamed Student';
+    const rawHandle = String(
+      data.username || data.handle || pub.username || pub.handle || (email ? email.split('@')[0] : '')
+    )
+      .trim()
+      .replace(/^@+/, '');
+
+    let status: KobanStudentStatus = 'active';
+    if (data.suspended === true || data.isBanned === true || data.status === 'suspended') {
+      status = 'suspended';
+    } else if (data.status === 'inactive' || data.active === false) {
+      status = 'inactive';
+    } else if (hasMissingName) {
+      status = 'missing-name';
+    }
+
+    const hasWallet = walletMap.has(uid);
+    const kobans = hasWallet
+      ? walletMap.get(uid)!
+      : typeof data.kobans === 'number'
+      ? data.kobans
+      : 0;
+
+    registerCandidate({
+      id: uid,
+      uid,
+      name: hasMissingName ? '' : rawName,
+      displayName: hasMissingName ? email || 'Unnamed Student' : rawName,
+      handle: rawHandle,
+      email,
+      avatar:
+        data.photoURL ||
+        data.avatar ||
+        data.equippedAvatar ||
+        pub.photoURL ||
+        pub.avatar ||
+        pub.equippedAvatar ||
+        null,
+      shortId: String(data.shortId || pub.shortId || uid.slice(0, 5).toUpperCase()),
+      plan: data.plan === 'pro' || data.isPremium === true ? 'pro' : 'free',
+      role: String(data.role || 'student'),
+      status,
+      kobans,
+      hasWallet,
+      phone: String(data.phone || data.whatsapp || data.phoneNumber || ''),
+    });
+  }
+
+  // B. Orphan `publicProfiles` (documents in publicProfiles without a `users/{uid}` doc)
+  if (pubSnap) {
+    for (const pDoc of pubSnap.docs) {
+      const uid = pDoc.id;
+      if (uid.startsWith('bot_') || userIdsInUsersCollection.has(uid)) continue;
+      const pub = pDoc.data() as Record<string, any>;
+      if (pub.role === 'bot') continue;
+      const email = String(pub.email || '').trim().toLowerCase();
+      const rawName = String(pub.displayName || pub.name || '').trim();
+      const rawHandle = String(pub.username || pub.handle || (email ? email.split('@')[0] : ''))
+        .trim()
+        .replace(/^@+/, '');
+      const hasWallet = walletMap.has(uid);
+
+      registerCandidate({
+        id: uid,
+        uid,
+        name: rawName === 'Unnamed Student' ? '' : rawName,
+        displayName: rawName || email || `Orphan (${uid.slice(0, 6)})`,
+        handle: rawHandle,
+        email,
+        avatar: pub.photoURL || pub.avatar || pub.equippedAvatar || null,
+        shortId: String(pub.shortId || uid.slice(0, 5).toUpperCase()),
+        plan: pub.plan === 'pro' ? 'pro' : 'free',
+        role: String(pub.role || 'student'),
+        status: 'orphan',
+        kobans: hasWallet ? walletMap.get(uid)! : 0,
+        hasWallet,
+      });
+    }
+  }
+
+  // C. Orphan `wallets` (wallet rows whose user profile is missing)
+  for (const [wUid, bal] of walletMap.entries()) {
+    if (wUid.startsWith('bot_') || candidatesByUid.has(wUid)) continue;
+    registerCandidate({
+      id: wUid,
+      uid: wUid,
+      name: '',
+      displayName: `Orphan Wallet (${wUid.slice(0, 6)})`,
+      handle: wUid.slice(0, 8),
+      email: '',
+      avatar: null,
+      shortId: wUid.slice(0, 5).toUpperCase(),
+      plan: 'free',
+      role: 'student',
+      status: 'orphan',
+      kobans: bal,
+      hasWallet: true,
+    });
+  }
+
+  // D. Merge student accounts referenced in `kobanRequests` and `paymentRequests`
+  if (kobanReqSnap) {
+    for (const rDoc of kobanReqSnap.docs) {
+      const r = rDoc.data() as Record<string, any>;
+      const uid = String(r.userId || '').trim();
+      if (!uid) continue;
+      const email = String(r.userEmail || '').trim().toLowerCase();
+      const name = String(r.userName || '').trim();
+      registerCandidate({
+        id: uid,
+        uid,
+        name: name === 'Student' ? '' : name,
+        displayName: name || email || 'Student',
+        handle: email ? email.split('@')[0] : '',
+        email,
+        avatar: null,
+        shortId: uid.slice(0, 5).toUpperCase(),
+        plan: 'free',
+        role: 'student',
+        status: userIdsInUsersCollection.has(uid) ? 'active' : 'orphan',
+        kobans: walletMap.get(uid) ?? 0,
+        hasWallet: walletMap.has(uid),
+      });
+    }
+  }
+
+  if (paymentReqSnap) {
+    for (const rDoc of paymentReqSnap.docs) {
+      const r = rDoc.data() as Record<string, any>;
+      const uid = String(r.userId || '').trim();
+      if (!uid) continue;
+      const email = String(r.userEmail || '').trim().toLowerCase();
+      const name = String(r.userName || '').trim();
+      registerCandidate({
+        id: uid,
+        uid,
+        name: name === 'Student' ? '' : name,
+        displayName: name || email || 'Student',
+        handle: email ? email.split('@')[0] : '',
+        email,
+        avatar: null,
+        shortId: uid.slice(0, 5).toUpperCase(),
+        plan: 'free',
+        role: 'student',
+        status: userIdsInUsersCollection.has(uid) ? 'active' : 'orphan',
+        kobans: walletMap.get(uid) ?? 0,
+        hasWallet: walletMap.has(uid),
+      });
+    }
+  }
+
+  // E. Merge server-side D1 & Firebase Identity Toolkit matches
+  for (const sUser of serverJson.users || []) {
+    const uid = String(sUser.id || '').trim();
+    if (!uid) continue;
+    const email = String(sUser.email || '').trim().toLowerCase();
+    registerCandidate({
+      id: uid,
+      uid,
+      name: sUser.name || '',
+      displayName: sUser.name || email || 'Student',
+      handle: sUser.handle || (email ? email.split('@')[0] : ''),
+      email,
+      avatar: sUser.avatar || null,
+      shortId: uid.slice(0, 5).toUpperCase(),
+      plan: sUser.plan === 'pro' ? 'pro' : 'free',
+      role: sUser.role || 'student',
+      status: userIdsInUsersCollection.has(uid) ? sUser.status : 'orphan',
+      kobans: walletMap.get(uid) ?? sUser.kobans ?? 0,
+      hasWallet: walletMap.has(uid),
+    });
+  }
+
+  // 3. Score and filter all merged candidates case-insensitively
+  const scoredMatches: Array<{ item: KobanStudentSearchResult; score: number }> = [];
+
+  for (const cand of candidatesByUid.values()) {
+    const emailLower = (cand.email || '').toLowerCase().trim();
+    const nameLower = (cand.name || '').toLowerCase().trim();
+    const displayLower = (cand.displayName || '').toLowerCase().trim();
+    const handleLower = (cand.handle || '').toLowerCase().trim().replace(/^@+/, '');
+    const uidLower = (cand.uid || '').toLowerCase().trim();
+    const shortIdLower = (cand.shortId || '').toLowerCase().trim();
+    const phoneLower = (cand.phone || '').toLowerCase().replace(/\s+/g, '');
+
+    let score = 0;
+    if (emailLower && emailLower === qNoSpaces) {
+      score = 100;
+    } else if (emailLower && emailLower.startsWith(qNoSpaces)) {
+      score = 90;
+    } else if (handleLower && handleLower === qHandle) {
+      score = 88;
+    } else if (uidLower === qNoSpaces || shortIdLower === qShortId) {
+      score = 85;
+    } else if (emailLower && emailLower.includes(qNoSpaces)) {
+      score = 80;
+    } else if (nameLower && (nameLower === qNorm || displayLower === qNorm)) {
+      score = 78;
+    } else if (nameLower && (nameLower.startsWith(qNorm) || nameLower.includes(qNorm) || nameLower.includes(qNoSpaces))) {
+      score = 72;
+    } else if (displayLower && (displayLower.includes(qNorm) || displayLower.includes(qNoSpaces))) {
+      score = 68;
+    } else if (handleLower && handleLower.includes(qHandle)) {
+      score = 65;
+    } else if (shortIdLower.includes(qShortId) || uidLower.includes(qNoSpaces)) {
+      score = 55;
+    } else if (phoneLower && qNoSpaces.length >= 4 && phoneLower.includes(qNoSpaces)) {
+      score = 50;
+    }
+
+    if (score > 0) {
+      // Return only safe fields
+      const safeItem: KobanStudentSearchResult = {
+        id: cand.uid,
+        uid: cand.uid,
+        name: cand.name,
+        displayName: cand.displayName,
+        handle: cand.handle,
+        email: cand.email,
+        avatar: cand.avatar,
+        shortId: cand.shortId,
+        plan: cand.plan,
+        role: cand.role,
+        status: cand.status,
+        kobans: cand.kobans,
+        hasWallet: cand.hasWallet,
+      };
+      scoredMatches.push({ item: safeItem, score });
+    }
+  }
+
+  scoredMatches.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return (b.item.kobans || 0) - (a.item.kobans || 0);
+  });
+
+  const allMatched = scoredMatches.map((m) => m.item);
+  const paged = allMatched.slice(offsetCount, offsetCount + limitCount);
+
+  return {
+    users: paged,
+    total: allMatched.length,
+    hasMore: offsetCount + limitCount < allMatched.length,
+  };
+}
+
+/**
+ * Lazily initializes `wallets/{uid}` with `balance: 0` if the selected user does not
+ * have a wallet row yet, and returns the current live balance.
+ */
+export async function ensureStudentWalletInitialized(uid: string): Promise<number> {
+  const walletRef = doc(db, 'wallets', uid);
+  const snap = await getDoc(walletRef);
+  if (snap.exists()) {
+    const data = snap.data();
+    return typeof data.balance === 'number' && Number.isFinite(data.balance) ? data.balance : 0;
+  }
+
+  await setDoc(
+    walletRef,
+    {
+      userId: uid,
+      balance: 0,
+      lifetimeEarned: 0,
+      lifetimeSpent: 0,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+  return 0;
 }
 
 // ─── SUPERADMIN CHECK & RESET ALL USERS ──────────────────────────────────────

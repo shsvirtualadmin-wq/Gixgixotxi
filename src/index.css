@@ -4330,7 +4330,518 @@ body,
   }
 }
 
+/* ==========================================================================
+   ADMIN KOBANS PAGE (/admin/kobans) — GLASSMORPHISM, SEARCH & WALLETS
+   ========================================================================== */
 
+.akb-page-shell {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 100dvh;
+  padding: 16px 16px calc(var(--nav-h, 76px) + env(safe-area-inset-bottom, 0px) + 32px);
+  box-sizing: border-box;
+  overflow-x: clip;
+  color: var(--text);
+}
 
+@media (min-width: 400px) {
+  .akb-page-shell {
+    padding: 18px 20px calc(var(--nav-h, 76px) + env(safe-area-inset-bottom, 0px) + 36px);
+  }
+}
 
+@media (min-width: 768px) {
+  .akb-page-shell {
+    padding: 24px 24px calc(var(--nav-h, 76px) + env(safe-area-inset-bottom, 0px) + 40px);
+  }
+}
 
+.akb-container {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 980px;
+  min-width: 0;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Soft blurred red ambient blobs behind the page so glass cards read clearly */
+.akb-ambient-blobs {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.akb-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(72px);
+  pointer-events: none;
+}
+
+.akb-blob--top {
+  top: -50px;
+  right: -60px;
+  width: 270px;
+  height: 270px;
+  background: radial-gradient(circle, var(--blob-1) 0%, transparent 72%);
+}
+
+.akb-blob--bottom {
+  bottom: 14%;
+  left: -70px;
+  width: 290px;
+  height: 290px;
+  background: radial-gradient(circle, var(--blob-2) 0%, transparent 72%);
+}
+
+/* Base Glass Card (Radius 22-26px, 1 blur layer per card) */
+.akb-glass-card {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border-radius: 24px;
+  padding: 16px;
+  background-color: var(--glass-bg);
+  background-image: linear-gradient(
+    135deg,
+    var(--glass-highlight) 0%,
+    transparent 55%
+  );
+  border: 1px solid var(--glass-border);
+  border-top-color: var(--glass-highlight);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+@media (min-width: 400px) {
+  .akb-glass-card {
+    padding: 18px 20px;
+  }
+}
+
+/* Page Title (1 line, pixel font ONLY on page title) */
+.akb-page-title {
+  margin: 0;
+  font-family: var(--font-dot) !important;
+  font-size: clamp(22px, 5.5vw, 28px);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* Small single-line rate chip: "10 Kobans = PKR 1" */
+.akb-rate-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-family: var(--font-heading);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+  background-color: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(180, 83, 9, 0.34);
+  color: #92400e;
+}
+
+:is(.dark, [data-theme="dark"]) .akb-rate-chip {
+  background-color: rgba(245, 158, 11, 0.16);
+  border-color: rgba(251, 191, 36, 0.38);
+  color: #fde68a;
+}
+
+/* 44px Refresh Icon Button at right end of title row */
+.akb-refresh-btn {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background-color: var(--glass-bg);
+  color: var(--text);
+  border: 1px solid var(--glass-border);
+  border-top-color: var(--glass-highlight);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 180ms ease, background-color 180ms ease;
+}
+
+.akb-refresh-btn:hover:not(:disabled) {
+  border-color: var(--glass-border-hover);
+}
+
+.akb-refresh-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.akb-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Segmented Glass Tabs (Requests | Wallets | Gallery) — fits screen, no scrollbar */
+.akb-segmented-tabs {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 20px;
+  box-sizing: border-box;
+  background-color: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-top-color: var(--glass-highlight);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+}
+
+.akb-tab-btn {
+  min-height: 44px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 16px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: transform 180ms ease, background-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
+}
+
+.akb-tab-btn:active {
+  transform: scale(0.97);
+}
+
+.akb-tab-btn--active {
+  background-color: var(--accent);
+  color: #ffffff;
+  border-color: color-mix(in srgb, #ffffff 22%, var(--accent));
+  box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.akb-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9999px;
+  font-size: 10.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  background-color: rgba(217, 20, 34, 0.16);
+  color: var(--accent);
+}
+
+.akb-tab-btn--active .akb-tab-badge {
+  background-color: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+}
+
+/* Search Input & Form Inputs: Single clean border + single 2px focus ring (never double border) */
+.akb-search-wrap {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.akb-input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 11px 14px;
+  border-radius: 16px;
+  background-color: var(--input-bg);
+  color: var(--input-text);
+  border: 1px solid var(--glass-border-strong);
+  outline: none;
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.4;
+  box-sizing: border-box;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.akb-input--search {
+  padding-left: 40px;
+  padding-right: 42px;
+}
+
+.akb-input::placeholder {
+  color: var(--placeholder);
+}
+
+.akb-input:focus {
+  outline: none !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 2px var(--focus-ring) !important;
+}
+
+.akb-search-clear-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.akb-search-clear-btn:hover {
+  background-color: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text);
+}
+
+/* Student Search Result Glass Rows */
+.akb-result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.akb-result-row {
+  width: 100%;
+  min-width: 0;
+  min-height: 64px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  box-sizing: border-box;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background-color: color-mix(in srgb, var(--surface) 60%, var(--glass-bg));
+  border: 1px solid var(--glass-border);
+  border-top-color: var(--glass-highlight);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+
+.akb-result-row:hover {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--glass-border));
+  background-color: color-mix(in srgb, var(--accent) 5%, var(--glass-bg));
+}
+
+.akb-result-row:active {
+  transform: scale(0.98);
+}
+
+/* Avatar Circle (Initials or Photo) */
+.akb-avatar {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  border-radius: 9999px;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--accent);
+  background-color: color-mix(in srgb, var(--accent) 12%, var(--glass-bg));
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--glass-border));
+  flex-shrink: 0;
+}
+
+/* Status & Role Chips (WCAG AA contrast in light & dark themes) */
+.akb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-family: var(--font-heading);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.akb-chip--active,
+.akb-chip--approved {
+  background-color: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(4, 120, 87, 0.34);
+  color: #065f46;
+}
+
+:is(.dark, [data-theme="dark"]) .akb-chip--active,
+:is(.dark, [data-theme="dark"]) .akb-chip--approved {
+  background-color: rgba(16, 185, 129, 0.18);
+  border-color: rgba(52, 211, 153, 0.38);
+  color: #6ee7b7;
+}
+
+.akb-chip--pro,
+.akb-chip--pending,
+.akb-chip--orphan,
+.akb-chip--missing-name {
+  background-color: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(180, 83, 9, 0.34);
+  color: #92400e;
+}
+
+:is(.dark, [data-theme="dark"]) .akb-chip--pro,
+:is(.dark, [data-theme="dark"]) .akb-chip--pending,
+:is(.dark, [data-theme="dark"]) .akb-chip--orphan,
+:is(.dark, [data-theme="dark"]) .akb-chip--missing-name {
+  background-color: rgba(245, 158, 11, 0.18);
+  border-color: rgba(251, 191, 36, 0.38);
+  color: #fcd34d;
+}
+
+.akb-chip--suspended,
+.akb-chip--rejected {
+  background-color: rgba(217, 20, 34, 0.13);
+  border: 1px solid rgba(185, 28, 28, 0.32);
+  color: #991b1b;
+}
+
+:is(.dark, [data-theme="dark"]) .akb-chip--suspended,
+:is(.dark, [data-theme="dark"]) .akb-chip--rejected {
+  background-color: rgba(225, 29, 42, 0.20);
+  border-color: rgba(248, 113, 113, 0.38);
+  color: #fca5a5;
+}
+
+.akb-chip--muted {
+  background-color: color-mix(in srgb, var(--text) 7%, var(--glass-bg));
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+}
+
+/* Highlighted query substring inside search result text */
+.akb-match-highlight {
+  background-color: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--text);
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 0 2px;
+}
+
+/* Primary & Secondary Action Buttons (min 48px touch target, never clipped) */
+.akb-btn {
+  min-height: 48px;
+  padding: 10px 16px;
+  border-radius: 16px;
+  font-family: var(--font-heading);
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.25;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: transform 180ms ease, background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
+}
+
+.akb-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.akb-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.akb-btn--primary {
+  background-color: var(--accent);
+  color: #ffffff;
+  border: 1px solid color-mix(in srgb, #ffffff 20%, var(--accent));
+  box-shadow: 0 8px 20px -6px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.akb-btn--primary:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+}
+
+.akb-btn--glass {
+  background-color: var(--glass-bg);
+  color: var(--text);
+  border: 1px solid var(--glass-border);
+  border-top-color: var(--glass-highlight);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+}
+
+.akb-btn--glass:hover:not(:disabled) {
+  border-color: var(--glass-border-hover);
+}
+
+/* Fallback when backdrop-filter is not supported */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .akb-glass-card,
+  .akb-segmented-tabs,
+  .akb-refresh-btn,
+  .akb-result-row,
+  .akb-btn--glass {
+    background-color: color-mix(in srgb, var(--surface) 95%, var(--bg));
+  }
+}
+
+/* Reduced motion accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .akb-glass-card,
+  .akb-tab-btn,
+  .akb-refresh-btn,
+  .akb-result-row,
+  .akb-btn,
+  .akb-tab-btn:active,
+  .akb-refresh-btn:active,
+  .akb-result-row:active,
+  .akb-btn:active {
+    transform: none !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}

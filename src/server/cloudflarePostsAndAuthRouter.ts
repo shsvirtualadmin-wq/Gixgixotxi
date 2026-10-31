@@ -2426,6 +2426,242 @@ ${allUrls
     });
   });
 
+  // ============================================================================
+  // ADMIN KOBANS STUDENT SEARCH ENDPOINT (/api/admin/kobans/users/search)
+  // Enforces admin/superadmin role server-side from verified Firebase ID token.
+  // ============================================================================
+  const handleAdminKobansUserSearch = async (req: express.Request, res: express.Response) => {
+    try {
+      const authHeader = String(req.headers.authorization || '');
+      if (!authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({
+          success: false,
+          code: 'UNAUTHORIZED',
+          error: 'Authentication token required (401).',
+        });
+      }
+
+      const adminUser = await verifyFirebaseJwtZeroFirestore(req);
+      if (!adminUser) {
+        return res.status(401).json({
+          success: false,
+          code: 'INVALID_TOKEN',
+          error: 'Invalid or expired session token (401).',
+        });
+      }
+
+      if (adminUser.role !== 'superadmin') {
+        return res.status(403).json({
+          success: false,
+          code: 'FORBIDDEN',
+          error: 'Forbidden: Admin or Superadmin role required (403).',
+        });
+      }
+
+      const rawQ = String(req.query.q || req.query.search || '').trim();
+      const qNorm = rawQ.toLowerCase().replace(/\s+/g, ' ');
+      const qNoSpaces = rawQ.toLowerCase().replace(/\s+/g, '');
+      const qHandle = qNoSpaces.replace(/^@+/, '');
+      const limitCount = Math.min(50, Math.max(1, Number(req.query.limit || 20)));
+      const offsetCount = Math.max(0, Number(req.query.offset || 0));
+
+      if (qNoSpaces.length < 2) {
+        return res.status(200).json({
+          success: true,
+          users: [],
+          total: 0,
+          hasMore: false,
+        });
+      }
+
+      interface SanitizedStudentMatch {
+        id: string;
+        name: string;
+        handle: string;
+        email: string;
+        avatar: string | null;
+        plan: string;
+        role: string;
+        status: 'active' | 'suspended' | 'inactive' | 'orphan' | 'missing-name';
+        kobans: number;
+      }
+
+      const byKey = new Map<string, SanitizedStudentMatch>();
+      const upsertCandidate = (cand: SanitizedStudentMatch) => {
+        const key = cand.id || cand.email.toLowerCase();
+        if (!key || key.startsWith('bot_')) return;
+        const existing = byKey.get(key);
+        if (!existing) {
+          byKey.set(key, cand);
+        } else {
+          byKey.set(key, {
+            id: existing.id || cand.id,
+            name:
+              existing.name && existing.name !== 'Unnamed Student'
+                ? existing.name
+                : cand.name || existing.name,
+            handle: existing.handle || cand.handle,
+            email: existing.email || cand.email,
+            avatar: existing.avatar || cand.avatar,
+            plan: existing.plan !== 'free' ? existing.plan : cand.plan,
+            role: existing.role !== 'student' ? existing.role : cand.role,
+            status: existing.status === 'active' ? cand.status : existing.status,
+            kobans: Math.max(existing.kobans, cand.kobans),
+          });
+        }
+      };
+
+      const store = loadD1Store();
+
+      // 1. Scan D1 userRoles table
+      for (const r of store.userRoles || []) {
+        if (!r.uid || r.uid.startsWith('bot_')) continue;
+        const emailLower = String(r.email || '').trim().toLowerCase();
+        const emailPrefix = emailLower ? emailLower.split('@')[0] : '';
+        upsertCandidate({
+          id: r.uid,
+          name: emailPrefix || '',
+          handle: emailPrefix,
+          email: emailLower,
+          avatar: null,
+          plan: 'free',
+          role: r.role || 'student',
+          status: r.is_posting_banned ? 'suspended' : emailPrefix ? 'active' : 'missing-name',
+          kobans: 0,
+        });
+      }
+
+      // 2. Scan D1 posts & comments authors for student profiles active in Commons
+      for (const p of store.posts || []) {
+        const uid = p.real_author_uid || p.author_uid;
+        if (!uid || uid.startsWith('bot_') || p.author_role === 'bot') continue;
+        const authorName =
+          p.is_anonymous || p.author_name === 'Anonymous Student'
+            ? ''
+            : String(p.author_name || '').trim();
+        const handleGuess = authorName
+          ? authorName.toLowerCase().replace(/[^a-z0-9_]/g, '')
+          : '';
+        upsertCandidate({
+          id: uid,
+          name: authorName,
+          handle: handleGuess,
+          email: '',
+          avatar: p.author_avatar || p.author_photo_url || p.author_equipped_avatar || null,
+          plan: 'free',
+          role: p.author_role || 'student',
+          status: authorName ? 'active' : 'missing-name',
+          kobans: 0,
+        });
+      }
+
+      for (const c of store.comments || []) {
+        const uid = c.real_author_uid || c.author_uid;
+        if (!uid || uid.startsWith('bot_') || c.author_role === 'bot') continue;
+        const authorName =
+          c.is_anonymous || c.author_name === 'Anonymous Student'
+            ? ''
+            : String(c.author_name || '').trim();
+        const handleGuess = authorName
+          ? authorName.toLowerCase().replace(/[^a-z0-9_]/g, '')
+          : '';
+        upsertCandidate({
+          id: uid,
+          name: authorName,
+          handle: handleGuess,
+          email: '',
+          avatar: c.author_avatar || c.author_photo_url || c.author_equipped_avatar || null,
+          plan: 'free',
+          role: c.author_role || 'student',
+          status: authorName ? 'active' : 'missing-name',
+          kobans: 0,
+        });
+      }
+
+      // 3. If the query looks like an email address, also check Firebase Identity Toolkit
+      const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(qNoSpaces);
+      if (looksLikeEmail) {
+        const accessToken = options?.getGoogleAccessToken
+          ? await options.getGoogleAccessToken().catch(() => null)
+          : null;
+
+        if (accessToken) {
+          try {
+            const lookupResp = await fetch(
+              `https://identitytoolkit.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/accounts:lookup`,
+              {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email: [qNoSpaces] }),
+              }
+            );
+            if (lookupResp.ok) {
+              const lookupData = (await lookupResp.json().catch(() => ({}))) as any;
+              const authUsers = Array.isArray(lookupData?.users) ? lookupData.users : [];
+              for (const au of authUsers) {
+                const uid = String(au.localId || '').trim();
+                const email = String(au.email || qNoSpaces).trim().toLowerCase();
+                const displayName = String(au.displayName || '').trim();
+                const handle = email.split('@')[0] || '';
+                if (uid) {
+                  upsertCandidate({
+                    id: uid,
+                    name: displayName,
+                    handle,
+                    email,
+                    avatar: au.photoUrl || null,
+                    plan: 'free',
+                    role: SUPERADMIN_EMAILS.has(email) || SUPERADMIN_UIDS.has(uid) ? 'superadmin' : 'student',
+                    status: au.disabled ? 'suspended' : displayName ? 'active' : 'missing-name',
+                    kobans: 0,
+                  });
+                }
+              }
+            }
+          } catch {
+            // Ignore Identity Toolkit Admin lookup error
+          }
+        }
+      }
+
+      // Filter candidates against normalized query
+      const matched = Array.from(byKey.values()).filter((u) => {
+        const emailLower = u.email.toLowerCase();
+        const nameLower = u.name.toLowerCase();
+        const handleLower = u.handle.toLowerCase().replace(/^@+/, '');
+        const idLower = u.id.toLowerCase();
+        const shortIdLower = idLower.slice(0, 6);
+
+        return (
+          (emailLower && (emailLower.includes(qNoSpaces) || emailLower.startsWith(qNoSpaces))) ||
+          (nameLower && (nameLower.includes(qNorm) || nameLower.includes(qNoSpaces))) ||
+          (handleLower && (handleLower.includes(qHandle) || handleLower.startsWith(qHandle))) ||
+          idLower.includes(qNoSpaces) ||
+          shortIdLower === qNoSpaces.replace(/^#/, '')
+        );
+      });
+
+      const paged = matched.slice(offsetCount, offsetCount + limitCount);
+      return res.status(200).json({
+        success: true,
+        users: paged,
+        total: matched.length,
+        hasMore: offsetCount + limitCount < matched.length,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: err?.message || 'Student search failed on server.',
+      });
+    }
+  };
+
+  app.get('/api/admin/kobans/users/search', handleAdminKobansUserSearch);
+  app.get('/api/admin/users/search', handleAdminKobansUserSearch);
+
   // ==========================================================================
   // WELCOME TO BOARDLY ANNOUNCEMENT ROUTES (/api/announcements/*)
   // ==========================================================================

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search,
   RefreshCw,
@@ -13,6 +13,12 @@ import {
   Check,
   Send,
   Sparkles,
+  X,
+  UserCheck,
+  ChevronDown,
+  Smartphone,
+  Tablet,
+  Monitor,
 } from 'lucide-react';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,9 +30,13 @@ import {
   adminAdjustKobans,
   fetchUserLedger,
 } from '@/services/kobanService';
-import { fetchUsersPaginated } from '@/services/adminService';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import {
+  searchStudentsForKobans,
+  ensureStudentWalletInitialized,
+  AdminSearchHttpError,
+  type KobanStudentSearchResult,
+  type KobanStudentStatus,
+} from '@/services/adminService';
 import { COSMETICS_CATALOG } from '@/data/cosmeticsCatalog';
 import {
   AvatarPicture,
@@ -34,22 +44,76 @@ import {
   Nameplate,
   ProfileEffectCardPreview,
 } from '@/components/koban/CosmeticRenderers';
-import { Smartphone, Tablet, Monitor } from 'lucide-react';
-import type { UserProfile, KobanRequest, WalletLedgerEntry } from '@/types';
+import type { KobanRequest, WalletLedgerEntry } from '@/types';
+
+function getInitials(nameOrEmail: string): string {
+  const clean = String(nameOrEmail || '')
+    .trim()
+    .replace(/^@+/, '');
+  if (!clean) return 'ST';
+  const parts = clean.split(/[\s._-]+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
+  }
+  return clean.slice(0, 2).toUpperCase();
+}
+
+function HighlightMatch({ text, query }: { text: string; query: string }) {
+  const cleanQuery = query.trim().replace(/\s+/g, '');
+  if (!text || !cleanQuery || cleanQuery.length < 2) {
+    return <>{text}</>;
+  }
+  const lowerText = text.toLowerCase();
+  const lowerQuery = cleanQuery.toLowerCase().replace(/^@+/, '');
+  const idx = lowerText.indexOf(lowerQuery);
+  if (idx === -1) {
+    return <>{text}</>;
+  }
+  const before = text.slice(0, idx);
+  const match = text.slice(idx, idx + lowerQuery.length);
+  const after = text.slice(idx + lowerQuery.length);
+  return (
+    <>
+      {before}
+      <mark className="akb-match-highlight">{match}</mark>
+      {after}
+    </>
+  );
+}
+
+function StatusChip({ status }: { status: KobanStudentStatus }) {
+  if (status === 'suspended') {
+    return <span className="akb-chip akb-chip--suspended">Suspended</span>;
+  }
+  if (status === 'orphan') {
+    return <span className="akb-chip akb-chip--orphan">Orphan</span>;
+  }
+  if (status === 'missing-name') {
+    return <span className="akb-chip akb-chip--missing-name">Missing name</span>;
+  }
+  if (status === 'inactive') {
+    return <span className="akb-chip akb-chip--muted">Inactive</span>;
+  }
+  return <span className="akb-chip akb-chip--active">Active</span>;
+}
 
 export function AdminKobansPage() {
   const { user } = useAuth();
   const superadminEmail = user?.email || 'shsvirtualadmin@gmail.com';
 
-  const [activeTab, setActiveTab] = useState<'adjust' | 'requests' | 'gallery'>('requests');
+  const [activeTab, setActiveTab] = useState<'requests' | 'adjust' | 'gallery'>('adjust');
   const [galleryViewport, setGalleryViewport] = useState<'360' | '390' | '768' | '100%'>('390');
   const [galleryTestName, setGalleryTestName] = useState('Muhammad Abdullah Tariq');
-  const [galleryCategory, setGalleryCategory] = useState<'all' | 'nameplate' | 'frame' | 'effect' | 'avatar'>('all');
+  const [galleryCategory, setGalleryCategory] = useState<
+    'all' | 'nameplate' | 'frame' | 'effect' | 'avatar'
+  >('all');
 
   // Requests state
   const [requests, setRequests] = useState<KobanRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(true);
-  const [requestFilter, setRequestFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [requestFilter, setRequestFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>(
+    'pending'
+  );
 
   // Approve Modal state
   const [approveTarget, setApproveTarget] = useState<KobanRequest | null>(null);
@@ -58,14 +122,21 @@ export function AdminKobansPage() {
 
   // Reject Modal state
   const [rejectTarget, setRejectTarget] = useState<KobanRequest | null>(null);
-  const [rejectReason, setRejectReason] = useState('Transaction ID could not be verified on mobile banking portal.');
+  const [rejectReason, setRejectReason] = useState(
+    'Transaction ID could not be verified on mobile banking portal.'
+  );
   const [rejecting, setRejecting] = useState(false);
 
-  // Manual Adjustment state
+  // Student Search & Wallet Adjustment state
   const [userSearch, setUserSearch] = useState('');
-  const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
+  const [searchResults, setSearchResults] = useState<KobanStudentSearchResult[]>([]);
+  const [visibleCount, setVisibleCount] = useState(10);
   const [searchingUsers, setSearchingUsers] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [hasSearchedOnce, setHasSearchedOnce] = useState(false);
+  const [lastSearchedQuery, setLastSearchedQuery] = useState('');
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  const [selectedUser, setSelectedUser] = useState<KobanStudentSearchResult | null>(null);
   const [selectedUserBalance, setSelectedUserBalance] = useState<number | null>(null);
   const [selectedUserLedger, setSelectedUserLedger] = useState<WalletLedgerEntry[]>([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
@@ -81,13 +152,19 @@ export function AdminKobansPage() {
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Debounce & AbortController refs so rapid typing never displays stale results
+  const debounceTimerRef = useRef<number | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const searchSeqRef = useRef<number>(0);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Load requests
+  // Load Koban requests
   const loadRequests = useCallback(async () => {
     setRequestsLoading(true);
     try {
@@ -104,54 +181,224 @@ export function AdminKobansPage() {
     loadRequests();
   }, [loadRequests]);
 
-  // Search users for adjustment
-  const handleUserSearch = async (queryText: string) => {
-    setUserSearch(queryText);
-    if (!queryText.trim() || queryText.trim().length < 2) {
+  // Execute student search with AbortController & stale-sequence protection
+  const executeStudentSearch = useCallback(async (rawQuery: string) => {
+    const normalized = rawQuery.trim();
+    const compact = normalized.replace(/\s+/g, '');
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
+    if (compact.length < 2) {
+      setSearchingUsers(false);
       setSearchResults([]);
+      setHasSearchedOnce(false);
+      setSearchError(null);
+      setLastSearchedQuery('');
+      return;
+    }
+
+    const seq = ++searchSeqRef.current;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setSearchingUsers(true);
+    setSearchError(null);
+
+    try {
+      const res = await searchStudentsForKobans(normalized, {
+        limit: 20,
+        offset: 0,
+        includeInactive: true,
+        signal: controller.signal,
+      });
+
+      if (seq !== searchSeqRef.current || controller.signal.aborted) {
+        return;
+      }
+
+      setSearchResults(res.users);
+      setVisibleCount(10);
+      setLastSearchedQuery(normalized);
+      setHasSearchedOnce(true);
+      setSearchError(null);
+    } catch (err: unknown) {
+      if (
+        (err instanceof DOMException && err.name === 'AbortError') ||
+        (err as { name?: string })?.name === 'AbortError' ||
+        seq !== searchSeqRef.current
+      ) {
+        return;
+      }
+      console.error('[AdminKobansPage] Student search failed:', err);
+      const status =
+        err instanceof AdminSearchHttpError
+          ? err.status
+          : (err as { status?: number })?.status || 500;
+      const msg =
+        err instanceof AdminSearchHttpError
+          ? err.message
+          : `Search failed (${status}): ${(err as Error)?.message || 'Unable to query student accounts.'}`;
+      setSearchError(msg);
+      setSearchResults([]);
+      setLastSearchedQuery(normalized);
+      setHasSearchedOnce(true);
+    } finally {
+      if (seq === searchSeqRef.current) {
+        setSearchingUsers(false);
+      }
+    }
+  }, []);
+
+  // Cleanup debounce & abort controller on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  // Handle input change with 300ms debounce
+  const handleSearchInputChange = (val: string) => {
+    setUserSearch(val);
+    setActionError(null);
+
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+
+    const compact = val.trim().replace(/\s+/g, '');
+    if (compact.length < 2) {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      searchSeqRef.current += 1;
+      setSearchingUsers(false);
+      setSearchResults([]);
+      setHasSearchedOnce(false);
+      setSearchError(null);
+      setLastSearchedQuery('');
       return;
     }
 
     setSearchingUsers(true);
-    try {
-      const res = await fetchUsersPaginated({
-        searchQuery: queryText.trim(),
-        limitCount: 10,
-      });
-      setSearchResults(res.users);
-    } catch (err) {
-      console.warn('Search error:', err);
-    } finally {
-      setSearchingUsers(false);
+    debounceTimerRef.current = window.setTimeout(() => {
+      executeStudentSearch(val);
+    }, 300);
+  };
+
+  // Fire search immediately on Enter or Paste
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      executeStudentSearch(userSearch);
     }
   };
 
-  // Select user and fetch their live wallet balance + ledger
-  const handleSelectUser = async (u: UserProfile) => {
-    setSelectedUser(u);
-    setSearchResults([]);
+  const handleSearchPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasted = e.clipboardData.getData('text');
+    if (!pasted) return;
+    const input = e.currentTarget;
+    const start = input.selectionStart ?? userSearch.length;
+    const end = input.selectionEnd ?? userSearch.length;
+    const nextVal = `${userSearch.slice(0, start)}${pasted}${userSearch.slice(end)}`;
+    if (nextVal.trim().replace(/\s+/g, '').length >= 2) {
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      window.setTimeout(() => {
+        executeStudentSearch(nextVal);
+      }, 0);
+    }
+  };
+
+  const handleClearSearch = () => {
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    searchSeqRef.current += 1;
     setUserSearch('');
-    setSelectedUserBalance(null);
+    setSearchingUsers(false);
+    setSearchResults([]);
+    setHasSearchedOnce(false);
+    setSearchError(null);
+    setLastSearchedQuery('');
+    searchInputRef.current?.focus();
+  };
+
+  // Select student and lazily initialize their wallet (balance 0 if missing) + fetch ledger
+  const handleSelectUser = useCallback(async (u: KobanStudentSearchResult) => {
+    if (debounceTimerRef.current) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    searchSeqRef.current += 1;
+
+    setSelectedUser(u);
+    setSearchingUsers(false);
+    setSearchError(null);
+    setSelectedUserBalance(u.kobans ?? 0);
     setLedgerLoading(true);
+    setActionError(null);
 
     try {
-      const wSnap = await getDoc(doc(db, 'wallets', u.uid));
-      if (wSnap.exists()) {
-        const wData = wSnap.data();
-        setSelectedUserBalance(typeof wData.balance === 'number' ? wData.balance : 0);
-      } else {
-        setSelectedUserBalance(0);
-      }
+      const liveBalance = await ensureStudentWalletInitialized(u.uid);
+      setSelectedUserBalance(liveBalance);
+      setSelectedUser((prev) =>
+        prev && prev.uid === u.uid ? { ...prev, kobans: liveBalance, hasWallet: true } : prev
+      );
 
       const ledger = await fetchUserLedger(u.uid);
       setSelectedUserLedger(ledger);
     } catch (err) {
-      console.warn('Failed to fetch user wallet/ledger:', err);
-      setSelectedUserBalance(0);
+      console.error('[AdminKobansPage] Failed to initialize or fetch student wallet/ledger:', err);
+      setSelectedUserBalance(u.kobans ?? 0);
     } finally {
       setLedgerLoading(false);
     }
+  }, []);
+
+  const handleChangeSelectedUser = () => {
+    setSelectedUser(null);
+    setSelectedUserBalance(null);
+    setSelectedUserLedger([]);
+    setActionError(null);
+    window.setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 20);
   };
+
+  // Top-right Refresh button handler
+  const handleRefreshPage = useCallback(async () => {
+    setActionError(null);
+    await loadRequests();
+    if (selectedUser) {
+      await handleSelectUser(selectedUser);
+    } else if (userSearch.trim().length >= 2) {
+      await executeStudentSearch(userSearch);
+    }
+  }, [loadRequests, selectedUser, handleSelectUser, userSearch, executeStudentSearch]);
 
   // Open Approve Modal
   const handleOpenApprove = (req: KobanRequest) => {
@@ -174,7 +421,7 @@ export function AdminKobansPage() {
       );
       setApproveTarget(null);
       setActionSuccess(`Credited +${editableAmount.toLocaleString()} Kobans to student.`);
-      setTimeout(() => setActionSuccess(null), 3000);
+      setTimeout(() => setActionSuccess(null), 3500);
       await loadRequests();
     } catch (err: unknown) {
       setActionError((err as Error).message || 'Failed to approve request');
@@ -203,7 +450,7 @@ export function AdminKobansPage() {
       );
       setRejectTarget(null);
       setActionSuccess('Request rejected and student notified.');
-      setTimeout(() => setActionSuccess(null), 3000);
+      setTimeout(() => setActionSuccess(null), 3500);
       await loadRequests();
     } catch (err: unknown) {
       setActionError((err as Error).message || 'Failed to reject request');
@@ -212,12 +459,32 @@ export function AdminKobansPage() {
     }
   };
 
+  // Validate before opening confirmation modal
+  const handleOpenAdjustConfirmation = () => {
+    if (!selectedUser) return;
+    setActionError(null);
+    const parsedAmount = parseInt(adjustAmount, 10);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setActionError('Please enter a valid positive whole number of Kobans.');
+      return;
+    }
+    if (!adjustReason.trim()) {
+      setActionError('A reason or note is required for every wallet balance adjustment.');
+      return;
+    }
+    setAdjustConfirmOpen(true);
+  };
+
   // Manual Adjustment Submission
   const handleConfirmAdjustment = async () => {
     if (!selectedUser) return;
     const num = parseInt(adjustAmount, 10);
     if (isNaN(num) || num <= 0) {
       setActionError('Please enter a valid positive integer amount.');
+      return;
+    }
+    if (!adjustReason.trim()) {
+      setActionError('A reason or note is required before applying a balance change.');
       return;
     }
 
@@ -230,18 +497,22 @@ export function AdminKobansPage() {
         superadminEmail,
         selectedUser.uid,
         delta,
-        adjustReason.trim() || (delta > 0 ? 'Superadmin grant' : 'Superadmin deduction'),
+        adjustReason.trim(),
         selectedUser.email
       );
 
       setSelectedUserBalance(res.newBalance);
+      setSelectedUser((prev) => (prev ? { ...prev, kobans: res.newBalance, hasWallet: true } : prev));
       setAdjustConfirmOpen(false);
+      setAdjustReason('');
       setActionSuccess(
-        `Successfully ${delta > 0 ? 'granted' : 'deducted'} ${Math.abs(delta).toLocaleString()} Kobans. New balance: ${res.newBalance.toLocaleString()}.`
+        `${delta > 0 ? 'Added' : 'Deducted'} ${Math.abs(delta).toLocaleString()} Kobans ${
+          delta > 0 ? 'to' : 'from'
+        } ${selectedUser.name || selectedUser.email}. New balance: ${res.newBalance.toLocaleString()} Kobans.`
       );
-      setTimeout(() => setActionSuccess(null), 4000);
+      setTimeout(() => setActionSuccess(null), 4500);
 
-      // Refresh user ledger
+      // Refresh user ledger immediately
       const updatedLedger = await fetchUserLedger(selectedUser.uid);
       setSelectedUserLedger(updatedLedger);
     } catch (err: unknown) {
@@ -251,540 +522,773 @@ export function AdminKobansPage() {
     }
   };
 
+  const pendingRequestsCount = requests.filter((r) => r.status === 'pending').length;
+  const parsedAmountNum = Math.max(0, parseInt(adjustAmount, 10) || 0);
+  const currentBalanceNum = selectedUserBalance ?? selectedUser?.kobans ?? 0;
+  const previewNewBalance = Math.max(
+    0,
+    currentBalanceNum + (adjustMode === 'grant' ? parsedAmountNum : -parsedAmountNum)
+  );
+
   return (
-    <div className="space-y-6 w-full max-w-full overflow-x-hidden">
-      {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl sm:text-2xl font-bold font-heading text-[var(--text)] tracking-tight">
-              Kobans Economy &amp; Wallets
-            </h1>
-            <span className="badge-pill flex items-center gap-1.5 text-xs font-semibold text-[#E8A317] border border-[#E8A317]/40 bg-[#E8A317]/10">
-              <KobanIcon size={14} /> 10 Kobans = PKR 1
-            </span>
-          </div>
-          <p className="text-xs sm:text-sm text-[var(--muted)] mt-1">
-            Review student mobile payments, grant monthly Captain allowances, and manage user wallet ledgers.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={loadRequests}
-          disabled={requestsLoading}
-          className="p-2.5 rounded-xl border border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors self-start sm:self-auto cursor-pointer"
-          title="Refresh Data"
-        >
-          <RefreshCw size={15} />
-        </button>
+    <div className="akb-page-shell">
+      {/* Ambient red blurred blobs behind the page so glass surfaces read clearly */}
+      <div className="akb-ambient-blobs" aria-hidden="true">
+        <div className="akb-blob akb-blob--top" />
+        <div className="akb-blob akb-blob--bottom" />
       </div>
 
-      {actionSuccess && (
-        <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500 text-emerald-300 text-xs font-heading flex items-center gap-2 animate-in fade-in">
-          <CheckCircle2 size={16} className="shrink-0" />
-          <span>{actionSuccess}</span>
-        </div>
-      )}
-
-      {actionError && (
-        <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-500 text-red-300 text-xs font-heading flex items-center gap-2 animate-in fade-in">
-          <AlertCircle size={16} className="shrink-0" />
-          <span>{actionError}</span>
-        </div>
-      )}
-
-      {/* ─── TOP TABS ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 border-b border-[var(--border)] pb-2 overflow-x-auto no-scrollbar">
-        <button
-          type="button"
-          onClick={() => setActiveTab('requests')}
-          className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-heading font-semibold transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'requests'
-              ? 'bg-[var(--text)] text-[var(--bg)] shadow-sm'
-              : 'bg-[var(--card)] text-[var(--muted)] hover:text-[var(--text)] border border-[var(--border)]'
-          }`}
-        >
-          <span>Pending Requests</span>
-          {requests.filter((r) => r.status === 'pending').length > 0 && (
-            <span className="ml-2 px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-[var(--red)] text-white">
-              {requests.filter((r) => r.status === 'pending').length}
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('adjust')}
-          className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-heading font-semibold transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'adjust'
-              ? 'bg-[var(--text)] text-[var(--bg)] shadow-sm'
-              : 'bg-[var(--card)] text-[var(--muted)] hover:text-[var(--text)] border border-[var(--border)]'
-          }`}
-        >
-          <span>Manual Balance Adjustment &amp; Ledger</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('gallery')}
-          className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-heading font-semibold transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'gallery'
-              ? 'bg-[var(--text)] text-[var(--bg)] shadow-sm'
-              : 'bg-[var(--card)] text-[var(--muted)] hover:text-[var(--text)] border border-[var(--border)]'
-          }`}
-        >
-          <span>Nameplate Gallery (360px/390px/768px)</span>
-        </button>
-      </div>
-
-      {/* ─── TAB 1: KOBAN REQUESTS ─────────────────────────────────────────── */}
-      {activeTab === 'requests' && (
-        <div className="space-y-4">
-          {/* Filter Bar */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-            {(['pending', 'approved', 'rejected', 'all'] as const).map((st) => (
-              <button
-                key={st}
-                type="button"
-                onClick={() => setRequestFilter(st)}
-                className={`text-xs capitalize font-heading font-semibold px-3 py-1.5 rounded-lg border transition-all cursor-pointer whitespace-nowrap ${
-                  requestFilter === st
-                    ? 'border-[#E8A317] bg-[#E8A317]/15 text-[#FFD66B]'
-                    : 'border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:text-[var(--text)]'
-                }`}
-              >
-                {st}
-              </button>
-            ))}
-          </div>
-
-          {requestsLoading ? (
-            <LineLoader context="admin" message="Loading Koban requests..." />
-          ) : requests.length === 0 ? (
-            <div className="p-10 text-center rounded-2xl bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] space-y-2">
-              <Clock size={28} className="mx-auto text-[var(--muted)]" />
-              <p className="text-xs font-heading">No {requestFilter} Koban requests found.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {requests.map((req) => (
-                <div
-                  key={req.id}
-                  className="p-4 sm:p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] flex flex-col md:flex-row md:items-center justify-between gap-4"
-                >
-                  <div className="space-y-1.5 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-heading font-bold text-sm text-[var(--text)]">
-                        {req.userName || 'Student'}
-                      </span>
-                      <span
-                        className={`text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-full border ${
-                          req.status === 'approved'
-                            ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-                            : req.status === 'rejected'
-                            ? 'border-red-500 bg-red-500/10 text-red-400'
-                            : 'border-amber-500 bg-amber-500/10 text-amber-400'
-                        }`}
-                      >
-                        {req.status}
-                      </span>
-                      <span className="text-[11px] font-mono text-[var(--muted)] uppercase">
-                        via {req.paymentMethod}
-                      </span>
-                    </div>
-
-                    <div className="text-xs text-[var(--muted)] font-mono flex items-center gap-2 flex-wrap">
-                      <span>User ID: {req.userId.slice(0, 8)}…</span>
-                      {req.userEmail && <span>• {req.userEmail}</span>}
-                    </div>
-
-                    <div className="flex items-center gap-3 pt-1 text-xs font-mono">
-                      <div className="flex items-center gap-1.5 bg-[var(--surface-2)] px-2.5 py-1 rounded-lg border border-[var(--border)]">
-                        <span className="text-[var(--muted)]">TRX:</span>
-                        <span className="font-bold text-[var(--text)]">{req.transactionId}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleCopy(req.transactionId, req.id)}
-                          className="text-[var(--muted)] hover:text-white"
-                          title="Copy TRX"
-                        >
-                          {copiedId === req.id ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                        </button>
-                      </div>
-
-                      <div className="text-[var(--muted)]">
-                        Amount: <strong className="text-[#FFD66B]">{req.amount.toLocaleString()} Kobans</strong> (PKR {req.pkrAmount})
-                      </div>
-                    </div>
-
-                    {req.rejectionReason && (
-                      <p className="text-xs text-red-400 mt-1">Rejection reason: {req.rejectionReason}</p>
-                    )}
-                  </div>
-
-                  {/* Action buttons */}
-                  {req.status === 'pending' && (
-                    <div className="flex items-center gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-[var(--border)]">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenReject(req)}
-                        className="px-3.5 py-2 rounded-xl text-xs font-heading font-semibold border border-[var(--border)] bg-[var(--surface-2)] text-[var(--muted)] hover:text-red-400 hover:border-red-500/50 transition-colors cursor-pointer"
-                      >
-                        Reject
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleOpenApprove(req)}
-                        className="btn-red px-4 py-2 rounded-xl text-xs font-heading font-bold flex items-center gap-1.5 shadow-sm cursor-pointer"
-                      >
-                        <CheckCircle2 size={14} />
-                        <span>Approve &amp; Credit</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ─── TAB 2: MANUAL ADJUSTMENT & LEDGER ─────────────────────────────── */}
-      {activeTab === 'adjust' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Column: User Search & Adjustment (5 cols) */}
-          <div className="lg:col-span-5 space-y-5">
-            <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-4">
-              <h3 className="font-heading font-bold text-base text-[var(--text)]">
-                Find Student Account
-              </h3>
-
-              <div className="relative">
-                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
-                <input
-                  type="text"
-                  value={userSearch}
-                  onChange={(e) => handleUserSearch(e.target.value)}
-                  placeholder="Search by student name or email..."
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)]"
-                />
+      <div className="akb-container">
+        {/* ─── HEADER CARD ─────────────────────────────────────────────────── */}
+        <header className="akb-glass-card">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="akb-page-title">Kobans</h1>
+                <span className="akb-rate-chip">
+                  <KobanIcon size={13} />
+                  <span>10 Kobans = PKR 1</span>
+                </span>
               </div>
-              {searchingUsers && (
-                <LineLoader context="admin" message="Searching student accounts..." className="min-h-[80px] py-4" />
-              )}
-
-              {/* Search dropdown results */}
-              {searchResults.length > 0 && (
-                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] max-h-56 overflow-y-auto divide-y divide-[var(--border)]">
-                  {searchResults.map((u) => (
-                    <button
-                      key={u.uid}
-                      type="button"
-                      onClick={() => handleSelectUser(u)}
-                      className="w-full p-2.5 text-left hover:bg-[var(--surface-hover)] transition-colors flex items-center justify-between text-xs"
-                    >
-                      <div className="min-w-0">
-                        <div className="font-heading font-semibold text-[var(--text)] truncate">
-                          {u.displayName || 'Student'}
-                        </div>
-                        <div className="text-[10px] text-[var(--muted)] font-mono truncate">{u.email}</div>
-                      </div>
-                      <span className="text-[10px] font-mono text-[#E8A317] shrink-0">#{u.shortId || u.uid.slice(0, 5)}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Selected User Display */}
-              {selectedUser ? (
-                <div className="p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-heading font-bold text-sm text-[var(--text)]">
-                        {selectedUser.displayName || 'Student'}
-                      </h4>
-                      <p className="text-[11px] text-[var(--muted)] font-mono">{selectedUser.email}</p>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[10px] text-[var(--muted)] font-heading uppercase block">Balance</span>
-                      <div className="flex items-center gap-1">
-                        <KobanIcon size={14} />
-                        <span className="font-mono font-bold text-sm text-[#FFD66B]">
-                          {selectedUserBalance === null ? '…' : selectedUserBalance.toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Mode Selector */}
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[var(--border)]">
-                    <button
-                      type="button"
-                      onClick={() => setAdjustMode('grant')}
-                      className={`py-2 rounded-xl text-xs font-heading font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                        adjustMode === 'grant'
-                          ? 'bg-emerald-600 text-white shadow-sm'
-                          : 'bg-[var(--card)] text-[var(--muted)] border border-[var(--border)]'
-                      }`}
-                    >
-                      <Plus size={14} />
-                      <span>Grant (+)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setAdjustMode('deduct')}
-                      className={`py-2 rounded-xl text-xs font-heading font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                        adjustMode === 'deduct'
-                          ? 'bg-red-600 text-white shadow-sm'
-                          : 'bg-[var(--card)] text-[var(--muted)] border border-[var(--border)]'
-                      }`}
-                    >
-                      <Minus size={14} />
-                      <span>Deduct (-)</span>
-                    </button>
-                  </div>
-
-                  {/* Amount Input */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-[11px] font-heading text-[var(--muted)]">
-                      <span>Amount (Positive whole number)</span>
-                      <span className="text-emerald-400 font-mono">No Cap</span>
-                    </div>
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={adjustAmount}
-                      onChange={(e) => setAdjustAmount(e.target.value)}
-                      placeholder="e.g. 5000"
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card)] border border-[var(--border)] text-sm font-mono font-bold text-[#FFD66B] focus:outline-none focus:border-[var(--red)]"
-                    />
-                  </div>
-
-                  {/* Reason Input */}
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-heading text-[var(--muted)] block">
-                      Reason / Payment Reference
-                    </label>
-                    <input
-                      type="text"
-                      value={adjustReason}
-                      onChange={(e) => setAdjustReason(e.target.value)}
-                      placeholder="e.g. Verified manual transfer / Bug bounty reward"
-                      className="w-full px-3.5 py-2 rounded-xl bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)]"
-                    />
-                  </div>
-
-                  {/* Action trigger button */}
-                  <button
-                    type="button"
-                    onClick={() => setAdjustConfirmOpen(true)}
-                    className="btn-red w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm mt-2"
-                  >
-                    <Send size={13} />
-                    <span>
-                      {adjustMode === 'grant' ? 'Grant' : 'Deduct'} {Number(adjustAmount || 0).toLocaleString()} Kobans
-                    </span>
-                  </button>
-                </div>
-              ) : (
-                <div className="p-8 text-center rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--muted)]">
-                  Search and pick a student account to view their balance and adjust Kobans.
-                </div>
-              )}
+              <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-snug m-0">
+                Search student wallets, adjust balances, and review mobile payment requests.
+              </p>
             </div>
+
+            <button
+              type="button"
+              onClick={handleRefreshPage}
+              disabled={requestsLoading || searchingUsers || ledgerLoading}
+              aria-label="Refresh"
+              title="Refresh"
+              className="akb-refresh-btn"
+            >
+              <RefreshCw
+                size={17}
+                className={requestsLoading || searchingUsers || ledgerLoading ? 'animate-spin' : ''}
+              />
+            </button>
           </div>
+        </header>
 
-          {/* Right Column: User Ledger History (7 cols) */}
-          <div className="lg:col-span-7 space-y-4">
-            <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <History size={16} className="text-[#E8A317]" />
-                  <h3 className="font-heading font-bold text-base text-[var(--text)]">
-                    Wallet Ledger History
-                  </h3>
-                </div>
-                {selectedUser && (
-                  <span className="text-xs text-[var(--muted)] font-mono">
-                    User: {selectedUser.displayName}
-                  </span>
-                )}
-              </div>
-
-              {ledgerLoading ? (
-                <LineLoader context="admin" message="Loading wallet ledger..." />
-              ) : !selectedUser ? (
-                <div className="p-10 text-center text-xs text-[var(--muted)]">
-                  Select a user on the left to inspect their immutable transaction ledger.
-                </div>
-              ) : selectedUserLedger.length === 0 ? (
-                <div className="p-8 text-center text-xs text-[var(--muted)]">
-                  No ledger transactions recorded yet for this wallet.
-                </div>
-              ) : (
-                <div className="divide-y divide-[var(--border)] max-h-[500px] overflow-y-auto pr-1">
-                  {selectedUserLedger.map((entry) => {
-                    const isPositive = entry.amount > 0;
-                    const sec = (entry.timestamp as { seconds?: number })?.seconds;
-                    const dateStr = sec ? new Date(sec * 1000).toLocaleString('en-US', { timeZone: 'Asia/Karachi' }) : 'Recent';
-
-                    return (
-                      <div key={entry.id} className="py-3 flex items-start justify-between gap-3 text-xs">
-                        <div className="space-y-0.5 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`text-[9px] font-mono uppercase px-1.5 py-0.2 rounded font-bold ${
-                                entry.type === 'purchase'
-                                  ? 'bg-purple-950/40 text-purple-400 border border-purple-500/30'
-                                  : entry.type === 'captain_allotment'
-                                  ? 'bg-blue-950/40 text-blue-400 border border-blue-500/30'
-                                  : isPositive
-                                  ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/30'
-                                  : 'bg-red-950/40 text-red-400 border border-red-500/30'
-                              }`}
-                            >
-                              {entry.type}
-                            </span>
-                            <span className="font-heading font-semibold text-[var(--text)] truncate">
-                              {entry.reason || 'Ledger event'}
-                            </span>
-                          </div>
-
-                          <div className="text-[10px] text-[var(--muted)] font-mono flex items-center gap-2 flex-wrap">
-                            <span>{dateStr} (PKT)</span>
-                            {entry.adminEmail && <span>• Admin: {entry.adminEmail}</span>}
-                          </div>
-                        </div>
-
-                        <div className="text-right shrink-0">
-                          <span
-                            className={`font-mono font-bold text-sm ${
-                              isPositive ? 'text-emerald-400' : 'text-red-400'
-                            }`}
-                          >
-                            {isPositive ? `+${entry.amount.toLocaleString()}` : entry.amount.toLocaleString()}
-                          </span>
-                          {typeof entry.balanceAfter === 'number' && (
-                            <span className="block text-[10px] text-[var(--muted)] font-mono">
-                              Bal: {entry.balanceAfter.toLocaleString()}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+        {/* ─── FEEDBACK BANNERS ────────────────────────────────────────────── */}
+        {actionSuccess && (
+          <div
+            role="status"
+            className="akb-glass-card !py-3 !px-4 flex items-center justify-between gap-3 border-emerald-500/40"
+          >
+            <div className="flex items-center gap-2.5 text-xs sm:text-sm font-heading font-semibold text-emerald-700 dark:text-emerald-300 min-w-0">
+              <CheckCircle2 size={17} className="shrink-0 text-emerald-500" />
+              <span className="break-words">{actionSuccess}</span>
             </div>
+            <button
+              type="button"
+              onClick={() => setActionSuccess(null)}
+              aria-label="Dismiss message"
+              className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text)]"
+            >
+              <X size={15} />
+            </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ─── TAB 3: ALL 100 COSMETIC DROPS GALLERY & AUDIT ─────────────────── */}
-      {activeTab === 'gallery' && (
-        <div className="space-y-6">
-          {/* Summary Count Table */}
-          <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <h3 className="font-heading font-bold text-base text-[var(--text)]">
-                  Cosmetics Catalog Audit & Inspection (100 Total Items)
-                </h3>
-                <p className="text-xs text-[var(--muted)] mt-0.5">
-                  Complete breakdown of all 100 cosmetic items across all 4 categories. Verified 0 look-alikes, zero static motion, and active looping motion for all animated items.
-                </p>
-              </div>
-              <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 font-mono font-bold border border-emerald-500/20 self-start sm:self-auto">
-                100 / 100 Verified
-              </span>
+        {actionError && (
+          <div
+            role="alert"
+            className="akb-glass-card !py-3 !px-4 flex items-center justify-between gap-3 border-red-500/45"
+          >
+            <div className="flex items-center gap-2.5 text-xs sm:text-sm font-heading font-semibold text-red-700 dark:text-red-300 min-w-0">
+              <AlertCircle size={17} className="shrink-0 text-red-500" />
+              <span className="break-words">{actionError}</span>
             </div>
+            <button
+              type="button"
+              onClick={() => setActionError(null)}
+              aria-label="Dismiss error"
+              className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text)]"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        )}
 
-            {/* Count Table */}
-            <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
-              <table className="w-full text-left text-xs font-mono">
-                <thead className="bg-[var(--surface-2)] text-[var(--text)] font-heading uppercase text-[10px] tracking-wider border-b border-[var(--border)]">
-                  <tr>
-                    <th className="py-2.5 px-4">Cosmetic Type</th>
-                    <th className="py-2.5 px-4">Static (Zero Motion)</th>
-                    <th className="py-2.5 px-4">Animated (Looping Motion)</th>
-                    <th className="py-2.5 px-4 text-right">Total Items</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border)] text-[var(--muted)]">
-                  <tr className="hover:bg-white/[0.02]">
-                    <td className="py-2 px-4 font-bold text-[var(--text)]">Nameplates</td>
-                    <td className="py-2 px-4 text-neutral-300">13</td>
-                    <td className="py-2 px-4 text-purple-400 font-bold">12</td>
-                    <td className="py-2 px-4 text-right font-bold text-[var(--text)]">25</td>
-                  </tr>
-                  <tr className="hover:bg-white/[0.02]">
-                    <td className="py-2 px-4 font-bold text-[var(--text)]">Avatar Frames</td>
-                    <td className="py-2 px-4 text-neutral-300">13</td>
-                    <td className="py-2 px-4 text-purple-400 font-bold">12</td>
-                    <td className="py-2 px-4 text-right font-bold text-[var(--text)]">25</td>
-                  </tr>
-                  <tr className="hover:bg-white/[0.02]">
-                    <td className="py-2 px-4 font-bold text-[var(--text)]">Profile Effects</td>
-                    <td className="py-2 px-4 text-neutral-300">13</td>
-                    <td className="py-2 px-4 text-purple-400 font-bold">12</td>
-                    <td className="py-2 px-4 text-right font-bold text-[var(--text)]">25</td>
-                  </tr>
-                  <tr className="hover:bg-white/[0.02]">
-                    <td className="py-2 px-4 font-bold text-[var(--text)]">Profile Pictures</td>
-                    <td className="py-2 px-4 text-neutral-300">13</td>
-                    <td className="py-2 px-4 text-purple-400 font-bold">12</td>
-                    <td className="py-2 px-4 text-right font-bold text-[var(--text)]">25</td>
-                  </tr>
-                  <tr className="bg-[var(--surface-2)]/60 font-bold text-[var(--text)]">
-                    <td className="py-2.5 px-4">Grand Total</td>
-                    <td className="py-2.5 px-4 text-neutral-200">52</td>
-                    <td className="py-2.5 px-4 text-purple-300">48</td>
-                    <td className="py-2.5 px-4 text-right text-emerald-400">100</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+        {/* ─── SEGMENTED GLASS TABS (Requests | Wallets | Gallery) ─────────── */}
+        <nav className="akb-segmented-tabs" aria-label="Kobans sections">
+          <button
+            type="button"
+            onClick={() => setActiveTab('requests')}
+            className={`akb-tab-btn ${activeTab === 'requests' ? 'akb-tab-btn--active' : ''}`}
+          >
+            <span>Requests</span>
+            {pendingRequestsCount > 0 && (
+              <span className="akb-tab-badge">{pendingRequestsCount}</span>
+            )}
+          </button>
 
-            {/* Filter Pills */}
-            <div className="flex items-center gap-2 flex-wrap pt-1">
-              <span className="text-xs font-heading font-semibold text-[var(--muted)] mr-1">Filter Type:</span>
-              {(
-                [
-                  { key: 'all', label: 'All Items (100)' },
-                  { key: 'nameplate', label: 'Nameplates (25)' },
-                  { key: 'frame', label: 'Avatar Frames (25)' },
-                  { key: 'effect', label: 'Profile Effects (25)' },
-                  { key: 'avatar', label: 'Profile Pictures (25)' },
-                ] as const
-              ).map((tab) => (
+          <button
+            type="button"
+            onClick={() => setActiveTab('adjust')}
+            className={`akb-tab-btn ${activeTab === 'adjust' ? 'akb-tab-btn--active' : ''}`}
+          >
+            <span>Wallets</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('gallery')}
+            className={`akb-tab-btn ${activeTab === 'gallery' ? 'akb-tab-btn--active' : ''}`}
+          >
+            <span>Gallery</span>
+          </button>
+        </nav>
+
+        {/* ─── TAB 1: REQUESTS ─────────────────────────────────────────────── */}
+        {activeTab === 'requests' && (
+          <div className="space-y-3.5">
+            {/* Filter chips */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+              {(['pending', 'approved', 'rejected', 'all'] as const).map((st) => (
                 <button
-                  key={tab.key}
+                  key={st}
                   type="button"
-                  onClick={() => setGalleryCategory(tab.key)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
-                    galleryCategory === tab.key
-                      ? 'bg-[var(--red)] text-white shadow-xs'
-                      : 'bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)] border border-[var(--border)]'
+                  onClick={() => setRequestFilter(st)}
+                  className={`min-h-[40px] px-3.5 py-1.5 rounded-full text-xs capitalize font-heading font-bold transition-all cursor-pointer whitespace-nowrap border ${
+                    requestFilter === st
+                      ? 'bg-[var(--accent)] text-white border-[var(--accent)] shadow-sm'
+                      : 'bg-[var(--glass-bg)] text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--glass-border)]'
                   }`}
                 >
-                  {tab.label}
+                  {st}
                 </button>
               ))}
             </div>
 
-            {/* Viewport and Sample Name Controls (Only relevant for nameplates) */}
-            {(galleryCategory === 'all' || galleryCategory === 'nameplate') && (
-              <div className="pt-3 border-t border-[var(--border)] space-y-3">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-heading font-semibold text-[var(--muted)]">
-                      Nameplate Viewport Simulator:
+            {requestsLoading ? (
+              <div className="akb-glass-card">
+                <LineLoader context="admin" message="Loading Koban requests..." />
+              </div>
+            ) : requests.length === 0 ? (
+              <div className="akb-glass-card py-10 text-center space-y-2">
+                <Clock size={26} className="mx-auto text-[var(--text-muted)]" />
+                <p className="text-sm font-heading font-bold text-[var(--text)] m-0">
+                  No {requestFilter} Koban requests
+                </p>
+                <p className="text-xs text-[var(--text-muted)] m-0">
+                  When students submit mobile payment verifications, they will appear here.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {requests.map((req) => (
+                  <div
+                    key={req.id}
+                    className="akb-glass-card flex flex-col md:flex-row md:items-center justify-between gap-4"
+                  >
+                    <div className="space-y-2 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-heading font-bold text-sm text-[var(--text)]">
+                          {req.userName || 'Student'}
+                        </span>
+                        <span
+                          className={`akb-chip ${
+                            req.status === 'approved'
+                              ? 'akb-chip--approved'
+                              : req.status === 'rejected'
+                              ? 'akb-chip--rejected'
+                              : 'akb-chip--pending'
+                          }`}
+                        >
+                          {req.status}
+                        </span>
+                        <span className="akb-chip akb-chip--muted">via {req.paymentMethod}</span>
+                      </div>
+
+                      <div className="text-xs text-[var(--text-muted)] font-mono flex items-center gap-2 flex-wrap break-all">
+                        <span>ID: {req.userId.slice(0, 8)}…</span>
+                        {req.userEmail && <span>• {req.userEmail}</span>}
+                      </div>
+
+                      <div className="flex items-center gap-3 flex-wrap pt-0.5 text-xs font-mono">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-[var(--glass-border)] bg-[var(--input-bg)]">
+                          <span className="text-[var(--text-muted)]">TRX:</span>
+                          <span className="font-bold text-[var(--text)]">{req.transactionId}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(req.transactionId, req.id)}
+                            className="p-1 text-[var(--text-muted)] hover:text-[var(--text)]"
+                            title="Copy TRX"
+                            aria-label="Copy transaction ID"
+                          >
+                            {copiedId === req.id ? (
+                              <Check size={13} className="text-emerald-500" />
+                            ) : (
+                              <Copy size={13} />
+                            )}
+                          </button>
+                        </div>
+
+                        <div className="text-[var(--text-muted)]">
+                          Amount:{' '}
+                          <strong className="text-[var(--text)] font-bold">
+                            {req.amount.toLocaleString()} Kobans
+                          </strong>{' '}
+                          (PKR {req.pkrAmount})
+                        </div>
+                      </div>
+
+                      {req.rejectionReason && (
+                        <p className="text-xs text-red-600 dark:text-red-400 m-0 pt-1">
+                          Rejection reason: {req.rejectionReason}
+                        </p>
+                      )}
+                    </div>
+
+                    {req.status === 'pending' && (
+                      <div className="flex items-center gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-[var(--border)]">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenReject(req)}
+                          className="akb-btn akb-btn--glass flex-1 md:flex-initial"
+                        >
+                          Reject
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenApprove(req)}
+                          className="akb-btn akb-btn--primary flex-1 md:flex-initial"
+                        >
+                          <CheckCircle2 size={16} />
+                          <span>Approve &amp; Credit</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── TAB 2: WALLETS (STUDENT SEARCH + ADJUSTMENT + LEDGER) ───────── */}
+        {activeTab === 'adjust' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
+            {/* Top / Left Column: Find Student Account & Adjust Kobans */}
+            <div className="lg:col-span-5 space-y-3.5">
+              <section className="akb-glass-card space-y-4" aria-labelledby="akb-find-student-heading">
+                <div className="flex items-center justify-between gap-2">
+                  <h2
+                    id="akb-find-student-heading"
+                    className="font-heading font-bold text-base text-[var(--text)] m-0"
+                  >
+                    Find Student Account
+                  </h2>
+                  {selectedUser && (
+                    <span className="akb-chip akb-chip--active">
+                      <UserCheck size={11} />
+                      <span>Selected</span>
                     </span>
-                    <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
+                  )}
+                </div>
+
+                {/* If a student is selected, show compact selected-user glass card with Change button */}
+                {selectedUser ? (
+                  <div className="space-y-4">
+                    <div className="p-3.5 rounded-2xl border border-[var(--glass-border-strong)] bg-[var(--input-bg)] space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="akb-avatar">
+                            {selectedUser.avatar && selectedUser.avatar.startsWith('http') ? (
+                              <img
+                                src={selectedUser.avatar}
+                                alt={selectedUser.displayName}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              getInitials(selectedUser.name || selectedUser.email)
+                            )}
+                          </div>
+                          <div className="min-w-0 space-y-0.5">
+                            <div className="font-heading font-bold text-sm text-[var(--text)] truncate">
+                              {selectedUser.name || selectedUser.email || 'Unnamed Student'}
+                            </div>
+                            {selectedUser.handle && (
+                              <div className="text-xs text-[var(--text-muted)] font-mono truncate">
+                                @{selectedUser.handle}
+                              </div>
+                            )}
+                            <div className="text-xs text-[var(--text-secondary)] font-mono break-all">
+                              {selectedUser.email || `ID: ${selectedUser.uid}`}
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleChangeSelectedUser}
+                          className="akb-btn akb-btn--glass !min-h-[38px] !py-1.5 !px-3 !text-xs shrink-0"
+                        >
+                          Change
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-[var(--border)] flex-wrap">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <StatusChip status={selectedUser.status} />
+                          <span
+                            className={`akb-chip ${
+                              selectedUser.plan === 'pro' ? 'akb-chip--pro' : 'akb-chip--muted'
+                            }`}
+                          >
+                            {selectedUser.plan === 'pro' ? 'Pro' : 'Free'}
+                          </span>
+                          <span className="akb-chip akb-chip--muted">{selectedUser.role}</span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-heading font-semibold text-[var(--text-muted)] uppercase">
+                            Balance:
+                          </span>
+                          <KobanIcon size={15} />
+                          <span className="font-mono font-extrabold text-sm text-[var(--text)] tabular-nums">
+                            {selectedUserBalance === null
+                              ? '…'
+                              : selectedUserBalance.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Balance Adjustment Controls */}
+                    <div className="space-y-3.5 pt-1">
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAdjustMode('grant')}
+                          className={`akb-btn ${
+                            adjustMode === 'grant' ? 'akb-btn--primary' : 'akb-btn--glass'
+                          }`}
+                        >
+                          <Plus size={16} />
+                          <span>Add Kobans</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setAdjustMode('deduct')}
+                          className={`akb-btn ${
+                            adjustMode === 'deduct' ? 'akb-btn--primary' : 'akb-btn--glass'
+                          }`}
+                        >
+                          <Minus size={16} />
+                          <span>Deduct Kobans</span>
+                        </button>
+                      </div>
+
+                      {/* Positive Integer Amount Input */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs font-heading font-semibold text-[var(--text-secondary)]">
+                          <label htmlFor="akb-amount-input">Amount (Kobans)</label>
+                          <span className="text-[11px] font-mono text-[var(--text-muted)]">
+                            PKR {Math.floor(parsedAmountNum / 10).toLocaleString()} equiv.
+                          </span>
+                        </div>
+                        <input
+                          id="akb-amount-input"
+                          type="number"
+                          inputMode="numeric"
+                          min="1"
+                          step="1"
+                          value={adjustAmount}
+                          onChange={(e) => setAdjustAmount(e.target.value)}
+                          placeholder="e.g. 500"
+                          className="akb-input font-mono font-bold"
+                        />
+                      </div>
+
+                      {/* Required Reason / Note Input */}
+                      <div className="space-y-1.5">
+                        <label
+                          htmlFor="akb-reason-input"
+                          className="text-xs font-heading font-semibold text-[var(--text-secondary)] block"
+                        >
+                          Reason / Note <span className="text-[var(--accent)]">*</span>
+                        </label>
+                        <input
+                          id="akb-reason-input"
+                          type="text"
+                          value={adjustReason}
+                          onChange={(e) => setAdjustReason(e.target.value)}
+                          placeholder="e.g. Verified JazzCash transfer / Monthly Captain reward"
+                          className="akb-input"
+                        />
+                      </div>
+
+                      {/* Primary Submit Button */}
+                      <button
+                        type="button"
+                        onClick={handleOpenAdjustConfirmation}
+                        disabled={parsedAmountNum <= 0 || !adjustReason.trim()}
+                        className="akb-btn akb-btn--primary w-full"
+                      >
+                        <Send size={15} />
+                        <span>
+                          {adjustMode === 'grant' ? 'Add' : 'Deduct'}{' '}
+                          {parsedAmountNum.toLocaleString()} Kobans
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Search Input & All Search UI States */
+                  <div className="space-y-3.5">
+                    <div className="akb-search-wrap">
+                      <Search
+                        size={17}
+                        className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none"
+                      />
+                      <input
+                        ref={searchInputRef}
+                        type="text"
+                        inputMode="email"
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                        autoComplete="off"
+                        spellCheck={false}
+                        value={userSearch}
+                        onChange={(e) => handleSearchInputChange(e.target.value)}
+                        onKeyDown={handleSearchKeyDown}
+                        onPaste={handleSearchPaste}
+                        placeholder="Search by email, name, @handle or ID"
+                        aria-label="Search by email, name, @handle or ID"
+                        className="akb-input akb-input--search"
+                      />
+                      {userSearch.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleClearSearch}
+                          aria-label="Clear search"
+                          title="Clear search"
+                          className="akb-search-clear-btn"
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* STATE 1: Typing / Loading */}
+                    {searchingUsers ? (
+                      <div className="py-4">
+                        <LineLoader context="admin" message="Searching student accounts..." />
+                      </div>
+                    ) : searchError ? (
+                      /* STATE 2: Error State with real HTTP status & Retry button */
+                      <div
+                        role="alert"
+                        className="p-4 rounded-2xl border border-red-500/40 bg-red-500/10 space-y-3 text-center"
+                      >
+                        <AlertCircle size={22} className="mx-auto text-red-500" />
+                        <div className="space-y-1">
+                          <p className="text-xs sm:text-sm font-heading font-bold text-[var(--text)] m-0">
+                            {searchError}
+                          </p>
+                          <p className="text-xs text-[var(--text-muted)] m-0">
+                            Please verify your connection or admin session and try again.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => executeStudentSearch(userSearch)}
+                          className="akb-btn akb-btn--glass !min-h-[40px] !py-2 !px-4 mx-auto"
+                        >
+                          <RefreshCw size={14} />
+                          <span>Retry</span>
+                        </button>
+                      </div>
+                    ) : hasSearchedOnce && searchResults.length === 0 ? (
+                      /* STATE 3: No Results State */
+                      <div className="p-6 rounded-2xl border border-[var(--glass-border)] bg-[var(--input-bg)] text-center space-y-1.5">
+                        <p className="text-sm font-heading font-bold text-[var(--text)] m-0 break-words">
+                          No student found for &lsquo;{lastSearchedQuery}&rsquo;
+                        </p>
+                        <p className="text-xs text-[var(--text-muted)] m-0">
+                          Check the spelling or search by name or @handle
+                        </p>
+                      </div>
+                    ) : searchResults.length > 0 ? (
+                      /* STATE 4: Results List (Glass Rows + Show More) */
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between text-[11px] font-heading font-semibold text-[var(--text-muted)] px-1">
+                          <span>
+                            Showing {Math.min(visibleCount, searchResults.length)} of{' '}
+                            {searchResults.length} matching account
+                            {searchResults.length === 1 ? '' : 's'}
+                          </span>
+                          <span>Tap to select</span>
+                        </div>
+
+                        <div className="akb-result-list" role="listbox" aria-label="Matching students">
+                          {searchResults.slice(0, visibleCount).map((u) => {
+                            const primaryName =
+                              u.name && u.name !== 'Unnamed Student'
+                                ? u.name
+                                : u.email || `Student #${u.shortId}`;
+                            return (
+                              <button
+                                key={u.uid}
+                                type="button"
+                                role="option"
+                                aria-selected={false}
+                                onClick={() => handleSelectUser(u)}
+                                className="akb-result-row"
+                              >
+                                <div className="flex items-start gap-3 min-w-0 flex-1">
+                                  <div className="akb-avatar">
+                                    {u.avatar && u.avatar.startsWith('http') ? (
+                                      <img
+                                        src={u.avatar}
+                                        alt={primaryName}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    ) : (
+                                      getInitials(primaryName)
+                                    )}
+                                  </div>
+
+                                  <div className="min-w-0 flex-1 space-y-1">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="font-heading font-bold text-sm text-[var(--text)] break-words">
+                                        <HighlightMatch text={primaryName} query={userSearch} />
+                                      </span>
+                                      {u.handle && (
+                                        <span className="text-xs font-mono text-[var(--text-muted)]">
+                                          @<HighlightMatch text={u.handle} query={userSearch} />
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {u.email && (
+                                      <div className="text-xs font-mono text-[var(--text-secondary)] break-all">
+                                        <HighlightMatch text={u.email} query={userSearch} />
+                                      </div>
+                                    )}
+
+                                    <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                                      <StatusChip status={u.status} />
+                                      <span
+                                        className={`akb-chip ${
+                                          u.plan === 'pro' ? 'akb-chip--pro' : 'akb-chip--muted'
+                                        }`}
+                                      >
+                                        {u.plan === 'pro' ? 'Pro' : 'Free'}
+                                      </span>
+                                      {u.role && u.role !== 'student' && (
+                                        <span className="akb-chip akb-chip--muted">{u.role}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="text-right shrink-0 space-y-1">
+                                  <div className="inline-flex items-center gap-1 justify-end">
+                                    <KobanIcon size={14} />
+                                    <span className="font-mono font-extrabold text-sm text-[var(--text)] tabular-nums">
+                                      {(u.kobans ?? 0).toLocaleString()}
+                                    </span>
+                                  </div>
+                                  <div className="text-[10px] font-mono text-[var(--text-muted)] block">
+                                    #{u.shortId || u.uid.slice(0, 5).toUpperCase()}
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {searchResults.length > visibleCount && (
+                          <button
+                            type="button"
+                            onClick={() => setVisibleCount((prev) => prev + 10)}
+                            className="akb-btn akb-btn--glass w-full !min-h-[44px]"
+                          >
+                            <ChevronDown size={16} />
+                            <span>
+                              Show more ({searchResults.length - visibleCount} remaining)
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      /* STATE 5: Idle State */
+                      <div className="p-6 rounded-2xl border border-[var(--glass-border)] bg-[var(--input-bg)] text-center space-y-1">
+                        <p className="text-xs sm:text-sm font-heading font-semibold text-[var(--text-secondary)] m-0">
+                          Search by email, name, @handle or ID
+                        </p>
+                        <p className="text-xs text-[var(--text-muted)] m-0">
+                          Type at least 2 characters or paste a student&rsquo;s email address.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+            </div>
+
+            {/* Bottom / Right Column: Wallet Ledger History */}
+            <div className="lg:col-span-7 space-y-3.5">
+              <section className="akb-glass-card space-y-4" aria-labelledby="akb-ledger-heading">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <History size={17} className="text-[var(--accent)]" />
+                    <h2
+                      id="akb-ledger-heading"
+                      className="font-heading font-bold text-base text-[var(--text)] m-0"
+                    >
+                      Wallet Ledger History
+                    </h2>
+                  </div>
+                  {selectedUser && (
+                    <span className="text-xs text-[var(--text-muted)] font-mono truncate max-w-full">
+                      {selectedUser.email || selectedUser.displayName}
+                    </span>
+                  )}
+                </div>
+
+                {ledgerLoading ? (
+                  <div className="py-4">
+                    <LineLoader context="admin" message="Loading wallet ledger..." />
+                  </div>
+                ) : !selectedUser ? (
+                  <div className="p-8 rounded-2xl border border-[var(--glass-border)] bg-[var(--input-bg)] text-center text-xs sm:text-sm text-[var(--text-muted)] font-heading">
+                    Select a user above
+                  </div>
+                ) : selectedUserLedger.length === 0 ? (
+                  <div className="p-8 rounded-2xl border border-[var(--glass-border)] bg-[var(--input-bg)] text-center space-y-1">
+                    <p className="text-sm font-heading font-semibold text-[var(--text)] m-0">
+                      No ledger transactions yet
+                    </p>
+                    <p className="text-xs text-[var(--text-muted)] m-0">
+                      Wallet initialized with 0 Kobans. Adjustments will be recorded here permanently.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-[var(--border)]">
+                    {selectedUserLedger.map((entry) => {
+                      const isPositive = entry.amount > 0;
+                      const sec = (entry.timestamp as { seconds?: number })?.seconds;
+                      const dateStr = sec
+                        ? new Date(sec * 1000).toLocaleString('en-US', {
+                            timeZone: 'Asia/Karachi',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })
+                        : 'Just now';
+
+                      return (
+                        <div
+                          key={entry.id}
+                          className="py-3.5 first:pt-1 last:pb-1 flex items-start justify-between gap-3 text-xs"
+                        >
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span
+                                className={`akb-chip ${
+                                  isPositive ? 'akb-chip--approved' : 'akb-chip--rejected'
+                                }`}
+                              >
+                                {entry.type}
+                              </span>
+                              <span className="font-heading font-semibold text-sm text-[var(--text)] break-words">
+                                {entry.reason || 'Ledger adjustment'}
+                              </span>
+                            </div>
+
+                            <div className="text-[11px] text-[var(--text-muted)] font-mono flex items-center gap-2 flex-wrap">
+                              <span>{dateStr} PKT</span>
+                              {entry.adminEmail && <span>• Admin: {entry.adminEmail}</span>}
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <span
+                              className={`font-mono font-extrabold text-sm tabular-nums ${
+                                isPositive
+                                  ? 'text-emerald-600 dark:text-emerald-400'
+                                  : 'text-red-600 dark:text-red-400'
+                              }`}
+                            >
+                              {isPositive
+                                ? `+${entry.amount.toLocaleString()}`
+                                : entry.amount.toLocaleString()}
+                            </span>
+                            {typeof entry.balanceAfter === 'number' && (
+                              <span className="block text-[11px] text-[var(--text-muted)] font-mono tabular-nums">
+                                Bal: {entry.balanceAfter.toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            </div>
+          </div>
+        )}
+
+        {/* ─── TAB 3: COSMETICS GALLERY ────────────────────────────────────── */}
+        {activeTab === 'gallery' && (
+          <div className="space-y-4">
+            <div className="akb-glass-card space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h2 className="font-heading font-bold text-base text-[var(--text)] m-0">
+                    Cosmetics Catalog Audit (100 Items)
+                  </h2>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5 mb-0">
+                    Inspect all 100 cosmetic items across Nameplates, Avatar Frames, Profile Effects, and Avatars.
+                  </p>
+                </div>
+                <span className="akb-chip akb-chip--approved self-start sm:self-auto">
+                  100 / 100 Verified
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {(
+                  [
+                    { key: 'all', label: 'All (100)' },
+                    { key: 'nameplate', label: 'Nameplates (25)' },
+                    { key: 'frame', label: 'Frames (25)' },
+                    { key: 'effect', label: 'Effects (25)' },
+                    { key: 'avatar', label: 'Avatars (25)' },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setGalleryCategory(tab.key)}
+                    className={`min-h-[38px] px-3 py-1.5 rounded-full text-xs font-heading font-bold transition-all cursor-pointer border ${
+                      galleryCategory === tab.key
+                        ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                        : 'bg-[var(--input-bg)] text-[var(--text-muted)] hover:text-[var(--text)] border-[var(--glass-border)]'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {(galleryCategory === 'all' || galleryCategory === 'nameplate') && (
+                <div className="pt-3 border-t border-[var(--border)] flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-heading font-semibold text-[var(--text-muted)]">
+                      Viewport:
+                    </span>
+                    <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)]">
                       {(
                         [
                           { vp: '360', label: '360px', icon: Smartphone },
@@ -797,10 +1301,10 @@ export function AdminKobansPage() {
                           key={vp}
                           type="button"
                           onClick={() => setGalleryViewport(vp)}
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
                             galleryViewport === vp
-                              ? 'bg-[var(--text)] text-[var(--bg)] shadow-xs'
-                              : 'text-[var(--muted)] hover:text-[var(--text)]'
+                              ? 'bg-[var(--accent)] text-white'
+                              : 'text-[var(--text-muted)] hover:text-[var(--text)]'
                           }`}
                         >
                           <Icon size={11} />
@@ -811,76 +1315,64 @@ export function AdminKobansPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-heading font-semibold text-[var(--muted)] shrink-0">
+                    <label
+                      htmlFor="akb-sample-name"
+                      className="text-xs font-heading font-semibold text-[var(--text-muted)] shrink-0"
+                    >
                       Sample Name:
-                    </span>
+                    </label>
                     <input
+                      id="akb-sample-name"
                       type="text"
                       value={galleryTestName}
                       onChange={(e) => setGalleryTestName(e.target.value)}
                       placeholder="Type preview name..."
-                      className="px-3 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--text)] font-medium focus:outline-none focus:border-[var(--red)] w-48"
+                      className="akb-input !min-h-[38px] !py-1.5 !px-3 !text-xs max-w-[220px]"
                     />
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
-
-          {/* Gallery Items Grid */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-heading font-semibold text-[var(--muted)] uppercase tracking-wider">
-                Showing {COSMETICS_CATALOG.filter((c) => galleryCategory === 'all' || c.type === galleryCategory).length} Items
-              </span>
-              <span className="text-[11px] text-emerald-400 font-mono">
-                Looping Keyframes Active
-              </span>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {COSMETICS_CATALOG.filter((c) => galleryCategory === 'all' || c.type === galleryCategory).map((item) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+              {COSMETICS_CATALOG.filter(
+                (c) => galleryCategory === 'all' || c.type === galleryCategory
+              ).map((item) => (
                 <div
                   key={item.id}
-                  className="p-4 rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-3 flex flex-col justify-between"
+                  className="akb-glass-card space-y-3 flex flex-col justify-between"
                 >
-                  <div className="space-y-1.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-heading font-bold text-sm text-[var(--text)]">
-                            {item.name}
-                          </span>
-                          {item.animated ? (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded-full border border-purple-500/40 bg-purple-950/40 text-purple-300 font-mono font-bold">
-                              ANIMATED
-                            </span>
-                          ) : (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded-full border border-neutral-600 bg-neutral-900 text-neutral-300 font-mono">
-                              STATIC
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-[10px] text-[var(--muted)] uppercase font-mono tracking-wider">
-                          Type: {item.type} • {item.rarity}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-heading font-bold text-sm text-[var(--text)]">
+                          {item.name}
+                        </span>
+                        <span
+                          className={`akb-chip ${
+                            item.animated ? 'akb-chip--pro' : 'akb-chip--muted'
+                          }`}
+                        >
+                          {item.animated ? 'Animated' : 'Static'}
                         </span>
                       </div>
-                      <span className="text-xs text-[#FFD66B] font-mono font-bold shrink-0">
-                        {item.priceKobans} K
+                      <span className="text-[11px] text-[var(--text-muted)] uppercase font-mono">
+                        {item.type} • {item.rarity}
                       </span>
                     </div>
+                    <span className="text-xs font-mono font-bold text-[var(--text)] shrink-0">
+                      {item.priceKobans} K
+                    </span>
                   </div>
 
-                  {/* Preview Area specific to item type */}
-                  <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] overflow-hidden flex items-center justify-center min-h-[100px] relative">
-                    {/* 1. Nameplate Preview */}
+                  <div className="p-3 rounded-2xl bg-[var(--input-bg)] border border-[var(--glass-border)] overflow-hidden flex items-center justify-center min-h-[100px] relative">
                     {item.type === 'nameplate' && (
                       <div
                         style={{
                           width: galleryViewport === '100%' ? '100%' : `${galleryViewport}px`,
                           maxWidth: '100%',
                         }}
-                        className="flex items-center justify-center overflow-hidden border border-dashed border-[var(--border)]/60 p-2 rounded-lg"
+                        className="flex items-center justify-center overflow-hidden p-2 rounded-lg"
                       >
                         <Nameplate
                           itemId={item.id}
@@ -892,25 +1384,22 @@ export function AdminKobansPage() {
                       </div>
                     )}
 
-                    {/* 2. Avatar Frame Preview */}
                     {item.type === 'frame' && (
                       <div className="p-3 flex items-center justify-center overflow-visible">
                         <AvatarFrame itemId={item.id} size={76}>
-                          <div className="w-full h-full rounded-full bg-gradient-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center text-zinc-400 font-mono text-[10px]">
+                          <div className="w-full h-full rounded-full bg-gradient-to-tr from-zinc-800 to-zinc-700 flex items-center justify-center text-zinc-300 font-mono text-[10px]">
                             AVATAR
                           </div>
                         </AvatarFrame>
                       </div>
                     )}
 
-                    {/* 3. Profile Effect Preview */}
                     {item.type === 'effect' && (
                       <div className="w-full h-36">
                         <ProfileEffectCardPreview itemId={item.id} />
                       </div>
                     )}
 
-                    {/* 4. Profile Picture Preview */}
                     {item.type === 'avatar' && (
                       <div className="w-24 h-24 rounded-2xl overflow-hidden shadow-md flex items-center justify-center bg-black/40">
                         <AvatarPicture avatarId={item.id} size={96} />
@@ -918,61 +1407,76 @@ export function AdminKobansPage() {
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between text-[10px] text-[var(--muted)] font-mono pt-1 border-t border-[var(--border)]/50">
+                  <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)] font-mono pt-1 border-t border-[var(--border)]">
                     <span className="truncate">id: {item.id}</span>
-                    <span className="shrink-0">{item.description ? item.description.slice(0, 30) + '...' : ''}</span>
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* ─── MODAL: APPROVE REQUEST ─────────────────────────────────────────── */}
       {approveTarget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
+          aria-labelledby="akb-approve-modal-title"
         >
-          <div className="relative w-full max-w-md bg-[var(--card)] border border-[var(--border)] rounded-3xl p-6 shadow-2xl space-y-5">
-            <h3 className="font-heading font-extrabold text-lg text-[var(--text)]">
+          <div className="akb-glass-card w-full max-w-md space-y-4">
+            <h3
+              id="akb-approve-modal-title"
+              className="font-heading font-extrabold text-lg text-[var(--text)] m-0"
+            >
               Approve Koban Payment
             </h3>
 
-            <div className="p-3.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] space-y-1.5 text-xs font-mono">
-              <div className="flex justify-between text-[var(--muted)]">
+            <div className="p-3.5 rounded-2xl bg-[var(--input-bg)] border border-[var(--glass-border)] space-y-1.5 text-xs font-mono">
+              <div className="flex justify-between gap-2 text-[var(--text-muted)]">
                 <span>Student:</span>
-                <span className="text-[var(--text)] font-bold">{approveTarget.userName}</span>
+                <span className="text-[var(--text)] font-bold text-right">
+                  {approveTarget.userName}
+                </span>
               </div>
-              <div className="flex justify-between text-[var(--muted)]">
+              <div className="flex justify-between gap-2 text-[var(--text-muted)]">
                 <span>Email:</span>
-                <span className="text-[var(--text)]">{approveTarget.userEmail}</span>
+                <span className="text-[var(--text)] break-all text-right">
+                  {approveTarget.userEmail}
+                </span>
               </div>
-              <div className="flex justify-between text-[var(--muted)]">
+              <div className="flex justify-between gap-2 text-[var(--text-muted)]">
                 <span>Transaction ID:</span>
-                <span className="text-[var(--text)] font-bold">{approveTarget.transactionId}</span>
+                <span className="text-[var(--text)] font-bold text-right">
+                  {approveTarget.transactionId}
+                </span>
               </div>
-              <div className="flex justify-between text-[var(--muted)]">
-                <span>Payment Method:</span>
-                <span className="text-[var(--text)] uppercase">{approveTarget.paymentMethod}</span>
+              <div className="flex justify-between gap-2 text-[var(--text-muted)]">
+                <span>Method:</span>
+                <span className="text-[var(--text)] uppercase text-right">
+                  {approveTarget.paymentMethod}
+                </span>
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-heading font-bold text-[var(--text)] uppercase tracking-wider block">
-                Kobans to Credit (Editable if over/underpaid)
+              <label
+                htmlFor="akb-editable-koban-amount"
+                className="text-xs font-heading font-bold text-[var(--text-secondary)] block"
+              >
+                Kobans to Credit
               </label>
               <input
+                id="akb-editable-koban-amount"
                 type="number"
                 min="1"
                 step="10"
                 value={editableAmount}
                 onChange={(e) => setEditableAmount(Number(e.target.value))}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono font-bold text-[#FFD66B] focus:outline-none focus:border-[var(--red)]"
+                className="akb-input font-mono font-bold"
               />
-              <p className="text-[11px] text-[var(--muted)]">
+              <p className="text-[11px] text-[var(--text-muted)] m-0">
                 Equivalent PKR: PKR {Math.floor(editableAmount / 10)}
               </p>
             </div>
@@ -981,7 +1485,7 @@ export function AdminKobansPage() {
               <button
                 type="button"
                 onClick={() => setApproveTarget(null)}
-                className="btn-outline flex-1 py-2.5 rounded-xl text-xs font-bold cursor-pointer"
+                className="akb-btn akb-btn--glass flex-1"
               >
                 Cancel
               </button>
@@ -989,11 +1493,13 @@ export function AdminKobansPage() {
                 type="button"
                 disabled={approving || editableAmount <= 0}
                 onClick={handleConfirmApprove}
-                className="relative overflow-hidden btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                className="relative overflow-hidden akb-btn akb-btn--primary flex-1"
               >
-                <CheckCircle2 size={14} />
+                <CheckCircle2 size={15} />
                 <span>
-                  {approving ? 'Crediting Kobans...' : `Credit ${editableAmount.toLocaleString()} Kobans`}
+                  {approving
+                    ? 'Crediting...'
+                    : `Credit ${editableAmount.toLocaleString()} Kobans`}
                 </span>
                 {approving && <ButtonLineLoader />}
               </button>
@@ -1005,15 +1511,19 @@ export function AdminKobansPage() {
       {/* ─── MODAL: REJECT REQUEST ──────────────────────────────────────────── */}
       {rejectTarget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
+          aria-labelledby="akb-reject-modal-title"
         >
-          <div className="relative w-full max-w-md bg-[var(--card)] border border-[var(--border)] rounded-3xl p-6 shadow-2xl space-y-4">
-            <h3 className="font-heading font-extrabold text-lg text-[var(--text)]">
+          <div className="akb-glass-card w-full max-w-md space-y-4">
+            <h3
+              id="akb-reject-modal-title"
+              className="font-heading font-extrabold text-lg text-[var(--text)] m-0"
+            >
               Reject Koban Request
             </h3>
-            <p className="text-xs text-[var(--muted)]">
+            <p className="text-xs text-[var(--text-muted)] m-0">
               Specify the reason for rejection. The student will receive an in-app notification with this reason.
             </p>
 
@@ -1021,14 +1531,14 @@ export function AdminKobansPage() {
               rows={3}
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
-              className="w-full p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--text)] focus:outline-none focus:border-[var(--red)]"
+              className="akb-input !min-h-[88px]"
             />
 
             <div className="flex items-center gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setRejectTarget(null)}
-                className="btn-outline flex-1 py-2.5 rounded-xl text-xs font-bold cursor-pointer"
+                className="akb-btn akb-btn--glass flex-1"
               >
                 Cancel
               </button>
@@ -1036,10 +1546,10 @@ export function AdminKobansPage() {
                 type="button"
                 disabled={rejecting}
                 onClick={handleConfirmReject}
-                className="relative overflow-hidden px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white flex-1 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                className="relative overflow-hidden akb-btn akb-btn--primary flex-1"
               >
-                <XCircle size={14} />
-                <span>{rejecting ? 'Rejecting request...' : 'Confirm Rejection'}</span>
+                <XCircle size={15} />
+                <span>{rejecting ? 'Rejecting...' : 'Confirm Rejection'}</span>
                 {rejecting && <ButtonLineLoader />}
               </button>
             </div>
@@ -1047,63 +1557,86 @@ export function AdminKobansPage() {
         </div>
       )}
 
-      {/* ─── MODAL: CONFIRM MANUAL ADJUSTMENT (NO CAP) ──────────────────────── */}
+      {/* ─── MODAL: CONFIRM BALANCE ADJUSTMENT ──────────────────────────────── */}
       {adjustConfirmOpen && selectedUser && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
+          aria-labelledby="akb-confirm-adjust-title"
         >
-          <div className="relative w-full max-w-md bg-[var(--card)] border border-[var(--border)] rounded-3xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-[#E8A317]/10 border border-[#E8A317]/30 flex items-center justify-center text-[#FFD66B]">
-                <Sparkles size={20} />
+          <div className="akb-glass-card w-full max-w-md space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-[var(--accent)]/12 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] shrink-0">
+                <Sparkles size={19} />
               </div>
-              <div>
-                <h3 className="font-heading font-extrabold text-base text-[var(--text)]">
-                  Confirm Balance Adjustment
+              <div className="min-w-0">
+                <h3
+                  id="akb-confirm-adjust-title"
+                  className="font-heading font-extrabold text-base text-[var(--text)] m-0 leading-snug"
+                >
+                  {adjustMode === 'grant' ? 'Add' : 'Deduct'} {parsedAmountNum.toLocaleString()}{' '}
+                  Kobans {adjustMode === 'grant' ? 'to' : 'from'}{' '}
+                  {selectedUser.name || 'Student'} ({selectedUser.email || selectedUser.uid})?
                 </h3>
-                <p className="text-[11px] text-[var(--muted)]">Superadmin authorization required</p>
+                <p className="text-xs text-[var(--text-muted)] mt-1 mb-0">
+                  This writes an immutable entry to the student&rsquo;s wallet ledger.
+                </p>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] space-y-2 text-xs font-mono">
-              <div className="flex justify-between text-[var(--muted)]">
+            <div className="p-3.5 rounded-2xl bg-[var(--input-bg)] border border-[var(--glass-border)] space-y-2 text-xs font-mono">
+              <div className="flex justify-between gap-2 text-[var(--text-muted)]">
                 <span>Student:</span>
-                <span className="font-bold text-[var(--text)]">{selectedUser.displayName}</span>
+                <span className="font-bold text-[var(--text)] text-right">
+                  {selectedUser.name || selectedUser.displayName}
+                </span>
               </div>
-              <div className="flex justify-between text-[var(--muted)]">
+              <div className="flex justify-between gap-2 text-[var(--text-muted)]">
                 <span>Email:</span>
-                <span className="text-[var(--text)]">{selectedUser.email}</span>
-              </div>
-              <div className="flex justify-between text-[var(--muted)]">
-                <span>Action:</span>
-                <span className={adjustMode === 'grant' ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>
-                  {adjustMode === 'grant' ? 'GRANT (+)' : 'DEDUCT (-)'}
+                <span className="text-[var(--text)] break-all text-right">
+                  {selectedUser.email || selectedUser.uid}
                 </span>
               </div>
-              <div className="flex justify-between text-[var(--muted)]">
-                <span>Amount:</span>
-                <span className="text-[#FFD66B] font-bold">
-                  {Number(adjustAmount).toLocaleString()} Kobans
+              <div className="flex justify-between gap-2 text-[var(--text-muted)]">
+                <span>Current Balance:</span>
+                <span className="text-[var(--text)] font-bold tabular-nums">
+                  {currentBalanceNum.toLocaleString()} Kobans
                 </span>
               </div>
-              <div className="flex justify-between pt-1 border-t border-[var(--border)] text-[var(--text)]">
-                <span>New Resulting Balance:</span>
-                <span className="font-bold">
-                  {Math.max(
-                    0,
-                    (selectedUserBalance || 0) + (adjustMode === 'grant' ? Number(adjustAmount) : -Number(adjustAmount))
-                  ).toLocaleString()} Kobans
+              <div className="flex justify-between gap-2 text-[var(--text-muted)]">
+                <span>Adjustment:</span>
+                <span
+                  className={`font-bold tabular-nums ${
+                    adjustMode === 'grant'
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-red-600 dark:text-red-400'
+                  }`}
+                >
+                  {adjustMode === 'grant' ? '+' : '-'}
+                  {parsedAmountNum.toLocaleString()} Kobans
+                </span>
+              </div>
+              <div className="flex justify-between gap-2 pt-2 border-t border-[var(--border)] text-[var(--text)]">
+                <span>New Balance Preview:</span>
+                <span className="font-extrabold tabular-nums">
+                  {previewNewBalance.toLocaleString()} Kobans
+                </span>
+              </div>
+              <div className="flex justify-between gap-2 pt-1 text-[var(--text-muted)]">
+                <span>Reason:</span>
+                <span className="text-[var(--text)] text-right break-words">
+                  {adjustReason.trim()}
                 </span>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 pt-2">
+            <div className="flex items-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => setAdjustConfirmOpen(false)}
-                className="btn-outline flex-1 py-2.5 rounded-xl text-xs font-bold cursor-pointer"
+                disabled={adjusting}
+                className="akb-btn akb-btn--glass flex-1"
               >
                 Cancel
               </button>
@@ -1111,10 +1644,14 @@ export function AdminKobansPage() {
                 type="button"
                 disabled={adjusting}
                 onClick={handleConfirmAdjustment}
-                className="relative overflow-hidden btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                className="relative overflow-hidden akb-btn akb-btn--primary flex-1"
               >
-                <Send size={14} />
-                <span>{adjusting ? 'Authorizing adjustment...' : 'Authorize Change'}</span>
+                <Send size={15} />
+                <span>
+                  {adjusting
+                    ? 'Applying...'
+                    : `Confirm ${adjustMode === 'grant' ? 'Add' : 'Deduct'}`}
+                </span>
                 {adjusting && <ButtonLineLoader />}
               </button>
             </div>
