@@ -4719,9 +4719,79 @@ ${allUrls
     });
   });
 
+  const computeBankHealthIntegrity = (store: D1StoreData): D1BankHealthIntegrityReport => {
+    const universities = store.universities || [];
+    const mcqs = store.mcqs || [];
+    const uniById = new Map<string, D1UniversityRow>();
+    const slugCounts = new Map<string, number>();
+
+    for (const u of universities) {
+      uniById.set(u.id, u);
+      const s = String(u.slug || '').toLowerCase();
+      slugCounts.set(s, (slugCounts.get(s) || 0) + 1);
+    }
+
+    const duplicateSlugs = Array.from(slugCounts.entries())
+      .filter(([, cnt]) => cnt > 1)
+      .map(([slug]) => slug);
+
+    let missingOrInvalidUniversityIdCount = 0;
+    let slugMismatchCount = 0;
+    const actualCountMap = new Map<string, number>();
+
+    for (const m of mcqs) {
+      const u = uniById.get(m.university_id);
+      if (!m.university_id || !u) {
+        missingOrInvalidUniversityIdCount++;
+      } else {
+        actualCountMap.set(u.id, (actualCountMap.get(u.id) || 0) + 1);
+        if (!m.university_slug || m.university_slug !== u.slug) {
+          slugMismatchCount++;
+        }
+      }
+    }
+
+    const countMismatchUniversities: Array<{
+      id: string;
+      name: string;
+      slug: string;
+      stored_count: number;
+      actual_count: number;
+    }> = [];
+
+    for (const u of universities) {
+      const actual = actualCountMap.get(u.id) || 0;
+      const stored = Number(u.mcq_count || 0);
+      if (stored !== actual) {
+        countMismatchUniversities.push({
+          id: u.id,
+          name: u.name,
+          slug: u.slug,
+          stored_count: stored,
+          actual_count: actual,
+        });
+      }
+    }
+
+    const isHealthy =
+      missingOrInvalidUniversityIdCount === 0 &&
+      slugMismatchCount === 0 &&
+      duplicateSlugs.length === 0 &&
+      countMismatchUniversities.length === 0;
+
+    return {
+      isHealthy,
+      missingOrInvalidUniversityIdCount,
+      slugMismatchCount,
+      duplicateSlugs,
+      countMismatchUniversities,
+    };
+  };
+
   // GET /api/mcqs/health — D1 Bank Health diagnostics
   app.get('/api/mcqs/health', (_req: Request, res: Response) => {
     const store = loadD1Store();
+    const integrity = computeBankHealthIntegrity(store);
     recalculateUniversityMcqCount(store);
     const universities = [...(store.universities || [])].sort(
       (a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0)
@@ -4759,8 +4829,206 @@ ${allUrls
       byDifficulty,
       byUniversity: universities,
       universities,
+      integrity,
+      imports: store.imports || [],
     });
   });
+
+  // POST /api/mcqs/health/fix — Repair integrity issues (slug mismatch, count drift, orphan MCQs)
+  app.post('/api/mcqs/health/fix', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    const store = loadD1Store();
+    if (!isAdminOrSuperadmin(user, store)) {
+      return res.status(user ? 403 : 401).json({
+        success: false,
+        error: 'Forbidden: Only admin and superadmin can run bank integrity repairs.',
+      });
+    }
+
+    const issueType = String(req.body?.issueType || 'all').trim();
+    const targetUniId = String(req.body?.targetUniversityId || '').trim();
+    const universities = store.universities || [];
+    const mcqs = store.mcqs || [];
+    const uniById = new Map(universities.map((u) => [u.id, u]));
+    const uniBySlug = new Map(universities.map((u) => [u.slug.toLowerCase(), u]));
+    let fixedCount = 0;
+
+    if (issueType === 'all' || issueType === 'slug_mismatch') {
+      for (const m of mcqs) {
+        const u = uniById.get(m.university_id);
+        if (u && m.university_slug !== u.slug) {
+          m.university_slug = u.slug;
+          fixedCount++;
+        }
+      }
+    }
+
+    if (issueType === 'all' || issueType === 'orphan_mcqs') {
+      const fallbackUni =
+        (targetUniId ? uniById.get(targetUniId) : undefined) ||
+        universities.find((u) => u.slug === 'fast-nuces') ||
+        universities[0];
+      for (const m of mcqs) {
+        if (!uniById.has(m.university_id)) {
+          const bySlug = m.university_slug ? uniBySlug.get(m.university_slug.toLowerCase()) : undefined;
+          const resolved = bySlug || fallbackUni;
+          if (resolved) {
+            m.university_id = resolved.id;
+            m.university_slug = resolved.slug;
+            fixedCount++;
+          }
+        }
+      }
+    }
+
+    if (issueType === 'all' || issueType === 'count_drift') {
+      recalculateUniversityMcqCount(store);
+      fixedCount++;
+    }
+
+    saveD1Store(store);
+    const integrity = computeBankHealthIntegrity(store);
+    return res.status(200).json({
+      success: true,
+      fixedCount,
+      integrity,
+    });
+  });
+
+  // GET /api/mcqs/export — Downloadable JSON or CSV backup of D1 MCQs
+  app.get('/api/mcqs/export', (req: Request, res: Response) => {
+    const store = loadD1Store();
+    const format = String(req.query.format || 'json').toLowerCase() === 'csv' ? 'csv' : 'json';
+    const uniFilter = String(req.query.university_id || '').trim();
+    const universities = store.universities || [];
+    const uniById = new Map(universities.map((u) => [u.id, u]));
+
+    const rows = (store.mcqs || [])
+      .filter((m) => !uniFilter || uniFilter === 'all' || m.university_id === uniFilter)
+      .map((m) => ({
+        id: m.id,
+        university_id: m.university_id,
+        university_slug: m.university_slug || uniById.get(m.university_id)?.slug || '',
+        import_batch_id: m.import_batch_id || '',
+        subject: m.subject,
+        topic: m.topic,
+        question: m.question,
+        option_a: m.option_a,
+        option_b: m.option_b,
+        option_c: m.option_c,
+        option_d: m.option_d,
+        correct_answer: m.correct_answer,
+        explanation: m.explanation || '',
+        difficulty: m.difficulty || 'medium',
+        created_at: m.created_at,
+      }));
+
+    if (format === 'csv') {
+      const headers = [
+        'id',
+        'university_id',
+        'university_slug',
+        'import_batch_id',
+        'subject',
+        'topic',
+        'question',
+        'option_a',
+        'option_b',
+        'option_c',
+        'option_d',
+        'correct_answer',
+        'explanation',
+        'difficulty',
+        'created_at',
+      ];
+      const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const csv = [
+        headers.join(','),
+        ...rows.map((r) => headers.map((h) => esc((r as Record<string, unknown>)[h])).join(',')),
+      ].join('\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="boardly_university_mcqs_backup.csv"');
+      return res.end(csv);
+    }
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="boardly_university_mcqs_backup.json"');
+    return res.end(
+      JSON.stringify(
+        {
+          exported_at: new Date().toISOString(),
+          total_universities: universities.length,
+          total_mcqs: rows.length,
+          universities,
+          mcqs: rows,
+        },
+        null,
+        2
+      )
+    );
+  });
+
+  // POST /api/mcqs/move — Transactional move of selected MCQs between universities
+  const handleMoveMcqs = async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    const store = loadD1Store();
+    if (!isAdminOrSuperadmin(user, store)) {
+      return res.status(user ? 403 : 401).json({
+        success: false,
+        error: 'Forbidden: Only admin and superadmin can move MCQs between universities.',
+      });
+    }
+
+    const body = req.body || {};
+    const toUniId = String(body.to_university_id || body.toUniversityId || body.university_id || '').trim();
+    const fromUniId = String(body.from_university_id || body.fromUniversityId || '').trim();
+    const ids: string[] = Array.isArray(body.mcq_ids || body.ids)
+      ? (body.mcq_ids || body.ids).map((id: unknown) => String(id || '').trim()).filter(Boolean)
+      : [];
+
+    if (!toUniId) {
+      return res.status(400).json({ success: false, error: 'Target university_id is required.' });
+    }
+    if (ids.length === 0) {
+      return res.status(400).json({ success: false, error: 'At least one MCQ ID is required to move.' });
+    }
+
+    const universities = store.universities || [];
+    const targetUni = universities.find((u) => u.id === toUniId || u.slug === toUniId);
+    if (!targetUni) {
+      return res.status(404).json({ success: false, error: 'Target university not found.' });
+    }
+
+    const idSet = new Set(ids);
+    const affectedUniIds = new Set<string>([targetUni.id]);
+    if (fromUniId) affectedUniIds.add(fromUniId);
+
+    let movedCount = 0;
+    for (const m of store.mcqs || []) {
+      if (!idSet.has(m.id)) continue;
+      if (fromUniId && m.university_id !== fromUniId) continue;
+      affectedUniIds.add(m.university_id);
+      m.university_id = targetUni.id;
+      m.university_slug = targetUni.slug;
+      movedCount++;
+    }
+
+    for (const uId of affectedUniIds) {
+      recalculateUniversityMcqCount(store, uId);
+    }
+    saveD1Store(store);
+
+    return res.status(200).json({
+      success: true,
+      movedCount,
+      toUniversityId: targetUni.id,
+      toUniversitySlug: targetUni.slug,
+      toUniversityName: targetUni.name,
+    });
+  };
+
+  app.post('/api/mcqs/move', handleMoveMcqs);
+  app.post('/api/mcqs/repair-move', handleMoveMcqs);
 
   // GET /api/mcqs/reports & POST /api/mcqs/reports & PATCH /api/mcqs/reports/:id
   app.get('/api/mcqs/reports', async (req: Request, res: Response) => {
@@ -4937,6 +5205,7 @@ ${allUrls
     const defaultSubject = String(body.default_subject || body.subject || '').trim();
     const defaultTopic = String(body.default_topic || body.topic || '').trim();
     const chunkOffset = Math.max(0, Number(body.chunk_offset ?? body.chunkOffset ?? 0));
+    const importBatchId = String(body.import_batch_id || body.importBatchId || `imp_${Date.now()}`).trim();
     const rawRows = Array.isArray(body.rows) ? body.rows : [];
 
     if (!universityIdOrSlug) {
@@ -4945,9 +5214,10 @@ ${allUrls
 
     if (!Array.isArray(store.universities)) store.universities = [];
     if (!Array.isArray(store.mcqs)) store.mcqs = [];
+    if (!Array.isArray(store.imports)) store.imports = [];
 
     const uni = store.universities.find(
-      (u) => u.id === universityIdOrSlug || u.slug.toLowerCase() === universityIdOrSlug.toLowerCase()
+      (u) => u.id === universityIdOrSlug || u.slug === universityIdOrSlug.toLowerCase()
     );
     if (!uni) {
       return res.status(404).json({ success: false, error: 'Target university not found in D1.' });
@@ -5008,10 +5278,19 @@ ${allUrls
         rawDiff === 'easy' || rawDiff === 'hard' ? rawDiff : 'medium';
       const explanation = String(r.explanation ?? r.explain ?? '').trim();
 
-      const id = String(r.id || `mcq_${uni.slug}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`).trim();
+      const rawId = String(r.id || `mcq_${uni.slug}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`).trim();
+      const existingIdx = store.mcqs.findIndex((m) => m.id === rawId);
+      // Never overwrite an MCQ belonging to a different university
+      const safeId =
+        existingIdx !== -1 && store.mcqs[existingIdx].university_id !== uni.id
+          ? `mcq_${uni.slug}_${rawId}`
+          : rawId;
+
       const newMcq: D1McqRow = {
-        id,
+        id: safeId,
         university_id: uni.id,
+        university_slug: uni.slug,
+        import_batch_id: importBatchId,
         subject,
         topic: topic || 'General',
         question,
@@ -5025,9 +5304,9 @@ ${allUrls
         created_at: nowIso,
       };
 
-      const existingIdx = store.mcqs.findIndex((m) => m.id === id);
-      if (existingIdx !== -1) {
-        store.mcqs[existingIdx] = newMcq;
+      const targetIdx = store.mcqs.findIndex((m) => m.id === safeId && m.university_id === uni.id);
+      if (targetIdx !== -1) {
+        store.mcqs[targetIdx] = newMcq;
       } else {
         store.mcqs.push(newMcq);
       }
@@ -5040,6 +5319,7 @@ ${allUrls
     return res.status(200).json({
       success: true,
       universityId: uni.id,
+      universitySlug: uni.slug,
       imported: importedCount,
       importedCount,
       failed: rowErrors.length,
@@ -5118,10 +5398,7 @@ ${allUrls
     let resolvedUniId = uniParam;
     if (uniParam && uniParam !== 'all') {
       const matched = universities.find(
-        (u) =>
-          u.id === uniParam ||
-          u.slug.toLowerCase() === uniParam.toLowerCase() ||
-          u.name.toLowerCase() === uniParam.toLowerCase()
+        (u) => u.id === uniParam || u.slug.toLowerCase() === uniParam.toLowerCase()
       );
       if (matched) resolvedUniId = matched.id;
     }
@@ -5183,6 +5460,8 @@ ${allUrls
       const base: Record<string, any> = {
         id: m.id,
         university_id: m.university_id,
+        university_slug: m.university_slug || '',
+        import_batch_id: m.import_batch_id || '',
         subject: m.subject,
         topic: m.topic,
         question: m.question,
@@ -5267,6 +5546,8 @@ ${allUrls
     const newMcq: D1McqRow = {
       id: String(body.id || `mcq_${uni.slug}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`).trim(),
       university_id: uni.id,
+      university_slug: uni.slug,
+      import_batch_id: '',
       subject,
       topic,
       question,
@@ -5318,7 +5599,10 @@ ${allUrls
       const targetUni = (store.universities || []).find(
         (u) => u.id === body.university_id || u.slug === body.university_id
       );
-      if (targetUni) mcq.university_id = targetUni.id;
+      if (targetUni) {
+        mcq.university_id = targetUni.id;
+        mcq.university_slug = targetUni.slug;
+      }
     }
     if (body.subject !== undefined) mcq.subject = String(body.subject).trim() || mcq.subject;
     if (body.topic !== undefined) mcq.topic = String(body.topic).trim() || 'General';
@@ -5380,171 +5664,6 @@ ${allUrls
     return res.status(200).json({
       success: true,
       deletedId: mcqId,
-    });
-  });
-
-  // ===========================================================================
-  // /api/admin/legacy-bank/* — Old Admin Bank Backup/Export & Confirmed Delete
-  // ===========================================================================
-  app.get('/api/admin/legacy-bank/summary', async (req: Request, res: Response) => {
-    const user = await verifyFirebaseJwtZeroFirestore(req);
-    const store = loadD1Store();
-    if (!isAdminOrSuperadmin(user, store)) {
-      return res.status(user ? 403 : 401).json({
-        success: false,
-        error: 'Forbidden: Admin access required.',
-      });
-    }
-
-    const remainingLegacyQuestions = Array.isArray(store.questions) ? store.questions : [];
-    const bySubjectPool: Record<string, number> = {
-      mathematics: 0,
-      physics: 0,
-      chemistry: 0,
-      'computer-science': 0,
-      english: 0,
-      biology: 0,
-      'analytical-reasoning': 0,
-    };
-    for (const q of remainingLegacyQuestions) {
-      const sub = String(q.subject || 'mathematics').toLowerCase();
-      bySubjectPool[sub] = (bySubjectPool[sub] || 0) + 1;
-    }
-
-    const backupJsonPath = path.resolve(process.cwd(), 'data/backups/legacy_admin_bank_backup.json');
-    let backupMeta: Record<string, any> | null = null;
-    if (fs.existsSync(backupJsonPath)) {
-      try {
-        const parsed = JSON.parse(fs.readFileSync(backupJsonPath, 'utf8'));
-        backupMeta = {
-          exportedAt: parsed.exportedAt,
-          d1AdminBankQuestionCount: parsed.d1AdminBankQuestionCount,
-          legacySeedFileQuestionCount: parsed.legacySeedFileQuestionCount,
-          totalExportedRecords: parsed.totalExportedRecords,
-          subjectPoolCountsBeforeDelete: parsed.subjectPoolCountsBeforeDelete,
-          captainAndGrandLineUntouched: true,
-        };
-      } catch {
-        backupMeta = null;
-      }
-    }
-
-    const resolvedBackupSummary = store.legacyAdminBankBackupSummary || backupMeta;
-    const backupPools = resolvedBackupSummary?.subjectPoolCountsBeforeDelete || bySubjectPool;
-    const backupTotalCount = Number(resolvedBackupSummary?.totalExportedRecords ?? 57);
-
-    return res.status(200).json({
-      success: true,
-      totalToDelete: remainingLegacyQuestions.length,
-      remainingLegacyCount: remainingLegacyQuestions.length,
-      subjectPools: bySubjectPool,
-      subjectPoolCounts: bySubjectPool,
-      backupTotalCount,
-      backupPools,
-      alreadyPurged: remainingLegacyQuestions.length === 0,
-      purgedAt: store.legacyAdminBankPurgedAt || resolvedBackupSummary?.exportedAt || null,
-      backupSummary: resolvedBackupSummary,
-      backupJsonUrl: '/api/admin/legacy-bank/export?format=json',
-      backupCsvUrl: '/api/admin/legacy-bank/export?format=csv',
-      captainAndGrandLineUntouched: true,
-    });
-  });
-
-  app.get('/api/admin/legacy-bank/export', (req: Request, res: Response) => {
-    const format = String(req.query.format || 'json').toLowerCase() === 'csv' ? 'csv' : 'json';
-    const filePath = path.resolve(
-      process.cwd(),
-      `data/backups/legacy_admin_bank_backup.${format}`
-    );
-
-    if (fs.existsSync(filePath)) {
-      res.setHeader(
-        'Content-Type',
-        format === 'csv' ? 'text/csv; charset=utf-8' : 'application/json; charset=utf-8'
-      );
-      res.setHeader(
-        'Content-Disposition',
-        `attachment; filename="boardly_legacy_admin_bank_backup.${format}"`
-      );
-      return res.end(fs.readFileSync(filePath));
-    }
-
-    const store = loadD1Store();
-    const questions = Array.isArray(store.questions) ? store.questions : [];
-    if (format === 'csv') {
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader(
-        'Content-Disposition',
-        'attachment; filename="boardly_legacy_admin_bank_backup.csv"'
-      );
-      return res.end('id,subject,topic,question_text,options_json,correct_answer,explanation\n');
-    }
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader(
-      'Content-Disposition',
-      'attachment; filename="boardly_legacy_admin_bank_backup.json"'
-    );
-    return res.end(
-      JSON.stringify(
-        {
-          exportedAt: new Date().toISOString(),
-          scope: 'OLD_ADMIN_QUESTION_BANK_ONLY',
-          captainAndGrandLineUntouched: true,
-          questions,
-        },
-        null,
-        2
-      )
-    );
-  });
-
-  app.post('/api/admin/legacy-bank/delete-confirmed', async (req: Request, res: Response) => {
-    const user = await verifyFirebaseJwtZeroFirestore(req);
-    const store = loadD1Store();
-    if (!isAdminOrSuperadmin(user, store)) {
-      return res.status(user ? 403 : 401).json({
-        success: false,
-        error: 'Forbidden: Only admin and superadmin can delete the legacy Admin Question Bank.',
-      });
-    }
-
-    if (!req.body?.confirmed && !req.body?.confirm) {
-      return res.status(400).json({
-        success: false,
-        error: 'Explicit admin confirmation (confirmed: true) is required before deletion.',
-      });
-    }
-
-    const existingQuestions = Array.isArray(store.questions) ? store.questions : [];
-    const deletedCount = existingQuestions.length;
-    const zeroPools = {
-      mathematics: 0,
-      physics: 0,
-      chemistry: 0,
-      'computer-science': 0,
-      english: 0,
-      biology: 0,
-      'analytical-reasoning': 0,
-    };
-
-    store.questions = [];
-    store.questionsImportLog = [];
-    store.legacyAdminBankPurgedAt = new Date().toISOString();
-    store.legacyAdminBankBackupSummary = {
-      ...(store.legacyAdminBankBackupSummary || {}),
-      lastConfirmedDeleteCount: deletedCount,
-      subjectPoolCountsAfterDelete: zeroPools,
-      captainAndGrandLineUntouched: true,
-      purgedAt: store.legacyAdminBankPurgedAt,
-    };
-    saveD1Store(store);
-
-    return res.status(200).json({
-      success: true,
-      deletedCount,
-      subjectPoolCountsAfterDelete: zeroPools,
-      captainAndGrandLineUntouched: true,
-      purgedAt: store.legacyAdminBankPurgedAt,
     });
   });
 

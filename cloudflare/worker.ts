@@ -37,7 +37,6 @@ import {
   type D1McqRow,
   type D1McqReportRow,
 } from '../src/constants/d1Universities';
-import legacyBackupData from '../data/backups/legacy_admin_bank_backup.json';
 
 
 export interface Env {
@@ -4366,6 +4365,132 @@ ${urls
           return jsonResponse({ success: true, mcq: created }, 201, cors);
         }
 
+        // GET /api/mcqs/export
+        if (mcqSub === '/export' && req.method === 'GET') {
+          const format = (url.searchParams.get('format') || 'json').toLowerCase() === 'csv' ? 'csv' : 'json';
+          const uniFilter = (url.searchParams.get('university_id') || '').trim();
+          const [uniRes, mcqRes] = await Promise.all([
+            env.DB.prepare('SELECT * FROM universities ORDER BY sort_order ASC, name ASC').all<D1UniversityRow>(),
+            uniFilter && uniFilter !== 'all'
+              ? env.DB.prepare('SELECT * FROM mcqs WHERE university_id = ? ORDER BY created_at DESC').bind(uniFilter).all<D1McqRow>()
+              : env.DB.prepare('SELECT * FROM mcqs ORDER BY created_at DESC').all<D1McqRow>(),
+          ]);
+          const universities = uniRes.results || [];
+          const uniMap = new Map(universities.map((u) => [u.id, u.slug]));
+          const rows = (mcqRes.results || []).map((m) => ({
+            ...m,
+            university_slug: m.university_slug || uniMap.get(m.university_id) || '',
+            import_batch_id: m.import_batch_id || '',
+          }));
+          if (format === 'csv') {
+            const headers = [
+              'id',
+              'university_id',
+              'university_slug',
+              'import_batch_id',
+              'subject',
+              'topic',
+              'question',
+              'option_a',
+              'option_b',
+              'option_c',
+              'option_d',
+              'correct_answer',
+              'explanation',
+              'difficulty',
+              'created_at',
+            ];
+            const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+            const csv = [
+              headers.join(','),
+              ...rows.map((r) => headers.map((h) => esc((r as Record<string, unknown>)[h])).join(',')),
+            ].join('\n');
+            return new Response(csv, {
+              status: 200,
+              headers: {
+                ...cors,
+                'Content-Type': 'text/csv; charset=utf-8',
+                'Content-Disposition': 'attachment; filename="boardly_university_mcqs_backup.csv"',
+              },
+            });
+          }
+          return new Response(
+            JSON.stringify(
+              {
+                exported_at: new Date().toISOString(),
+                total_universities: universities.length,
+                total_mcqs: rows.length,
+                universities,
+                mcqs: rows,
+              },
+              null,
+              2
+            ),
+            {
+              status: 200,
+              headers: {
+                ...cors,
+                'Content-Type': 'application/json; charset=utf-8',
+                'Content-Disposition': 'attachment; filename="boardly_university_mcqs_backup.json"',
+              },
+            }
+          );
+        }
+
+        // POST /api/mcqs/move
+        if ((mcqSub === '/move' || mcqSub === '/repair-move') && req.method === 'POST') {
+          const adminUser = await verifyD1Admin();
+          if (!adminUser) {
+            return jsonResponse({ success: false, error: 'Forbidden' }, 403, cors);
+          }
+          const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+          const toUniId = String(body.to_university_id || body.toUniversityId || body.university_id || '').trim();
+          const ids: string[] = Array.isArray(body.mcq_ids || body.ids)
+            ? (body.mcq_ids || body.ids).map((x: unknown) => String(x || '').trim()).filter(Boolean)
+            : [];
+          if (!toUniId || ids.length === 0) {
+            return jsonResponse({ success: false, error: 'to_university_id and mcq_ids are required.' }, 400, cors);
+          }
+          const targetUni = await env.DB.prepare('SELECT * FROM universities WHERE id = ? OR slug = ? LIMIT 1')
+            .bind(toUniId, toUniId)
+            .first<D1UniversityRow>();
+          if (!targetUni) {
+            return jsonResponse({ success: false, error: 'Target university not found.' }, 404, cors);
+          }
+          const batchSize = 50;
+          for (let i = 0; i < ids.length; i += batchSize) {
+            const slice = ids.slice(i, i + batchSize);
+            const placeholders = slice.map(() => '?').join(',');
+            await env.DB.prepare(
+              `UPDATE mcqs SET university_id = ? WHERE id IN (${placeholders})`
+            )
+              .bind(targetUni.id, ...slice)
+              .run();
+          }
+          await recalculateAllD1UniCounts();
+          return jsonResponse(
+            {
+              success: true,
+              movedCount: ids.length,
+              toUniversityId: targetUni.id,
+              toUniversitySlug: targetUni.slug,
+              toUniversityName: targetUni.name,
+            },
+            200,
+            cors
+          );
+        }
+
+        // POST /api/mcqs/health/fix
+        if (mcqSub === '/health/fix' && req.method === 'POST') {
+          const adminUser = await verifyD1Admin();
+          if (!adminUser) {
+            return jsonResponse({ success: false, error: 'Forbidden' }, 403, cors);
+          }
+          await recalculateAllD1UniCounts();
+          return jsonResponse({ success: true, fixedCount: 1 }, 200, cors);
+        }
+
         // PUT / PATCH / DELETE /api/mcqs/:id
         const mcqId = decodeURIComponent(mcqSub.slice(1));
         if (mcqId) {
@@ -4446,144 +4571,6 @@ ${urls
         }
 
         return jsonResponse({ success: false, error: 'MCQ endpoint not found.' }, 404, cors);
-      }
-
-      // ── /api/admin/legacy-bank/* ──────────────────────────────────────────
-      if (url.pathname.startsWith('/api/admin/legacy-bank')) {
-        const legSub = url.pathname.slice('/api/admin/legacy-bank'.length).replace(/\/+$/, '') || '/';
-
-        if (legSub === '/export' && req.method === 'GET') {
-          const format = (url.searchParams.get('format') || 'json').toLowerCase() === 'csv' ? 'csv' : 'json';
-          const records = Array.isArray((legacyBackupData as any)?.questions)
-            ? (legacyBackupData as any).questions
-            : [];
-          if (format === 'csv') {
-            const headers = [
-              'id',
-              'source',
-              'bank_id',
-              'subject',
-              'topic',
-              'question',
-              'option_a',
-              'option_b',
-              'option_c',
-              'option_d',
-              'correct_answer',
-              'explanation',
-              'difficulty',
-              'created_at',
-            ];
-            const esc = (v: any) => {
-              const s = String(v ?? '');
-              return s.includes(',') || s.includes('"') || s.includes('\n')
-                ? `"${s.replace(/"/g, '""')}"`
-                : s;
-            };
-            const csv = [
-              headers.join(','),
-              ...records.map((r: any) => headers.map((h) => esc(r[h])).join(',')),
-            ].join('\n');
-            return new Response(csv, {
-              status: 200,
-              headers: {
-                ...cors,
-                'Content-Type': 'text/csv; charset=utf-8',
-                'Content-Disposition': 'attachment; filename="boardly_legacy_admin_bank_backup.csv"',
-              },
-            });
-          }
-          return new Response(JSON.stringify(legacyBackupData, null, 2), {
-            status: 200,
-            headers: {
-              ...cors,
-              'Content-Type': 'application/json; charset=utf-8',
-              'Content-Disposition': 'attachment; filename="boardly_legacy_admin_bank_backup.json"',
-            },
-          });
-        }
-
-        const adminUser = await verifyD1Admin();
-        if (!adminUser) {
-          return jsonResponse({ success: false, error: 'Forbidden' }, 403, cors);
-        }
-
-        if (legSub === '/summary' && req.method === 'GET') {
-          const cntRow = await env.DB.prepare('SELECT COUNT(*) as cnt FROM questions').first<{ cnt: number }>();
-          const remaining = Number(cntRow?.cnt || 0);
-          const zeroPools = {
-            mathematics: 0,
-            physics: 0,
-            chemistry: 0,
-            'computer-science': 0,
-            english: 0,
-            biology: 0,
-            'analytical-reasoning': 0,
-          };
-          const backupPools = (legacyBackupData as any)?.subjectPoolCountsBeforeDelete || zeroPools;
-          const backupTotalCount = Number((legacyBackupData as any)?.totalExportedRecords ?? 57);
-          const purgedAt = (legacyBackupData as any)?.exportedAt || new Date().toISOString();
-          return jsonResponse(
-            {
-              success: true,
-              totalToDelete: remaining,
-              remainingLegacyCount: remaining,
-              subjectPools: zeroPools,
-              subjectPoolCounts: zeroPools,
-              backupTotalCount,
-              backupPools,
-              alreadyPurged: remaining === 0,
-              purgedAt,
-              backupSummary: {
-                exportedAt: (legacyBackupData as any)?.exportedAt,
-                d1AdminBankQuestionCount: (legacyBackupData as any)?.d1AdminBankQuestionCount ?? 42,
-                legacySeedFileQuestionCount: (legacyBackupData as any)?.legacySeedFileQuestionCount ?? 15,
-                totalExportedRecords: backupTotalCount,
-                subjectPoolCountsBeforeDelete: backupPools,
-                captainAndGrandLineUntouched: true,
-              },
-              backupJsonUrl: '/api/admin/legacy-bank/export?format=json',
-              backupCsvUrl: '/api/admin/legacy-bank/export?format=csv',
-              captainAndGrandLineUntouched: true,
-            },
-            200,
-            cors
-          );
-        }
-
-        if (legSub === '/delete-confirmed' && req.method === 'POST') {
-          const body = (await req.json().catch(() => ({}))) as { confirmed?: boolean; confirm?: boolean };
-          if (!body.confirmed && !body.confirm) {
-            return jsonResponse({ success: false, error: 'Confirmation required.' }, 400, cors);
-          }
-          const cntRow = await env.DB.prepare('SELECT COUNT(*) as cnt FROM questions').first<{ cnt: number }>();
-          await env.DB.batch([
-            env.DB.prepare('DELETE FROM questions'),
-            env.DB.prepare('DELETE FROM questions_import_log'),
-          ]);
-          const purgedAt = new Date().toISOString();
-          const zeroPools = {
-            mathematics: 0,
-            physics: 0,
-            chemistry: 0,
-            'computer-science': 0,
-            english: 0,
-            biology: 0,
-            'analytical-reasoning': 0,
-          };
-          return jsonResponse(
-            {
-              success: true,
-              deletedCount: Number(cntRow?.cnt || 0),
-              remainingCount: 0,
-              subjectPoolCountsAfterDelete: zeroPools,
-              captainAndGrandLineUntouched: true,
-              purgedAt,
-            },
-            200,
-            cors
-          );
-        }
       }
     }
 

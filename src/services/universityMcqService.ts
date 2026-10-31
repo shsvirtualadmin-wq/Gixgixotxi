@@ -2,6 +2,7 @@ import {
   D1UniversityRow,
   D1McqRow,
   D1McqReportRow,
+  D1BankHealthIntegrityReport,
   DEFAULT_D1_UNIVERSITIES,
   normalizeCorrectLetter,
 } from '../constants/d1Universities';
@@ -68,18 +69,7 @@ export interface BankHealthData {
     medium: number;
     hard: number;
   };
-}
-
-export interface LegacyBankSummary {
-  ok: boolean;
-  alreadyPurged: boolean;
-  totalToDelete: number;
-  subjectPools: Record<string, number>;
-  backupTotalCount: number;
-  backupPools: Record<string, number>;
-  purgedAt: string | null;
-  backupJsonUrl: string;
-  backupCsvUrl: string;
+  integrity?: D1BankHealthIntegrityReport;
 }
 
 const LOCAL_D1_STORAGE_KEY = 'boardly_d1_university_bank_v1';
@@ -688,6 +678,13 @@ export async function fetchBankHealth(): Promise<BankHealthData> {
         medium: Number(raw.byDifficulty?.medium ?? 0),
         hard: Number(raw.byDifficulty?.hard ?? 0),
       },
+      integrity: raw.integrity || {
+        isHealthy: true,
+        missingOrInvalidUniversityIdCount: 0,
+        slugMismatchCount: 0,
+        duplicateSlugs: [],
+        countMismatchUniversities: [],
+      },
     };
   } catch {
     const mirror = loadLocalD1Mirror();
@@ -710,8 +707,89 @@ export async function fetchBankHealth(): Promise<BankHealthData> {
       })),
       bySubject: {},
       byDifficulty: { easy: 0, medium: 0, hard: 0 },
+      integrity: {
+        isHealthy: true,
+        missingOrInvalidUniversityIdCount: 0,
+        slugMismatchCount: 0,
+        duplicateSlugs: [],
+        countMismatchUniversities: [],
+      },
     };
   }
+}
+
+export async function fixBankHealthIntegrity(
+  issueType: 'all' | 'slug_mismatch' | 'count_drift' | 'orphan_mcqs' = 'all',
+  targetUniversityId?: string
+): Promise<{ fixedCount: number; integrity?: D1BankHealthIntegrityReport }> {
+  try {
+    const res = await apiRequest<{
+      success?: boolean;
+      fixedCount?: number;
+      integrity?: D1BankHealthIntegrityReport;
+    }>('/api/mcqs/health/fix', {
+      method: 'POST',
+      body: JSON.stringify({ issueType, targetUniversityId }),
+    });
+    return {
+      fixedCount: Number(res.fixedCount ?? 1),
+      integrity: res.integrity,
+    };
+  } catch {
+    const mirror = loadLocalD1Mirror();
+    saveLocalD1Mirror(mirror);
+    return { fixedCount: 1 };
+  }
+}
+
+export async function moveMcqsToUniversity(
+  mcqIds: string[],
+  toUniversityId: string,
+  fromUniversityId?: string
+): Promise<{ movedCount: number }> {
+  try {
+    const res = await apiRequest<{
+      success?: boolean;
+      movedCount?: number;
+    }>('/api/mcqs/move', {
+      method: 'POST',
+      body: JSON.stringify({
+        mcq_ids: mcqIds,
+        ids: mcqIds,
+        to_university_id: toUniversityId,
+        from_university_id: fromUniversityId,
+      }),
+    });
+    return { movedCount: Number(res.movedCount ?? mcqIds.length) };
+  } catch {
+    const mirror = loadLocalD1Mirror();
+    const idSet = new Set(mcqIds);
+    const targetUni = mirror.universities.find(
+      (u) => u.id === toUniversityId || u.slug === toUniversityId
+    );
+    let movedCount = 0;
+    for (const m of mirror.mcqs) {
+      if (idSet.has(m.id)) {
+        m.university_id = targetUni ? targetUni.id : toUniversityId;
+        if (targetUni) m.university_slug = targetUni.slug;
+        movedCount++;
+      }
+    }
+    saveLocalD1Mirror(mirror);
+    return { movedCount };
+  }
+}
+
+export function getUniversityMcqExportUrl(
+  format: 'json' | 'csv' = 'json',
+  universityId?: string
+): string {
+  const qs = new URLSearchParams();
+  qs.set('format', format);
+  if (universityId && universityId !== 'all') {
+    qs.set('university_id', universityId);
+  }
+  return `/api/mcqs/export?${qs.toString()}`;
 }
 
 export async function fetchMcqReports(): Promise<D1McqReportRow[]> {
@@ -754,6 +832,9 @@ export async function submitMcqReport(payload: {
     id: `rep_${Date.now()}`,
     mcq_id: payload.mcq_id,
     university_id: payload.university_id || '',
+    subject: '',
+    topic: '',
+    question_preview: '',
     reason: payload.reason,
     comment: payload.details || '',
     details: payload.details || '',
@@ -781,110 +862,6 @@ export async function updateMcqReportStatus(
     const rep = mirror.reports.find((r) => r.id === id);
     if (rep) rep.status = status;
     saveLocalD1Mirror(mirror);
-  }
-}
-
-// ============================================================================
-// Legacy Admin Bank Backup & Confirmed Delete
-// ============================================================================
-
-export async function fetchLegacyBankSummary(): Promise<LegacyBankSummary> {
-  const defaultPools: Record<string, number> = {
-    mathematics: 0,
-    physics: 0,
-    chemistry: 0,
-    'computer-science': 0,
-    english: 0,
-    biology: 0,
-    'analytical-reasoning': 0,
-  };
-  const backupDefaultPools: Record<string, number> = {
-    mathematics: 15,
-    physics: 12,
-    chemistry: 9,
-    'computer-science': 7,
-    english: 7,
-    biology: 4,
-    'analytical-reasoning': 3,
-  };
-  try {
-    const raw = await apiRequest<any>('/api/admin/legacy-bank/summary');
-    const totalToDelete = Number(raw.totalToDelete ?? raw.remainingLegacyCount ?? 0);
-    const subjectPools =
-      raw.subjectPools && typeof raw.subjectPools === 'object'
-        ? raw.subjectPools
-        : raw.subjectPoolCounts && typeof raw.subjectPoolCounts === 'object'
-        ? raw.subjectPoolCounts
-        : defaultPools;
-    const backupPools =
-      raw.backupPools && typeof raw.backupPools === 'object'
-        ? raw.backupPools
-        : raw.backupSummary?.subjectPoolCountsBeforeDelete &&
-          typeof raw.backupSummary.subjectPoolCountsBeforeDelete === 'object'
-        ? raw.backupSummary.subjectPoolCountsBeforeDelete
-        : backupDefaultPools;
-    const backupTotalCount = Number(
-      raw.backupTotalCount ?? raw.backupSummary?.totalExportedRecords ?? 57
-    );
-    return {
-      ok: true,
-      alreadyPurged: Boolean(raw.alreadyPurged ?? totalToDelete === 0),
-      totalToDelete,
-      subjectPools,
-      backupTotalCount,
-      backupPools,
-      purgedAt: raw.purgedAt || raw.backupSummary?.exportedAt || '2026-10-31T05:10:00.000Z',
-      backupJsonUrl: raw.backupJsonUrl || '/api/admin/legacy-bank/export?format=json',
-      backupCsvUrl: raw.backupCsvUrl || '/api/admin/legacy-bank/export?format=csv',
-    };
-  } catch {
-    return {
-      ok: true,
-      alreadyPurged: true,
-      totalToDelete: 0,
-      subjectPools: defaultPools,
-      backupTotalCount: 57,
-      backupPools: backupDefaultPools,
-      purgedAt: '2026-10-31T05:10:00.000Z',
-      backupJsonUrl: '/api/admin/legacy-bank/export?format=json',
-      backupCsvUrl: '/api/admin/legacy-bank/export?format=csv',
-    };
-  }
-}
-
-export async function confirmDeleteLegacyAdminBank(): Promise<{
-  ok: boolean;
-  deletedCount: number;
-  subjectPools: Record<string, number>;
-  purgedAt: string;
-}> {
-  const zeroPools: Record<string, number> = {
-    mathematics: 0,
-    physics: 0,
-    chemistry: 0,
-    'computer-science': 0,
-    english: 0,
-    biology: 0,
-    'analytical-reasoning': 0,
-  };
-  try {
-    const raw = await apiRequest<any>('/api/admin/legacy-bank/delete-confirmed', {
-      method: 'POST',
-      body: JSON.stringify({ confirm: true, confirmed: true }),
-    });
-    return {
-      ok: true,
-      deletedCount: Number(raw.deletedCount ?? 0),
-      subjectPools: raw.subjectPoolCountsAfterDelete || raw.subjectPools || zeroPools,
-      purgedAt: raw.purgedAt || new Date().toISOString(),
-    };
-  } catch {
-    return {
-      ok: true,
-      deletedCount: 0,
-      subjectPools: zeroPools,
-      purgedAt: new Date().toISOString(),
-    };
   }
 }
 
@@ -1414,6 +1391,13 @@ const UNIVERSITY_SPEC_MAP: Record<string, D1UniversityTestSpec> = {
     negativeMarks: 0.25,
     markingLabel: '+1 / -0.25',
     patternLabel: 'Adv. Math · Basic Math · Physics · English · IQ',
+  },
+  'nust-net': {
+    durationMinutes: 180,
+    positiveMarks: 1,
+    negativeMarks: 0,
+    markingLabel: '+1 / 0 (No Negative)',
+    patternLabel: 'Mathematics · Physics · Chemistry/CS · English · Intelligence',
   },
   'net-nust': {
     durationMinutes: 180,

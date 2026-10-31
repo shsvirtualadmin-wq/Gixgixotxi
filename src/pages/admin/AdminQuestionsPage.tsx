@@ -1,33 +1,57 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
-  Search,
   Plus,
-  Edit2,
-  Trash2,
-  RefreshCw,
-  X,
-  Check,
   Upload,
-  Download,
-  Flag,
-  CheckCircle2,
-  Database,
-  ChevronUp,
-  ChevronDown,
+  Trash2,
+  Edit3,
+  Check,
+  X,
+  Search,
   AlertTriangle,
-  Building2,
+  CheckCircle2,
   FileSpreadsheet,
-  FileText,
-  Play,
-  RotateCcw,
-  ShieldCheck,
-  Sparkles,
-  BookOpen,
+  Link2,
+  ArrowUp,
+  ArrowDown,
+  Eye,
+  Flag,
+  Activity,
+  Building2,
   Layers,
+  Download,
+  RefreshCw,
+  Play,
+  FileText,
+  Sparkles,
+  MoreHorizontal,
+  Filter,
+  ChevronDown,
+  ChevronUp,
+  ArrowRightLeft,
+  GripVertical,
+  HelpCircle,
+  Copy,
 } from 'lucide-react';
-import { MathText, validateMath } from '@/components/ui/MathText';
-import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
-import { D1UniversityRow, D1McqRow, D1McqReportRow } from '@/constants/d1Universities';
+import {
+  D1UniversityRow,
+  D1McqRow,
+  D1McqReportRow,
+  PRE_SEEDED_UNIVERSITIES,
+} from '../../constants/d1Universities';
+
+function getUniversityInitials(name: string): string {
+  const trimmed = String(name || '').trim();
+  const preset = PRE_SEEDED_UNIVERSITIES.find(
+    (u) => u.name.toLowerCase() === trimmed.toLowerCase()
+  );
+  if (preset?.shortName) return preset.shortName.slice(0, 4).toUpperCase();
+  const words = trimmed.replace(/[()]/g, '').split(/[\s-]+/).filter(Boolean);
+  if (words.length === 1) return words[0].slice(0, 4).toUpperCase();
+  return words
+    .slice(0, 3)
+    .map((w) => w[0]?.toUpperCase() || '')
+    .join('');
+}
 import {
   fetchUniversities,
   createUniversity,
@@ -41,2289 +65,3539 @@ import {
   deleteMcq,
   bulkDeleteMcqs,
   fetchBankHealth,
+  fixBankHealthIntegrity,
+  moveMcqsToUniversity,
+  getUniversityMcqExportUrl,
   fetchMcqReports,
   updateMcqReportStatus,
-  fetchLegacyBankSummary,
-  confirmDeleteLegacyAdminBank,
   convertGoogleSheetToCsvUrl,
   parseImportInput,
   runChunkedMcqImport,
-  type BankHealthData,
-  type LegacyBankSummary,
-  type ResumableImportState,
-  type ChunkImportProgress,
-  type ImportRowError,
-} from '@/services/universityMcqService';
+  ParsedImportMcqRow,
+  ImportRowError,
+  ChunkImportProgress,
+  ResumableImportState,
+  BankHealthData,
+} from '../../services/universityMcqService';
+import { MathText, validateMath } from '../../components/ui/MathText';
+import { LineLoader, ButtonLineLoader } from '../../components/ui/LineLoader';
+import { useAuth } from '../../contexts/AuthContext';
 
-interface LatexSnippet {
-  label: string;
-  snippet: string;
-  category: 'math' | 'greek' | 'chem' | 'calc';
-}
+type ActiveTab = 'questions' | 'health' | 'reports';
+type BulkSourceTab = 'csv' | 'gsheet' | 'paste';
+type BulkWizardStep = 1 | 2 | 3;
 
-const LATEX_SNIPPETS: LatexSnippet[] = [
-  { label: 'x²', snippet: '$x^2$', category: 'math' },
-  { label: 'xₙ', snippet: '$x_n$', category: 'math' },
-  { label: 'a/b', snippet: '$\\frac{a}{b}$', category: 'math' },
-  { label: '√x', snippet: '$\\sqrt{x}$', category: 'math' },
-  { label: '±', snippet: '$\\pm$', category: 'math' },
-  { label: '×', snippet: '$\\times$', category: 'math' },
-  { label: '≤', snippet: '$\\le$', category: 'math' },
-  { label: '≥', snippet: '$\\ge$', category: 'math' },
-  { label: '≠', snippet: '$\\ne$', category: 'math' },
-  { label: '∞', snippet: '$\\infty$', category: 'math' },
-  { label: 'α', snippet: '$\\alpha$', category: 'greek' },
-  { label: 'β', snippet: '$\\beta$', category: 'greek' },
-  { label: 'θ', snippet: '$\\theta$', category: 'greek' },
-  { label: 'π', snippet: '$\\pi$', category: 'greek' },
-  { label: 'Δ', snippet: '$\\Delta$', category: 'greek' },
-  { label: 'λ', snippet: '$\\lambda$', category: 'greek' },
-  { label: '∫', snippet: '$\\int_{a}^{b} f(x)\\,dx$', category: 'calc' },
-  { label: 'lim', snippet: '$\\lim_{x \\to 0}$', category: 'calc' },
-  { label: '∑', snippet: '$\\sum_{i=1}^{n}$', category: 'calc' },
-  { label: '→ (rxn)', snippet: '$\\ce{A + B -> C}$', category: 'chem' },
-  { label: '⇌ (eq)', snippet: '$\\ce{A + B <=> C + D}$', category: 'chem' },
-  { label: 'H₂O', snippet: '$\\ce{H2O}$', category: 'chem' },
-  { label: 'H₂SO₄', snippet: '$\\ce{H2SO4}$', category: 'chem' },
-  { label: 'Ion', snippet: '$\\ce{SO4^{2-}}$', category: 'chem' },
+const LATEX_SNIPPETS: Array<{ label: string; snippet: string; title: string }> = [
+  { label: 'a/b', snippet: '$\\frac{a}{b}$', title: 'Fraction' },
+  { label: '√x', snippet: '$\\sqrt{x}$', title: 'Square root' },
+  { label: 'x²', snippet: '$x^{2}$', title: 'Superscript' },
+  { label: 'xᵢ', snippet: '$x_{i}$', title: 'Subscript' },
+  { label: 'H₂O', snippet: '$\\ce{H2O}$', title: 'Chemistry formula (mhchem)' },
+  { label: '→', snippet: '$\\ce{->}$', title: 'Reaction arrow' },
+  { label: '⇌', snippet: '$\\ce{<=>}$', title: 'Equilibrium arrow' },
+  { label: 'Δ', snippet: '$\\Delta$', title: 'Delta' },
+  { label: '∫', snippet: '$\\int_{a}^{b}$', title: 'Integral' },
+  { label: '∑', snippet: '$\\sum_{i=1}^{n}$', title: 'Summation' },
+  { label: 'θ', snippet: '$\\theta$', title: 'Theta' },
+  { label: 'π', snippet: '$\\pi$', title: 'Pi' },
 ];
 
-const DEFAULT_SUBJECT_SUGGESTIONS = [
+const COMMON_SUBJECTS = [
   'Mathematics',
   'Physics',
   'Chemistry',
-  'Computer Science',
-  'English',
   'Biology',
+  'English',
+  'Computer Science',
+  'Intelligence / IQ',
   'Analytical Reasoning',
-  'IQ & Logical Reasoning',
+  'Quantitative Reasoning',
 ];
 
-const LEGACY_POOL_LABELS: Array<{ slug: string; label: string }> = [
-  { slug: 'mathematics', label: 'Mathematics' },
-  { slug: 'physics', label: 'Physics' },
-  { slug: 'chemistry', label: 'Chemistry' },
-  { slug: 'computer-science', label: 'Computer Science' },
-  { slug: 'english', label: 'English' },
-  { slug: 'biology', label: 'Biology' },
-  { slug: 'analytical-reasoning', label: 'Analytical Reasoning' },
-];
+const SAMPLE_CSV_TEMPLATE = `subject,topic,question,option_a,option_b,option_c,option_d,correct_answer,explanation,difficulty
+Physics,Kinematics,"A projectile is launched at $45^{\\circ}$ with speed $v_0$. What is its horizontal range?",$\\frac{v_0^2}{g}$,$\\frac{v_0^2}{2g}$,$\\frac{2v_0^2}{g}$,$\\frac{v_0}{g}$,A,"At $\\theta = 45^{\\circ}$, $\\sin(2\\theta) = 1$, so $R = \\frac{v_0^2}{g}$.",medium
+Chemistry,Stoichiometry,"Identify the oxidizing agent in $\\ce{Zn + CuSO4 -> ZnSO4 + Cu}$.",$\\ce{Zn}$,$\\ce{Cu^{2+}}$,$\\ce{SO4^{2-}}$,$\\ce{Zn^{2+}}$,B,"$\\ce{Cu^{2+}}$ gains electrons and is reduced, so it acts as the oxidizing agent.",easy`;
 
-export function AdminQuestionsPage() {
-  // ── Top-level Tabs ──
-  const [activeTab, setActiveTab] = useState<'questions' | 'health' | 'reports'>('questions');
+interface ComboboxFieldProps {
+  label: string;
+  value: string;
+  onChange: (val: string) => void;
+  options: string[];
+  placeholder?: string;
+}
 
-  // ── Universities State (D1) ──
+const ComboboxField: React.FC<ComboboxFieldProps> = ({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder = 'Select or type…',
+}) => {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
+  const normalizedQuery = value.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    const unique = Array.from(new Set(options.filter(Boolean)));
+    if (!normalizedQuery) return unique.slice(0, 12);
+    return unique
+      .filter((item) => item.toLowerCase().includes(normalizedQuery))
+      .slice(0, 12);
+  }, [options, normalizedQuery]);
+
+  const exactExists = useMemo(
+    () =>
+      Boolean(
+        normalizedQuery &&
+          options.some((item) => item.trim().toLowerCase() === normalizedQuery)
+      ),
+    [options, normalizedQuery]
+  );
+
+  return (
+    <div ref={containerRef} className="relative min-w-0">
+      <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
+        {label}
+      </label>
+      <div className="relative">
+        <input
+          type="text"
+          value={value}
+          onFocus={() => setOpen(true)}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setOpen(true);
+          }}
+          placeholder={placeholder}
+          className="aqb-input pr-9"
+        />
+        <button
+          type="button"
+          onClick={() => setOpen((prev) => !prev)}
+          aria-label={`Toggle ${label} suggestions`}
+          className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)]"
+        >
+          <ChevronDown className="w-4 h-4" />
+        </button>
+      </div>
+
+      {open && (filtered.length > 0 || value.trim().length > 0) && (
+        <div className="aqb-dropdown-menu left-0 right-0 max-h-52 overflow-y-auto mt-1">
+          {filtered.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => {
+                onChange(opt);
+                setOpen(false);
+              }}
+              className="aqb-dropdown-item justify-between"
+            >
+              <span className="truncate">{opt}</span>
+              {value.trim().toLowerCase() === opt.toLowerCase() && (
+                <Check className="w-4 h-4 text-[var(--accent)] shrink-0" />
+              )}
+            </button>
+          ))}
+          {value.trim().length > 0 && !exactExists && (
+            <button
+              type="button"
+              onClick={() => {
+                onChange(value.trim());
+                setOpen(false);
+              }}
+              className="aqb-dropdown-item text-[var(--accent)] font-bold"
+            >
+              <Plus className="w-4 h-4 shrink-0" />
+              <span className="truncate">Create new: &ldquo;{value.trim()}&rdquo;</span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const AdminQuestionsPage: React.FC = () => {
+  const { profileLoading, isAdmin } = useAuth();
+
+  // Navigation & Primary Menus
+  const [activeTab, setActiveTab] = useState<ActiveTab>('questions');
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [overflowMenuOpen, setOverflowMenuOpen] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement | null>(null);
+  const overflowMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Core Data State
   const [universities, setUniversities] = useState<D1UniversityRow[]>([]);
-  const [selectedUniId, setSelectedUniId] = useState<string>('');
-  const [loadingUnis, setLoadingUnis] = useState<boolean>(true);
-
-  // ── University Manager Modal State ──
-  const [uniModalOpen, setUniModalOpen] = useState(false);
-  const [editingUni, setEditingUni] = useState<D1UniversityRow | null>(null);
-  const [uniFormName, setUniFormName] = useState('');
-  const [uniFormSlug, setUniFormSlug] = useState('');
-  const [uniFormLogo, setUniFormLogo] = useState('');
-  const [uniSaving, setUniSaving] = useState(false);
-
-  // ── Filters & Hierarchy State ──
-  const [selectedSubject, setSelectedSubject] = useState<string>('all');
-  const [selectedTopic, setSelectedTopic] = useState<string>('all');
-  const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [pageIndex, setPageIndex] = useState<number>(0);
-  const pageSize = 25;
-
-  // ── Topics tree for selected university ──
-  const [uniSubjectsTree, setUniSubjectsTree] = useState<
+  const [selectedUniId, setSelectedUniId] = useState<string>('uni_fast-nuces');
+  const [mcqs, setMcqs] = useState<D1McqRow[]>([]);
+  const [totalMcqsForFilter, setTotalMcqsForFilter] = useState<number>(0);
+  const [mcqPageOffset, setMcqPageOffset] = useState<number>(0);
+  const [loadingMoreMcqs, setLoadingMoreMcqs] = useState(false);
+  const [uniTopics, setUniTopics] = useState<
     Array<{ subject: string; total: number; topics: Array<{ topic: string; count: number }> }>
   >([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [mcqsLoading, setMcqsLoading] = useState<boolean>(false);
 
-  // ── MCQs List State (D1) ──
-  const [mcqs, setMcqs] = useState<D1McqRow[]>([]);
-  const [totalMcqs, setTotalMcqs] = useState<number>(0);
-  const [loadingMcqs, setLoadingMcqs] = useState<boolean>(false);
+  // Filters & Search (Collapsed by default)
+  const [filterSubject, setFilterSubject] = useState<string>('all');
+  const [filterTopic, setFilterTopic] = useState<string>('all');
+  const [filterDifficulty, setFilterDifficulty] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [filterSheetOpen, setFilterSheetOpen] = useState<boolean>(false);
+
+  // MCQ Card Expansion & Multi-Select
+  const [expandedMcqId, setExpandedMcqId] = useState<string | null>(null);
   const [selectedMcqIds, setSelectedMcqIds] = useState<Set<string>>(new Set());
 
-  // ── Single MCQ Add/Edit Modal State ──
-  const [mcqModalOpen, setMcqModalOpen] = useState<boolean>(false);
-  const [editingMcq, setEditingMcq] = useState<D1McqRow | null>(null);
-  const [formUniId, setFormUniId] = useState<string>('');
-  const [formSubject, setFormSubject] = useState<string>('Mathematics');
-  const [formTopic, setFormTopic] = useState<string>('General');
-  const [formDifficulty, setFormDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
-  const [formQuestion, setFormQuestion] = useState<string>('');
-  const [formOptionA, setFormOptionA] = useState<string>('');
-  const [formOptionB, setFormOptionB] = useState<string>('');
-  const [formOptionC, setFormOptionC] = useState<string>('');
-  const [formOptionD, setFormOptionD] = useState<string>('');
-  const [formCorrect, setFormCorrect] = useState<'A' | 'B' | 'C' | 'D'>('A');
-  const [formExplanation, setFormExplanation] = useState<string>('');
-  const [savingMcq, setSavingMcq] = useState<boolean>(false);
-  const [activeField, setActiveField] = useState<
-    'question' | 'option_a' | 'option_b' | 'option_c' | 'option_d' | 'explanation'
-  >('question');
+  // Destructive & Move Confirmation Modals
+  const [confirmDeleteMcqModal, setConfirmDeleteMcqModal] = useState<{
+    ids: string[];
+    label: string;
+  } | null>(null);
+  const [deletingMcqs, setDeletingMcqs] = useState(false);
+  const [moveModalOpen, setMoveModalOpen] = useState(false);
+  const [moveTargetUniId, setMoveTargetUniId] = useState<string>('');
+  const [movingMcqs, setMovingMcqs] = useState(false);
 
-  // ── Bulk Import Modal State (Unlimited Chunked D1 Importer) ──
-  const [importModalOpen, setImportModalOpen] = useState<boolean>(false);
-  const [importSourceType, setImportSourceType] = useState<'csv' | 'gsheet' | 'paste'>('csv');
-  const [importUniId, setImportUniId] = useState<string>('');
-  const [importSubject, setImportSubject] = useState<string>('Mathematics');
-  const [importTopic, setImportTopic] = useState<string>('General');
-  const [importSheetUrl, setImportSheetUrl] = useState<string>('');
-  const [importRawText, setImportRawText] = useState<string>('');
-  const [importFileName, setImportFileName] = useState<string>('');
-  const [fetchingSheet, setFetchingSheet] = useState<boolean>(false);
-  const [importing, setImporting] = useState<boolean>(false);
+  // University Switcher & Manager Bottom Sheet
+  const [uniSheetOpen, setUniSheetOpen] = useState(false);
+  const [uniSheetMode, setUniSheetMode] = useState<'switch' | 'manage'>('switch');
+  const [uniSearchQuery, setUniSearchQuery] = useState('');
+  const [uniFormModalOpen, setUniFormModalOpen] = useState(false);
+  const [editingUni, setEditingUni] = useState<D1UniversityRow | null>(null);
+  const [uniNameInput, setUniNameInput] = useState('');
+  const [uniSlugInput, setUniSlugInput] = useState('');
+  const [uniLogoInput, setUniLogoInput] = useState('');
+  const [savingUni, setSavingUni] = useState(false);
+  const [confirmDeleteUni, setConfirmDeleteUni] = useState<D1UniversityRow | null>(null);
+  const [deletingUni, setDeletingUni] = useState(false);
+
+  // Single MCQ Bottom Sheet
+  const [mcqModalOpen, setMcqModalOpen] = useState(false);
+  const [editingMcq, setEditingMcq] = useState<D1McqRow | null>(null);
+  const [mcqTargetUniId, setMcqTargetUniId] = useState<string>('');
+  const [mcqUniPickerOpen, setMcqUniPickerOpen] = useState(false);
+  const [mcqSubject, setMcqSubject] = useState('Physics');
+  const [mcqTopic, setMcqTopic] = useState('Kinematics');
+  const [mcqDifficulty, setMcqDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [mcqQuestion, setMcqQuestion] = useState('');
+  const [mcqOptA, setMcqOptA] = useState('');
+  const [mcqOptB, setMcqOptB] = useState('');
+  const [mcqOptC, setMcqOptC] = useState('');
+  const [mcqOptD, setMcqOptD] = useState('');
+  const [mcqCorrect, setMcqCorrect] = useState<'A' | 'B' | 'C' | 'D'>('A');
+  const [mcqExplanation, setMcqExplanation] = useState('');
+  const [mcqPreviewOpen, setMcqPreviewOpen] = useState(false);
+  const [mcqDirty, setMcqDirty] = useState(false);
+  const [savingMcq, setSavingMcq] = useState(false);
+  const questionInputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Bulk Import 3-Step Wizard Bottom Sheet
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkStep, setBulkStep] = useState<BulkWizardStep>(1);
+  const [bulkSourceTab, setBulkSourceTab] = useState<BulkSourceTab>('csv');
+  const [bulkTargetUniId, setBulkTargetUniId] = useState<string>('');
+  const [bulkChangingUni, setBulkChangingUni] = useState(false);
+  const [bulkDefaultSubject, setBulkDefaultSubject] = useState('Physics');
+  const [bulkDefaultTopic, setBulkDefaultTopic] = useState('General');
+  const [bulkFormatHintOpen, setBulkFormatHintOpen] = useState(false);
+  const [bulkRawInput, setBulkRawInput] = useState('');
+  const [bulkCsvFileName, setBulkCsvFileName] = useState('');
+  const [gsheetUrl, setGsheetUrl] = useState('');
+  const [fetchingSheet, setFetchingSheet] = useState(false);
+  const [parsedRows, setParsedRows] = useState<ParsedImportMcqRow[]>([]);
+  const [parseErrors, setParseErrors] = useState<ImportRowError[]>([]);
+  const [duplicateRowsCount, setDuplicateRowsCount] = useState<number>(0);
+  const [importingChunked, setImportingChunked] = useState(false);
   const [importProgress, setImportProgress] = useState<ChunkImportProgress | null>(null);
   const [resumableState, setResumableState] = useState<ResumableImportState | null>(null);
-  const [importErrorBanner, setImportErrorBanner] = useState<string | null>(null);
-  const importAbortRef = useRef<AbortController | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // ── Bank Health & Reports State (D1) ──
+  // Bank Health & Reports State
   const [healthData, setHealthData] = useState<BankHealthData | null>(null);
-  const [loadingHealth, setLoadingHealth] = useState<boolean>(false);
+  const [fixingHealthKey, setFixingHealthKey] = useState<string | null>(null);
   const [reports, setReports] = useState<D1McqReportRow[]>([]);
-  const [loadingReports, setLoadingReports] = useState<boolean>(false);
+  const [reportFilter, setReportFilter] = useState<'all' | 'open' | 'resolved' | 'ignored'>('all');
 
-  // ── Legacy Admin Bank Backup & Confirmed Delete Modal State ──
-  const [legacyModalOpen, setLegacyModalOpen] = useState<boolean>(false);
-  const [legacySummary, setLegacySummary] = useState<LegacyBankSummary | null>(null);
-  const [legacyConfirmChecked, setLegacyConfirmChecked] = useState<boolean>(false);
-  const [legacyDeleting, setLegacyDeleting] = useState<boolean>(false);
+  // Swipe-to-close tracking for Bottom Sheets
+  const touchStartYRef = useRef<number | null>(null);
 
-  // ── Feedback Toast / Notice ──
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  // Status Banner
+  const [bannerMessage, setBannerMessage] = useState<{
+    type: 'success' | 'error' | 'info';
+    text: string;
+  } | null>(null);
 
-  const showToast = useCallback((type: 'success' | 'error', message: string) => {
-    setToast({ type, message });
+  const showBanner = useCallback((type: 'success' | 'error' | 'info', text: string) => {
+    setBannerMessage({ type, text });
     setTimeout(() => {
-      setToast((prev) => (prev?.message === message ? null : prev));
-    }, 4500);
+      setBannerMessage((prev) => (prev?.text === text ? null : prev));
+    }, 5000);
   }, []);
 
-  // ── Load Universities & Legacy Summary ──
-  const loadUniversities = useCallback(async () => {
-    setLoadingUnis(true);
-    try {
-      const list = await fetchUniversities();
-      const safeList = Array.isArray(list) ? list : [];
-      setUniversities(safeList);
-      setSelectedUniId((prev) => {
-        if (prev && safeList.some((u) => u.id === prev)) return prev;
-        return safeList[0]?.id || '';
-      });
-    } catch (err: any) {
-      showToast('error', err?.message || 'Failed to load universities from D1');
-    } finally {
-      setLoadingUnis(false);
-    }
-  }, [showToast]);
-
-  const loadLegacySummary = useCallback(async () => {
-    try {
-      const summary = await fetchLegacyBankSummary();
-      setLegacySummary(summary);
-    } catch {
-      // ignore non-critical summary error
-    }
+  // Close menus on outside click
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
+        setAddMenuOpen(false);
+      }
+      if (overflowMenuRef.current && !overflowMenuRef.current.contains(e.target as Node)) {
+        setOverflowMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
 
-  useEffect(() => {
-    loadUniversities();
-    loadLegacySummary();
-  }, [loadUniversities, loadLegacySummary]);
-
-  // ── Load Topics for Selected University ──
-  const loadUniversityTopics = useCallback(async (uniId: string) => {
-    if (!uniId) {
-      setUniSubjectsTree([]);
-      return;
-    }
-    try {
-      const res = await fetchUniversityTopics(uniId);
-      setUniSubjectsTree(Array.isArray(res?.subjects) ? res.subjects : []);
-    } catch {
-      setUniSubjectsTree([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (selectedUniId) {
-      loadUniversityTopics(selectedUniId);
-    }
-  }, [selectedUniId, loadUniversityTopics]);
-
-  // ── Load MCQs for Current University + Subject + Topic + Search ──
-  const loadMcqs = useCallback(async () => {
-    if (!selectedUniId) {
-      setMcqs([]);
-      setTotalMcqs(0);
-      return;
-    }
-    setLoadingMcqs(true);
-    try {
-      const res = await fetchMcqs({
-        university_id: selectedUniId,
-        subject: selectedSubject !== 'all' ? selectedSubject : undefined,
-        topic: selectedTopic !== 'all' ? selectedTopic : undefined,
-        difficulty: selectedDifficulty !== 'all' ? selectedDifficulty : undefined,
-        search: searchQuery.trim() || undefined,
-        limit: pageSize,
-        offset: pageIndex * pageSize,
-        include_answers: true,
-      });
-      const safeMcqs = Array.isArray(res?.mcqs) ? res.mcqs : [];
-      setMcqs(safeMcqs);
-      setTotalMcqs(typeof res?.total === 'number' ? res.total : safeMcqs.length);
-      setSelectedMcqIds(new Set());
-    } catch (err: any) {
-      showToast('error', err?.message || 'Failed to load MCQs from D1');
-    } finally {
-      setLoadingMcqs(false);
-    }
-  }, [selectedUniId, selectedSubject, selectedTopic, selectedDifficulty, searchQuery, pageIndex, showToast]);
-
-  useEffect(() => {
-    if (activeTab === 'questions') {
-      loadMcqs();
-    }
-  }, [activeTab, loadMcqs]);
-
-  // ── Load Bank Health ──
-  const loadHealth = useCallback(async () => {
-    setLoadingHealth(true);
-    try {
-      const data = await fetchBankHealth();
-      setHealthData(data);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Failed to load D1 bank health');
-    } finally {
-      setLoadingHealth(false);
-    }
-  }, [showToast]);
-
-  // ── Load Student Reports ──
-  const loadReports = useCallback(async () => {
-    setLoadingReports(true);
-    try {
-      const list = await fetchMcqReports();
-      setReports(Array.isArray(list) ? list : []);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Failed to load student reports');
-    } finally {
-      setLoadingReports(false);
-    }
-  }, [showToast]);
-
-  useEffect(() => {
-    if (activeTab === 'health') loadHealth();
-    if (activeTab === 'reports') loadReports();
-  }, [activeTab, loadHealth, loadReports]);
-
-  const currentUni = useMemo(
-    () => (Array.isArray(universities) ? universities : []).find((u) => u.id === selectedUniId) || null,
+  // Derived Selected University
+  const selectedUniversity = useMemo(
+    () =>
+      universities.find((u) => u.id === selectedUniId || u.slug === selectedUniId) ||
+      universities[0] ||
+      null,
     [universities, selectedUniId]
   );
 
-  const availableSubjects = useMemo(() => {
-    const set = new Set<string>(DEFAULT_SUBJECT_SUGGESTIONS);
-    (Array.isArray(uniSubjectsTree) ? uniSubjectsTree : []).forEach((s) => {
-      if (s?.subject) set.add(s.subject);
-    });
-    return Array.from(set);
-  }, [uniSubjectsTree]);
+  const mcqModalUniversity = useMemo(
+    () =>
+      universities.find((u) => u.id === mcqTargetUniId || u.slug === mcqTargetUniId) ||
+      selectedUniversity,
+    [universities, mcqTargetUniId, selectedUniversity]
+  );
 
-  const availableTopicsForSelectedSubject = useMemo(() => {
-    const safeTree = Array.isArray(uniSubjectsTree) ? uniSubjectsTree : [];
-    if (selectedSubject === 'all') {
-      const allTopics: Array<{ topic: string; count: number }> = [];
-      safeTree.forEach((s) => {
-        (Array.isArray(s?.topics) ? s.topics : []).forEach((t) => allTopics.push(t));
-      });
-      return allTopics;
+  const bulkModalUniversity = useMemo(
+    () =>
+      universities.find((u) => u.id === bulkTargetUniId || u.slug === bulkTargetUniId) ||
+      selectedUniversity,
+    [universities, bulkTargetUniId, selectedUniversity]
+  );
+
+  // Load Universities, Health & Reports
+  const loadInitialData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [unis, health, reps] = await Promise.all([
+        fetchUniversities(),
+        fetchBankHealth(),
+        fetchMcqReports(),
+      ]);
+      setUniversities(unis);
+      setHealthData(health);
+      setReports(reps);
+      if (unis.length > 0 && !unis.some((u) => u.id === selectedUniId)) {
+        setSelectedUniId(unis[0].id);
+      }
+    } catch (err: any) {
+      showBanner('error', err?.message || 'Failed to load question bank');
+    } finally {
+      setLoading(false);
     }
-    const found = safeTree.find(
-      (s) => String(s?.subject || '').toLowerCase() === selectedSubject.toLowerCase()
-    );
-    return found && Array.isArray(found.topics) ? found.topics : [];
-  }, [uniSubjectsTree, selectedSubject]);
+  }, [selectedUniId, showBanner]);
 
-  // ── University Add / Edit / Reorder / Delete Handlers ──
+  useEffect(() => {
+    if (isAdmin) {
+      loadInitialData();
+    }
+  }, [isAdmin, loadInitialData]);
+
+  // Load MCQs & Topics for Selected University
+  const loadUniversityMcqs = useCallback(
+    async (resetOffset = true) => {
+      if (!selectedUniId) return;
+      setMcqsLoading(true);
+      try {
+        const nextOffset = resetOffset ? 0 : mcqPageOffset;
+        const [mcqRes, topicsRes] = await Promise.all([
+          fetchMcqs({
+            university_id: selectedUniId,
+            subject: filterSubject !== 'all' ? filterSubject : undefined,
+            topic: filterTopic !== 'all' ? filterTopic : undefined,
+            difficulty: filterDifficulty !== 'all' ? filterDifficulty : undefined,
+            search: searchQuery.trim() || undefined,
+            limit: 50,
+            offset: nextOffset,
+            include_answers: true,
+          }),
+          fetchUniversityTopics(selectedUniId),
+        ]);
+        if (resetOffset) {
+          setMcqs(mcqRes.mcqs);
+          setMcqPageOffset(mcqRes.mcqs.length);
+          setSelectedMcqIds(new Set());
+        } else {
+          setMcqs((prev) => [...prev, ...mcqRes.mcqs]);
+          setMcqPageOffset((prev) => prev + mcqRes.mcqs.length);
+        }
+        setTotalMcqsForFilter(mcqRes.total);
+        setUniTopics(topicsRes.subjects || []);
+      } catch (err: any) {
+        showBanner('error', err?.message || 'Failed to load university MCQs');
+      } finally {
+        setMcqsLoading(false);
+      }
+    },
+    [selectedUniId, filterSubject, filterTopic, filterDifficulty, searchQuery, mcqPageOffset, showBanner]
+  );
+
+  useEffect(() => {
+    if (isAdmin && selectedUniId) {
+      loadUniversityMcqs(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, selectedUniId, filterSubject, filterTopic, filterDifficulty, searchQuery]);
+
+  const handleLoadMoreMcqs = async () => {
+    if (loadingMoreMcqs || mcqs.length >= totalMcqsForFilter) return;
+    setLoadingMoreMcqs(true);
+    try {
+      const mcqRes = await fetchMcqs({
+        university_id: selectedUniId,
+        subject: filterSubject !== 'all' ? filterSubject : undefined,
+        topic: filterTopic !== 'all' ? filterTopic : undefined,
+        difficulty: filterDifficulty !== 'all' ? filterDifficulty : undefined,
+        search: searchQuery.trim() || undefined,
+        limit: 50,
+        offset: mcqs.length,
+        include_answers: true,
+      });
+      setMcqs((prev) => [...prev, ...mcqRes.mcqs]);
+      setMcqPageOffset((prev) => prev + mcqRes.mcqs.length);
+      setTotalMcqsForFilter(mcqRes.total);
+    } catch (err: any) {
+      showBanner('error', err?.message || 'Failed to load more questions');
+    } finally {
+      setLoadingMoreMcqs(false);
+    }
+  };
+
+  // Safe Close Helpers for Bottom Sheets (Esc, Back button, Swipe-down, Unsaved guard)
+  const requestCloseMcqModal = useCallback(() => {
+    if (mcqDirty && !savingMcq) {
+      const discard = window.confirm('You have unsaved changes in this MCQ. Discard changes?');
+      if (!discard) return;
+    }
+    setMcqModalOpen(false);
+    setMcqDirty(false);
+    setMcqUniPickerOpen(false);
+  }, [mcqDirty, savingMcq]);
+
+  const requestCloseBulkModal = useCallback(() => {
+    if (importingChunked) {
+      const stop = window.confirm('An import is currently running. Stop and close?');
+      if (!stop) return;
+      abortControllerRef.current?.abort();
+      setImportingChunked(false);
+    } else if (bulkRawInput.trim().length > 0 && (!importProgress || importProgress.processedRows === 0)) {
+      const discard = window.confirm('Discard your prepared bulk import data?');
+      if (!discard) return;
+    }
+    setBulkModalOpen(false);
+  }, [importingChunked, bulkRawInput, importProgress]);
+
+  useEffect(() => {
+    const anySheetOpen = mcqModalOpen || bulkModalOpen || uniSheetOpen || filterSheetOpen;
+    if (!anySheetOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (mcqModalOpen) requestCloseMcqModal();
+        else if (bulkModalOpen) requestCloseBulkModal();
+        else if (uniSheetOpen) setUniSheetOpen(false);
+        else if (filterSheetOpen) setFilterSheetOpen(false);
+      }
+    };
+
+    const handlePopState = () => {
+      if (mcqModalOpen) requestCloseMcqModal();
+      else if (bulkModalOpen) requestCloseBulkModal();
+      else if (uniSheetOpen) setUniSheetOpen(false);
+      else if (filterSheetOpen) setFilterSheetOpen(false);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [mcqModalOpen, bulkModalOpen, uniSheetOpen, filterSheetOpen, requestCloseMcqModal, requestCloseBulkModal]);
+
+  const handleSheetTouchStart = (e: React.TouchEvent) => {
+    touchStartYRef.current = e.touches[0]?.clientY ?? null;
+  };
+
+  const handleSheetTouchEnd = (e: React.TouchEvent, onClose: () => void) => {
+    if (touchStartYRef.current === null) return;
+    const endY = e.changedTouches[0]?.clientY ?? touchStartYRef.current;
+    if (endY - touchStartYRef.current > 75) {
+      onClose();
+    }
+    touchStartYRef.current = null;
+  };
+
+  // ============================================================================
+  // University CRUD & Reordering
+  // ============================================================================
   const openAddUniversityModal = () => {
     setEditingUni(null);
-    setUniFormName('');
-    setUniFormSlug('');
-    setUniFormLogo('');
-    setUniModalOpen(true);
+    setUniNameInput('');
+    setUniSlugInput('');
+    setUniLogoInput('');
+    setUniFormModalOpen(true);
   };
 
   const openEditUniversityModal = (uni: D1UniversityRow) => {
     setEditingUni(uni);
-    setUniFormName(uni.name);
-    setUniFormSlug(uni.slug);
-    setUniFormLogo(uni.logo_url || '');
-    setUniModalOpen(true);
+    setUniNameInput(uni.name);
+    setUniSlugInput(uni.slug);
+    setUniLogoInput(uni.logo_url || '');
+    setUniFormModalOpen(true);
   };
 
   const handleSaveUniversity = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uniFormName.trim()) {
-      showToast('error', 'University name is required');
-      return;
-    }
-    setUniSaving(true);
+    if (!uniNameInput.trim()) return;
+    setSavingUni(true);
     try {
       if (editingUni) {
-        const updated = await updateUniversity(editingUni.id, {
-          name: uniFormName.trim(),
-          slug: uniFormSlug.trim() || undefined,
-          logo_url: uniFormLogo.trim(),
+        await updateUniversity(editingUni.id, {
+          name: uniNameInput.trim(),
+          slug: uniSlugInput.trim() || undefined,
+          logo_url: uniLogoInput.trim(),
         });
-        setUniversities((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
-        showToast('success', `Updated ${updated.name}`);
+        showBanner('success', `Updated ${uniNameInput.trim()}`);
       } else {
         const created = await createUniversity({
-          name: uniFormName.trim(),
-          slug: uniFormSlug.trim() || undefined,
-          logo_url: uniFormLogo.trim(),
+          name: uniNameInput.trim(),
+          slug: uniSlugInput.trim() || undefined,
+          logo_url: uniLogoInput.trim(),
           sort_order: universities.length + 1,
         });
-        setUniversities((prev) => [...prev, created]);
         setSelectedUniId(created.id);
-        showToast('success', `Added university "${created.name}"`);
+        showBanner('success', `Added ${created.name}`);
       }
-      setUniModalOpen(false);
+      setUniFormModalOpen(false);
+      await loadInitialData();
     } catch (err: any) {
-      showToast('error', err?.message || 'Failed to save university');
+      showBanner('error', err?.message || 'Failed to save university');
     } finally {
-      setUniSaving(false);
+      setSavingUni(false);
     }
   };
 
   const handleMoveUniversity = async (index: number, direction: -1 | 1) => {
     const targetIdx = index + direction;
     if (targetIdx < 0 || targetIdx >= universities.length) return;
-    const copy = [...universities];
-    const [moved] = copy.splice(index, 1);
-    copy.splice(targetIdx, 0, moved);
-    const reorderedIds = copy.map((u) => u.id);
-    setUniversities(copy.map((u, i) => ({ ...u, sort_order: i + 1 })));
+    const reordered = [...universities];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(targetIdx, 0, moved);
+    setUniversities(reordered);
     try {
-      const updated = await reorderUniversities(reorderedIds);
+      const updated = await reorderUniversities(reordered.map((u) => u.id));
       setUniversities(updated);
     } catch (err: any) {
-      showToast('error', err?.message || 'Failed to reorder universities');
-      loadUniversities();
+      showBanner('error', err?.message || 'Failed to reorder universities');
     }
   };
 
-  const handleDeleteUniversity = async (uni: D1UniversityRow) => {
+  const handleConfirmDeleteUniversity = async () => {
+    if (!confirmDeleteUni) return;
+    setDeletingUni(true);
     try {
-      await deleteUniversity(uni.id);
-      const next = universities.filter((u) => u.id !== uni.id);
-      setUniversities(next);
-      if (selectedUniId === uni.id) {
-        setSelectedUniId(next[0]?.id || '');
-      }
-      showToast('success', `Deleted university "${uni.name}" and its MCQs`);
+      await deleteUniversity(confirmDeleteUni.id);
+      showBanner('success', `Deleted ${confirmDeleteUni.name}`);
+      setConfirmDeleteUni(null);
+      await loadInitialData();
     } catch (err: any) {
-      showToast('error', err?.message || 'Failed to delete university');
+      showBanner('error', err?.message || 'Failed to delete university');
+    } finally {
+      setDeletingUni(false);
     }
   };
 
-  // ── Single MCQ Add / Edit Handlers ──
+  // ============================================================================
+  // Single MCQ Create / Edit / Delete
+  // ============================================================================
   const openAddMcqModal = () => {
     setEditingMcq(null);
-    setFormUniId(selectedUniId || universities[0]?.id || '');
-    setFormSubject(selectedSubject !== 'all' ? selectedSubject : 'Mathematics');
-    setFormTopic(selectedTopic !== 'all' ? selectedTopic : 'General');
-    setFormDifficulty('medium');
-    setFormQuestion('');
-    setFormOptionA('');
-    setFormOptionB('');
-    setFormOptionC('');
-    setFormOptionD('');
-    setFormCorrect('A');
-    setFormExplanation('');
+    setMcqTargetUniId(selectedUniId);
+    setMcqUniPickerOpen(false);
+    setMcqSubject(filterSubject !== 'all' ? filterSubject : uniTopics[0]?.subject || 'Physics');
+    setMcqTopic(filterTopic !== 'all' ? filterTopic : uniTopics[0]?.topics[0]?.topic || 'General');
+    setMcqDifficulty('medium');
+    setMcqQuestion('');
+    setMcqOptA('');
+    setMcqOptB('');
+    setMcqOptC('');
+    setMcqOptD('');
+    setMcqCorrect('A');
+    setMcqExplanation('');
+    setMcqPreviewOpen(false);
+    setMcqDirty(false);
     setMcqModalOpen(true);
   };
 
   const openEditMcqModal = (mcq: D1McqRow) => {
     setEditingMcq(mcq);
-    setFormUniId(mcq.university_id);
-    setFormSubject(mcq.subject);
-    setFormTopic(mcq.topic);
-    setFormDifficulty(mcq.difficulty || 'medium');
-    setFormQuestion(mcq.question);
-    setFormOptionA(mcq.option_a);
-    setFormOptionB(mcq.option_b);
-    setFormOptionC(mcq.option_c);
-    setFormOptionD(mcq.option_d);
-    setFormCorrect((mcq.correct_answer as 'A' | 'B' | 'C' | 'D') || 'A');
-    setFormExplanation(mcq.explanation || '');
+    setMcqTargetUniId(mcq.university_id || selectedUniId);
+    setMcqUniPickerOpen(false);
+    setMcqSubject(mcq.subject);
+    setMcqTopic(mcq.topic);
+    setMcqDifficulty(mcq.difficulty || 'medium');
+    setMcqQuestion(mcq.question);
+    setMcqOptA(mcq.option_a);
+    setMcqOptB(mcq.option_b);
+    setMcqOptC(mcq.option_c);
+    setMcqOptD(mcq.option_d);
+    setMcqCorrect(mcq.correct_answer || 'A');
+    setMcqExplanation(mcq.explanation || '');
+    setMcqPreviewOpen(false);
+    setMcqDirty(false);
     setMcqModalOpen(true);
   };
 
   const insertLatexSnippet = (snippet: string) => {
-    if (activeField === 'question') setFormQuestion((p) => `${p}${snippet}`);
-    else if (activeField === 'option_a') setFormOptionA((p) => `${p}${snippet}`);
-    else if (activeField === 'option_b') setFormOptionB((p) => `${p}${snippet}`);
-    else if (activeField === 'option_c') setFormOptionC((p) => `${p}${snippet}`);
-    else if (activeField === 'option_d') setFormOptionD((p) => `${p}${snippet}`);
-    else if (activeField === 'explanation') setFormExplanation((p) => `${p}${snippet}`);
-  };
-
-  const handleSaveMcq = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formUniId) {
-      showToast('error', 'Please select a university');
+    const el = questionInputRef.current;
+    if (!el) {
+      setMcqQuestion((prev) => `${prev} ${snippet}`.trim());
+      setMcqDirty(true);
       return;
     }
-    if (!formQuestion.trim() || !formOptionA.trim() || !formOptionB.trim() || !formOptionC.trim() || !formOptionD.trim()) {
-      showToast('error', 'Question and all 4 options (A, B, C, D) are required');
+    const start = el.selectionStart ?? mcqQuestion.length;
+    const end = el.selectionEnd ?? mcqQuestion.length;
+    const next = mcqQuestion.slice(0, start) + snippet + mcqQuestion.slice(end);
+    setMcqQuestion(next);
+    setMcqDirty(true);
+    setTimeout(() => {
+      el.focus();
+      const pos = start + snippet.length;
+      el.setSelectionRange(pos, pos);
+    }, 10);
+  };
+
+  const handleSaveMcq = async (addAnother: boolean) => {
+    const targetId = mcqTargetUniId || selectedUniId;
+    if (!targetId) {
+      showBanner('error', 'Please select a target university.');
+      return;
+    }
+    if (!mcqQuestion.trim() || !mcqOptA.trim() || !mcqOptB.trim() || !mcqOptC.trim() || !mcqOptD.trim()) {
+      showBanner('error', 'Question and all 4 options (A, B, C, D) are required.');
       return;
     }
     setSavingMcq(true);
     try {
-      const payload = {
-        university_id: formUniId,
-        subject: formSubject.trim() || 'General',
-        topic: formTopic.trim() || 'General',
-        question: formQuestion.trim(),
-        option_a: formOptionA.trim(),
-        option_b: formOptionB.trim(),
-        option_c: formOptionC.trim(),
-        option_d: formOptionD.trim(),
-        correct_answer: formCorrect,
-        explanation: formExplanation.trim(),
-        difficulty: formDifficulty,
-      };
       if (editingMcq) {
-        await updateMcq(editingMcq.id, payload);
-        showToast('success', 'MCQ updated in Cloudflare D1');
+        await updateMcq(editingMcq.id, {
+          university_id: targetId,
+          subject: mcqSubject.trim() || 'General',
+          topic: mcqTopic.trim() || 'General',
+          difficulty: mcqDifficulty,
+          question: mcqQuestion.trim(),
+          option_a: mcqOptA.trim(),
+          option_b: mcqOptB.trim(),
+          option_c: mcqOptC.trim(),
+          option_d: mcqOptD.trim(),
+          correct_answer: mcqCorrect,
+          explanation: mcqExplanation.trim(),
+        });
+        showBanner('success', `Updated MCQ in ${mcqModalUniversity?.name || targetId}`);
       } else {
-        await createMcq(payload);
-        showToast('success', 'MCQ added to Cloudflare D1');
+        await createMcq({
+          university_id: targetId,
+          subject: mcqSubject.trim() || 'General',
+          topic: mcqTopic.trim() || 'General',
+          difficulty: mcqDifficulty,
+          question: mcqQuestion.trim(),
+          option_a: mcqOptA.trim(),
+          option_b: mcqOptB.trim(),
+          option_c: mcqOptC.trim(),
+          option_d: mcqOptD.trim(),
+          correct_answer: mcqCorrect,
+          explanation: mcqExplanation.trim(),
+        });
+        showBanner('success', `Saved MCQ to ${mcqModalUniversity?.name || targetId}`);
       }
-      setMcqModalOpen(false);
-      await Promise.all([loadUniversities(), loadUniversityTopics(selectedUniId), loadMcqs()]);
+
+      setMcqDirty(false);
+      if (addAnother && !editingMcq) {
+        setMcqQuestion('');
+        setMcqOptA('');
+        setMcqOptB('');
+        setMcqOptC('');
+        setMcqOptD('');
+        setMcqExplanation('');
+      } else {
+        setMcqModalOpen(false);
+      }
+
+      await Promise.all([loadInitialData(), loadUniversityMcqs(true)]);
     } catch (err: any) {
-      showToast('error', err?.message || 'Failed to save MCQ');
+      showBanner('error', err?.message || 'Failed to save MCQ');
     } finally {
       setSavingMcq(false);
     }
   };
 
-  const handleDeleteSingleMcq = async (mcqId: string) => {
+  const handleConfirmDeleteMcqs = async () => {
+    if (!confirmDeleteMcqModal || confirmDeleteMcqModal.ids.length === 0) return;
+    setDeletingMcqs(true);
     try {
-      await deleteMcq(mcqId);
-      showToast('success', 'Deleted MCQ');
-      await Promise.all([loadUniversities(), loadUniversityTopics(selectedUniId), loadMcqs()]);
-    } catch (err: any) {
-      showToast('error', err?.message || 'Failed to delete MCQ');
-    }
-  };
-
-  const handleBulkDeleteSelected = async () => {
-    const ids = Array.from(selectedMcqIds);
-    if (ids.length === 0) return;
-    try {
-      const deleted = await bulkDeleteMcqs(ids, selectedUniId);
-      showToast('success', `Deleted ${deleted} MCQs`);
+      if (confirmDeleteMcqModal.ids.length === 1) {
+        await deleteMcq(confirmDeleteMcqModal.ids[0]);
+      } else {
+        await bulkDeleteMcqs(confirmDeleteMcqModal.ids, selectedUniId);
+      }
+      showBanner('success', `Deleted ${confirmDeleteMcqModal.ids.length} MCQ(s)`);
+      setConfirmDeleteMcqModal(null);
       setSelectedMcqIds(new Set());
-      await Promise.all([loadUniversities(), loadUniversityTopics(selectedUniId), loadMcqs()]);
+      await Promise.all([loadInitialData(), loadUniversityMcqs(true)]);
     } catch (err: any) {
-      showToast('error', err?.message || 'Bulk delete failed');
+      showBanner('error', err?.message || 'Failed to delete MCQs');
+    } finally {
+      setDeletingMcqs(false);
     }
   };
 
-  // ── Unlimited Bulk Import Handlers ──
+  const handleMoveSelectedMcqs = async () => {
+    const ids = Array.from(selectedMcqIds);
+    if (!ids.length || !moveTargetUniId) return;
+    setMovingMcqs(true);
+    try {
+      const res = await moveMcqsToUniversity(ids, moveTargetUniId, selectedUniId);
+      const destUni = universities.find((u) => u.id === moveTargetUniId);
+      showBanner('success', `Moved ${res.movedCount} MCQ(s) to ${destUni?.name || moveTargetUniId}`);
+      setMoveModalOpen(false);
+      setSelectedMcqIds(new Set());
+      await Promise.all([loadInitialData(), loadUniversityMcqs(true)]);
+    } catch (err: any) {
+      showBanner('error', err?.message || 'Failed to move MCQs');
+    } finally {
+      setMovingMcqs(false);
+    }
+  };
+
+  // ============================================================================
+  // Bulk Import Wizard (CSV, Google Sheets, Paste + Chunked Upload)
+  // ============================================================================
   const openBulkImportModal = () => {
-    setImportUniId(selectedUniId || universities[0]?.id || '');
-    setImportSubject(selectedSubject !== 'all' ? selectedSubject : 'Mathematics');
-    setImportTopic(selectedTopic !== 'all' ? selectedTopic : 'General');
+    setBulkTargetUniId(selectedUniId);
+    setBulkChangingUni(false);
+    setBulkStep(1);
+    setBulkSourceTab('csv');
+    setBulkDefaultSubject(filterSubject !== 'all' ? filterSubject : uniTopics[0]?.subject || 'Physics');
+    setBulkDefaultTopic(filterTopic !== 'all' ? filterTopic : uniTopics[0]?.topics[0]?.topic || 'General');
+    setBulkRawInput('');
+    setBulkCsvFileName('');
+    setGsheetUrl('');
+    setParsedRows([]);
+    setParseErrors([]);
+    setDuplicateRowsCount(0);
     setImportProgress(null);
     setResumableState(null);
-    setImportErrorBanner(null);
-    setImportModalOpen(true);
+    setBulkModalOpen(true);
   };
 
-  const handleCsvFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Re-parse whenever bulkRawInput or defaults change
+  useEffect(() => {
+    if (!bulkModalOpen) return;
+    const { rows, parseErrors: errs } = parseImportInput(
+      bulkRawInput,
+      bulkDefaultSubject,
+      bulkDefaultTopic
+    );
+    // Deduplicate within parsed batch by normalized question stem
+    const seen = new Set<string>();
+    const deduped: ParsedImportMcqRow[] = [];
+    let dupCount = 0;
+    for (const r of rows) {
+      const key = r.question.trim().toLowerCase();
+      if (seen.has(key)) {
+        dupCount++;
+      } else {
+        seen.add(key);
+        deduped.push(r);
+      }
+    }
+    setParsedRows(deduped);
+    setParseErrors(errs);
+    setDuplicateRowsCount(dupCount);
+    setResumableState(null);
+    setImportProgress(null);
+  }, [bulkRawInput, bulkDefaultSubject, bulkDefaultTopic, bulkModalOpen]);
+
+  const handleCsvFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImportFileName(file.name);
-    const text = await file.text();
-    setImportRawText(text);
-    setResumableState(null);
-    setImportProgress(null);
-    setImportErrorBanner(null);
+    setBulkCsvFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setBulkRawInput(String(reader.result || ''));
+    };
+    reader.readAsText(file);
   };
 
   const handleFetchGoogleSheet = async () => {
-    if (!importSheetUrl.trim()) {
-      setImportErrorBanner('Please paste a Google Sheet link first.');
-      return;
-    }
+    if (!gsheetUrl.trim()) return;
     setFetchingSheet(true);
-    setImportErrorBanner(null);
     try {
-      const csvUrl = convertGoogleSheetToCsvUrl(importSheetUrl);
-      const res = await fetch(csvUrl);
+      const csvExportUrl = convertGoogleSheetToCsvUrl(gsheetUrl);
+      const res = await fetch(csvExportUrl);
       if (!res.ok) {
         throw new Error(
-          `Could not fetch Google Sheet (${res.status}). Ensure link sharing is set to "Anyone with the link can view".`
+          `Google Sheets returned ${res.status}. Ensure the sheet is set to "Anyone with the link can view".`
         );
       }
       const csvText = await res.text();
-      setImportRawText(csvText);
-      setResumableState(null);
-      setImportProgress(null);
-      showToast('success', 'Loaded rows from Google Sheet. Ready to import!');
+      setBulkRawInput(csvText);
+      showBanner('success', 'Fetched Google Sheet rows');
     } catch (err: any) {
-      setImportErrorBanner(err?.message || 'Failed to fetch Google Sheet CSV');
+      showBanner('error', err?.message || 'Failed to fetch Google Sheet CSV');
     } finally {
       setFetchingSheet(false);
     }
   };
 
-  const parsedPreview = useMemo(() => {
-    if (!importRawText.trim()) return { rows: [], parseErrors: [] as ImportRowError[] };
-    return parseImportInput(importRawText, importSubject, importTopic);
-  }, [importRawText, importSubject, importTopic]);
+  const handleDownloadSampleCsv = () => {
+    const blob = new Blob([SAMPLE_CSV_TEMPLATE], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'boardly_university_mcqs_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
-  const startOrResumeImport = async (useExistingResumable: boolean) => {
-    if (!importUniId) {
-      setImportErrorBanner('Please select a target university.');
+  const handleDownloadImportErrorReport = () => {
+    const errs = importProgress?.errors?.length ? importProgress.errors : parseErrors;
+    if (!errs.length) return;
+    const csvLines = [
+      'row,error_message',
+      ...errs.map((e) => `${e.row},"${String(e.message).replace(/"/g, '""')}"`),
+    ];
+    const blob = new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `import_errors_${bulkModalUniversity?.slug || 'university'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleStartOrResumeImport = async () => {
+    if (parsedRows.length === 0) return;
+    const lockedUniversityId = bulkModalUniversity?.id || bulkTargetUniId || selectedUniId;
+    if (!lockedUniversityId) {
+      showBanner('error', 'No target university selected for import.');
       return;
     }
 
-    let stateToRun: ResumableImportState;
-    if (useExistingResumable && resumableState) {
-      stateToRun = resumableState;
-    } else {
-      const { rows, parseErrors } = parseImportInput(importRawText, importSubject, importTopic);
-      if (rows.length === 0 && parseErrors.length === 0) {
-        setImportErrorBanner('No rows found to import. Upload a CSV, fetch a Google Sheet, or paste MCQs.');
-        return;
-      }
-      if (rows.length === 0 && parseErrors.length > 0) {
-        setImportProgress({
-          importedCount: 0,
-          failedCount: parseErrors.length,
-          processedRows: 0,
-          totalRows: 0,
-          currentChunkIndex: 0,
-          totalChunks: 0,
-          errors: parseErrors,
-        });
-        setImportErrorBanner(`All ${parseErrors.length} rows had formatting issues. Check the row error report below.`);
-        return;
-      }
-      stateToRun = {
-        universityId: importUniId,
-        defaultSubject: importSubject.trim() || 'General',
-        defaultTopic: importTopic.trim() || 'General',
-        rows,
-        nextRowOffset: 0,
-        importedCount: 0,
-        failedCount: parseErrors.length,
-        errors: [...parseErrors],
-      };
-      setResumableState(stateToRun);
-    }
-
-    setImporting(true);
-    setImportErrorBanner(null);
+    setImportingChunked(true);
     const controller = new AbortController();
-    importAbortRef.current = controller;
+    abortControllerRef.current = controller;
+
+    const initialState: ResumableImportState =
+      resumableState && resumableState.universityId === lockedUniversityId
+        ? resumableState
+        : {
+            universityId: lockedUniversityId,
+            defaultSubject: bulkDefaultSubject.trim() || 'General',
+            defaultTopic: bulkDefaultTopic.trim() || 'General',
+            rows: parsedRows,
+            nextRowOffset: 0,
+            importedCount: 0,
+            failedCount: 0,
+            errors: [],
+          };
 
     try {
-      const result = await runChunkedMcqImport({
-        state: stateToRun,
+      const { completed, state } = await runChunkedMcqImport({
+        state: initialState,
         chunkSize: 100,
         signal: controller.signal,
-        onProgress: (prog, nextState) => {
+        onProgress: (prog, updatedState) => {
           setImportProgress(prog);
-          setResumableState(nextState);
+          setResumableState(updatedState);
         },
       });
 
-      setResumableState(result.state);
-      await Promise.all([loadUniversities(), loadUniversityTopics(importUniId), loadMcqs()]);
-
-      if (result.completed) {
-        showToast(
+      setResumableState(state);
+      if (completed) {
+        showBanner(
           'success',
-          `Import finished: ${result.state.importedCount} MCQs imported${
-            result.state.failedCount > 0 ? ` (${result.state.failedCount} skipped)` : ''
+          `Imported ${state.importedCount.toLocaleString()} MCQs into ${
+            bulkModalUniversity?.name || lockedUniversityId
           }`
+        );
+        await Promise.all([loadInitialData(), loadUniversityMcqs(true)]);
+      } else {
+        showBanner(
+          'info',
+          `Import paused at ${state.nextRowOffset}/${state.rows.length}. Tap Resume to continue.`
         );
       }
     } catch (err: any) {
-      setImportErrorBanner(
-        `Chunk interrupted: ${err?.message || 'Network error'}. Click "Resume Import" to continue from row ${
-          (resumableState?.nextRowOffset ?? 0) + 1
-        }.`
-      );
+      showBanner('error', err?.message || 'Bulk import interrupted');
     } finally {
-      setImporting(false);
+      setImportingChunked(false);
     }
   };
 
-  // ── Legacy Admin Bank Confirmed Delete Handler ──
-  const handleConfirmLegacyDelete = async () => {
-    if (!legacyConfirmChecked) return;
-    setLegacyDeleting(true);
+  // ============================================================================
+  // Bank Health Fix & Reports Actions
+  // ============================================================================
+  const handleFixIntegrityIssue = async (
+    issueType: 'all' | 'slug_mismatch' | 'count_drift' | 'orphan_mcqs'
+  ) => {
+    setFixingHealthKey(issueType);
     try {
-      await confirmDeleteLegacyAdminBank();
-      await loadLegacySummary();
-      showToast('success', 'Old Admin Bank subject-pool MCQs deleted & counts reset to 0.');
+      const res = await fixBankHealthIntegrity(issueType, selectedUniId);
+      showBanner('success', `Fixed integrity check (${res.fixedCount} item(s) synchronized)`);
+      await Promise.all([loadInitialData(), loadUniversityMcqs(true)]);
     } catch (err: any) {
-      showToast('error', err?.message || 'Failed to delete legacy Admin Bank MCQs');
+      showBanner('error', err?.message || 'Failed to run integrity fix');
     } finally {
-      setLegacyDeleting(false);
+      setFixingHealthKey(null);
     }
   };
 
-  const mathCheckQuestion = useMemo(() => validateMath(formQuestion), [formQuestion]);
-  const totalPages = Math.max(1, Math.ceil(totalMcqs / pageSize));
+  const handleUpdateReport = async (id: string, status: 'open' | 'resolved' | 'ignored') => {
+    try {
+      await updateMcqReportStatus(id, status);
+      const updated = await fetchMcqReports();
+      setReports(updated);
+      showBanner('success', `Report marked as ${status}`);
+    } catch (err: any) {
+      showBanner('error', err?.message || 'Failed to update report');
+    }
+  };
+
+  const handleEditReportedQuestion = async (report: D1McqReportRow) => {
+    const existing = mcqs.find((m) => m.id === report.mcq_id);
+    if (existing) {
+      openEditMcqModal(existing);
+      return;
+    }
+    try {
+      const res = await fetchMcqs({
+        university_id: report.university_id || selectedUniId,
+        limit: 200,
+        include_answers: true,
+      });
+      const found = res.mcqs.find((m) => m.id === report.mcq_id);
+      if (found) {
+        openEditMcqModal(found);
+      } else {
+        showBanner('info', 'Switched to Questions tab to locate the reported MCQ.');
+        if (report.university_id) setSelectedUniId(report.university_id);
+        setActiveTab('questions');
+      }
+    } catch {
+      setActiveTab('questions');
+    }
+  };
+
+  // ============================================================================
+  // Computed Summaries & Suggestions
+  // ============================================================================
+  const liveCount = useMemo(
+    () => universities.filter((u) => Number(u.mcq_count || 0) > 0).length,
+    [universities]
+  );
+
+  const totalBankMcqs = useMemo(
+    () =>
+      healthData?.totalMcqs ??
+      universities.reduce((sum, u) => sum + Number(u.mcq_count || 0), 0),
+    [healthData, universities]
+  );
+
+  const openReportsCount = useMemo(
+    () => reports.filter((r) => r.status === 'open').length,
+    [reports]
+  );
+
+  const subjectSuggestions = useMemo(() => {
+    const fromUni = uniTopics.map((s) => s.subject);
+    return Array.from(new Set([...fromUni, ...COMMON_SUBJECTS]));
+  }, [uniTopics]);
+
+  const topicSuggestionsForMcqModal = useMemo(() => {
+    const matchedSubject = uniTopics.find(
+      (s) => s.subject.toLowerCase() === mcqSubject.trim().toLowerCase()
+    );
+    const list = matchedSubject
+      ? matchedSubject.topics.map((t) => t.topic)
+      : uniTopics.flatMap((s) => s.topics.map((t) => t.topic));
+    return Array.from(new Set(['General', ...list]));
+  }, [uniTopics, mcqSubject]);
+
+  const topicSuggestionsForBulkModal = useMemo(() => {
+    const matchedSubject = uniTopics.find(
+      (s) => s.subject.toLowerCase() === bulkDefaultSubject.trim().toLowerCase()
+    );
+    const list = matchedSubject
+      ? matchedSubject.topics.map((t) => t.topic)
+      : uniTopics.flatMap((s) => s.topics.map((t) => t.topic));
+    return Array.from(new Set(['General', ...list]));
+  }, [uniTopics, bulkDefaultSubject]);
+
+  const availableTopicsForFilter = useMemo(() => {
+    if (filterSubject === 'all') {
+      return uniTopics.flatMap((s) => s.topics.map((t) => t.topic));
+    }
+    const found = uniTopics.find((s) => s.subject === filterSubject);
+    return found ? found.topics.map((t) => t.topic) : [];
+  }, [uniTopics, filterSubject]);
+
+  const totalTopicsInSelectedUni = useMemo(
+    () => uniTopics.reduce((acc, s) => acc + s.topics.length, 0),
+    [uniTopics]
+  );
+
+  const lastImportTimeLabel = useMemo(() => {
+    if (!mcqs.length) return 'None yet';
+    const latest = mcqs.reduce((acc, m) => {
+      if (!m.created_at) return acc;
+      return m.created_at > acc ? m.created_at : acc;
+    }, '');
+    if (!latest) return 'Recent';
+    try {
+      const d = new Date(latest);
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    } catch {
+      return 'Recent';
+    }
+  }, [mcqs]);
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filterSubject !== 'all') count++;
+    if (filterTopic !== 'all') count++;
+    if (filterDifficulty !== 'all') count++;
+    return count;
+  }, [filterSubject, filterTopic, filterDifficulty]);
+
+  const filteredUniversitiesInSheet = useMemo(() => {
+    const q = uniSearchQuery.trim().toLowerCase();
+    if (!q) return universities;
+    return universities.filter(
+      (u) => u.name.toLowerCase().includes(q) || u.slug.toLowerCase().includes(q)
+    );
+  }, [universities, uniSearchQuery]);
+
+  const filteredReports = useMemo(() => {
+    if (reportFilter === 'all') return reports;
+    return reports.filter((r) => r.status === reportFilter);
+  }, [reports, reportFilter]);
+
+  const mathCheck = useMemo(
+    () =>
+      validateMath(
+        `${mcqQuestion} ${mcqOptA} ${mcqOptB} ${mcqOptC} ${mcqOptD} ${mcqExplanation}`
+      ),
+    [mcqQuestion, mcqOptA, mcqOptB, mcqOptC, mcqOptD, mcqExplanation]
+  );
+
+  // Strict Role Guard: Confirm admin role first, never flash admin UI to others
+  if (profileLoading) {
+    return (
+      <div className="aqb-page-shell">
+        <LineLoader className="w-full" />
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return null;
+  }
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-[1280px] mx-auto pb-16 text-[var(--text)]">
-      {/* ── Toast Notification ── */}
-      {toast && (
-        <div
-          className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-2xl border shadow-lg flex items-center gap-2.5 text-xs font-semibold ${
-            toast.type === 'success'
-              ? 'bg-[var(--surface)] border-emerald-500/40 text-emerald-500'
-              : 'bg-[var(--surface)] border-[var(--accent)] text-[var(--accent)]'
-          }`}
-        >
-          {toast.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
-          <span>{toast.message}</span>
+    <div className="aqb-page-shell">
+      {/* Ambient red glassmorphism background blobs */}
+      <div className="aqb-ambient-blobs" aria-hidden="true">
+        <div className="aqb-blob aqb-blob--top" />
+        <div className="aqb-blob aqb-blob--bottom" />
+      </div>
+
+      {/* Top LineLoader when refreshing */}
+      {(loading || mcqsLoading) && (
+        <div className="fixed top-0 left-0 right-0 z-50">
+          <LineLoader />
         </div>
       )}
 
-      {/* ── Top Header Bar ── */}
-      <div className="p-5 sm:p-6 rounded-3xl bg-[var(--surface)] border border-[var(--border)] flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap mb-1.5">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent)]/30">
-              Cloudflare D1 · University MCQ Bank
-            </span>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider bg-[var(--surface-muted)] text-[var(--text-muted)] border border-[var(--border)]">
-              Zero Firebase · Admin &amp; Superadmin Only
-            </span>
-          </div>
-          <h1
-            className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text)]"
-            style={{ fontFamily: 'var(--font-heading)' }}
-          >
-            University Question Bank Manager
-          </h1>
-          <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
-            Add, edit, or bulk-import unlimited MCQs by University &rarr; Subject &rarr; Topic. Universities with MCQs automatically go LIVE on the student Cockpit.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            type="button"
-            onClick={() => setLegacyModalOpen(true)}
-            className="px-3.5 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text)] flex items-center gap-2 cursor-pointer"
-          >
-            <ShieldCheck size={15} className="text-emerald-500" />
-            <span>Old Admin Bank Backup &amp; Reset (0)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={openAddUniversityModal}
-            className="px-3.5 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text)] flex items-center gap-1.5 cursor-pointer"
-          >
-            <Building2 size={15} className="text-[var(--accent)]" />
-            <span>Add University</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={openBulkImportModal}
-            className="px-4 py-2.5 rounded-xl border border-[var(--accent)]/40 bg-[var(--accent-soft)] hover:bg-[var(--accent)] hover:text-white text-xs font-bold text-[var(--accent)] transition-colors flex items-center gap-1.5 cursor-pointer"
-          >
-            <Upload size={15} />
-            <span>Unlimited Bulk Import</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={openAddMcqModal}
-            className="btn-red px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-          >
-            <Plus size={15} />
-            <span>Add Single MCQ</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ── Navigation Tabs (Questions / Bank Health / Student Reports) ── */}
-      <div className="flex items-center justify-between flex-wrap gap-3 border-b border-[var(--border)] pb-3">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveTab('questions')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'questions'
-                ? 'bg-[var(--accent)] text-white'
-                : 'bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text)]'
+      <div className="aqb-container">
+        {/* Status Toast Banner */}
+        {bannerMessage && (
+          <div
+            role="status"
+            className={`aqb-glass-card px-4 py-3 flex items-center justify-between gap-3 text-sm font-semibold ${
+              bannerMessage.type === 'error'
+                ? 'border-red-500/40 text-red-700 dark:text-red-300'
+                : bannerMessage.type === 'success'
+                ? 'border-emerald-500/40 text-emerald-800 dark:text-emerald-300'
+                : 'text-[var(--text)]'
             }`}
           >
-            <Database size={14} />
-            <span>University Questions</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('health')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'health'
-                ? 'bg-[var(--accent)] text-white'
-                : 'bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text)]'
-            }`}
-          >
-            <Sparkles size={14} />
-            <span>Bank Health (D1)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('reports')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'reports'
-                ? 'bg-[var(--accent)] text-white'
-                : 'bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text)]'
-            }`}
-          >
-            <Flag size={14} />
-            <span>Student Reports</span>
-          </button>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            loadUniversities();
-            if (activeTab === 'questions') loadMcqs();
-            if (activeTab === 'health') loadHealth();
-            if (activeTab === 'reports') loadReports();
-          }}
-          className="px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text)] flex items-center gap-1.5 cursor-pointer"
-        >
-          <RefreshCw size={13} />
-          <span>Refresh D1</span>
-        </button>
-      </div>
-
-      {/* =====================================================================
-          TAB 1: UNIVERSITY QUESTIONS
-         ===================================================================== */}
-      {activeTab === 'questions' && (
-        <div className="flex flex-col gap-5">
-          {/* ── University Bubbles Strip (All 18+ Pre-Seeded & Custom Universities) ── */}
-          <div className="p-5 rounded-3xl bg-[var(--surface)] border border-[var(--border)] flex flex-col gap-3.5">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <Building2 size={16} className="text-[var(--accent)]" />
-                <h2 className="text-sm font-bold text-[var(--text)]">
-                  1. Select University ({universities.length} Total ·{' '}
-                  {universities.filter((u) => u.mcq_count > 0).length} LIVE ·{' '}
-                  {universities.filter((u) => u.mcq_count === 0).length} Coming Soon)
-                </h2>
-              </div>
-              <span className="text-[11px] text-[var(--text-muted)]">
-                Universities with 0 MCQs show as &ldquo;Coming Soon&rdquo; on the Cockpit. Adding MCQs makes them LIVE automatically.
-              </span>
+            <div className="flex items-center gap-2.5 min-w-0">
+              {bannerMessage.type === 'error' ? (
+                <AlertTriangle className="w-4 h-4 shrink-0 text-[var(--accent)]" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+              )}
+              <span className="truncate">{bannerMessage.text}</span>
             </div>
+            <button
+              type="button"
+              onClick={() => setBannerMessage(null)}
+              className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 shrink-0"
+              aria-label="Dismiss notification"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
-            {loadingUnis ? (
-              <LineLoader context="universities" variant="section" />
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 max-h-[310px] overflow-y-auto pr-1">
-                {universities.map((uni, idx) => {
-                  const isSelected = uni.id === selectedUniId;
-                  const isLive = uni.mcq_count > 0;
-                  return (
-                    <div
-                      key={uni.id}
-                      onClick={() => {
-                        setSelectedUniId(uni.id);
-                        setSelectedSubject('all');
-                        setSelectedTopic('all');
-                        setPageIndex(0);
-                      }}
-                      className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
-                        isSelected
-                          ? 'border-[var(--accent)] bg-[var(--accent-soft)] ring-1 ring-[var(--accent)]'
-                          : 'border-[var(--border)] bg-[var(--surface-muted)]/60 hover:border-[var(--border-strong)]'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="font-bold text-xs text-[var(--text)] truncate">
-                            {uni.name}
-                          </div>
-                          <div className="text-[10px] font-mono text-[var(--text-muted)] truncate">
-                            /{uni.slug}
-                          </div>
-                        </div>
+        {/* 1. Compact Glass Header */}
+        <header className="aqb-glass-card p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <h1 className="aqb-page-title">Question Bank</h1>
+            <span className="aqb-admin-chip">Admin</span>
+          </div>
+          <p className="mt-1 text-[13.5px] text-[var(--text-secondary)] leading-snug">
+            Manage MCQs by university.
+          </p>
+          <p className="mt-2.5 text-xs font-bold tracking-tight text-[var(--text-muted)] tabular-nums">
+            {universities.length} universities · {liveCount} live ·{' '}
+            {totalBankMcqs.toLocaleString()} MCQs
+          </p>
+        </header>
 
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase shrink-0 ${
-                            isLive
-                              ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
-                              : 'bg-[var(--surface)] text-[var(--text-muted)] border border-[var(--border)]'
-                          }`}
-                        >
-                          {isLive ? 'LIVE' : 'Coming Soon'}
-                        </span>
-                      </div>
+        {/* 2. Segmented Glass Tabs + Right-End Refresh Icon Button */}
+        <div className="aqb-tabs-row">
+          <nav className="aqb-segmented-tabs" aria-label="Question bank sections">
+            <button
+              type="button"
+              onClick={() => setActiveTab('questions')}
+              className={`aqb-tab-btn ${activeTab === 'questions' ? 'aqb-tab-btn--active' : ''}`}
+            >
+              <Layers className="w-4 h-4 shrink-0" />
+              <span className="truncate">Questions</span>
+            </button>
 
-                      <div className="flex items-center justify-between pt-1 border-t border-[var(--border)]/60">
-                        <span className="text-xs font-mono font-bold text-[var(--text)]">
-                          {uni.mcq_count} <span className="text-[10px] font-normal text-[var(--text-muted)]">MCQs</span>
-                        </span>
+            <button
+              type="button"
+              onClick={() => setActiveTab('health')}
+              className={`aqb-tab-btn ${activeTab === 'health' ? 'aqb-tab-btn--active' : ''}`}
+            >
+              <Activity className="w-4 h-4 shrink-0" />
+              <span className="truncate">Health</span>
+            </button>
 
-                        <div
-                          className="flex items-center gap-1"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => handleMoveUniversity(idx, -1)}
-                            disabled={idx === 0}
-                            title="Move earlier"
-                            className="p-1 rounded-lg hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-30 cursor-pointer"
-                          >
-                            <ChevronUp size={12} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleMoveUniversity(idx, 1)}
-                            disabled={idx === universities.length - 1}
-                            title="Move later"
-                            className="p-1 rounded-lg hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-30 cursor-pointer"
-                          >
-                            <ChevronDown size={12} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openEditUniversityModal(uni)}
-                            title="Rename / edit university"
-                            className="p-1 rounded-lg hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
-                          >
-                            <Edit2 size={12} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteUniversity(uni)}
-                            title="Delete university"
-                            className="p-1 rounded-lg hover:bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--accent)] cursor-pointer"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('reports')}
+              className={`aqb-tab-btn ${activeTab === 'reports' ? 'aqb-tab-btn--active' : ''}`}
+            >
+              <Flag className="w-4 h-4 shrink-0" />
+              <span className="truncate">Reports</span>
+              {openReportsCount > 0 && (
+                <span className="aqb-tab-badge">{openReportsCount}</span>
+              )}
+            </button>
+          </nav>
+
+          <button
+            type="button"
+            onClick={() => {
+              loadInitialData();
+              loadUniversityMcqs(true);
+            }}
+            aria-label="Refresh question bank"
+            title="Refresh question bank"
+            className="aqb-icon-btn"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* 3. Sticky Primary Action Bar (under tabs) */}
+        <div className="aqb-sticky-action-bar">
+          {/* Primary Red "Add MCQs" Dropdown Button */}
+          <div ref={addMenuRef} className="relative flex-1 min-w-0">
+            <button
+              type="button"
+              onClick={() => {
+                setAddMenuOpen((prev) => !prev);
+                setOverflowMenuOpen(false);
+              }}
+              className="aqb-btn aqb-btn--primary w-full justify-between"
+            >
+              <span className="inline-flex items-center gap-2 min-w-0">
+                <Plus className="w-4 h-4 shrink-0" />
+                <span className="truncate">Add MCQs</span>
+              </span>
+              <ChevronDown className="w-4 h-4 shrink-0 opacity-90" />
+            </button>
+
+            {addMenuOpen && (
+              <div className="aqb-dropdown-menu left-0 right-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddMenuOpen(false);
+                    openAddMcqModal();
+                  }}
+                  className="aqb-dropdown-item"
+                >
+                  <Plus className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-bold text-[13px] truncate">Add single MCQ</div>
+                    <div className="text-[11px] text-[var(--text-muted)] truncate">
+                      into {selectedUniversity?.name || 'selected university'}
                     </div>
-                  );
-                })}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddMenuOpen(false);
+                    openBulkImportModal();
+                  }}
+                  className="aqb-dropdown-item"
+                >
+                  <Upload className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-bold text-[13px] truncate">Bulk import</div>
+                    <div className="text-[11px] text-[var(--text-muted)] truncate">
+                      CSV, Google Sheet, or Paste
+                    </div>
+                  </div>
+                </button>
               </div>
             )}
           </div>
 
-          {/* ── Step 2 & 3: Subject & Topic Filter Bar + Search ── */}
-          {currentUni && (
-            <div className="p-5 rounded-3xl bg-[var(--surface)] border border-[var(--border)] flex flex-col gap-4">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-[var(--border)]">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <span className="text-sm font-bold text-[var(--text)]">
-                    {currentUni.name}
+          {/* Secondary "⋯" Overflow Menu */}
+          <div ref={overflowMenuRef} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setOverflowMenuOpen((prev) => !prev);
+                setAddMenuOpen(false);
+              }}
+              aria-label="More question bank actions"
+              className="aqb-icon-btn"
+            >
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+
+            {overflowMenuOpen && (
+              <div className="aqb-dropdown-menu right-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOverflowMenuOpen(false);
+                    openAddUniversityModal();
+                  }}
+                  className="aqb-dropdown-item"
+                >
+                  <Building2 className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
+                  <span>Add university</span>
+                </button>
+                <a
+                  href={getUniversityMcqExportUrl('json')}
+                  download
+                  onClick={() => setOverflowMenuOpen(false)}
+                  className="aqb-dropdown-item no-underline"
+                >
+                  <Download className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
+                  <span>Export backup (JSON)</span>
+                </a>
+                <a
+                  href={getUniversityMcqExportUrl('csv', selectedUniId)}
+                  download
+                  onClick={() => setOverflowMenuOpen(false)}
+                  className="aqb-dropdown-item no-underline"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
+                  <span>Export current university (CSV)</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOverflowMenuOpen(false);
+                    loadInitialData();
+                    loadUniversityMcqs(true);
+                  }}
+                  className="aqb-dropdown-item"
+                >
+                  <RefreshCw className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
+                  <span>Refresh</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ====================================================================
+            TAB 1: QUESTIONS
+            ==================================================================== */}
+        {activeTab === 'questions' && (
+          <div className="flex flex-col gap-3.5 min-w-0">
+            {/* 4. University Picker ("Working in" Glass Card) */}
+            {selectedUniversity && (
+              <div className="aqb-glass-card aqb-glass-card--selected p-4">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    Working in
                   </span>
-                  <span
-                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
-                      currentUni.mcq_count > 0
-                        ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
-                        : 'bg-[var(--surface-muted)] text-[var(--text-muted)] border border-[var(--border)]'
-                    }`}
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`aqb-pill ${
+                        selectedUniversity.mcq_count > 0
+                          ? 'aqb-pill--live'
+                          : 'aqb-pill--coming-soon'
+                      }`}
+                    >
+                      {selectedUniversity.mcq_count > 0 ? 'LIVE' : 'COMING SOON'}
+                    </span>
+                    <span className="aqb-pill aqb-pill--tag tabular-nums font-bold">
+                      {selectedUniversity.mcq_count.toLocaleString()} MCQs
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUniSheetMode('switch');
+                    setUniSearchQuery('');
+                    setUniSheetOpen(true);
+                  }}
+                  className="w-full text-left flex items-center justify-between gap-3 py-1.5 rounded-2xl transition active:scale-[0.99] min-w-0"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-11 h-11 rounded-2xl bg-[var(--accent)] text-white font-extrabold text-sm flex items-center justify-center shrink-0 shadow-sm">
+                      {getUniversityInitials(selectedUniversity.name)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-base font-extrabold text-[var(--text)] truncate">
+                        {selectedUniversity.name}
+                      </div>
+                      <div className="text-xs font-mono text-[var(--text-muted)] truncate">
+                        slug: {selectedUniversity.slug}
+                      </div>
+                    </div>
+                  </div>
+
+                  <span className="aqb-btn aqb-btn--glass !min-h-[40px] !px-3 !py-1.5 text-xs shrink-0">
+                    Switch
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {/* 5. Selected University Panel (Stats + Scoped Actions) */}
+            {selectedUniversity && (
+              <div className="aqb-glass-card p-4 flex flex-col gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="rounded-2xl px-3 py-2.5 bg-black/[0.03] dark:bg-white/[0.04] border border-[var(--border)]">
+                    <div className="text-[11px] font-semibold text-[var(--text-muted)]">
+                      Total MCQs
+                    </div>
+                    <div className="text-base font-extrabold text-[var(--text)] tabular-nums mt-0.5">
+                      {selectedUniversity.mcq_count.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl px-3 py-2.5 bg-black/[0.03] dark:bg-white/[0.04] border border-[var(--border)]">
+                    <div className="text-[11px] font-semibold text-[var(--text-muted)]">
+                      Subjects
+                    </div>
+                    <div className="text-base font-extrabold text-[var(--text)] tabular-nums mt-0.5">
+                      {uniTopics.length}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl px-3 py-2.5 bg-black/[0.03] dark:bg-white/[0.04] border border-[var(--border)]">
+                    <div className="text-[11px] font-semibold text-[var(--text-muted)]">
+                      Topics
+                    </div>
+                    <div className="text-base font-extrabold text-[var(--text)] tabular-nums mt-0.5">
+                      {totalTopicsInSelectedUni}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl px-3 py-2.5 bg-black/[0.03] dark:bg-white/[0.04] border border-[var(--border)]">
+                    <div className="text-[11px] font-semibold text-[var(--text-muted)]">
+                      Last import
+                    </div>
+                    <div className="text-sm font-extrabold text-[var(--text)] truncate mt-0.5">
+                      {lastImportTimeLabel}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1 border-t border-[var(--border)]">
+                  <div className="text-xs font-semibold text-[var(--text-secondary)] truncate">
+                    Importing into:{' '}
+                    <span className="font-extrabold text-[var(--text)]">
+                      {selectedUniversity.name}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={openAddMcqModal}
+                      className="aqb-btn aqb-btn--glass !min-h-[44px] !px-3 text-xs"
+                    >
+                      <Plus className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                      <span>Add MCQ</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openBulkImportModal}
+                      className="aqb-btn aqb-btn--glass !min-h-[44px] !px-3 text-xs"
+                    >
+                      <Upload className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                      <span>Bulk import</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 6. Search & Collapsed Filter Trigger */}
+            <div className="aqb-glass-card p-3 flex flex-col gap-2.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="relative flex-1 min-w-0">
+                  <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={`Search in ${selectedUniversity?.name || 'university'}…`}
+                    className="aqb-input !pl-10 !pr-8"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      aria-label="Clear search"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-[var(--text-muted)] hover:text-[var(--text)]"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setFilterSheetOpen(true)}
+                  className="aqb-btn aqb-btn--glass shrink-0 !px-3.5"
+                >
+                  <Filter className="w-4 h-4" />
+                  <span>Filters</span>
+                  {activeFiltersCount > 0 && (
+                    <span className="aqb-tab-badge">{activeFiltersCount}</span>
+                  )}
+                </button>
+              </div>
+
+              {/* Removable Active Filter Chips */}
+              {activeFiltersCount > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  {filterSubject !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilterSubject('all');
+                        setFilterTopic('all');
+                      }}
+                      className="aqb-pill aqb-pill--tag hover:border-[var(--accent)]"
+                    >
+                      <span>Subject: {filterSubject}</span>
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                  {filterTopic !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => setFilterTopic('all')}
+                      className="aqb-pill aqb-pill--tag hover:border-[var(--accent)]"
+                    >
+                      <span>Topic: {filterTopic}</span>
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                  {filterDifficulty !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => setFilterDifficulty('all')}
+                      className="aqb-pill aqb-pill--tag hover:border-[var(--accent)]"
+                    >
+                      <span>Difficulty: {filterDifficulty}</span>
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterSubject('all');
+                      setFilterTopic('all');
+                      setFilterDifficulty('all');
+                    }}
+                    className="text-xs font-bold text-[var(--accent)] ml-1 px-1.5 py-0.5"
                   >
-                    {currentUni.mcq_count > 0
-                      ? `LIVE ON COCKPIT · ${currentUni.mcq_count} MCQs`
-                      : 'COMING SOON ON COCKPIT · 0 MCQs'}
+                    Clear all
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 7. MCQ List as Glass Cards (or Glass Empty State) */}
+            {mcqs.length === 0 && !mcqsLoading ? (
+              <div className="aqb-glass-card p-8 text-center flex flex-col items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-[var(--accent)]/12 text-[var(--accent)] flex items-center justify-center">
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <h2 className="text-base font-extrabold text-[var(--text)]">
+                  No MCQs in {selectedUniversity?.name || 'this university'} yet
+                </h2>
+                <p className="text-xs text-[var(--text-secondary)] max-w-xs leading-relaxed">
+                  {activeFiltersCount > 0 || searchQuery.trim()
+                    ? 'No questions matched your active search or filters.'
+                    : `Add your first question or import a batch into ${
+                        selectedUniversity?.name || 'this university'
+                      }. Only universities with 1+ MCQs appear LIVE to students.`}
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-2.5 mt-1">
+                  <button
+                    type="button"
+                    onClick={openAddMcqModal}
+                    className="aqb-btn aqb-btn--primary"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add first MCQ</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openBulkImportModal}
+                    className="aqb-btn aqb-btn--glass"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Bulk import</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                <div className="flex items-center justify-between px-1 text-xs font-semibold text-[var(--text-muted)]">
+                  <span className="tabular-nums">
+                    Showing {mcqs.length} of {totalMcqsForFilter.toLocaleString()} MCQs
                   </span>
+                  {mcqs.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedMcqIds.size === mcqs.length) {
+                          setSelectedMcqIds(new Set());
+                        } else {
+                          setSelectedMcqIds(new Set(mcqs.map((m) => m.id)));
+                        }
+                      }}
+                      className="text-xs font-bold text-[var(--accent)] hover:underline"
+                    >
+                      {selectedMcqIds.size === mcqs.length ? 'Deselect all' : 'Select all'}
+                    </button>
+                  )}
+                </div>
+
+                {mcqs.map((mcq) => {
+                  const isSelected = selectedMcqIds.has(mcq.id);
+                  const isExpanded = expandedMcqId === mcq.id;
+                  const diffClass =
+                    mcq.difficulty === 'easy'
+                      ? 'aqb-pill--easy'
+                      : mcq.difficulty === 'hard'
+                      ? 'aqb-pill--hard'
+                      : 'aqb-pill--medium';
+
+                  return (
+                    <article
+                      key={mcq.id}
+                      className={`aqb-glass-card p-3.5 sm:p-4 ${
+                        isSelected ? 'aqb-glass-card--selected' : ''
+                      }`}
+                    >
+                      <div className="flex items-start gap-3 min-w-0">
+                        <label
+                          className="pt-0.5 flex items-center justify-center cursor-pointer shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {
+                              setSelectedMcqIds((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(mcq.id)) next.delete(mcq.id);
+                                else next.add(mcq.id);
+                                return next;
+                              });
+                            }}
+                            aria-label="Select question"
+                            className="w-4 h-4 rounded accent-[var(--accent)] cursor-pointer"
+                          />
+                        </label>
+
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() =>
+                            setExpandedMcqId((prev) => (prev === mcq.id ? null : mcq.id))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setExpandedMcqId((prev) => (prev === mcq.id ? null : mcq.id));
+                            }
+                          }}
+                          className="flex-1 min-w-0 cursor-pointer"
+                        >
+                          {/* Tags & Correct Answer Badge */}
+                          <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2">
+                            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                              <span className="aqb-pill aqb-pill--tag truncate max-w-[140px]">
+                                {mcq.subject}
+                              </span>
+                              <span className="aqb-pill aqb-pill--tag truncate max-w-[150px]">
+                                {mcq.topic}
+                              </span>
+                              <span className={`aqb-pill ${diffClass}`}>
+                                {mcq.difficulty || 'medium'}
+                              </span>
+                            </div>
+                            <span className="aqb-pill aqb-pill--live tabular-nums">
+                              Ans: {mcq.correct_answer}
+                            </span>
+                          </div>
+
+                          {/* 2-Line Question Preview with KaTeX */}
+                          <div
+                            className={`text-sm font-semibold text-[var(--text)] leading-snug break-words ${
+                              isExpanded ? '' : 'line-clamp-2'
+                            }`}
+                          >
+                            <MathText text={mcq.question} />
+                          </div>
+
+                          <div className="mt-2 flex items-center justify-between text-[11px] font-semibold text-[var(--text-muted)]">
+                            <span>{isExpanded ? 'Tap to collapse' : 'Tap to view options'}</span>
+                            {isExpanded ? (
+                              <ChevronUp className="w-4 h-4" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Expanded Options A-D, Explanation & Actions */}
+                      {isExpanded && (
+                        <div className="mt-3 pt-3 border-t border-[var(--border)] flex flex-col gap-2.5">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {(
+                              [
+                                ['A', mcq.option_a],
+                                ['B', mcq.option_b],
+                                ['C', mcq.option_c],
+                                ['D', mcq.option_d],
+                              ] as const
+                            ).map(([letter, text]) => {
+                              const isCorrect = mcq.correct_answer === letter;
+                              return (
+                                <div
+                                  key={letter}
+                                  className={`rounded-2xl p-2.5 border text-xs flex items-start gap-2 min-w-0 ${
+                                    isCorrect
+                                      ? 'border-emerald-500/50 bg-emerald-500/10 text-[var(--text)] font-bold'
+                                      : 'border-[var(--border)] bg-black/[0.02] dark:bg-white/[0.03] text-[var(--text-secondary)]'
+                                  }`}
+                                >
+                                  <span
+                                    className={`w-5 h-5 rounded-full text-[11px] font-extrabold flex items-center justify-center shrink-0 ${
+                                      isCorrect
+                                        ? 'bg-emerald-600 text-white'
+                                        : 'bg-black/10 dark:bg-white/10 text-[var(--text)]'
+                                    }`}
+                                  >
+                                    {letter}
+                                  </span>
+                                  <div className="min-w-0 break-words leading-relaxed">
+                                    <MathText text={text} />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {mcq.explanation ? (
+                            <div className="rounded-2xl p-3 bg-black/[0.03] dark:bg-white/[0.04] border border-[var(--border)] text-xs text-[var(--text-secondary)]">
+                              <div className="font-bold uppercase tracking-wider text-[10.5px] text-[var(--text-muted)] mb-1">
+                                Explanation
+                              </div>
+                              <div className="leading-relaxed break-words">
+                                <MathText text={mcq.explanation} />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] italic text-[var(--text-muted)]">
+                              No explanation provided.
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-end gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => openEditMcqModal(mcq)}
+                              className="aqb-btn aqb-btn--glass !min-h-[44px] !px-3.5 text-xs"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setConfirmDeleteMcqModal({
+                                  ids: [mcq.id],
+                                  label: `this MCQ from ${
+                                    selectedUniversity?.name || 'university'
+                                  }`,
+                                })
+                              }
+                              className="aqb-btn aqb-btn--danger !min-h-[44px] !px-3.5 text-xs"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+
+                {/* Pagination: Load More after 50 rows */}
+                {mcqs.length < totalMcqsForFilter && (
+                  <button
+                    type="button"
+                    disabled={loadingMoreMcqs}
+                    onClick={handleLoadMoreMcqs}
+                    className="aqb-btn aqb-btn--glass w-full mt-1"
+                  >
+                    {loadingMoreMcqs ? (
+                      <ButtonLineLoader label="Loading more…" />
+                    ) : (
+                      <span>
+                        Load more ({mcqs.length} of {totalMcqsForFilter.toLocaleString()})
+                      </span>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Sticky Multi-Select Action Bar */}
+            {selectedMcqIds.size > 0 && (
+              <div className="aqb-selection-bar">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-extrabold text-[var(--text)] tabular-nums">
+                    {selectedMcqIds.size} selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedMcqIds.size === mcqs.length) {
+                        setSelectedMcqIds(new Set());
+                      } else {
+                        setSelectedMcqIds(new Set(mcqs.map((m) => m.id)));
+                      }
+                    }}
+                    className="text-xs font-bold text-[var(--accent)] underline px-1"
+                  >
+                    {selectedMcqIds.size === mcqs.length ? 'Clear' : 'Select all'}
+                  </button>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={openBulkImportModal}
-                    className="px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] hover:border-[var(--accent)] text-xs font-semibold text-[var(--text)] flex items-center gap-1.5 cursor-pointer"
+                    onClick={() => {
+                      const firstOther = universities.find((u) => u.id !== selectedUniId);
+                      setMoveTargetUniId(firstOther?.id || selectedUniId);
+                      setMoveModalOpen(true);
+                    }}
+                    className="aqb-btn aqb-btn--glass !min-h-[44px] !px-3 text-xs"
                   >
-                    <Upload size={13} className="text-[var(--accent)]" />
-                    <span>Bulk Import into {currentUni.name}</span>
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    <span>Move to university…</span>
                   </button>
                   <button
                     type="button"
-                    onClick={openAddMcqModal}
-                    className="btn-red px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                    onClick={() =>
+                      setConfirmDeleteMcqModal({
+                        ids: Array.from(selectedMcqIds),
+                        label: `${selectedMcqIds.size} selected MCQs from ${
+                          selectedUniversity?.name || 'university'
+                        }`,
+                      })
+                    }
+                    className="aqb-btn aqb-btn--danger !min-h-[44px] !px-3 text-xs"
                   >
-                    <Plus size={13} />
-                    <span>Add MCQ to {currentUni.name}</span>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete</span>
                   </button>
                 </div>
               </div>
+            )}
+          </div>
+        )}
 
-              {/* Subject Pills */}
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--text-secondary)]">
-                  <BookOpen size={13} className="text-[var(--accent)]" />
-                  <span>2. Filter by Subject:</span>
+        {/* ====================================================================
+            TAB 2: BANK HEALTH
+            ==================================================================== */}
+        {activeTab === 'health' && (
+          <div className="flex flex-col gap-3.5">
+            {/* 2-Column Grid of Stat Cards */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="aqb-glass-card p-4">
+                <div className="text-xs font-bold text-[var(--text-muted)]">
+                  Total universities
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="text-2xl font-extrabold text-[var(--text)] tabular-nums mt-1">
+                  {healthData?.totalUniversities ?? universities.length}
+                </div>
+              </div>
+              <div className="aqb-glass-card p-4">
+                <div className="text-xs font-bold text-[var(--text-muted)]">Live</div>
+                <div className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums mt-1">
+                  {healthData?.liveUniversities ?? liveCount}
+                </div>
+              </div>
+              <div className="aqb-glass-card p-4">
+                <div className="text-xs font-bold text-[var(--text-muted)]">Coming soon</div>
+                <div className="text-2xl font-extrabold text-[var(--text-secondary)] tabular-nums mt-1">
+                  {healthData?.comingSoonUniversities ??
+                    Math.max(0, universities.length - liveCount)}
+                </div>
+              </div>
+              <div className="aqb-glass-card p-4">
+                <div className="text-xs font-bold text-[var(--text-muted)]">Total MCQs</div>
+                <div className="text-2xl font-extrabold text-[var(--accent)] tabular-nums mt-1">
+                  {totalBankMcqs.toLocaleString()}
+                </div>
+              </div>
+            </div>
+
+            {/* Integrity List with "Fix" Action per Item */}
+            <div className="aqb-glass-card p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-extrabold text-[var(--text)]">
+                    University Isolation & Integrity Checks
+                  </h2>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Verify permanent university binding, slug consistency, and counts.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={fixingHealthKey !== null}
+                  onClick={() => handleFixIntegrityIssue('all')}
+                  className="aqb-btn aqb-btn--glass !min-h-[40px] !px-3 text-xs shrink-0"
+                >
+                  {fixingHealthKey === 'all' ? (
+                    <ButtonLineLoader label="Fixing…" />
+                  ) : (
+                    <span>Fix all</span>
+                  )}
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                {[
+                  {
+                    key: 'slug_mismatch' as const,
+                    title: 'University slug mismatches',
+                    desc: 'MCQs where university_slug differs from their parent university_id slug.',
+                    count: healthData?.integrity?.slugMismatchCount ?? 0,
+                  },
+                  {
+                    key: 'orphan_mcqs' as const,
+                    title: 'Orphan MCQs',
+                    desc: 'MCQs with a missing or unrecognized university_id.',
+                    count: healthData?.integrity?.missingOrInvalidUniversityIdCount ?? 0,
+                  },
+                  {
+                    key: 'count_drift' as const,
+                    title: 'University count drift',
+                    desc: 'Universities whose cached mcq_count or is_live flag differs from exact row count.',
+                    count: healthData?.integrity?.countMismatchUniversities?.length ?? 0,
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.key}
+                    className="rounded-2xl p-3 border border-[var(--border)] bg-black/[0.02] dark:bg-white/[0.03] flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-extrabold text-[var(--text)]">
+                          {item.title}
+                        </span>
+                        <span
+                          className={`aqb-pill tabular-nums ${
+                            item.count === 0 ? 'aqb-pill--live' : 'aqb-pill--hard'
+                          }`}
+                        >
+                          {item.count}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--text-muted)] mt-0.5 leading-snug">
+                        {item.desc}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={fixingHealthKey !== null}
+                      onClick={() => handleFixIntegrityIssue(item.key)}
+                      className="aqb-btn aqb-btn--glass !min-h-[40px] !px-3 text-xs shrink-0"
+                    >
+                      {fixingHealthKey === item.key ? (
+                        <ButtonLineLoader label="Fixing…" />
+                      ) : (
+                        <span>Fix</span>
+                      )}
+                    </button>
+                  </div>
+                ))}
+
+                {/* Missing Explanations Item */}
+                <div className="rounded-2xl p-3 border border-[var(--border)] bg-black/[0.02] dark:bg-white/[0.03] flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-extrabold text-[var(--text)]">
+                        Missing explanations
+                      </span>
+                      <span
+                        className={`aqb-pill tabular-nums ${
+                          (healthData?.missingExplanations ?? 0) === 0
+                            ? 'aqb-pill--live'
+                            : 'aqb-pill--medium'
+                        }`}
+                      >
+                        {healthData?.missingExplanations ?? 0}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-0.5 leading-snug">
+                      Questions without a written solution explanation.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('questions')}
+                    className="aqb-btn aqb-btn--glass !min-h-[40px] !px-3 text-xs shrink-0"
+                  >
+                    <span>Review</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ====================================================================
+            TAB 3: STUDENT REPORTS
+            ==================================================================== */}
+        {activeTab === 'reports' && (
+          <div className="flex flex-col gap-3">
+            <div className="aqb-hscroll-fade">
+              {(['all', 'open', 'resolved', 'ignored'] as const).map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => setReportFilter(st)}
+                  className={`aqb-btn !min-h-[40px] !px-3.5 text-xs capitalize ${
+                    reportFilter === st ? 'aqb-btn--primary' : 'aqb-btn--glass'
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
+
+            {filteredReports.length === 0 ? (
+              <div className="aqb-glass-card p-8 text-center flex flex-col items-center gap-2">
+                <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+                <div className="text-sm font-extrabold text-[var(--text)]">
+                  No {reportFilter !== 'all' ? reportFilter : ''} student reports
+                </div>
+                <p className="text-xs text-[var(--text-muted)] max-w-xs">
+                  When students flag a question for a typo or key issue, it appears here.
+                </p>
+              </div>
+            ) : (
+              filteredReports.map((rep) => (
+                <div key={rep.id} className="aqb-glass-card p-4 flex flex-col gap-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className={`aqb-pill ${
+                        rep.status === 'open'
+                          ? 'aqb-pill--hard'
+                          : rep.status === 'resolved'
+                          ? 'aqb-pill--live'
+                          : 'aqb-pill--coming-soon'
+                      }`}
+                    >
+                      {rep.status}
+                    </span>
+                    <span className="text-[11px] text-[var(--text-muted)] tabular-nums">
+                      {rep.created_at
+                        ? new Date(rep.created_at).toLocaleDateString()
+                        : 'Recent'}
+                    </span>
+                  </div>
+
+                  <div className="text-xs font-bold text-[var(--accent)]">
+                    Reason: {rep.reason}
+                  </div>
+                  {(rep.question || rep.question_preview) && (
+                    <div className="text-xs text-[var(--text)] font-medium line-clamp-2">
+                      <MathText text={rep.question || rep.question_preview || ''} />
+                    </div>
+                  )}
+                  {(rep.details || rep.comment) && (
+                    <div className="text-xs text-[var(--text-secondary)]">
+                      &ldquo;{rep.details || rep.comment}&rdquo;
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
+                    <button
+                      type="button"
+                      onClick={() => handleEditReportedQuestion(rep)}
+                      className="aqb-btn aqb-btn--glass !min-h-[42px] !px-3 text-xs"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Edit question</span>
+                    </button>
+                    {rep.status !== 'resolved' && (
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateReport(rep.id, 'resolved')}
+                        className="aqb-btn aqb-btn--primary !min-h-[42px] !px-3 text-xs"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Resolve</span>
+                      </button>
+                    )}
+                    {rep.status !== 'ignored' && (
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateReport(rep.id, 'ignored')}
+                        className="aqb-btn aqb-btn--glass !min-h-[42px] !px-3 text-xs"
+                      >
+                        <span>Ignore</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ======================================================================
+          BOTTOM SHEET 1: UNIVERSITY SWITCHER & MANAGER
+          ====================================================================== */}
+      {uniSheetOpen && (
+        <div
+          className="aqb-sheet-backdrop"
+          onClick={() => setUniSheetOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Switch or manage universities"
+        >
+          <div
+            className="aqb-sheet"
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={handleSheetTouchStart}
+            onTouchEnd={(e) => handleSheetTouchEnd(e, () => setUniSheetOpen(false))}
+          >
+            <div className="aqb-sheet-handle-bar">
+              <div className="aqb-sheet-handle-pill" />
+            </div>
+
+            <div className="aqb-sheet-header">
+              <div className="min-w-0">
+                <h2 className="text-base font-extrabold text-[var(--text)] truncate">
+                  {uniSheetMode === 'switch' ? 'Select University' : 'Manage Universities'}
+                </h2>
+                <p className="text-xs text-[var(--text-muted)] truncate">
+                  {universities.length} total · {liveCount} live
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setUniSheetMode((prev) => (prev === 'switch' ? 'manage' : 'switch'))
+                  }
+                  className="aqb-btn aqb-btn--glass !min-h-[40px] !px-3 text-xs"
+                >
+                  {uniSheetMode === 'switch' ? 'Manage' : 'Done'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUniSheetOpen(false)}
+                  aria-label="Close university sheet"
+                  className="aqb-icon-btn !w-10 !h-10 !min-w-[40px] !min-h-[40px]"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="aqb-sheet-body flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1 min-w-0">
+                  <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="search"
+                    value={uniSearchQuery}
+                    onChange={(e) => setUniSearchQuery(e.target.value)}
+                    placeholder="Search university name or slug…"
+                    className="aqb-input !pl-10"
+                  />
+                </div>
+                {uniSheetMode === 'manage' && (
+                  <button
+                    type="button"
+                    onClick={openAddUniversityModal}
+                    className="aqb-btn aqb-btn--primary !px-3.5 shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add</span>
+                  </button>
+                )}
+              </div>
+
+              {uniSheetMode === 'switch' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {filteredUniversitiesInSheet.map((uni) => {
+                    const active = uni.id === selectedUniId;
+                    return (
+                      <button
+                        key={uni.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedUniId(uni.id);
+                          setFilterSubject('all');
+                          setFilterTopic('all');
+                          setUniSheetOpen(false);
+                        }}
+                        className={`aqb-glass-card p-3.5 text-left flex items-center justify-between gap-2.5 ${
+                          active ? 'aqb-glass-card--selected' : ''
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div
+                            className={`w-10 h-10 rounded-2xl font-extrabold text-xs flex items-center justify-center shrink-0 ${
+                              active
+                                ? 'bg-[var(--accent)] text-white'
+                                : 'bg-black/5 dark:bg-white/10 text-[var(--text)]'
+                            }`}
+                          >
+                            {getUniversityInitials(uni.name)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm font-extrabold text-[var(--text)] truncate">
+                              {uni.name}
+                            </div>
+                            <div className="text-[11px] text-[var(--text-muted)] tabular-nums">
+                              {uni.mcq_count.toLocaleString()} MCQs
+                            </div>
+                          </div>
+                        </div>
+                        <span
+                          className={`aqb-pill shrink-0 ${
+                            uni.mcq_count > 0 ? 'aqb-pill--live' : 'aqb-pill--coming-soon'
+                          }`}
+                        >
+                          {uni.mcq_count > 0 ? 'LIVE' : 'SOON'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  {filteredUniversitiesInSheet.map((uni, idx) => (
+                    <div
+                      key={uni.id}
+                      className="aqb-glass-card p-3.5 flex flex-col gap-2.5"
+                    >
+                      <div className="flex items-center justify-between gap-2 min-w-0">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <GripVertical className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-sm font-extrabold text-[var(--text)] truncate">
+                              {uni.name}
+                            </div>
+                            <div className="text-[11px] font-mono text-[var(--text-muted)] truncate">
+                              {uni.slug} · {uni.mcq_count.toLocaleString()} MCQs
+                            </div>
+                          </div>
+                        </div>
+                        <span
+                          className={`aqb-pill shrink-0 ${
+                            uni.mcq_count > 0 ? 'aqb-pill--live' : 'aqb-pill--coming-soon'
+                          }`}
+                        >
+                          {uni.mcq_count > 0 ? 'LIVE' : 'SOON'}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={() => handleMoveUniversity(idx, -1)}
+                          className="aqb-btn aqb-btn--glass !min-h-[44px] !px-3 text-xs"
+                        >
+                          <ArrowUp className="w-3.5 h-3.5" />
+                          <span>Up</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === filteredUniversitiesInSheet.length - 1}
+                          onClick={() => handleMoveUniversity(idx, 1)}
+                          className="aqb-btn aqb-btn--glass !min-h-[44px] !px-3 text-xs"
+                        >
+                          <ArrowDown className="w-3.5 h-3.5" />
+                          <span>Down</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openEditUniversityModal(uni)}
+                          className="aqb-btn aqb-btn--glass !min-h-[44px] !px-3 text-xs"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Edit</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteUni(uni)}
+                          className="aqb-btn aqb-btn--danger !min-h-[44px] !px-3 text-xs"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================
+          BOTTOM SHEET 2: FILTERS SHEET
+          ====================================================================== */}
+      {filterSheetOpen && (
+        <div
+          className="aqb-sheet-backdrop"
+          onClick={() => setFilterSheetOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Filter questions"
+        >
+          <div
+            className="aqb-sheet aqb-sheet--compact"
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={handleSheetTouchStart}
+            onTouchEnd={(e) => handleSheetTouchEnd(e, () => setFilterSheetOpen(false))}
+          >
+            <div className="aqb-sheet-handle-bar">
+              <div className="aqb-sheet-handle-pill" />
+            </div>
+
+            <div className="aqb-sheet-header">
+              <h2 className="text-base font-extrabold text-[var(--text)]">Filter MCQs</h2>
+              <button
+                type="button"
+                onClick={() => setFilterSheetOpen(false)}
+                aria-label="Close filters"
+                className="aqb-icon-btn !w-10 !h-10 !min-w-[40px] !min-h-[40px]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="aqb-sheet-body flex flex-col gap-4">
+              {/* Subject Chips (Horizontal Scroll Row with Edge Fade) */}
+              <div>
+                <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2">
+                  Subject
+                </div>
+                <div className="aqb-hscroll-fade">
                   <button
                     type="button"
                     onClick={() => {
-                      setSelectedSubject('all');
-                      setSelectedTopic('all');
-                      setPageIndex(0);
+                      setFilterSubject('all');
+                      setFilterTopic('all');
                     }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
-                      selectedSubject === 'all'
-                        ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
-                        : 'bg-[var(--surface-muted)] text-[var(--text-secondary)] border-[var(--border)] hover:text-[var(--text)]'
+                    className={`aqb-btn !min-h-[40px] !px-3.5 text-xs ${
+                      filterSubject === 'all' ? 'aqb-btn--primary' : 'aqb-btn--glass'
                     }`}
                   >
-                    All Subjects ({currentUni.mcq_count})
+                    All subjects
                   </button>
-                  {uniSubjectsTree.map((sub) => (
+                  {uniTopics.map((s) => (
                     <button
-                      key={sub.subject}
+                      key={s.subject}
                       type="button"
                       onClick={() => {
-                        setSelectedSubject(sub.subject);
-                        setSelectedTopic('all');
-                        setPageIndex(0);
+                        setFilterSubject(s.subject);
+                        setFilterTopic('all');
                       }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
-                        selectedSubject === sub.subject
-                          ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
-                          : 'bg-[var(--surface-muted)] text-[var(--text-secondary)] border-[var(--border)] hover:text-[var(--text)]'
+                      className={`aqb-btn !min-h-[40px] !px-3.5 text-xs ${
+                        filterSubject === s.subject ? 'aqb-btn--primary' : 'aqb-btn--glass'
                       }`}
                     >
-                      {sub.subject} ({sub.total})
+                      <span>{s.subject}</span>
+                      <span className="opacity-75 tabular-nums">({s.total})</span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Topic Pills */}
-              {availableTopicsForSelectedSubject.length > 0 && (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--text-secondary)]">
-                    <Layers size={13} className="text-[var(--accent)]" />
-                    <span>3. Filter by Topic:</span>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
+              {/* Difficulty Segmented Control */}
+              <div>
+                <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2">
+                  Difficulty
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {(['all', 'easy', 'medium', 'hard'] as const).map((diff) => (
                     <button
+                      key={diff}
                       type="button"
-                      onClick={() => {
-                        setSelectedTopic('all');
-                        setPageIndex(0);
-                      }}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
-                        selectedTopic === 'all'
-                          ? 'bg-[var(--text)] text-[var(--bg)] border-[var(--text)]'
-                          : 'bg-[var(--surface-muted)] text-[var(--text-secondary)] border-[var(--border)] hover:text-[var(--text)]'
+                      onClick={() => setFilterDifficulty(diff)}
+                      className={`aqb-btn !min-h-[42px] !px-2 text-xs capitalize ${
+                        filterDifficulty === diff ? 'aqb-btn--primary' : 'aqb-btn--glass'
                       }`}
                     >
-                      All Topics
+                      {diff}
                     </button>
-                    {availableTopicsForSelectedSubject.map((t) => (
+                  ))}
+                </div>
+              </div>
+
+              {/* Topic Selector */}
+              {availableTopicsForFilter.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2">
+                    Topic
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setFilterTopic('all')}
+                      className={`aqb-btn !min-h-[38px] !px-3 text-xs ${
+                        filterTopic === 'all' ? 'aqb-btn--primary' : 'aqb-btn--glass'
+                      }`}
+                    >
+                      All topics
+                    </button>
+                    {availableTopicsForFilter.map((topicName) => (
                       <button
-                        key={t.topic}
+                        key={topicName}
                         type="button"
-                        onClick={() => {
-                          setSelectedTopic(t.topic);
-                          setPageIndex(0);
-                        }}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
-                          selectedTopic === t.topic
-                            ? 'bg-[var(--text)] text-[var(--bg)] border-[var(--text)]'
-                            : 'bg-[var(--surface-muted)] text-[var(--text-secondary)] border-[var(--border)] hover:text-[var(--text)]'
+                        onClick={() => setFilterTopic(topicName)}
+                        className={`aqb-btn !min-h-[38px] !px-3 text-xs ${
+                          filterTopic === topicName ? 'aqb-btn--primary' : 'aqb-btn--glass'
                         }`}
                       >
-                        {t.topic} ({t.count})
+                        {topicName}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="aqb-sheet-footer">
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterSubject('all');
+                  setFilterTopic('all');
+                  setFilterDifficulty('all');
+                }}
+                className="aqb-btn aqb-btn--glass"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterSheetOpen(false)}
+                className="aqb-btn aqb-btn--primary flex-1 sm:flex-initial"
+              >
+                Apply filters
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================
+          BOTTOM SHEET 3: ADD / EDIT SINGLE MCQ (~92% HEIGHT)
+          ====================================================================== */}
+      {mcqModalOpen && (
+        <div
+          className="aqb-sheet-backdrop"
+          onClick={requestCloseMcqModal}
+          role="dialog"
+          aria-modal="true"
+          aria-label={editingMcq ? 'Edit MCQ' : 'Add Single MCQ'}
+        >
+          <div
+            className="aqb-sheet"
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={handleSheetTouchStart}
+            onTouchEnd={(e) => handleSheetTouchEnd(e, requestCloseMcqModal)}
+          >
+            <div className="aqb-sheet-handle-bar">
+              <div className="aqb-sheet-handle-pill" />
+            </div>
+
+            <div className="aqb-sheet-header">
+              <div className="min-w-0">
+                <h2 className="text-base font-extrabold text-[var(--text)] truncate">
+                  {editingMcq ? 'Edit Question' : 'Add Single MCQ'}
+                </h2>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-xs font-semibold text-[var(--text-muted)]">
+                    Adding to:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setMcqUniPickerOpen((prev) => !prev)}
+                    className="aqb-pill aqb-pill--live cursor-pointer"
+                  >
+                    <span className="truncate max-w-[160px]">
+                      {mcqModalUniversity?.name || 'Select university'}
+                    </span>
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={requestCloseMcqModal}
+                aria-label="Close sheet"
+                className="aqb-icon-btn !w-10 !h-10 !min-w-[40px] !min-h-[40px]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="aqb-sheet-body flex flex-col gap-4">
+              {/* Optional Inline University Switcher */}
+              {mcqUniPickerOpen && (
+                <div className="aqb-glass-card p-3 flex flex-col gap-2">
+                  <div className="text-xs font-bold text-[var(--text-muted)]">
+                    Choose target university
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
+                    {universities.map((u) => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => {
+                          setMcqTargetUniId(u.id);
+                          setMcqUniPickerOpen(false);
+                          setMcqDirty(true);
+                        }}
+                        className={`aqb-dropdown-item justify-between ${
+                          u.id === (mcqTargetUniId || selectedUniId)
+                            ? 'bg-[var(--accent)]/10 text-[var(--accent)] font-bold'
+                            : ''
+                        }`}
+                      >
+                        <span className="truncate">{u.name}</span>
+                        {u.id === (mcqTargetUniId || selectedUniId) && (
+                          <Check className="w-4 h-4 shrink-0" />
+                        )}
                       </button>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Search + Difficulty + Bulk Actions */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-[var(--border)]">
-                <div className="flex items-center gap-2 flex-1">
-                  <div className="relative flex-1 max-w-md">
-                    <Search
-                      size={14}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
-                    />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        setPageIndex(0);
-                      }}
-                      placeholder="Search question text, topic, or formula..."
-                      className="w-full pl-9 pr-3 py-2 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-xs text-[var(--text)] placeholder:text-[var(--placeholder)]"
-                    />
-                  </div>
+              {/* Subject & Topic Comboboxes */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <ComboboxField
+                  label="Subject"
+                  value={mcqSubject}
+                  onChange={(val) => {
+                    setMcqSubject(val);
+                    setMcqDirty(true);
+                  }}
+                  options={subjectSuggestions}
+                  placeholder="e.g. Physics"
+                />
+                <ComboboxField
+                  label="Topic"
+                  value={mcqTopic}
+                  onChange={(val) => {
+                    setMcqTopic(val);
+                    setMcqDirty(true);
+                  }}
+                  options={topicSuggestionsForMcqModal}
+                  placeholder="e.g. Kinematics"
+                />
+              </div>
 
-                  <select
-                    value={selectedDifficulty}
-                    onChange={(e) => {
-                      setSelectedDifficulty(e.target.value);
-                      setPageIndex(0);
-                    }}
-                    className="px-3 py-2 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-xs text-[var(--text)]"
-                  >
-                    <option value="all">All Difficulties</option>
-                    <option value="easy">Easy</option>
-                    <option value="medium">Medium</option>
-                    <option value="hard">Hard</option>
-                  </select>
+              {/* 3-Option Segmented Difficulty Control */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
+                  Difficulty
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['easy', 'medium', 'hard'] as const).map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => {
+                        setMcqDifficulty(level);
+                        setMcqDirty(true);
+                      }}
+                      className={`aqb-btn !min-h-[44px] capitalize ${
+                        mcqDifficulty === level ? 'aqb-btn--primary' : 'aqb-btn--glass'
+                      }`}
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Question Stem + Single-Row Horizontally Scrollable Math/Chem Toolbar */}
+              <div className="min-w-0">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    Question (LaTeX &amp; \ce supported)
+                  </label>
                 </div>
 
-                {selectedMcqIds.size > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleBulkDeleteSelected}
-                    className="px-3.5 py-2 rounded-xl bg-red-500/15 border border-red-500/40 text-red-500 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Trash2 size={14} />
-                    <span>Delete Selected ({selectedMcqIds.size})</span>
-                  </button>
+                <div className="aqb-hscroll-fade mb-2">
+                  {LATEX_SNIPPETS.map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      title={item.title}
+                      onClick={() => insertLatexSnippet(item.snippet)}
+                      className="aqb-btn aqb-btn--glass !min-h-[36px] !px-2.5 !py-1 text-xs font-mono shrink-0"
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+
+                <textarea
+                  ref={questionInputRef}
+                  rows={3}
+                  value={mcqQuestion}
+                  onChange={(e) => {
+                    setMcqQuestion(e.target.value);
+                    setMcqDirty(true);
+                  }}
+                  placeholder="Enter question text… Use $...$ for math or $\ce{...}$ for chemistry."
+                  className="aqb-input resize-y min-h-[88px]"
+                />
+              </div>
+
+              {/* 4 Stacked Option Inputs with Radio Circle to Pick Correct Answer */}
+              <div className="flex flex-col gap-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    Options (Tap circle to mark correct answer)
+                  </span>
+                  <span className="aqb-pill aqb-pill--live">Correct: {mcqCorrect}</span>
+                </div>
+
+                {(
+                  [
+                    ['A', mcqOptA, setMcqOptA],
+                    ['B', mcqOptB, setMcqOptB],
+                    ['C', mcqOptC, setMcqOptC],
+                    ['D', mcqOptD, setMcqOptD],
+                  ] as const
+                ).map(([letter, val, setter]) => {
+                  const isCorrect = mcqCorrect === letter;
+                  return (
+                    <div
+                      key={letter}
+                      className={`flex items-center gap-2.5 p-2 rounded-2xl border transition ${
+                        isCorrect
+                          ? 'border-emerald-500/60 bg-emerald-500/[0.06]'
+                          : 'border-[var(--border)] bg-black/[0.015] dark:bg-white/[0.02]'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMcqCorrect(letter);
+                          setMcqDirty(true);
+                        }}
+                        aria-label={`Mark Option ${letter} as correct`}
+                        className={`w-9 h-9 rounded-full font-extrabold text-xs flex items-center justify-center shrink-0 transition ${
+                          isCorrect
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'bg-black/10 dark:bg-white/10 text-[var(--text-secondary)]'
+                        }`}
+                      >
+                        {letter}
+                      </button>
+                      <input
+                        type="text"
+                        value={val}
+                        onChange={(e) => {
+                          setter(e.target.value);
+                          setMcqDirty(true);
+                        }}
+                        placeholder={`Option ${letter}…`}
+                        className="aqb-input !min-h-[42px]"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Optional Explanation */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
+                  Explanation (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={mcqExplanation}
+                  onChange={(e) => {
+                    setMcqExplanation(e.target.value);
+                    setMcqDirty(true);
+                  }}
+                  placeholder="Step-by-step explanation shown after answering…"
+                  className="aqb-input resize-y"
+                />
+              </div>
+
+              {!mathCheck.valid && (
+                <div className="rounded-2xl p-3 bg-amber-500/10 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-300">
+                  LaTeX syntax hint: {mathCheck.error}
+                </div>
+              )}
+
+              {/* Collapsed-by-Default Preview Toggle */}
+              <div className="border-t border-[var(--border)] pt-2">
+                <button
+                  type="button"
+                  onClick={() => setMcqPreviewOpen((prev) => !prev)}
+                  className="aqb-btn aqb-btn--glass w-full justify-between !min-h-[44px]"
+                >
+                  <span className="inline-flex items-center gap-2 text-xs font-bold">
+                    <Eye className="w-4 h-4 text-[var(--accent)]" />
+                    <span>Preview rendered KaTeX &amp; chemistry</span>
+                  </span>
+                  {mcqPreviewOpen ? (
+                    <ChevronUp className="w-4 h-4" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4" />
+                  )}
+                </button>
+
+                {mcqPreviewOpen && (
+                  <div className="mt-2.5 aqb-glass-card p-4 flex flex-col gap-2.5 text-sm">
+                    <div className="font-semibold text-[var(--text)] break-words">
+                      {mcqQuestion.trim() ? (
+                        <MathText text={mcqQuestion} />
+                      ) : (
+                        <span className="text-[var(--text-muted)] italic">
+                          Question preview…
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      {(
+                        [
+                          ['A', mcqOptA],
+                          ['B', mcqOptB],
+                          ['C', mcqOptC],
+                          ['D', mcqOptD],
+                        ] as const
+                      ).map(([letter, opt]) => (
+                        <div
+                          key={letter}
+                          className={`p-2 rounded-xl border ${
+                            mcqCorrect === letter
+                              ? 'border-emerald-500/50 bg-emerald-500/10 font-bold'
+                              : 'border-[var(--border)]'
+                          }`}
+                        >
+                          <span className="mr-1.5 font-extrabold">{letter}.</span>
+                          <MathText text={opt || '—'} />
+                        </div>
+                      ))}
+                    </div>
+                    {mcqExplanation.trim() && (
+                      <div className="text-xs text-[var(--text-secondary)] pt-2 border-t border-[var(--border)]">
+                        <MathText text={mcqExplanation} />
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
-          )}
 
-          {/* ── MCQs Table / Cards ── */}
-          <div className="p-5 rounded-3xl bg-[var(--surface)] border border-[var(--border)] flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <input
-                  type="checkbox"
-                  checked={mcqs.length > 0 && selectedMcqIds.size === mcqs.length}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedMcqIds(new Set(mcqs.map((m) => m.id)));
-                    } else {
-                      setSelectedMcqIds(new Set());
-                    }
-                  }}
-                  className="rounded border-[var(--border)]"
-                />
-                <span className="text-xs font-bold text-[var(--text)]">
-                  Showing {mcqs.length} of {totalMcqs} MCQs
-                </span>
+            <div className="aqb-sheet-footer">
+              <button
+                type="button"
+                onClick={requestCloseMcqModal}
+                className="aqb-btn aqb-btn--glass"
+              >
+                Cancel
+              </button>
+              {!editingMcq && (
+                <button
+                  type="button"
+                  disabled={savingMcq}
+                  onClick={() => handleSaveMcq(true)}
+                  className="aqb-btn aqb-btn--glass"
+                >
+                  {savingMcq ? (
+                    <ButtonLineLoader label="Saving…" />
+                  ) : (
+                    <span>Save &amp; add another</span>
+                  )}
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={savingMcq}
+                onClick={() => handleSaveMcq(false)}
+                className="aqb-btn aqb-btn--primary"
+              >
+                {savingMcq ? (
+                  <ButtonLineLoader label="Saving…" />
+                ) : (
+                  <span>{editingMcq ? 'Update MCQ' : 'Save MCQ'}</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================
+          BOTTOM SHEET 4: BULK IMPORT 3-STEP WIZARD (~92% HEIGHT)
+          ====================================================================== */}
+      {bulkModalOpen && (
+        <div
+          className="aqb-sheet-backdrop"
+          onClick={requestCloseBulkModal}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Bulk Import MCQs"
+        >
+          <div
+            className="aqb-sheet"
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={handleSheetTouchStart}
+            onTouchEnd={(e) => handleSheetTouchEnd(e, requestCloseBulkModal)}
+          >
+            <div className="aqb-sheet-handle-bar">
+              <div className="aqb-sheet-handle-pill" />
+            </div>
+
+            <div className="aqb-sheet-header">
+              <div className="min-w-0">
+                <h2 className="text-base font-extrabold text-[var(--text)] truncate">
+                  Bulk Import MCQs
+                </h2>
+                <p className="text-xs text-[var(--text-muted)] truncate">
+                  Importing into:{' '}
+                  <strong className="text-[var(--text)]">
+                    {bulkModalUniversity?.name} ({bulkModalUniversity?.slug})
+                  </strong>
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={requestCloseBulkModal}
+                aria-label="Close bulk import"
+                className="aqb-icon-btn !w-10 !h-10 !min-w-[40px] !min-h-[40px]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-              {totalPages > 1 && (
-                <div className="flex items-center gap-2 text-xs">
-                  <button
-                    type="button"
-                    disabled={pageIndex === 0}
-                    onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
-                    className="px-2.5 py-1 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] disabled:opacity-40 cursor-pointer"
-                  >
-                    Prev
-                  </button>
-                  <span className="font-mono">
-                    Page {pageIndex + 1} / {totalPages}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={pageIndex + 1 >= totalPages}
-                    onClick={() => setPageIndex((p) => p + 1)}
-                    className="px-2.5 py-1 rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] disabled:opacity-40 cursor-pointer"
-                  >
-                    Next
-                  </button>
+            {/* 3-Step Indicator Bar */}
+            <div className="px-4 py-2.5 border-b border-[var(--border)] grid grid-cols-3 gap-2 shrink-0">
+              {(
+                [
+                  [1, '1. Target'],
+                  [2, '2. Source'],
+                  [3, '3. Import'],
+                ] as const
+              ).map(([stepNum, label]) => (
+                <button
+                  key={stepNum}
+                  type="button"
+                  disabled={importingChunked}
+                  onClick={() => setBulkStep(stepNum)}
+                  className={`min-h-[38px] rounded-xl text-xs font-extrabold transition ${
+                    bulkStep === stepNum
+                      ? 'bg-[var(--accent)] text-white shadow-sm'
+                      : 'bg-black/[0.04] dark:bg-white/[0.05] text-[var(--text-secondary)]'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="aqb-sheet-body flex flex-col gap-4">
+              {/* STEP 1: TARGET & DEFAULTS */}
+              {bulkStep === 1 && (
+                <div className="flex flex-col gap-4">
+                  <div className="aqb-glass-card aqb-glass-card--selected p-4 flex flex-col gap-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                        Locked Target University
+                      </span>
+                      <span className="aqb-pill aqb-pill--live">Permanent Binding</span>
+                    </div>
+                    <div className="text-base font-extrabold text-[var(--text)]">
+                      Importing into: {bulkModalUniversity?.name} ({bulkModalUniversity?.slug})
+                    </div>
+                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                      Every imported row is permanently bound to{' '}
+                      <code className="font-mono font-bold">{bulkModalUniversity?.id}</code> and
+                      never shared with other universities.
+                    </p>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setBulkChangingUni((prev) => !prev)}
+                        className="aqb-btn aqb-btn--glass !min-h-[40px] !px-3 text-xs"
+                      >
+                        Change target university…
+                      </button>
+                    </div>
+
+                    {bulkChangingUni && (
+                      <div className="mt-2 pt-2 border-t border-[var(--border)] grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
+                        {universities.map((u) => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => {
+                              if (
+                                u.id !== bulkTargetUniId &&
+                                bulkRawInput.trim().length > 0 &&
+                                !window.confirm(
+                                  `Switch import target to ${u.name} (${u.slug})?`
+                                )
+                              ) {
+                                return;
+                              }
+                              setBulkTargetUniId(u.id);
+                              setBulkChangingUni(false);
+                            }}
+                            className={`aqb-dropdown-item justify-between ${
+                              u.id === bulkModalUniversity?.id
+                                ? 'bg-[var(--accent)]/10 text-[var(--accent)] font-bold'
+                                : ''
+                            }`}
+                          >
+                            <span className="truncate">{u.name}</span>
+                            <span className="text-[11px] font-mono opacity-75">{u.slug}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <ComboboxField
+                      label="Default Subject (used when row omits subject)"
+                      value={bulkDefaultSubject}
+                      onChange={setBulkDefaultSubject}
+                      options={subjectSuggestions}
+                      placeholder="e.g. Physics"
+                    />
+                    <ComboboxField
+                      label="Default Topic (used when row omits topic)"
+                      value={bulkDefaultTopic}
+                      onChange={setBulkDefaultTopic}
+                      options={topicSuggestionsForBulkModal}
+                      placeholder="e.g. Kinematics"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 2: SOURCE (CSV / GOOGLE SHEET / PASTE) */}
+              {bulkStep === 2 && (
+                <div className="flex flex-col gap-4">
+                  {/* Segmented Source Control */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        ['csv', 'CSV file', FileSpreadsheet],
+                        ['gsheet', 'Google Sheet', Link2],
+                        ['paste', 'Paste', FileText],
+                      ] as const
+                    ).map(([key, label, Icon]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setBulkSourceTab(key)}
+                        className={`aqb-btn !min-h-[44px] !px-2.5 text-xs ${
+                          bulkSourceTab === key ? 'aqb-btn--primary' : 'aqb-btn--glass'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4 shrink-0" />
+                        <span className="truncate">{label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Collapsible Format Hint + Download Template */}
+                  <div className="aqb-glass-card p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setBulkFormatHintOpen((prev) => !prev)}
+                        className="flex items-center gap-2 text-xs font-extrabold text-[var(--text)]"
+                      >
+                        <HelpCircle className="w-4 h-4 text-[var(--accent)]" />
+                        <span>Format guide &amp; columns</span>
+                        {bulkFormatHintOpen ? (
+                          <ChevronUp className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDownloadSampleCsv}
+                        className="text-xs font-bold text-[var(--accent)] hover:underline inline-flex items-center gap-1"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Download template</span>
+                      </button>
+                    </div>
+
+                    {bulkFormatHintOpen && (
+                      <div className="mt-2.5 pt-2.5 border-t border-[var(--border)] text-xs text-[var(--text-secondary)] flex flex-col gap-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <code className="font-mono text-[11px] break-all bg-black/5 dark:bg-white/5 p-2 rounded-xl flex-1">
+                            subject,topic,question,option_a,option_b,option_c,option_d,correct_answer,explanation,difficulty
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard?.writeText(
+                                'subject,topic,question,option_a,option_b,option_c,option_d,correct_answer,explanation,difficulty'
+                              );
+                              showBanner('info', 'Copied CSV header row');
+                            }}
+                            className="aqb-icon-btn !w-9 !h-9 !min-w-[36px] !min-h-[36px]"
+                            title="Copy header row"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-[var(--text-muted)]">
+                          Supports CSV, JSON arrays, or Q:/A)/B)/C)/D)/Answer: text blocks.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Source Input Area */}
+                  {bulkSourceTab === 'csv' && (
+                    <label className="aqb-glass-card p-6 border-dashed flex flex-col items-center justify-center gap-2 text-center cursor-pointer hover:border-[var(--accent)]">
+                      <Upload className="w-7 h-7 text-[var(--accent)]" />
+                      <div className="text-sm font-extrabold text-[var(--text)]">
+                        {bulkCsvFileName || 'Tap to choose CSV file'}
+                      </div>
+                      <div className="text-xs text-[var(--text-muted)]">
+                        UTF-8 CSV with unlimited rows (imported in 100-row chunks)
+                      </div>
+                      <input
+                        type="file"
+                        accept=".csv,text/csv,text/plain"
+                        onChange={handleCsvFileUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+
+                  {bulkSourceTab === 'gsheet' && (
+                    <div className="flex flex-col gap-2.5">
+                      <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                        Public Google Sheet URL
+                      </label>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="url"
+                          value={gsheetUrl}
+                          onChange={(e) => setGsheetUrl(e.target.value)}
+                          placeholder="https://docs.google.com/spreadsheets/d/..."
+                          className="aqb-input flex-1"
+                        />
+                        <button
+                          type="button"
+                          disabled={fetchingSheet || !gsheetUrl.trim()}
+                          onClick={handleFetchGoogleSheet}
+                          className="aqb-btn aqb-btn--primary shrink-0"
+                        >
+                          {fetchingSheet ? (
+                            <ButtonLineLoader label="Fetching…" />
+                          ) : (
+                            <span>Fetch Sheet</span>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {bulkSourceTab === 'paste' && (
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
+                        Paste CSV, JSON, or Question Blocks
+                      </label>
+                      <textarea
+                        rows={6}
+                        value={bulkRawInput}
+                        onChange={(e) => setBulkRawInput(e.target.value)}
+                        placeholder="Paste CSV rows, JSON array, or Q: ... A) ... B) ... C) ... D) ... Answer: A"
+                        className="aqb-input font-mono text-xs resize-y"
+                      />
+                    </div>
+                  )}
+
+                  {/* Parsed Summary (Valid, Invalid, Duplicates + First 5 Rows Preview) */}
+                  <div className="aqb-glass-card p-4 flex flex-col gap-3">
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-xl p-2 bg-emerald-500/10 border border-emerald-500/30">
+                        <div className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
+                          Valid rows
+                        </div>
+                        <div className="text-base font-extrabold text-emerald-700 dark:text-emerald-300 tabular-nums">
+                          {parsedRows.length.toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="rounded-xl p-2 bg-red-500/10 border border-red-500/30">
+                        <div className="text-[11px] font-bold text-red-800 dark:text-red-300">
+                          Invalid rows
+                        </div>
+                        <div className="text-base font-extrabold text-red-700 dark:text-red-300 tabular-nums">
+                          {parseErrors.length.toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="rounded-xl p-2 bg-amber-500/10 border border-amber-500/30">
+                        <div className="text-[11px] font-bold text-amber-800 dark:text-amber-300">
+                          Duplicates
+                        </div>
+                        <div className="text-base font-extrabold text-amber-700 dark:text-amber-300 tabular-nums">
+                          {duplicateRowsCount.toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+
+                    {parsedRows.length > 0 && (
+                      <div className="flex flex-col gap-1.5">
+                        <div className="text-xs font-bold text-[var(--text-muted)]">
+                          Preview (first {Math.min(5, parsedRows.length)} rows)
+                        </div>
+                        {parsedRows.slice(0, 5).map((r) => (
+                          <div
+                            key={r.rowIndex}
+                            className="rounded-xl p-2.5 border border-[var(--border)] bg-black/[0.02] dark:bg-white/[0.02] text-xs flex items-start justify-between gap-2"
+                          >
+                            <div className="min-w-0">
+                              <span className="font-bold text-[var(--text-muted)] mr-1.5">
+                                #{r.rowIndex}
+                              </span>
+                              <span className="font-semibold text-[var(--text)] line-clamp-1">
+                                <MathText text={r.question} />
+                              </span>
+                              <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                                {r.subject} · {r.topic}
+                              </div>
+                            </div>
+                            <span className="aqb-pill aqb-pill--live shrink-0">
+                              Ans: {r.correct_answer}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3: REVIEW & IMPORT */}
+              {bulkStep === 3 && (
+                <div className="flex flex-col gap-4">
+                  <div className="aqb-glass-card aqb-glass-card--selected p-4 flex flex-col gap-2">
+                    <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                      Import Confirmation
+                    </div>
+                    <div className="text-base font-extrabold text-[var(--text)]">
+                      Ready to import {parsedRows.length.toLocaleString()} MCQs into{' '}
+                      {bulkModalUniversity?.name} ({bulkModalUniversity?.slug})
+                    </div>
+                    <div className="text-xs text-[var(--text-secondary)]">
+                      Defaults: <strong>{bulkDefaultSubject}</strong> ·{' '}
+                      <strong>{bulkDefaultTopic}</strong>
+                    </div>
+                  </div>
+
+                  {/* Live Progress Counter & Bar */}
+                  {importProgress && (
+                    <div className="aqb-glass-card p-4 flex flex-col gap-2.5">
+                      <div className="flex items-center justify-between text-xs font-extrabold">
+                        <span>
+                          Processed {importProgress.processedRows.toLocaleString()} /{' '}
+                          {importProgress.totalRows.toLocaleString()}
+                        </span>
+                        <span className="text-emerald-600 dark:text-emerald-400 tabular-nums">
+                          {importProgress.importedCount.toLocaleString()} imported
+                        </span>
+                      </div>
+                      <div className="w-full h-2.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+                        <div
+                          className="h-full bg-[var(--accent)] transition-all duration-200"
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              Math.round(
+                                (importProgress.processedRows /
+                                  Math.max(1, importProgress.totalRows)) *
+                                  100
+                              )
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)]">
+                        <span>
+                          Chunk {importProgress.currentChunkIndex} of{' '}
+                          {importProgress.totalChunks}
+                        </span>
+                        <span>{importProgress.failedCount} skipped/errors</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Per-Row Error List + Downloadable Report */}
+                  {(parseErrors.length > 0 || (importProgress?.errors?.length ?? 0) > 0) && (
+                    <div className="aqb-glass-card p-4 flex flex-col gap-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-extrabold text-red-600 dark:text-red-400">
+                          Row validation issues (
+                          {(importProgress?.errors?.length || parseErrors.length).toLocaleString()}
+                          )
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleDownloadImportErrorReport}
+                          className="text-xs font-bold text-[var(--accent)] underline"
+                        >
+                          Download errors CSV
+                        </button>
+                      </div>
+                      <div className="max-h-36 overflow-y-auto flex flex-col gap-1 text-xs">
+                        {(importProgress?.errors?.length ? importProgress.errors : parseErrors)
+                          .slice(0, 20)
+                          .map((err, i) => (
+                            <div key={i} className="text-[var(--text-secondary)]">
+                              <strong className="font-mono">Row {err.row}:</strong> {err.message}
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
-            {loadingMcqs ? (
-              <LineLoader context="admin" variant="section" />
-            ) : mcqs.length === 0 ? (
-              <div className="py-12 px-4 text-center rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-muted)]/40 flex flex-col items-center gap-3">
-                <Database size={28} className="text-[var(--text-muted)]" />
-                <div>
-                  <p className="text-sm font-bold text-[var(--text)]">
-                    No MCQs in {currentUni?.name || 'this university'} yet
-                  </p>
-                  <p className="text-xs text-[var(--text-muted)] mt-1 max-w-md">
-                    This university starts empty (0 MCQs) and displays as &ldquo;Coming Soon&rdquo; on the student Cockpit. Add a single MCQ or run a bulk import to make it LIVE.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 mt-1">
+            {/* Sticky Bulk Wizard Footer — Button Never Clips */}
+            <div className="aqb-sheet-footer">
+              {bulkStep > 1 && (
+                <button
+                  type="button"
+                  disabled={importingChunked}
+                  onClick={() => setBulkStep((prev) => (prev === 3 ? 2 : 1))}
+                  className="aqb-btn aqb-btn--glass"
+                >
+                  Back
+                </button>
+              )}
+
+              {bulkStep < 3 ? (
+                <button
+                  type="button"
+                  onClick={() => setBulkStep((prev) => (prev === 1 ? 2 : 3))}
+                  className="aqb-btn aqb-btn--primary flex-1 sm:flex-initial !min-h-[52px]"
+                >
+                  <span>Continue</span>
+                </button>
+              ) : (
+                <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 min-w-0">
+                  {parsedRows.length === 0 && (
+                    <span className="text-xs font-semibold text-[var(--text-muted)] text-center sm:text-right">
+                      Add valid rows in Step 2 to enable import
+                    </span>
+                  )}
                   <button
                     type="button"
-                    onClick={openAddMcqModal}
-                    className="btn-red px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                    disabled={parsedRows.length === 0 || importingChunked}
+                    onClick={handleStartOrResumeImport}
+                    className="aqb-btn aqb-btn--primary !min-h-[52px] whitespace-normal text-center leading-tight px-5"
                   >
-                    <Plus size={14} />
-                    <span>Add First MCQ</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={openBulkImportModal}
-                    className="px-4 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-xs font-bold text-[var(--text)] flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Upload size={14} />
-                    <span>Bulk Import CSV / Sheet</span>
+                    {importingChunked ? (
+                      <ButtonLineLoader label="Importing chunks…" />
+                    ) : resumableState &&
+                      resumableState.nextRowOffset > 0 &&
+                      resumableState.nextRowOffset < parsedRows.length ? (
+                      <>
+                        <Play className="w-4 h-4 shrink-0" />
+                        <span>
+                          Resume Import ({parsedRows.length - resumableState.nextRowOffset} MCQs)
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4 shrink-0" />
+                        <span>
+                          Import {parsedRows.length.toLocaleString()} MCQs
+                        </span>
+                      </>
+                    )}
                   </button>
                 </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {mcqs.map((mcq) => {
-                  const isChecked = selectedMcqIds.has(mcq.id);
-                  return (
-                    <div
-                      key={mcq.id}
-                      className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/40 flex flex-col gap-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-2.5 flex-wrap">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              setSelectedMcqIds((prev) => {
-                                const next = new Set(prev);
-                                if (e.target.checked) next.add(mcq.id);
-                                else next.delete(mcq.id);
-                                return next;
-                              });
-                            }}
-                          />
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[var(--surface)] border border-[var(--border)] text-[var(--text)]">
-                            {mcq.subject}
-                          </span>
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono bg-[var(--surface)] border border-[var(--border)] text-[var(--text-secondary)]">
-                            {mcq.topic}
-                          </span>
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-mono uppercase font-bold ${
-                              mcq.difficulty === 'hard'
-                                ? 'bg-red-500/15 text-red-500'
-                                : mcq.difficulty === 'easy'
-                                ? 'bg-emerald-500/15 text-emerald-500'
-                                : 'bg-amber-500/15 text-amber-500'
-                            }`}
-                          >
-                            {mcq.difficulty}
-                          </span>
-                          <span className="text-[10px] font-mono text-[var(--text-muted)]">
-                            Correct: <strong className="text-emerald-500">{mcq.correct_answer}</strong>
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => openEditMcqModal(mcq)}
-                            className="px-2.5 py-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] flex items-center gap-1 cursor-pointer"
-                          >
-                            <Edit2 size={12} />
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteSingleMcq(mcq.id)}
-                            className="px-2.5 py-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] text-xs font-semibold text-red-500 hover:border-red-500 flex items-center gap-1 cursor-pointer"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="text-sm text-[var(--text)] leading-relaxed">
-                        <MathText text={mcq.question} block />
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                        {(
-                          [
-                            ['A', mcq.option_a],
-                            ['B', mcq.option_b],
-                            ['C', mcq.option_c],
-                            ['D', mcq.option_d],
-                          ] as const
-                        ).map(([letter, optText]) => {
-                          const isCorrectOpt = mcq.correct_answer === letter;
-                          return (
-                            <div
-                              key={letter}
-                              className={`p-2.5 rounded-xl border flex items-start gap-2 ${
-                                isCorrectOpt
-                                  ? 'border-emerald-500/50 bg-emerald-500/10 text-[var(--text)]'
-                                  : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)]'
-                              }`}
-                            >
-                              <span
-                                className={`w-5 h-5 rounded-full text-[10px] font-mono font-bold flex items-center justify-center shrink-0 ${
-                                  isCorrectOpt
-                                    ? 'bg-emerald-500 text-white'
-                                    : 'bg-[var(--surface-muted)] text-[var(--text-muted)]'
-                                }`}
-                              >
-                                {letter}
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <MathText text={optText} />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {mcq.explanation && (
-                        <div className="p-2.5 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-xs text-[var(--text-secondary)]">
-                          <span className="font-mono text-[10px] uppercase font-bold text-[var(--text-muted)] block mb-1">
-                            Explanation:
-                          </span>
-                          <MathText text={mcq.explanation} block />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* =====================================================================
-          TAB 2: BANK HEALTH (D1)
-         ===================================================================== */}
-      {activeTab === 'health' && (
-        <div className="flex flex-col gap-5">
-          {loadingHealth || !healthData ? (
-            <div className="p-6 rounded-3xl bg-[var(--surface)] border border-[var(--border)]">
-              <LineLoader context="admin" variant="section" />
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                <div className="p-4 rounded-2xl bg-[var(--surface)] border border-[var(--border)]">
-                  <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] block">
-                    Total Universities
-                  </span>
-                  <strong className="text-2xl font-bold text-[var(--text)] mt-1 block">
-                    {healthData.totalUniversities}
-                  </strong>
-                </div>
-                <div className="p-4 rounded-2xl bg-[var(--surface)] border border-[var(--border)]">
-                  <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] block">
-                    LIVE Universities
-                  </span>
-                  <strong className="text-2xl font-bold text-emerald-500 mt-1 block">
-                    {healthData.liveUniversities}
-                  </strong>
-                </div>
-                <div className="p-4 rounded-2xl bg-[var(--surface)] border border-[var(--border)]">
-                  <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] block">
-                    Coming Soon
-                  </span>
-                  <strong className="text-2xl font-bold text-[var(--text-secondary)] mt-1 block">
-                    {healthData.comingSoonUniversities}
-                  </strong>
-                </div>
-                <div className="p-4 rounded-2xl bg-[var(--surface)] border border-[var(--border)]">
-                  <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] block">
-                    Total D1 MCQs
-                  </span>
-                  <strong className="text-2xl font-bold text-[var(--text)] mt-1 block">
-                    {healthData.totalMcqs}
-                  </strong>
-                </div>
-                <div className="p-4 rounded-2xl bg-[var(--surface)] border border-[var(--border)]">
-                  <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] block">
-                    Missing Explanations
-                  </span>
-                  <strong className="text-2xl font-bold text-amber-500 mt-1 block">
-                    {healthData.missingExplanations}
-                  </strong>
-                </div>
-                <div className="p-4 rounded-2xl bg-[var(--surface)] border border-[var(--border)]">
-                  <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] block">
-                    Open Student Reports
-                  </span>
-                  <strong className="text-2xl font-bold text-[var(--accent)] mt-1 block">
-                    {healthData.openReports}
-                  </strong>
-                </div>
-              </div>
-
-              <div className="p-5 rounded-3xl bg-[var(--surface)] border border-[var(--border)]">
-                <h3 className="text-sm font-bold text-[var(--text)] mb-3">
-                  University MCQ Breakdown (Cloudflare D1)
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                  {(healthData.byUniversity || (healthData as any).universities || []).map((u: any) => (
-                    <div
-                      key={u.id}
-                      className="p-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/50 flex items-center justify-between"
-                    >
-                      <div>
-                        <div className="text-xs font-bold text-[var(--text)]">{u.name}</div>
-                        <div className="text-[10px] font-mono text-[var(--text-muted)]">/{u.slug}</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono font-bold text-[var(--text)]">
-                          {u.mcq_count} MCQs
-                        </span>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase ${
-                            u.mcq_count > 0
-                              ? 'bg-emerald-500/15 text-emerald-500'
-                              : 'bg-[var(--surface)] text-[var(--text-muted)] border border-[var(--border)]'
-                          }`}
-                        >
-                          {u.mcq_count > 0 ? 'LIVE' : 'Coming Soon'}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* =====================================================================
-          TAB 3: STUDENT REPORTS (D1)
-         ===================================================================== */}
-      {activeTab === 'reports' && (
-        <div className="p-5 rounded-3xl bg-[var(--surface)] border border-[var(--border)] flex flex-col gap-4">
-          <h3 className="text-sm font-bold text-[var(--text)]">
-            Student Question Reports ({(reports || []).length})
-          </h3>
-          {loadingReports ? (
-            <LineLoader context="admin" variant="section" />
-          ) : (reports || []).length === 0 ? (
-            <div className="py-8 text-center text-xs text-[var(--text-muted)]">
-              No student reports submitted yet.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {(reports || []).map((rep) => (
-                <div
-                  key={rep.id}
-                  className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-[var(--accent-soft)] text-[var(--accent)]">
-                        {rep.reason}
-                      </span>
-                      <span className="text-xs font-mono text-[var(--text-muted)]">
-                        MCQ ID: {rep.mcq_id}
-                      </span>
-                      <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border border-[var(--border)]">
-                        {rep.status}
-                      </span>
-                    </div>
-                    {rep.question && (
-                      <div className="text-xs text-[var(--text)]">
-                        <MathText text={rep.question} />
-                      </div>
-                    )}
-                    {rep.details && (
-                      <p className="text-xs text-[var(--text-secondary)]">Note: {rep.details}</p>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await updateMcqReportStatus(rep.id, 'resolved');
-                        loadReports();
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-500 text-xs font-semibold cursor-pointer"
-                    >
-                      Mark Resolved
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await updateMcqReportStatus(rep.id, 'ignored');
-                        loadReports();
-                      }}
-                      className="px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-xs text-[var(--text-muted)] cursor-pointer"
-                    >
-                      Ignore
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* =====================================================================
-          MODAL 1: ADD / RENAME UNIVERSITY
-         ===================================================================== */}
-      {uniModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/65 flex items-center justify-center p-4">
+      {/* ======================================================================
+          COMPACT DIALOGS: ADD/EDIT UNIVERSITY, MOVE MCQS, DELETE CONFIRMATIONS
+          ====================================================================== */}
+      {uniFormModalOpen && (
+        <div
+          className="aqb-sheet-backdrop"
+          onClick={() => setUniFormModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+        >
           <form
             onSubmit={handleSaveUniversity}
-            className="w-full max-w-md rounded-3xl bg-[var(--surface)] border border-[var(--border)] p-6 space-y-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+            className="aqb-sheet aqb-sheet--compact"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
-              <h3 className="text-base font-bold text-[var(--text)]">
-                {editingUni ? `Edit ${editingUni.name}` : 'Add University to D1'}
-              </h3>
+            <div className="aqb-sheet-handle-bar">
+              <div className="aqb-sheet-handle-pill" />
+            </div>
+            <div className="aqb-sheet-header">
+              <h2 className="text-base font-extrabold text-[var(--text)]">
+                {editingUni ? 'Edit University' : 'Add University'}
+              </h2>
               <button
                 type="button"
-                onClick={() => setUniModalOpen(false)}
-                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+                onClick={() => setUniFormModalOpen(false)}
+                className="aqb-icon-btn !w-10 !h-10 !min-w-[40px] !min-h-[40px]"
               >
-                <X size={16} />
+                <X className="w-4 h-4" />
               </button>
             </div>
-
-            <div className="space-y-3 text-xs">
+            <div className="aqb-sheet-body flex flex-col gap-3">
               <div>
-                <label className="block font-semibold mb-1 text-[var(--text)]">
-                  University Name *
+                <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1">
+                  University Name
                 </label>
                 <input
                   type="text"
                   required
-                  value={uniFormName}
-                  onChange={(e) => setUniFormName(e.target.value)}
-                  placeholder="e.g. FAST-NUCES or Aga Khan University (AKU)"
-                  className="w-full p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)]"
+                  value={uniNameInput}
+                  onChange={(e) => setUniNameInput(e.target.value)}
+                  placeholder="e.g. FAST-NUCES"
+                  className="aqb-input"
                 />
               </div>
-
               <div>
-                <label className="block font-semibold mb-1 text-[var(--text)]">
-                  URL Slug (optional, auto-generated if blank)
+                <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1">
+                  Slug (unique key)
                 </label>
                 <input
                   type="text"
-                  value={uniFormSlug}
-                  onChange={(e) => setUniFormSlug(e.target.value)}
+                  value={uniSlugInput}
+                  onChange={(e) => setUniSlugInput(e.target.value)}
                   placeholder="e.g. fast-nuces"
-                  className="w-full p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)] font-mono"
+                  className="aqb-input font-mono"
                 />
               </div>
-
               <div>
-                <label className="block font-semibold mb-1 text-[var(--text)]">
+                <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1">
                   Logo URL (optional)
                 </label>
                 <input
-                  type="text"
-                  value={uniFormLogo}
-                  onChange={(e) => setUniFormLogo(e.target.value)}
+                  type="url"
+                  value={uniLogoInput}
+                  onChange={(e) => setUniLogoInput(e.target.value)}
                   placeholder="https://..."
-                  className="w-full p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)]"
+                  className="aqb-input"
                 />
               </div>
             </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border)]">
+            <div className="aqb-sheet-footer">
               <button
                 type="button"
-                onClick={() => setUniModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-[var(--border)] text-xs font-semibold cursor-pointer"
+                onClick={() => setUniFormModalOpen(false)}
+                className="aqb-btn aqb-btn--glass"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={uniSaving}
-                className="relative overflow-hidden btn-red px-5 py-2 rounded-xl text-xs font-bold cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                disabled={savingUni}
+                className="aqb-btn aqb-btn--primary"
               >
-                <span>{uniSaving ? 'Saving...' : editingUni ? 'Save Changes' : 'Create University'}</span>
-                {uniSaving && <ButtonLineLoader />}
+                {savingUni ? <ButtonLineLoader label="Saving…" /> : <span>Save</span>}
               </button>
             </div>
           </form>
         </div>
       )}
 
-      {/* =====================================================================
-          MODAL 2: ADD / EDIT SINGLE MCQ (WITH KATEX + \ce{} LIVE PREVIEW)
-         ===================================================================== */}
-      {mcqModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 overflow-y-auto">
-          <form
-            onSubmit={handleSaveMcq}
-            className="w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-3xl bg-[var(--surface)] border border-[var(--border)] p-6 space-y-4 shadow-xl"
+      {/* Move Selected MCQs to Another University Sheet */}
+      {moveModalOpen && (
+        <div
+          className="aqb-sheet-backdrop"
+          onClick={() => setMoveModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="aqb-sheet aqb-sheet--compact"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
-              <div>
-                <h3 className="text-base font-bold text-[var(--text)]">
-                  {editingMcq ? 'Edit University MCQ (D1)' : 'Add Single University MCQ (D1)'}
-                </h3>
-                <p className="text-xs text-[var(--text-muted)]">
-                  Supports KaTeX math ($x^2$, \frac&#123;a&#125;&#123;b&#125;) and mhchem chemical equations (\ce&#123;H2SO4&#125;).
-                </p>
-              </div>
+            <div className="aqb-sheet-handle-bar">
+              <div className="aqb-sheet-handle-pill" />
+            </div>
+            <div className="aqb-sheet-header">
+              <h2 className="text-base font-extrabold text-[var(--text)]">
+                Move {selectedMcqIds.size} MCQ(s)
+              </h2>
               <button
                 type="button"
-                onClick={() => setMcqModalOpen(false)}
-                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+                onClick={() => setMoveModalOpen(false)}
+                className="aqb-icon-btn !w-10 !h-10 !min-w-[40px] !min-h-[40px]"
               >
-                <X size={18} />
+                <X className="w-4 h-4" />
               </button>
             </div>
-
-            {/* University, Subject, Topic, Difficulty */}
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
-              <div>
-                <label className="block font-semibold mb-1 text-[var(--text)]">University *</label>
-                <select
-                  value={formUniId}
-                  onChange={(e) => setFormUniId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)]"
-                >
-                  {universities.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1 text-[var(--text)]">Subject *</label>
-                <input
-                  type="text"
-                  list="d1-subject-suggestions"
-                  required
-                  value={formSubject}
-                  onChange={(e) => setFormSubject(e.target.value)}
-                  placeholder="e.g. Mathematics"
-                  className="w-full p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)]"
-                />
-                <datalist id="d1-subject-suggestions">
-                  {availableSubjects.map((s) => (
-                    <option key={s} value={s} />
-                  ))}
-                </datalist>
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1 text-[var(--text)]">Topic *</label>
-                <input
-                  type="text"
-                  required
-                  value={formTopic}
-                  onChange={(e) => setFormTopic(e.target.value)}
-                  placeholder="e.g. Vectors & 3D"
-                  className="w-full p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)]"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1 text-[var(--text)]">Difficulty *</label>
-                <select
-                  value={formDifficulty}
-                  onChange={(e) => setFormDifficulty(e.target.value as 'easy' | 'medium' | 'hard')}
-                  className="w-full p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)]"
-                >
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
-                </select>
-              </div>
+            <div className="aqb-sheet-body flex flex-col gap-3">
+              <p className="text-xs text-[var(--text-secondary)]">
+                Select the destination university. Both universities&apos; MCQ counts and LIVE
+                status will be recalculated automatically.
+              </p>
+              <select
+                value={moveTargetUniId}
+                onChange={(e) => setMoveTargetUniId(e.target.value)}
+                className="aqb-input"
+              >
+                {universities.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} ({u.slug}) — {u.mcq_count} MCQs
+                  </option>
+                ))}
+              </select>
             </div>
-
-            {/* LaTeX & \ce Toolbar */}
-            <div className="p-2.5 rounded-2xl bg-[var(--surface-muted)] border border-[var(--border)] flex items-center gap-1.5 flex-wrap">
-              <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] mr-1">
-                Insert into {activeField}:
-              </span>
-              {LATEX_SNIPPETS.map((item) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  onClick={() => insertLatexSnippet(item.snippet)}
-                  className="px-2 py-1 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--accent)] text-[11px] font-mono text-[var(--text)] cursor-pointer"
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Question Input + Live Preview */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
-              <div className="space-y-3">
-                <div>
-                  <label className="block font-semibold mb-1 text-[var(--text)]">
-                    Question Text *
-                  </label>
-                  <textarea
-                    rows={3}
-                    required
-                    value={formQuestion}
-                    onFocus={() => setActiveField('question')}
-                    onChange={(e) => setFormQuestion(e.target.value)}
-                    placeholder="Enter question stem (use $...$ for math or \ce{...} for chemistry)"
-                    className="w-full p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)]"
-                  />
-                  {!mathCheckQuestion.valid && (
-                    <p className="text-[11px] text-amber-500 mt-1">{mathCheckQuestion.error}</p>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="block font-semibold mb-1 text-[var(--text)]">Option A *</label>
-                    <input
-                      type="text"
-                      required
-                      value={formOptionA}
-                      onFocus={() => setActiveField('option_a')}
-                      onChange={(e) => setFormOptionA(e.target.value)}
-                      className="w-full p-2 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold mb-1 text-[var(--text)]">Option B *</label>
-                    <input
-                      type="text"
-                      required
-                      value={formOptionB}
-                      onFocus={() => setActiveField('option_b')}
-                      onChange={(e) => setFormOptionB(e.target.value)}
-                      className="w-full p-2 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold mb-1 text-[var(--text)]">Option C *</label>
-                    <input
-                      type="text"
-                      required
-                      value={formOptionC}
-                      onFocus={() => setActiveField('option_c')}
-                      onChange={(e) => setFormOptionC(e.target.value)}
-                      className="w-full p-2 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold mb-1 text-[var(--text)]">Option D *</label>
-                    <input
-                      type="text"
-                      required
-                      value={formOptionD}
-                      onFocus={() => setActiveField('option_d')}
-                      onChange={(e) => setFormOptionD(e.target.value)}
-                      className="w-full p-2 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)]"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block font-semibold mb-1 text-[var(--text)]">
-                      Correct Answer *
-                    </label>
-                    <select
-                      value={formCorrect}
-                      onChange={(e) => setFormCorrect(e.target.value as 'A' | 'B' | 'C' | 'D')}
-                      className="w-full p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)] font-bold"
-                    >
-                      <option value="A">Option A</option>
-                      <option value="B">Option B</option>
-                      <option value="C">Option C</option>
-                      <option value="D">Option D</option>
-                    </select>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block font-semibold mb-1 text-[var(--text)]">
-                      Explanation (optional)
-                    </label>
-                    <input
-                      type="text"
-                      value={formExplanation}
-                      onFocus={() => setActiveField('explanation')}
-                      onChange={(e) => setFormExplanation(e.target.value)}
-                      placeholder="Step-by-step solution..."
-                      className="w-full p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)]"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Live KaTeX & \ce Preview */}
-              <div className="p-4 rounded-2xl bg-[var(--surface-muted)] border border-[var(--border)] flex flex-col gap-3">
-                <span className="text-[10px] font-mono uppercase font-bold text-[var(--text-muted)]">
-                  Live Student Preview (KaTeX + \ce)
-                </span>
-                <div className="text-sm text-[var(--text)] min-h-[48px]">
-                  {formQuestion ? (
-                    <MathText text={formQuestion} block />
-                  ) : (
-                    <span className="text-[var(--text-muted)]">Question preview will appear here...</span>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  {(
-                    [
-                      ['A', formOptionA],
-                      ['B', formOptionB],
-                      ['C', formOptionC],
-                      ['D', formOptionD],
-                    ] as const
-                  ).map(([ltr, val]) => (
-                    <div
-                      key={ltr}
-                      className={`p-2 rounded-xl border text-xs flex items-center gap-2 ${
-                        formCorrect === ltr
-                          ? 'border-emerald-500/50 bg-emerald-500/10'
-                          : 'border-[var(--border)] bg-[var(--surface)]'
-                      }`}
-                    >
-                      <span className="font-mono font-bold">{ltr}.</span>
-                      <MathText text={val || `Option ${ltr}`} />
-                    </div>
-                  ))}
-                </div>
-                {formExplanation && (
-                  <div className="p-2.5 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-xs">
-                    <strong className="block text-[10px] uppercase font-mono text-[var(--text-muted)] mb-0.5">
-                      Explanation:
-                    </strong>
-                    <MathText text={formExplanation} block />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border)]">
+            <div className="aqb-sheet-footer">
               <button
                 type="button"
-                onClick={() => setMcqModalOpen(false)}
-                className="px-4 py-2 rounded-xl border border-[var(--border)] text-xs font-semibold cursor-pointer"
+                onClick={() => setMoveModalOpen(false)}
+                className="aqb-btn aqb-btn--glass"
               >
                 Cancel
               </button>
               <button
-                type="submit"
-                disabled={savingMcq}
-                className="relative overflow-hidden btn-red px-5 py-2 rounded-xl text-xs font-bold cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <span>{savingMcq ? 'Saving...' : editingMcq ? 'Update MCQ' : 'Save MCQ to D1'}</span>
-                {savingMcq && <ButtonLineLoader />}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* =====================================================================
-          MODAL 3: UNLIMITED BULK IMPORT (CSV / GOOGLE SHEET / PASTED TEXT / JSON)
-         ===================================================================== */}
-      {importModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-3xl bg-[var(--surface)] border border-[var(--border)] p-6 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
-              <div>
-                <span className="text-[10px] font-mono uppercase font-bold text-[var(--accent)]">
-                  Chunked D1 Batch Importer · No Row Limit
-                </span>
-                <h3 className="text-lg font-bold text-[var(--text)]">
-                  Unlimited Bulk Import MCQs
-                </h3>
-                <p className="text-xs text-[var(--text-muted)]">
-                  Import 100, 1,000, or 10,000+ MCQs in one go. Uploads in 100-row chunks with live counter, per-row error reporting, and resumable progress.
-                </p>
-              </div>
-              <button
                 type="button"
-                onClick={() => {
-                  if (importing && importAbortRef.current) {
-                    importAbortRef.current.abort();
-                  }
-                  setImportModalOpen(false);
-                }}
-                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+                disabled={movingMcqs || !moveTargetUniId}
+                onClick={handleMoveSelectedMcqs}
+                className="aqb-btn aqb-btn--primary"
               >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Step 1: Select University, Default Subject, Default Topic */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-              <div>
-                <label className="block font-semibold mb-1 text-[var(--text)]">
-                  1. Target University *
-                </label>
-                <select
-                  value={importUniId}
-                  onChange={(e) => setImportUniId(e.target.value)}
-                  disabled={importing}
-                  className="w-full p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)] font-semibold"
-                >
-                  {universities.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} ({u.mcq_count} MCQs)
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1 text-[var(--text)]">
-                  2. Default Subject (used if row omits subject)
-                </label>
-                <input
-                  type="text"
-                  list="d1-subject-suggestions"
-                  value={importSubject}
-                  onChange={(e) => setImportSubject(e.target.value)}
-                  disabled={importing}
-                  placeholder="e.g. Physics"
-                  className="w-full p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)]"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1 text-[var(--text)]">
-                  3. Default Topic (used if row omits topic)
-                </label>
-                <input
-                  type="text"
-                  value={importTopic}
-                  onChange={(e) => setImportTopic(e.target.value)}
-                  disabled={importing}
-                  placeholder="e.g. Electromagnetism"
-                  className="w-full p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)]"
-                />
-              </div>
-            </div>
-
-            {/* Step 2: Source Selector (CSV File / Google Sheet Link / Paste Text or JSON) */}
-            <div className="flex items-center gap-2 border-b border-[var(--border)] pb-2.5">
-              <button
-                type="button"
-                onClick={() => setImportSourceType('csv')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
-                  importSourceType === 'csv'
-                    ? 'bg-[var(--accent)] text-white'
-                    : 'bg-[var(--surface-muted)] text-[var(--text-secondary)]'
-                }`}
-              >
-                <FileSpreadsheet size={14} />
-                <span>CSV File Upload</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setImportSourceType('gsheet')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
-                  importSourceType === 'gsheet'
-                    ? 'bg-[var(--accent)] text-white'
-                    : 'bg-[var(--surface-muted)] text-[var(--text-secondary)]'
-                }`}
-              >
-                <FileSpreadsheet size={14} />
-                <span>Google Sheet Link</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setImportSourceType('paste')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
-                  importSourceType === 'paste'
-                    ? 'bg-[var(--accent)] text-white'
-                    : 'bg-[var(--surface-muted)] text-[var(--text-secondary)]'
-                }`}
-              >
-                <FileText size={14} />
-                <span>Paste CSV / Text / JSON</span>
-              </button>
-            </div>
-
-            {importSourceType === 'csv' && (
-              <div className="p-4 rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--surface-muted)]/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div>
-                  <p className="font-bold text-[var(--text)]">
-                    Upload CSV file (columns: subject, topic, question, option_a, option_b, option_c, option_d, correct_answer, explanation, difficulty)
-                  </p>
-                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                    {importFileName
-                      ? `Loaded file: ${importFileName} (${parsedPreview.rows.length} valid rows ready)`
-                      : 'Supports any file size — 500, 2,000, or 10,000+ rows.'}
-                  </p>
-                </div>
-                <label className="btn-red px-4 py-2 rounded-xl text-xs font-bold cursor-pointer shrink-0 inline-flex items-center gap-1.5">
-                  <Upload size={14} />
-                  <span>Choose CSV File</span>
-                  <input
-                    type="file"
-                    accept=".csv,text/csv,text/plain"
-                    onChange={handleCsvFileSelect}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-            )}
-
-            {importSourceType === 'gsheet' && (
-              <div className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/50 space-y-2.5 text-xs">
-                <label className="block font-bold text-[var(--text)]">
-                  Paste Google Sheet URL (Share setting: &ldquo;Anyone with the link can view&rdquo;)
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="url"
-                    value={importSheetUrl}
-                    onChange={(e) => setImportSheetUrl(e.target.value)}
-                    placeholder="https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit"
-                    className="flex-1 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--border)] text-[var(--text)]"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleFetchGoogleSheet}
-                    disabled={fetchingSheet}
-                    className="relative overflow-hidden btn-red px-4 py-2.5 rounded-xl text-xs font-bold cursor-pointer shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    <span>{fetchingSheet ? 'Processing your sheet...' : 'Load Sheet'}</span>
-                    {fetchingSheet && <ButtonLineLoader />}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-semibold text-[var(--text)]">
-                  Raw Data / Paste Area ({parsedPreview.rows.length} valid rows detected
-                  {parsedPreview.parseErrors.length > 0
-                    ? ` · ${parsedPreview.parseErrors.length} rows with formatting errors`
-                    : ''}
-                  )
-                </label>
-                {importRawText && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setImportRawText('');
-                      setImportFileName('');
-                      setImportProgress(null);
-                      setResumableState(null);
-                    }}
-                    className="text-[11px] text-[var(--accent)] hover:underline cursor-pointer"
-                  >
-                    Clear Input
-                  </button>
-                )}
-              </div>
-              <textarea
-                rows={6}
-                value={importRawText}
-                onChange={(e) => {
-                  setImportRawText(e.target.value);
-                  setResumableState(null);
-                }}
-                disabled={importing}
-                placeholder={`Paste CSV rows, JSON array, or MCQ blocks:\nsubject,topic,question,option_a,option_b,option_c,option_d,correct_answer,explanation,difficulty\nPhysics,Kinematics,"A projectile is launched at $45^\\circ$...",10 m,20 m,30 m,40 m,B,"Using range formula $R = \\frac{v^2 \\sin 2\\theta}{g}$",medium`}
-                className="w-full p-3 rounded-2xl bg-[var(--input-bg)] border border-[var(--border)] text-xs font-mono text-[var(--text)]"
-              />
-            </div>
-
-            {/* Show LineLoader while waiting for chunked import to start */}
-            {importing && !importProgress && !resumableState && (
-              <LineLoader context="import" variant="inline" delayMs={0} />
-            )}
-
-            {/* Live Running Counter & Progress Bar */}
-            {(importProgress || resumableState) && (
-              <div className="p-4 rounded-2xl bg-[var(--surface-muted)] border border-[var(--border)] space-y-2.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-[var(--text)]">
-                    Imported {importProgress?.importedCount ?? resumableState?.importedCount ?? 0} /{' '}
-                    {importProgress?.totalRows ?? resumableState?.rows.length ?? 0} MCQs...
-                  </span>
-                  <span className="font-mono text-[11px] text-[var(--text-muted)]">
-                    Chunk {importProgress?.currentChunkIndex ?? 0} of{' '}
-                    {importProgress?.totalChunks ??
-                      Math.max(1, Math.ceil((resumableState?.rows.length || 1) / 100))}
-                    {(importProgress?.failedCount ?? 0) > 0 && (
-                      <span className="text-amber-500 ml-2">
-                        · {importProgress?.failedCount} failed rows
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <div className="w-full h-2.5 rounded-full bg-[var(--border)] overflow-hidden">
-                  <div
-                    className="h-full bg-[var(--accent)] transition-all duration-150"
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        Math.round(
-                          (((importProgress?.processedRows ?? resumableState?.nextRowOffset ?? 0) /
-                            Math.max(1, importProgress?.totalRows ?? resumableState?.rows.length ?? 1)) *
-                            100)
-                        )
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {importErrorBanner && (
-              <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-xs text-red-500 flex items-center justify-between gap-3">
-                <span>{importErrorBanner}</span>
-                {resumableState &&
-                  resumableState.nextRowOffset < resumableState.rows.length &&
-                  !importing && (
-                    <button
-                      type="button"
-                      onClick={() => startOrResumeImport(true)}
-                      className="btn-red px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 cursor-pointer"
-                    >
-                      <RotateCcw size={13} />
-                      <span>Resume Import</span>
-                    </button>
-                  )}
-              </div>
-            )}
-
-            {/* Per-Row Error Report */}
-            {((Array.isArray(importProgress?.errors) && importProgress.errors.length > 0) ||
-              (Array.isArray(parsedPreview.parseErrors) && parsedPreview.parseErrors.length > 0)) && (
-              <div className="p-3.5 rounded-2xl bg-[var(--surface-muted)] border border-amber-500/40 max-h-40 overflow-y-auto space-y-1 text-xs">
-                <div className="font-bold text-amber-500">
-                  Row Error Report (failed rows skipped automatically without stopping import):
-                </div>
-                {(importProgress?.errors || parsedPreview.parseErrors || []).slice(0, 100).map((err, idx) => (
-                  <div key={idx} className="font-mono text-[11px] text-[var(--text-secondary)]">
-                    Row #{err.row}: {err.message}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="flex items-center justify-between pt-3 border-t border-[var(--border)]">
-              <div className="text-xs text-[var(--text-muted)]">
-                Ready to import <strong>{parsedPreview.rows.length}</strong> valid MCQs into{' '}
-                <strong>
-                  {universities.find((u) => u.id === importUniId)?.name || 'selected university'}
-                </strong>
-                .
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setImportModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-[var(--border)] text-xs font-semibold cursor-pointer"
-                >
-                  Close
-                </button>
-                {resumableState &&
-                resumableState.nextRowOffset > 0 &&
-                resumableState.nextRowOffset < resumableState.rows.length &&
-                !importing ? (
-                  <button
-                    type="button"
-                    onClick={() => startOrResumeImport(true)}
-                    className="btn-red px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <RotateCcw size={14} />
-                    <span>
-                      Resume from Row {resumableState.nextRowOffset + 1}
-                    </span>
-                  </button>
+                {movingMcqs ? (
+                  <ButtonLineLoader label="Moving…" />
                 ) : (
-                  <button
-                    type="button"
-                    disabled={importing || parsedPreview.rows.length === 0}
-                    onClick={() => startOrResumeImport(false)}
-                    className="relative overflow-hidden btn-red px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    <Play size={14} />
-                    <span>
-                      {importing
-                        ? 'Importing...'
-                        : `Start Chunked Import (${parsedPreview.rows.length} MCQs)`}
-                    </span>
-                    {importing && <ButtonLineLoader />}
-                  </button>
+                  <span>Confirm Move</span>
                 )}
-              </div>
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* =====================================================================
-          MODAL 4: OLD ADMIN BANK BACKUP & CONFIRMED DELETE
-         ===================================================================== */}
-      {legacyModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl rounded-3xl bg-[var(--surface)] border border-[var(--border)] p-6 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
-              <div className="flex items-center gap-2">
-                <ShieldCheck size={18} className="text-emerald-500" />
-                <h3 className="text-base font-bold text-[var(--text)]">
-                  Old Admin Subject-Pool Bank Backup &amp; Confirmed Delete
-                </h3>
-              </div>
+      {/* Delete MCQs Confirmation Sheet */}
+      {confirmDeleteMcqModal && (
+        <div
+          className="aqb-sheet-backdrop"
+          onClick={() => setConfirmDeleteMcqModal(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="aqb-sheet aqb-sheet--compact"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="aqb-sheet-handle-bar">
+              <div className="aqb-sheet-handle-pill" />
+            </div>
+            <div className="aqb-sheet-header">
+              <h2 className="text-base font-extrabold text-[var(--text)]">Confirm Delete</h2>
               <button
                 type="button"
-                onClick={() => setLegacyModalOpen(false)}
-                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+                onClick={() => setConfirmDeleteMcqModal(null)}
+                className="aqb-icon-btn !w-10 !h-10 !min-w-[40px] !min-h-[40px]"
               >
-                <X size={18} />
+                <X className="w-4 h-4" />
               </button>
             </div>
-
-            <div className="p-4 rounded-2xl bg-[var(--surface-muted)] border border-[var(--border)] space-y-2 text-xs">
-              <p className="font-bold text-[var(--text)]">
-                Scope &amp; Safety Verification:
+            <div className="aqb-sheet-body">
+              <p className="text-sm text-[var(--text-secondary)]">
+                Are you sure you want to permanently delete{' '}
+                <strong className="text-[var(--text)]">{confirmDeleteMcqModal.label}</strong>?
               </p>
-              <ul className="list-disc pl-5 space-y-1 text-[var(--text-secondary)]">
-                <li>
-                  Targets <strong>ONLY</strong> the old Admin Portal Question Bank subject pools (Mathematics, Physics, Chemistry, Computer Science, English, Biology, Analytical Reasoning).
-                </li>
-                <li>
-                  <strong>Captain Dashboard &amp; Grand Line MCQs</strong> (<code>ambassador_tests</code>, Captain question pools, live Grand Line mocks) are <strong>100% untouched</strong>.
-                </li>
-                <li>
-                  Full backup of all <strong>{legacySummary?.backupTotalCount ?? 42}</strong> old Admin Bank subject-pool MCQs is saved and downloadable below in JSON and CSV formats.
-                </li>
-              </ul>
             </div>
-
-            {/* Download Backup Buttons */}
-            <div className="flex flex-wrap items-center gap-2.5">
-              <a
-                href="/api/admin/legacy-bank/export?format=json"
-                download="legacy_admin_bank_backup.json"
-                className="px-4 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] hover:border-[var(--accent)] text-xs font-bold text-[var(--text)] inline-flex items-center gap-1.5"
+            <div className="aqb-sheet-footer">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteMcqModal(null)}
+                className="aqb-btn aqb-btn--glass"
               >
-                <Download size={14} className="text-[var(--accent)]" />
-                <span>Download JSON Backup ({legacySummary?.backupTotalCount ?? 42} MCQs)</span>
-              </a>
-              <a
-                href="/api/admin/legacy-bank/export?format=csv"
-                download="legacy_admin_bank_backup.csv"
-                className="px-4 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] hover:border-[var(--accent)] text-xs font-bold text-[var(--text)] inline-flex items-center gap-1.5"
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingMcqs}
+                onClick={handleConfirmDeleteMcqs}
+                className="aqb-btn aqb-btn--danger"
               >
-                <Download size={14} className="text-emerald-500" />
-                <span>Download CSV Backup ({legacySummary?.backupTotalCount ?? 42} MCQs)</span>
-              </a>
+                {deletingMcqs ? (
+                  <ButtonLineLoader label="Deleting…" />
+                ) : (
+                  <span>Delete ({confirmDeleteMcqModal.ids.length})</span>
+                )}
+              </button>
             </div>
+          </div>
+        </div>
+      )}
 
-            {/* Old Subject Pool Cards Showing Reset Counts */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-[var(--text)]">
-                  Old Admin Subject Pool Counts (Active Store vs Backup):
-                </span>
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                    (legacySummary?.totalToDelete ?? 0) === 0
-                      ? 'bg-emerald-500/15 text-emerald-500'
-                      : 'bg-amber-500/15 text-amber-500'
-                  }`}
-                >
-                  {(legacySummary?.totalToDelete ?? 0) === 0
-                    ? 'ALL 7 SUBJECT POOLS RESET TO 0'
-                    : `${legacySummary?.totalToDelete} MCQs PENDING DELETE`}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                {LEGACY_POOL_LABELS.map((pool) => {
-                  const activeCount = legacySummary?.subjectPools?.[pool.slug] ?? 0;
-                  const backedUpCount = legacySummary?.backupPools?.[pool.slug] ?? 0;
-                  return (
-                    <div
-                      key={pool.slug}
-                      className="p-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/50"
-                    >
-                      <div className="font-semibold text-[var(--text)] truncate">{pool.label}</div>
-                      <div className="font-mono text-sm font-bold text-emerald-500 mt-0.5">
-                        {activeCount} active
-                      </div>
-                      <div className="text-[10px] text-[var(--text-muted)] font-mono">
-                        (Backed up: {backedUpCount})
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+      {/* Delete University Confirmation Sheet */}
+      {confirmDeleteUni && (
+        <div
+          className="aqb-sheet-backdrop"
+          onClick={() => setConfirmDeleteUni(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="aqb-sheet aqb-sheet--compact"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="aqb-sheet-handle-bar">
+              <div className="aqb-sheet-handle-pill" />
             </div>
-
-            {/* Confirmation Checkbox & Run Button */}
-            <div className="p-3.5 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/40 space-y-3 text-xs">
-              <label className="flex items-start gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={legacyConfirmChecked}
-                  onChange={(e) => setLegacyConfirmChecked(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <span className="text-[var(--text-secondary)]">
-                  I confirm deleting the old Admin Bank subject-pool MCQs ({legacySummary?.totalToDelete ?? 0} remaining active, {legacySummary?.backupTotalCount ?? 42} backed up to JSON/CSV) and resetting the 7 old subject pool counts and index to 0.
-                </span>
-              </label>
-
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setLegacyModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-[var(--border)] text-xs font-semibold cursor-pointer"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  disabled={!legacyConfirmChecked || legacyDeleting}
-                  onClick={handleConfirmLegacyDelete}
-                  className="relative overflow-hidden btn-red px-4 py-2 rounded-xl text-xs font-bold disabled:opacity-40 cursor-pointer flex items-center gap-1.5"
-                >
-                  <Check size={14} />
-                  <span>
-                    {legacyDeleting
-                      ? 'Deleting...'
-                      : (legacySummary?.totalToDelete ?? 0) === 0
-                      ? 'Re-Verify Reset (0 Active)'
-                      : `Confirm Delete (${legacySummary?.totalToDelete} MCQs)`}
-                  </span>
-                  {legacyDeleting && <ButtonLineLoader />}
-                </button>
-              </div>
+            <div className="aqb-sheet-header">
+              <h2 className="text-base font-extrabold text-[var(--text)]">
+                Delete {confirmDeleteUni.name}?
+              </h2>
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteUni(null)}
+                className="aqb-icon-btn !w-10 !h-10 !min-w-[40px] !min-h-[40px]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="aqb-sheet-body">
+              <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+                This will remove <strong>{confirmDeleteUni.name}</strong> ({confirmDeleteUni.slug})
+                and its{' '}
+                <strong>{confirmDeleteUni.mcq_count.toLocaleString()} associated MCQs</strong>.
+              </p>
+            </div>
+            <div className="aqb-sheet-footer">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteUni(null)}
+                className="aqb-btn aqb-btn--glass"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingUni}
+                onClick={handleConfirmDeleteUniversity}
+                className="aqb-btn aqb-btn--danger"
+              >
+                {deletingUni ? (
+                  <ButtonLineLoader label="Deleting…" />
+                ) : (
+                  <span>Delete university</span>
+                )}
+              </button>
             </div>
           </div>
         </div>
       )}
     </div>
   );
-}
+};
 
 export default AdminQuestionsPage;
