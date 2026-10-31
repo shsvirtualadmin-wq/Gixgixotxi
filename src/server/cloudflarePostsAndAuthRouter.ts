@@ -1527,7 +1527,7 @@ ${allUrls
               type: 'following_post',
               title: `${newRow.author_name} posted: ${newRow.title}`,
               message: snippet || `New ${newRow.type || 'post'} in ${newRow.subject || 'Commons'}`,
-              link: `/commons/post/${newRow.slug || newRow.id}`,
+              link: null,
               read: 0,
               is_pinned: 0,
               author_id: newRow.author_uid,
@@ -1753,14 +1753,45 @@ ${allUrls
         store.likes.splice(existingIdx, 1);
         post.upvotes = Math.max(0, (post.upvotes || 0) - 1);
         voted = false;
+        // Clean up like notification if unliked
+        const likeNotifId = `like_${post.id}_${user.uid}`;
+        store.notifications = store.notifications.filter((n) => n.id !== likeNotifId);
       } else {
+        const likeNow = Date.now();
         store.likes.push({
           post_id: post.id,
           user_uid: user.uid,
-          created_at: Date.now(),
+          created_at: likeNow,
         });
         post.upvotes = (post.upvotes || 0) + 1;
         voted = true;
+
+        // Notify post author if not liking own post
+        if (post.author_uid && post.author_uid !== user.uid) {
+          const likeNotifId = `like_${post.id}_${user.uid}`;
+          const existingLikeNotif = store.notifications.find((n) => n.id === likeNotifId);
+          if (!existingLikeNotif) {
+            const likerName = String(user.name || 'A student');
+            store.notifications.unshift({
+              id: likeNotifId,
+              user_id: post.author_uid,
+              type: 'like',
+              title: `${likerName} liked your post`,
+              message: post.title ? `Liked "${post.title.slice(0, 80)}"` : 'Liked your post in Commons.',
+              link: null,
+              read: 0,
+              is_pinned: 0,
+              author_id: user.uid,
+              author_name: likerName,
+              author_avatar: user.picture || null,
+              author_frame: null,
+              post_id: post.id,
+              post_type: post.type || 'notes',
+              created_at: likeNow,
+              read_at: null,
+            });
+          }
+        }
       }
 
       saveD1Store(store);
@@ -1896,6 +1927,31 @@ ${allUrls
 
       store.comments.push(row);
       post.comment_count = (post.comment_count || 0) + 1;
+
+      // Notify post author if not commenting on own post
+      if (post.author_uid && post.author_uid !== user.uid) {
+        const cmtNotifId = `comment_${id}_${post.author_uid}`;
+        const cmtAuthorName = isAnon ? 'A student' : String(body.authorName || user.name || 'A student');
+        store.notifications.unshift({
+          id: cmtNotifId,
+          user_id: post.author_uid,
+          type: 'comment',
+          title: `${cmtAuthorName} commented on your post`,
+          message: text.slice(0, 120),
+          link: null,
+          read: 0,
+          is_pinned: 0,
+          author_id: isAnon ? null : user.uid,
+          author_name: cmtAuthorName,
+          author_avatar: isAnon ? null : row.author_avatar,
+          author_frame: isAnon ? null : row.author_frame,
+          post_id: post.id,
+          post_type: post.type || 'notes',
+          created_at: now,
+          read_at: null,
+        });
+      }
+
       saveD1Store(store);
 
       return res.status(201).json({
@@ -2495,7 +2551,7 @@ ${allUrls
           type: 'new_follower',
           title: `${followerName} started following you`,
           message: 'Tap to view their profile.',
-          link: `/user/${followerUid}`,
+          link: null,
           read: 0,
           is_pinned: 0,
           author_id: followerUid,

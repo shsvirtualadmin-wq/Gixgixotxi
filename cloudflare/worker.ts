@@ -2157,7 +2157,7 @@ ${urls
               notifId,
               followingUid,
               `${followerName} started following you`,
-              `/user/${followerUid}`,
+              null,
               followerUid,
               followerName,
               followerAvatar,

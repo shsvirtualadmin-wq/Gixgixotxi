@@ -446,6 +446,8 @@ function AppInner() {
           {/* Public User Profile & Search */}
           <Route path="/u/:username" element={<PublicUserProfilePage />} />
           <Route path="/profile/:userId" element={<PublicUserProfilePage />} />
+          <Route path="/user/:userId" element={<PublicUserProfilePage />} />
+          <Route path="/users/:userId" element={<PublicUserProfilePage />} />
           <Route path="/search" element={<SearchPage />} />
 
           {/* Custom 410 Gone & 404 Not Found Pages */}

@@ -25,7 +25,12 @@ import { DEFAULT_WELCOME_ANNOUNCEMENT } from '@/config/botsConfig';
 export type NotificationType =
   | 'following_post'
   | 'new_follower'
+  | 'follow'
   | 'following'
+  | 'comment'
+  | 'reply'
+  | 'like'
+  | 'post_like'
   | 'announcement'
   | 'system';
 
@@ -39,14 +44,18 @@ export interface AppNotification {
   createdAt: Timestamp | Date | number | null;
   read: boolean;
   isPinned?: boolean;
-  link?: string;
+  link?: string | null;
   // Specific to following / follower notifications:
   authorId?: string;
   authorName?: string;
   authorAvatar?: string | null;
   authorFrame?: string | null;
+  actorId?: string;
+  followerId?: string;
   postId?: string;
   postType?: string;
+  postSlug?: string;
+  commentId?: string;
   // Specific to announcements:
   isAnnouncement?: boolean;
   announcementId?: string;
@@ -119,10 +128,11 @@ export function toMillis(val: Timestamp | Date | number | null | undefined): num
 
 function normalizeNotificationType(rawType?: string, isAnnouncement?: boolean): NotificationType {
   if (isAnnouncement || rawType === 'announcement') return 'announcement';
-  if (rawType === 'new_follower') return 'new_follower';
-  if (rawType === 'following_post') return 'following_post';
+  if (rawType === 'new_follower' || rawType === 'follow' || rawType === 'follower') return 'new_follower';
+  if (rawType === 'following_post' || rawType === 'new_post' || rawType === 'following') return 'following_post';
+  if (rawType === 'comment' || rawType === 'reply') return 'comment';
+  if (rawType === 'like' || rawType === 'post_like') return 'like';
   if (rawType === 'system') return 'system';
-  if (rawType === 'following') return 'following_post';
   return 'following_post';
 }
 
@@ -682,7 +692,6 @@ export async function notifyFollowersOfPost(params: {
   const notifMessage = postDescription
     ? postDescription.trim().slice(0, 140)
     : `Published a new ${postType} in Commons.`;
-  const targetLink = `/commons/post/${postSlug || postId}`;
   const nowMs = Date.now();
 
   // 1. Persist to D1 (/api/notifications)
@@ -694,13 +703,14 @@ export async function notifyFollowersOfPost(params: {
       type: 'following_post',
       title: notifTitle,
       message: notifMessage,
-      link: targetLink,
+      link: null,
       read: false,
       authorId,
       authorName: cleanAuthor,
       authorAvatar,
       authorFrame,
       postId,
+      postSlug: postSlug || null,
       postType,
       isAnonymous: false,
       createdAtMs: nowMs,
@@ -732,12 +742,13 @@ export async function notifyFollowersOfPost(params: {
           type: 'following_post',
           title: notifTitle,
           message: notifMessage,
-          link: targetLink,
+          link: null,
           authorId,
           authorName: cleanAuthor,
           authorAvatar: authorAvatar || null,
           authorFrame: authorFrame || null,
           postId,
+          postSlug: postSlug || null,
           postType,
           read: false,
           createdAt: serverTimestamp(),
@@ -758,6 +769,7 @@ export async function notifyFollowersOfPost(params: {
 
 /**
  * Creates a "new_follower" notification ("X started following you") when `followerId` follows `targetUserId`.
+ * Stores type and actorId without full URLs so route building is dynamic.
  */
 export async function notifyUserOfNewFollower(params: {
   targetUserId: string;
@@ -779,7 +791,6 @@ export async function notifyUserOfNewFollower(params: {
   const deterministicId = `follow_${followerId}_${targetUserId}`;
   const title = `${cleanName} started following you`;
   const message = 'Tap to view their profile.';
-  const link = `/user/${followerId}`;
   const nowMs = Date.now();
 
   try {
@@ -798,9 +809,11 @@ export async function notifyUserOfNewFollower(params: {
             type: 'new_follower',
             title,
             message,
-            link,
+            link: null,
             read: false,
             authorId: followerId,
+            followerId,
+            actorId: followerId,
             authorName: cleanName,
             authorAvatar,
             authorFrame,
@@ -821,8 +834,10 @@ export async function notifyUserOfNewFollower(params: {
         type: 'new_follower',
         title,
         message,
-        link,
+        link: null,
         authorId: followerId,
+        followerId,
+        actorId: followerId,
         authorName: cleanName,
         authorAvatar: authorAvatar || null,
         authorFrame: followerFrame || null,

@@ -12,6 +12,8 @@ import {
   Shield,
   X,
   Pin,
+  MessageSquare,
+  Heart,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { PageMeta } from '@/components/ui/PageMeta';
@@ -30,6 +32,7 @@ import {
   type AppNotification,
   type AnnouncementItem,
 } from '@/services/notificationService';
+import { resolveNotificationDestination } from '@/utils/routes';
 import type { DocumentSnapshot } from 'firebase/firestore';
 
 type FilterType = 'all' | 'following' | 'announcements';
@@ -232,14 +235,7 @@ export function NotificationsPage() {
       });
     }
 
-    const targetUrl =
-      notif.link ||
-      (notif.postId
-        ? `/commons/post/${notif.postId}`
-        : notif.type === 'new_follower' && notif.authorId
-        ? `/user/${notif.authorId}`
-        : '/dashboard/commons');
-
+    const targetUrl = resolveNotificationDestination(notif);
     if (targetUrl) {
       navigate(targetUrl);
     }
@@ -426,9 +422,12 @@ export function NotificationsPage() {
             {displayedNotifications.map((notif) => {
               const isUnread = !notif.read;
               const isAnnouncement = notif.type === 'announcement' || notif.isAnnouncement;
-              const isNewFollower = notif.type === 'new_follower';
+              const isNewFollower =
+                notif.type === 'new_follower' || notif.type === 'follow' || notif.type === 'follower';
               const isFollowingPost =
-                notif.type === 'following_post' || notif.type === 'following';
+                notif.type === 'following_post' || notif.type === 'following' || notif.type === 'new_post';
+              const isComment = notif.type === 'comment' || notif.type === 'reply';
+              const isLike = notif.type === 'like' || notif.type === 'post_like';
               const hasAuthorAvatar =
                 !isAnnouncement && Boolean(notif.authorId || notif.authorName || notif.authorAvatar);
 
@@ -472,7 +471,15 @@ export function NotificationsPage() {
                         className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[var(--card)] border border-[var(--border)] flex items-center justify-center text-[var(--red)] shadow-sm"
                         aria-hidden="true"
                       >
-                        {isNewFollower ? <UserPlus size={11} /> : <FileText size={11} />}
+                        {isNewFollower ? (
+                          <UserPlus size={11} className="text-emerald-400" />
+                        ) : isComment ? (
+                          <MessageSquare size={11} className="text-blue-400" />
+                        ) : isLike ? (
+                          <Heart size={11} className="text-rose-500 fill-rose-500" />
+                        ) : (
+                          <FileText size={11} />
+                        )}
                       </span>
                     </div>
                   ) : (
@@ -482,6 +489,10 @@ export function NotificationsPage() {
                           ? 'bg-red-500/15 border border-red-500/30 text-[var(--red)]'
                           : isNewFollower
                           ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
+                          : isComment
+                          ? 'bg-blue-500/15 border border-blue-500/30 text-blue-400'
+                          : isLike
+                          ? 'bg-rose-500/15 border border-rose-500/30 text-rose-400'
                           : 'bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)]'
                       }`}
                     >
@@ -489,6 +500,10 @@ export function NotificationsPage() {
                         <Megaphone size={19} />
                       ) : isNewFollower ? (
                         <UserPlus size={19} />
+                      ) : isComment ? (
+                        <MessageSquare size={19} />
+                      ) : isLike ? (
+                        <Heart size={19} className="fill-rose-400" />
                       ) : isFollowingPost ? (
                         <FileText size={19} />
                       ) : (
@@ -520,6 +535,16 @@ export function NotificationsPage() {
                         {isNewFollower && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 uppercase tracking-wider shrink-0">
                             Follower
+                          </span>
+                        )}
+                        {isComment && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-400 uppercase tracking-wider shrink-0">
+                            Comment
+                          </span>
+                        )}
+                        {isLike && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-400 uppercase tracking-wider shrink-0">
+                            Like
                           </span>
                         )}
                         <h2

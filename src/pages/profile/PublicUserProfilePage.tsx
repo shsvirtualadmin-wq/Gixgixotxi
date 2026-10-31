@@ -8,11 +8,12 @@ import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
-import { NotFoundPage } from '@/pages/NotFoundPage';
+import { ContentUnavailableScreen } from '@/components/ui/ContentUnavailableScreen';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { followUser, unfollowUser, isFollowing } from '@/services/followService';
 import { fetchUserCommonsPosts } from '@/services/commonsService';
+import { syncPublicProfile } from '@/services/publicProfileService';
 import { sanitizeStudentDisplayName, maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
 import type { CommonsPost } from '@/types/commons';
 
@@ -38,25 +39,86 @@ export const PublicUserProfilePage: React.FC = () => {
       setLoading(true);
       try {
         let uid = username.trim();
-        const unameSnap = await getDoc(doc(db, 'usernames', uid.toLowerCase()));
-        if (unameSnap.exists() && unameSnap.data()?.uid) {
+        // 1. Try username lookup in `usernames/{username}`
+        const unameSnap = await getDoc(doc(db, 'usernames', uid.toLowerCase())).catch(() => null);
+        if (unameSnap && unameSnap.exists() && unameSnap.data()?.uid) {
           uid = unameSnap.data().uid;
         }
 
-        const pubSnap = await getDoc(doc(db, 'publicProfiles', uid));
+        // 2. Fetch from `publicProfiles/{uid}`
+        const pubSnap = await getDoc(doc(db, 'publicProfiles', uid)).catch(() => null);
         if (!mounted) return;
 
-        if (!pubSnap.exists()) {
+        let data: Record<string, any> | null = null;
+        if (pubSnap && pubSnap.exists()) {
+          data = pubSnap.data() as Record<string, any>;
+        }
+
+        // 3. Fallback: Check `users/{uid}` if public profile has not synced yet
+        if (!data) {
+          const userSnap = await getDoc(doc(db, 'users', uid)).catch(() => null);
+          if (userSnap && userSnap.exists()) {
+            const uData = userSnap.data();
+            data = {
+              uid,
+              displayName: uData?.displayName || uData?.nickname || 'Student',
+              username: uData?.username || null,
+              avatar: uData?.avatar || uData?.equippedAvatar || uData?.photoURL || null,
+              photoURL: uData?.photoURL || null,
+              equippedAvatar: uData?.equippedAvatar || null,
+              frame: uData?.frame || uData?.equippedFrame || null,
+              banner: uData?.banner || uData?.equippedBanner || null,
+              nameplate: uData?.nameplate || uData?.equippedNameplate || null,
+              role: uData?.role || 'student',
+              customRole: uData?.customRole || null,
+              bio: uData?.bio || '',
+              stats: uData?.stats || { streak: 0, score: 0 },
+              publicStats: uData?.publicStats || null,
+              followersCount: 0,
+              followingCount: 0,
+            };
+            // Asynchronously sync to publicProfiles for future queries
+            void syncPublicProfile(uid, data).catch(() => {});
+          }
+        }
+
+        // 4. Secondary fallback: query `users` collection by username field
+        if (!data) {
+          try {
+            const { getDocs, collection, query, where, limit } = await import('firebase/firestore');
+            const q = query(collection(db, 'users'), where('username', '==', uid.toLowerCase()), limit(1));
+            const userQuerySnap = await getDocs(q);
+            if (!userQuerySnap.empty) {
+              const uDoc = userQuerySnap.docs[0];
+              uid = uDoc.id;
+              const uData = uDoc.data();
+              data = {
+                uid,
+                displayName: uData?.displayName || uData?.nickname || 'Student',
+                username: uData?.username || null,
+                avatar: uData?.avatar || uData?.photoURL || null,
+                role: uData?.role || 'student',
+                customRole: uData?.customRole || null,
+                bio: uData?.bio || '',
+                followersCount: 0,
+                followingCount: 0,
+              };
+            }
+          } catch {
+            // Ignore query error
+          }
+        }
+
+        if (!data) {
           setProfileData(null);
           setLoading(false);
           return;
         }
 
-        const data = pubSnap.data();
         setTargetUid(uid);
         setProfileData(data);
 
-        // Fetch public non-anonymous posts by this user from Cloudflare D1 (zero Firestore post reads)
+        // Fetch public non-anonymous posts by this user from Cloudflare D1
         const postsList = await fetchUserCommonsPosts(uid, false).catch(() => []);
         if (mounted) {
           setUserPosts(postsList.filter((p) => !(p as any).isHidden).slice(0, 10));
@@ -87,7 +149,13 @@ export const PublicUserProfilePage: React.FC = () => {
   }
 
   if (!profileData || !targetUid) {
-    return <NotFoundPage />;
+    return (
+      <ContentUnavailableScreen
+        title="This profile is no longer available"
+        message="The student account you are looking for has been deleted or does not exist."
+        badge="Profile Unavailable"
+      />
+    );
   }
 
   // Respect user's profile visibility setting ("public" | "logged_in" | "only_me")

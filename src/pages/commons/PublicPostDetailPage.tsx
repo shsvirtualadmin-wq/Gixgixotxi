@@ -27,6 +27,7 @@ import { CommonsImageViewerModal } from '@/components/commons/CommonsImageViewer
 import { CommonsReportModal } from '@/components/commons/CommonsReportModal';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { GonePage } from '@/pages/GonePage';
+import { ContentUnavailableScreen } from '@/components/ui/ContentUnavailableScreen';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useAuthGate } from '@/contexts/AuthGateContext';
@@ -221,7 +222,15 @@ export const PublicPostDetailPage: React.FC = () => {
   }
 
   if (status === 'not_found' || !post) {
-    return <NotFoundPage />;
+    return (
+      <ContentUnavailableScreen
+        title="This post is no longer available"
+        message="The study resource or post you are looking for has been removed by its author or is no longer accessible."
+        badge="Post Unavailable"
+        backUrl="/dashboard/commons"
+        backLabel="Back to Commons"
+      />
+    );
   }
 
   const canonicalSlug = buildEntitySlug(post.id, post.title);
