@@ -2427,9 +2427,99 @@ ${allUrls
   });
 
   // ============================================================================
-  // ADMIN KOBANS STUDENT SEARCH ENDPOINT (/api/admin/kobans/users/search)
+  // SHARED ADMIN STUDENT SEARCH ENDPOINT (/api/admin/users/search)
+  // Used by both /admin/kobans (Wallets tab) and /admin/users.
   // Enforces admin/superadmin role server-side from verified Firebase ID token.
   // ============================================================================
+  const unwrapFirestoreField = (val: any): any => {
+    if (!val || typeof val !== 'object') return undefined;
+    if ('stringValue' in val) return String(val.stringValue);
+    if ('integerValue' in val) return Number(val.integerValue);
+    if ('doubleValue' in val) return Number(val.doubleValue);
+    if ('booleanValue' in val) return Boolean(val.booleanValue);
+    if ('nullValue' in val) return null;
+    return undefined;
+  };
+
+  const parseFirestoreRestDoc = (docObj: any): { id: string; data: Record<string, any> } | null => {
+    if (!docObj || typeof docObj.name !== 'string') return null;
+    const id = docObj.name.split('/').pop() || '';
+    if (!id) return null;
+    const fields = docObj.fields || {};
+    const data: Record<string, any> = {};
+    for (const [k, v] of Object.entries(fields)) {
+      data[k] = unwrapFirestoreField(v);
+    }
+    return { id, data };
+  };
+
+  const fetchFirestoreCollectionRest = async (
+    collectionName: string,
+    bearerHeader: string,
+    pageSize = 500
+  ): Promise<Array<{ id: string; data: Record<string, any> }>> => {
+    const dbIds = Array.from(new Set([FIRESTORE_DATABASE_ID, '(default)'].filter(Boolean)));
+    for (const dbId of dbIds) {
+      try {
+        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/${encodeURIComponent(
+          dbId
+        )}/documents/${encodeURIComponent(collectionName)}?pageSize=${pageSize}`;
+        const resp = await fetch(url, {
+          method: 'GET',
+          headers: {
+            Authorization: bearerHeader,
+            Accept: 'application/json',
+          },
+        });
+        if (resp.ok) {
+          const json = (await resp.json().catch(() => ({}))) as { documents?: any[] };
+          const docs = Array.isArray(json.documents) ? json.documents : [];
+          const parsed = docs
+            .map(parseFirestoreRestDoc)
+            .filter((d): d is { id: string; data: Record<string, any> } => Boolean(d));
+          if (parsed.length > 0 || dbId === FIRESTORE_DATABASE_ID) {
+            return parsed;
+          }
+        }
+      } catch {
+        // Continue to fallback database id
+      }
+    }
+    return [];
+  };
+
+  const verifyFirestoreUserIsAdminRest = async (
+    uid: string,
+    bearerHeader: string
+  ): Promise<boolean> => {
+    const dbIds = Array.from(new Set([FIRESTORE_DATABASE_ID, '(default)'].filter(Boolean)));
+    for (const dbId of dbIds) {
+      try {
+        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/${encodeURIComponent(
+          dbId
+        )}/documents/users/${encodeURIComponent(uid)}`;
+        const resp = await fetch(url, {
+          method: 'GET',
+          headers: {
+            Authorization: bearerHeader,
+            Accept: 'application/json',
+          },
+        });
+        if (resp.ok) {
+          const docJson = await resp.json().catch(() => null);
+          const parsed = parseFirestoreRestDoc(docJson);
+          const role = String(parsed?.data?.role || '').toLowerCase().trim();
+          if (role === 'admin' || role === 'superadmin') {
+            return true;
+          }
+        }
+      } catch {
+        // Ignore REST lookup error
+      }
+    }
+    return false;
+  };
+
   const handleAdminKobansUserSearch = async (req: express.Request, res: express.Response) => {
     try {
       const authHeader = String(req.headers.authorization || '');
@@ -2438,6 +2528,7 @@ ${allUrls
           success: false,
           code: 'UNAUTHORIZED',
           error: 'Authentication token required (401).',
+          users: [],
         });
       }
 
@@ -2447,22 +2538,30 @@ ${allUrls
           success: false,
           code: 'INVALID_TOKEN',
           error: 'Invalid or expired session token (401).',
+          users: [],
         });
       }
 
-      if (adminUser.role !== 'superadmin') {
+      let isAuthorizedAdmin = adminUser.role === 'superadmin';
+      if (!isAuthorizedAdmin) {
+        isAuthorizedAdmin = await verifyFirestoreUserIsAdminRest(adminUser.uid, authHeader);
+      }
+
+      if (!isAuthorizedAdmin) {
         return res.status(403).json({
           success: false,
           code: 'FORBIDDEN',
           error: 'Forbidden: Admin or Superadmin role required (403).',
+          users: [],
         });
       }
 
-      const rawQ = String(req.query.q || req.query.search || '').trim();
+      const rawQ = String(req.query.q ?? req.query.search ?? '').trim();
       const qNorm = rawQ.toLowerCase().replace(/\s+/g, ' ');
       const qNoSpaces = rawQ.toLowerCase().replace(/\s+/g, '');
       const qHandle = qNoSpaces.replace(/^@+/, '');
-      const limitCount = Math.min(50, Math.max(1, Number(req.query.limit || 20)));
+      const qShortId = qNoSpaces.replace(/^#/, '');
+      const limitCount = Math.min(50, Math.max(1, Number(req.query.limit || 10)));
       const offsetCount = Math.max(0, Number(req.query.offset || 0));
 
       if (qNoSpaces.length < 2) {
@@ -2476,40 +2575,218 @@ ${allUrls
 
       interface SanitizedStudentMatch {
         id: string;
+        uid: string;
         name: string;
+        displayName: string;
         handle: string;
         email: string;
         avatar: string | null;
-        plan: string;
+        shortId: string;
+        plan: 'free' | 'pro';
         role: string;
         status: 'active' | 'suspended' | 'inactive' | 'orphan' | 'missing-name';
         kobans: number;
+        hasWallet: boolean;
       }
 
       const byKey = new Map<string, SanitizedStudentMatch>();
+      const uidByEmail = new Map<string, string>();
+
       const upsertCandidate = (cand: SanitizedStudentMatch) => {
-        const key = cand.id || cand.email.toLowerCase();
-        if (!key || key.startsWith('bot_')) return;
-        const existing = byKey.get(key);
+        const uid = String(cand.uid || cand.id || '').trim();
+        if (!uid || uid.startsWith('bot_') || cand.role === 'bot') return;
+
+        const cleanEmail = String(cand.email || '').trim().toLowerCase();
+        const existingUidForEmail = cleanEmail ? uidByEmail.get(cleanEmail) : undefined;
+        const targetKey =
+          existingUidForEmail && byKey.has(existingUidForEmail) ? existingUidForEmail : uid;
+
+        const existing = byKey.get(targetKey);
         if (!existing) {
-          byKey.set(key, cand);
-        } else {
-          byKey.set(key, {
-            id: existing.id || cand.id,
-            name:
-              existing.name && existing.name !== 'Unnamed Student'
-                ? existing.name
-                : cand.name || existing.name,
-            handle: existing.handle || cand.handle,
-            email: existing.email || cand.email,
-            avatar: existing.avatar || cand.avatar,
-            plan: existing.plan !== 'free' ? existing.plan : cand.plan,
-            role: existing.role !== 'student' ? existing.role : cand.role,
-            status: existing.status === 'active' ? cand.status : existing.status,
-            kobans: Math.max(existing.kobans, cand.kobans),
+          byKey.set(targetKey, {
+            ...cand,
+            id: targetKey,
+            uid: targetKey,
+            email: cleanEmail,
+            shortId: cand.shortId || targetKey.slice(0, 5).toUpperCase(),
           });
+          if (cleanEmail) uidByEmail.set(cleanEmail, targetKey);
+        } else {
+          const hasRealExistingName =
+            Boolean(existing.name) &&
+            existing.name !== 'Unnamed Student' &&
+            existing.name !== existing.email;
+          const mergedName = hasRealExistingName ? existing.name : cand.name || existing.name;
+          const mergedEmail = existing.email || cleanEmail;
+          const mergedHandle =
+            existing.handle || cand.handle || (mergedEmail ? mergedEmail.split('@')[0] : '');
+          const hasWallet = existing.hasWallet || cand.hasWallet;
+          const kobans = Math.max(existing.kobans, cand.kobans);
+          let mergedStatus = existing.status;
+          if (existing.status === 'orphan' && cand.status !== 'orphan') {
+            mergedStatus = cand.status;
+          }
+
+          byKey.set(targetKey, {
+            id: targetKey,
+            uid: targetKey,
+            name: mergedName,
+            displayName: mergedName || mergedEmail || 'Student',
+            handle: mergedHandle,
+            email: mergedEmail,
+            avatar: existing.avatar || cand.avatar,
+            shortId: existing.shortId || cand.shortId || targetKey.slice(0, 5).toUpperCase(),
+            plan: existing.plan === 'pro' || cand.plan === 'pro' ? 'pro' : 'free',
+            role: existing.role !== 'student' ? existing.role : cand.role,
+            status: mergedStatus,
+            kobans,
+            hasWallet,
+          });
+          if (mergedEmail) uidByEmail.set(mergedEmail, targetKey);
         }
       };
+
+      // 0. Query Firestore canonical `users` + LEFT JOIN `wallets` + `publicProfiles` + requests via REST
+      const [fsUsers, fsProfiles, fsWallets, fsKobanReqs, fsPaymentReqs] = await Promise.all([
+        fetchFirestoreCollectionRest('users', authHeader, 1000),
+        fetchFirestoreCollectionRest('publicProfiles', authHeader, 1000),
+        fetchFirestoreCollectionRest('wallets', authHeader, 1000),
+        fetchFirestoreCollectionRest('kobanRequests', authHeader, 300),
+        fetchFirestoreCollectionRest('paymentRequests', authHeader, 300),
+      ]);
+
+      const walletMap = new Map<string, number>();
+      for (const w of fsWallets) {
+        const bal =
+          typeof w.data.balance === 'number' && Number.isFinite(w.data.balance)
+            ? w.data.balance
+            : 0;
+        walletMap.set(w.id, bal);
+      }
+
+      const pubMap = new Map<string, Record<string, any>>();
+      for (const p of fsProfiles) {
+        pubMap.set(p.id, p.data);
+      }
+
+      const userIdsInFsUsers = new Set<string>();
+      for (const u of fsUsers) {
+        const uid = u.id;
+        if (!uid || uid.startsWith('bot_')) continue;
+        const data = u.data;
+        if (data.role === 'bot' || data.deleted === true || data.status === 'deleted') continue;
+
+        userIdsInFsUsers.add(uid);
+        const pub = pubMap.get(uid) || {};
+        const email = String(data.email || pub.email || '').trim().toLowerCase();
+        const rawName = String(
+          data.displayName || data.fullName || data.name || pub.displayName || pub.name || ''
+        ).trim();
+        const hasMissingName = !rawName || rawName === 'Unnamed Student';
+        const rawHandle = String(
+          data.username ||
+            data.handle ||
+            pub.username ||
+            pub.handle ||
+            (email ? email.split('@')[0] : '')
+        )
+          .trim()
+          .replace(/^@+/, '');
+
+        let status: SanitizedStudentMatch['status'] = 'active';
+        if (data.suspended === true || data.isBanned === true || data.status === 'suspended') {
+          status = 'suspended';
+        } else if (data.status === 'inactive' || data.active === false) {
+          status = 'inactive';
+        } else if (hasMissingName) {
+          status = 'missing-name';
+        }
+
+        const hasWallet = walletMap.has(uid);
+        const kobans = hasWallet
+          ? walletMap.get(uid)!
+          : typeof data.kobans === 'number' && Number.isFinite(data.kobans)
+          ? data.kobans
+          : 0;
+
+        upsertCandidate({
+          id: uid,
+          uid,
+          name: hasMissingName ? '' : rawName,
+          displayName: hasMissingName ? email || 'Unnamed Student' : rawName,
+          handle: rawHandle,
+          email,
+          avatar:
+            data.photoURL ||
+            data.avatar ||
+            data.equippedAvatar ||
+            pub.photoURL ||
+            pub.avatar ||
+            pub.equippedAvatar ||
+            null,
+          shortId: String(data.shortId || pub.shortId || uid.slice(0, 5).toUpperCase()),
+          plan: data.plan === 'pro' || data.isPremium === true ? 'pro' : 'free',
+          role: String(data.role || 'student'),
+          status,
+          kobans,
+          hasWallet,
+        });
+      }
+
+      for (const p of fsProfiles) {
+        const uid = p.id;
+        if (!uid || uid.startsWith('bot_') || userIdsInFsUsers.has(uid)) continue;
+        const pub = p.data;
+        if (pub.role === 'bot') continue;
+        const email = String(pub.email || '').trim().toLowerCase();
+        const rawName = String(pub.displayName || pub.name || '').trim();
+        const rawHandle = String(
+          pub.username || pub.handle || (email ? email.split('@')[0] : '')
+        )
+          .trim()
+          .replace(/^@+/, '');
+        const hasWallet = walletMap.has(uid);
+
+        upsertCandidate({
+          id: uid,
+          uid,
+          name: rawName === 'Unnamed Student' ? '' : rawName,
+          displayName: rawName || email || `Orphan (${uid.slice(0, 6)})`,
+          handle: rawHandle,
+          email,
+          avatar: pub.photoURL || pub.avatar || pub.equippedAvatar || null,
+          shortId: String(pub.shortId || uid.slice(0, 5).toUpperCase()),
+          plan: pub.plan === 'pro' ? 'pro' : 'free',
+          role: String(pub.role || 'student'),
+          status: 'orphan',
+          kobans: hasWallet ? walletMap.get(uid)! : 0,
+          hasWallet,
+        });
+      }
+
+      for (const r of [...fsKobanReqs, ...fsPaymentReqs]) {
+        const d = r.data;
+        const uid = String(d.userId || '').trim();
+        if (!uid || uid.startsWith('bot_')) continue;
+        const email = String(d.userEmail || '').trim().toLowerCase();
+        const rawName = String(d.userName || '').trim();
+        const hasWallet = walletMap.has(uid);
+        upsertCandidate({
+          id: uid,
+          uid,
+          name: rawName === 'Student' ? '' : rawName,
+          displayName: rawName || email || 'Student',
+          handle: email ? email.split('@')[0] : '',
+          email,
+          avatar: null,
+          shortId: uid.slice(0, 5).toUpperCase(),
+          plan: 'free',
+          role: 'student',
+          status: userIdsInFsUsers.has(uid) ? 'active' : 'orphan',
+          kobans: hasWallet ? walletMap.get(uid)! : 0,
+          hasWallet,
+        });
+      }
 
       const store = loadD1Store();
 
@@ -2518,16 +2795,21 @@ ${allUrls
         if (!r.uid || r.uid.startsWith('bot_')) continue;
         const emailLower = String(r.email || '').trim().toLowerCase();
         const emailPrefix = emailLower ? emailLower.split('@')[0] : '';
+        const hasWallet = walletMap.has(r.uid);
         upsertCandidate({
           id: r.uid,
+          uid: r.uid,
           name: emailPrefix || '',
+          displayName: emailPrefix || emailLower || 'Student',
           handle: emailPrefix,
           email: emailLower,
           avatar: null,
+          shortId: r.uid.slice(0, 5).toUpperCase(),
           plan: 'free',
           role: r.role || 'student',
           status: r.is_posting_banned ? 'suspended' : emailPrefix ? 'active' : 'missing-name',
-          kobans: 0,
+          kobans: hasWallet ? walletMap.get(r.uid)! : 0,
+          hasWallet,
         });
       }
 
@@ -2542,16 +2824,21 @@ ${allUrls
         const handleGuess = authorName
           ? authorName.toLowerCase().replace(/[^a-z0-9_]/g, '')
           : '';
+        const hasWallet = walletMap.has(uid);
         upsertCandidate({
           id: uid,
+          uid,
           name: authorName,
+          displayName: authorName || 'Student',
           handle: handleGuess,
           email: '',
           avatar: p.author_avatar || p.author_photo_url || p.author_equipped_avatar || null,
+          shortId: uid.slice(0, 5).toUpperCase(),
           plan: 'free',
           role: p.author_role || 'student',
           status: authorName ? 'active' : 'missing-name',
-          kobans: 0,
+          kobans: hasWallet ? walletMap.get(uid)! : 0,
+          hasWallet,
         });
       }
 
@@ -2565,16 +2852,21 @@ ${allUrls
         const handleGuess = authorName
           ? authorName.toLowerCase().replace(/[^a-z0-9_]/g, '')
           : '';
+        const hasWallet = walletMap.has(uid);
         upsertCandidate({
           id: uid,
+          uid,
           name: authorName,
+          displayName: authorName || 'Student',
           handle: handleGuess,
           email: '',
           avatar: c.author_avatar || c.author_photo_url || c.author_equipped_avatar || null,
+          shortId: uid.slice(0, 5).toUpperCase(),
           plan: 'free',
           role: c.author_role || 'student',
           status: authorName ? 'active' : 'missing-name',
-          kobans: 0,
+          kobans: hasWallet ? walletMap.get(uid)! : 0,
+          hasWallet,
         });
       }
 
@@ -2607,16 +2899,24 @@ ${allUrls
                 const displayName = String(au.displayName || '').trim();
                 const handle = email.split('@')[0] || '';
                 if (uid) {
+                  const hasWallet = walletMap.has(uid);
                   upsertCandidate({
                     id: uid,
+                    uid,
                     name: displayName,
+                    displayName: displayName || email || 'Student',
                     handle,
                     email,
                     avatar: au.photoUrl || null,
+                    shortId: uid.slice(0, 5).toUpperCase(),
                     plan: 'free',
-                    role: SUPERADMIN_EMAILS.has(email) || SUPERADMIN_UIDS.has(uid) ? 'superadmin' : 'student',
+                    role:
+                      SUPERADMIN_EMAILS.has(email) || SUPERADMIN_UIDS.has(uid)
+                        ? 'superadmin'
+                        : 'student',
                     status: au.disabled ? 'suspended' : displayName ? 'active' : 'missing-name',
-                    kobans: 0,
+                    kobans: hasWallet ? walletMap.get(uid)! : 0,
+                    hasWallet,
                   });
                 }
               }
@@ -2627,23 +2927,58 @@ ${allUrls
         }
       }
 
-      // Filter candidates against normalized query
-      const matched = Array.from(byKey.values()).filter((u) => {
-        const emailLower = u.email.toLowerCase();
-        const nameLower = u.name.toLowerCase();
-        const handleLower = u.handle.toLowerCase().replace(/^@+/, '');
-        const idLower = u.id.toLowerCase();
-        const shortIdLower = idLower.slice(0, 6);
+      // Score and filter candidates against normalized query
+      const scored: Array<{ item: SanitizedStudentMatch; score: number }> = [];
+      for (const u of byKey.values()) {
+        const emailLower = (u.email || '').toLowerCase();
+        const nameLower = (u.name || '').toLowerCase();
+        const displayLower = (u.displayName || '').toLowerCase();
+        const handleLower = (u.handle || '').toLowerCase().replace(/^@+/, '');
+        const idLower = (u.id || '').toLowerCase();
+        const shortIdLower = (u.shortId || idLower.slice(0, 6)).toLowerCase();
 
-        return (
-          (emailLower && (emailLower.includes(qNoSpaces) || emailLower.startsWith(qNoSpaces))) ||
-          (nameLower && (nameLower.includes(qNorm) || nameLower.includes(qNoSpaces))) ||
-          (handleLower && (handleLower.includes(qHandle) || handleLower.startsWith(qHandle))) ||
-          idLower.includes(qNoSpaces) ||
-          shortIdLower === qNoSpaces.replace(/^#/, '')
-        );
+        let score = 0;
+        if (emailLower && emailLower === qNoSpaces) {
+          score = 100;
+        } else if (emailLower && emailLower.startsWith(qNoSpaces)) {
+          score = 90;
+        } else if (handleLower && handleLower === qHandle) {
+          score = 88;
+        } else if (idLower === qNoSpaces || shortIdLower === qShortId) {
+          score = 85;
+        } else if (emailLower && emailLower.includes(qNoSpaces)) {
+          score = 80;
+        } else if (nameLower && (nameLower === qNorm || displayLower === qNorm)) {
+          score = 78;
+        } else if (
+          nameLower &&
+          (nameLower.startsWith(qNorm) ||
+            nameLower.includes(qNorm) ||
+            nameLower.includes(qNoSpaces))
+        ) {
+          score = 72;
+        } else if (
+          displayLower &&
+          (displayLower.includes(qNorm) || displayLower.includes(qNoSpaces))
+        ) {
+          score = 68;
+        } else if (handleLower && handleLower.includes(qHandle)) {
+          score = 65;
+        } else if (idLower.includes(qNoSpaces) || shortIdLower.includes(qShortId)) {
+          score = 55;
+        }
+
+        if (score > 0) {
+          scored.push({ item: u, score });
+        }
+      }
+
+      scored.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return (b.item.kobans || 0) - (a.item.kobans || 0);
       });
 
+      const matched = scored.map((s) => s.item);
       const paged = matched.slice(offsetCount, offsetCount + limitCount);
       return res.status(200).json({
         success: true,
@@ -2655,12 +2990,14 @@ ${allUrls
       return res.status(500).json({
         success: false,
         error: err?.message || 'Student search failed on server.',
+        users: [],
       });
     }
   };
 
-  app.get('/api/admin/kobans/users/search', handleAdminKobansUserSearch);
   app.get('/api/admin/users/search', handleAdminKobansUserSearch);
+  app.get('/api/admin/kobans/users/search', handleAdminKobansUserSearch);
+  app.get('/api/admin/kobans/search', handleAdminKobansUserSearch);
 
   // ==========================================================================
   // WELCOME TO BOARDLY ANNOUNCEMENT ROUTES (/api/announcements/*)

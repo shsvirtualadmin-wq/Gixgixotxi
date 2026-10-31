@@ -4574,6 +4574,561 @@ ${urls
       }
     }
 
+    // 2d. Shared Admin Student Search Route (/api/admin/users/search & /api/admin/kobans/users/search)
+    const cleanAdminPath = url.pathname.replace(/\/+$/, '');
+    if (
+      cleanAdminPath === '/api/admin/users/search' ||
+      cleanAdminPath === '/api/admin/kobans/users/search' ||
+      cleanAdminPath === '/api/admin/kobans/search'
+    ) {
+      if (req.method !== 'GET') {
+        return jsonResponse(
+          { success: false, error: 'Method Not Allowed', users: [] },
+          405,
+          cors
+        );
+      }
+
+      const authHeader = req.headers.get('Authorization') || '';
+      if (!authHeader.startsWith('Bearer ')) {
+        return jsonResponse(
+          {
+            success: false,
+            code: 'UNAUTHORIZED',
+            error: 'Authentication token required (401).',
+            users: [],
+          },
+          401,
+          cors
+        );
+      }
+
+      const adminUser = await verifyFirebaseIdToken(req, env).catch(() => null);
+      if (!adminUser) {
+        return jsonResponse(
+          {
+            success: false,
+            code: 'INVALID_TOKEN',
+            error: 'Invalid or expired session token (401).',
+            users: [],
+          },
+          401,
+          cors
+        );
+      }
+
+      const projectId = env.FIREBASE_PROJECT_ID || BOARDLY_CLOUDFLARE_CONFIG.firebaseProjectId;
+      const defaultFsDbId = 'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
+
+      const unwrapFsField = (val: any): any => {
+        if (!val || typeof val !== 'object') return undefined;
+        if ('stringValue' in val) return String(val.stringValue);
+        if ('integerValue' in val) return Number(val.integerValue);
+        if ('doubleValue' in val) return Number(val.doubleValue);
+        if ('booleanValue' in val) return Boolean(val.booleanValue);
+        if ('nullValue' in val) return null;
+        return undefined;
+      };
+
+      const parseFsDoc = (docObj: any): { id: string; data: Record<string, any> } | null => {
+        if (!docObj || typeof docObj.name !== 'string') return null;
+        const id = docObj.name.split('/').pop() || '';
+        if (!id) return null;
+        const fields = docObj.fields || {};
+        const data: Record<string, any> = {};
+        for (const [k, v] of Object.entries(fields)) {
+          data[k] = unwrapFsField(v);
+        }
+        return { id, data };
+      };
+
+      const fetchFsCollectionRest = async (
+        collectionName: string,
+        pageSize = 500
+      ): Promise<Array<{ id: string; data: Record<string, any> }>> => {
+        for (const dbId of [defaultFsDbId, '(default)']) {
+          try {
+            const fsUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${encodeURIComponent(
+              dbId
+            )}/documents/${encodeURIComponent(collectionName)}?pageSize=${pageSize}`;
+            const resp = await fetch(fsUrl, {
+              method: 'GET',
+              headers: {
+                Authorization: authHeader,
+                Accept: 'application/json',
+              },
+            });
+            if (resp.ok) {
+              const json = (await resp.json().catch(() => ({}))) as { documents?: any[] };
+              const docs = Array.isArray(json.documents) ? json.documents : [];
+              const parsed = docs
+                .map(parseFsDoc)
+                .filter((d): d is { id: string; data: Record<string, any> } => Boolean(d));
+              if (parsed.length > 0 || dbId === defaultFsDbId) {
+                return parsed;
+              }
+            }
+          } catch {
+            // Try fallback database id
+          }
+        }
+        return [];
+      };
+
+      let isAuthorizedAdmin = adminUser.role === 'superadmin';
+      if (!isAuthorizedAdmin && env.DB) {
+        try {
+          const roleRow = await env.DB.prepare(
+            'SELECT role FROM user_roles WHERE uid = ? OR LOWER(email) = LOWER(?) LIMIT 1'
+          )
+            .bind(adminUser.uid, adminUser.email || '')
+            .first<{ role: string }>();
+          if (roleRow && (roleRow.role === 'admin' || roleRow.role === 'superadmin')) {
+            isAuthorizedAdmin = true;
+          }
+        } catch {
+          // Ignore D1 lookup error
+        }
+      }
+
+      if (!isAuthorizedAdmin) {
+        for (const dbId of [defaultFsDbId, '(default)']) {
+          try {
+            const selfUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${encodeURIComponent(
+              dbId
+            )}/documents/users/${encodeURIComponent(adminUser.uid)}`;
+            const resp = await fetch(selfUrl, {
+              method: 'GET',
+              headers: {
+                Authorization: authHeader,
+                Accept: 'application/json',
+              },
+            });
+            if (resp.ok) {
+              const docJson = await resp.json().catch(() => null);
+              const parsed = parseFsDoc(docJson);
+              const fsRole = String(parsed?.data?.role || '').toLowerCase().trim();
+              if (fsRole === 'admin' || fsRole === 'superadmin') {
+                isAuthorizedAdmin = true;
+                break;
+              }
+            }
+          } catch {
+            // Ignore REST check error
+          }
+        }
+      }
+
+      if (!isAuthorizedAdmin) {
+        return jsonResponse(
+          {
+            success: false,
+            code: 'FORBIDDEN',
+            error: 'Forbidden: Admin or Superadmin role required (403).',
+            users: [],
+          },
+          403,
+          cors
+        );
+      }
+
+      const rawQ = String(
+        url.searchParams.get('q') ?? url.searchParams.get('search') ?? ''
+      ).trim();
+      const qNorm = rawQ.toLowerCase().replace(/\s+/g, ' ');
+      const qNoSpaces = rawQ.toLowerCase().replace(/\s+/g, '');
+      const qHandle = qNoSpaces.replace(/^@+/, '');
+      const qShortId = qNoSpaces.replace(/^#/, '');
+      const limitCount = Math.min(
+        50,
+        Math.max(1, Number(url.searchParams.get('limit') || 10))
+      );
+      const offsetCount = Math.max(0, Number(url.searchParams.get('offset') || 0));
+
+      if (qNoSpaces.length < 2) {
+        return jsonResponse(
+          {
+            success: true,
+            users: [],
+            total: 0,
+            hasMore: false,
+          },
+          200,
+          cors
+        );
+      }
+
+      interface WorkerStudentMatch {
+        id: string;
+        uid: string;
+        name: string;
+        displayName: string;
+        handle: string;
+        email: string;
+        avatar: string | null;
+        shortId: string;
+        plan: 'free' | 'pro';
+        role: string;
+        status: 'active' | 'suspended' | 'inactive' | 'orphan' | 'missing-name';
+        kobans: number;
+        hasWallet: boolean;
+      }
+
+      const byKey = new Map<string, WorkerStudentMatch>();
+      const uidByEmail = new Map<string, string>();
+
+      const upsertCandidate = (cand: WorkerStudentMatch) => {
+        const uid = String(cand.uid || cand.id || '').trim();
+        if (!uid || uid.startsWith('bot_') || cand.role === 'bot') return;
+
+        const cleanEmail = String(cand.email || '').trim().toLowerCase();
+        const existingUidForEmail = cleanEmail ? uidByEmail.get(cleanEmail) : undefined;
+        const targetKey =
+          existingUidForEmail && byKey.has(existingUidForEmail) ? existingUidForEmail : uid;
+
+        const existing = byKey.get(targetKey);
+        if (!existing) {
+          byKey.set(targetKey, {
+            ...cand,
+            id: targetKey,
+            uid: targetKey,
+            email: cleanEmail,
+            shortId: cand.shortId || targetKey.slice(0, 5).toUpperCase(),
+          });
+          if (cleanEmail) uidByEmail.set(cleanEmail, targetKey);
+        } else {
+          const hasRealExistingName =
+            Boolean(existing.name) &&
+            existing.name !== 'Unnamed Student' &&
+            existing.name !== existing.email;
+          const mergedName = hasRealExistingName ? existing.name : cand.name || existing.name;
+          const mergedEmail = existing.email || cleanEmail;
+          const mergedHandle =
+            existing.handle || cand.handle || (mergedEmail ? mergedEmail.split('@')[0] : '');
+          const hasWallet = existing.hasWallet || cand.hasWallet;
+          const kobans = Math.max(existing.kobans, cand.kobans);
+          let mergedStatus = existing.status;
+          if (existing.status === 'orphan' && cand.status !== 'orphan') {
+            mergedStatus = cand.status;
+          }
+
+          byKey.set(targetKey, {
+            id: targetKey,
+            uid: targetKey,
+            name: mergedName,
+            displayName: mergedName || mergedEmail || 'Student',
+            handle: mergedHandle,
+            email: mergedEmail,
+            avatar: existing.avatar || cand.avatar,
+            shortId: existing.shortId || cand.shortId || targetKey.slice(0, 5).toUpperCase(),
+            plan: existing.plan === 'pro' || cand.plan === 'pro' ? 'pro' : 'free',
+            role: existing.role !== 'student' ? existing.role : cand.role,
+            status: mergedStatus,
+            kobans,
+            hasWallet,
+          });
+          if (mergedEmail) uidByEmail.set(mergedEmail, targetKey);
+        }
+      };
+
+      // 1. Query Firestore canonical `users` + LEFT JOIN `wallets` + `publicProfiles` + requests
+      const [fsUsers, fsProfiles, fsWallets, fsKobanReqs, fsPaymentReqs] = await Promise.all([
+        fetchFsCollectionRest('users', 1000),
+        fetchFsCollectionRest('publicProfiles', 1000),
+        fetchFsCollectionRest('wallets', 1000),
+        fetchFsCollectionRest('kobanRequests', 300),
+        fetchFsCollectionRest('paymentRequests', 300),
+      ]);
+
+      const walletMap = new Map<string, number>();
+      for (const w of fsWallets) {
+        const bal =
+          typeof w.data.balance === 'number' && Number.isFinite(w.data.balance)
+            ? w.data.balance
+            : 0;
+        walletMap.set(w.id, bal);
+      }
+
+      const pubMap = new Map<string, Record<string, any>>();
+      for (const p of fsProfiles) {
+        pubMap.set(p.id, p.data);
+      }
+
+      const userIdsInFsUsers = new Set<string>();
+      for (const u of fsUsers) {
+        const uid = u.id;
+        if (!uid || uid.startsWith('bot_')) continue;
+        const data = u.data;
+        if (data.role === 'bot' || data.deleted === true || data.status === 'deleted') continue;
+
+        userIdsInFsUsers.add(uid);
+        const pub = pubMap.get(uid) || {};
+        const email = String(data.email || pub.email || '').trim().toLowerCase();
+        const rawName = String(
+          data.displayName || data.fullName || data.name || pub.displayName || pub.name || ''
+        ).trim();
+        const hasMissingName = !rawName || rawName === 'Unnamed Student';
+        const rawHandle = String(
+          data.username ||
+            data.handle ||
+            pub.username ||
+            pub.handle ||
+            (email ? email.split('@')[0] : '')
+        )
+          .trim()
+          .replace(/^@+/, '');
+
+        let status: WorkerStudentMatch['status'] = 'active';
+        if (data.suspended === true || data.isBanned === true || data.status === 'suspended') {
+          status = 'suspended';
+        } else if (data.status === 'inactive' || data.active === false) {
+          status = 'inactive';
+        } else if (hasMissingName) {
+          status = 'missing-name';
+        }
+
+        const hasWallet = walletMap.has(uid);
+        const kobans = hasWallet
+          ? walletMap.get(uid)!
+          : typeof data.kobans === 'number' && Number.isFinite(data.kobans)
+          ? data.kobans
+          : 0;
+
+        upsertCandidate({
+          id: uid,
+          uid,
+          name: hasMissingName ? '' : rawName,
+          displayName: hasMissingName ? email || 'Unnamed Student' : rawName,
+          handle: rawHandle,
+          email,
+          avatar:
+            data.photoURL ||
+            data.avatar ||
+            data.equippedAvatar ||
+            pub.photoURL ||
+            pub.avatar ||
+            pub.equippedAvatar ||
+            null,
+          shortId: String(data.shortId || pub.shortId || uid.slice(0, 5).toUpperCase()),
+          plan: data.plan === 'pro' || data.isPremium === true ? 'pro' : 'free',
+          role: String(data.role || 'student'),
+          status,
+          kobans,
+          hasWallet,
+        });
+      }
+
+      for (const p of fsProfiles) {
+        const uid = p.id;
+        if (!uid || uid.startsWith('bot_') || userIdsInFsUsers.has(uid)) continue;
+        const pub = p.data;
+        if (pub.role === 'bot') continue;
+        const email = String(pub.email || '').trim().toLowerCase();
+        const rawName = String(pub.displayName || pub.name || '').trim();
+        const rawHandle = String(
+          pub.username || pub.handle || (email ? email.split('@')[0] : '')
+        )
+          .trim()
+          .replace(/^@+/, '');
+        const hasWallet = walletMap.has(uid);
+
+        upsertCandidate({
+          id: uid,
+          uid,
+          name: rawName === 'Unnamed Student' ? '' : rawName,
+          displayName: rawName || email || `Orphan (${uid.slice(0, 6)})`,
+          handle: rawHandle,
+          email,
+          avatar: pub.photoURL || pub.avatar || pub.equippedAvatar || null,
+          shortId: String(pub.shortId || uid.slice(0, 5).toUpperCase()),
+          plan: pub.plan === 'pro' ? 'pro' : 'free',
+          role: String(pub.role || 'student'),
+          status: 'orphan',
+          kobans: hasWallet ? walletMap.get(uid)! : 0,
+          hasWallet,
+        });
+      }
+
+      for (const r of [...fsKobanReqs, ...fsPaymentReqs]) {
+        const d = r.data;
+        const uid = String(d.userId || '').trim();
+        if (!uid || uid.startsWith('bot_')) continue;
+        const email = String(d.userEmail || '').trim().toLowerCase();
+        const rawName = String(d.userName || '').trim();
+        const hasWallet = walletMap.has(uid);
+        upsertCandidate({
+          id: uid,
+          uid,
+          name: rawName === 'Student' ? '' : rawName,
+          displayName: rawName || email || 'Student',
+          handle: email ? email.split('@')[0] : '',
+          email,
+          avatar: null,
+          shortId: uid.slice(0, 5).toUpperCase(),
+          plan: 'free',
+          role: 'student',
+          status: userIdsInFsUsers.has(uid) ? 'active' : 'orphan',
+          kobans: hasWallet ? walletMap.get(uid)! : 0,
+          hasWallet,
+        });
+      }
+
+      // 2. Query Cloudflare D1 using parameterized SQL (? placeholders)
+      if (env.DB) {
+        try {
+          const likePattern = `%${qNoSpaces}%`;
+          const likeNormPattern = `%${qNorm}%`;
+
+          const [rolesRes, postsRes, commentsRes] = await Promise.all([
+            env.DB.prepare(
+              `SELECT uid, email, role, is_posting_banned
+               FROM user_roles
+               WHERE LOWER(email) LIKE ? OR LOWER(uid) LIKE ?
+               LIMIT 50`
+            )
+              .bind(likePattern, likePattern)
+              .all<{ uid: string; email: string; role: string; is_posting_banned: number }>()
+              .catch(() => ({ results: [] })),
+            env.DB.prepare(
+              `SELECT author_uid, real_author_uid, author_name, author_avatar, author_photo_url, author_equipped_avatar, author_role, is_anonymous
+               FROM posts
+               WHERE is_anonymous = 0 AND (LOWER(author_name) LIKE ? OR LOWER(author_uid) LIKE ? OR LOWER(real_author_uid) LIKE ?)
+               LIMIT 50`
+            )
+              .bind(likeNormPattern, likePattern, likePattern)
+              .all<Record<string, any>>()
+              .catch(() => ({ results: [] })),
+            env.DB.prepare(
+              `SELECT author_uid, real_author_uid, author_name, author_avatar, author_photo_url, author_equipped_avatar, author_role, is_anonymous
+               FROM post_comments
+               WHERE is_anonymous = 0 AND (LOWER(author_name) LIKE ? OR LOWER(author_uid) LIKE ? OR LOWER(real_author_uid) LIKE ?)
+               LIMIT 50`
+            )
+              .bind(likeNormPattern, likePattern, likePattern)
+              .all<Record<string, any>>()
+              .catch(() => ({ results: [] })),
+          ]);
+
+          for (const r of rolesRes.results || []) {
+            if (!r.uid || r.uid.startsWith('bot_')) continue;
+            const emailLower = String(r.email || '').trim().toLowerCase();
+            const emailPrefix = emailLower ? emailLower.split('@')[0] : '';
+            const hasWallet = walletMap.has(r.uid);
+            upsertCandidate({
+              id: r.uid,
+              uid: r.uid,
+              name: emailPrefix || '',
+              displayName: emailPrefix || emailLower || 'Student',
+              handle: emailPrefix,
+              email: emailLower,
+              avatar: null,
+              shortId: r.uid.slice(0, 5).toUpperCase(),
+              plan: 'free',
+              role: r.role || 'student',
+              status: r.is_posting_banned ? 'suspended' : emailPrefix ? 'active' : 'missing-name',
+              kobans: hasWallet ? walletMap.get(r.uid)! : 0,
+              hasWallet,
+            });
+          }
+
+          for (const p of [...(postsRes.results || []), ...(commentsRes.results || [])]) {
+            const uid = String(p.real_author_uid || p.author_uid || '').trim();
+            if (!uid || uid.startsWith('bot_') || p.author_role === 'bot') continue;
+            const authorName =
+              p.is_anonymous || p.author_name === 'Anonymous Student'
+                ? ''
+                : String(p.author_name || '').trim();
+            const handleGuess = authorName
+              ? authorName.toLowerCase().replace(/[^a-z0-9_]/g, '')
+              : '';
+            const hasWallet = walletMap.has(uid);
+            upsertCandidate({
+              id: uid,
+              uid,
+              name: authorName,
+              displayName: authorName || 'Student',
+              handle: handleGuess,
+              email: '',
+              avatar: p.author_avatar || p.author_photo_url || p.author_equipped_avatar || null,
+              shortId: uid.slice(0, 5).toUpperCase(),
+              plan: 'free',
+              role: String(p.author_role || 'student'),
+              status: authorName ? 'active' : 'missing-name',
+              kobans: hasWallet ? walletMap.get(uid)! : 0,
+              hasWallet,
+            });
+          }
+        } catch {
+          // Ignore D1 search error and rely on Firestore matches
+        }
+      }
+
+      // Score and filter candidates against normalized query
+      const scored: Array<{ item: WorkerStudentMatch; score: number }> = [];
+      for (const u of byKey.values()) {
+        const emailLower = (u.email || '').toLowerCase();
+        const nameLower = (u.name || '').toLowerCase();
+        const displayLower = (u.displayName || '').toLowerCase();
+        const handleLower = (u.handle || '').toLowerCase().replace(/^@+/, '');
+        const idLower = (u.id || '').toLowerCase();
+        const shortIdLower = (u.shortId || idLower.slice(0, 6)).toLowerCase();
+
+        let score = 0;
+        if (emailLower && emailLower === qNoSpaces) {
+          score = 100;
+        } else if (emailLower && emailLower.startsWith(qNoSpaces)) {
+          score = 90;
+        } else if (handleLower && handleLower === qHandle) {
+          score = 88;
+        } else if (idLower === qNoSpaces || shortIdLower === qShortId) {
+          score = 85;
+        } else if (emailLower && emailLower.includes(qNoSpaces)) {
+          score = 80;
+        } else if (nameLower && (nameLower === qNorm || displayLower === qNorm)) {
+          score = 78;
+        } else if (
+          nameLower &&
+          (nameLower.startsWith(qNorm) ||
+            nameLower.includes(qNorm) ||
+            nameLower.includes(qNoSpaces))
+        ) {
+          score = 72;
+        } else if (
+          displayLower &&
+          (displayLower.includes(qNorm) || displayLower.includes(qNoSpaces))
+        ) {
+          score = 68;
+        } else if (handleLower && handleLower.includes(qHandle)) {
+          score = 65;
+        } else if (idLower.includes(qNoSpaces) || shortIdLower.includes(qShortId)) {
+          score = 55;
+        }
+
+        if (score > 0) {
+          scored.push({ item: u, score });
+        }
+      }
+
+      scored.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return (b.item.kobans || 0) - (a.item.kobans || 0);
+      });
+
+      const matched = scored.map((s) => s.item);
+      const paged = matched.slice(offsetCount, offsetCount + limitCount);
+
+      return jsonResponse(
+        {
+          success: true,
+          users: paged,
+          total: matched.length,
+          hasMore: offsetCount + limitCount < matched.length,
+        },
+        200,
+        cors
+      );
+    }
+
     // 3. API Routes under /api/posts
     if (!url.pathname.startsWith('/api/posts')) {
       return jsonResponse({ error: 'Not Found' }, 404, cors);

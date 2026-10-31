@@ -444,7 +444,50 @@ export async function fetchUsersPaginated(options?: {
       const qLower = options.searchQuery.toLowerCase().trim();
       const qNoSpaces = qLower.replace(/\s+/g, '');
       const qHandle = qNoSpaces.replace(/^@+/, '');
+
+      // Also query the shared /api/admin/users/search endpoint so Users and Kobans pages return identical results
+      if (qNoSpaces.length >= 2 && auth?.currentUser) {
+        try {
+          const sharedRes = await searchStudentsForKobans(options.searchQuery.trim(), {
+            limit: count,
+            includeInactive: true,
+          });
+          const byUid = new Map<string, UserProfile>();
+          for (const u of users) {
+            byUid.set(u.uid, u);
+          }
+          for (const su of sharedRes.users) {
+            if (!byUid.has(su.uid)) {
+              byUid.set(su.uid, {
+                uid: su.uid,
+                email: su.email,
+                displayName: su.displayName || su.name || su.email || 'Student',
+                name: su.name || su.displayName || '',
+                photoURL: su.avatar || undefined,
+                shortId: su.shortId,
+                plan: su.plan,
+                role: (su.role as any) || 'student',
+                kobans: su.kobans,
+              } as UserProfile);
+            } else {
+              const existing = byUid.get(su.uid)!;
+              byUid.set(su.uid, {
+                ...existing,
+                email: existing.email || su.email,
+                displayName: existing.displayName || su.displayName || su.name,
+                kobans: typeof existing.kobans === 'number' ? existing.kobans : su.kobans,
+              });
+            }
+          }
+          users = Array.from(byUid.values());
+        } catch (sharedErr) {
+          console.warn('[AdminService] Shared user search fallback in fetchUsersPaginated:', sharedErr);
+        }
+      }
+
       users = users.filter((u) => {
+        if (options?.role && options.role !== 'all' && u.role !== options.role) return false;
+        if (options?.plan && options.plan !== 'all' && u.plan !== options.plan) return false;
         const email = (u.email || '').toLowerCase().trim();
         const displayName = (u.displayName || '').toLowerCase().trim();
         const name = (u.name || '').toLowerCase().trim();
@@ -529,7 +572,7 @@ export async function searchStudentsForKobans(
   const qNoSpaces = qTrimmed.toLowerCase().replace(/\s+/g, '');
   const qHandle = qNoSpaces.replace(/^@+/, '');
   const qShortId = qNoSpaces.replace(/^#/, '');
-  const limitCount = Math.min(50, Math.max(1, options?.limit ?? 20));
+  const limitCount = Math.min(25, Math.max(1, options?.limit ?? 10));
   const offsetCount = Math.max(0, options?.offset ?? 0);
 
   if (qNoSpaces.length < 2) {
@@ -540,14 +583,14 @@ export async function searchStudentsForKobans(
     throw new DOMException('Search aborted', 'AbortError');
   }
 
-  // 1. Verify Admin/Superadmin role server-side via /api/admin/kobans/users/search
+  // 1. Verify Admin/Superadmin role server-side via shared /api/admin/users/search endpoint
   const currentUser = auth?.currentUser;
   if (!currentUser) {
     throw new AdminSearchHttpError('Search failed (401): Not signed in.', 401);
   }
 
   const token = await currentUser.getIdToken();
-  const serverUrl = `/api/admin/kobans/users/search?q=${encodeURIComponent(qTrimmed)}&limit=50&includeInactive=true`;
+  const serverUrl = `/api/admin/users/search?q=${encodeURIComponent(qTrimmed)}&limit=${limitCount}`;
   const serverResp = await fetch(serverUrl, {
     method: 'GET',
     headers: {
@@ -558,6 +601,7 @@ export async function searchStudentsForKobans(
   });
 
   if (!serverResp.ok) {
+    console.error(`[AdminService] Student search failed: HTTP ${serverResp.status} for GET ${serverUrl}`);
     let serverErrMsg = `Search failed (${serverResp.status})`;
     try {
       const errBody = await serverResp.json();
