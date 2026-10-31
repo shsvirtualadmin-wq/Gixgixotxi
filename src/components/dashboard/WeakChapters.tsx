@@ -1,93 +1,80 @@
-import { useNavigate } from 'react-router-dom';
-import { Skeleton } from '@/components/ui/Skeleton';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { Target, ArrowRight } from 'lucide-react';
-import { useUserChapterStats } from '@/hooks/useUserChapterStats';
+import { memo } from 'react';
+import { AlertCircle, ArrowRight } from 'lucide-react';
+import type { D1WeakChapterItem } from '@/services/universityMcqService';
 
 interface Props {
-  uid: string;
-  onDrill?: (chapter: string, subject: string) => void;
+  chapters: D1WeakChapterItem[];
+  onDrillChapter?: (item: D1WeakChapterItem) => void;
 }
 
-export function WeakChapters({ uid, onDrill }: Props) {
-  const { weakChapters, loading } = useUserChapterStats(uid);
-  const navigate = useNavigate();
+export const WeakChapters = memo(function WeakChapters({
+  chapters,
+  onDrillChapter,
+}: Props) {
+  const safeChapters = Array.isArray(chapters) ? chapters : [];
 
-  if (loading) return <Skeleton height={50} count={3} />;
-
-  if (weakChapters.length === 0) {
-    return (
-      <EmptyState
-        icon={<Target size={32} />}
-        title="No weak chapters detected"
-        description="Chapters where you answer 3+ questions with under 50% accuracy will be flagged here for focused drills."
-        action={
-          <button
-            type="button"
-            onClick={() => {
-              const el = document.getElementById('complete-test-card');
-              if (el) el.scrollIntoView({ behavior: 'smooth' });
-              else navigate('/dashboard');
-            }}
-            className="btn-outline text-xs px-4 py-2 rounded-xl mt-2 cursor-pointer inline-flex items-center gap-1.5"
-          >
-            <span>Start Complete Test</span>
-            <ArrowRight size={13} />
-          </button>
-        }
-      />
-    );
+  // Hidden completely until D1 university attempts with weak chapters exist
+  if (safeChapters.length === 0) {
+    return null;
   }
 
-  // Display top 3 weakest chapters
-  const topWeak = Array.isArray(weakChapters) ? weakChapters.slice(0, 3) : [];
-
   return (
-    <div className="flex flex-col gap-2.5">
-      {topWeak.map((c, idx) => {
-        const chName = c?.chapter || 'Chapter Drill';
-        const subName = c?.subject || 'General';
-        const key = c?.id || `${chName}-${idx}`;
-        return (
-          <div
-            key={key}
-            className="p-3.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between gap-3"
+    <section
+      className="cockpit-surface-card p-4 sm:p-5 space-y-3"
+      aria-label="Weak Chapters"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <AlertCircle size={16} className="shrink-0 text-[var(--accent)]" />
+          <h2
+            className="text-sm sm:text-base font-bold text-[var(--text)] truncate"
+            style={{ fontFamily: 'var(--font-heading)' }}
           >
-            <div className="flex-1 min-w-0">
+            Weak Chapters
+          </h2>
+        </div>
+        <span className="text-[11px] font-medium text-[var(--text-muted)] shrink-0">
+          From University Tests
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {safeChapters.map((c) => (
+          <div
+            key={c.id}
+            className="cockpit-subrow flex items-center justify-between gap-3 p-3"
+          >
+            <div className="min-w-0 flex-1 space-y-0.5">
               <div
-                className="font-bold text-sm text-[var(--text)] truncate"
+                className="text-xs sm:text-sm font-semibold text-[var(--text)] truncate"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                {chName}
+                {c.topic}
               </div>
-              <div className="text-xs text-[var(--muted)] flex items-center gap-2 mt-0.5">
-                <span>{subName}</span>
-                <span>·</span>
-                <span>{c?.total ?? 0} answered</span>
-                <span>·</span>
-                <span className="text-[var(--red)] font-semibold">{c?.accuracy ?? 0}% acc</span>
+              <div className="text-[11px] text-[var(--text-muted)] truncate">
+                {c.universityName} · {c.subject} · {c.answered} answered
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                if (onDrill) {
-                  onDrill(chName, subName);
-                } else {
-                  navigate(`/dashboard?drillChapter=${encodeURIComponent(chName)}&drillSubject=${encodeURIComponent(subName)}`);
-                }
-              }}
-              className="px-3 py-1.5 rounded-xl border border-[var(--red)]/40 text-[var(--red)] text-xs font-semibold hover:bg-[var(--red)] hover:text-white transition-colors cursor-pointer shrink-0"
-              style={{ fontFamily: 'var(--font-heading)' }}
-            >
-              Drill
-            </button>
+            <div className="flex items-center gap-2.5 shrink-0">
+              <span className="cockpit-uni-pill cockpit-uni-pill--live tabular-nums">
+                {c.accuracy}% acc
+              </span>
+              {c.isUniversityLive && onDrillChapter && (
+                <button
+                  type="button"
+                  onClick={() => onDrillChapter(c)}
+                  className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 transition-opacity cursor-pointer"
+                  style={{ fontFamily: 'var(--font-heading)' }}
+                >
+                  <span>Drill</span>
+                  <ArrowRight size={12} />
+                </button>
+              )}
+            </div>
           </div>
-        );
-      })}
-    </div>
+        ))}
+      </div>
+    </section>
   );
-}
-
-export default WeakChapters;
+});

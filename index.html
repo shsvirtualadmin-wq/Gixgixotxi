@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" href="/favicon-48x48.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#07070a" />
     <title>Boardly — MCQ Practice for FSC &amp; Matric</title>
     <meta name="description" content="Boardly: making education accessible to everyone. Free to start, affordable to grow. A project of SHS Virtual Academy." />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
@@ -79,14 +79,14 @@
       (function() {
         try {
           var saved = localStorage.getItem('boardly-theme');
-          var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-          var effective = 'dark';
+          var systemDark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : true;
+          var effective = systemDark ? 'dark' : 'light';
           if (saved === 'light') effective = 'light';
           else if (saved === 'dark') effective = 'dark';
           else if (saved === 'system') effective = systemDark ? 'dark' : 'light';
 
           document.documentElement.setAttribute('data-theme', effective);
-          document.documentElement.setAttribute('data-theme-setting', saved || 'dark');
+          document.documentElement.setAttribute('data-theme-setting', saved || 'system');
           document.documentElement.style.colorScheme = effective;
           if (effective === 'dark') {
             document.documentElement.classList.add('dark');
@@ -97,7 +97,7 @@
           }
           var metaThemeColor = document.querySelector('meta[name="theme-color"]');
           if (metaThemeColor) {
-            metaThemeColor.setAttribute('content', effective === 'dark' ? '#000000' : '#F8F9FA');
+            metaThemeColor.setAttribute('content', effective === 'dark' ? '#07070a' : '#f6f6f8');
           }
 
           // Automatic Smooth Mode (Lite Mode) detection for low-end phones & slow connections

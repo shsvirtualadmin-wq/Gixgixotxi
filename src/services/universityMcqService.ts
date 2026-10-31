@@ -1393,3 +1393,316 @@ export async function runChunkedMcqImport(options: {
 
   return { completed: true, state };
 }
+
+// ============================================================================
+// University-Specific Test Specifications & D1 Cockpit Attempt Tracking
+// (Strictly D1 — Zero Firebase reads or writes)
+// ============================================================================
+
+export interface D1UniversityTestSpec {
+  durationMinutes: number;
+  positiveMarks: number;
+  negativeMarks: number;
+  markingLabel: string;
+  patternLabel: string;
+}
+
+const UNIVERSITY_SPEC_MAP: Record<string, D1UniversityTestSpec> = {
+  'fast-nuces': {
+    durationMinutes: 120,
+    positiveMarks: 1,
+    negativeMarks: 0.25,
+    markingLabel: '+1 / -0.25',
+    patternLabel: 'Adv. Math · Basic Math · Physics · English · IQ',
+  },
+  'net-nust': {
+    durationMinutes: 180,
+    positiveMarks: 1,
+    negativeMarks: 0,
+    markingLabel: '+1 / 0 (No Negative)',
+    patternLabel: 'Mathematics · Physics · Chemistry/CS · English · Intelligence',
+  },
+  ned: {
+    durationMinutes: 120,
+    positiveMarks: 1,
+    negativeMarks: 0,
+    markingLabel: '+1 / 0 (No Negative)',
+    patternLabel: 'Mathematics/Biology · Physics · Chemistry/CS · English',
+  },
+  giki: {
+    durationMinutes: 120,
+    positiveMarks: 3,
+    negativeMarks: 1,
+    markingLabel: '+3 / -1',
+    patternLabel: 'Mathematics · Physics · English',
+  },
+  pieas: {
+    durationMinutes: 180,
+    positiveMarks: 3,
+    negativeMarks: 1,
+    markingLabel: '+3 / -1',
+    patternLabel: 'Mathematics · Physics · Chemistry/CS · English',
+  },
+  comsats: {
+    durationMinutes: 120,
+    positiveMarks: 1,
+    negativeMarks: 0,
+    markingLabel: '+1 / 0 (NTS NAT)',
+    patternLabel: 'Verbal · Analytical · Quantitative · Subject',
+  },
+  'uet-ecat': {
+    durationMinutes: 100,
+    positiveMarks: 4,
+    negativeMarks: 1,
+    markingLabel: '+4 / -1',
+    patternLabel: 'Mathematics/Biology · Physics · Chemistry/CS · English',
+  },
+  mdcat: {
+    durationMinutes: 210,
+    positiveMarks: 1,
+    negativeMarks: 0,
+    markingLabel: '+1 / 0 (PMDC)',
+    patternLabel: 'Biology · Chemistry · Physics · English · Logical Reasoning',
+  },
+  nums: {
+    durationMinutes: 150,
+    positiveMarks: 1,
+    negativeMarks: 0,
+    markingLabel: '+1 / 0',
+    patternLabel: 'Biology · Chemistry · Physics · English',
+  },
+  'aga-khan': {
+    durationMinutes: 120,
+    positiveMarks: 1,
+    negativeMarks: 0.25,
+    markingLabel: '+1 / -0.25',
+    patternLabel: 'Biology · Chemistry · Physics · Science & Math Reasoning',
+  },
+  etea: {
+    durationMinutes: 120,
+    positiveMarks: 1,
+    negativeMarks: 0,
+    markingLabel: '+1 / 0',
+    patternLabel: 'Mathematics/Biology · Physics · Chemistry · English',
+  },
+  itu: {
+    durationMinutes: 90,
+    positiveMarks: 1,
+    negativeMarks: 0,
+    markingLabel: '+1 / 0',
+    patternLabel: 'Analytical · Quantitative · Mathematics · Computer Science',
+  },
+  bahria: {
+    durationMinutes: 120,
+    positiveMarks: 1,
+    negativeMarks: 0,
+    markingLabel: '+1 / 0 (CBT)',
+    patternLabel: 'Verbal · Quantitative · Analytical · Physics · Mathematics',
+  },
+  'air-university': {
+    durationMinutes: 120,
+    positiveMarks: 1,
+    negativeMarks: 0,
+    markingLabel: '+1 / 0 (CBT)',
+    patternLabel: 'Verbal · Analytical · Quantitative · Physics · Mathematics',
+  },
+  lums: {
+    durationMinutes: 150,
+    positiveMarks: 1,
+    negativeMarks: 0.25,
+    markingLabel: '+1 / -0.25 (LCAT)',
+    patternLabel: 'Verbal Reasoning · Quantitative Reasoning · Scientific Aptitude',
+  },
+  'iba-karachi': {
+    durationMinutes: 120,
+    positiveMarks: 4,
+    negativeMarks: 1,
+    markingLabel: '+4 / -1',
+    patternLabel: 'Mathematics · English Grammar & Comprehension',
+  },
+};
+
+export function getUniversityTestSpec(uni: D1UniversityRow): D1UniversityTestSpec {
+  const key = (uni.slug || uni.id.replace(/^uni_/, '')).toLowerCase();
+  return (
+    UNIVERSITY_SPEC_MAP[key] || {
+      durationMinutes: 90,
+      positiveMarks: 1,
+      negativeMarks: 0,
+      markingLabel: '+1 / 0',
+      patternLabel: 'Core University Entry Test Pattern',
+    }
+  );
+}
+
+export interface D1AttemptTopicBreakdown {
+  subject: string;
+  topic: string;
+  answered: number;
+  correct: number;
+}
+
+export interface D1UniversityAttemptRecord {
+  id: string;
+  universityId: string;
+  universityName: string;
+  universitySlug: string;
+  subject: string;
+  topic: string;
+  totalQuestions: number;
+  answeredCount: number;
+  correctCount: number;
+  wrongCount: number;
+  score: number;
+  maxScore: number;
+  accuracy: number;
+  durationSeconds: number;
+  markingLabel: string;
+  createdAt: string;
+  topicBreakdown: D1AttemptTopicBreakdown[];
+}
+
+export interface D1WeakChapterItem {
+  id: string;
+  universityId: string;
+  universityName: string;
+  universitySlug: string;
+  subject: string;
+  topic: string;
+  answered: number;
+  correct: number;
+  accuracy: number;
+  isUniversityLive: boolean;
+}
+
+function getD1AttemptsStorageKey(uid?: string): string {
+  return `boardly_d1_cockpit_attempts_v2_${uid || 'guest'}`;
+}
+
+export function loadD1UniversityAttempts(uid?: string): D1UniversityAttemptRecord[] {
+  if (typeof window === 'undefined' || !window.localStorage) return [];
+  try {
+    const raw = window.localStorage.getItem(getD1AttemptsStorageKey(uid));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveD1UniversityAttempt(
+  uid: string | undefined,
+  attempt: Omit<D1UniversityAttemptRecord, 'id' | 'createdAt'>
+): D1UniversityAttemptRecord {
+  const record: D1UniversityAttemptRecord = {
+    ...attempt,
+    id: `d1_att_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    createdAt: new Date().toISOString(),
+  };
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const existing = loadD1UniversityAttempts(uid);
+      const next = [record, ...existing].slice(0, 100);
+      window.localStorage.setItem(getD1AttemptsStorageKey(uid), JSON.stringify(next));
+      window.dispatchEvent(new CustomEvent('boardly-d1-attempts-updated'));
+    } catch {
+      // Non-fatal
+    }
+  }
+  return record;
+}
+
+export function computeD1CockpitStats(
+  uid: string | undefined,
+  universities: D1UniversityRow[]
+): {
+  questionsSolved: number;
+  todayTestsCount: number;
+  weakChapters: D1WeakChapterItem[];
+  recentAttempts: D1UniversityAttemptRecord[];
+} {
+  const attempts = loadD1UniversityAttempts(uid);
+  const safeUnis = Array.isArray(universities) ? universities : [];
+  const uniMap = new Map<string, D1UniversityRow>();
+  for (const u of safeUnis) {
+    uniMap.set(u.id, u);
+    uniMap.set(u.slug.toLowerCase(), u);
+  }
+
+  let questionsSolved = 0;
+  let todayTestsCount = 0;
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  const chapterMap = new Map<
+    string,
+    {
+      universityId: string;
+      universityName: string;
+      universitySlug: string;
+      subject: string;
+      topic: string;
+      answered: number;
+      correct: number;
+    }
+  >();
+
+  for (const att of attempts) {
+    questionsSolved += Number(att.answeredCount || 0);
+    if (typeof att.createdAt === 'string' && att.createdAt.slice(0, 10) === todayStr) {
+      todayTestsCount += 1;
+    }
+
+    const breakdown = Array.isArray(att.topicBreakdown) ? att.topicBreakdown : [];
+    for (const item of breakdown) {
+      if (!item || Number(item.answered || 0) <= 0) continue;
+      const key = `${att.universityId}::${item.subject}::${item.topic}`;
+      const prev = chapterMap.get(key);
+      if (prev) {
+        prev.answered += Number(item.answered || 0);
+        prev.correct += Number(item.correct || 0);
+      } else {
+        chapterMap.set(key, {
+          universityId: att.universityId,
+          universityName: att.universityName,
+          universitySlug: att.universitySlug,
+          subject: item.subject || 'General',
+          topic: item.topic || 'General',
+          answered: Number(item.answered || 0),
+          correct: Number(item.correct || 0),
+        });
+      }
+    }
+  }
+
+  const weakChapters: D1WeakChapterItem[] = Array.from(chapterMap.entries())
+    .map(([key, c]) => {
+      const accuracy = c.answered > 0 ? Math.round((c.correct / c.answered) * 100) : 0;
+      const uni =
+        uniMap.get(c.universityId) || uniMap.get((c.universitySlug || '').toLowerCase());
+      const isUniversityLive = Boolean(uni && Number(uni.mcq_count || 0) > 0);
+      return {
+        id: key,
+        universityId: c.universityId,
+        universityName: uni?.name || c.universityName,
+        universitySlug: uni?.slug || c.universitySlug,
+        subject: c.subject,
+        topic: c.topic,
+        answered: c.answered,
+        correct: c.correct,
+        accuracy,
+        isUniversityLive,
+      };
+    })
+    .filter((c) => c.answered > 0 && c.accuracy < 80)
+    .sort((a, b) => a.accuracy - b.accuracy || b.answered - a.answered)
+    .slice(0, 5);
+
+  return {
+    questionsSolved,
+    todayTestsCount,
+    weakChapters,
+    recentAttempts: attempts.slice(0, 5),
+  };
+}
+

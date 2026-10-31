@@ -13,7 +13,7 @@ function getSystemTheme(): ResolvedTheme {
 }
 
 function getSavedSetting(): ThemeSetting {
-  if (typeof window === 'undefined') return 'dark';
+  if (typeof window === 'undefined') return 'system';
   try {
     const saved = localStorage.getItem('boardly-theme');
     if (saved === 'light' || saved === 'dark' || saved === 'system') {
@@ -22,7 +22,7 @@ function getSavedSetting(): ThemeSetting {
   } catch {
     // fallback
   }
-  return 'dark';
+  return 'system';
 }
 
 function applyThemeSetting(setting: ThemeSetting): ResolvedTheme {
@@ -43,7 +43,7 @@ function applyThemeSetting(setting: ThemeSetting): ResolvedTheme {
 
   const metaThemeColor = document.querySelector('meta[name="theme-color"]');
   if (metaThemeColor) {
-    metaThemeColor.setAttribute('content', resolved === 'dark' ? '#000000' : '#FFFFFF');
+    metaThemeColor.setAttribute('content', resolved === 'dark' ? '#07070a' : '#f6f6f8');
   }
 
   return resolved;
@@ -60,11 +60,6 @@ export function useTheme() {
   useEffect(() => {
     const active = applyThemeSetting(themeSetting);
     setResolvedTheme(active);
-    try {
-      localStorage.setItem('boardly-theme', themeSetting);
-    } catch {
-      // ignore
-    }
   }, [themeSetting]);
 
   // Live listener for system dark/light changes when setting is 'system'
@@ -128,13 +123,13 @@ export function useTheme() {
     }
   }, []);
 
-  // Backwards compatibility toggle between dark and light
+  // Toggle between dark and light and persist choice
   const toggle = useCallback(() => {
     setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
   }, [resolvedTheme, setTheme]);
 
   return {
-    theme: themeSetting,
+    theme: resolvedTheme,
     resolvedTheme,
     themeSetting,
     setTheme,
@@ -142,4 +137,5 @@ export function useTheme() {
     isDark: resolvedTheme === 'dark',
   };
 }
+
 
