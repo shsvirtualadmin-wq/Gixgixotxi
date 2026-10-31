@@ -16,17 +16,16 @@ import {
   X,
   Bookmark,
   Bot,
-  Sparkles,
   RotateCcw,
   Flag,
   CheckCircle2,
-  Loader2,
   AlertTriangle,
 } from 'lucide-react';
 import { getUniversityCriteria, getSectionCriteria } from '@/constants/universityCriteria';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { getBoardyExplanation } from '@/services/boardyAiService';
 import { routes } from '@/utils/routes';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
 
 type ReviewFilter = 'all' | 'mistakes' | 'flagged';
@@ -112,6 +111,10 @@ export function TestResultPage() {
   if (loading) {
     return (
       <div style={{ maxWidth: 860, margin: '2rem auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <BubbleLoader
+          variant="top-bar"
+          messages={['Checking your answers...']}
+        />
         <Skeleton height={200} />
         <Skeleton height={140} />
         <Skeleton height={300} />
@@ -557,23 +560,25 @@ export function TestResultPage() {
                   return (
                     <div className="flex flex-col gap-2.5 min-w-0 max-w-full">
                       {!aiExplanations[idx] ? (
-                        <button
-                          onClick={() => handleRequestAiExplanation(idx, q, userAns, false)}
-                          disabled={aiExplaining[idx]}
-                          className="self-start inline-flex items-center gap-2 px-3.5 py-2 rounded-full border border-[#D71921] bg-transparent text-[var(--text)] text-xs font-semibold cursor-pointer hover:bg-[#D71921] hover:text-white transition-colors disabled:cursor-wait max-w-full"
-                        >
-                          {aiExplaining[idx] ? (
-                            <>
-                              <Sparkles size={13} className="animate-spin text-[#D71921]" />
-                              <span>Boardy is deriving solution...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Bot size={14} className="text-[#D71921]" />
-                              <span>Explain this with Boardy AI</span>
-                            </>
-                          )}
-                        </button>
+                        aiExplaining[idx] ? (
+                          <div className="w-full max-w-xs p-2.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)]">
+                            <BubbleLoader
+                              variant="inline"
+                              loading={aiExplaining[idx]}
+                              messages={['Boardy is deriving step-by-step solution...']}
+                              successText="Solution ready!"
+                            />
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleRequestAiExplanation(idx, q, userAns, false)}
+                            disabled={aiExplaining[idx]}
+                            className="self-start inline-flex items-center gap-2 px-3.5 py-2 rounded-full border border-[#D71921] bg-transparent text-[var(--text)] text-xs font-semibold cursor-pointer hover:bg-[#D71921] hover:text-white transition-colors disabled:cursor-wait max-w-full"
+                          >
+                            <Bot size={14} className="text-[#D71921]" />
+                            <span>Explain this with Boardy AI</span>
+                          </button>
+                        )
                       ) : (
                         <div className="p-3 sm:p-4 rounded-2xl bg-[var(--surface)] border border-[#D71921] flex flex-col gap-2.5 min-w-0 max-w-full overflow-hidden">
                           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -598,9 +603,17 @@ export function TestResultPage() {
                               </button>
                             </div>
                           </div>
-                          <div className="text-xs sm:text-sm leading-relaxed text-[var(--text)] break-words min-w-0 max-w-full overflow-x-auto">
-                            <MathText block>{aiExplanations[idx]}</MathText>
-                          </div>
+                          {aiExplaining[idx] ? (
+                            <BubbleLoader
+                              variant="inline"
+                              loading={aiExplaining[idx]}
+                              messages={['Re-deriving step-by-step solution...']}
+                            />
+                          ) : (
+                            <div className="text-xs sm:text-sm leading-relaxed text-[var(--text)] break-words min-w-0 max-w-full overflow-x-auto">
+                              <MathText block>{aiExplanations[idx]}</MathText>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -672,37 +685,46 @@ export function TestResultPage() {
                   >
                     Cancel
                   </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!user || reporting) return;
-                      setReporting(true);
-                      try {
-                        await reportQuestion({
-                          questionId: reportingQuestionId,
-                          reason: reportReason,
-                          comment: reportComment,
-                          userId: user.uid,
-                          userEmail: user.email || '',
-                        });
-                        setReportSuccess(true);
-                        setTimeout(() => {
-                          setReportingQuestionId(null);
-                          setReportSuccess(false);
-                          setReportComment('');
-                        }, 1400);
-                      } catch (err) {
-                        console.warn('Report error:', err);
-                      } finally {
-                        setReporting(false);
-                      }
-                    }}
-                    disabled={reporting}
-                    className="btn-red px-4 py-1.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer"
-                  >
-                    {reporting && <Loader2 size={12} className="animate-spin" />}
-                    <span>Submit Report</span>
-                  </button>
+                  {reporting ? (
+                    <div className="w-44 p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                      <BubbleLoader
+                        variant="inline"
+                        loading={reporting}
+                        messages={['Submitting question report...']}
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!user || reporting) return;
+                        setReporting(true);
+                        try {
+                          await reportQuestion({
+                            questionId: reportingQuestionId,
+                            reason: reportReason,
+                            comment: reportComment,
+                            userId: user.uid,
+                            userEmail: user.email || '',
+                          });
+                          setReportSuccess(true);
+                          setTimeout(() => {
+                            setReportingQuestionId(null);
+                            setReportSuccess(false);
+                            setReportComment('');
+                          }, 1400);
+                        } catch (err) {
+                          console.warn('Report error:', err);
+                        } finally {
+                          setReporting(false);
+                        }
+                      }}
+                      disabled={reporting}
+                      className="btn-red px-4 py-1.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>Submit Report</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}

@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
-  Loader2,
   Clock,
   History,
   Copy,
@@ -15,6 +14,7 @@ import {
   Send,
   Sparkles,
 } from 'lucide-react';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import {
@@ -276,7 +276,7 @@ export function AdminKobansPage() {
           className="p-2.5 rounded-xl border border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors self-start sm:self-auto cursor-pointer"
           title="Refresh Data"
         >
-          <RefreshCw size={15} className={requestsLoading ? 'animate-spin' : ''} />
+          <RefreshCw size={15} />
         </button>
       </div>
 
@@ -361,6 +361,7 @@ export function AdminKobansPage() {
 
           {requestsLoading ? (
             <div className="space-y-3">
+              <BubbleLoader variant="top-bar" customMessages={['Loading Koban requests...']} />
               {[1, 2, 3].map((i) => (
                 <div key={i} className="h-20 rounded-2xl bg-[var(--card)] animate-pulse" />
               ))}
@@ -474,10 +475,10 @@ export function AdminKobansPage() {
                   placeholder="Search by student name or email..."
                   className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)]"
                 />
-                {searchingUsers && (
-                  <Loader2 size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 animate-spin text-[var(--muted)]" />
-                )}
               </div>
+              {searchingUsers && (
+                <BubbleLoader variant="inline" customMessages={['Searching student accounts...']} />
+              )}
 
               {/* Search dropdown results */}
               {searchResults.length > 0 && (
@@ -997,10 +998,16 @@ export function AdminKobansPage() {
                 type="button"
                 disabled={approving || editableAmount <= 0}
                 onClick={handleConfirmApprove}
-                className="btn-red flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                className="btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
               >
-                {approving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                <span>Credit {editableAmount.toLocaleString()} Kobans</span>
+                {approving ? (
+                  <BubbleLoader variant="inline" customMessages={['Crediting Kobans...']} />
+                ) : (
+                  <>
+                    <CheckCircle2 size={14} />
+                    <span>Credit {editableAmount.toLocaleString()} Kobans</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -1043,8 +1050,14 @@ export function AdminKobansPage() {
                 onClick={handleConfirmReject}
                 className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white flex-1 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
               >
-                {rejecting ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />}
-                <span>Confirm Rejection</span>
+                {rejecting ? (
+                  <BubbleLoader variant="inline" customMessages={['Rejecting request...']} />
+                ) : (
+                  <>
+                    <XCircle size={14} />
+                    <span>Confirm Rejection</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -1115,10 +1128,16 @@ export function AdminKobansPage() {
                 type="button"
                 disabled={adjusting}
                 onClick={handleConfirmAdjustment}
-                className="btn-red flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                className="btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
               >
-                {adjusting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                <span>Authorize Change</span>
+                {adjusting ? (
+                  <BubbleLoader variant="inline" customMessages={['Authorizing adjustment...']} />
+                ) : (
+                  <>
+                    <Send size={14} />
+                    <span>Authorize Change</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

@@ -11,8 +11,6 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
-  Loader2,
-  Download,
   FileCheck2,
   Eye,
   RefreshCw,
@@ -35,6 +33,7 @@ import { extractIdFromSlug } from '@/utils/privacy';
 import { routes } from '@/utils/routes';
 import { showApiToast } from '@/lib/api';
 import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 const DEFAULT_ALREADY_ATTEMPTED_MSG =
   'You have already taken this drill. Only one verified attempt per student is permitted for each drill.';
@@ -333,9 +332,13 @@ export function GrandLineTestRunnerPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center p-6">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 rounded-full border-2 border-[var(--accent)] border-t-transparent animate-spin" />
-          <p className="text-xs font-mono text-[var(--muted)]">Preparing Grand Line drill...</p>
+        <div className="w-full max-w-lg">
+          <BubbleLoader
+            variant="section"
+            showSkeletons
+            skeletonCount={3}
+            messages={['Preparing Grand Line drill...']}
+          />
         </div>
       </div>
     );
@@ -402,19 +405,25 @@ export function GrandLineTestRunnerPage() {
           )}
 
           <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3 pt-2">
-            <button
-              type="button"
-              onClick={handleViewMyExistingResult}
-              disabled={loadingMyResult}
-              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[var(--accent)] text-white text-xs sm:text-sm font-bold hover:opacity-95 disabled:opacity-50 inline-flex items-center justify-center gap-2 cursor-pointer"
-            >
-              {loadingMyResult ? (
-                <Loader2 size={15} className="animate-spin" />
-              ) : (
+            {loadingMyResult ? (
+              <div className="w-full sm:w-64 p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                <BubbleLoader
+                  variant="inline"
+                  loading={loadingMyResult}
+                  messages={['Loading your verified drill report...']}
+                />
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleViewMyExistingResult}
+                disabled={loadingMyResult}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[var(--accent)] text-white text-xs sm:text-sm font-bold hover:opacity-95 disabled:opacity-50 inline-flex items-center justify-center gap-2 cursor-pointer"
+              >
                 <Eye size={15} />
-              )}
-              <span>View my result</span>
-            </button>
+                <span>View my result</span>
+              </button>
+            )}
 
             {otherTests.length > 0 && (
               <Link
@@ -684,15 +693,24 @@ export function GrandLineTestRunnerPage() {
                 {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
               </span>
             </div>
-            <button
-              type="button"
-              onClick={handleFinish}
-              disabled={submitting}
-              className="px-3.5 py-1.5 rounded-xl bg-[var(--accent)] text-white text-xs font-bold hover:opacity-95 disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
-            >
-              {submitting && <Loader2 size={13} className="animate-spin" />}
-              Submit Test
-            </button>
+            {submitting ? (
+              <div className="w-48 px-2.5 py-1.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                <BubbleLoader
+                  variant="inline"
+                  loading={submitting}
+                  messages={['Checking your answers...']}
+                />
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleFinish}
+                disabled={submitting}
+                className="px-3.5 py-1.5 rounded-xl bg-[var(--accent)] text-white text-xs font-bold hover:opacity-95 disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+              >
+                Submit Test
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -777,6 +795,14 @@ export function GrandLineTestRunnerPage() {
               Next
               <ChevronRight size={15} />
             </button>
+          ) : submitting ? (
+            <div className="w-56 p-2.5 rounded-xl bg-[var(--card)] border border-[var(--border)]">
+              <BubbleLoader
+                variant="inline"
+                loading={submitting}
+                messages={['Checking your answers...']}
+              />
+            </div>
           ) : (
             <button
               type="button"
@@ -784,7 +810,7 @@ export function GrandLineTestRunnerPage() {
               disabled={submitting}
               className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
-              {submitting ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+              <CheckCircle2 size={15} />
               Finish &amp; Score
             </button>
           )}

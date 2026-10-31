@@ -1,6 +1,7 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { isQuotaExhaustedError } from '@/utils/quota';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 export interface AdminDiagnosticError {
   code?: string;
@@ -76,10 +77,16 @@ export function AdminDiagnosticBanner({
                 type="button"
                 onClick={onRetry}
                 disabled={retrying}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold cursor-pointer transition-colors disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold cursor-pointer transition-colors disabled:opacity-50 min-w-[130px]"
               >
-                <RefreshCw size={13} className={retrying ? 'animate-spin' : ''} />
-                <span>{retrying ? 'Retrying…' : 'Retry Query'}</span>
+                {retrying ? (
+                  <BubbleLoader variant="inline" customMessages={['Retrying query...']} />
+                ) : (
+                  <>
+                    <RefreshCw size={13} />
+                    <span>Retry Query</span>
+                  </>
+                )}
               </button>
             )}
           </div>

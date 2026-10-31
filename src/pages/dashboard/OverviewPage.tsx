@@ -13,8 +13,11 @@ import {
   X,
   Sliders,
   ShieldAlert,
+  Building2,
 } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { fetchUniversities } from '@/services/universityMcqService';
+import type { D1UniversityRow } from '@/constants/d1Universities';
 import { DailyLimitsMeter } from '@/components/dashboard/DailyLimitsMeter';
 import { RecentAttempts } from '@/components/dashboard/RecentAttempts';
 import { WeakChapters } from '@/components/dashboard/WeakChapters';
@@ -221,6 +224,27 @@ export function OverviewPage() {
     }
   };
 
+  // ── D1 Universities for Cockpit "Choose your university" section (Zero Firebase) ──
+  const [d1Universities, setD1Universities] = useState<D1UniversityRow[]>([]);
+  const [loadingD1Unis, setLoadingD1Unis] = useState<boolean>(true);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchUniversities()
+      .then((list) => {
+        if (mounted) {
+          setD1Universities(list);
+          setLoadingD1Unis(false);
+        }
+      })
+      .catch(() => {
+        if (mounted) setLoadingD1Unis(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   // Handler for weak chapter "Drill" buttons: starts the Complete Test with that chapter weighted ~50%
   const handleDrillWeakChapter = (chapterName: string, subjectName: string) => {
     setWeightedChapter(chapterName);
@@ -401,6 +425,117 @@ export function OverviewPage() {
           </div>
         </Card>
       </div>
+
+      {/* ── CHOOSE YOUR UNIVERSITY (Cloudflare D1 University Bubbles) ── */}
+      <Card className="p-5 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[var(--border)]">
+          <div>
+            <div className="flex items-center gap-2">
+              <Building2 size={17} className="text-[var(--accent)]" />
+              <h2
+                className="text-lg sm:text-xl font-bold tracking-tight text-[var(--text)]"
+                style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+              >
+                Choose your university
+              </h2>
+            </div>
+            <p className="text-xs text-[var(--muted)] mt-0.5">
+              Tap a LIVE university to practice its subject and topic MCQ bank. Universities with 0 MCQs unlock automatically as questions are added.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-[11px] font-mono text-[var(--muted)] shrink-0">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--surface-muted)] border border-[var(--border)]">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span>{d1Universities.filter((u) => u.mcq_count > 0).length} LIVE</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--surface-muted)] border border-[var(--border)]">
+              <span className="w-2 h-2 rounded-full bg-[var(--text-muted)] opacity-50" />
+              <span>{d1Universities.filter((u) => u.mcq_count === 0).length} Coming Soon</span>
+            </span>
+          </div>
+        </div>
+
+        {loadingD1Unis ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 pt-2">
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-24 rounded-2xl bg-[var(--surface-muted)] border border-[var(--border)] animate-pulse"
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 pt-2">
+            {d1Universities.map((uni) => {
+              const isLive = uni.mcq_count > 0;
+              const initials = uni.name
+                .replace(/\([^)]*\)/g, '')
+                .trim()
+                .split(/[\s-]+/)
+                .slice(0, 2)
+                .map((w) => w[0])
+                .join('')
+                .toUpperCase();
+
+              return (
+                <button
+                  key={uni.id}
+                  type="button"
+                  disabled={!isLive}
+                  onClick={() => {
+                    if (!isLive) return;
+                    navigate(`/dashboard/practice?university=${encodeURIComponent(uni.slug)}`);
+                  }}
+                  className={`p-3.5 rounded-2xl border text-left flex flex-col justify-between gap-2.5 transition-all ${
+                    isLive
+                      ? 'bg-[var(--surface-muted)]/60 border-[var(--border)] hover:border-[var(--accent)] hover:shadow-sm cursor-pointer group'
+                      : 'bg-[var(--surface-muted)]/30 border-[var(--border)] opacity-60 cursor-not-allowed'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-1.5 w-full">
+                    {uni.logo_url ? (
+                      <img
+                        src={uni.logo_url}
+                        alt={uni.name}
+                        className="w-8 h-8 rounded-xl object-contain bg-[var(--surface)] border border-[var(--border)] p-1 shrink-0"
+                      />
+                    ) : (
+                      <div
+                        className={`w-8 h-8 rounded-xl border text-[11px] font-mono font-bold flex items-center justify-center shrink-0 ${
+                          isLive
+                            ? 'bg-[var(--accent-soft)] border-[var(--accent)]/40 text-[var(--accent)]'
+                            : 'bg-[var(--surface)] border-[var(--border)] text-[var(--text-muted)]'
+                        }`}
+                      >
+                        {initials || 'UNI'}
+                      </div>
+                    )}
+
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase tracking-wider shrink-0 ${
+                        isLive
+                          ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
+                          : 'bg-[var(--surface)] text-[var(--text-muted)] border border-[var(--border)]'
+                      }`}
+                    >
+                      {isLive ? 'LIVE' : 'Coming Soon'}
+                    </span>
+                  </div>
+
+                  <div className="min-w-0 w-full">
+                    <div className="text-xs font-bold text-[var(--text)] truncate group-hover:text-[var(--accent)] transition-colors">
+                      {uni.name}
+                    </div>
+                    <div className="text-[10px] font-mono text-[var(--muted)] mt-0.5">
+                      {isLive ? `${uni.mcq_count} MCQs available` : '0 MCQs · Coming Soon'}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Card>
 
       {/* ── Status Banner (When launching test) ── */}
       {launchStatus && (

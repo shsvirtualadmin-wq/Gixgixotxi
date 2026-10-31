@@ -179,6 +179,7 @@ export function ConfirmSubmitModal({
             size="md"
             fullWidth
             loading={submitting}
+            loadingMessages={['Checking your answers...']}
             onClick={onConfirm}
           >
             Submit Test

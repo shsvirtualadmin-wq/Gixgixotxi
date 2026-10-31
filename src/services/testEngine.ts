@@ -384,6 +384,71 @@ export async function selectUnseenQuestionsForSubject(
  */
 export async function fetchQuestionsForAttempt(attempt: Partial<AttemptDoc>): Promise<AttemptQuestion[]> {
   const studentId = attempt.userId || 'guest';
+  const needed = Math.max(1, attempt.totalQuestions || 10);
+
+  // ─── 0. CLOUDFLARE D1 UNIVERSITY MCQ BANK (LAZY FETCH) ──────────────────────
+  try {
+    const qs = new URLSearchParams();
+    if (
+      attempt.university &&
+      attempt.university !== 'Standard Sprint' &&
+      attempt.university !== 'Any'
+    ) {
+      qs.set('university', attempt.university);
+    }
+    if (attempt.subject && attempt.subject !== 'all' && attempt.subject !== 'general') {
+      qs.set('subject', attempt.subject);
+    }
+    if (attempt.chapter && attempt.chapter !== 'general' && attempt.chapter !== 'all') {
+      qs.set('topic', attempt.chapter);
+    }
+    qs.set('limit', String(Math.max(needed * 2, 50)));
+
+    const d1Resp = await fetch(`/api/mcqs?${qs.toString()}`);
+    if (d1Resp.ok) {
+      const d1Data = await d1Resp.json();
+      let d1Rows: any[] = Array.isArray(d1Data?.mcqs) ? d1Data.mcqs : [];
+
+      // If university filter was too narrow or Sprint mode, fallback to any available D1 MCQs for that subject/overall
+      if (d1Rows.length === 0 && qs.has('university')) {
+        const fallbackQs = new URLSearchParams();
+        if (attempt.subject && attempt.subject !== 'all' && attempt.subject !== 'general') {
+          fallbackQs.set('subject', attempt.subject);
+        }
+        fallbackQs.set('limit', String(Math.max(needed * 2, 50)));
+        const fbResp = await fetch(`/api/mcqs?${fallbackQs.toString()}`);
+        if (fbResp.ok) {
+          const fbData = await fbResp.json();
+          d1Rows = Array.isArray(fbData?.mcqs) ? fbData.mcqs : [];
+        }
+      }
+
+      if (d1Rows.length > 0) {
+        const picked = shuffleArray(d1Rows).slice(0, needed);
+        return picked.map((row: any) => {
+          const rawOptions: [string, string, string, string] = [
+            String(row.option_a || 'Option A'),
+            String(row.option_b || 'Option B'),
+            String(row.option_c || 'Option C'),
+            String(row.option_d || 'Option D'),
+          ];
+          const { shuffledOptions, optionMapping } = shuffleOptions(rawOptions);
+          return {
+            id: String(row.id),
+            q: String(row.question || ''),
+            stem: String(row.question || ''),
+            options: shuffledOptions,
+            optionMapping,
+            subject: String(row.subject || attempt.subject || 'general'),
+            chapter: String(row.topic || attempt.chapter || 'general'),
+            difficulty: (row.difficulty || 'medium') as 'easy' | 'medium' | 'hard',
+          };
+        });
+      }
+    }
+  } catch (d1FetchErr) {
+    console.warn('[testEngine] D1 /api/mcqs fetch note:', d1FetchErr);
+  }
 
   // ─── 1. COMPLETE TEST & FULL BLUEPRINT MOCK ─────────────────────────────────
   if (attempt.mode === 'complete' || attempt.mode === 'full') {
@@ -471,7 +536,6 @@ export async function fetchQuestionsForAttempt(attempt: Partial<AttemptDoc>): Pr
   }
 
   // ─── 2. 10-MINUTE SPRINT & DRILLS ───────────────────────────────────────────
-  const needed = Math.max(1, attempt.totalQuestions || 10);
   const subjectSlug = findSubjectSlug(attempt.subject || '') || (attempt.subject ? attempt.subject.toLowerCase() : 'mathematics');
 
   const { selectedCompoundIds, notice } = await selectUnseenQuestionsForSubject(
@@ -506,7 +570,7 @@ export async function fetchQuestionsForAttempt(attempt: Partial<AttemptDoc>): Pr
     }
   }
 
-  throw new Error(`Not enough questions found for ${formatSubjectName(subjectSlug)}. Please rebuild index or check back soon.`);
+  throw new Error(`Not enough questions found for ${formatSubjectName(subjectSlug)}. Please add MCQs in Admin Question Bank or check back soon.`);
 }
 
 /**
@@ -631,10 +695,40 @@ export async function submitAttempt(
   const questions = attempt.questions ?? [];
   const totalQuestions = questions.length;
 
-  // 1. Fetch secret answer keys from Cloudflare D1 (`/api/questions/verify`) or Firestore fallback
+  // 1. Fetch secret answer keys from Cloudflare D1 (`/api/mcqs/verify` & `/api/questions/verify`)
   const questionKeyMap = new Map<string, { correct: unknown; explain?: string }>();
 
-  if (!USE_FIRESTORE_QUESTION_READER && questions.length > 0) {
+  if (questions.length > 0) {
+    try {
+      const mcqVerifyResp = await fetch('/api/mcqs/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questionIds: questions.map((q) => q.id),
+        }),
+      });
+      if (mcqVerifyResp.ok) {
+        const mcqData = await mcqVerifyResp.json();
+        const results = (mcqData?.results || {}) as Record<
+          string,
+          { correctIndex?: number; correctAnswer?: string; explanation?: string }
+        >;
+        for (const q of questions) {
+          const res = results[q.id];
+          if (res) {
+            questionKeyMap.set(q.id, {
+              correct: res.correctIndex ?? res.correctAnswer ?? 0,
+              explain: res.explanation || '',
+            });
+          }
+        }
+      }
+    } catch (mcqErr) {
+      console.warn('[testEngine] /api/mcqs/verify notice:', mcqErr);
+    }
+  }
+
+  if (!USE_FIRESTORE_QUESTION_READER && questions.length > 0 && questionKeyMap.size < questions.length) {
     try {
       const resp = await fetch('/api/questions/verify', {
         method: 'POST',
@@ -653,6 +747,7 @@ export async function submitAttempt(
           { canonical_correct_answer?: number; correct_answer?: number; explanation?: string }
         >;
         for (const q of questions) {
+          if (questionKeyMap.has(q.id)) continue;
           const d1Id = toD1QuestionId(q.id);
           const res = results[d1Id] || results[q.id];
           if (res) {
@@ -666,9 +761,10 @@ export async function submitAttempt(
     } catch (verifyErr) {
       console.warn('[testEngine] Batch D1 verify notice:', verifyErr);
     }
-  } else {
+  } else if (USE_FIRESTORE_QUESTION_READER) {
     await Promise.all(
       questions.map(async (q) => {
+        if (questionKeyMap.has(q.id)) return;
         try {
           if (ENABLE_MULTI_SOURCE_BANK) {
             const msKey = await fetchMultiSourceQuestionKey(q.id, q.subject);
@@ -958,7 +1054,7 @@ export async function submitAttempt(
 }
 
 /**
- * Student Report Question action: saves report doc in `questionReports` collection.
+ * Student Report Question action: saves report in Cloudflare D1 `/api/mcqs/reports`.
  */
 export async function reportQuestion(params: {
   questionId: string;
@@ -967,15 +1063,15 @@ export async function reportQuestion(params: {
   userId: string;
   userEmail?: string;
 }): Promise<void> {
-  const reportRef = doc(collection(db, 'questionReports'));
-  await robustSaveDoc(reportRef, {
-    questionId: params.questionId,
-    reason: params.reason,
-    comment: params.comment || '',
-    userId: params.userId,
-    userEmail: params.userEmail || '',
-    status: 'open',
-    createdAt: serverTimestamp(),
+  await fetch('/api/mcqs/reports', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      mcq_id: params.questionId,
+      reason: params.reason,
+      details: params.comment || '',
+      reported_by: params.userEmail || params.userId || 'student',
+    }),
   });
 }
 
@@ -989,7 +1085,37 @@ export async function regradeAttempt(attemptId: string): Promise<AttemptDoc> {
 
   // Fetch keys with D1 verify or Firestore fallback
   const questionKeyMap = new Map<string, { correct: unknown; explain?: string }>();
-  if (!USE_FIRESTORE_QUESTION_READER && questions.length > 0) {
+  if (questions.length > 0) {
+    try {
+      const mcqVerifyResp = await fetch('/api/mcqs/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questionIds: questions.map((q) => q.id),
+        }),
+      });
+      if (mcqVerifyResp.ok) {
+        const mcqData = await mcqVerifyResp.json();
+        const results = (mcqData?.results || {}) as Record<
+          string,
+          { correctIndex?: number; correctAnswer?: string; explanation?: string }
+        >;
+        for (const q of questions) {
+          const res = results[q.id];
+          if (res) {
+            questionKeyMap.set(q.id, {
+              correct: res.correctIndex ?? res.correctAnswer ?? 0,
+              explain: res.explanation || '',
+            });
+          }
+        }
+      }
+    } catch (mcqErr) {
+      console.warn('[regradeAttempt] /api/mcqs/verify notice:', mcqErr);
+    }
+  }
+
+  if (!USE_FIRESTORE_QUESTION_READER && questions.length > 0 && questionKeyMap.size < questions.length) {
     try {
       const resp = await fetch('/api/questions/verify', {
         method: 'POST',
@@ -1008,6 +1134,7 @@ export async function regradeAttempt(attemptId: string): Promise<AttemptDoc> {
           { canonical_correct_answer?: number; correct_answer?: number; explanation?: string }
         >;
         for (const q of questions) {
+          if (questionKeyMap.has(q.id)) continue;
           const d1Id = toD1QuestionId(q.id);
           const res = results[d1Id] || results[q.id];
           if (res) {
@@ -1021,7 +1148,7 @@ export async function regradeAttempt(attemptId: string): Promise<AttemptDoc> {
     } catch (verifyErr) {
       console.warn('[regradeAttempt] Batch D1 verify notice:', verifyErr);
     }
-  } else {
+  } else if (USE_FIRESTORE_QUESTION_READER) {
     await Promise.all(
       questions.map(async (q) => {
         try {

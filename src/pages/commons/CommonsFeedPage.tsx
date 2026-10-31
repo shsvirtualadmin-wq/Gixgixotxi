@@ -24,6 +24,7 @@ import { CommonsReportModal } from '@/components/commons/CommonsReportModal';
 import { CommonsSearchModal } from '@/components/commons/CommonsSearchModal';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { CommonsPostCardSkeleton } from '@/components/ui/Skeleton';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import {
   fetchCommonsPosts,
   deleteCommonsPost,
@@ -467,7 +468,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             title="Refresh feed"
             aria-label="Refresh feed"
           >
-            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={18} />
           </button>
         </div>
       </header>
@@ -475,15 +476,15 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       {/* Pull-to-refresh mobile visual indicator */}
       {pullDistance > 0 && (
         <div
-          className="flex justify-center items-center overflow-hidden transition-all text-xs text-muted"
+          className="flex justify-center items-center overflow-hidden transition-all text-xs text-muted px-4"
           style={{ height: `${pullDistance}px` }}
         >
-          <div className="flex items-center gap-2">
-            <RefreshCw
-              size={14}
-              className={pullDistance > 55 ? 'animate-spin text-accent' : ''}
+          <div className="w-full max-w-xs">
+            <BubbleLoader
+              variant="inline"
+              progress={Math.min(99, Math.max(5, Math.round((pullDistance / 60) * 100)))}
+              customMessages={[pullDistance > 55 ? 'Release to refresh...' : 'Pull down to refresh...']}
             />
-            <span>{pullDistance > 55 ? 'Release to refresh' : 'Pull down to refresh'}</span>
           </div>
         </div>
       )}
@@ -762,9 +763,11 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
 
         {/* Loading More Indicator */}
         {loadingMore && (
-          <div className="py-4 text-center">
-            <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-[11px] text-muted mt-1.5">Loading more posts...</p>
+          <div className="py-4">
+            <BubbleLoader
+              variant="section"
+              customMessages={['Loading more posts...']}
+            />
           </div>
         )}
       </div>

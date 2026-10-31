@@ -20,6 +20,7 @@ import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { useTheme } from '@/hooks/useTheme';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 interface CommonsSearchModalProps {
   isOpen: boolean;
@@ -328,9 +329,13 @@ export function CommonsSearchModal({
             </div>
           ) : loading ? (
             /* Case 2: Loading */
-            <div className="py-16 text-center space-y-3">
-              <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto" />
-              <p className="text-xs text-muted">Searching for "{debouncedQuery}"...</p>
+            <div className="py-8">
+              <BubbleLoader
+                variant="section"
+                showSkeletons
+                skeletonCount={2}
+                customMessages={[`Searching for "${debouncedQuery}"...`]}
+              />
             </div>
           ) : activeTab === 'posts' ? (
             /* Case 3: Posts Tab Results */

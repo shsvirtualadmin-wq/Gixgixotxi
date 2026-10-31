@@ -210,61 +210,27 @@ export function PracticePage() {
       title = `${criteria.name} Full Mock Test`;
       subjectSlugToUse = 'all';
 
-      // Pre-flight check: verify required subjects have questions
+      // Pre-flight check against Cloudflare D1 university MCQ bank
       try {
-        if (!USE_FIRESTORE_QUESTION_READER) {
-          const countsDoc = await getMultiSourceQuestionCounts();
-          const subCounts = countsDoc.subjectCounts || {};
-          for (const split of criteria.subjectsSplit) {
-            const subSlug = split.subject.toLowerCase();
-            if ((subCounts[subSlug] || 0) <= 0) {
-              if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
-              setLaunchError(
-                `Not enough questions yet for ${formatSubjectName(subSlug)}. Please choose another subject or check back soon.`
-              );
-              setLaunching(false);
-              setLaunchingType(null);
-              setLaunchStatus(null);
-              return;
-            }
-          }
-        } else {
-          const questionsColl = collection(db, 'questions');
-          for (const split of criteria.subjectsSplit) {
-            const subSlug = split.subject.toLowerCase();
-            let hasQuestions = false;
-
-            if (isSubjectPoolSupported(subSlug)) {
-              const poolColl = getSubjectPoolCollection(subSlug);
-              const poolSnap = await getDocs(
-                query(collection(db, poolColl), where('status', '==', 'published'), limit(1))
-              );
-              hasQuestions = !poolSnap.empty;
-            }
-
-            if (!hasQuestions) {
-              const qSnap = await getDocs(
-                query(
-                  questionsColl,
-                  where('status', '==', 'published'),
-                  where('active', '==', true),
-                  where('subject', '==', subSlug),
-                  limit(1)
-                )
-              );
-              hasQuestions = !qSnap.empty;
-            }
-
-            if (!hasQuestions) {
-              if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
-              setLaunchError(
-                `Not enough questions yet for ${formatSubjectName(subSlug)}. Please choose another subject or check back soon.`
-              );
-              setLaunching(false);
-              setLaunchingType(null);
-              setLaunchStatus(null);
-              return;
-            }
+        const uniResp = await fetch('/api/universities');
+        if (uniResp.ok) {
+          const uniData = await uniResp.json();
+          const list = Array.isArray(uniData?.universities) ? uniData.universities : [];
+          const matchedUni = list.find(
+            (u: any) =>
+              u.slug?.toLowerCase() === selectedUniversity.toLowerCase() ||
+              u.name?.toLowerCase() === selectedUniversity.toLowerCase() ||
+              u.name?.toLowerCase() === criteria.name.toLowerCase()
+          );
+          if (matchedUni && Number(matchedUni.mcq_count || 0) <= 0) {
+            if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
+            setLaunchError(
+              `${matchedUni.name} is Coming Soon (0 MCQs in bank yet). Choose a LIVE university or check back soon.`
+            );
+            setLaunching(false);
+            setLaunchingType(null);
+            setLaunchStatus(null);
+            return;
           }
         }
       } catch (err: unknown) {

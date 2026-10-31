@@ -20,6 +20,7 @@ import { PageMeta } from '@/components/ui/PageMeta';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import {
   subscribeToNotificationStore,
   syncUserNotificationsStore,
@@ -341,10 +342,7 @@ export function NotificationsPage() {
               aria-label="Refresh notifications"
               className="p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--border-strong)] transition-colors cursor-pointer"
             >
-              <RotateCcw
-                size={14}
-                className={refreshing || isInitialLoading ? 'animate-spin' : ''}
-              />
+              <RotateCcw size={14} />
             </button>
           </div>
         </div>
@@ -403,12 +401,21 @@ export function NotificationsPage() {
           </div>
         )}
 
+        {refreshing && !isInitialLoading && (
+          <BubbleLoader
+            variant="top-bar"
+            loading={refreshing}
+            messages={['Refreshing your notifications...']}
+          />
+        )}
+
         {/* ── Content List ──────────────────────────────────────────────── */}
         {isInitialLoading ? (
-          <div className="space-y-3" role="status" aria-label="Loading notifications...">
-            <p className="text-xs font-mono text-[var(--text-muted)] px-1">
-              Loading notifications...
-            </p>
+          <div className="space-y-3">
+            <BubbleLoader
+              variant="top-bar"
+              messages={['Checking your latest notifications...']}
+            />
             <Skeleton height={74} count={4} />
           </div>
         ) : displayedNotifications.length === 0 ? (
@@ -596,22 +603,25 @@ export function NotificationsPage() {
 
             {/* Load more button if has more user notifications */}
             {hasMoreNotifications && filter !== 'announcements' && (
-              <div className="pt-2 text-center">
-                <button
-                  type="button"
-                  onClick={handleLoadMore}
-                  disabled={loadingMore}
-                  className="btn-outline text-xs px-5 py-2.5 rounded-full cursor-pointer inline-flex items-center gap-2"
-                >
-                  {loadingMore ? (
-                    <>
-                      <RotateCcw size={13} className="animate-spin" />
-                      <span>Loading more...</span>
-                    </>
-                  ) : (
+              <div className="pt-2 flex justify-center">
+                {loadingMore ? (
+                  <div className="w-60 p-2.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)]">
+                    <BubbleLoader
+                      variant="inline"
+                      loading={loadingMore}
+                      messages={['Loading older notifications...']}
+                    />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="btn-outline text-xs px-5 py-2.5 rounded-full cursor-pointer inline-flex items-center gap-2"
+                  >
                     <span>Load older notifications</span>
-                  )}
-                </button>
+                  </button>
+                )}
               </div>
             )}
           </div>

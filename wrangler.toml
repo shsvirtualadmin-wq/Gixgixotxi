@@ -9,10 +9,16 @@ ALLOWED_ORIGIN = "https://boardly.cfd"
 SUPERADMIN_UIDS = "A5YMRimdHRcmeDWutxtUGt2e4hf2"
 SUPERADMIN_EMAILS = "shsvirtualadmin@gmail.com,support@boardly.cfd"
 
+# Cloudflare D1 Database Binding (Required for University MCQs, Commons Posts, Likes, Saves, Comments)
+# Run D1 University MCQ migration locally:
+#   npx wrangler d1 execute boardly-posts-db --local --file=./cloudflare/migrations/0001_university_mcqs.sql
+# Run D1 University MCQ migration on production:
+#   npx wrangler d1 execute boardly-posts-db --remote --file=./cloudflare/migrations/0001_university_mcqs.sql
 [[d1_databases]]
 binding = "DB"
 database_name = "boardly-posts-db"
 database_id = "e37a41ff-c73c-4ab7-9784-6e635205cdf7"
+migrations_dir = "cloudflare/migrations"
 
 [[r2_buckets]]
 binding = "R2_BUCKET"

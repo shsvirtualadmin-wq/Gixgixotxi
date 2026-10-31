@@ -28,9 +28,9 @@ import {
   Sparkles,
   ChevronRight,
   ShoppingBag,
-  Loader2,
   SlidersHorizontal,
 } from 'lucide-react';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import type { CosmeticType, CosmeticRarity, EquippedCosmetics } from '@/types';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { useSmartBack } from '@/utils/homeUrl';
@@ -1224,32 +1224,31 @@ export function StorePage() {
                     type="button"
                     disabled={equippingId === selectedDetailItem.id}
                     onClick={() => handleEquip(selectedDetailItem)}
-                    className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center ${
                       equipped[selectedDetailItem.type] === selectedDetailItem.id
                         ? 'border border-[var(--border)] hover:bg-[var(--surface-hover)] text-[var(--muted)] hover:text-white'
                         : 'btn-red shadow-sm'
                     }`}
                   >
-                    {equippingId === selectedDetailItem.id
-                      ? 'Saving...'
-                      : equipped[selectedDetailItem.type] === selectedDetailItem.id
-                      ? 'Unequip Cosmetic'
-                      : isSuperAdmin && !owned.includes(selectedDetailItem.id)
-                      ? 'Equip for Free (Super Admin)'
-                      : 'Equip to Profile'}
+                    {equippingId === selectedDetailItem.id ? (
+                      <BubbleLoader variant="inline" customMessages={['Equipping cosmetic...']} />
+                    ) : equipped[selectedDetailItem.type] === selectedDetailItem.id ? (
+                      'Unequip Cosmetic'
+                    ) : isSuperAdmin && !owned.includes(selectedDetailItem.id) ? (
+                      'Equip for Free (Super Admin)'
+                    ) : (
+                      'Equip to Profile'
+                    )}
                   </button>
                 ) : (selectedDetailItem.priceKobans === 0 || balance >= selectedDetailItem.priceKobans) ? (
                   <button
                     type="button"
                     disabled={purchasing}
                     onClick={() => handlePurchase(selectedDetailItem)}
-                    className="btn-red w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                    className="btn-red w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
                   >
                     {purchasing ? (
-                      <>
-                        <Loader2 size={14} className="animate-spin" />
-                        <span>Unlocking...</span>
-                      </>
+                      <BubbleLoader variant="inline" customMessages={['Unlocking cosmetic...']} />
                     ) : (
                       <>
                         <Sparkles size={14} />

@@ -30,7 +30,6 @@ import {
   Shield,
   Lock,
   Send,
-  Loader2,
   CheckCircle2,
   AtSign,
 } from 'lucide-react';
@@ -38,6 +37,7 @@ import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { validateNickname, validateUsernameFormat, isForbiddenAdminRole } from '@/utils/usernameValidation';
 import { submitNameRequest } from '@/services/nameRequestService';
 import { useSmoothMode } from '@/utils/smoothMode';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 const SELECTABLE_USER_ROLES = [
   'Student',
@@ -502,24 +502,25 @@ export function SettingsPage() {
                   <span>{nameError}</span>
                 </div>
                 {(nameError.includes('reserved') || nameError.includes('Send a request')) && (
-                  <button
-                    type="button"
-                    disabled={sendingNameRequest}
-                    onClick={handleSendReservedNameRequest}
-                    className="self-start px-3 py-1.5 rounded-lg bg-[var(--red)] hover:opacity-90 text-white font-heading font-semibold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  >
-                    {sendingNameRequest ? (
-                      <>
-                        <Loader2 size={13} className="animate-spin" />
-                        <span>Sending Request...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Send size={13} />
-                        <span>Send Request to Admin</span>
-                      </>
-                    )}
-                  </button>
+                  sendingNameRequest ? (
+                    <div className="w-52 p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                      <BubbleLoader
+                        variant="inline"
+                        loading={sendingNameRequest}
+                        messages={['Sending request to admin...']}
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={sendingNameRequest}
+                      onClick={handleSendReservedNameRequest}
+                      className="self-start px-3 py-1.5 rounded-lg bg-[var(--red)] hover:opacity-90 text-white font-heading font-semibold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <Send size={13} />
+                      <span>Send Request to Admin</span>
+                    </button>
+                  )
                 )}
               </div>
             )}

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { fetchAuditLogs } from '@/services/adminService';
 import type { AuditLog } from '@/types';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 export function AdminAuditLogsPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -80,7 +81,7 @@ export function AdminAuditLogsPage() {
           disabled={loading}
           className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
         >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={14} />
           <span>Refresh</span>
         </button>
       </div>
@@ -101,6 +102,9 @@ export function AdminAuditLogsPage() {
 
       {/* ─── LOGS LIST ──────────────────────────────────────────────────────── */}
       <div className="space-y-3">
+        {loading && (
+          <BubbleLoader variant="top-bar" customMessages={['Loading audit logs...']} />
+        )}
         {loading ? (
           Array.from({ length: 5 }).map((_, i) => (
             <div

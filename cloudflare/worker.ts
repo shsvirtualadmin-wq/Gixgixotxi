@@ -29,6 +29,15 @@ import {
   toPublicKeyStatusList,
 } from '../src/services/botContentGenerator';
 import { validateAndNormalizeQuestionMath } from '../src/utils/katexValidator';
+import {
+  PRE_SEEDED_UNIVERSITIES,
+  buildUniversitySlug,
+  normalizeCorrectLetter,
+  type D1UniversityRow,
+  type D1McqRow,
+  type D1McqReportRow,
+} from '../src/constants/d1Universities';
+import legacyBackupData from '../data/backups/legacy_admin_bank_backup.json';
 
 
 export interface Env {
@@ -360,7 +369,65 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
         imported_at INTEGER NOT NULL
       )`),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_questions_import_log_bank_time ON questions_import_log(bank_id, imported_at DESC)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS universities (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE,
+        logo_url TEXT NOT NULL DEFAULT '',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        mcq_count INTEGER NOT NULL DEFAULT 0,
+        is_live INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_universities_sort ON universities(sort_order ASC, name ASC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_universities_slug ON universities(slug)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS mcqs (
+        id TEXT PRIMARY KEY,
+        university_id TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        topic TEXT NOT NULL,
+        question TEXT NOT NULL,
+        option_a TEXT NOT NULL,
+        option_b TEXT NOT NULL,
+        option_c TEXT NOT NULL,
+        option_d TEXT NOT NULL,
+        correct_answer TEXT NOT NULL,
+        explanation TEXT NOT NULL DEFAULT '',
+        difficulty TEXT NOT NULL DEFAULT 'medium',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (university_id) REFERENCES universities(id) ON DELETE CASCADE
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_mcqs_university_id ON mcqs(university_id)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_mcqs_subject ON mcqs(subject)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_mcqs_topic ON mcqs(topic)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_mcqs_uni_sub_top ON mcqs(university_id, subject, topic)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS mcq_reports (
+        id TEXT PRIMARY KEY,
+        mcq_id TEXT NOT NULL,
+        university_id TEXT NOT NULL,
+        subject TEXT NOT NULL DEFAULT '',
+        topic TEXT NOT NULL DEFAULT '',
+        question_preview TEXT NOT NULL DEFAULT '',
+        reason TEXT NOT NULL DEFAULT 'wrong_key',
+        comment TEXT NOT NULL DEFAULT '',
+        user_id TEXT NOT NULL DEFAULT '',
+        user_email TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'open',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_mcq_reports_status ON mcq_reports(status, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_mcq_reports_mcq_id ON mcq_reports(mcq_id)`),
     ]);
+
+    const uniSeedStmts = PRE_SEEDED_UNIVERSITIES.map((u) =>
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO universities (id, name, slug, logo_url, sort_order, mcq_count, is_live, created_at)
+           VALUES (?, ?, ?, ?, ?, 0, 0, datetime('now'))`
+        )
+        .bind(u.id, u.name, u.slug, u.logo_url || '', u.sort_order)
+    );
+    await db.batch(uniSeedStmts);
 
     // Seed 12 bot accounts in user_roles (role = 'bot') and bot_accounts
     const botRoleStmts = BOARDLY_BOT_ACCOUNTS.map((b) =>
@@ -476,67 +543,7 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
       }
     }
 
-    // Seed initial migrated questions if questions table is empty
-    const qCountRow = await db.prepare('SELECT COUNT(*) as cnt FROM questions').first<{ cnt: number }>();
-    if (Number(qCountRow?.cnt ?? 0) === 0 && Array.isArray((seedDataset as any)?.questions)) {
-      const initialQuestions = (seedDataset as any).questions as Record<string, any>[];
-      const qChunkSize = 25;
-      for (let i = 0; i < initialQuestions.length; i += qChunkSize) {
-        const chunk = initialQuestions.slice(i, i + qChunkSize);
-        const qStmts = chunk.map((q) =>
-          db
-            .prepare(
-              `INSERT OR REPLACE INTO questions (
-                id, bank_id, subject, topic, difficulty, status, needs_review,
-                question_text, options_json, correct_answer, explanation, source_path,
-                created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-            )
-            .bind(
-              String(q.id),
-              String(q.bank_id || 'legacy'),
-              String(q.subject || 'mathematics'),
-              String(q.topic || 'General Concepts'),
-              String(q.difficulty || 'medium'),
-              String(q.status || 'published'),
-              Number(q.needs_review ? 1 : 0),
-              String(q.question_text || ''),
-              typeof q.options_json === 'string' ? q.options_json : JSON.stringify(q.options || []),
-              Number(q.correct_answer ?? 0),
-              String(q.explanation || ''),
-              String(q.source_path || `questions/${q.id}`),
-              Number(q.created_at || Date.now()),
-              Number(q.updated_at || Date.now())
-            )
-        );
-        await db.batch(qStmts);
-      }
-
-      if (Array.isArray((seedDataset as any)?.questionsImportLog)) {
-        const logs = (seedDataset as any).questionsImportLog as Record<string, any>[];
-        if (logs.length > 0) {
-          const logStmts = logs.map((l) =>
-            db
-              .prepare(
-                `INSERT OR REPLACE INTO questions_import_log (
-                  id, bank_id, subject, total_read, imported_count, needs_review_count, source_type, imported_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-              )
-              .bind(
-                String(l.id),
-                String(l.bank_id || 'legacy'),
-                String(l.subject || 'mathematics'),
-                Number(l.total_read || 0),
-                Number(l.imported_count || 0),
-                Number(l.needs_review_count || 0),
-                String(l.source_type || 'firestore'),
-                Number(l.imported_at || Date.now())
-              )
-          );
-          await db.batch(logStmts);
-        }
-      }
-    }
+    // Old Admin Bank questions are no longer auto-seeded; the D1 university bank starts empty.
 
 
     // BUG 1 FIX: Normalize any second-based timestamps (< 1e10) to ms, and clamp any
@@ -3563,6 +3570,970 @@ ${urls
       }
 
       return jsonResponse({ error: 'Bot endpoint not found' }, 404, cors);
+    }
+
+    // 2c. API Routes under /api/universities, /api/mcqs, and /api/admin/legacy-bank
+    if (
+      url.pathname.startsWith('/api/universities') ||
+      url.pathname.startsWith('/api/mcqs') ||
+      url.pathname.startsWith('/api/admin/legacy-bank')
+    ) {
+      if (!env.DB) {
+        return jsonResponse({ success: false, error: 'Cloudflare D1 binding (DB) is missing.' }, 503, cors);
+      }
+
+      const verifyD1Admin = async (): Promise<VerifiedFirebaseUser | null> => {
+        const user = await verifyFirebaseIdToken(req, env).catch(() => null);
+        if (!user) return null;
+        if (user.role === 'superadmin') return user;
+        const roleRow = await env.DB!.prepare(
+          'SELECT role FROM user_roles WHERE uid = ? OR LOWER(email) = LOWER(?) LIMIT 1'
+        )
+          .bind(user.uid, user.email || '')
+          .first<{ role: string }>();
+        if (roleRow && (roleRow.role === 'admin' || roleRow.role === 'superadmin')) {
+          return user;
+        }
+        return null;
+      };
+
+      const recalculateD1UniCount = async (uniId: string) => {
+        await env.DB!.prepare(
+          `UPDATE universities
+           SET mcq_count = (SELECT COUNT(*) FROM mcqs WHERE mcqs.university_id = universities.id),
+               is_live = CASE WHEN (SELECT COUNT(*) FROM mcqs WHERE mcqs.university_id = universities.id) > 0 THEN 1 ELSE 0 END
+           WHERE id = ?`
+        )
+          .bind(uniId)
+          .run();
+      };
+
+      const recalculateAllD1UniCounts = async () => {
+        await env.DB!.prepare(
+          `UPDATE universities
+           SET mcq_count = (SELECT COUNT(*) FROM mcqs WHERE mcqs.university_id = universities.id),
+               is_live = CASE WHEN (SELECT COUNT(*) FROM mcqs WHERE mcqs.university_id = universities.id) > 0 THEN 1 ELSE 0 END`
+        ).run();
+      };
+
+      // ── /api/universities ─────────────────────────────────────────────────
+      if (url.pathname.startsWith('/api/universities')) {
+        const uniSub = url.pathname.slice('/api/universities'.length).replace(/\/+$/, '') || '/';
+
+        // GET /api/universities
+        if (uniSub === '/' && req.method === 'GET') {
+          await recalculateAllD1UniCounts();
+          const { results } = await env.DB.prepare(
+            'SELECT * FROM universities ORDER BY sort_order ASC, name ASC'
+          ).all<D1UniversityRow>();
+          return jsonResponse(
+            { success: true, universities: results || [] },
+            200,
+            { ...cors, 'Cache-Control': 'no-store' }
+          );
+        }
+
+        const adminUser = await verifyD1Admin();
+        if (!adminUser) {
+          return jsonResponse(
+            { success: false, error: 'Forbidden: Only admin and superadmin can manage universities.' },
+            403,
+            cors
+          );
+        }
+
+        const allowed = await checkRateLimit(env, `uni_admin:${adminUser.uid}`, 120, 60 * 1000);
+        if (!allowed) {
+          return jsonResponse({ success: false, error: 'Rate limit exceeded.' }, 429, cors);
+        }
+
+        // POST /api/universities
+        if (uniSub === '/' && req.method === 'POST') {
+          const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+          const name = String(body.name || '').trim().slice(0, 120);
+          if (!name) {
+            return jsonResponse({ success: false, error: 'University name is required.' }, 400, cors);
+          }
+          const slug = buildUniversitySlug(String(body.slug || name));
+          const dup = await env.DB.prepare('SELECT id FROM universities WHERE LOWER(slug) = LOWER(?) LIMIT 1')
+            .bind(slug)
+            .first();
+          if (dup) {
+            return jsonResponse({ success: false, error: `University slug "${slug}" already exists.` }, 409, cors);
+          }
+          const maxRow = await env.DB.prepare('SELECT MAX(sort_order) as max_sort FROM universities').first<{ max_sort: number }>();
+          const sortOrder = Number.isFinite(Number(body.sort_order))
+            ? Number(body.sort_order)
+            : Number(maxRow?.max_sort || 0) + 1;
+          const id = String(body.id || `uni_${slug.replace(/-/g, '_')}_${crypto.randomUUID().slice(0, 6)}`);
+          const logoUrl = String(body.logo_url || '').trim();
+          const nowIso = new Date().toISOString();
+
+          await env.DB.prepare(
+            `INSERT INTO universities (id, name, slug, logo_url, sort_order, mcq_count, is_live, created_at)
+             VALUES (?, ?, ?, ?, ?, 0, 0, ?)`
+          )
+            .bind(id, name, slug, logoUrl, sortOrder, nowIso)
+            .run();
+
+          const created = await env.DB.prepare('SELECT * FROM universities WHERE id = ?')
+            .bind(id)
+            .first<D1UniversityRow>();
+          return jsonResponse({ success: true, university: created }, 201, cors);
+        }
+
+        // POST /api/universities/reorder
+        if (uniSub === '/reorder' && req.method === 'POST') {
+          const body = (await req.json().catch(() => ({}))) as { orderedIds?: string[] };
+          const orderedIds = Array.isArray(body.orderedIds) ? body.orderedIds.map(String) : [];
+          if (orderedIds.length === 0) {
+            return jsonResponse({ success: false, error: 'orderedIds array is required.' }, 400, cors);
+          }
+          const stmts = orderedIds.map((id, idx) =>
+            env.DB!.prepare('UPDATE universities SET sort_order = ? WHERE id = ? OR slug = ?').bind(
+              idx + 1,
+              id,
+              id
+            )
+          );
+          await env.DB.batch(stmts);
+          const { results } = await env.DB.prepare(
+            'SELECT * FROM universities ORDER BY sort_order ASC, name ASC'
+          ).all<D1UniversityRow>();
+          return jsonResponse({ success: true, universities: results || [] }, 200, cors);
+        }
+
+        const targetId = decodeURIComponent(uniSub.slice(1));
+        if (!targetId) {
+          return jsonResponse({ success: false, error: 'University ID required.' }, 400, cors);
+        }
+
+        // PUT / PATCH /api/universities/:id
+        if (req.method === 'PUT' || req.method === 'PATCH') {
+          const existing = await env.DB.prepare(
+            'SELECT * FROM universities WHERE id = ? OR slug = ? LIMIT 1'
+          )
+            .bind(targetId, targetId)
+            .first<D1UniversityRow>();
+          if (!existing) {
+            return jsonResponse({ success: false, error: 'University not found.' }, 404, cors);
+          }
+          const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+          const nextName = body.name !== undefined ? String(body.name).trim() : existing.name;
+          const nextSlug =
+            body.slug !== undefined ? buildUniversitySlug(String(body.slug)) : existing.slug;
+          const nextLogo =
+            body.logo_url !== undefined ? String(body.logo_url).trim() : existing.logo_url;
+          const nextSort =
+            body.sort_order !== undefined && Number.isFinite(Number(body.sort_order))
+              ? Number(body.sort_order)
+              : existing.sort_order;
+
+          await env.DB.prepare(
+            'UPDATE universities SET name = ?, slug = ?, logo_url = ?, sort_order = ? WHERE id = ?'
+          )
+            .bind(nextName, nextSlug, nextLogo, nextSort, existing.id)
+            .run();
+          await recalculateD1UniCount(existing.id);
+
+          const updated = await env.DB.prepare('SELECT * FROM universities WHERE id = ?')
+            .bind(existing.id)
+            .first<D1UniversityRow>();
+          return jsonResponse({ success: true, university: updated }, 200, cors);
+        }
+
+        // DELETE /api/universities/:id
+        if (req.method === 'DELETE') {
+          const existing = await env.DB.prepare(
+            'SELECT * FROM universities WHERE id = ? OR slug = ? LIMIT 1'
+          )
+            .bind(targetId, targetId)
+            .first<D1UniversityRow>();
+          if (!existing) {
+            return jsonResponse({ success: false, error: 'University not found.' }, 404, cors);
+          }
+          await env.DB.batch([
+            env.DB.prepare('DELETE FROM mcqs WHERE university_id = ?').bind(existing.id),
+            env.DB.prepare('DELETE FROM universities WHERE id = ?').bind(existing.id),
+          ]);
+          return jsonResponse({ success: true, deletedUniversityId: existing.id }, 200, cors);
+        }
+
+        return jsonResponse({ success: false, error: 'University endpoint not found.' }, 404, cors);
+      }
+
+      // ── /api/mcqs ─────────────────────────────────────────────────────────
+      if (url.pathname.startsWith('/api/mcqs')) {
+        const mcqSub = url.pathname.slice('/api/mcqs'.length).replace(/\/+$/, '') || '/';
+
+        // GET /api/mcqs/topics
+        if (mcqSub === '/topics' && req.method === 'GET') {
+          const uniParam = (
+            url.searchParams.get('university_id') ||
+            url.searchParams.get('university_slug') ||
+            ''
+          ).trim();
+          let resolvedUniId = uniParam;
+          if (uniParam) {
+            const uRow = await env.DB.prepare(
+              'SELECT id FROM universities WHERE id = ? OR LOWER(slug) = LOWER(?) OR LOWER(name) = LOWER(?) LIMIT 1'
+            )
+              .bind(uniParam, uniParam, uniParam)
+              .first<{ id: string }>();
+            if (uRow) resolvedUniId = uRow.id;
+          }
+
+          const { results } = resolvedUniId
+            ? await env.DB.prepare(
+                'SELECT subject, topic, COUNT(*) as cnt FROM mcqs WHERE university_id = ? GROUP BY subject, topic'
+              )
+                .bind(resolvedUniId)
+                .all<{ subject: string; topic: string; cnt: number }>()
+            : await env.DB.prepare(
+                'SELECT subject, topic, COUNT(*) as cnt FROM mcqs GROUP BY subject, topic'
+              ).all<{ subject: string; topic: string; cnt: number }>();
+
+          const subjectsMap = new Map<
+            string,
+            { subject: string; count: number; topics: Array<{ topic: string; count: number }> }
+          >();
+          let totalMcqs = 0;
+          for (const r of results || []) {
+            const sub = String(r.subject || 'General');
+            const top = String(r.topic || 'General');
+            const cnt = Number(r.cnt || 0);
+            totalMcqs += cnt;
+            if (!subjectsMap.has(sub)) {
+              subjectsMap.set(sub, { subject: sub, count: 0, topics: [] });
+            }
+            const entry = subjectsMap.get(sub)!;
+            entry.count += cnt;
+            entry.topics.push({ topic: top, count: cnt });
+          }
+
+          const subjects = Array.from(subjectsMap.values()).sort(
+            (a, b) => b.count - a.count || a.subject.localeCompare(b.subject)
+          );
+          return jsonResponse(
+            {
+              success: true,
+              universityId: resolvedUniId || null,
+              totalMcqs,
+              subjects,
+            },
+            200,
+            cors
+          );
+        }
+
+        // GET /api/mcqs/health
+        if (mcqSub === '/health' && req.method === 'GET') {
+          await recalculateAllD1UniCounts();
+          const [uniRes, subRes, diffRes, missRes, repRes] = await Promise.all([
+            env.DB.prepare('SELECT * FROM universities ORDER BY sort_order ASC, name ASC').all<D1UniversityRow>(),
+            env.DB.prepare('SELECT subject, COUNT(*) as cnt FROM mcqs GROUP BY subject').all<{ subject: string; cnt: number }>(),
+            env.DB.prepare('SELECT difficulty, COUNT(*) as cnt FROM mcqs GROUP BY difficulty').all<{ difficulty: string; cnt: number }>(),
+            env.DB.prepare("SELECT COUNT(*) as cnt FROM mcqs WHERE TRIM(COALESCE(explanation, '')) = ''").first<{ cnt: number }>(),
+            env.DB.prepare("SELECT COUNT(*) as cnt FROM mcq_reports WHERE status = 'open'").first<{ cnt: number }>(),
+          ]);
+
+          const universities = uniRes.results || [];
+          const bySubject: Record<string, number> = {};
+          let totalMcqs = 0;
+          for (const r of subRes.results || []) {
+            bySubject[r.subject] = Number(r.cnt || 0);
+            totalMcqs += Number(r.cnt || 0);
+          }
+          const byDifficulty: Record<string, number> = { easy: 0, medium: 0, hard: 0 };
+          for (const r of diffRes.results || []) {
+            byDifficulty[String(r.difficulty || 'medium').toLowerCase()] = Number(r.cnt || 0);
+          }
+
+          return jsonResponse(
+            {
+              success: true,
+              source: 'cloudflare-d1',
+              totalUniversities: universities.length,
+              liveUniversities: universities.filter((u) => Number(u.mcq_count) > 0).length,
+              comingSoonUniversities: universities.filter((u) => Number(u.mcq_count) === 0).length,
+              totalMcqs,
+              missingExplanationCount: Number(missRes?.cnt || 0),
+              openReportsCount: Number(repRes?.cnt || 0),
+              bySubject,
+              byDifficulty,
+              universities,
+            },
+            200,
+            cors
+          );
+        }
+
+        // GET & POST & PATCH /api/mcqs/reports
+        if (mcqSub === '/reports' && req.method === 'GET') {
+          const adminUser = await verifyD1Admin();
+          if (!adminUser) {
+            return jsonResponse({ success: false, error: 'Forbidden' }, 403, cors);
+          }
+          const { results } = await env.DB.prepare(
+            'SELECT * FROM mcq_reports ORDER BY created_at DESC LIMIT 200'
+          ).all<D1McqReportRow>();
+          return jsonResponse({ success: true, reports: results || [] }, 200, cors);
+        }
+
+        if (mcqSub === '/reports' && req.method === 'POST') {
+          const user = await verifyFirebaseIdToken(req, env).catch(() => null);
+          const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+          const mcqId = String(body.mcq_id || body.questionId || '').trim();
+          if (!mcqId) {
+            return jsonResponse({ success: false, error: 'mcq_id is required.' }, 400, cors);
+          }
+          const mcq = await env.DB.prepare('SELECT * FROM mcqs WHERE id = ? LIMIT 1')
+            .bind(mcqId)
+            .first<D1McqRow>();
+          const reportId = `mcqrep_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`;
+          const nowIso = new Date().toISOString();
+
+          await env.DB.prepare(
+            `INSERT INTO mcq_reports (id, mcq_id, university_id, subject, topic, question_preview, reason, comment, user_id, user_email, status, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)`
+          )
+            .bind(
+              reportId,
+              mcqId,
+              mcq?.university_id || String(body.university_id || ''),
+              mcq?.subject || String(body.subject || ''),
+              mcq?.topic || String(body.topic || ''),
+              (mcq?.question || String(body.question_preview || '')).slice(0, 180),
+              String(body.reason || 'wrong_key'),
+              String(body.comment || ''),
+              user?.uid || String(body.user_id || body.userId || 'student'),
+              user?.email || String(body.user_email || body.userEmail || ''),
+              nowIso
+            )
+            .run();
+
+          return jsonResponse({ success: true, reportId }, 201, cors);
+        }
+
+        if (mcqSub.startsWith('/reports/') && req.method === 'PATCH') {
+          const adminUser = await verifyD1Admin();
+          if (!adminUser) {
+            return jsonResponse({ success: false, error: 'Forbidden' }, 403, cors);
+          }
+          const repId = decodeURIComponent(mcqSub.slice('/reports/'.length));
+          const body = (await req.json().catch(() => ({}))) as { status?: string };
+          const nextStatus = String(body.status || 'resolved').toLowerCase();
+          await env.DB.prepare('UPDATE mcq_reports SET status = ? WHERE id = ?')
+            .bind(nextStatus, repId)
+            .run();
+          return jsonResponse({ success: true }, 200, cors);
+        }
+
+        // POST /api/mcqs/verify
+        if (mcqSub === '/verify' && req.method === 'POST') {
+          const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+          const answers = Array.isArray(body.answers) ? body.answers : [];
+          const qIds = answers
+            .map((a: any) => String(a?.questionId || a?.id || '').trim())
+            .filter(Boolean);
+          const results: Record<string, any> = {};
+          if (qIds.length > 0) {
+            const placeholders = qIds.map(() => '?').join(',');
+            const { results: rows } = await env.DB.prepare(
+              `SELECT * FROM mcqs WHERE id IN (${placeholders})`
+            )
+              .bind(...qIds)
+              .all<D1McqRow>();
+            const rowMap = new Map<string, D1McqRow>();
+            for (const r of rows || []) rowMap.set(r.id, r);
+            const letterToIdx: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+
+            for (const item of answers) {
+              const qId = String(item?.questionId || item?.id || '').trim();
+              const row = rowMap.get(qId);
+              if (!row) continue;
+              const canonicalIdx = letterToIdx[String(row.correct_answer || 'A').toUpperCase()] ?? 0;
+              const canonicalOpts = [row.option_a, row.option_b, row.option_c, row.option_d];
+              const canonicalText = canonicalOpts[canonicalIdx] || row.option_a;
+              let resolvedIdx = canonicalIdx;
+              if (Array.isArray(item.displayedOptions) && item.displayedOptions.length > 0) {
+                const mIdx = item.displayedOptions.findIndex(
+                  (o: any) => String(o ?? '').trim() === String(canonicalText).trim()
+                );
+                if (mIdx !== -1) resolvedIdx = mIdx;
+              }
+              const selected =
+                item.selectedAnswer === null || item.selectedAnswer === undefined
+                  ? null
+                  : Number(item.selectedAnswer);
+              const isCorrect =
+                selected !== null && Number.isFinite(selected) && selected === resolvedIdx;
+              results[qId] = {
+                questionId: qId,
+                selectedAnswer: selected,
+                correct_answer: resolvedIdx,
+                correctAnswer: resolvedIdx,
+                correct_letter: row.correct_answer,
+                canonical_correct_answer: canonicalIdx,
+                isCorrect,
+                explanation: row.explanation || '',
+              };
+            }
+          }
+          return jsonResponse({ success: true, verified: true, results }, 200, cors);
+        }
+
+        // POST /api/mcqs/import-chunk — Unlimited chunked bulk import via D1 batch
+        if (mcqSub === '/import-chunk' && req.method === 'POST') {
+          const adminUser = await verifyD1Admin();
+          if (!adminUser) {
+            return jsonResponse(
+              { success: false, error: 'Forbidden: Only admin and superadmin can import MCQs.' },
+              403,
+              cors
+            );
+          }
+
+          const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+          const uniIdOrSlug = String(body.university_id || body.universityId || '').trim();
+          const defaultSubject = String(body.subject || '').trim();
+          const defaultTopic = String(body.topic || '').trim();
+          const chunkOffset = Math.max(0, Number(body.chunkOffset || 0));
+          const rawRows = Array.isArray(body.rows) ? body.rows : [];
+
+          const uni = await env.DB.prepare(
+            'SELECT * FROM universities WHERE id = ? OR LOWER(slug) = LOWER(?) LIMIT 1'
+          )
+            .bind(uniIdOrSlug, uniIdOrSlug)
+            .first<D1UniversityRow>();
+
+          if (!uni) {
+            return jsonResponse({ success: false, error: 'Target university not found.' }, 404, cors);
+          }
+
+          const rowErrors: Array<{ rowNumber: number; reason: string }> = [];
+          const stmts: D1PreparedStatement[] = [];
+          const nowIso = new Date().toISOString();
+
+          for (let i = 0; i < rawRows.length; i++) {
+            const rowNum = chunkOffset + i + 1;
+            const r = rawRows[i] || {};
+            const subject = String(r.subject || defaultSubject || '').trim();
+            const topic = String(r.topic || r.chapter || defaultTopic || 'General').trim() || 'General';
+            const question = String(r.question || r.question_text || r.q || r.stem || '').trim();
+
+            let optA = String(r.option_a ?? r.optionA ?? r.a ?? '').trim();
+            let optB = String(r.option_b ?? r.optionB ?? r.b ?? '').trim();
+            let optC = String(r.option_c ?? r.optionC ?? r.c ?? '').trim();
+            let optD = String(r.option_d ?? r.optionD ?? r.d ?? '').trim();
+
+            if ((!optA || !optB) && Array.isArray(r.options) && r.options.length >= 4) {
+              optA = String(r.options[0] ?? '').trim();
+              optB = String(r.options[1] ?? '').trim();
+              optC = String(r.options[2] ?? '').trim();
+              optD = String(r.options[3] ?? '').trim();
+            }
+
+            if (!subject) {
+              rowErrors.push({ rowNumber: rowNum, reason: 'Missing subject' });
+              continue;
+            }
+            if (!question) {
+              rowErrors.push({ rowNumber: rowNum, reason: 'Missing question text' });
+              continue;
+            }
+            if (!optA || !optB || !optC || !optD) {
+              rowErrors.push({ rowNumber: rowNum, reason: 'All 4 options (A, B, C, D) are required' });
+              continue;
+            }
+
+            const correctLetter = normalizeCorrectLetter(
+              r.correct_answer ?? r.correctAnswer ?? r.correct ?? r.answer,
+              { a: optA, b: optB, c: optC, d: optD }
+            );
+            if (!correctLetter) {
+              rowErrors.push({
+                rowNumber: rowNum,
+                reason: `Invalid correct_answer "${String(r.correct_answer ?? r.correct ?? '')}"`,
+              });
+              continue;
+            }
+
+            const rawDiff = String(r.difficulty || 'medium').trim().toLowerCase();
+            const difficulty = rawDiff === 'easy' || rawDiff === 'hard' ? rawDiff : 'medium';
+            const explanation = String(r.explanation ?? r.explain ?? '').trim();
+            const id = String(r.id || `mcq_${uni.slug}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`).trim();
+
+            stmts.push(
+              env.DB.prepare(
+                `INSERT OR REPLACE INTO mcqs (
+                  id, university_id, subject, topic, question,
+                  option_a, option_b, option_c, option_d,
+                  correct_answer, explanation, difficulty, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              ).bind(
+                id,
+                uni.id,
+                subject,
+                topic,
+                question,
+                optA,
+                optB,
+                optC,
+                optD,
+                correctLetter,
+                explanation,
+                difficulty,
+                nowIso
+              )
+            );
+          }
+
+          // Execute in sub-batches of 50 to respect D1 batch limits per call
+          const batchSize = 50;
+          for (let i = 0; i < stmts.length; i += batchSize) {
+            await env.DB.batch(stmts.slice(i, i + batchSize));
+          }
+
+          await recalculateD1UniCount(uni.id);
+          const updatedUni = await env.DB.prepare('SELECT mcq_count, is_live FROM universities WHERE id = ?')
+            .bind(uni.id)
+            .first<{ mcq_count: number; is_live: number }>();
+
+          return jsonResponse(
+            {
+              success: true,
+              universityId: uni.id,
+              importedCount: stmts.length,
+              skippedCount: rowErrors.length,
+              rowErrors,
+              universityMcqCount: Number(updatedUni?.mcq_count || 0),
+              universityIsLive: Boolean(updatedUni?.is_live),
+            },
+            200,
+            cors
+          );
+        }
+
+        // POST /api/mcqs/bulk-delete
+        if (mcqSub === '/bulk-delete' && req.method === 'POST') {
+          const adminUser = await verifyD1Admin();
+          if (!adminUser) {
+            return jsonResponse({ success: false, error: 'Forbidden' }, 403, cors);
+          }
+          const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+          if (Array.isArray(body.ids) && body.ids.length > 0) {
+            const ids = body.ids.map((x: any) => String(x).trim()).filter(Boolean);
+            const batchSize = 50;
+            for (let i = 0; i < ids.length; i += batchSize) {
+              const slice = ids.slice(i, i + batchSize);
+              const placeholders = slice.map(() => '?').join(',');
+              await env.DB.prepare(`DELETE FROM mcqs WHERE id IN (${placeholders})`)
+                .bind(...slice)
+                .run();
+            }
+          } else if (body.university_id) {
+            const clauses = ['university_id = ?'];
+            const binds: any[] = [String(body.university_id)];
+            if (body.subject && body.subject !== 'all') {
+              clauses.push('LOWER(subject) = LOWER(?)');
+              binds.push(String(body.subject));
+            }
+            if (body.topic && body.topic !== 'all') {
+              clauses.push('LOWER(topic) = LOWER(?)');
+              binds.push(String(body.topic));
+            }
+            await env.DB.prepare(`DELETE FROM mcqs WHERE ${clauses.join(' AND ')}`)
+              .bind(...binds)
+              .run();
+          }
+          await recalculateAllD1UniCounts();
+          return jsonResponse({ success: true }, 200, cors);
+        }
+
+        // GET /api/mcqs
+        if (mcqSub === '/' && req.method === 'GET') {
+          const adminUser = await verifyD1Admin().catch(() => null);
+          const isAdmin = Boolean(adminUser);
+          const includeAnswers =
+            isAdmin ||
+            url.searchParams.get('practice') === '1' ||
+            url.searchParams.get('include_answers') === '1';
+
+          const uniParam = (
+            url.searchParams.get('university_id') ||
+            url.searchParams.get('university_slug') ||
+            url.searchParams.get('university') ||
+            ''
+          ).trim();
+          const subjectParam = (url.searchParams.get('subject') || '').trim();
+          const topicParam = (url.searchParams.get('topic') || '').trim();
+          const difficultyParam = (url.searchParams.get('difficulty') || '').trim().toLowerCase();
+          const searchParam = (
+            url.searchParams.get('search') ||
+            url.searchParams.get('q') ||
+            ''
+          ).trim();
+          const isRandom =
+            url.searchParams.get('random') === '1' || url.searchParams.get('random') === 'true';
+          const limit = Math.min(
+            500,
+            Math.max(1, parseInt(url.searchParams.get('limit') || '50', 10) || 50)
+          );
+          const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10) || 0);
+
+          const clauses: string[] = ['1=1'];
+          const binds: any[] = [];
+
+          if (uniParam && uniParam !== 'all') {
+            const uRow = await env.DB.prepare(
+              'SELECT id FROM universities WHERE id = ? OR LOWER(slug) = LOWER(?) OR LOWER(name) = LOWER(?) LIMIT 1'
+            )
+              .bind(uniParam, uniParam, uniParam)
+              .first<{ id: string }>();
+            clauses.push('university_id = ?');
+            binds.push(uRow ? uRow.id : uniParam);
+          }
+          if (subjectParam && subjectParam !== 'all') {
+            clauses.push('LOWER(subject) = LOWER(?)');
+            binds.push(subjectParam);
+          }
+          if (topicParam && topicParam !== 'all') {
+            clauses.push('LOWER(topic) = LOWER(?)');
+            binds.push(topicParam);
+          }
+          if (difficultyParam && difficultyParam !== 'all') {
+            clauses.push('LOWER(difficulty) = LOWER(?)');
+            binds.push(difficultyParam);
+          }
+          if (searchParam) {
+            clauses.push(
+              '(question LIKE ? OR option_a LIKE ? OR option_b LIKE ? OR option_c LIKE ? OR option_d LIKE ? OR topic LIKE ?)'
+            );
+            const like = `%${searchParam}%`;
+            binds.push(like, like, like, like, like, like);
+          }
+
+          const countRow = await env.DB.prepare(
+            `SELECT COUNT(*) as cnt FROM mcqs WHERE ${clauses.join(' AND ')}`
+          )
+            .bind(...binds)
+            .first<{ cnt: number }>();
+          const total = Number(countRow?.cnt || 0);
+
+          const orderSql = isRandom ? 'RANDOM()' : 'created_at DESC, id ASC';
+          const { results } = await env.DB.prepare(
+            `SELECT * FROM mcqs WHERE ${clauses.join(' AND ')} ORDER BY ${orderSql} LIMIT ? OFFSET ?`
+          )
+            .bind(...binds, limit, offset)
+            .all<D1McqRow>();
+
+          const letterToIdx: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+          const mcqs = (results || []).map((m) => {
+            const base: Record<string, any> = {
+              id: m.id,
+              university_id: m.university_id,
+              subject: m.subject,
+              topic: m.topic,
+              question: m.question,
+              option_a: m.option_a,
+              option_b: m.option_b,
+              option_c: m.option_c,
+              option_d: m.option_d,
+              options: [m.option_a, m.option_b, m.option_c, m.option_d],
+              difficulty: m.difficulty,
+              created_at: m.created_at,
+            };
+            if (includeAnswers) {
+              base.correct_answer = m.correct_answer;
+              base.correct_index = letterToIdx[m.correct_answer] ?? 0;
+              base.explanation = m.explanation;
+            }
+            return base;
+          });
+
+          return jsonResponse(
+            {
+              success: true,
+              mcqs,
+              total,
+              limit,
+              offset,
+              hasMore: offset + mcqs.length < total,
+            },
+            200,
+            cors
+          );
+        }
+
+        // POST /api/mcqs — Add single MCQ
+        if (mcqSub === '/' && req.method === 'POST') {
+          const adminUser = await verifyD1Admin();
+          if (!adminUser) {
+            return jsonResponse({ success: false, error: 'Forbidden' }, 403, cors);
+          }
+          const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+          const uniParam = String(body.university_id || body.universityId || '').trim();
+          const uni = await env.DB.prepare(
+            'SELECT * FROM universities WHERE id = ? OR LOWER(slug) = LOWER(?) LIMIT 1'
+          )
+            .bind(uniParam, uniParam)
+            .first<D1UniversityRow>();
+          if (!uni) {
+            return jsonResponse({ success: false, error: 'Valid university_id is required.' }, 400, cors);
+          }
+
+          const subject = String(body.subject || '').trim();
+          const topic = String(body.topic || 'General').trim() || 'General';
+          const question = String(body.question || '').trim();
+          const optA = String(body.option_a ?? body.options?.[0] ?? '').trim();
+          const optB = String(body.option_b ?? body.options?.[1] ?? '').trim();
+          const optC = String(body.option_c ?? body.options?.[2] ?? '').trim();
+          const optD = String(body.option_d ?? body.options?.[3] ?? '').trim();
+
+          if (!subject || !question || !optA || !optB || !optC || !optD) {
+            return jsonResponse(
+              { success: false, error: 'Subject, question, and all 4 options are required.' },
+              400,
+              cors
+            );
+          }
+
+          const correctLetter = normalizeCorrectLetter(body.correct_answer ?? body.correctAnswer, {
+            a: optA,
+            b: optB,
+            c: optC,
+            d: optD,
+          });
+          if (!correctLetter) {
+            return jsonResponse({ success: false, error: 'correct_answer must be A, B, C, or D.' }, 400, cors);
+          }
+
+          const rawDiff = String(body.difficulty || 'medium').trim().toLowerCase();
+          const difficulty = rawDiff === 'easy' || rawDiff === 'hard' ? rawDiff : 'medium';
+          const explanation = String(body.explanation || '').trim();
+          const id = String(body.id || `mcq_${uni.slug}_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`).trim();
+          const nowIso = new Date().toISOString();
+
+          await env.DB.prepare(
+            `INSERT INTO mcqs (id, university_id, subject, topic, question, option_a, option_b, option_c, option_d, correct_answer, explanation, difficulty, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+            .bind(id, uni.id, subject, topic, question, optA, optB, optC, optD, correctLetter, explanation, difficulty, nowIso)
+            .run();
+
+          await recalculateD1UniCount(uni.id);
+          const created = await env.DB.prepare('SELECT * FROM mcqs WHERE id = ?').bind(id).first<D1McqRow>();
+          return jsonResponse({ success: true, mcq: created }, 201, cors);
+        }
+
+        // PUT / PATCH / DELETE /api/mcqs/:id
+        const mcqId = decodeURIComponent(mcqSub.slice(1));
+        if (mcqId) {
+          const adminUser = await verifyD1Admin();
+          if (!adminUser) {
+            return jsonResponse({ success: false, error: 'Forbidden' }, 403, cors);
+          }
+          const existing = await env.DB.prepare('SELECT * FROM mcqs WHERE id = ? LIMIT 1')
+            .bind(mcqId)
+            .first<D1McqRow>();
+          if (!existing) {
+            return jsonResponse({ success: false, error: 'MCQ not found.' }, 404, cors);
+          }
+
+          if (req.method === 'PUT' || req.method === 'PATCH') {
+            const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+            const nextUniId =
+              body.university_id !== undefined ? String(body.university_id) : existing.university_id;
+            const nextSub = body.subject !== undefined ? String(body.subject).trim() : existing.subject;
+            const nextTop = body.topic !== undefined ? String(body.topic).trim() : existing.topic;
+            const nextQ = body.question !== undefined ? String(body.question).trim() : existing.question;
+            const nextA = body.option_a !== undefined ? String(body.option_a).trim() : existing.option_a;
+            const nextB = body.option_b !== undefined ? String(body.option_b).trim() : existing.option_b;
+            const nextC = body.option_c !== undefined ? String(body.option_c).trim() : existing.option_c;
+            const nextD = body.option_d !== undefined ? String(body.option_d).trim() : existing.option_d;
+            const nextExp =
+              body.explanation !== undefined ? String(body.explanation).trim() : existing.explanation;
+            const nextDiff =
+              body.difficulty !== undefined ? String(body.difficulty).toLowerCase() : existing.difficulty;
+            const nextCorr =
+              body.correct_answer !== undefined
+                ? normalizeCorrectLetter(body.correct_answer, {
+                    a: nextA,
+                    b: nextB,
+                    c: nextC,
+                    d: nextD,
+                  }) || existing.correct_answer
+                : existing.correct_answer;
+
+            await env.DB.prepare(
+              `UPDATE mcqs
+               SET university_id = ?, subject = ?, topic = ?, question = ?,
+                   option_a = ?, option_b = ?, option_c = ?, option_d = ?,
+                   correct_answer = ?, explanation = ?, difficulty = ?
+               WHERE id = ?`
+            )
+              .bind(
+                nextUniId,
+                nextSub,
+                nextTop,
+                nextQ,
+                nextA,
+                nextB,
+                nextC,
+                nextD,
+                nextCorr,
+                nextExp,
+                nextDiff,
+                existing.id
+              )
+              .run();
+
+            await recalculateD1UniCount(existing.university_id);
+            if (nextUniId !== existing.university_id) {
+              await recalculateD1UniCount(nextUniId);
+            }
+            const updated = await env.DB.prepare('SELECT * FROM mcqs WHERE id = ?')
+              .bind(existing.id)
+              .first<D1McqRow>();
+            return jsonResponse({ success: true, mcq: updated }, 200, cors);
+          }
+
+          if (req.method === 'DELETE') {
+            await env.DB.prepare('DELETE FROM mcqs WHERE id = ?').bind(existing.id).run();
+            await recalculateD1UniCount(existing.university_id);
+            return jsonResponse({ success: true, deletedId: existing.id }, 200, cors);
+          }
+        }
+
+        return jsonResponse({ success: false, error: 'MCQ endpoint not found.' }, 404, cors);
+      }
+
+      // ── /api/admin/legacy-bank/* ──────────────────────────────────────────
+      if (url.pathname.startsWith('/api/admin/legacy-bank')) {
+        const legSub = url.pathname.slice('/api/admin/legacy-bank'.length).replace(/\/+$/, '') || '/';
+
+        if (legSub === '/export' && req.method === 'GET') {
+          const format = (url.searchParams.get('format') || 'json').toLowerCase() === 'csv' ? 'csv' : 'json';
+          const records = Array.isArray((legacyBackupData as any)?.questions)
+            ? (legacyBackupData as any).questions
+            : [];
+          if (format === 'csv') {
+            const headers = [
+              'id',
+              'source',
+              'bank_id',
+              'subject',
+              'topic',
+              'question',
+              'option_a',
+              'option_b',
+              'option_c',
+              'option_d',
+              'correct_answer',
+              'explanation',
+              'difficulty',
+              'created_at',
+            ];
+            const esc = (v: any) => {
+              const s = String(v ?? '');
+              return s.includes(',') || s.includes('"') || s.includes('\n')
+                ? `"${s.replace(/"/g, '""')}"`
+                : s;
+            };
+            const csv = [
+              headers.join(','),
+              ...records.map((r: any) => headers.map((h) => esc(r[h])).join(',')),
+            ].join('\n');
+            return new Response(csv, {
+              status: 200,
+              headers: {
+                ...cors,
+                'Content-Type': 'text/csv; charset=utf-8',
+                'Content-Disposition': 'attachment; filename="boardly_legacy_admin_bank_backup.csv"',
+              },
+            });
+          }
+          return new Response(JSON.stringify(legacyBackupData, null, 2), {
+            status: 200,
+            headers: {
+              ...cors,
+              'Content-Type': 'application/json; charset=utf-8',
+              'Content-Disposition': 'attachment; filename="boardly_legacy_admin_bank_backup.json"',
+            },
+          });
+        }
+
+        const adminUser = await verifyD1Admin();
+        if (!adminUser) {
+          return jsonResponse({ success: false, error: 'Forbidden' }, 403, cors);
+        }
+
+        if (legSub === '/summary' && req.method === 'GET') {
+          const cntRow = await env.DB.prepare('SELECT COUNT(*) as cnt FROM questions').first<{ cnt: number }>();
+          const remaining = Number(cntRow?.cnt || 0);
+          return jsonResponse(
+            {
+              success: true,
+              remainingLegacyCount: remaining,
+              subjectPoolCounts: {
+                mathematics: 0,
+                physics: 0,
+                chemistry: 0,
+                'computer-science': 0,
+                english: 0,
+                biology: 0,
+                'analytical-reasoning': 0,
+              },
+              purgedAt: (legacyBackupData as any)?.exportedAt || new Date().toISOString(),
+              backupSummary: {
+                exportedAt: (legacyBackupData as any)?.exportedAt,
+                d1AdminBankQuestionCount: (legacyBackupData as any)?.d1AdminBankQuestionCount ?? 42,
+                legacySeedFileQuestionCount: (legacyBackupData as any)?.legacySeedFileQuestionCount ?? 15,
+                totalExportedRecords: (legacyBackupData as any)?.totalExportedRecords ?? 57,
+                subjectPoolCountsBeforeDelete: (legacyBackupData as any)?.subjectPoolCountsBeforeDelete,
+                captainAndGrandLineUntouched: true,
+              },
+              backupJsonUrl: '/api/admin/legacy-bank/export?format=json',
+              backupCsvUrl: '/api/admin/legacy-bank/export?format=csv',
+              captainAndGrandLineUntouched: true,
+            },
+            200,
+            cors
+          );
+        }
+
+        if (legSub === '/delete-confirmed' && req.method === 'POST') {
+          const body = (await req.json().catch(() => ({}))) as { confirmed?: boolean };
+          if (!body.confirmed) {
+            return jsonResponse({ success: false, error: 'Confirmation required.' }, 400, cors);
+          }
+          const cntRow = await env.DB.prepare('SELECT COUNT(*) as cnt FROM questions').first<{ cnt: number }>();
+          await env.DB.batch([
+            env.DB.prepare('DELETE FROM questions'),
+            env.DB.prepare('DELETE FROM questions_import_log'),
+          ]);
+          return jsonResponse(
+            {
+              success: true,
+              deletedCount: Number(cntRow?.cnt || 0),
+              subjectPoolCountsAfterDelete: {
+                mathematics: 0,
+                physics: 0,
+                chemistry: 0,
+                'computer-science': 0,
+                english: 0,
+                biology: 0,
+                'analytical-reasoning': 0,
+              },
+              captainAndGrandLineUntouched: true,
+              purgedAt: new Date().toISOString(),
+            },
+            200,
+            cors
+          );
+        }
+      }
     }
 
     // 3. API Routes under /api/posts

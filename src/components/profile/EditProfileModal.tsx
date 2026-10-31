@@ -7,7 +7,8 @@ import type { PublicProfile, UserProfile } from '@/types';
 
 import { validateDisplayName } from '@/utils/usernameValidation';
 import { submitNameRequest } from '@/services/nameRequestService';
-import { AlertCircle, Send, Loader2, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, Send, CheckCircle2 } from 'lucide-react';
+import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -247,10 +248,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   className="self-start mt-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-heading font-semibold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
                 >
                   {isSendingRequest ? (
-                    <>
-                      <Loader2 size={13} className="animate-spin" />
-                      <span>Sending Request...</span>
-                    </>
+                    <BubbleLoader variant="inline" customMessages={['Sending request...']} />
                   ) : (
                     <>
                       <Send size={13} />
@@ -281,9 +279,13 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             <button
               type="submit"
               disabled={isSaving}
-              className="flex-1 min-h-[44px] rounded-lg border border-red-700 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-xs font-semibold text-white transition-colors shadow-md shadow-red-950/40"
+              className="flex-1 min-h-[44px] px-4 rounded-lg border border-red-700 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-xs font-semibold text-white transition-colors shadow-md shadow-red-950/40 flex items-center justify-center"
             >
-              {isSaving ? 'Saving...' : 'Save changes'}
+              {isSaving ? (
+                <BubbleLoader variant="inline" customMessages={['Saving changes...']} />
+              ) : (
+                'Save changes'
+              )}
             </button>
           </div>
         </form>
