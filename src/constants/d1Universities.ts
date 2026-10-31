@@ -42,8 +42,10 @@ export interface D1McqReportRow {
   subject: string;
   topic: string;
   question_preview: string;
+  question?: string;
   reason: string;
   comment: string;
+  details?: string;
   user_id: string;
   user_email: string;
   status: 'open' | 'resolved' | 'ignored';
@@ -240,9 +242,20 @@ export function buildUniversitySlug(name: string): string {
     .replace(/^-+|-+$/g, '') || `uni-${Date.now()}`;
 }
 
+export const DEFAULT_D1_UNIVERSITIES: D1UniversityRow[] = PRE_SEEDED_UNIVERSITIES.map((u) => ({
+  id: u.id,
+  name: u.name,
+  slug: u.slug,
+  logo_url: u.logo_url || '',
+  sort_order: u.sort_order,
+  mcq_count: 0,
+  is_live: 0,
+  created_at: '2025-01-01T00:00:00.000Z',
+}));
+
 export function normalizeCorrectLetter(
   raw: unknown,
-  options?: { a?: string; b?: string; c?: string; d?: string }
+  options?: { a?: string; b?: string; c?: string; d?: string } | string[]
 ): 'A' | 'B' | 'C' | 'D' | null {
   if (raw === null || raw === undefined) return null;
   if (typeof raw === 'number' && Number.isInteger(raw)) {
@@ -260,13 +273,16 @@ export function normalizeCorrectLetter(
   if (upper === 'D' || upper === 'OPTION D' || upper === '(D)' || upper === '3') return 'D';
 
   if (options) {
+    const optObj = Array.isArray(options)
+      ? { a: options[0], b: options[1], c: options[2], d: options[3] }
+      : options;
     const norm = (s?: string) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
     const target = norm(str);
     if (target) {
-      if (norm(options.a) === target) return 'A';
-      if (norm(options.b) === target) return 'B';
-      if (norm(options.c) === target) return 'C';
-      if (norm(options.d) === target) return 'D';
+      if (norm(optObj.a) === target) return 'A';
+      if (norm(optObj.b) === target) return 'B';
+      if (norm(optObj.c) === target) return 'C';
+      if (norm(optObj.d) === target) return 'D';
     }
   }
 

@@ -4642,6 +4642,7 @@ ${allUrls
     );
 
     const subjectsMap = new Map<string, { subject: string; count: number; topics: Map<string, number> }>();
+    const flat: Array<{ subject: string; topic: string; count: number }> = [];
     for (const m of mcqs) {
       const sub = String(m.subject || 'General').trim();
       const top = String(m.topic || 'General').trim();
@@ -4655,19 +4656,27 @@ ${allUrls
 
     const subjects = Array.from(subjectsMap.values())
       .sort((a, b) => b.count - a.count || a.subject.localeCompare(b.subject))
-      .map((s) => ({
-        subject: s.subject,
-        count: s.count,
-        topics: Array.from(s.topics.entries())
+      .map((s) => {
+        const topicsArr = Array.from(s.topics.entries())
           .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-          .map(([topic, count]) => ({ topic, count })),
-      }));
+          .map(([topic, count]) => {
+            flat.push({ subject: s.subject, topic, count });
+            return { topic, count };
+          });
+        return {
+          subject: s.subject,
+          total: s.count,
+          count: s.count,
+          topics: topicsArr,
+        };
+      });
 
     return res.status(200).json({
       success: true,
       universityId: matchedUni?.id || null,
       totalMcqs: mcqs.length,
       subjects,
+      flat,
     });
   });
 
@@ -4694,6 +4703,8 @@ ${allUrls
       }
     }
 
+    const openReportsCount = reports.filter((r) => r.status === 'open').length;
+
     return res.status(200).json({
       success: true,
       source: 'cloudflare-d1',
@@ -4701,10 +4712,13 @@ ${allUrls
       liveUniversities: universities.filter((u) => u.mcq_count > 0).length,
       comingSoonUniversities: universities.filter((u) => u.mcq_count === 0).length,
       totalMcqs: mcqs.length,
+      missingExplanations: missingExplanationCount,
       missingExplanationCount,
-      openReportsCount: reports.filter((r) => r.status === 'open').length,
+      openReports: openReportsCount,
+      openReportsCount,
       bySubject,
       byDifficulty,
+      byUniversity: universities,
       universities,
     });
   });
@@ -4722,7 +4736,12 @@ ${allUrls
     const statusFilter = String(req.query.status || '').trim().toLowerCase();
     const reports = [...(store.mcqReports || [])]
       .filter((r) => !statusFilter || statusFilter === 'all' || r.status === statusFilter)
-      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+      .map((r) => ({
+        ...r,
+        question: r.question || r.question_preview || '',
+        details: r.details || r.comment || '',
+      }));
 
     return res.status(200).json({ success: true, reports });
   });
@@ -4739,15 +4758,19 @@ ${allUrls
     if (!Array.isArray(store.mcqReports)) store.mcqReports = [];
     const mcq = (store.mcqs || []).find((m) => m.id === mcqId);
 
+    const preview = mcq?.question?.slice(0, 180) || String(body.question_preview || body.question || '');
+    const commentText = String(body.comment || body.details || '').trim();
     const newReport: D1McqReportRow = {
       id: `mcqrep_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`,
       mcq_id: mcqId,
       university_id: mcq?.university_id || String(body.university_id || ''),
       subject: mcq?.subject || String(body.subject || ''),
       topic: mcq?.topic || String(body.topic || ''),
-      question_preview: mcq?.question?.slice(0, 180) || String(body.question_preview || ''),
+      question_preview: preview,
+      question: preview,
       reason: String(body.reason || 'wrong_key').trim(),
-      comment: String(body.comment || '').trim(),
+      comment: commentText,
+      details: commentText,
       user_id: user?.uid || String(body.user_id || body.userId || 'student'),
       user_email: user?.email || String(body.user_email || body.userEmail || ''),
       status: 'open',
@@ -4794,6 +4817,29 @@ ${allUrls
 
     const letterToIdx: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
 
+    if (Array.isArray(body.questionIds) && !Array.isArray(body.answers)) {
+      const results: Record<
+        string,
+        {
+          correct_answer: 'A' | 'B' | 'C' | 'D';
+          correct_index: number;
+          explanation: string;
+        }
+      > = {};
+      for (const rawId of body.questionIds) {
+        const qId = String(rawId || '').trim();
+        const row = mcqMap.get(qId);
+        if (!row) continue;
+        const letter = (String(row.correct_answer || 'A').toUpperCase() as 'A' | 'B' | 'C' | 'D');
+        results[qId] = {
+          correct_answer: letter,
+          correct_index: letterToIdx[letter] ?? 0,
+          explanation: row.explanation || '',
+        };
+      }
+      return res.status(200).json({ success: true, verified: true, results });
+    }
+
     if (Array.isArray(body.answers)) {
       const results: Record<string, any> = {};
       for (const item of body.answers) {
@@ -4833,7 +4879,7 @@ ${allUrls
       return res.status(200).json({ success: true, verified: true, results });
     }
 
-    return res.status(400).json({ success: false, error: 'answers array is required.' });
+    return res.status(400).json({ success: false, error: 'answers or questionIds array is required.' });
   });
 
   // POST /api/mcqs/import-chunk — Admin/Superadmin: Unlimited chunked bulk MCQ import
@@ -4849,9 +4895,9 @@ ${allUrls
 
     const body = req.body || {};
     const universityIdOrSlug = String(body.university_id || body.universityId || '').trim();
-    const defaultSubject = String(body.subject || '').trim();
-    const defaultTopic = String(body.topic || '').trim();
-    const chunkOffset = Math.max(0, Number(body.chunkOffset || 0));
+    const defaultSubject = String(body.default_subject || body.subject || '').trim();
+    const defaultTopic = String(body.default_topic || body.topic || '').trim();
+    const chunkOffset = Math.max(0, Number(body.chunk_offset ?? body.chunkOffset ?? 0));
     const rawRows = Array.isArray(body.rows) ? body.rows : [];
 
     if (!universityIdOrSlug) {
@@ -4868,7 +4914,7 @@ ${allUrls
       return res.status(404).json({ success: false, error: 'Target university not found in D1.' });
     }
 
-    const rowErrors: Array<{ rowNumber: number; reason: string }> = [];
+    const rowErrors: Array<{ rowNumber: number; reason: string; row: number; message: string }> = [];
     let importedCount = 0;
     const nowIso = new Date().toISOString();
 
@@ -4893,15 +4939,18 @@ ${allUrls
       }
 
       if (!subject) {
-        rowErrors.push({ rowNumber: rowNum, reason: 'Missing subject' });
+        const msg = 'Missing subject';
+        rowErrors.push({ rowNumber: rowNum, reason: msg, row: rowNum, message: msg });
         continue;
       }
       if (!question) {
-        rowErrors.push({ rowNumber: rowNum, reason: 'Missing question text' });
+        const msg = 'Missing question text';
+        rowErrors.push({ rowNumber: rowNum, reason: msg, row: rowNum, message: msg });
         continue;
       }
       if (!optA || !optB || !optC || !optD) {
-        rowErrors.push({ rowNumber: rowNum, reason: 'All 4 options (A, B, C, D) are required' });
+        const msg = 'All 4 options (A, B, C, D) are required';
+        rowErrors.push({ rowNumber: rowNum, reason: msg, row: rowNum, message: msg });
         continue;
       }
 
@@ -4910,10 +4959,8 @@ ${allUrls
         { a: optA, b: optB, c: optC, d: optD }
       );
       if (!correctLetter) {
-        rowErrors.push({
-          rowNumber: rowNum,
-          reason: `Invalid correct_answer "${String(r.correct_answer ?? r.correct ?? '')}" (must be A/B/C/D or match an option)`,
-        });
+        const msg = `Invalid correct_answer "${String(r.correct_answer ?? r.correct ?? '')}" (must be A/B/C/D or match an option)`;
+        rowErrors.push({ rowNumber: rowNum, reason: msg, row: rowNum, message: msg });
         continue;
       }
 
@@ -4954,8 +5001,11 @@ ${allUrls
     return res.status(200).json({
       success: true,
       universityId: uni.id,
+      imported: importedCount,
       importedCount,
+      failed: rowErrors.length,
       skippedCount: rowErrors.length,
+      errors: rowErrors.map((e) => ({ row: e.row, message: e.message })),
       rowErrors,
       universityMcqCount: uni.mcq_count,
       universityIsLive: Boolean(uni.is_live),
@@ -5340,12 +5390,21 @@ ${allUrls
       }
     }
 
+    const resolvedBackupSummary = store.legacyAdminBankBackupSummary || backupMeta;
+    const backupPools = resolvedBackupSummary?.subjectPoolCountsBeforeDelete || bySubjectPool;
+    const backupTotalCount = Number(resolvedBackupSummary?.totalExportedRecords ?? 57);
+
     return res.status(200).json({
       success: true,
+      totalToDelete: remainingLegacyQuestions.length,
       remainingLegacyCount: remainingLegacyQuestions.length,
+      subjectPools: bySubjectPool,
       subjectPoolCounts: bySubjectPool,
-      purgedAt: store.legacyAdminBankPurgedAt || null,
-      backupSummary: store.legacyAdminBankBackupSummary || backupMeta,
+      backupTotalCount,
+      backupPools,
+      alreadyPurged: remainingLegacyQuestions.length === 0,
+      purgedAt: store.legacyAdminBankPurgedAt || resolvedBackupSummary?.exportedAt || null,
+      backupSummary: resolvedBackupSummary,
       backupJsonUrl: '/api/admin/legacy-bank/export?format=json',
       backupCsvUrl: '/api/admin/legacy-bank/export?format=csv',
       captainAndGrandLineUntouched: true,
@@ -5410,7 +5469,7 @@ ${allUrls
       });
     }
 
-    if (!req.body?.confirmed) {
+    if (!req.body?.confirmed && !req.body?.confirm) {
       return res.status(400).json({
         success: false,
         error: 'Explicit admin confirmation (confirmed: true) is required before deletion.',

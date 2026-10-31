@@ -3811,15 +3811,25 @@ ${urls
             entry.topics.push({ topic: top, count: cnt });
           }
 
-          const subjects = Array.from(subjectsMap.values()).sort(
-            (a, b) => b.count - a.count || a.subject.localeCompare(b.subject)
+          const subjects = Array.from(subjectsMap.values())
+            .sort((a, b) => b.count - a.count || a.subject.localeCompare(b.subject))
+            .map((s) => ({
+              subject: s.subject,
+              count: s.count,
+              total: s.count,
+              topics: s.topics,
+            }));
+          const flat = subjects.flatMap((s) =>
+            s.topics.map((t) => ({ subject: s.subject, topic: t.topic, count: t.count }))
           );
           return jsonResponse(
             {
+              ok: true,
               success: true,
               universityId: resolvedUniId || null,
               totalMcqs,
               subjects,
+              flat,
             },
             200,
             cors
@@ -3849,18 +3859,25 @@ ${urls
             byDifficulty[String(r.difficulty || 'medium').toLowerCase()] = Number(r.cnt || 0);
           }
 
+          const missingCount = Number(missRes?.cnt || 0);
+          const openRepCount = Number(repRes?.cnt || 0);
+
           return jsonResponse(
             {
+              ok: true,
               success: true,
               source: 'cloudflare-d1',
               totalUniversities: universities.length,
               liveUniversities: universities.filter((u) => Number(u.mcq_count) > 0).length,
               comingSoonUniversities: universities.filter((u) => Number(u.mcq_count) === 0).length,
               totalMcqs,
-              missingExplanationCount: Number(missRes?.cnt || 0),
-              openReportsCount: Number(repRes?.cnt || 0),
+              missingExplanations: missingCount,
+              missingExplanationCount: missingCount,
+              openReports: openRepCount,
+              openReportsCount: openRepCount,
               bySubject,
               byDifficulty,
+              byUniversity: universities,
               universities,
             },
             200,
@@ -3877,7 +3894,12 @@ ${urls
           const { results } = await env.DB.prepare(
             'SELECT * FROM mcq_reports ORDER BY created_at DESC LIMIT 200'
           ).all<D1McqReportRow>();
-          return jsonResponse({ success: true, reports: results || [] }, 200, cors);
+          const reports = (results || []).map((r) => ({
+            ...r,
+            question: r.question_preview || '',
+            details: r.comment || '',
+          }));
+          return jsonResponse({ ok: true, success: true, reports }, 200, cors);
         }
 
         if (mcqSub === '/reports' && req.method === 'POST') {
@@ -3905,14 +3927,14 @@ ${urls
               mcq?.topic || String(body.topic || ''),
               (mcq?.question || String(body.question_preview || '')).slice(0, 180),
               String(body.reason || 'wrong_key'),
-              String(body.comment || ''),
+              String(body.comment || body.details || ''),
               user?.uid || String(body.user_id || body.userId || 'student'),
               user?.email || String(body.user_email || body.userEmail || ''),
               nowIso
             )
             .run();
 
-          return jsonResponse({ success: true, reportId }, 201, cors);
+          return jsonResponse({ ok: true, success: true, reportId }, 201, cors);
         }
 
         if (mcqSub.startsWith('/reports/') && req.method === 'PATCH') {
@@ -3926,13 +3948,17 @@ ${urls
           await env.DB.prepare('UPDATE mcq_reports SET status = ? WHERE id = ?')
             .bind(nextStatus, repId)
             .run();
-          return jsonResponse({ success: true }, 200, cors);
+          return jsonResponse({ ok: true, success: true }, 200, cors);
         }
 
         // POST /api/mcqs/verify
         if (mcqSub === '/verify' && req.method === 'POST') {
           const body = (await req.json().catch(() => ({}))) as Record<string, any>;
-          const answers = Array.isArray(body.answers) ? body.answers : [];
+          const answers = Array.isArray(body.answers)
+            ? body.answers
+            : Array.isArray(body.questionIds)
+            ? body.questionIds.map((qId: any) => ({ questionId: String(qId) }))
+            : [];
           const qIds = answers
             .map((a: any) => String(a?.questionId || a?.id || '').trim())
             .filter(Boolean);
@@ -3971,8 +3997,9 @@ ${urls
               results[qId] = {
                 questionId: qId,
                 selectedAnswer: selected,
+                correctIndex: resolvedIdx,
                 correct_answer: resolvedIdx,
-                correctAnswer: resolvedIdx,
+                correctAnswer: row.correct_answer || 'A',
                 correct_letter: row.correct_answer,
                 canonical_correct_answer: canonicalIdx,
                 isCorrect,
@@ -3980,7 +4007,7 @@ ${urls
               };
             }
           }
-          return jsonResponse({ success: true, verified: true, results }, 200, cors);
+          return jsonResponse({ ok: true, success: true, verified: true, results }, 200, cors);
         }
 
         // POST /api/mcqs/import-chunk — Unlimited chunked bulk import via D1 batch
@@ -3996,9 +4023,9 @@ ${urls
 
           const body = (await req.json().catch(() => ({}))) as Record<string, any>;
           const uniIdOrSlug = String(body.university_id || body.universityId || '').trim();
-          const defaultSubject = String(body.subject || '').trim();
-          const defaultTopic = String(body.topic || '').trim();
-          const chunkOffset = Math.max(0, Number(body.chunkOffset || 0));
+          const defaultSubject = String(body.default_subject || body.subject || '').trim();
+          const defaultTopic = String(body.default_topic || body.topic || '').trim();
+          const chunkOffset = Math.max(0, Number(body.chunk_offset ?? body.chunkOffset ?? 0));
           const rawRows = Array.isArray(body.rows) ? body.rows : [];
 
           const uni = await env.DB.prepare(
@@ -4011,7 +4038,7 @@ ${urls
             return jsonResponse({ success: false, error: 'Target university not found.' }, 404, cors);
           }
 
-          const rowErrors: Array<{ rowNumber: number; reason: string }> = [];
+          const rowErrors: Array<{ rowNumber: number; reason: string; row: number; message: string }> = [];
           const stmts: D1PreparedStatement[] = [];
           const nowIso = new Date().toISOString();
 
@@ -4035,15 +4062,20 @@ ${urls
             }
 
             if (!subject) {
-              rowErrors.push({ rowNumber: rowNum, reason: 'Missing subject' });
+              rowErrors.push({ rowNumber: rowNum, reason: 'Missing subject', row: rowNum, message: 'Missing subject' });
               continue;
             }
             if (!question) {
-              rowErrors.push({ rowNumber: rowNum, reason: 'Missing question text' });
+              rowErrors.push({ rowNumber: rowNum, reason: 'Missing question text', row: rowNum, message: 'Missing question text' });
               continue;
             }
             if (!optA || !optB || !optC || !optD) {
-              rowErrors.push({ rowNumber: rowNum, reason: 'All 4 options (A, B, C, D) are required' });
+              rowErrors.push({
+                rowNumber: rowNum,
+                reason: 'All 4 options (A, B, C, D) are required',
+                row: rowNum,
+                message: 'All 4 options (A, B, C, D) are required',
+              });
               continue;
             }
 
@@ -4052,9 +4084,12 @@ ${urls
               { a: optA, b: optB, c: optC, d: optD }
             );
             if (!correctLetter) {
+              const msg = `Invalid correct_answer "${String(r.correct_answer ?? r.correct ?? '')}"`;
               rowErrors.push({
                 rowNumber: rowNum,
-                reason: `Invalid correct_answer "${String(r.correct_answer ?? r.correct ?? '')}"`,
+                reason: msg,
+                row: rowNum,
+                message: msg,
               });
               continue;
             }
@@ -4102,10 +4137,14 @@ ${urls
 
           return jsonResponse(
             {
+              ok: true,
               success: true,
               universityId: uni.id,
+              imported: stmts.length,
               importedCount: stmts.length,
+              failed: rowErrors.length,
               skippedCount: rowErrors.length,
+              errors: rowErrors.map((e) => ({ row: e.row, message: e.message })),
               rowErrors,
               universityMcqCount: Number(updatedUni?.mcq_count || 0),
               universityIsLive: Boolean(updatedUni?.is_live),
@@ -4472,26 +4511,35 @@ ${urls
         if (legSub === '/summary' && req.method === 'GET') {
           const cntRow = await env.DB.prepare('SELECT COUNT(*) as cnt FROM questions').first<{ cnt: number }>();
           const remaining = Number(cntRow?.cnt || 0);
+          const zeroPools = {
+            mathematics: 0,
+            physics: 0,
+            chemistry: 0,
+            'computer-science': 0,
+            english: 0,
+            biology: 0,
+            'analytical-reasoning': 0,
+          };
+          const backupPools = (legacyBackupData as any)?.subjectPoolCountsBeforeDelete || zeroPools;
+          const backupTotalCount = Number((legacyBackupData as any)?.totalExportedRecords ?? 57);
+          const purgedAt = (legacyBackupData as any)?.exportedAt || new Date().toISOString();
           return jsonResponse(
             {
               success: true,
+              totalToDelete: remaining,
               remainingLegacyCount: remaining,
-              subjectPoolCounts: {
-                mathematics: 0,
-                physics: 0,
-                chemistry: 0,
-                'computer-science': 0,
-                english: 0,
-                biology: 0,
-                'analytical-reasoning': 0,
-              },
-              purgedAt: (legacyBackupData as any)?.exportedAt || new Date().toISOString(),
+              subjectPools: zeroPools,
+              subjectPoolCounts: zeroPools,
+              backupTotalCount,
+              backupPools,
+              alreadyPurged: remaining === 0,
+              purgedAt,
               backupSummary: {
                 exportedAt: (legacyBackupData as any)?.exportedAt,
                 d1AdminBankQuestionCount: (legacyBackupData as any)?.d1AdminBankQuestionCount ?? 42,
                 legacySeedFileQuestionCount: (legacyBackupData as any)?.legacySeedFileQuestionCount ?? 15,
-                totalExportedRecords: (legacyBackupData as any)?.totalExportedRecords ?? 57,
-                subjectPoolCountsBeforeDelete: (legacyBackupData as any)?.subjectPoolCountsBeforeDelete,
+                totalExportedRecords: backupTotalCount,
+                subjectPoolCountsBeforeDelete: backupPools,
                 captainAndGrandLineUntouched: true,
               },
               backupJsonUrl: '/api/admin/legacy-bank/export?format=json',
@@ -4504,8 +4552,8 @@ ${urls
         }
 
         if (legSub === '/delete-confirmed' && req.method === 'POST') {
-          const body = (await req.json().catch(() => ({}))) as { confirmed?: boolean };
-          if (!body.confirmed) {
+          const body = (await req.json().catch(() => ({}))) as { confirmed?: boolean; confirm?: boolean };
+          if (!body.confirmed && !body.confirm) {
             return jsonResponse({ success: false, error: 'Confirmation required.' }, 400, cors);
           }
           const cntRow = await env.DB.prepare('SELECT COUNT(*) as cnt FROM questions').first<{ cnt: number }>();
@@ -4513,21 +4561,24 @@ ${urls
             env.DB.prepare('DELETE FROM questions'),
             env.DB.prepare('DELETE FROM questions_import_log'),
           ]);
+          const purgedAt = new Date().toISOString();
+          const zeroPools = {
+            mathematics: 0,
+            physics: 0,
+            chemistry: 0,
+            'computer-science': 0,
+            english: 0,
+            biology: 0,
+            'analytical-reasoning': 0,
+          };
           return jsonResponse(
             {
               success: true,
               deletedCount: Number(cntRow?.cnt || 0),
-              subjectPoolCountsAfterDelete: {
-                mathematics: 0,
-                physics: 0,
-                chemistry: 0,
-                'computer-science': 0,
-                english: 0,
-                biology: 0,
-                'analytical-reasoning': 0,
-              },
+              remainingCount: 0,
+              subjectPoolCountsAfterDelete: zeroPools,
               captainAndGrandLineUntouched: true,
-              purgedAt: new Date().toISOString(),
+              purgedAt,
             },
             200,
             cors

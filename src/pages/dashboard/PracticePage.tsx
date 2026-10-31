@@ -18,7 +18,22 @@ import {
   X,
   Sliders,
   Sparkles,
+  Building2,
+  Layers,
+  Flag,
 } from 'lucide-react';
+import {
+  fetchUniversities,
+  fetchUniversityTopics,
+  fetchMcqs,
+  submitMcqReport,
+} from '@/services/universityMcqService';
+import {
+  DEFAULT_D1_UNIVERSITIES,
+  type D1UniversityRow,
+  type D1McqRow,
+} from '@/constants/d1Universities';
+import { MathText } from '@/components/ui/MathText';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
@@ -161,6 +176,104 @@ export function PracticePage() {
     () => getUniversityCriteria(selectedUniversity),
     [selectedUniversity]
   );
+
+  // ── Cloudflare D1 University Subject & Topic Browser State (Zero Firebase) ──
+  const [d1Universities, setD1Universities] = useState<D1UniversityRow[]>(DEFAULT_D1_UNIVERSITIES);
+  const [d1SubjectsTree, setD1SubjectsTree] = useState<
+    Array<{ subject: string; total: number; topics: Array<{ topic: string; count: number }> }>
+  >([]);
+  const [d1SelectedSubject, setD1SelectedSubject] = useState<string>('all');
+  const [d1LoadingTopics, setD1LoadingTopics] = useState<boolean>(false);
+
+  // Interactive D1 Practice Session State
+  const [d1PracticeOpen, setD1PracticeOpen] = useState<boolean>(false);
+  const [d1PracticeTitle, setD1PracticeTitle] = useState<string>('');
+  const [d1PracticeMcqs, setD1PracticeMcqs] = useState<D1McqRow[]>([]);
+  const [d1PracticeIndex, setD1PracticeIndex] = useState<number>(0);
+  const [d1SelectedAnswers, setD1SelectedAnswers] = useState<Record<string, 'A' | 'B' | 'C' | 'D'>>({});
+  const [d1LoadingPractice, setD1LoadingPractice] = useState<boolean>(false);
+  const [d1ReportToast, setD1ReportToast] = useState<string | null>(null);
+
+  const activeD1Uni = useMemo(() => {
+    const safeList = Array.isArray(d1Universities) ? d1Universities : DEFAULT_D1_UNIVERSITIES;
+    const param = (urlUniversity || selectedUniversity || '').trim().toLowerCase();
+    return (
+      safeList.find(
+        (u) =>
+          u.id.toLowerCase() === param ||
+          u.slug.toLowerCase() === param ||
+          u.name.toLowerCase() === param
+      ) ||
+      safeList.find((u) => u.mcq_count > 0) ||
+      safeList[0] ||
+      null
+    );
+  }, [d1Universities, urlUniversity, selectedUniversity]);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchUniversities()
+      .then((list) => {
+        if (mounted && Array.isArray(list) && list.length > 0) {
+          setD1Universities(list);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeD1Uni) return;
+    let mounted = true;
+    setD1LoadingTopics(true);
+    fetchUniversityTopics(activeD1Uni.id)
+      .then((res) => {
+        if (mounted) {
+          setD1SubjectsTree(Array.isArray(res?.subjects) ? res.subjects : []);
+          setD1LoadingTopics(false);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setD1SubjectsTree([]);
+          setD1LoadingTopics(false);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [activeD1Uni]);
+
+  const startD1UniversityPractice = async (opts: { subject?: string; topic?: string; label: string }) => {
+    if (!activeD1Uni) return;
+    setD1LoadingPractice(true);
+    setLaunchError(null);
+    try {
+      const res = await fetchMcqs({
+        university_id: activeD1Uni.id,
+        subject: opts.subject && opts.subject !== 'all' ? opts.subject : undefined,
+        topic: opts.topic && opts.topic !== 'all' ? opts.topic : undefined,
+        limit: 50,
+        include_answers: true,
+      });
+      const list = Array.isArray(res?.mcqs) ? res.mcqs : [];
+      if (list.length === 0) {
+        setLaunchError(`No MCQs found for ${opts.label} in ${activeD1Uni.name} yet.`);
+        return;
+      }
+      setD1PracticeTitle(`${activeD1Uni.name} · ${opts.label}`);
+      setD1PracticeMcqs(list);
+      setD1PracticeIndex(0);
+      setD1SelectedAnswers({});
+      setD1PracticeOpen(true);
+    } catch {
+      setLaunchError('Could not load university practice questions from D1.');
+    } finally {
+      setD1LoadingPractice(false);
+    }
+  };
 
   // Launch test handler
   const launchTest = async (
@@ -386,6 +499,164 @@ export function PracticePage() {
             </div>
           </div>
         )}
+
+        {/* ── CLOUDFLARE D1 UNIVERSITY SUBJECT & TOPIC PRACTICE BROWSER ── */}
+        <Card className="p-5 sm:p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[var(--border)]">
+            <div>
+              <div className="flex items-center gap-2">
+                <Building2 size={17} className="text-[var(--accent)]" />
+                <h2
+                  className="text-lg font-bold text-[var(--text)]"
+                  style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+                >
+                  University Subject &amp; Topic Bank
+                </h2>
+              </div>
+              <p className="text-xs text-[var(--muted)] mt-0.5">
+                Select a LIVE university to practice its subjects and topics, or run a mixed university practice session.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                value={activeD1Uni?.slug || ''}
+                onChange={(e) => {
+                  setSelectedUniversity(e.target.value);
+                  setD1SelectedSubject('all');
+                }}
+                className="px-3 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-bold text-[var(--text)]"
+              >
+                {(d1Universities || []).map((u) => (
+                  <option key={u.id} value={u.slug}>
+                    {u.name} ({u.mcq_count > 0 ? `${u.mcq_count} MCQs · LIVE` : 'Coming Soon'})
+                  </option>
+                ))}
+              </select>
+
+              {activeD1Uni && activeD1Uni.mcq_count > 0 && (
+                <button
+                  type="button"
+                  disabled={d1LoadingPractice}
+                  onClick={() =>
+                    startD1UniversityPractice({
+                      label: 'Mixed University Practice',
+                    })
+                  }
+                  className="btn-red px-3.5 py-2 rounded-xl text-xs font-bold cursor-pointer shrink-0"
+                >
+                  {d1LoadingPractice ? 'Loading...' : `Practice Mixed (${activeD1Uni.mcq_count})`}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {d1LoadingTopics ? (
+            <div className="py-6 text-center text-xs text-[var(--muted)]">
+              Loading subjects &amp; topics for {activeD1Uni?.name || 'university'}...
+            </div>
+          ) : !activeD1Uni || activeD1Uni.mcq_count === 0 || (d1SubjectsTree || []).length === 0 ? (
+            <div className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div>
+                <span className="font-bold text-[var(--text)]">
+                  {activeD1Uni?.name || 'Selected University'} — Coming Soon (0 MCQs)
+                </span>
+                <p className="text-[var(--muted)] mt-0.5">
+                  This university bank will unlock automatically as soon as MCQs are added in the Admin Question Bank.
+                </p>
+              </div>
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase bg-[var(--surface)] border border-[var(--border)] text-[var(--muted)] shrink-0">
+                Coming Soon
+              </span>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Subject Pills */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setD1SelectedSubject('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                    d1SelectedSubject === 'all'
+                      ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                      : 'bg-[var(--surface-2)] text-[var(--text)] border-[var(--border)]'
+                  }`}
+                >
+                  All Subjects ({activeD1Uni.mcq_count})
+                </button>
+                {(d1SubjectsTree || []).map((s) => (
+                  <button
+                    key={s.subject}
+                    type="button"
+                    onClick={() => setD1SelectedSubject(s.subject)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                      d1SelectedSubject === s.subject
+                        ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                        : 'bg-[var(--surface-2)] text-[var(--text)] border-[var(--border)]'
+                    }`}
+                  >
+                    {s.subject} ({s.total})
+                  </button>
+                ))}
+              </div>
+
+              {/* Subject & Topic Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {(d1SubjectsTree || [])
+                  .filter((s) => d1SelectedSubject === 'all' || s.subject === d1SelectedSubject)
+                  .map((s) => (
+                    <div
+                      key={s.subject}
+                      className="p-3.5 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] flex flex-col justify-between gap-3"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-[var(--text)]">{s.subject}</span>
+                          <span className="text-[10px] font-mono font-bold text-[var(--accent)]">
+                            {s.total} MCQs
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 mt-2.5">
+                          {(s.topics || []).map((t) => (
+                            <button
+                              key={t.topic}
+                              type="button"
+                              onClick={() =>
+                                startD1UniversityPractice({
+                                  subject: s.subject,
+                                  topic: t.topic,
+                                  label: `${s.subject} · ${t.topic}`,
+                                })
+                              }
+                              className="px-2 py-1 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--accent)] text-[11px] text-[var(--text)] flex items-center gap-1 cursor-pointer"
+                            >
+                              <Layers size={10} className="text-[var(--accent)]" />
+                              <span>{t.topic}</span>
+                              <span className="font-mono text-[10px] text-[var(--muted)]">({t.count})</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          startD1UniversityPractice({
+                            subject: s.subject,
+                            label: `${s.subject} (All Topics)`,
+                          })
+                        }
+                        className="w-full py-1.5 px-3 rounded-xl bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--accent)] text-xs font-bold text-[var(--text)] flex items-center justify-between cursor-pointer"
+                      >
+                        <span>Practice {s.subject}</span>
+                        <ArrowRight size={13} className="text-[var(--accent)]" />
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+        </Card>
 
         {/* ── Practice Options Grid (3 Cards) ── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -884,6 +1155,193 @@ export function PracticePage() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ── INTERACTIVE D1 UNIVERSITY PRACTICE MODAL (KATEX + \ce) ── */}
+        {d1PracticeOpen && d1PracticeMcqs.length > 0 && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 overflow-y-auto">
+            <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl bg-[var(--surface)] border border-[var(--border)] p-6 space-y-5 shadow-2xl text-[var(--text)]">
+              {(() => {
+                const currentQ = d1PracticeMcqs[d1PracticeIndex] || d1PracticeMcqs[0];
+                const chosen = d1SelectedAnswers[currentQ.id];
+                const isAnswered = Boolean(chosen);
+                const correctCount = d1PracticeMcqs.filter(
+                  (m) => d1SelectedAnswers[m.id] && d1SelectedAnswers[m.id] === m.correct_answer
+                ).length;
+                const answeredCount = Object.keys(d1SelectedAnswers).length;
+
+                return (
+                  <>
+                    <div className="flex items-center justify-between gap-3 pb-3 border-b border-[var(--border)]">
+                      <div>
+                        <span className="text-[10px] font-mono uppercase font-bold text-[var(--accent)]">
+                          University MCQ Practice
+                        </span>
+                        <h3 className="text-base sm:text-lg font-bold text-[var(--text)]">
+                          {d1PracticeTitle}
+                        </h3>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)]">
+                          Score: {correctCount}/{answeredCount}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setD1PracticeOpen(false)}
+                          className="p-1.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {d1ReportToast && (
+                      <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-500 text-xs font-semibold">
+                        {d1ReportToast}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2.5 py-0.5 rounded-full font-mono text-[10px] font-bold bg-[var(--surface-2)] border border-[var(--border)]">
+                          Q {d1PracticeIndex + 1} / {d1PracticeMcqs.length}
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full font-mono text-[10px] bg-[var(--surface-2)] border border-[var(--border)]">
+                          {currentQ.subject} · {currentQ.topic}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full font-mono text-[10px] uppercase bg-[var(--surface-2)] border border-[var(--border)]">
+                          {currentQ.difficulty}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await submitMcqReport({
+                            mcq_id: currentQ.id,
+                            university_id: currentQ.university_id,
+                            reason: 'student_flag',
+                            details: `Flagged from ${d1PracticeTitle}`,
+                            reported_by: user?.uid || 'student',
+                          });
+                          setD1ReportToast('Question reported to Admin Question Bank.');
+                          setTimeout(() => setD1ReportToast(null), 3000);
+                        }}
+                        className="text-[11px] text-[var(--muted)] hover:text-[var(--accent)] flex items-center gap-1 cursor-pointer"
+                      >
+                        <Flag size={12} />
+                        <span>Report</span>
+                      </button>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-sm sm:text-base leading-relaxed">
+                      <MathText text={currentQ.question} block />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2.5">
+                      {(
+                        [
+                          ['A', currentQ.option_a],
+                          ['B', currentQ.option_b],
+                          ['C', currentQ.option_c],
+                          ['D', currentQ.option_d],
+                        ] as const
+                      ).map(([letter, text]) => {
+                        const isSelected = chosen === letter;
+                        const isCorrect = currentQ.correct_answer === letter;
+                        let styleClass =
+                          'border-[var(--border)] bg-[var(--surface-2)] hover:border-[var(--text-muted)]';
+                        if (isAnswered) {
+                          if (isCorrect) {
+                            styleClass = 'border-emerald-500 bg-emerald-500/15 text-[var(--text)]';
+                          } else if (isSelected) {
+                            styleClass = 'border-red-500 bg-red-500/15 text-[var(--text)]';
+                          }
+                        }
+
+                        return (
+                          <button
+                            key={letter}
+                            type="button"
+                            onClick={() => {
+                              if (isAnswered) return;
+                              setD1SelectedAnswers((prev) => ({
+                                ...prev,
+                                [currentQ.id]: letter,
+                              }));
+                            }}
+                            className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${styleClass}`}
+                          >
+                            <span
+                              className={`w-6 h-6 rounded-full text-xs font-mono font-bold flex items-center justify-center shrink-0 ${
+                                isAnswered && isCorrect
+                                  ? 'bg-emerald-500 text-white'
+                                  : isAnswered && isSelected
+                                  ? 'bg-red-500 text-white'
+                                  : 'bg-[var(--surface)] border border-[var(--border)] text-[var(--text)]'
+                              }`}
+                            >
+                              {letter}
+                            </span>
+                            <div className="text-xs sm:text-sm flex-1 pt-0.5">
+                              <MathText text={text} />
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {isAnswered && (
+                      <div className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-xs space-y-1.5">
+                        <div className="font-bold font-mono uppercase text-[11px] flex items-center gap-2">
+                          <span
+                            className={
+                              chosen === currentQ.correct_answer
+                                ? 'text-emerald-500'
+                                : 'text-red-500'
+                            }
+                          >
+                            {chosen === currentQ.correct_answer
+                              ? 'Correct!'
+                              : `Incorrect — Correct Answer is ${currentQ.correct_answer}`}
+                          </span>
+                        </div>
+                        {currentQ.explanation && (
+                          <div className="text-[var(--text)] pt-1">
+                            <MathText text={currentQ.explanation} block />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-3 border-t border-[var(--border)]">
+                      <button
+                        type="button"
+                        disabled={d1PracticeIndex === 0}
+                        onClick={() => setD1PracticeIndex((i) => Math.max(0, i - 1))}
+                        className="px-4 py-2 rounded-xl border border-[var(--border)] text-xs font-bold disabled:opacity-40 flex items-center gap-1 cursor-pointer"
+                      >
+                        <ChevronLeft size={14} />
+                        <span>Previous</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={d1PracticeIndex + 1 >= d1PracticeMcqs.length}
+                        onClick={() =>
+                          setD1PracticeIndex((i) => Math.min(d1PracticeMcqs.length - 1, i + 1))
+                        }
+                        className="btn-red px-5 py-2 rounded-xl text-xs font-bold disabled:opacity-40 flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Next Question</span>
+                        <ChevronRight size={14} />
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}

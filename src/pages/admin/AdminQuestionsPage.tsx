@@ -206,10 +206,11 @@ export function AdminQuestionsPage() {
     setLoadingUnis(true);
     try {
       const list = await fetchUniversities();
-      setUniversities(list);
+      const safeList = Array.isArray(list) ? list : [];
+      setUniversities(safeList);
       setSelectedUniId((prev) => {
-        if (prev && list.some((u) => u.id === prev)) return prev;
-        return list[0]?.id || '';
+        if (prev && safeList.some((u) => u.id === prev)) return prev;
+        return safeList[0]?.id || '';
       });
     } catch (err: any) {
       showToast('error', err?.message || 'Failed to load universities from D1');
@@ -240,7 +241,7 @@ export function AdminQuestionsPage() {
     }
     try {
       const res = await fetchUniversityTopics(uniId);
-      setUniSubjectsTree(res.subjects || []);
+      setUniSubjectsTree(Array.isArray(res?.subjects) ? res.subjects : []);
     } catch {
       setUniSubjectsTree([]);
     }
@@ -271,8 +272,9 @@ export function AdminQuestionsPage() {
         offset: pageIndex * pageSize,
         include_answers: true,
       });
-      setMcqs(res.mcqs);
-      setTotalMcqs(res.total);
+      const safeMcqs = Array.isArray(res?.mcqs) ? res.mcqs : [];
+      setMcqs(safeMcqs);
+      setTotalMcqs(typeof res?.total === 'number' ? res.total : safeMcqs.length);
       setSelectedMcqIds(new Set());
     } catch (err: any) {
       showToast('error', err?.message || 'Failed to load MCQs from D1');
@@ -305,7 +307,7 @@ export function AdminQuestionsPage() {
     setLoadingReports(true);
     try {
       const list = await fetchMcqReports();
-      setReports(list);
+      setReports(Array.isArray(list) ? list : []);
     } catch (err: any) {
       showToast('error', err?.message || 'Failed to load student reports');
     } finally {
@@ -319,28 +321,31 @@ export function AdminQuestionsPage() {
   }, [activeTab, loadHealth, loadReports]);
 
   const currentUni = useMemo(
-    () => universities.find((u) => u.id === selectedUniId) || null,
+    () => (Array.isArray(universities) ? universities : []).find((u) => u.id === selectedUniId) || null,
     [universities, selectedUniId]
   );
 
   const availableSubjects = useMemo(() => {
     const set = new Set<string>(DEFAULT_SUBJECT_SUGGESTIONS);
-    uniSubjectsTree.forEach((s) => set.add(s.subject));
+    (Array.isArray(uniSubjectsTree) ? uniSubjectsTree : []).forEach((s) => {
+      if (s?.subject) set.add(s.subject);
+    });
     return Array.from(set);
   }, [uniSubjectsTree]);
 
   const availableTopicsForSelectedSubject = useMemo(() => {
+    const safeTree = Array.isArray(uniSubjectsTree) ? uniSubjectsTree : [];
     if (selectedSubject === 'all') {
       const allTopics: Array<{ topic: string; count: number }> = [];
-      uniSubjectsTree.forEach((s) => {
-        s.topics.forEach((t) => allTopics.push(t));
+      safeTree.forEach((s) => {
+        (Array.isArray(s?.topics) ? s.topics : []).forEach((t) => allTopics.push(t));
       });
       return allTopics;
     }
-    const found = uniSubjectsTree.find(
-      (s) => s.subject.toLowerCase() === selectedSubject.toLowerCase()
+    const found = safeTree.find(
+      (s) => String(s?.subject || '').toLowerCase() === selectedSubject.toLowerCase()
     );
-    return found ? found.topics : [];
+    return found && Array.isArray(found.topics) ? found.topics : [];
   }, [uniSubjectsTree, selectedSubject]);
 
   // ── University Add / Edit / Reorder / Delete Handlers ──
@@ -1380,7 +1385,7 @@ export function AdminQuestionsPage() {
                   University MCQ Breakdown (Cloudflare D1)
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                  {healthData.byUniversity.map((u) => (
+                  {(healthData.byUniversity || (healthData as any).universities || []).map((u: any) => (
                     <div
                       key={u.id}
                       className="p-3 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]/50 flex items-center justify-between"
@@ -1418,19 +1423,19 @@ export function AdminQuestionsPage() {
       {activeTab === 'reports' && (
         <div className="p-5 rounded-3xl bg-[var(--surface)] border border-[var(--border)] flex flex-col gap-4">
           <h3 className="text-sm font-bold text-[var(--text)]">
-            Student Question Reports ({reports.length})
+            Student Question Reports ({(reports || []).length})
           </h3>
           {loadingReports ? (
             <div className="py-8 text-center text-xs text-[var(--text-muted)]">
               Loading reports from D1...
             </div>
-          ) : reports.length === 0 ? (
+          ) : (reports || []).length === 0 ? (
             <div className="py-8 text-center text-xs text-[var(--text-muted)]">
               No student reports submitted yet.
             </div>
           ) : (
             <div className="space-y-3">
-              {reports.map((rep) => (
+              {(reports || []).map((rep) => (
                 <div
                   key={rep.id}
                   className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
@@ -2105,13 +2110,13 @@ export function AdminQuestionsPage() {
             )}
 
             {/* Per-Row Error Report */}
-            {((importProgress?.errors && importProgress.errors.length > 0) ||
-              parsedPreview.parseErrors.length > 0) && (
+            {((Array.isArray(importProgress?.errors) && importProgress.errors.length > 0) ||
+              (Array.isArray(parsedPreview.parseErrors) && parsedPreview.parseErrors.length > 0)) && (
               <div className="p-3.5 rounded-2xl bg-[var(--surface-muted)] border border-amber-500/40 max-h-40 overflow-y-auto space-y-1 text-xs">
                 <div className="font-bold text-amber-500">
                   Row Error Report (failed rows skipped automatically without stopping import):
                 </div>
-                {(importProgress?.errors || parsedPreview.parseErrors).slice(0, 100).map((err, idx) => (
+                {(importProgress?.errors || parsedPreview.parseErrors || []).slice(0, 100).map((err, idx) => (
                   <div key={idx} className="font-mono text-[11px] text-[var(--text-secondary)]">
                     Row #{err.row}: {err.message}
                   </div>

@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { fetchUniversities } from '@/services/universityMcqService';
-import type { D1UniversityRow } from '@/constants/d1Universities';
+import { DEFAULT_D1_UNIVERSITIES, type D1UniversityRow } from '@/constants/d1Universities';
 import { DailyLimitsMeter } from '@/components/dashboard/DailyLimitsMeter';
 import { RecentAttempts } from '@/components/dashboard/RecentAttempts';
 import { WeakChapters } from '@/components/dashboard/WeakChapters';
@@ -225,7 +225,7 @@ export function OverviewPage() {
   };
 
   // ── D1 Universities for Cockpit "Choose your university" section (Zero Firebase) ──
-  const [d1Universities, setD1Universities] = useState<D1UniversityRow[]>([]);
+  const [d1Universities, setD1Universities] = useState<D1UniversityRow[]>(DEFAULT_D1_UNIVERSITIES);
   const [loadingD1Unis, setLoadingD1Unis] = useState<boolean>(true);
 
   useEffect(() => {
@@ -233,7 +233,7 @@ export function OverviewPage() {
     fetchUniversities()
       .then((list) => {
         if (mounted) {
-          setD1Universities(list);
+          setD1Universities(Array.isArray(list) && list.length > 0 ? list : DEFAULT_D1_UNIVERSITIES);
           setLoadingD1Unis(false);
         }
       })
@@ -446,11 +446,11 @@ export function OverviewPage() {
           <div className="flex items-center gap-2 text-[11px] font-mono text-[var(--muted)] shrink-0">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--surface-muted)] border border-[var(--border)]">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span>{d1Universities.filter((u) => u.mcq_count > 0).length} LIVE</span>
+              <span>{(d1Universities || []).filter((u) => u.mcq_count > 0).length} LIVE</span>
             </span>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--surface-muted)] border border-[var(--border)]">
               <span className="w-2 h-2 rounded-full bg-[var(--text-muted)] opacity-50" />
-              <span>{d1Universities.filter((u) => u.mcq_count === 0).length} Coming Soon</span>
+              <span>{(d1Universities || []).filter((u) => u.mcq_count === 0).length} Coming Soon</span>
             </span>
           </div>
         </div>
@@ -466,7 +466,7 @@ export function OverviewPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 pt-2">
-            {d1Universities.map((uni) => {
+            {(d1Universities || []).map((uni) => {
               const isLive = uni.mcq_count > 0;
               const initials = uni.name
                 .replace(/\([^)]*\)/g, '')
