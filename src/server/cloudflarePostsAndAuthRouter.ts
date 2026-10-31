@@ -22,6 +22,9 @@ import {
   type D1UniversityRow,
   type D1McqRow,
   type D1McqReportRow,
+  type D1ImportBatchRow,
+  type D1BankHealthIntegrityReport,
+  type D1RepairUniversityGroup,
 } from '../constants/d1Universities';
 import {
   resolveStaticOrPatternRouteMeta,
@@ -291,6 +294,7 @@ interface D1StoreData {
   universities?: D1UniversityRow[];
   mcqs?: D1McqRow[];
   mcqReports?: D1McqReportRow[];
+  imports?: D1ImportBatchRow[];
   legacyAdminBankPurgedAt?: string;
   legacyAdminBankBackupSummary?: Record<string, any>;
 }
@@ -394,17 +398,21 @@ function ensureStoreDefaults(store: D1StoreData): boolean {
     store.mcqReports = [];
     mutated = true;
   }
+  if (!Array.isArray(store.imports)) {
+    store.imports = [];
+    mutated = true;
+  }
   if (!Array.isArray(store.universities)) {
     store.universities = [];
     mutated = true;
   }
 
-  // Ensure all pre-seeded Pakistani universities & entry tests exist
+  // Idempotent seed: ON CONFLICT(slug) DO UPDATE SET name, logo_url, sort_order ONLY (never change id)
   for (const seed of PRE_SEEDED_UNIVERSITIES) {
-    const exists = store.universities.some(
-      (u) => u.id === seed.id || u.slug.toLowerCase() === seed.slug.toLowerCase()
-    );
-    if (!exists) {
+    const existingBySlug = store.universities.find((u) => u.slug === seed.slug);
+    const existingById = store.universities.find((u) => u.id === seed.id);
+    const existing = existingBySlug || existingById;
+    if (!existing) {
       store.universities.push({
         id: seed.id,
         name: seed.name,
@@ -415,6 +423,36 @@ function ensureStoreDefaults(store: D1StoreData): boolean {
         is_live: 0,
         created_at: new Date(basePastMs).toISOString(),
       });
+      mutated = true;
+    } else {
+      if (!existing.name) {
+        existing.name = seed.name;
+        mutated = true;
+      }
+      if (!existing.slug) {
+        existing.slug = seed.slug;
+        mutated = true;
+      }
+      if (!Number.isFinite(Number(existing.sort_order)) || existing.sort_order <= 0) {
+        existing.sort_order = seed.sort_order;
+        mutated = true;
+      }
+    }
+  }
+
+  // Ensure every MCQ has university_slug synced with its university_id and import_batch_id initialized
+  const uniById = new Map<string, D1UniversityRow>();
+  for (const u of store.universities) {
+    uniById.set(u.id, u);
+  }
+  for (const m of store.mcqs) {
+    const u = uniById.get(m.university_id);
+    if (u && m.university_slug !== u.slug) {
+      m.university_slug = u.slug;
+      mutated = true;
+    }
+    if (m.import_batch_id === undefined) {
+      m.import_batch_id = '';
       mutated = true;
     }
   }
@@ -471,6 +509,7 @@ export function loadD1Store(): D1StoreData {
         universities: Array.isArray(parsed.universities) ? parsed.universities : [],
         mcqs: Array.isArray(parsed.mcqs) ? parsed.mcqs : [],
         mcqReports: Array.isArray(parsed.mcqReports) ? parsed.mcqReports : [],
+        imports: Array.isArray(parsed.imports) ? parsed.imports : [],
         legacyAdminBankPurgedAt: parsed.legacyAdminBankPurgedAt,
         legacyAdminBankBackupSummary: parsed.legacyAdminBankBackupSummary,
       };

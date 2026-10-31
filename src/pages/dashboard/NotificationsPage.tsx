@@ -1,23 +1,21 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bell,
   Megaphone,
   FileText,
   UserPlus,
-  Check,
   CheckCheck,
   RotateCcw,
-  ChevronRight,
   Shield,
-  X,
   Pin,
   MessageSquare,
   Heart,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { PageMeta } from '@/components/ui/PageMeta';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import {
@@ -29,20 +27,25 @@ import {
   markAnnouncementAsRead,
   markAllNotificationsAsRead,
   WELCOME_ANNOUNCEMENT_ID,
+  toMillis,
   type AppNotification,
-  type AnnouncementItem,
 } from '@/services/notificationService';
 import { resolveNotificationDestination } from '@/utils/routes';
 import type { DocumentSnapshot } from 'firebase/firestore';
 
 type FilterType = 'all' | 'following' | 'announcements';
+type DateGroupKey = 'Today' | 'Yesterday' | 'Earlier';
 
-function formatRelativeTime(val: any): string {
+const PAGE_SIZE_LIMIT = 50;
+
+function formatRelativeTime(val: unknown): string {
   if (!val) return 'Just now';
   try {
-    const date = val?.toDate ? val.toDate() : new Date(val);
+    const ms = toMillis(val as Parameters<typeof toMillis>[0]);
+    const date = ms > 0 ? new Date(ms) : new Date(String(val));
+    if (Number.isNaN(date.getTime())) return 'Recently';
     const now = Date.now();
-    const diffSec = Math.floor((now - date.getTime()) / 1000);
+    const diffSec = Math.max(0, Math.floor((now - date.getTime()) / 1000));
     if (diffSec < 60) return 'Just now';
     const diffMin = Math.floor(diffSec / 60);
     if (diffMin < 60) return `${diffMin}m ago`;
@@ -56,6 +59,31 @@ function formatRelativeTime(val: any): string {
   }
 }
 
+function isPinnedNotification(notif: AppNotification): boolean {
+  return Boolean(
+    notif.isPinned ||
+      notif.id === WELCOME_ANNOUNCEMENT_ID ||
+      notif.announcementId === WELCOME_ANNOUNCEMENT_ID
+  );
+}
+
+function resolveDateGroup(notif: AppNotification): DateGroupKey {
+  // Pinned announcements always stay in the top group ("Today") so pinned items appear first overall
+  if (isPinnedNotification(notif)) {
+    return 'Today';
+  }
+  const ms = toMillis(notif.createdAt);
+  if (!ms) return 'Today';
+
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
+
+  if (ms >= startOfToday) return 'Today';
+  if (ms >= startOfYesterday) return 'Yesterday';
+  return 'Earlier';
+}
+
 export function NotificationsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -65,14 +93,19 @@ export function NotificationsPage() {
     getNotificationStoreSnapshot(user?.uid)
   );
   const [extraNotifications, setExtraNotifications] = useState<AppNotification[]>([]);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => new Set());
+  const [expandedAnnouncementIds, setExpandedAnnouncementIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [visibleCount, setVisibleCount] = useState<number>(PAGE_SIZE_LIMIT);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
   const [hasMoreNotifications, setHasMoreNotifications] = useState(false);
 
-  // Announcement detail modal
-  const [selectedAnnouncement, setSelectedAnnouncement] = useState<AnnouncementItem | null>(null);
+  // Touch swipe tracking for optional swipe-left to mark as read / dismiss
+  const touchStartRef = useRef<{ id: string; x: number; y: number } | null>(null);
 
   // Subscribe to the single-source-of-truth notification store
   useEffect(() => {
@@ -103,6 +136,11 @@ export function NotificationsPage() {
 
   // Load older paginated user notifications if any
   const handleLoadMore = async () => {
+    if (displayedNotifications.length > visibleCount) {
+      setVisibleCount((prev) => prev + PAGE_SIZE_LIMIT);
+      if (!lastDoc || !hasMoreNotifications) return;
+    }
+
     if (!user?.uid || loadingMore || !lastDoc) return;
     setLoadingMore(true);
 
@@ -130,18 +168,27 @@ export function NotificationsPage() {
     }
   };
 
-  // All notifications from the single source of truth (+ any older paginated items)
+  // All notifications from the single source of truth (+ any older paginated items), sorted pinned first then newest first
   const allNotifications = useMemo<AppNotification[]>(() => {
-    if (extraNotifications.length === 0) {
-      return storeSnapshot.notifications;
-    }
     const existingIds = new Set(storeSnapshot.notifications.map((n) => n.id));
-    const merged = [
-      ...storeSnapshot.notifications,
-      ...extraNotifications.filter((n) => !existingIds.has(n.id)),
-    ];
-    return merged;
-  }, [storeSnapshot.notifications, extraNotifications]);
+    const merged =
+      extraNotifications.length === 0
+        ? [...storeSnapshot.notifications]
+        : [
+            ...storeSnapshot.notifications,
+            ...extraNotifications.filter((n) => !existingIds.has(n.id)),
+          ];
+
+    return merged
+      .filter((n) => !dismissedIds.has(n.id))
+      .sort((a, b) => {
+        const aPinned = isPinnedNotification(a);
+        const bPinned = isPinnedNotification(b);
+        if (aPinned && !bPinned) return -1;
+        if (!aPinned && bPinned) return 1;
+        return toMillis(b.createdAt) - toMillis(a.createdAt);
+      });
+  }, [storeSnapshot.notifications, extraNotifications, dismissedIds]);
 
   const followingCount = useMemo(
     () =>
@@ -155,7 +202,7 @@ export function NotificationsPage() {
   );
 
   const announcementCount = useMemo(
-    () => allNotifications.filter((n) => n.type === 'announcement').length,
+    () => allNotifications.filter((n) => n.type === 'announcement' || n.isAnnouncement).length,
     [allNotifications]
   );
 
@@ -170,62 +217,86 @@ export function NotificationsPage() {
       );
     }
     if (filter === 'announcements') {
-      return allNotifications.filter((n) => n.type === 'announcement');
+      return allNotifications.filter((n) => n.type === 'announcement' || n.isAnnouncement);
     }
     return allNotifications;
   }, [allNotifications, filter]);
+
+  const paginatedNotifications = useMemo(
+    () => displayedNotifications.slice(0, visibleCount),
+    [displayedNotifications, visibleCount]
+  );
+
+  // Group into Today, Yesterday, and Earlier while keeping pinned announcements first, then newest first
+  const groupedNotifications = useMemo(() => {
+    const groups: Record<DateGroupKey, AppNotification[]> = {
+      Today: [],
+      Yesterday: [],
+      Earlier: [],
+    };
+
+    for (const notif of paginatedNotifications) {
+      const key = resolveDateGroup(notif);
+      groups[key].push(notif);
+    }
+
+    const order: DateGroupKey[] = ['Today', 'Yesterday', 'Earlier'];
+    return order
+      .map((label) => ({
+        label,
+        items: groups[label],
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [paginatedNotifications]);
 
   // Single source of truth unread count
   const unreadCount = useMemo(() => {
     return allNotifications.filter((n) => !n.read).length;
   }, [allNotifications]);
 
-  // Mark a single notification as read (without necessarily navigating)
-  const handleMarkSingleAsRead = async (
-    notif: AppNotification,
-    e?: React.MouseEvent
-  ) => {
-    if (e) {
-      e.stopPropagation();
-    }
-    if (!user?.uid || notif.read) return;
-    setError(null);
+  // Mark a single notification as read
+  const handleMarkSingleAsRead = useCallback(
+    async (notif: AppNotification) => {
+      if (!user?.uid || notif.read) return;
+      setError(null);
 
-    try {
-      if (notif.type === 'announcement' || notif.isAnnouncement) {
-        const annId = notif.announcementId || notif.id.replace(/^announcement_/, '');
-        await markAnnouncementAsRead(user.uid, annId);
-      } else {
-        await markNotificationAsRead(notif.id, user.uid);
+      try {
+        if (notif.type === 'announcement' || notif.isAnnouncement) {
+          const annId = notif.announcementId || notif.id.replace(/^announcement_/, '');
+          await markAnnouncementAsRead(user.uid, annId);
+        } else {
+          await markNotificationAsRead(notif.id, user.uid);
+        }
+      } catch {
+        setError('Could not mark notification as read. Please try again.');
       }
-    } catch {
-      setError('Could not mark notification as read. Please try again.');
-    }
-  };
+    },
+    [user?.uid]
+  );
 
-  // Handle tap on a card: mark as read and open destination
+  // Handle tap on a card: follower opens profile; announcement expands inline
   const handleNotificationClick = async (notif: AppNotification) => {
     if (!user?.uid) return;
     setError(null);
 
-    if (notif.type === 'announcement' || notif.isAnnouncement) {
+    const isAnnouncement = notif.type === 'announcement' || Boolean(notif.isAnnouncement);
+
+    if (isAnnouncement) {
       const annId = notif.announcementId || notif.id.replace(/^announcement_/, '');
       if (!notif.read) {
         void markAnnouncementAsRead(user.uid, annId).catch(() => {
           setError('Could not mark announcement as read. Please try again.');
         });
       }
-      const original = storeSnapshot.announcements.find((a) => a.id === annId) || {
-        id: annId,
-        title: notif.title,
-        message: notif.message,
-        isPinned: notif.isPinned,
-        authorId: '',
-        authorEmail: '',
-        authorName: notif.publishedBy || 'Superadmin',
-        createdAt: notif.createdAt,
-      };
-      setSelectedAnnouncement(original);
+      setExpandedAnnouncementIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(notif.id)) {
+          next.delete(notif.id);
+        } else {
+          next.add(notif.id);
+        }
+        return next;
+      });
       return;
     }
 
@@ -238,6 +309,36 @@ export function NotificationsPage() {
     const targetUrl = resolveNotificationDestination(notif);
     if (targetUrl) {
       navigate(targetUrl);
+    }
+  };
+
+  // Optional swipe left to mark as read (or dismiss if already read and not pinned)
+  const handleTouchStart = (id: string, e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    if (!touch) return;
+    touchStartRef.current = { id, x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleTouchEnd = (notif: AppNotification, e: React.TouchEvent) => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start || start.id !== notif.id) return;
+    const touch = e.changedTouches[0];
+    if (!touch) return;
+
+    const deltaX = touch.clientX - start.x;
+    const deltaY = Math.abs(touch.clientY - start.y);
+
+    if (deltaX < -56 && deltaY < 40) {
+      if (!notif.read) {
+        void handleMarkSingleAsRead(notif);
+      } else if (!isPinnedNotification(notif)) {
+        setDismissedIds((prev) => {
+          const next = new Set(prev);
+          next.add(notif.id);
+          return next;
+        });
+      }
     }
   };
 
@@ -258,6 +359,19 @@ export function NotificationsPage() {
   };
 
   const isInitialLoading = storeSnapshot.loading && !storeSnapshot.initialized;
+  const canLoadMore =
+    displayedNotifications.length > visibleCount ||
+    (hasMoreNotifications && filter !== 'announcements');
+
+  const emptyMessageForFilter = useMemo(() => {
+    if (filter === 'following') {
+      return 'When students you follow post or follow you back, you will see it here.';
+    }
+    if (filter === 'announcements') {
+      return 'Official updates and announcements from Boardly will show up here.';
+    }
+    return 'Activity from students you follow and official announcements will show up here.';
+  }, [filter]);
 
   return (
     <>
@@ -270,400 +384,351 @@ export function NotificationsPage() {
         description="Stay updated with follower activity in Commons and official superadmin announcements."
       />
 
-      <div
-        style={{
-          maxWidth: 880,
-          margin: '0 auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 20,
-          padding: '1rem',
-          paddingBottom: '6rem',
-        }}
-      >
-        {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-2 border-b border-[var(--border)]">
-          <div>
-            <span
-              style={{
-                fontSize: 11,
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-                color: 'var(--text-faint)',
-                fontFamily: 'var(--font-heading)',
-              }}
-            >
-              STUDENT UPDATES
-            </span>
-            <h1
-              className="font-display flex items-center gap-2.5"
-              style={{
-                fontSize: 28,
-                fontWeight: 800,
-                color: 'var(--text)',
-                letterSpacing: '-0.02em',
-                marginTop: 4,
-              }}
-            >
-              <span>Notifications</span>
+      <div className="notif-page">
+        {/* ── 2. Page Heading & 3. Action Row ─────────────────────────────── */}
+        <header className="notif-header">
+          <div className="notif-heading-group">
+            <span className="notif-kicker">STUDENT UPDATES</span>
+            <div className="notif-page-title-row">
+              <h1 className="notif-page-title">Notifications</h1>
               {unreadCount > 0 && (
-                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-[var(--red)] text-white">
+                <span className="notif-unread-count-pill">
                   {unreadCount} new
                 </span>
               )}
-            </h1>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+            </div>
+            <p className="notif-subtitle">
               Activity from students you follow and official superadmin announcements.
             </p>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex items-center gap-2">
+          <div className="notif-actions-row">
             <button
               type="button"
               onClick={handleMarkAllAsRead}
               disabled={unreadCount === 0}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+              className="notif-action-pill"
+              aria-label={
                 unreadCount > 0
-                  ? 'bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] hover:border-[var(--red)] cursor-pointer'
-                  : 'bg-[var(--surface-2)]/40 border border-[var(--border)] text-[var(--muted)] opacity-50 cursor-not-allowed'
-              }`}
-              style={{ fontFamily: 'var(--font-heading)' }}
+                  ? `Mark all ${unreadCount} unread notifications as read`
+                  : 'All notifications are already read'
+              }
             >
-              <CheckCheck size={14} className={unreadCount > 0 ? 'text-[var(--red)]' : ''} />
+              <CheckCheck
+                size={15}
+                className={unreadCount > 0 ? 'text-[var(--accent)] shrink-0' : 'shrink-0'}
+              />
               <span>Mark all as read</span>
             </button>
+
             <button
               type="button"
               onClick={handleRefresh}
               disabled={refreshing || isInitialLoading}
-              title="Refresh"
+              title="Refresh notifications"
               aria-label="Refresh notifications"
-              className="p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--border-strong)] transition-colors cursor-pointer"
+              className="notif-refresh-btn"
             >
-              <RotateCcw size={14} />
+              <RotateCcw size={15} />
             </button>
           </div>
-        </div>
+        </header>
 
-        {/* ── Filter Chips: All, Following, Announcements ───────────────── */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-          <button
-            type="button"
-            onClick={() => setFilter('all')}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-              filter === 'all'
-                ? 'bg-[var(--red)] text-white shadow-sm'
-                : 'bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)]'
-            }`}
-            style={{ fontFamily: 'var(--font-heading)' }}
+        {/* ── 4. Filter Chips: All, Following, Announcements ──────────────── */}
+        <div className="notif-chip-scroll-wrap">
+          <div
+            className="notif-chip-scroll"
+            role="tablist"
+            aria-label="Filter notifications"
           >
-            All ({allNotifications.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter('following')}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-              filter === 'following'
-                ? 'bg-[var(--red)] text-white shadow-sm'
-                : 'bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)]'
-            }`}
-            style={{ fontFamily: 'var(--font-heading)' }}
-          >
-            Following ({followingCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter('announcements')}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-              filter === 'announcements'
-                ? 'bg-[var(--red)] text-white shadow-sm'
-                : 'bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)]'
-            }`}
-            style={{ fontFamily: 'var(--font-heading)' }}
-          >
-            Announcements ({announcementCount})
-          </button>
-        </div>
-
-        {/* ── Error Banner ──────────────────────────────────────────────── */}
-        {error && (
-          <div className="p-4 rounded-2xl bg-red-950/30 border border-red-500/40 text-red-300 text-xs flex items-center justify-between gap-3">
-            <span>{error}</span>
             <button
               type="button"
-              onClick={handleRefresh}
-              className="text-white underline font-semibold hover:opacity-90 cursor-pointer"
+              role="tab"
+              aria-selected={filter === 'all'}
+              onClick={() => {
+                setFilter('all');
+                setVisibleCount(PAGE_SIZE_LIMIT);
+              }}
+              className={`notif-filter-chip ${
+                filter === 'all' ? 'notif-filter-chip--active' : ''
+              }`}
             >
-              Retry
+              <span>All ({allNotifications.length})</span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={filter === 'following'}
+              onClick={() => {
+                setFilter('following');
+                setVisibleCount(PAGE_SIZE_LIMIT);
+              }}
+              className={`notif-filter-chip ${
+                filter === 'following' ? 'notif-filter-chip--active' : ''
+              }`}
+            >
+              <span>Following ({followingCount})</span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={filter === 'announcements'}
+              onClick={() => {
+                setFilter('announcements');
+                setVisibleCount(PAGE_SIZE_LIMIT);
+              }}
+              className={`notif-filter-chip ${
+                filter === 'announcements' ? 'notif-filter-chip--active' : ''
+              }`}
+            >
+              <span>Announcements ({announcementCount})</span>
             </button>
           </div>
-        )}
+        </div>
 
-        {refreshing && !isInitialLoading && (
-          <LineLoader
-            variant="inline"
-            context="dashboard"
-            loading={refreshing}
-          />
-        )}
+        {/* ── 5. Notification List Stage with Soft Red Gradient Blobs ─────── */}
+        <div className="notif-stage">
+          <div className="notif-blob-layer" aria-hidden="true" />
 
-        {/* ── Content List ──────────────────────────────────────────────── */}
-        {isInitialLoading ? (
-          <LineLoader context="dashboard" variant="section" />
-        ) : displayedNotifications.length === 0 ? (
-          <EmptyState
-            icon={<Bell size={36} />}
-            title="No notifications yet"
-            description="When people you follow post something, or the superadmin shares an announcement, it will show up here."
-          />
-        ) : (
-          <div className="space-y-2.5">
-            {displayedNotifications.map((notif) => {
-              const isUnread = !notif.read;
-              const isAnnouncement = notif.type === 'announcement' || notif.isAnnouncement;
-              const isNewFollower =
-                notif.type === 'new_follower' || notif.type === 'follow' || notif.type === 'follower';
-              const isFollowingPost =
-                notif.type === 'following_post' || notif.type === 'following' || notif.type === 'new_post';
-              const isComment = notif.type === 'comment' || notif.type === 'reply';
-              const isLike = notif.type === 'like' || notif.type === 'post_like';
-              const hasAuthorAvatar =
-                !isAnnouncement && Boolean(notif.authorId || notif.authorName || notif.authorAvatar);
-
-              return (
-                <div
-                  key={notif.id}
-                  onClick={() => handleNotificationClick(notif)}
-                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3.5 ${
-                    isUnread
-                      ? 'bg-[var(--card)] border-[var(--red)]/40 hover:border-[var(--red)] shadow-sm'
-                      : 'bg-[var(--surface-2)]/60 border-[var(--border)] opacity-85 hover:opacity-100'
-                  }`}
-                >
-                  {/* Avatar or Type Icon Box */}
-                  {hasAuthorAvatar ? (
-                    <div className="relative shrink-0">
-                      <BoardlyAvatar
-                        uid={notif.authorId}
-                        name={notif.authorName || 'Student'}
-                        equippedAvatar={
-                          notif.authorAvatar?.startsWith('pfp_')
-                            ? notif.authorAvatar
-                            : undefined
-                        }
-                        avatarUrl={
-                          notif.authorAvatar &&
-                          !notif.authorAvatar.startsWith('pfp_') &&
-                          !notif.authorAvatar.includes('googleusercontent')
-                            ? notif.authorAvatar
-                            : undefined
-                        }
-                        photoURL={
-                          notif.authorAvatar?.includes('googleusercontent')
-                            ? notif.authorAvatar
-                            : undefined
-                        }
-                        frame={notif.authorFrame || undefined}
-                        size={40}
-                      />
-                      <span
-                        className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[var(--card)] border border-[var(--border)] flex items-center justify-center text-[var(--red)] shadow-sm"
-                        aria-hidden="true"
-                      >
-                        {isNewFollower ? (
-                          <UserPlus size={11} className="text-emerald-400" />
-                        ) : isComment ? (
-                          <MessageSquare size={11} className="text-blue-400" />
-                        ) : isLike ? (
-                          <Heart size={11} className="text-rose-500 fill-rose-500" />
-                        ) : (
-                          <FileText size={11} />
-                        )}
-                      </span>
-                    </div>
-                  ) : (
-                    <div
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                        isAnnouncement
-                          ? 'bg-red-500/15 border border-red-500/30 text-[var(--red)]'
-                          : isNewFollower
-                          ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
-                          : isComment
-                          ? 'bg-blue-500/15 border border-blue-500/30 text-blue-400'
-                          : isLike
-                          ? 'bg-rose-500/15 border border-rose-500/30 text-rose-400'
-                          : 'bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)]'
-                      }`}
-                    >
-                      {isAnnouncement ? (
-                        <Megaphone size={19} />
-                      ) : isNewFollower ? (
-                        <UserPlus size={19} />
-                      ) : isComment ? (
-                        <MessageSquare size={19} />
-                      ) : isLike ? (
-                        <Heart size={19} className="fill-rose-400" />
-                      ) : isFollowingPost ? (
-                        <FileText size={19} />
-                      ) : (
-                        <Bell size={19} />
-                      )}
-                    </div>
-                  )}
-
-                  {/* Card Content */}
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                        {(notif.isPinned || notif.announcementId === WELCOME_ANNOUNCEMENT_ID) && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 uppercase tracking-wider shrink-0">
-                            <Pin size={10} />
-                            <span>Pinned</span>
-                          </span>
-                        )}
-                        {isAnnouncement && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--red)] text-white uppercase tracking-wider shrink-0">
-                            Announcement
-                          </span>
-                        )}
-                        {isFollowingPost && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-muted)] uppercase tracking-wider shrink-0">
-                            New Post
-                          </span>
-                        )}
-                        {isNewFollower && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 uppercase tracking-wider shrink-0">
-                            Follower
-                          </span>
-                        )}
-                        {isComment && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-400 uppercase tracking-wider shrink-0">
-                            Comment
-                          </span>
-                        )}
-                        {isLike && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-400 uppercase tracking-wider shrink-0">
-                            Like
-                          </span>
-                        )}
-                        <h2
-                          className="font-bold text-sm text-[var(--text)] truncate"
-                          style={{ fontFamily: 'var(--font-heading)' }}
-                        >
-                          {notif.title}
-                        </h2>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[11px] text-[var(--muted)]">
-                          {formatRelativeTime(notif.createdAt)}
-                        </span>
-                        {isUnread && (
-                          <button
-                            type="button"
-                            onClick={(e) => handleMarkSingleAsRead(notif, e)}
-                            title="Mark as read"
-                            aria-label="Mark as read"
-                            className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--red)] transition-colors cursor-pointer"
-                          >
-                            <Check size={10} className="text-[var(--red)]" />
-                            <span className="hidden sm:inline">Mark as read</span>
-                          </button>
-                        )}
-                        {isUnread && (
-                          <span
-                            className="w-2 h-2 rounded-full bg-[var(--red)] shrink-0"
-                            title="Unread"
-                            aria-label="Unread notification"
-                          />
-                        )}
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-[var(--muted)] leading-relaxed truncate">
-                      {notif.message}
-                    </p>
-                  </div>
-
-                  {/* Right Arrow Indicator */}
-                  <div className="text-[var(--muted)] shrink-0 pt-2 opacity-60">
-                    <ChevronRight size={15} />
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Load more button if has more user notifications */}
-            {hasMoreNotifications && filter !== 'announcements' && (
-              <div className="pt-2 flex justify-center">
-                <button
-                  type="button"
-                  onClick={handleLoadMore}
-                  disabled={loadingMore}
-                  className="relative overflow-hidden btn-outline text-xs px-5 py-2.5 rounded-full cursor-pointer inline-flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  <span>
-                    {loadingMore ? 'Loading notifications...' : 'Load older notifications'}
-                  </span>
-                  {loadingMore && <ButtonLineLoader />}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── Announcement Modal View ───────────────────────────────────── */}
-        {selectedAnnouncement && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/70">
-            <div className="w-full max-w-lg p-6 sm:p-7 space-y-5 glass-panel allow-backdrop-blur rounded-[28px] relative">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-[var(--red)]/15 border border-[var(--red)]/30 text-[var(--red)] flex items-center justify-center shrink-0">
-                    <Megaphone size={18} />
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--red)] text-white uppercase tracking-wider">
-                      Official Announcement
-                    </span>
-                    <h3 className="text-lg font-bold text-[var(--text)] mt-1 font-dot">
-                      {selectedAnnouncement.title}
-                    </h3>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedAnnouncement(null)}
-                  className="w-8 h-8 rounded-full glass-pill flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer shrink-0"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="text-xs sm:text-sm text-[var(--text)] leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto p-3.5 rounded-[18px] glass-row">
-                {selectedAnnouncement.message}
-              </div>
-
-              <div className="flex items-center justify-between text-xs text-[var(--muted)] pt-2 border-t border-[var(--glass-border)]">
-                <span className="flex items-center gap-1 font-medium">
-                  <Shield size={13} className="text-[var(--red)]" />
-                  <span>{selectedAnnouncement.authorName || 'Superadmin'}</span>
-                </span>
-                <span>{formatRelativeTime(selectedAnnouncement.createdAt)}</span>
-              </div>
-
+          {/* Error State */}
+          {error && (
+            <div className="notif-state-card" role="alert">
+              <p className="notif-state-title">Something went wrong</p>
+              <p className="notif-state-desc">{error}</p>
               <button
                 type="button"
-                onClick={() => setSelectedAnnouncement(null)}
-                className="btn-primary w-full rounded-full"
-                style={{ height: '44px' }}
+                onClick={handleRefresh}
+                className="notif-filter-chip notif-filter-chip--active mt-1"
               >
-                Close
+                <RotateCcw size={13} />
+                <span>Retry</span>
               </button>
             </div>
-          </div>
-        )}
+          )}
+
+          {refreshing && !isInitialLoading && (
+            <LineLoader
+              variant="inline"
+              context="generic"
+              loading={refreshing}
+            />
+          )}
+
+          {/* Loading, Empty, or Grouped Glass Cards */}
+          {isInitialLoading ? (
+            <LineLoader context="generic" variant="section" />
+          ) : displayedNotifications.length === 0 ? (
+            <div className="notif-state-card" role="status">
+              <div className="notif-icon-circle notif-icon-circle--announcement" aria-hidden="true">
+                <Bell size={20} />
+              </div>
+              <h2 className="notif-state-title">You&apos;re all caught up</h2>
+              <p className="notif-state-desc">{emptyMessageForFilter}</p>
+            </div>
+          ) : (
+            <>
+              {groupedNotifications.map((group) => (
+                <section
+                  key={group.label}
+                  className="notif-group"
+                  aria-label={`${group.label} notifications`}
+                >
+                  <h2 className="notif-group-header">{group.label}</h2>
+
+                  <ul className="notif-list" role="list">
+                    {group.items.map((notif) => {
+                      const isUnread = !notif.read;
+                      const isPinned = isPinnedNotification(notif);
+                      const isAnnouncement =
+                        notif.type === 'announcement' || Boolean(notif.isAnnouncement);
+                      const isNewFollower =
+                        notif.type === 'new_follower' ||
+                        notif.type === 'follow' ||
+                        (notif.type as string) === 'follower';
+                      const isComment = notif.type === 'comment' || notif.type === 'reply';
+                      const isLike = notif.type === 'like' || notif.type === 'post_like';
+                      const hasAuthorAvatar =
+                        !isAnnouncement &&
+                        Boolean(notif.authorId || notif.authorName || notif.authorAvatar);
+                      const isExpanded =
+                        isAnnouncement && expandedAnnouncementIds.has(notif.id);
+                      const relativeTime = formatRelativeTime(notif.createdAt);
+
+                      const primaryTagLabel = isAnnouncement
+                        ? 'Announcement'
+                        : 'Follower';
+
+                      const ariaLabel = `${isUnread ? 'Unread' : 'Read'} ${
+                        isPinned ? 'pinned ' : ''
+                      }${primaryTagLabel} notification: ${notif.title}. ${notif.message}. ${relativeTime}.`;
+
+                      return (
+                        <li key={notif.id} className="notif-list-item">
+                          <button
+                            type="button"
+                            onClick={() => void handleNotificationClick(notif)}
+                            onTouchStart={(e) => handleTouchStart(notif.id, e)}
+                            onTouchEnd={(e) => handleTouchEnd(notif, e)}
+                            aria-label={ariaLabel}
+                            aria-expanded={isAnnouncement ? isExpanded : undefined}
+                            className={`notif-glass-card ${
+                              isUnread
+                                ? 'notif-glass-card--unread'
+                                : 'notif-glass-card--read'
+                            }`}
+                          >
+                            {/* Left: 46-48px Frosted Circle with Avatar or Megaphone Icon */}
+                            {hasAuthorAvatar ? (
+                              <div className="notif-icon-circle notif-icon-circle--follower">
+                                <BoardlyAvatar
+                                  uid={notif.authorId}
+                                  name={notif.authorName || 'Student'}
+                                  equippedAvatar={
+                                    notif.authorAvatar?.startsWith('pfp_')
+                                      ? notif.authorAvatar
+                                      : undefined
+                                  }
+                                  avatarUrl={
+                                    notif.authorAvatar &&
+                                    !notif.authorAvatar.startsWith('pfp_') &&
+                                    !notif.authorAvatar.includes('googleusercontent')
+                                      ? notif.authorAvatar
+                                      : undefined
+                                  }
+                                  photoURL={
+                                    notif.authorAvatar?.includes('googleusercontent')
+                                      ? notif.authorAvatar
+                                      : undefined
+                                  }
+                                  frame={notif.authorFrame || undefined}
+                                  size={40}
+                                />
+                                <span
+                                  className={`notif-avatar-corner-badge ${
+                                    isNewFollower ? 'notif-avatar-corner-badge--follower' : ''
+                                  }`}
+                                  aria-hidden="true"
+                                >
+                                  {isNewFollower ? (
+                                    <UserPlus size={10} />
+                                  ) : isComment ? (
+                                    <MessageSquare size={10} />
+                                  ) : isLike ? (
+                                    <Heart size={10} />
+                                  ) : (
+                                    <FileText size={10} />
+                                  )}
+                                </span>
+                              </div>
+                            ) : (
+                              <div
+                                className={`notif-icon-circle ${
+                                  isAnnouncement
+                                    ? 'notif-icon-circle--announcement'
+                                    : 'notif-icon-circle--follower'
+                                }`}
+                                aria-hidden="true"
+                              >
+                                {isAnnouncement ? (
+                                  <Megaphone size={19} />
+                                ) : (
+                                  <UserPlus size={19} />
+                                )}
+                              </div>
+                            )}
+
+                            {/* Center: Wrapping Tags Row -> Semi-Bold Title (max 2 lines) -> Muted Message (max 3 lines or inline expanded) */}
+                            <div className="notif-card-body">
+                              <div className="notif-tags-row">
+                                {isPinned && (
+                                  <span className="notif-tag notif-tag--pinned">
+                                    <Pin size={10} aria-hidden="true" />
+                                    <span>PINNED</span>
+                                  </span>
+                                )}
+                                {isAnnouncement ? (
+                                  <span className="notif-tag notif-tag--announcement">
+                                    ANNOUNCEMENT
+                                  </span>
+                                ) : (
+                                  <span className="notif-tag notif-tag--follower">
+                                    FOLLOWER
+                                  </span>
+                                )}
+                              </div>
+
+                              <h3 className="notif-card-title">{notif.title}</h3>
+
+                              <p
+                                className={`notif-card-message ${
+                                  isExpanded ? 'notif-card-message--expanded' : ''
+                                }`}
+                              >
+                                {notif.message}
+                              </p>
+
+                              {isAnnouncement && isExpanded && (
+                                <div className="notif-inline-meta">
+                                  <span className="inline-flex items-center gap-1">
+                                    <Shield
+                                      size={12}
+                                      className="text-[var(--accent)] shrink-0"
+                                      aria-hidden="true"
+                                    />
+                                    <span>{notif.publishedBy || 'Superadmin'}</span>
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-[var(--accent)]">
+                                    <span>Show less</span>
+                                    <ChevronUp size={12} aria-hidden="true" />
+                                  </span>
+                                </div>
+                              )}
+
+                              {isAnnouncement && !isExpanded && (
+                                <div className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--text-muted)] pt-0.5">
+                                  <span>Tap to read full announcement</span>
+                                  <ChevronDown size={12} aria-hidden="true" />
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Right: Relative Time + Unread Red Dot (150ms fade out when marked read) */}
+                            <div className="notif-card-meta">
+                              <span className="notif-time">{relativeTime}</span>
+                              <span
+                                className={`notif-unread-dot ${
+                                  isUnread ? '' : 'notif-unread-dot--read'
+                                }`}
+                                aria-hidden="true"
+                              />
+                            </div>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              ))}
+
+              {/* Load More Button (pagination after 50 items or Firestore cursor) */}
+              {canLoadMore && (
+                <div className="pt-2 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => void handleLoadMore()}
+                    disabled={loadingMore}
+                    className="notif-action-pill relative overflow-hidden"
+                  >
+                    <span>{loadingMore ? 'Loading more...' : 'Load more'}</span>
+                    {loadingMore && <ButtonLineLoader />}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </>
   );

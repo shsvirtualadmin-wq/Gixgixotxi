@@ -22,6 +22,8 @@ export interface D1UniversityRow {
 export interface D1McqRow {
   id: string;
   university_id: string;
+  university_slug?: string;
+  import_batch_id?: string;
   subject: string;
   topic: string;
   question: string;
@@ -33,6 +35,50 @@ export interface D1McqRow {
   explanation: string;
   difficulty: 'easy' | 'medium' | 'hard';
   created_at: string;
+}
+
+export interface D1ImportBatchRow {
+  id: string;
+  university_id: string;
+  university_slug: string;
+  source_type: string;
+  file_name: string;
+  row_count: number;
+  imported_count: number;
+  failed_count: number;
+  created_at: string;
+}
+
+export interface D1BankHealthIntegrityReport {
+  isHealthy: boolean;
+  missingOrInvalidUniversityIdCount: number;
+  slugMismatchCount: number;
+  duplicateSlugs: string[];
+  countMismatchUniversities: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    stored_count: number;
+    actual_count: number;
+  }>;
+}
+
+export interface D1RepairUniversityGroup {
+  university_id: string;
+  university_name: string;
+  university_slug: string;
+  total_count: number;
+  earliest_created_at: string;
+  latest_created_at: string;
+  suspected_fast_count: number;
+  import_batches: Array<{
+    import_batch_id: string;
+    count: number;
+    earliest_created_at: string;
+    latest_created_at: string;
+    file_name?: string;
+  }>;
+  sample_rows: D1McqRow[];
 }
 
 export interface D1McqReportRow {

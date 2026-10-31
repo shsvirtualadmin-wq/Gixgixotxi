@@ -292,6 +292,8 @@ CREATE INDEX IF NOT EXISTS idx_universities_slug ON universities(slug);
 CREATE TABLE IF NOT EXISTS mcqs (
   id TEXT PRIMARY KEY,
   university_id TEXT NOT NULL,
+  university_slug TEXT NOT NULL DEFAULT '',
+  import_batch_id TEXT NOT NULL DEFAULT '',
   subject TEXT NOT NULL,
   topic TEXT NOT NULL,
   question TEXT NOT NULL,
@@ -303,13 +305,30 @@ CREATE TABLE IF NOT EXISTS mcqs (
   explanation TEXT NOT NULL DEFAULT '',
   difficulty TEXT NOT NULL DEFAULT 'medium',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (university_id) REFERENCES universities(id) ON DELETE CASCADE
+  FOREIGN KEY (university_id) REFERENCES universities(id) ON DELETE RESTRICT
 );
 
 CREATE INDEX IF NOT EXISTS idx_mcqs_university_id ON mcqs(university_id);
+CREATE INDEX IF NOT EXISTS idx_mcqs_university_slug ON mcqs(university_slug);
+CREATE INDEX IF NOT EXISTS idx_mcqs_import_batch_id ON mcqs(import_batch_id);
 CREATE INDEX IF NOT EXISTS idx_mcqs_subject ON mcqs(subject);
 CREATE INDEX IF NOT EXISTS idx_mcqs_topic ON mcqs(topic);
 CREATE INDEX IF NOT EXISTS idx_mcqs_uni_sub_top ON mcqs(university_id, subject, topic);
+
+CREATE TABLE IF NOT EXISTS imports (
+  id TEXT PRIMARY KEY,
+  university_id TEXT NOT NULL,
+  university_slug TEXT NOT NULL,
+  source_type TEXT NOT NULL DEFAULT 'csv',
+  file_name TEXT NOT NULL DEFAULT '',
+  row_count INTEGER NOT NULL DEFAULT 0,
+  imported_count INTEGER NOT NULL DEFAULT 0,
+  failed_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (university_id) REFERENCES universities(id) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_imports_university_id ON imports(university_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS mcq_reports (
   id TEXT PRIMARY KEY,
@@ -329,7 +348,7 @@ CREATE TABLE IF NOT EXISTS mcq_reports (
 CREATE INDEX IF NOT EXISTS idx_mcq_reports_status ON mcq_reports(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mcq_reports_mcq_id ON mcq_reports(mcq_id);
 
-INSERT OR IGNORE INTO universities (id, name, slug, logo_url, sort_order, mcq_count, is_live, created_at) VALUES
+INSERT INTO universities (id, name, slug, logo_url, sort_order, mcq_count, is_live, created_at) VALUES
   ('uni_fast_nuces', 'FAST-NUCES', 'fast-nuces', '', 1, 0, 0, datetime('now')),
   ('uni_nust_net', 'NUST (NET)', 'nust-net', '', 2, 0, 0, datetime('now')),
   ('uni_giki', 'GIKI', 'giki', '', 3, 0, 0, datetime('now')),
@@ -347,7 +366,11 @@ INSERT OR IGNORE INTO universities (id, name, slug, logo_url, sort_order, mcq_co
   ('uni_etea', 'ETEA', 'etea', '', 15, 0, 0, datetime('now')),
   ('uni_nts_nat', 'NTS NAT', 'nts-nat', '', 16, 0, 0, datetime('now')),
   ('uni_usat_hec', 'USAT (HEC)', 'usat-hec', '', 17, 0, 0, datetime('now')),
-  ('uni_aku', 'AKU', 'aku', '', 18, 0, 0, datetime('now'));
+  ('uni_aku', 'AKU', 'aku', '', 18, 0, 0, datetime('now'))
+ON CONFLICT(slug) DO UPDATE SET
+  name = excluded.name,
+  logo_url = CASE WHEN universities.logo_url = '' THEN excluded.logo_url ELSE universities.logo_url END,
+  sort_order = excluded.sort_order;
 
 UPDATE posts SET created_at = created_at * 1000, updated_at = created_at * 1000 WHERE created_at > 0 AND created_at < 10000000000;
 UPDATE posts SET created_at = 1743465600000, updated_at = 1743465600000 WHERE id LIKE 'commons_anon_topic_%' AND created_at > 1743465600000;
