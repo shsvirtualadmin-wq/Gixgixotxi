@@ -1,204 +1,381 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { BookOpen, ArrowRight, Sparkles, CheckCircle2, Layers } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import {
+  BookOpen,
+  Atom,
+  FlaskConical,
+  Dna,
+  Calculator,
+  Cpu,
+  Languages,
+  ArrowRight,
+  GraduationCap,
+} from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
-import { SYLLABUS_MAP } from '@/constants/syllabusMap';
-import { DEFAULT_TAXONOMY, slugify } from '@/constants/taxonomy';
+import { SYLLABUS_MAP, TOPIC_LISTS } from '@/constants/syllabusMap';
 
-const SUBJECT_CARDS = [
+interface SubjectCardDef {
+  slug: string;
+  name: string;
+  icon: React.ReactNode;
+  description: string;
+  boards: string;
+  chapterCount: number;
+  sampleChapters: { title: string; slug: string }[];
+}
+
+interface UniversityTrackDef {
+  slug: string;
+  name: string;
+  fullName: string;
+  subjects: { name: string; slug: string }[];
+  badge: string;
+}
+
+const UNIVERSITY_TRACKS: UniversityTrackDef[] = [
   {
-    slug: 'mathematics',
-    syllabusKey: 'mathematics' as const,
-    name: 'Mathematics',
-    tagline: 'Algebra, Trigonometry, Calculus, Vectors & Conic Sections',
-    boards: ['FBISE', 'Punjab', 'Sindh', 'KPK', 'ECAT', 'NUST NET', 'FAST'],
+    slug: 'mdcat',
+    name: 'PMDC MDCAT',
+    fullName: 'National Medical & Dental College Admission Test',
+    badge: '200 MCQs · Medical',
+    subjects: [
+      { name: 'Biology', slug: 'biology' },
+      { name: 'Chemistry', slug: 'chemistry' },
+      { name: 'Physics', slug: 'physics' },
+      { name: 'English', slug: 'english' },
+    ],
   },
   {
+    slug: 'nust',
+    name: 'NUST NET',
+    fullName: 'NUST Entrance Test (Engineering & Computing)',
+    badge: '200 MCQs · Engineering/CS',
+    subjects: [
+      { name: 'Mathematics', slug: 'mathematics' },
+      { name: 'Physics', slug: 'physics' },
+      { name: 'Chemistry', slug: 'chemistry' },
+      { name: 'Computer Science', slug: 'computer-science' },
+      { name: 'English', slug: 'english' },
+    ],
+  },
+  {
+    slug: 'ecat',
+    name: 'UET ECAT',
+    fullName: 'Combined Engineering Entrance Test',
+    badge: '100 MCQs · Engineering',
+    subjects: [
+      { name: 'Mathematics', slug: 'mathematics' },
+      { name: 'Physics', slug: 'physics' },
+      { name: 'Chemistry', slug: 'chemistry' },
+      { name: 'Computer Science', slug: 'computer-science' },
+      { name: 'English', slug: 'english' },
+    ],
+  },
+  {
+    slug: 'fast',
+    name: 'FAST-NUCES',
+    fullName: 'FAST National University CS & Engineering Test',
+    badge: '120 MCQs · CS & AI',
+    subjects: [
+      { name: 'Mathematics', slug: 'mathematics' },
+      { name: 'Physics', slug: 'physics' },
+      { name: 'Computer Science', slug: 'computer-science' },
+      { name: 'English', slug: 'english' },
+    ],
+  },
+  {
+    slug: 'giki',
+    name: 'GIKI',
+    fullName: 'GIKI Undergraduate Admission Test',
+    badge: '80 MCQs · Engineering',
+    subjects: [
+      { name: 'Mathematics', slug: 'mathematics' },
+      { name: 'Physics', slug: 'physics' },
+      { name: 'English', slug: 'english' },
+    ],
+  },
+  {
+    slug: 'nums',
+    name: 'NUMS MDCAT',
+    fullName: 'National University of Medical Sciences Test',
+    badge: '150 MCQs · Medical',
+    subjects: [
+      { name: 'Biology', slug: 'biology' },
+      { name: 'Chemistry', slug: 'chemistry' },
+      { name: 'Physics', slug: 'physics' },
+      { name: 'English', slug: 'english' },
+    ],
+  },
+];
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+const SUBJECT_DEFS: SubjectCardDef[] = [
+  {
     slug: 'physics',
-    syllabusKey: 'physics' as const,
     name: 'Physics',
-    tagline: 'Mechanics, Thermodynamics, Electromagnetism, Optics & Modern Physics',
-    boards: ['FBISE', 'Punjab', 'Sindh', 'KPK', 'MDCAT', 'ECAT', 'NUST NET'],
+    icon: <Atom size={20} className="text-[#D71921]" />,
+    description:
+      'Mechanics, Waves, Thermodynamics, Electromagnetism, Modern Physics & Nuclear Physics for Class 11–12, ECAT, NET & MDCAT.',
+    boards: 'FBISE · Punjab · Sindh · KPK · MDCAT · NET · ECAT',
+    chapterCount:
+      (SYLLABUS_MAP.physics?.chaptersClass11.length || 0) +
+      (SYLLABUS_MAP.physics?.chaptersClass12.length || 0),
+    sampleChapters: (SYLLABUS_MAP.physics?.chaptersClass11 || [])
+      .slice(0, 4)
+      .map((c) => ({ title: c.name, slug: slugify(c.name) })),
   },
   {
     slug: 'chemistry',
-    syllabusKey: 'chemistry' as const,
     name: 'Chemistry',
-    tagline: 'Stoichiometry, Chemical Equilibrium, Organic & Inorganic Chemistry',
-    boards: ['FBISE', 'Punjab', 'Sindh', 'KPK', 'MDCAT', 'ECAT'],
+    icon: <FlaskConical size={20} className="text-[#D71921]" />,
+    description:
+      'Stoichiometry, Atomic Structure, Chemical Bonding, Thermochemistry, Electrochemistry, Organic & Inorganic Chemistry MCQs.',
+    boards: 'FBISE · Punjab · Sindh · KPK · MDCAT · ECAT',
+    chapterCount:
+      (SYLLABUS_MAP.chemistry?.chaptersClass11.length || 0) +
+      (SYLLABUS_MAP.chemistry?.chaptersClass12.length || 0),
+    sampleChapters: (SYLLABUS_MAP.chemistry?.chaptersClass11 || [])
+      .slice(0, 4)
+      .map((c) => ({ title: c.name, slug: slugify(c.name) })),
   },
   {
     slug: 'biology',
-    syllabusKey: 'biology' as const,
     name: 'Biology',
-    tagline: 'Cell Biology, Enzymes, Bioenergetics, Genetics & Human Physiology',
-    boards: ['FBISE', 'Punjab', 'Sindh', 'KPK', 'MDCAT', 'NUMS'],
+    icon: <Dna size={20} className="text-[#D71921]" />,
+    description:
+      'Cell Biology, Biological Molecules, Enzymes, Bioenergetics, Human Physiology, Genetics, Evolution & Biotechnology for PMDC MDCAT.',
+    boards: 'PMDC MDCAT · NUMS · AKU · FBISE · Punjab · Sindh · KPK',
+    chapterCount:
+      (SYLLABUS_MAP.biology?.chaptersClass11.length || 0) +
+      (SYLLABUS_MAP.biology?.chaptersClass12.length || 0),
+    sampleChapters: (SYLLABUS_MAP.biology?.chaptersClass11 || [])
+      .slice(0, 4)
+      .map((c) => ({ title: c.name, slug: slugify(c.name) })),
+  },
+  {
+    slug: 'mathematics',
+    name: 'Mathematics',
+    icon: <Calculator size={20} className="text-[#D71921]" />,
+    description:
+      'Algebra, Trigonometry, Vectors, Matrices, Conic Sections, Differential & Integral Calculus for NUST NET, FAST, GIKI & ECAT.',
+    boards: 'NUST NET · FAST · GIKI · UET ECAT · FBISE · Punjab',
+    chapterCount:
+      (SYLLABUS_MAP.mathematics?.chaptersClass11.length || 0) +
+      (SYLLABUS_MAP.mathematics?.chaptersClass12.length || 0),
+    sampleChapters: (SYLLABUS_MAP.mathematics?.chaptersClass11 || [])
+      .slice(0, 4)
+      .map((c) => ({ title: c.name, slug: slugify(c.name) })),
   },
   {
     slug: 'computer-science',
-    syllabusKey: 'computer-science' as const,
     name: 'Computer Science',
-    tagline: 'C/C++ Programming, Data Structures, Databases, Networks & OS',
-    boards: ['FBISE', 'Punjab', 'ICS', 'FAST', 'NUST NET', 'COMSATS'],
+    icon: <Cpu size={20} className="text-[#D71921]" />,
+    description:
+      'Programming Fundamentals, C/C++, Data Structures, Databases, Operating Systems & Computer Networks for ICS and Computing Entry Tests.',
+    boards: 'ICS Part I & II · NUST NET CS · FAST · ITU',
+    chapterCount:
+      (SYLLABUS_MAP['computer-science']?.chaptersClass11.length || 0) +
+      (SYLLABUS_MAP['computer-science']?.chaptersClass12.length || 0),
+    sampleChapters: (SYLLABUS_MAP['computer-science']?.chaptersClass11 || [])
+      .slice(0, 4)
+      .map((c) => ({ title: c.name, slug: slugify(c.name) })),
   },
   {
     slug: 'english',
-    syllabusKey: 'english' as const,
     name: 'English',
-    tagline: 'Grammar, Vocabulary, Reading Comprehension & Sentence Correction',
-    boards: ['FBISE', 'Punjab', 'MDCAT', 'ECAT', 'NUST NET'],
+    icon: <Languages size={20} className="text-[#D71921]" />,
+    description:
+      'Vocabulary, Synonyms & Antonyms, Sentence Completion, Error Spotting, Grammar Rules & Reading Comprehension for all admission tests.',
+    boards: 'MDCAT · NUST NET · FAST · GIKI · NTS NAT · HSSC',
+    chapterCount: TOPIC_LISTS.english?.length || 5,
+    sampleChapters: (TOPIC_LISTS.english || []).map((t) => ({
+      title: t,
+      slug: slugify(t),
+    })),
   },
 ];
 
 export const McqsHubPage: React.FC = () => {
+  const location = useLocation();
+  const isSubjectsRoute = location.pathname.startsWith('/subjects');
+  const baseSubjectPrefix = isSubjectsRoute ? '/subjects' : '/mcqs';
+
   const jsonLd = {
     '@context': 'https://schema.org',
-    '@type': 'ItemList',
-    name: 'Boardly Class 11, Class 12 & Entrance Exam MCQ Subjects',
-    itemListElement: SUBJECT_CARDS.map((s, idx) => ({
-      '@type': 'ListItem',
-      position: idx + 1,
-      name: `${s.name} MCQs (Class 11 & 12 / MDCAT / ECAT)`,
-      url: `https://boardly.cfd/mcqs/${s.slug}`,
-    })),
+    '@type': 'CollectionPage',
+    name: isSubjectsRoute
+      ? 'All Subjects — Class 11, Class 12 & Entrance Test Syllabus | Boardly'
+      : 'Class 11, Class 12 & University Entrance Exam MCQs by Subject — Boardly',
+    description:
+      'Free topic-wise and chapter-wise MCQs with step-by-step explanations for Physics, Chemistry, Biology, Mathematics, Computer Science, and English in Pakistan.',
+    url: `https://boardly.cfd${isSubjectsRoute ? '/subjects' : '/mcqs'}`,
   };
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6">
       <PageMeta
-        title="Class 11 & 12 Subject MCQs with KaTeX Solutions — MDCAT, ECAT, FBISE & Punjab"
-        description="Practice chapter-by-chapter Class 11 & 12 MCQs for Mathematics, Physics, Chemistry, Biology, Computer Science, and English with instant KaTeX step-by-step solutions."
-        canonicalPath="/mcqs"
+        title={
+          isSubjectsRoute
+            ? 'All Subjects — Physics, Chemistry, Biology, Math, CS & English | Boardly'
+            : 'Subject-Wise MCQs — Physics, Chemistry, Biology, Math & English'
+        }
+        description="Practice chapter-wise Class 11 & 12 board exam and MDCAT, NUST NET, UET ECAT, FAST & GIKI entrance test MCQs with instant step-by-step explanations."
+        canonicalPath={isSubjectsRoute ? '/subjects' : '/mcqs'}
         jsonLd={jsonLd}
       />
 
       <div className="max-w-5xl mx-auto">
-        <Breadcrumbs items={[{ label: 'Subject MCQs' }]} />
+        <Breadcrumbs items={[{ label: isSubjectsRoute ? 'Subjects' : 'Subject MCQs' }]} />
 
-        {/* Hero */}
+        {/* Header */}
         <section className="glass-panel p-8 sm:p-10 mb-10">
           <div className="section-chip-red mb-4">
-            <Sparkles size={13} />
-            <span>Interactive Curriculum Index</span>
+            <BookOpen size={13} />
+            <span>Public Question Bank · Chapter-Wise Practice</span>
           </div>
-          <h1 className="font-dot text-3xl sm:text-5xl font-bold text-white mb-3">
-            Subject &amp; Chapter MCQ Bank
+          <h1 className="font-dot text-3xl sm:text-5xl font-bold tracking-tight text-white mb-4">
+            {isSubjectsRoute
+              ? 'Explore All Subjects & Chapters'
+              : 'Practice MCQs by Subject, University & Chapter'}
           </h1>
           <p className="text-sm sm:text-base text-white/75 max-w-3xl leading-relaxed">
-            Explore every Class 11 (HSSC-I) and Class 12 (HSSC-II) chapter across Mathematics, Physics, Chemistry, Biology, Computer Science, and English. Try interactive sample MCQs with step-by-step KaTeX derivations on every chapter page without signing in.
+            Explore Boardly’s structured question bank for Pakistani Class 11 (HSSC-I) and Class 12 (HSSC-II) board exams alongside MDCAT, NUST NET, FAST, UET ECAT, and GIKI admission tests. Every chapter includes sample questions with full KaTeX mathematical and scientific explanations.
           </p>
+        </section>
+
+        {/* University Entrance Exam Tracks */}
+        <section className="mb-10">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div className="flex items-center gap-2">
+              <GraduationCap size={20} className="text-[#D71921]" />
+              <h2 className="font-dot text-xl sm:text-2xl font-bold text-white">
+                University Entrance Test Tracks
+              </h2>
+            </div>
+            <span className="text-xs text-white/55">Direct university syllabus links</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {UNIVERSITY_TRACKS.map((uni) => (
+              <div
+                key={uni.slug}
+                className="glass-panel p-5 flex flex-col justify-between gap-4 border border-white/10 hover:border-white/20 transition-all"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <Link
+                      to={`/mcqs/${uni.slug}`}
+                      className="font-dot text-lg font-bold text-white hover:text-[#D71921] transition-colors"
+                    >
+                      {uni.name}
+                    </Link>
+                    <span className="glass-pill px-2.5 py-0.5 text-[10px] font-semibold text-[#D71921]">
+                      {uni.badge}
+                    </span>
+                  </div>
+                  <p className="text-xs text-white/65 mb-3">{uni.fullName}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {uni.subjects.map((s) => (
+                      <Link
+                        key={s.slug}
+                        to={`/mcqs/${uni.slug}/${s.slug}`}
+                        className="px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.1] border border-white/10 text-[11px] text-white/80 hover:text-white transition-colors"
+                      >
+                        {s.name}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+                <Link
+                  to={`/mcqs/${uni.slug}`}
+                  className="text-xs font-semibold text-[#D71921] hover:underline inline-flex items-center gap-1"
+                >
+                  <span>Open {uni.name} Question Bank</span>
+                  <ArrowRight size={13} />
+                </Link>
+              </div>
+            ))}
+          </div>
         </section>
 
         {/* Subject Grid */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-          {SUBJECT_CARDS.map((sub) => {
-            const syllabus = SYLLABUS_MAP[sub.syllabusKey];
-            const class11Chapters = syllabus?.chaptersClass11 || [];
-            const class12Chapters = syllabus?.chaptersClass12 || [];
-            const taxonomySub = DEFAULT_TAXONOMY.find(
-              (t) => t.slug === sub.slug || (sub.slug === 'computer-science' && t.slug === 'computer')
-            );
-            const totalChapters =
-              class11Chapters.length + class12Chapters.length ||
-              taxonomySub?.chapters.length ||
-              0;
-
-            const previewChapters = [
-              ...class11Chapters.slice(0, 2).map((c) => c.name),
-              ...class12Chapters.slice(0, 2).map((c) => c.name),
-            ];
-
-            return (
-              <div key={sub.slug} className="glass-card p-7 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <span className="section-chip">
-                      <Layers size={12} />
-                      <span>{totalChapters} Chapters</span>
-                    </span>
-                    <span className="text-xs text-[#D71921] font-semibold">
-                      Class 11 &amp; 12
-                    </span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {SUBJECT_DEFS.map((subj) => (
+            <article
+              key={subj.slug}
+              className="glass-panel p-6 sm:p-8 flex flex-col justify-between gap-6 transition-all hover:border-white/25"
+            >
+              <div>
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#D71921]/10 border border-[#D71921]/30 flex items-center justify-center">
+                      {subj.icon}
+                    </div>
+                    <div>
+                      <h2 className="font-dot text-2xl font-bold text-white">
+                        <Link
+                          to={`${baseSubjectPrefix}/${subj.slug}`}
+                          className="hover:text-[#D71921] transition-colors"
+                        >
+                          {subj.name} MCQs
+                        </Link>
+                      </h2>
+                      <p className="text-[11px] font-mono text-white/50">{subj.boards}</p>
+                    </div>
                   </div>
+                  <span className="glass-pill px-3 py-1 text-xs font-semibold text-white/80">
+                    {subj.chapterCount} Chapters
+                  </span>
+                </div>
 
-                  <Link
-                    to={`/mcqs/${sub.slug}`}
-                    className="font-dot text-2xl font-bold text-white hover:text-[#D71921] transition-colors block mb-2"
-                  >
-                    {sub.name}
-                  </Link>
+                <p className="text-xs sm:text-sm text-white/70 leading-relaxed mb-5">
+                  {subj.description}
+                </p>
 
-                  <p className="text-xs sm:text-sm text-white/70 leading-relaxed mb-4">
-                    {sub.tagline}
+                {/* Sample Chapter Quick Links */}
+                <div className="space-y-2 mb-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-white/45">
+                    Popular Chapters
                   </p>
-
-                  {/* Board Pills */}
-                  <div className="flex flex-wrap gap-1.5 mb-5">
-                    {sub.boards.map((b) => (
-                      <span
-                        key={b}
-                        className="glass-pill px-2.5 py-0.5 text-[10px] text-white/65"
+                  <div className="flex flex-wrap gap-2">
+                    {subj.sampleChapters.map((ch) => (
+                      <Link
+                        key={ch.slug}
+                        to={`/mcqs/${subj.slug}/${ch.slug}`}
+                        className="px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.09] border border-white/10 text-xs text-white/80 hover:text-white transition-colors"
                       >
-                        {b}
-                      </span>
+                        {ch.title}
+                      </Link>
                     ))}
                   </div>
-
-                  {/* Quick Chapter Links */}
-                  {previewChapters.length > 0 && (
-                    <div className="space-y-1.5 mb-6 pt-4 border-t border-white/[0.08]">
-                      <span className="text-[10px] uppercase tracking-wider text-white/45 block mb-2">
-                        Popular Chapters
-                      </span>
-                      {previewChapters.map((ch) => (
-                        <Link
-                          key={ch}
-                          to={`/mcqs/${sub.slug}/${slugify(ch)}`}
-                          className="flex items-center justify-between text-xs text-white/75 hover:text-[#D71921] py-1 transition-colors"
-                        >
-                          <span className="truncate">{ch}</span>
-                          <ArrowRight size={12} className="shrink-0" />
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-3 pt-3 border-t border-white/[0.08]">
-                  <Link
-                    to={`/mcqs/${sub.slug}`}
-                    className="btn-primary flex-1 py-2.5 px-4 text-xs font-semibold inline-flex items-center justify-center gap-2"
-                  >
-                    <BookOpen size={14} />
-                    <span>Open {sub.name} Chapters</span>
-                  </Link>
-                  <Link
-                    to={`/material/subject/${sub.slug}`}
-                    className="btn-secondary py-2.5 px-4 text-xs font-semibold"
-                  >
-                    Notes
-                  </Link>
                 </div>
               </div>
-            );
-          })}
-        </section>
 
-        {/* Bottom CTA */}
-        <section className="glass-panel p-8 text-center">
-          <CheckCircle2 size={22} className="text-[#D71921] mx-auto mb-3" />
-          <h2 className="font-dot text-2xl font-bold text-white mb-2">
-            Want Full Timed Mock Exams &amp; Saved Analytics?
-          </h2>
-          <p className="text-xs sm:text-sm text-white/65 max-w-xl mx-auto mb-6">
-            Sign in for free to unlock custom timed tests, negative marking simulations, weak-chapter tracking, and daily PKT study streaks.
-          </p>
-          <Link to="/signup" className="btn-primary px-6 py-3 text-xs font-semibold inline-flex items-center gap-2">
-            <span>Start Practicing Free</span>
-            <ArrowRight size={14} />
-          </Link>
-        </section>
+              <div className="pt-4 border-t border-white/10 flex items-center justify-between">
+                <Link
+                  to={`/study-material/subject/${subj.slug}`}
+                  className="text-xs text-white/60 hover:text-white transition-colors"
+                >
+                  View {subj.name} Notes &amp; PDFs →
+                </Link>
+                <Link
+                  to={`${baseSubjectPrefix}/${subj.slug}`}
+                  className="btn-primary px-4 py-2 text-xs font-semibold inline-flex items-center gap-1.5"
+                >
+                  <span>Browse All Chapters</span>
+                  <ArrowRight size={14} />
+                </Link>
+              </div>
+            </article>
+          ))}
+        </div>
       </div>
     </div>
   );

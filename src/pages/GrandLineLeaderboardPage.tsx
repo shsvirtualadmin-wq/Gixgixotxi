@@ -3,15 +3,26 @@ import { Link } from 'react-router-dom';
 import { Trophy, ArrowRight, Sparkles } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import {
   getGlobalGrandLineTopScorers,
   getAllPublicGrandLineTests,
   type AmbassadorTestDoc,
+  type GlobalTopScorerEntry,
 } from '@/services/ambassadorTestService';
+import { useAuth } from '@/contexts/AuthContext';
 import { sanitizeStudentDisplayName, buildEntitySlug } from '@/utils/privacy';
 
+function formatTimeTaken(seconds: number): string {
+  const safe = Math.max(0, Math.floor(Number(seconds) || 0));
+  const m = Math.floor(safe / 60);
+  const s = safe % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
 export const GrandLineLeaderboardPage: React.FC = () => {
-  const [scorers, setScorers] = useState<Array<{ name: string; score: number }>>([]);
+  const { user } = useAuth();
+  const [scorers, setScorers] = useState<GlobalTopScorerEntry[]>([]);
   const [tests, setTests] = useState<AmbassadorTestDoc[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -19,7 +30,7 @@ export const GrandLineLeaderboardPage: React.FC = () => {
     let mounted = true;
     setLoading(true);
     Promise.all([
-      getGlobalGrandLineTopScorers(20),
+      getGlobalGrandLineTopScorers(25),
       getAllPublicGrandLineTests(),
     ])
       .then(([topList, publicTests]) => {
@@ -36,7 +47,7 @@ export const GrandLineLeaderboardPage: React.FC = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6">
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6 overflow-x-hidden">
       <PageMeta
         title="Grand Line Leaderboard — Live Standings & Top Scorers | Boardly"
         description="View real-time student rankings and top scorers across public Grand Line mock tests authored by Nakama Captains on Boardly."
@@ -51,13 +62,13 @@ export const GrandLineLeaderboardPage: React.FC = () => {
           ]}
         />
 
-        <section className="glass-panel p-8 sm:p-10 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <section className="glass-panel p-6 sm:p-10 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="section-chip-red mb-3">
               <Sparkles size={13} />
               <span>Live Standings</span>
             </div>
-            <h1 className="font-dot text-3xl sm:text-4xl font-bold text-white mb-2">
+            <h1 className="font-dot text-2xl sm:text-4xl font-bold text-white mb-2">
               Grand Line Top Scorers
             </h1>
             <p className="text-sm text-white/70">
@@ -66,22 +77,22 @@ export const GrandLineLeaderboardPage: React.FC = () => {
           </div>
           <Link
             to="/grand-line"
-            className="btn-primary px-5 py-2.5 text-xs font-semibold inline-flex items-center gap-2 shrink-0"
+            className="btn-primary px-5 py-2.5 text-xs font-semibold inline-flex items-center gap-2 shrink-0 self-start sm:self-auto"
           >
             <span>Browse Public Tests</span>
             <ArrowRight size={14} />
           </Link>
         </section>
 
-        <section className="glass-panel p-6 sm:p-8 mb-8">
-          <h2 className="font-dot text-xl font-bold text-white mb-4">
+        <section className="glass-panel p-4 sm:p-8 mb-8 overflow-hidden">
+          <h2 className="font-dot text-lg sm:text-xl font-bold text-white mb-4">
             Global Top Performers
           </h2>
 
           {loading ? (
             <div className="space-y-3">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="glass-card h-14 animate-pulse" />
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="glass-card h-16 animate-pulse" />
               ))}
             </div>
           ) : scorers.length === 0 ? (
@@ -99,24 +110,71 @@ export const GrandLineLeaderboardPage: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-2.5">
-              {scorers.map((entry, idx) => (
-                <div
-                  key={`${entry.name}-${idx}`}
-                  className="glass-row flex items-center justify-between p-4 rounded-xl"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="font-dot text-sm font-bold text-[#D71921] w-8">
-                      #{idx + 1}
-                    </span>
-                    <span className="text-sm font-semibold text-white">
-                      {sanitizeStudentDisplayName(entry.name)}
-                    </span>
+              {scorers.map((entry, idx) => {
+                const rank = entry.rank || idx + 1;
+                const displayName =
+                  (entry.userName || entry.studentName || entry.name || '').trim() || 'Student';
+                const isCurrentUser =
+                  Boolean(user?.uid && entry.studentUid && entry.studentUid === user.uid);
+                return (
+                  <div
+                    key={`${entry.studentUid || displayName}-${idx}`}
+                    className={`glass-row flex items-center justify-between gap-2 sm:gap-3 p-3 sm:p-4 rounded-xl border ${
+                      isCurrentUser
+                        ? 'border-[#D71921]/60 bg-[#D71921]/10'
+                        : 'border-white/10'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                      <span
+                        className={`font-dot text-xs sm:text-sm font-bold w-6 sm:w-8 shrink-0 tabular-nums ${
+                          rank === 1
+                            ? 'text-amber-400'
+                            : rank === 2
+                            ? 'text-zinc-300'
+                            : rank === 3
+                            ? 'text-amber-600'
+                            : 'text-[#D71921]'
+                        }`}
+                      >
+                        #{rank}
+                      </span>
+                      <BoardlyAvatar
+                        uid={entry.studentUid || `${rank}-${displayName}`}
+                        name={displayName}
+                        photoURL={entry.userAvatar || null}
+                        size="sm"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-xs sm:text-sm font-bold text-white truncate">
+                            {displayName}
+                          </span>
+                          {isCurrentUser && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#D71921] text-white shrink-0">
+                              You
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-white/55 truncate">
+                          {entry.testTitle ? `${entry.testTitle} · ` : ''}
+                          {formatTimeTaken(entry.timeTakenSeconds)} · {entry.percentage}% accuracy
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0 tabular-nums">
+                      <span className="text-xs sm:text-sm font-bold text-white block">
+                        {entry.totalQuestions > 0
+                          ? `${entry.score}/${entry.totalQuestions}`
+                          : `${entry.score}`}
+                      </span>
+                      <span className="text-[10px] sm:text-xs font-semibold text-[#D71921] block">
+                        {entry.percentage}%
+                      </span>
+                    </div>
                   </div>
-                  <span className="glass-pill px-3 py-1 text-xs font-bold text-white">
-                    Score: {entry.score}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

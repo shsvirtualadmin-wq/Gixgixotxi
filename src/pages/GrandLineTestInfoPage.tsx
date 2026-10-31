@@ -10,31 +10,48 @@ import {
   Share2,
   Check,
   Award,
+  CheckCircle2,
+  Download,
+  Loader2,
 } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import {
   getAmbassadorTestById,
   getTestLeaderboard,
+  getMyTestAttempts,
   type AmbassadorTestDoc,
+  type AmbassadorTestAttempt,
   type PublicLeaderboardEntry,
 } from '@/services/ambassadorTestService';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { sanitizeStudentDisplayName, extractIdFromSlug, buildEntitySlug } from '@/utils/privacy';
+import { downloadDrillResultPdfByTestId } from '@/utils/testPdfExporter';
+import { showApiToast } from '@/lib/api';
+
+function formatTimeTaken(seconds: number): string {
+  const safe = Math.max(0, Math.floor(Number(seconds) || 0));
+  const m = Math.floor(safe / 60);
+  const s = safe % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
 
 export const GrandLineTestInfoPage: React.FC = () => {
   const { idSlug } = useParams<{ idSlug: string }>();
   const testId = extractIdFromSlug(idSlug);
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { requireAuth } = useAuthGate();
 
   const [test, setTest] = useState<AmbassadorTestDoc | null>(null);
   const [leaderboard, setLeaderboard] = useState<PublicLeaderboardEntry[]>([]);
+  const [myAttempt, setMyAttempt] = useState<AmbassadorTestAttempt | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -44,13 +61,20 @@ export const GrandLineTestInfoPage: React.FC = () => {
     }
     setLoading(true);
     Promise.all([
-      getAmbassadorTestById(testId),
+      getAmbassadorTestById(testId, false, { view: 'info', silentErrorToast: true }),
       getTestLeaderboard(testId),
+      user ? getMyTestAttempts() : Promise.resolve([]),
     ])
-      .then(([docData, lb]) => {
+      .then(([docData, lb, attempts]) => {
         if (!mounted) return;
         setTest(docData);
         setLeaderboard(lb);
+        if (user && Array.isArray(attempts)) {
+          const found = attempts.find((a) => a.testId === testId) || null;
+          setMyAttempt(found);
+        } else {
+          setMyAttempt(null);
+        }
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -58,12 +82,19 @@ export const GrandLineTestInfoPage: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [testId]);
+  }, [testId, user]);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4">
-        <div className="max-w-4xl mx-auto glass-panel p-8 h-64 animate-pulse" />
+        <div className="max-w-4xl mx-auto space-y-6">
+          <div className="glass-panel p-8 h-64 animate-pulse" />
+          <div className="glass-panel p-8 space-y-3">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-14 rounded-xl bg-white/5 animate-pulse" />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -77,8 +108,17 @@ export const GrandLineTestInfoPage: React.FC = () => {
   const creatorName = sanitizeStudentDisplayName(test.creatorName, test.creatorUid);
   const qCount = test.questionCount || test.questions?.length || 0;
   const estMinutes = Math.max(10, qCount * 1.5);
+  const studentFallbackName =
+    profile?.displayName?.trim() ||
+    user?.displayName?.trim() ||
+    (user?.email ? user.email.split('@')[0] : '') ||
+    'Student';
 
   const handleStartTest = () => {
+    if (myAttempt) {
+      navigate(`/grand-line/test/${test.id}/run?mode=result`);
+      return;
+    }
     requireAuth(
       `take the "${test.title}" Grand Line test and record your ranking`,
       () => {
@@ -86,6 +126,19 @@ export const GrandLineTestInfoPage: React.FC = () => {
       },
       `/grand-line/test/${test.id}/run`
     );
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!myAttempt || downloadingPdf) return;
+    setDownloadingPdf(true);
+    try {
+      await downloadDrillResultPdfByTestId(test.id, myAttempt, studentFallbackName);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to generate PDF.';
+      showApiToast(msg, 'error');
+    } finally {
+      setDownloadingPdf(false);
+    }
   };
 
   return (
@@ -106,9 +159,17 @@ export const GrandLineTestInfoPage: React.FC = () => {
 
         <section className="glass-panel p-7 sm:p-10 mb-8 border border-[#D71921]/30">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <div className="section-chip-red">
-              <Trophy size={13} />
-              <span>Grand Line Public Mock Test</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="section-chip-red">
+                <Trophy size={13} />
+                <span>Grand Line Public Mock Test</span>
+              </div>
+              {myAttempt && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                  <CheckCircle2 size={13} />
+                  Attempted · {myAttempt.score}/{myAttempt.totalQuestions} ({myAttempt.percentage}%)
+                </span>
+              )}
             </div>
 
             <button
@@ -176,14 +237,36 @@ export const GrandLineTestInfoPage: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={handleStartTest}
-              className="btn-primary px-6 py-3 text-xs sm:text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
-            >
-              {user ? <Play size={15} /> : <Lock size={15} />}
-              <span>{user ? 'Start Timed Test Now' : 'Sign in to Take Test'}</span>
-            </button>
+            {myAttempt ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/grand-line/test/${test.id}/run?mode=result`)}
+                  className="btn-primary px-6 py-3 text-xs sm:text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
+                >
+                  <CheckCircle2 size={15} />
+                  <span>View my result</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadPdf}
+                  disabled={downloadingPdf}
+                  className="btn-secondary px-5 py-3 text-xs sm:text-sm font-semibold inline-flex items-center gap-2 cursor-pointer disabled:opacity-60"
+                >
+                  {downloadingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                  <span>{downloadingPdf ? 'Generating PDF...' : 'Download PDF'}</span>
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={handleStartTest}
+                className="btn-primary px-6 py-3 text-xs sm:text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
+              >
+                {user ? <Play size={15} /> : <Lock size={15} />}
+                <span>{user ? 'Start Timed Test Now' : 'Sign in to Take Test'}</span>
+              </button>
+            )}
 
             <Link
               to="/grand-line/leaderboard"
@@ -195,17 +278,17 @@ export const GrandLineTestInfoPage: React.FC = () => {
         </section>
 
         {/* Top Scorers Panel */}
-        <section className="glass-panel p-6 sm:p-8">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h2 className="font-dot text-xl font-bold text-white">
+        <section className="glass-panel p-5 sm:p-8 overflow-hidden">
+          <div className="flex items-center justify-between gap-2 mb-5">
+            <div className="min-w-0">
+              <h2 className="font-dot text-lg sm:text-xl font-bold text-white truncate">
                 Top Scorers on This Test
               </h2>
               <p className="text-xs text-white/60">
                 Real-time rankings from verified Grand Line test attempts.
               </p>
             </div>
-            <span className="glass-pill px-3 py-1 text-xs text-white/70">
+            <span className="glass-pill px-3 py-1 text-xs text-white/70 shrink-0">
               {leaderboard.length} Attempt{leaderboard.length === 1 ? '' : 's'}
             </span>
           </div>
@@ -222,32 +305,67 @@ export const GrandLineTestInfoPage: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-2.5">
-              {leaderboard.slice(0, 15).map((entry) => (
-                <div
-                  key={`${entry.rank}-${entry.name}`}
-                  className="glass-row flex items-center justify-between p-3.5 rounded-xl"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="font-dot text-sm font-bold text-[#D71921] w-7">
-                      #{entry.rank}
-                    </span>
-                    <div>
-                      <p className="text-xs sm:text-sm font-bold text-white">
-                        {sanitizeStudentDisplayName(entry.name)}
-                      </p>
-                      <p className="text-[11px] text-white/50">{entry.date}</p>
+              {leaderboard.slice(0, 25).map((entry) => {
+                const displayName =
+                  (entry.userName || entry.studentName || entry.name || '').trim() || 'Student';
+                const isCurrentUser =
+                  Boolean(user?.uid && entry.studentUid && entry.studentUid === user.uid);
+                return (
+                  <div
+                    key={`${entry.rank}-${entry.id || displayName}`}
+                    className={`glass-row flex items-center justify-between gap-2 sm:gap-3 p-3 sm:p-3.5 rounded-xl border ${
+                      isCurrentUser
+                        ? 'border-[#D71921]/60 bg-[#D71921]/10'
+                        : 'border-white/10'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                      <span
+                        className={`font-dot text-xs sm:text-sm font-bold w-6 sm:w-7 shrink-0 tabular-nums ${
+                          entry.rank === 1
+                            ? 'text-amber-400'
+                            : entry.rank === 2
+                            ? 'text-zinc-300'
+                            : entry.rank === 3
+                            ? 'text-amber-600'
+                            : 'text-[#D71921]'
+                        }`}
+                      >
+                        #{entry.rank}
+                      </span>
+                      <BoardlyAvatar
+                        uid={entry.studentUid || `${entry.rank}-${displayName}`}
+                        name={displayName}
+                        photoURL={entry.userAvatar || null}
+                        size="sm"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <p className="text-xs sm:text-sm font-bold text-white truncate">
+                            {displayName}
+                          </p>
+                          {isCurrentUser && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#D71921] text-white shrink-0">
+                              You
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-white/55 truncate">
+                          {formatTimeTaken(entry.timeTakenSeconds)} · {entry.percentage}% accuracy
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0 tabular-nums">
+                      <span className="text-xs sm:text-sm font-bold text-white block">
+                        {entry.score}/{entry.totalQuestions}
+                      </span>
+                      <span className="block text-[10px] font-semibold text-[#D71921]">
+                        {entry.percentage}%
+                      </span>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-xs sm:text-sm font-bold text-white">
-                      {entry.score} / {entry.totalQuestions}
-                    </span>
-                    <span className="block text-[10px] text-white/50">
-                      {entry.timeTakenSeconds}s
-                    </span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

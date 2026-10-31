@@ -124,10 +124,15 @@ async function verifyFirebaseIdToken(token, projectId) {
     throw new Error('Invalid token signature');
   }
 
+  const emailStr = String(payload.email || '').trim().toLowerCase();
+  const tokenName = String(payload.name || '').trim();
+  const emailPrefix = emailStr.includes('@') ? emailStr.split('@')[0].trim() : emailStr;
+
   return {
     uid,
-    email: String(payload.email || '').trim().toLowerCase(),
-    name: String(payload.name || payload.email?.split('@')[0] || 'Student').trim(),
+    email: emailStr,
+    name: tokenName || emailPrefix || 'Student',
+    tokenName,
     picture: payload.picture || null,
   };
 }
@@ -284,10 +289,48 @@ async function ensureCaptainSchema(db) {
       .prepare('ALTER TABLE user_roles ADD COLUMN created_at INTEGER DEFAULT 0')
       .run()
       .catch(() => {});
+    await db
+      .prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_test_attempts_unique_user_test ON test_attempts(test_id, user_uid)')
+      .run()
+      .catch(() => {});
     schemaEnsured = true;
   } catch {
     // Allow queries to proceed even if schema check partially fails
   }
+}
+
+const inFlightAttemptLocks = new Set();
+const ALREADY_ATTEMPTED_MESSAGE =
+  'You have already taken this drill. Only one verified attempt per student is permitted for each drill.';
+
+function resolveStudentAttemptName(frontendName, tokenName, email) {
+  const fromFrontend = String(frontendName ?? '').trim();
+  if (fromFrontend && fromFrontend.toLowerCase() !== 'student') {
+    return fromFrontend.slice(0, 120);
+  }
+  const fromToken = String(tokenName ?? '').trim();
+  if (fromToken && fromToken.toLowerCase() !== 'student') {
+    return fromToken.slice(0, 120);
+  }
+  const emailStr = String(email ?? '').trim();
+  const emailPrefix = emailStr.includes('@') ? emailStr.split('@')[0].trim() : emailStr;
+  if (emailPrefix) {
+    return emailPrefix.slice(0, 120);
+  }
+  if (fromFrontend) return fromFrontend.slice(0, 120);
+  if (fromToken) return fromToken.slice(0, 120);
+  return 'Student';
+}
+
+function resolveLeaderboardRowName(storedName, fallbackEmail) {
+  const cleanStored = String(storedName ?? '').trim();
+  if (cleanStored) return cleanStored;
+  const emailStr = String(fallbackEmail ?? '').trim();
+  if (emailStr && emailStr.includes('@')) {
+    const prefix = emailStr.split('@')[0].trim();
+    if (prefix) return prefix;
+  }
+  return 'Student';
 }
 
 async function checkWriteRateLimit(db, key, maxRequests = 60, windowMs = 60000) {
@@ -376,6 +419,7 @@ async function authenticateRequest(request, env, requireAuth = true) {
     uid: decoded.uid,
     email: decoded.email,
     name: decoded.name,
+    tokenName: decoded.tokenName || '',
     picture: decoded.picture,
     role,
     customRole: roleRow?.custom_role || null,
@@ -676,11 +720,129 @@ export default {
         );
       }
 
+      // Get current user's verified attempt + graded questions for a test (used for result view & PDF download): GET /api/tests/:id/my-attempt
+      const myAttemptMatch = path.match(/^\/api\/tests\/([^/]+)\/my-attempt$/);
+      if (myAttemptMatch && method === 'GET') {
+        const testId = decodeURIComponent(myAttemptMatch[1]);
+        const user = await authenticateRequest(request, env, true);
+
+        const testRow = await db
+          .prepare(
+            `SELECT id, title, description, subject, question_count AS questionCount,
+                    duration_minutes AS durationMinutes, visibility, status,
+                    captain_uid AS captainUid, captain_name AS captainName,
+                    crew_id AS crewId, crew_name AS crewName
+             FROM captain_tests WHERE id = ?1`
+          )
+          .bind(testId)
+          .first();
+
+        const attemptRow = await db
+          .prepare(
+            `SELECT ta.id, ta.test_id AS testId, ta.test_title AS testTitle, ta.subject,
+                    ta.captain_uid AS captainUid, ta.captain_name AS captainName,
+                    ta.user_uid AS userUid, ta.user_name AS userName, ta.user_avatar AS userAvatar,
+                    ta.score, ta.total_questions AS totalQuestions, ta.percentage,
+                    ta.time_taken_seconds AS timeTakenSeconds, ta.created_at AS createdAt,
+                    ur.email AS userEmail
+             FROM test_attempts ta
+             LEFT JOIN user_roles ur ON ur.uid = ta.user_uid
+             WHERE ta.test_id = ?1 AND ta.user_uid = ?2
+             ORDER BY ta.created_at DESC LIMIT 1`
+          )
+          .bind(testId, user.uid)
+          .first();
+
+        if (!attemptRow) {
+          if (!testRow) {
+            return errorResponse(request, env, 'Test not found.', 'NOT_FOUND', 404);
+          }
+          return errorResponse(
+            request,
+            env,
+            'You must attempt this drill before viewing or downloading its answer key and result PDF.',
+            'ATTEMPT_REQUIRED',
+            403
+          );
+        }
+
+        const [{ results: qRows }, { results: ansRows }] = await Promise.all([
+          db
+            .prepare(
+              `SELECT id, position, question_text, options_json, correct_index, explanation, topic, difficulty
+               FROM test_questions WHERE test_id = ?1 ORDER BY position ASC`
+            )
+            .bind(testId)
+            .all(),
+          db
+            .prepare(
+              `SELECT question_id, selected_index, correct_index, is_correct
+               FROM attempt_answers WHERE attempt_id = ?1`
+            )
+            .bind(attemptRow.id)
+            .all(),
+        ]);
+
+        const ansByQuestionId = new Map();
+        for (const a of ansRows || []) {
+          ansByQuestionId.set(String(a.question_id), a);
+        }
+
+        const gradedQuestions = (qRows || []).map((q, idx) => {
+          let options = [];
+          try {
+            options = JSON.parse(q.options_json || '[]');
+          } catch {
+            options = [];
+          }
+          const ans = ansByQuestionId.get(String(q.id));
+          const selectedIndex = ans !== undefined ? Number(ans.selected_index) : -1;
+          const correctIndex = Number(q.correct_index ?? ans?.correct_index ?? 0);
+          const isCorrect = ans !== undefined ? Boolean(ans.is_correct) : selectedIndex === correctIndex;
+          return {
+            id: q.id,
+            position: typeof q.position === 'number' ? q.position : idx,
+            question: q.question_text,
+            options,
+            selectedIndex,
+            correctIndex,
+            isCorrect,
+            explanation: q.explanation || '',
+          };
+        });
+
+        const resolvedName = resolveLeaderboardRowName(attemptRow.userName, attemptRow.userEmail || user.email);
+
+        return jsonResponse(request, env, {
+          attempt: {
+            id: attemptRow.id,
+            testId: attemptRow.testId,
+            testTitle: attemptRow.testTitle || testRow?.title || 'Grand Line Drill',
+            subject: attemptRow.subject || testRow?.subject || 'General',
+            captainUid: attemptRow.captainUid || testRow?.captainUid || '',
+            captainName: attemptRow.captainName || testRow?.captainName || 'Captain',
+            userUid: attemptRow.userUid,
+            userName: resolvedName,
+            studentName: resolvedName,
+            name: resolvedName,
+            userAvatar: attemptRow.userAvatar || null,
+            score: Number(attemptRow.score || 0),
+            totalQuestions: Number(attemptRow.totalQuestions || gradedQuestions.length),
+            percentage: Number(attemptRow.percentage || 0),
+            timeTakenSeconds: Number(attemptRow.timeTakenSeconds || 0),
+            createdAt: attemptRow.createdAt,
+            gradedQuestions,
+          },
+          test: testRow || null,
+        });
+      }
+
       // Single test routes: /api/tests/:id
       const testMatch = path.match(/^\/api\/tests\/([^/]+)$/);
       if (testMatch) {
         const testId = decodeURIComponent(testMatch[1]);
-        const user = await authenticateRequest(request, env, true);
+        const isInfoOnly = method === 'GET' && url.searchParams.get('view') === 'info';
+        const user = await authenticateRequest(request, env, !isInfoOnly);
 
         const testRow = await db
           .prepare(
@@ -699,11 +861,60 @@ export default {
           return errorResponse(request, env, 'Test not found.', 'NOT_FOUND', 404);
         }
 
-        const isOwnerOrAdmin = testRow.captainUid === user.uid || user.isAdminOrAbove;
+        const isOwnerOrAdmin = Boolean(user && (testRow.captainUid === user.uid || user.isAdminOrAbove));
 
         if (method === 'GET') {
           if (testRow.visibility === 'private' && !isOwnerOrAdmin) {
             return errorResponse(request, env, 'This test is private.', 'FORBIDDEN', 403);
+          }
+
+          if (isInfoOnly) {
+            return jsonResponse(request, env, {
+              test: {
+                ...testRow,
+                questions: [],
+              },
+            });
+          }
+
+          const includeAnswers = isOwnerOrAdmin && url.searchParams.get('includeAnswers') === '1';
+
+          // Enforce ONE verified attempt per drill (test_id + user_uid) when student opens/starts test
+          if (!includeAnswers && user) {
+            const existingAttempt = await db
+              .prepare(
+                `SELECT id, test_id AS testId, test_title AS testTitle, subject,
+                        captain_uid AS captainUid, captain_name AS captainName,
+                        user_uid AS userUid, user_name AS userName, user_avatar AS userAvatar,
+                        score, total_questions AS totalQuestions, percentage,
+                        time_taken_seconds AS timeTakenSeconds, created_at AS createdAt
+                 FROM test_attempts
+                 WHERE test_id = ?1 AND user_uid = ?2
+                 ORDER BY created_at DESC LIMIT 1`
+              )
+              .bind(testId, user.uid)
+              .first();
+
+            if (existingAttempt) {
+              const resolvedName = resolveLeaderboardRowName(existingAttempt.userName, user.email);
+              return jsonResponse(
+                request,
+                env,
+                {
+                  error: ALREADY_ATTEMPTED_MESSAGE,
+                  message: ALREADY_ATTEMPTED_MESSAGE,
+                  code: 'ALREADY_ATTEMPTED',
+                  attemptId: existingAttempt.id,
+                  attempt: {
+                    ...existingAttempt,
+                    userName: resolvedName,
+                    studentName: resolvedName,
+                    name: resolvedName,
+                  },
+                },
+                409
+              );
+            }
           }
 
           const { results: qRows } = await db
@@ -713,8 +924,6 @@ export default {
             )
             .bind(testId)
             .all();
-
-          const includeAnswers = isOwnerOrAdmin && url.searchParams.get('includeAnswers') === '1';
 
           const questions = (qRows || []).map((q) => {
             let options = [];
@@ -959,151 +1168,251 @@ export default {
       if (attemptMatch && method === 'POST') {
         const testId = decodeURIComponent(attemptMatch[1]);
         const user = await authenticateRequest(request, env, true);
+        const lockKey = `${testId}:${user.uid}`;
 
-        const testRow = await db
-          .prepare(
-            `SELECT id, title, subject, captain_uid, captain_name, visibility, status
-             FROM captain_tests WHERE id = ?1`
-          )
-          .bind(testId)
-          .first();
-
-        if (!testRow) {
-          return errorResponse(request, env, 'Test not found.', 'NOT_FOUND', 404);
-        }
-
-        const { results: qRows } = await db
-          .prepare(
-            `SELECT id, position, question_text, options_json, correct_index, explanation
-             FROM test_questions WHERE test_id = ?1 ORDER BY position ASC`
-          )
-          .bind(testId)
-          .all();
-
-        const questions = qRows || [];
-        if (questions.length === 0) {
-          return errorResponse(request, env, 'This test has no questions to score.', 'EMPTY_TEST', 400);
-        }
-
-        const body = await request.json();
-        const rawAnswers = body.answers || {};
-        const timeTakenSeconds = Math.max(0, Math.min(86400, Number(body.timeTakenSeconds) || 0));
-        const userName = cleanStr(body.userName || user.name, 120, 'Student');
-        const userAvatar = body.userAvatar ? cleanStr(body.userAvatar, 500) : user.picture;
-
-        let score = 0;
-        const attemptId = crypto.randomUUID();
-        const now = Date.now();
-        const answerStmts = [];
-        const gradedQuestions = [];
-
-        for (let i = 0; i < questions.length; i++) {
-          const q = questions[i];
-          let selectedIndex = -1;
-          if (Array.isArray(rawAnswers)) {
-            selectedIndex = Number(rawAnswers[i] ?? -1);
-          } else if (rawAnswers && typeof rawAnswers === 'object') {
-            selectedIndex = Number(rawAnswers[q.id] ?? rawAnswers[i] ?? -1);
-          }
-          if (Number.isNaN(selectedIndex)) selectedIndex = -1;
-
-          const correctIndex = Number(q.correct_index);
-          const isCorrect = selectedIndex === correctIndex ? 1 : 0;
-          if (isCorrect) score++;
-
-          answerStmts.push(
-            db
-              .prepare(
-                `INSERT INTO attempt_answers (
-                  id, attempt_id, test_id, question_id, selected_index, correct_index, is_correct, created_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
-              )
-              .bind(crypto.randomUUID(), attemptId, testId, q.id, selectedIndex, correctIndex, isCorrect, now)
-          );
-
-          let options = [];
-          try {
-            options = JSON.parse(q.options_json || '[]');
-          } catch {
-            options = [];
-          }
-
-          gradedQuestions.push({
-            id: q.id,
-            position: q.position,
-            question: q.question_text,
-            options,
-            selectedIndex,
-            correctIndex,
-            isCorrect: Boolean(isCorrect),
-            explanation: q.explanation || '',
-          });
-        }
-
-        const totalQuestions = questions.length;
-        const percentage = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 0;
-
-        await db.batch([
-          db
+        if (inFlightAttemptLocks.has(lockKey)) {
+          const existingInFlight = await db
             .prepare(
-              `INSERT INTO test_attempts (
-                id, test_id, test_title, subject, captain_uid, captain_name,
-                user_uid, user_name, user_avatar, score, total_questions,
-                percentage, time_taken_seconds, created_at
-              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`
+              `SELECT id, test_id AS testId, test_title AS testTitle, subject,
+                      user_uid AS userUid, user_name AS userName, user_avatar AS userAvatar,
+                      score, total_questions AS totalQuestions, percentage,
+                      time_taken_seconds AS timeTakenSeconds, created_at AS createdAt
+               FROM test_attempts WHERE test_id = ?1 AND user_uid = ?2 LIMIT 1`
             )
-            .bind(
-              attemptId,
-              testId,
-              testRow.title,
-              testRow.subject,
-              testRow.captain_uid,
-              testRow.captain_name,
-              user.uid,
-              userName,
-              userAvatar,
-              score,
-              totalQuestions,
-              percentage,
-              timeTakenSeconds,
-              now
-            ),
-          ...answerStmts,
-          db
-            .prepare(
-              `UPDATE captain_tests
-               SET attempts_count = attempts_count + 1,
-                   avg_score = ROUND(((avg_score * attempts_count) + ?1) / (attempts_count + 1), 1),
-                   updated_at = ?2
-               WHERE id = ?3`
-            )
-            .bind(percentage, now, testId),
-        ]);
-
-        return jsonResponse(
-          request,
-          env,
-          {
-            attempt: {
-              id: attemptId,
-              testId,
-              testTitle: testRow.title,
-              subject: testRow.subject,
-              captainUid: testRow.captain_uid,
-              captainName: testRow.captain_name,
-              userUid: user.uid,
-              userName,
-              userAvatar,
-              score,
-              totalQuestions,
-              percentage,
-              timeTakenSeconds,
-              createdAt: now,
-              gradedQuestions,
+            .bind(testId, user.uid)
+            .first();
+          return jsonResponse(
+            request,
+            env,
+            {
+              error: ALREADY_ATTEMPTED_MESSAGE,
+              message: ALREADY_ATTEMPTED_MESSAGE,
+              code: 'ALREADY_ATTEMPTED',
+              attemptId: existingInFlight?.id || null,
+              attempt: existingInFlight || null,
             },
-          },
-          201
-        );
+            409
+          );
+        }
+
+        inFlightAttemptLocks.add(lockKey);
+        try {
+          const testRow = await db
+            .prepare(
+              `SELECT id, title, subject, captain_uid, captain_name, visibility, status
+               FROM captain_tests WHERE id = ?1`
+            )
+            .bind(testId)
+            .first();
+
+          if (!testRow) {
+            return errorResponse(request, env, 'Test not found.', 'NOT_FOUND', 404);
+          }
+
+          const existingAttempt = await db
+            .prepare(
+              `SELECT id, test_id AS testId, test_title AS testTitle, subject,
+                      captain_uid AS captainUid, captain_name AS captainName,
+                      user_uid AS userUid, user_name AS userName, user_avatar AS userAvatar,
+                      score, total_questions AS totalQuestions, percentage,
+                      time_taken_seconds AS timeTakenSeconds, created_at AS createdAt
+               FROM test_attempts
+               WHERE test_id = ?1 AND user_uid = ?2
+               ORDER BY created_at DESC LIMIT 1`
+            )
+            .bind(testId, user.uid)
+            .first();
+
+          if (existingAttempt) {
+            const resolvedName = resolveLeaderboardRowName(existingAttempt.userName, user.email);
+            return jsonResponse(
+              request,
+              env,
+              {
+                error: ALREADY_ATTEMPTED_MESSAGE,
+                message: ALREADY_ATTEMPTED_MESSAGE,
+                code: 'ALREADY_ATTEMPTED',
+                attemptId: existingAttempt.id,
+                attempt: {
+                  ...existingAttempt,
+                  userName: resolvedName,
+                  studentName: resolvedName,
+                  name: resolvedName,
+                },
+              },
+              409
+            );
+          }
+
+          const { results: qRows } = await db
+            .prepare(
+              `SELECT id, position, question_text, options_json, correct_index, explanation
+               FROM test_questions WHERE test_id = ?1 ORDER BY position ASC`
+            )
+            .bind(testId)
+            .all();
+
+          const questions = qRows || [];
+          if (questions.length === 0) {
+            return errorResponse(request, env, 'This test has no questions to score.', 'EMPTY_TEST', 400);
+          }
+
+          const body = await request.json();
+          const rawAnswers = body.answers || {};
+          const timeTakenSeconds = Math.max(0, Math.min(86400, Number(body.timeTakenSeconds) || 0));
+          const userName = resolveStudentAttemptName(
+            body.userName ?? body.studentName,
+            user.tokenName,
+            user.email
+          );
+          const userAvatar = body.userAvatar ? cleanStr(body.userAvatar, 500) : user.picture || null;
+
+          let score = 0;
+          const attemptId = crypto.randomUUID();
+          const now = Date.now();
+          const answerStmts = [];
+          const gradedQuestions = [];
+
+          for (let i = 0; i < questions.length; i++) {
+            const q = questions[i];
+            let selectedIndex = -1;
+            if (Array.isArray(rawAnswers)) {
+              selectedIndex = Number(rawAnswers[i] ?? -1);
+            } else if (rawAnswers && typeof rawAnswers === 'object') {
+              selectedIndex = Number(rawAnswers[q.id] ?? rawAnswers[i] ?? -1);
+            }
+            if (Number.isNaN(selectedIndex)) selectedIndex = -1;
+
+            const correctIndex = Number(q.correct_index);
+            const isCorrect = selectedIndex === correctIndex ? 1 : 0;
+            if (isCorrect) score++;
+
+            answerStmts.push(
+              db
+                .prepare(
+                  `INSERT INTO attempt_answers (
+                    id, attempt_id, test_id, question_id, selected_index, correct_index, is_correct, created_at
+                  ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+                )
+                .bind(crypto.randomUUID(), attemptId, testId, q.id, selectedIndex, correctIndex, isCorrect, now)
+            );
+
+            let options = [];
+            try {
+              options = JSON.parse(q.options_json || '[]');
+            } catch {
+              options = [];
+            }
+
+            gradedQuestions.push({
+              id: q.id,
+              position: q.position,
+              question: q.question_text,
+              options,
+              selectedIndex,
+              correctIndex,
+              isCorrect: Boolean(isCorrect),
+              explanation: q.explanation || '',
+            });
+          }
+
+          const totalQuestions = questions.length;
+          const percentage = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 0;
+
+          try {
+            await db.batch([
+              db
+                .prepare(
+                  `INSERT INTO test_attempts (
+                    id, test_id, test_title, subject, captain_uid, captain_name,
+                    user_uid, user_name, user_avatar, score, total_questions,
+                    percentage, time_taken_seconds, created_at
+                  ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`
+                )
+                .bind(
+                  attemptId,
+                  testId,
+                  testRow.title,
+                  testRow.subject,
+                  testRow.captain_uid,
+                  testRow.captain_name,
+                  user.uid,
+                  userName,
+                  userAvatar,
+                  score,
+                  totalQuestions,
+                  percentage,
+                  timeTakenSeconds,
+                  now
+                ),
+              ...answerStmts,
+              db
+                .prepare(
+                  `UPDATE captain_tests
+                   SET attempts_count = attempts_count + 1,
+                       avg_score = ROUND(((avg_score * attempts_count) + ?1) / (attempts_count + 1), 1),
+                       updated_at = ?2
+                   WHERE id = ?3`
+                )
+                .bind(percentage, now, testId),
+            ]);
+          } catch (batchErr) {
+            const dupAttempt = await db
+              .prepare(
+                `SELECT id, test_id AS testId, test_title AS testTitle, subject,
+                        user_uid AS userUid, user_name AS userName, user_avatar AS userAvatar,
+                        score, total_questions AS totalQuestions, percentage,
+                        time_taken_seconds AS timeTakenSeconds, created_at AS createdAt
+                 FROM test_attempts WHERE test_id = ?1 AND user_uid = ?2 LIMIT 1`
+              )
+              .bind(testId, user.uid)
+              .first();
+            if (dupAttempt) {
+              return jsonResponse(
+                request,
+                env,
+                {
+                  error: ALREADY_ATTEMPTED_MESSAGE,
+                  message: ALREADY_ATTEMPTED_MESSAGE,
+                  code: 'ALREADY_ATTEMPTED',
+                  attemptId: dupAttempt.id,
+                  attempt: dupAttempt,
+                },
+                409
+              );
+            }
+            throw batchErr;
+          }
+
+          return jsonResponse(
+            request,
+            env,
+            {
+              attempt: {
+                id: attemptId,
+                testId,
+                testTitle: testRow.title,
+                subject: testRow.subject,
+                captainUid: testRow.captain_uid,
+                captainName: testRow.captain_name,
+                userUid: user.uid,
+                userName,
+                studentName: userName,
+                name: userName,
+                userAvatar,
+                score,
+                totalQuestions,
+                percentage,
+                timeTakenSeconds,
+                createdAt: now,
+                gradedQuestions,
+              },
+            },
+            201
+          );
+        } finally {
+          inFlightAttemptLocks.delete(lockKey);
+        }
       }
 
       // List my attempts: GET /api/attempts/mine
@@ -1123,7 +1432,17 @@ export default {
           .bind(user.uid)
           .all();
 
-        return jsonResponse(request, env, { attempts: results || [] });
+        const mapped = (results || []).map((row) => {
+          const resolvedName = resolveLeaderboardRowName(row.userName, user.email);
+          return {
+            ...row,
+            userName: resolvedName,
+            studentName: resolvedName,
+            name: resolvedName,
+          };
+        });
+
+        return jsonResponse(request, env, { attempts: mapped });
       }
 
       // Captain / Leaderboard view of results per test: GET /api/tests/:id/results or /api/tests/:id/leaderboard
@@ -1148,24 +1467,119 @@ export default {
 
         const { results } = await db
           .prepare(
-            `SELECT id, test_id AS testId, test_title AS testTitle, subject,
-                    user_uid AS userUid, user_name AS userName, user_avatar AS userAvatar,
-                    score, total_questions AS totalQuestions, percentage,
-                    time_taken_seconds AS timeTakenSeconds, created_at AS createdAt
-             FROM test_attempts
-             WHERE test_id = ?1
-             ORDER BY percentage DESC, time_taken_seconds ASC, created_at ASC
+            `SELECT ta.id, ta.test_id AS testId, ta.test_title AS testTitle, ta.subject,
+                    ta.user_uid AS userUid, ta.user_name AS userName, ta.user_avatar AS userAvatar,
+                    ta.score, ta.total_questions AS totalQuestions, ta.percentage,
+                    ta.time_taken_seconds AS timeTakenSeconds, ta.created_at AS createdAt,
+                    ur.email AS userEmail
+             FROM test_attempts ta
+             LEFT JOIN user_roles ur ON ur.uid = ta.user_uid
+             WHERE ta.test_id = ?1
+             ORDER BY ta.percentage DESC, ta.score DESC, ta.time_taken_seconds ASC, ta.created_at ASC
              LIMIT 200`
           )
           .bind(testId)
           .all();
 
-        const ranked = (results || []).map((row, idx) => ({
-          ...row,
-          rank: idx + 1,
-        }));
+        const ranked = (results || []).map((row, idx) => {
+          const resolvedName = resolveLeaderboardRowName(row.userName, row.userEmail);
+          return {
+            id: row.id,
+            testId: row.testId,
+            testTitle: row.testTitle,
+            subject: row.subject,
+            userUid: row.userUid,
+            studentUid: row.userUid,
+            userName: resolvedName,
+            studentName: resolvedName,
+            name: resolvedName,
+            userAvatar: row.userAvatar || null,
+            score: Number(row.score || 0),
+            totalQuestions: Number(row.totalQuestions || 0),
+            percentage: Number(row.percentage || 0),
+            timeTakenSeconds: Number(row.timeTakenSeconds || 0),
+            createdAt: row.createdAt,
+            rank: idx + 1,
+          };
+        });
 
         return jsonResponse(request, env, { results: ranked });
+      }
+
+      // Global Grand Line Leaderboard: GET /api/leaderboard/grand-line
+      if (path === '/api/leaderboard/grand-line' && method === 'GET') {
+        const limitParam = Math.max(1, Math.min(200, Number(url.searchParams.get('limit')) || 50));
+        const { results } = await db
+          .prepare(
+            `SELECT ta.id, ta.test_id AS testId, ta.test_title AS testTitle, ta.subject,
+                    ta.user_uid AS userUid, ta.user_name AS userName, ta.user_avatar AS userAvatar,
+                    ta.score, ta.total_questions AS totalQuestions, ta.percentage,
+                    ta.time_taken_seconds AS timeTakenSeconds, ta.created_at AS createdAt,
+                    ur.email AS userEmail
+             FROM test_attempts ta
+             LEFT JOIN user_roles ur ON ur.uid = ta.user_uid
+             ORDER BY ta.percentage DESC, ta.score DESC, ta.time_taken_seconds ASC
+             LIMIT 500`
+          )
+          .all();
+
+        const byUser = new Map();
+        for (const row of results || []) {
+          const uid = String(row.userUid || '');
+          if (!uid) continue;
+          const resolvedName = resolveLeaderboardRowName(row.userName, row.userEmail);
+          const existing = byUser.get(uid);
+          if (!existing) {
+            byUser.set(uid, {
+              uid,
+              userUid: uid,
+              displayName: resolvedName,
+              userName: resolvedName,
+              studentName: resolvedName,
+              name: resolvedName,
+              userAvatar: row.userAvatar || null,
+              testsCompleted: 1,
+              totalScore: Number(row.score || 0),
+              totalQuestions: Number(row.totalQuestions || 0),
+              bestPercentage: Number(row.percentage || 0),
+              timeTakenSeconds: Number(row.timeTakenSeconds || 0),
+              lastTestTitle: row.testTitle || 'Grand Line Drill',
+              updatedAt: row.createdAt,
+            });
+          } else {
+            existing.testsCompleted += 1;
+            existing.totalScore += Number(row.score || 0);
+            existing.totalQuestions += Number(row.totalQuestions || 0);
+            if (Number(row.percentage || 0) > existing.bestPercentage) {
+              existing.bestPercentage = Number(row.percentage || 0);
+              existing.timeTakenSeconds = Number(row.timeTakenSeconds || 0);
+            }
+            if (existing.displayName === 'Student' && resolvedName !== 'Student') {
+              existing.displayName = resolvedName;
+              existing.userName = resolvedName;
+              existing.studentName = resolvedName;
+              existing.name = resolvedName;
+            }
+            if (!existing.userAvatar && row.userAvatar) {
+              existing.userAvatar = row.userAvatar;
+            }
+          }
+        }
+
+        const leaderboard = Array.from(byUser.values())
+          .sort(
+            (a, b) =>
+              b.bestPercentage - a.bestPercentage ||
+              b.totalScore - a.totalScore ||
+              a.timeTakenSeconds - b.timeTakenSeconds
+          )
+          .slice(0, limitParam)
+          .map((entry, idx) => ({
+            ...entry,
+            rank: idx + 1,
+          }));
+
+        return jsonResponse(request, env, { leaderboard });
       }
 
       // 5. Crews & Crew Members

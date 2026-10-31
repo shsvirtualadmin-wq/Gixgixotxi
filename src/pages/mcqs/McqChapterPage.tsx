@@ -20,6 +20,21 @@ import { formatSubjectName, formatChapterName, slugify } from '@/constants/taxon
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { USE_FIRESTORE_QUESTION_READER } from '@/config/questionBankSources';
+import { UNIVERSITY_META } from '@/utils/routeSeoMeta';
+import { McqSubjectPage } from './McqSubjectPage';
+import { NotFoundPage } from '@/pages/NotFoundPage';
+
+const VALID_SUBJECT_KEYS = new Set([
+  'physics',
+  'chemistry',
+  'biology',
+  'mathematics',
+  'math',
+  'computer-science',
+  'computer',
+  'cs',
+  'english',
+]);
 
 export interface SampleMcqItem {
   id: string;
@@ -309,19 +324,39 @@ function getCuratedSampleQuestions(subjectSlug: string, chapterTitle: string): S
 }
 
 export const McqChapterPage: React.FC = () => {
-  const { subject = 'physics', chapter = 'vectors-and-equilibrium' } = useParams<{
-    subject: string;
-    chapter: string;
+  const params = useParams<{
+    university?: string;
+    subject?: string;
+    subjectId?: string;
+    chapter?: string;
   }>();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { requireAuth } = useAuthGate();
 
+  const rawUniParam = (params.university || '').toLowerCase().trim();
+  const rawSubjParam = (params.subject || params.subjectId || 'physics').toLowerCase().trim();
+  const rawChapParam = (params.chapter || 'vectors-and-equilibrium').toLowerCase().trim();
+
+  // If 2-segment URL /mcqs/:subject/:chapter has a university in the first segment (e.g., /mcqs/mdcat/biology),
+  // delegate to McqSubjectPage for that University + Subject combination.
+  const isTwoSegmentUniSubject =
+    !rawUniParam && Boolean(UNIVERSITY_META[rawSubjParam]);
+
+  const universityKey = isTwoSegmentUniSubject ? rawSubjParam : rawUniParam;
+  const uniMeta = universityKey ? UNIVERSITY_META[universityKey] : undefined;
+  const subject = isTwoSegmentUniSubject ? rawChapParam : rawSubjParam;
+  const chapter = rawChapParam;
+
   const subjectName = formatSubjectName(subject);
 
   // Resolve exact human chapter title from SYLLABUS_MAP if available
   const syllabusKey =
-    subject.toLowerCase() === 'computer' ? 'computer-science' : subject.toLowerCase();
+    subject.toLowerCase() === 'computer' || subject.toLowerCase() === 'cs'
+      ? 'computer-science'
+      : subject.toLowerCase() === 'math'
+      ? 'mathematics'
+      : subject.toLowerCase();
   const syllabusEntry = SYLLABUS_MAP[syllabusKey];
   const allSyllabusChapters = syllabusEntry
     ? [
@@ -472,12 +507,27 @@ export const McqChapterPage: React.FC = () => {
     };
   }, [subject, chapter, matchedChapterTitle]);
 
-  const canonicalPath = `/mcqs/${subject}/${chapter}`;
+  if (isTwoSegmentUniSubject) {
+    return (
+      <McqSubjectPage
+        universityOverride={rawSubjParam}
+        subjectOverride={rawChapParam}
+      />
+    );
+  }
+
+  if (!VALID_SUBJECT_KEYS.has(subject) || (universityKey && !uniMeta)) {
+    return <NotFoundPage />;
+  }
+
+  const canonicalPath = uniMeta
+    ? `/mcqs/${universityKey}/${syllabusKey}/${chapter}`
+    : `/mcqs/${syllabusKey}/${chapter}`;
 
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Quiz',
-    name: `${matchedChapterTitle} — ${subjectName} MCQs with Step-by-Step Solutions`,
+    name: `${matchedChapterTitle} — ${uniMeta ? `${uniMeta.name} ` : ''}${subjectName} MCQs with Step-by-Step Solutions`,
     about: {
       '@type': 'Thing',
       name: `${subjectName}: ${matchedChapterTitle}`,
@@ -499,31 +549,50 @@ export const McqChapterPage: React.FC = () => {
   };
 
   const handlePracticeAndSave = () => {
+    const targetCockpit = `/practice?subject=${encodeURIComponent(syllabusKey)}&chapter=${encodeURIComponent(
+      matchedChapterTitle
+    )}${uniMeta ? `&university=${universityKey.toUpperCase()}` : ''}`;
     requireAuth(
       `start a full ${matchedChapterTitle} practice session and save your progress`,
       () => {
-        navigate('/dashboard');
+        navigate(targetCockpit);
       },
-      '/dashboard'
+      targetCockpit
     );
   };
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6">
       <PageMeta
-        title={`${matchedChapterTitle} MCQs — ${subjectName} Class 11 & 12 / Entrance Prep`}
-        description={`Practice interactive ${matchedChapterTitle} MCQs in ${subjectName} with instant answer verification and step-by-step KaTeX derivations for FBISE, Punjab Board, MDCAT, and ECAT.`}
+        title={`${matchedChapterTitle} MCQs — ${
+          uniMeta ? `${uniMeta.name} ` : ''
+        }${subjectName} Class 11 & 12 / Entrance Prep`}
+        description={`Practice interactive ${matchedChapterTitle} MCQs in ${subjectName} with instant answer verification and step-by-step KaTeX derivations for ${
+          uniMeta ? uniMeta.fullName : 'FBISE, Punjab Board, MDCAT, and ECAT'
+        }.`}
         canonicalPath={canonicalPath}
         jsonLd={jsonLd}
       />
 
       <div className="max-w-4xl mx-auto">
         <Breadcrumbs
-          items={[
-            { label: 'Subject MCQs', href: '/mcqs' },
-            { label: subjectName, href: `/mcqs/${subject}` },
-            { label: matchedChapterTitle },
-          ]}
+          items={
+            uniMeta
+              ? [
+                  { label: 'Subject MCQs', href: '/mcqs' },
+                  { label: uniMeta.name, href: `/mcqs/${universityKey}` },
+                  {
+                    label: subjectName,
+                    href: `/mcqs/${universityKey}/${syllabusKey}`,
+                  },
+                  { label: matchedChapterTitle },
+                ]
+              : [
+                  { label: 'Subject MCQs', href: '/mcqs' },
+                  { label: subjectName, href: `/mcqs/${syllabusKey}` },
+                  { label: matchedChapterTitle },
+                ]
+          }
         />
 
         {/* Chapter Overview Header */}
@@ -531,7 +600,10 @@ export const McqChapterPage: React.FC = () => {
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div className="section-chip-red">
               <Sparkles size={13} />
-              <span>{subjectName} · Chapter Practice</span>
+              <span>
+                {uniMeta ? `${uniMeta.name} · ` : ''}
+                {subjectName} · Chapter Practice
+              </span>
             </div>
             <span className="glass-pill px-3 py-1 text-xs text-white/70">
               {sampleQuestions.length} Interactive Sample MCQs
@@ -539,7 +611,8 @@ export const McqChapterPage: React.FC = () => {
           </div>
 
           <h1 className="font-dot text-3xl sm:text-4xl font-bold text-white mb-3">
-            {matchedChapterTitle} — {subjectName} MCQs
+            {matchedChapterTitle} — {uniMeta ? `${uniMeta.name} ` : ''}
+            {subjectName} MCQs
           </h1>
 
           <p className="text-sm sm:text-base text-white/75 leading-relaxed mb-6">
@@ -562,7 +635,7 @@ export const McqChapterPage: React.FC = () => {
             </button>
 
             <Link
-              to={`/material/subject/${subject}`}
+              to={`/study-material/subject/${syllabusKey}`}
               className="btn-secondary px-5 py-3 text-xs sm:text-sm font-semibold inline-flex items-center gap-2"
             >
               <FolderOpen size={15} />
@@ -747,10 +820,11 @@ export const McqChapterPage: React.FC = () => {
               <ArrowRight size={14} />
             </button>
             <Link
-              to={`/mcqs/${subject}`}
+              to={uniMeta ? `/mcqs/${universityKey}/${syllabusKey}` : `/mcqs/${syllabusKey}`}
               className="btn-secondary px-5 py-3 text-xs font-semibold"
             >
-              More {subjectName} Chapters
+              More {uniMeta ? `${uniMeta.name} ` : ''}
+              {subjectName} Chapters
             </Link>
           </div>
         </section>
@@ -760,10 +834,11 @@ export const McqChapterPage: React.FC = () => {
           <section className="glass-panel p-6 sm:p-8">
             <div className="flex items-center justify-between gap-2 mb-4">
               <h2 className="font-dot text-xl font-bold text-white">
-                More Chapters in {subjectName}
+                More Chapters in {uniMeta ? `${uniMeta.name} ` : ''}
+                {subjectName}
               </h2>
               <Link
-                to={`/mcqs/${subject}`}
+                to={uniMeta ? `/mcqs/${universityKey}/${syllabusKey}` : `/mcqs/${syllabusKey}`}
                 className="text-xs text-[#D71921] hover:underline font-semibold"
               >
                 View All Chapters →
@@ -773,7 +848,11 @@ export const McqChapterPage: React.FC = () => {
               {relatedChapters.map((relCh) => (
                 <Link
                   key={relCh}
-                  to={`/mcqs/${subject}/${slugify(relCh)}`}
+                  to={
+                    uniMeta
+                      ? `/mcqs/${universityKey}/${syllabusKey}/${slugify(relCh)}`
+                      : `/mcqs/${syllabusKey}/${slugify(relCh)}`
+                  }
                   className="glass-card-interactive p-4 flex items-center justify-between gap-2"
                 >
                   <span className="text-xs sm:text-sm font-medium text-white truncate">

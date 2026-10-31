@@ -17,7 +17,11 @@ import { sanitizeStudentDisplayName, maskPublicUserText, buildEntitySlug } from 
 import type { CommonsPost } from '@/types/commons';
 
 export const PublicUserProfilePage: React.FC = () => {
-  const { username = '' } = useParams<{ username: string }>();
+  const { username: rawUsername, userId: rawUserId } = useParams<{
+    username?: string;
+    userId?: string;
+  }>();
+  const username = rawUsername || rawUserId || '';
   const { user } = useAuth();
   const { requireAuth } = useAuthGate();
 

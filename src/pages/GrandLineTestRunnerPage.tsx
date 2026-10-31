@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import {
   Clock,
   ChevronLeft,
@@ -7,88 +7,247 @@ import {
   CheckCircle2,
   XCircle,
   Trophy,
-  RotateCcw,
   Compass,
   AlertCircle,
   ArrowLeft,
   Loader2,
+  Download,
+  FileCheck2,
+  Eye,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getAmbassadorTestById,
+  getMyTestAttemptForTest,
   submitAmbassadorTestAttempt,
   type AmbassadorCustomTest,
+  type AmbassadorTestAttempt,
   type GradedAttemptQuestion,
 } from '@/services/ambassadorTestService';
 import { MathText } from '@/components/ui/MathText';
+import { NotFoundPage } from '@/pages/NotFoundPage';
+import { exportDrillResultToPdf } from '@/utils/testPdfExporter';
 import { showApiToast } from '@/lib/api';
+
+const DEFAULT_ALREADY_ATTEMPTED_MSG =
+  'You have already taken this drill. Only one verified attempt per student is permitted for each drill.';
 
 export function GrandLineTestRunnerPage() {
   const { testId } = useParams<{ testId: string }>();
+  const [searchParams] = useSearchParams();
+  const isResultMode =
+    searchParams.get('mode') === 'result' || searchParams.get('view') === 'result';
   const navigate = useNavigate();
   const { user, profile } = useAuth();
 
   const [test, setTest] = useState<AmbassadorCustomTest | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [alreadyAttemptedInfo, setAlreadyAttemptedInfo] = useState<{
+    message: string;
+    attemptId?: string;
+    attempt?: Partial<AmbassadorTestAttempt>;
+  } | null>(null);
+  const [loadingMyResult, setLoadingMyResult] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [submitted, setSubmitted] = useState(false);
   const [scoreResult, setScoreResult] = useState<{
+    attemptId?: string;
+    testTitle: string;
+    subject: string;
+    captainName: string;
+    crewName: string;
+    studentName: string;
+    date?: string;
     score: number;
     totalQuestions: number;
     percentage: number;
+    timeTakenSeconds: number;
     gradedQuestions: GradedAttemptQuestion[];
   } | null>(null);
   const [timeLeftSec, setTimeLeftSec] = useState(0);
   const startTimeRef = useRef<number>(Date.now());
 
-  useEffect(() => {
+  const resolveStudentProfileName = useCallback((): string => {
+    const fromProfile = String(profile?.displayName || '').trim();
+    if (fromProfile && fromProfile.toLowerCase() !== 'student') return fromProfile;
+    const fromAuth = String(user?.displayName || '').trim();
+    if (fromAuth && fromAuth.toLowerCase() !== 'student') return fromAuth;
+    const fromEmail = user?.email ? user.email.split('@')[0].trim() : '';
+    if (fromEmail) return fromEmail;
+    return fromProfile || fromAuth || 'Student';
+  }, [profile, user]);
+
+  const resolveStudentAvatar = useCallback((): string | null => {
+    const pAny = profile as any;
+    return (
+      pAny?.equipped?.avatar ||
+      pAny?.equippedAvatar ||
+      profile?.photoURL ||
+      user?.photoURL ||
+      null
+    );
+  }, [profile, user]);
+
+  const handleViewMyExistingResult = useCallback(async () => {
     if (!testId) return;
+    setLoadingMyResult(true);
+    try {
+      const { attempt, test: testMeta } = await getMyTestAttemptForTest(testId);
+      if (testMeta) {
+        setTest(testMeta);
+      }
+      setScoreResult({
+        attemptId: attempt.id,
+        testTitle: attempt.testTitle || testMeta?.title || test?.title || 'Grand Line Drill',
+        subject: attempt.subject || testMeta?.subject || test?.subject || 'General',
+        captainName: attempt.captainName || testMeta?.captainName || test?.captainName || 'Captain',
+        crewName: testMeta?.crewName || test?.crewName || 'Grand Line Crew',
+        studentName: attempt.userName || attempt.studentName || resolveStudentProfileName(),
+        date: attempt.date,
+        score: attempt.score,
+        totalQuestions:
+          attempt.totalQuestions ||
+          testMeta?.questionCount ||
+          (attempt.gradedQuestions?.length ?? 0),
+        percentage: attempt.percentage,
+        timeTakenSeconds: attempt.timeTakenSeconds || 0,
+        gradedQuestions: attempt.gradedQuestions || [],
+      });
+      setAlreadyAttemptedInfo(null);
+      setSubmitted(true);
+    } catch (err: any) {
+      showApiToast(err?.rawMessage || err?.message || 'Could not load your drill result.', 'error');
+    } finally {
+      setLoadingMyResult(false);
+    }
+  }, [testId, test, resolveStudentProfileName]);
+
+  useEffect(() => {
+    if (!testId) {
+      setNotFound(true);
+      setLoading(false);
+      return;
+    }
     let active = true;
     setLoading(true);
-    getAmbassadorTestById(testId, false)
+    setNotFound(false);
+    setLoadError(null);
+    setAlreadyAttemptedInfo(null);
+
+    if (isResultMode) {
+      getMyTestAttemptForTest(testId)
+        .then(({ attempt, test: testMeta }) => {
+          if (!active) return;
+          if (testMeta) setTest(testMeta);
+          setScoreResult({
+            attemptId: attempt.id,
+            testTitle: attempt.testTitle || testMeta?.title || 'Grand Line Drill',
+            subject: attempt.subject || testMeta?.subject || 'General',
+            captainName: attempt.captainName || testMeta?.captainName || 'Captain',
+            crewName: testMeta?.crewName || 'Grand Line Crew',
+            studentName: attempt.userName || attempt.studentName || resolveStudentProfileName(),
+            date: attempt.date,
+            score: attempt.score,
+            totalQuestions:
+              attempt.totalQuestions ||
+              testMeta?.questionCount ||
+              (attempt.gradedQuestions?.length ?? 0),
+            percentage: attempt.percentage,
+            timeTakenSeconds: attempt.timeTakenSeconds || 0,
+            gradedQuestions: attempt.gradedQuestions || [],
+          });
+          setSubmitted(true);
+        })
+        .catch((err: any) => {
+          if (!active) return;
+          if (err?.status === 404) {
+            setNotFound(true);
+          } else {
+            setLoadError(err?.rawMessage || err?.message || 'Failed to load drill result.');
+          }
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+      return () => {
+        active = false;
+      };
+    }
+
+    getAmbassadorTestById(testId, false, { silentErrorToast: true })
       .then((res) => {
         if (!active) return;
-        setTest(res);
-        if (res) {
-          setTimeLeftSec((res.durationMinutes || 20) * 60);
-          startTimeRef.current = Date.now();
+        if (!res) {
+          setNotFound(true);
+          return;
         }
+        setTest(res);
+        setTimeLeftSec((res.durationMinutes || 20) * 60);
+        startTimeRef.current = Date.now();
       })
-      .catch((err) => {
-        console.warn('[GrandLineTestRunnerPage] Failed to load test:', err);
+      .catch((err: any) => {
+        if (!active) return;
+        if (err?.status === 409 || err?.code === 'ALREADY_ATTEMPTED') {
+          setAlreadyAttemptedInfo({
+            message: err?.rawMessage || err?.data?.message || DEFAULT_ALREADY_ATTEMPTED_MSG,
+            attemptId: err?.attemptId || err?.data?.attemptId,
+            attempt: err?.attempt || err?.data?.attempt,
+          });
+        } else if (err?.status === 404 || err?.code === 'NOT_FOUND') {
+          setNotFound(true);
+        } else {
+          setLoadError(err?.rawMessage || err?.message || 'Failed to load this drill.');
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
       });
+
     return () => {
       active = false;
     };
-  }, [testId]);
+  }, [testId, isResultMode, resolveStudentProfileName]);
 
   const handleFinish = useCallback(async () => {
-    if (!test || submitted || submitting) return;
+    if (!test || submitted || submitting || submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
 
     const elapsedSec = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000));
     const answerArray = test.questions.map((_, idx) =>
       answers[idx] !== undefined ? answers[idx] : -1
     );
+    const studentName = resolveStudentProfileName();
+    const studentAvatar = resolveStudentAvatar();
 
     try {
       const attempt = await submitAmbassadorTestAttempt({
         testId: test.id,
         answers: answerArray,
         timeTakenSeconds: elapsedSec,
-        userName: profile?.displayName || user?.displayName || 'Student',
-        userAvatar: profile?.photoURL || user?.photoURL || null,
+        userName: studentName,
+        userAvatar: studentAvatar,
       });
 
       setScoreResult({
+        attemptId: attempt.id,
+        testTitle: attempt.testTitle || test.title,
+        subject: attempt.subject || test.subject,
+        captainName: attempt.captainName || test.captainName,
+        crewName: test.crewName || 'Grand Line Crew',
+        studentName: attempt.userName || attempt.studentName || studentName,
+        date: attempt.date,
         score: attempt.score,
         totalQuestions: attempt.totalQuestions || test.questions.length,
         percentage: attempt.percentage,
+        timeTakenSeconds: attempt.timeTakenSeconds || elapsedSec,
         gradedQuestions:
           attempt.gradedQuestions ||
           test.questions.map((q, idx) => ({
@@ -104,15 +263,48 @@ export function GrandLineTestRunnerPage() {
       });
       setSubmitted(true);
     } catch (err: any) {
-      showApiToast(err?.message || 'Failed to submit test attempt.', 'error');
+      if (err?.status === 409 || err?.code === 'ALREADY_ATTEMPTED') {
+        setAlreadyAttemptedInfo({
+          message: err?.rawMessage || err?.data?.message || DEFAULT_ALREADY_ATTEMPTED_MSG,
+          attemptId: err?.attemptId || err?.data?.attemptId,
+          attempt: err?.attempt || err?.data?.attempt,
+        });
+      } else {
+        showApiToast(err?.rawMessage || err?.message || 'Failed to submit test attempt.', 'error');
+      }
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [test, submitted, submitting, answers, user, profile]);
+  }, [test, submitted, submitting, answers, resolveStudentProfileName, resolveStudentAvatar]);
+
+  const handleDownloadPdf = async () => {
+    if (!scoreResult || downloadingPdf) return;
+    setDownloadingPdf(true);
+    try {
+      await exportDrillResultToPdf({
+        testId: testId || test?.id,
+        testTitle: scoreResult.testTitle,
+        subject: scoreResult.subject,
+        studentName: scoreResult.studentName || resolveStudentProfileName(),
+        date: scoreResult.date,
+        score: scoreResult.score,
+        totalQuestions: scoreResult.totalQuestions,
+        percentage: scoreResult.percentage,
+        timeTakenSeconds: scoreResult.timeTakenSeconds,
+        gradedQuestions: scoreResult.gradedQuestions,
+      });
+      showApiToast('Result PDF downloaded!', 'success');
+    } catch (err: any) {
+      showApiToast(err?.rawMessage || err?.message || 'Failed to generate PDF.', 'error');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
   // Countdown timer
   useEffect(() => {
-    if (!test || submitted || timeLeftSec <= 0) return;
+    if (!test || submitted || alreadyAttemptedInfo || timeLeftSec <= 0) return;
     const timer = setInterval(() => {
       setTimeLeftSec((prev) => {
         if (prev <= 1) {
@@ -124,47 +316,121 @@ export function GrandLineTestRunnerPage() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [test, submitted, timeLeftSec, handleFinish]);
+  }, [test, submitted, alreadyAttemptedInfo, timeLeftSec, handleFinish]);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center p-6">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 rounded-full border-2 border-[var(--accent)] border-t-transparent animate-spin" />
-          <p className="text-xs font-mono text-[var(--muted)]">Preparing Grand Line test...</p>
+          <p className="text-xs font-mono text-[var(--muted)]">Preparing Grand Line drill...</p>
         </div>
       </div>
     );
   }
 
-  if (!test || test.questions.length === 0) {
+  // Show 404 screen ONLY when the API genuinely returned 404
+  if (notFound) {
+    return <NotFoundPage />;
+  }
+
+  // Friendly ALREADY_ATTEMPTED screen (HTTP 409)
+  if (alreadyAttemptedInfo && !submitted) {
+    const prevAttempt = alreadyAttemptedInfo.attempt;
+    const hasScore =
+      prevAttempt &&
+      typeof prevAttempt.score === 'number' &&
+      typeof prevAttempt.totalQuestions === 'number';
+    const prevPct =
+      prevAttempt && typeof prevAttempt.percentage === 'number'
+        ? prevAttempt.percentage
+        : hasScore && (prevAttempt.totalQuestions || 0) > 0
+        ? Math.round(((prevAttempt.score || 0) / (prevAttempt.totalQuestions || 1)) * 100)
+        : null;
+
     return (
-      <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center p-6">
-        <div className="max-w-md w-full rounded-2xl bg-[var(--card)] border border-[var(--border)] p-6 text-center">
-          <AlertCircle size={32} className="mx-auto text-amber-500 mb-3" />
-          <h1 className="text-base font-bold text-[var(--text)]">Test Not Available</h1>
-          <p className="text-xs text-[var(--muted)] mt-1">
-            This test could not be found or has no questions yet.
-          </p>
-          <Link
-            to="/grand-line"
-            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-bold"
-          >
-            <ArrowLeft size={14} />
-            Back to Grand Line
-          </Link>
+      <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] flex items-center justify-center p-4 sm:p-6">
+        <div className="max-w-lg w-full rounded-2xl bg-[var(--card)] border border-[var(--border)] p-6 sm:p-8 text-center space-y-5">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto">
+            <FileCheck2 size={28} />
+          </div>
+
+          <div className="space-y-2">
+            <span className="inline-block text-[11px] font-mono uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              Attempt Verified
+            </span>
+            <h1 className="text-lg sm:text-xl font-bold text-[var(--text)]">
+              {prevAttempt?.testTitle || 'Drill Already Completed'}
+            </h1>
+            <p className="text-xs sm:text-sm text-[var(--muted)] leading-relaxed">
+              {alreadyAttemptedInfo.message}
+            </p>
+          </div>
+
+          {hasScore && (
+            <div className="rounded-xl bg-[var(--surface-2)] border border-[var(--border)] p-4 flex items-center justify-around gap-4">
+              <div>
+                <span className="text-[11px] font-mono uppercase text-[var(--muted)] block">
+                  Previous Score
+                </span>
+                <span className="text-xl sm:text-2xl font-extrabold text-[var(--text)] tabular-nums">
+                  {prevAttempt.score} / {prevAttempt.totalQuestions}
+                </span>
+              </div>
+              <div className="h-8 w-px bg-[var(--border)]" />
+              <div>
+                <span className="text-[11px] font-mono uppercase text-[var(--muted)] block">
+                  Accuracy
+                </span>
+                <span className="text-xl sm:text-2xl font-extrabold text-[var(--accent)] tabular-nums">
+                  {prevPct ?? 0}%
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={handleViewMyExistingResult}
+              disabled={loadingMyResult}
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[var(--accent)] text-white text-xs sm:text-sm font-bold hover:opacity-95 disabled:opacity-50 inline-flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {loadingMyResult ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Eye size={15} />
+              )}
+              <span>View my result</span>
+            </button>
+
+            <Link
+              to="/grand-line"
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] inline-flex items-center justify-center gap-2"
+            >
+              <ArrowLeft size={15} />
+              <span>Back to Grand Line</span>
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
-
-  const totalQ = test.questions.length;
-  const currentQ = test.questions[currentIndex];
-  const mins = Math.floor(timeLeftSec / 60);
-  const secs = timeLeftSec % 60;
 
   if (submitted && scoreResult) {
-    const { score, totalQuestions, percentage, gradedQuestions } = scoreResult;
+    const {
+      testTitle,
+      subject,
+      captainName,
+      crewName,
+      score,
+      totalQuestions,
+      percentage,
+      timeTakenSeconds,
+      gradedQuestions,
+    } = scoreResult;
+    const takenMins = Math.floor((timeTakenSeconds || 0) / 60);
+    const takenSecs = (timeTakenSeconds || 0) % 60;
 
     return (
       <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] py-8 px-4 sm:px-6">
@@ -175,55 +441,66 @@ export function GrandLineTestRunnerPage() {
               <Trophy size={28} />
             </div>
             <span className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-              {test.crewName} • {test.subject}
+              {crewName} • {subject}
             </span>
-            <h1 className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-1">{test.title}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-1">{testTitle}</h1>
             <p className="text-3xl sm:text-4xl font-extrabold text-[var(--accent)] mt-4 tabular-nums">
               {score} / {totalQuestions}{' '}
               <span className="text-lg font-semibold text-[var(--muted)]">({percentage}%)</span>
             </p>
             <p className="text-xs text-[var(--muted)] mt-2">
-              Created by Captain {test.captainName}
+              Created by Captain {captainName} • Time taken:{' '}
+              {takenMins > 0 ? `${takenMins}m ${takenSecs}s` : `${takenSecs}s`}
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
               <button
                 type="button"
-                onClick={() => {
-                  setAnswers({});
-                  setCurrentIndex(0);
-                  setSubmitted(false);
-                  setScoreResult(null);
-                  setTimeLeftSec((test.durationMinutes || 20) * 60);
-                  startTimeRef.current = Date.now();
-                }}
-                className="px-4 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1.5 cursor-pointer"
+                onClick={handleDownloadPdf}
+                disabled={downloadingPdf}
+                className="px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white text-xs font-bold hover:opacity-95 disabled:opacity-60 flex items-center gap-1.5 cursor-pointer"
               >
-                <RotateCcw size={14} />
-                Retake Test
+                {downloadingPdf ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Generating PDF...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download size={14} />
+                    <span>Download PDF</span>
+                  </>
+                )}
               </button>
+
               <Link
                 to="/grand-line/leaderboard"
                 className="px-4 py-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-semibold hover:bg-amber-500/25 flex items-center gap-1.5"
               >
                 <Trophy size={14} />
-                View Leaderboard
+                <span>View Leaderboard</span>
               </Link>
+
               <Link
                 to="/grand-line"
-                className="px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white text-xs font-bold hover:opacity-95 flex items-center gap-1.5"
+                className="px-4 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1.5"
               >
                 <Compass size={14} />
-                More Grand Line Tests
+                <span>Back to Grand Line</span>
               </Link>
             </div>
           </div>
 
           {/* Detailed Question Review */}
           <div className="space-y-3">
-            <h2 className="text-sm font-bold text-[var(--text)] px-1">
-              Answer Key &amp; Explanations
-            </h2>
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-sm font-bold text-[var(--text)]">
+                Answer Key &amp; Explanations
+              </h2>
+              <span className="text-xs font-mono text-[var(--muted)]">
+                {gradedQuestions.length} Questions
+              </span>
+            </div>
             {gradedQuestions.map((q, idx) => {
               const userChoice = q.selectedIndex;
               const isCorrect = q.isCorrect;
@@ -242,11 +519,11 @@ export function GrandLineTestRunnerPage() {
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-500">
-                        <XCircle size={13} /> {userChoice === -1 ? 'Skipped' : 'Incorrect'}
+                        <XCircle size={13} /> {userChoice === -1 ? 'Wrong (Skipped)' : 'Wrong'}
                       </span>
                     )}
                   </div>
-                  <div className="text-sm font-medium text-[var(--text)]">
+                  <div dir="auto" className="text-sm font-medium text-[var(--text)]">
                     <MathText text={q.question} />
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -262,18 +539,34 @@ export function GrandLineTestRunnerPage() {
                       return (
                         <div
                           key={optIdx}
-                          className={`px-3 py-2 rounded-xl border text-xs flex items-center gap-2 ${cls}`}
+                          dir="auto"
+                          className={`px-3 py-2 rounded-xl border text-xs flex items-center justify-between gap-2 ${cls}`}
                         >
-                          <span className="font-mono font-bold">
-                            {String.fromCharCode(65 + optIdx)}.
-                          </span>
-                          <MathText text={opt} />
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-mono font-bold shrink-0">
+                              {String.fromCharCode(65 + optIdx)}.
+                            </span>
+                            <MathText text={opt} />
+                          </div>
+                          {isRightOpt && (
+                            <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 shrink-0">
+                              Correct
+                            </span>
+                          )}
+                          {isUserOpt && !isRightOpt && (
+                            <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 shrink-0">
+                              Your Answer
+                            </span>
+                          )}
                         </div>
                       );
                     })}
                   </div>
                   {q.explanation && (
-                    <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--muted)]">
+                    <div
+                      dir="auto"
+                      className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--muted)]"
+                    >
                       <span className="font-semibold text-[var(--text)]">Explanation: </span>
                       <MathText text={q.explanation} />
                     </div>
@@ -286,6 +579,32 @@ export function GrandLineTestRunnerPage() {
       </div>
     );
   }
+
+  if (loadError || !test || test.questions.length === 0) {
+    return (
+      <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center p-6">
+        <div className="max-w-md w-full rounded-2xl bg-[var(--card)] border border-[var(--border)] p-6 text-center">
+          <AlertCircle size={32} className="mx-auto text-amber-500 mb-3" />
+          <h1 className="text-base font-bold text-[var(--text)]">Test Not Available</h1>
+          <p className="text-xs text-[var(--muted)] mt-1">
+            {loadError || 'This test has no questions yet.'}
+          </p>
+          <Link
+            to="/grand-line"
+            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-xs font-bold"
+          >
+            <ArrowLeft size={14} />
+            Back to Grand Line
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const totalQ = test.questions.length;
+  const currentQ = test.questions[currentIndex];
+  const mins = Math.floor(timeLeftSec / 60);
+  const secs = timeLeftSec % 60;
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] flex flex-col">
@@ -352,7 +671,7 @@ export function GrandLineTestRunnerPage() {
 
           {/* Question Stem */}
           <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 sm:p-6 space-y-5">
-            <div className="text-base sm:text-lg font-medium text-[var(--text)] leading-relaxed">
+            <div dir="auto" className="text-base sm:text-lg font-medium text-[var(--text)] leading-relaxed">
               <MathText text={currentQ.question} />
             </div>
 
@@ -363,6 +682,7 @@ export function GrandLineTestRunnerPage() {
                   <button
                     key={idx}
                     type="button"
+                    dir="auto"
                     onClick={() => setAnswers((prev) => ({ ...prev, [currentIndex]: idx }))}
                     className={`w-full text-left p-3.5 sm:p-4 rounded-xl border transition-all flex items-center gap-3 cursor-pointer ${
                       selected
@@ -428,3 +748,4 @@ export function GrandLineTestRunnerPage() {
 }
 
 export default GrandLineTestRunnerPage;
+

@@ -21,6 +21,9 @@ export interface AmbassadorCustomTest {
   questionCount: number;
   captainUid: string;
   captainName: string;
+  creatorUid: string;
+  creatorName: string;
+  creatorShortId: string;
   crewId?: string | null;
   crewName: string;
   visibility: 'public' | 'private';
@@ -54,23 +57,32 @@ export interface AmbassadorTestAttempt {
   userUid?: string;
   studentName: string;
   userName?: string;
+  name?: string;
   userAvatar?: string | null;
   score: number;
   totalQuestions: number;
   percentage: number;
   timeTakenSeconds: number;
   rank?: number;
+  date?: string;
   gradedQuestions?: GradedAttemptQuestion[];
   createdAt: any;
 }
 
 export interface GrandLineLeaderboardEntry {
   uid: string;
+  userUid?: string;
   displayName: string;
+  userName?: string;
+  studentName?: string;
+  name?: string;
+  userAvatar?: string | null;
   testsCompleted: number;
   totalScore: number;
   totalQuestions: number;
   bestPercentage: number;
+  timeTakenSeconds?: number;
+  rank?: number;
   lastTestTitle: string;
   updatedAt: any;
 }
@@ -119,6 +131,12 @@ function normalizeTestRow(raw: any): AmbassadorCustomTest {
       })
     : [];
 
+  const captainUid = String(raw.captainUid || raw.captain_uid || raw.creatorUid || '');
+  const captainName = String(raw.captainName || raw.captain_name || raw.creatorName || 'Captain');
+  const creatorShortId =
+    String(raw.creatorShortId || '') ||
+    (captainUid ? captainUid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase() : 'CAPT');
+
   return {
     id: String(raw.id || ''),
     title: String(raw.title || 'Untitled Test'),
@@ -127,8 +145,11 @@ function normalizeTestRow(raw: any): AmbassadorCustomTest {
     durationMinutes: Number(raw.durationMinutes ?? raw.duration_minutes ?? 20),
     questions,
     questionCount: Number(raw.questionCount ?? raw.question_count ?? questions.length),
-    captainUid: String(raw.captainUid || raw.captain_uid || ''),
-    captainName: String(raw.captainName || raw.captain_name || 'Captain'),
+    captainUid,
+    captainName,
+    creatorUid: captainUid,
+    creatorName: captainName,
+    creatorShortId,
     crewId: raw.crewId ?? raw.crew_id ?? null,
     crewName: String(raw.crewName || raw.crew_name || 'Grand Line Crew'),
     visibility,
@@ -141,9 +162,22 @@ function normalizeTestRow(raw: any): AmbassadorCustomTest {
   };
 }
 
-function normalizeAttemptRow(raw: any): AmbassadorTestAttempt {
+export function normalizeAttemptRow(raw: any): AmbassadorTestAttempt {
   const userUid = String(raw.userUid || raw.studentUid || raw.user_uid || '');
-  const userName = String(raw.userName || raw.studentName || raw.user_name || 'Student');
+  const rawName = String(
+    raw.userName || raw.studentName || raw.name || raw.user_name || ''
+  ).trim();
+  const userName = rawName || 'Student';
+  const ts = toTimestampCompat(raw.createdAt ?? raw.created_at);
+  const dateStr =
+    typeof raw.date === 'string' && raw.date.trim()
+      ? raw.date.trim()
+      : ts.toDate().toLocaleDateString('en-PK', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        });
+
   return {
     id: String(raw.id || ''),
     testId: String(raw.testId || raw.test_id || ''),
@@ -155,14 +189,16 @@ function normalizeAttemptRow(raw: any): AmbassadorTestAttempt {
     userUid,
     studentName: userName,
     userName,
+    name: userName,
     userAvatar: raw.userAvatar ?? raw.user_avatar ?? null,
     score: Number(raw.score ?? 0),
     totalQuestions: Number(raw.totalQuestions ?? raw.total_questions ?? 0),
     percentage: Number(raw.percentage ?? 0),
     timeTakenSeconds: Number(raw.timeTakenSeconds ?? raw.time_taken_seconds ?? 0),
     rank: raw.rank !== undefined ? Number(raw.rank) : undefined,
+    date: dateStr,
     gradedQuestions: Array.isArray(raw.gradedQuestions) ? raw.gradedQuestions : undefined,
-    createdAt: toTimestampCompat(raw.createdAt ?? raw.created_at),
+    createdAt: ts,
   };
 }
 
@@ -447,13 +483,22 @@ export async function getAllPublicAmbassadorTests(subject?: string): Promise<Amb
 
 export async function getAmbassadorTestById(
   testId: string,
-  includeAnswers = false
+  includeAnswers = false,
+  options?: { view?: 'info'; silentErrorToast?: boolean }
 ): Promise<AmbassadorCustomTest | null> {
   try {
-    const query = includeAnswers ? '?includeAnswers=1' : '';
+    const params = new URLSearchParams();
+    if (includeAnswers) params.set('includeAnswers', '1');
+    if (options?.view) params.set('view', options.view);
+    const qs = params.toString();
+    const query = qs ? `?${qs}` : '';
+    const isInfoOnly = options?.view === 'info';
     const data = await api.get<{ test: any }>(
       `/api/tests/${encodeURIComponent(testId)}${query}`,
-      { requireAuth: true }
+      {
+        requireAuth: !isInfoOnly,
+        silentErrorToast: options?.silentErrorToast ?? true,
+      }
     );
     if (!data?.test) return null;
     return normalizeTestRow(data.test);
@@ -461,6 +506,23 @@ export async function getAmbassadorTestById(
     if (err?.status === 404) return null;
     throw err;
   }
+}
+
+export async function getMyTestAttemptForTest(testId: string): Promise<{
+  attempt: AmbassadorTestAttempt;
+  test: AmbassadorCustomTest | null;
+}> {
+  const data = await api.get<{ attempt: any; test?: any }>(
+    `/api/tests/${encodeURIComponent(testId)}/my-attempt`,
+    {
+      requireAuth: true,
+      silentErrorToast: true,
+    }
+  );
+  return {
+    attempt: normalizeAttemptRow(data.attempt),
+    test: data.test ? normalizeTestRow(data.test) : null,
+  };
 }
 
 export async function deleteAmbassadorTest(testId: string): Promise<void> {
@@ -486,7 +548,7 @@ export async function submitAmbassadorTestAttempt(params: {
       userName: params.userName,
       userAvatar: params.userAvatar,
     },
-    { requireAuth: true }
+    { requireAuth: true, silentErrorToast: true }
   );
   return normalizeAttemptRow(data.attempt);
 }
@@ -546,16 +608,29 @@ export async function getGrandLineLeaderboard(maxCount = 50): Promise<GrandLineL
       { silentErrorToast: true }
     );
     const list = data.leaderboard || data.results || [];
-    return list.map((d: any) => ({
-      uid: String(d.uid || d.userUid || ''),
-      displayName: String(d.displayName || d.userName || 'Student'),
-      testsCompleted: Number(d.testsCompleted || 1),
-      totalScore: Number(d.totalScore || d.score || 0),
-      totalQuestions: Number(d.totalQuestions || 0),
-      bestPercentage: Number(d.bestPercentage || d.percentage || 0),
-      lastTestTitle: String(d.lastTestTitle || d.testTitle || 'Grand Line Test'),
-      updatedAt: toTimestampCompat(d.updatedAt || d.createdAt),
-    }));
+    return list.map((d: any, idx: number) => {
+      const uid = String(d.uid || d.userUid || '');
+      const displayName = String(
+        d.displayName || d.userName || d.studentName || d.name || 'Student'
+      ).trim() || 'Student';
+      return {
+        uid,
+        userUid: uid,
+        displayName,
+        userName: displayName,
+        studentName: displayName,
+        name: displayName,
+        userAvatar: d.userAvatar ?? d.user_avatar ?? null,
+        testsCompleted: Number(d.testsCompleted || 1),
+        totalScore: Number(d.totalScore ?? d.score ?? 0),
+        totalQuestions: Number(d.totalQuestions ?? 0),
+        bestPercentage: Number(d.bestPercentage ?? d.percentage ?? 0),
+        timeTakenSeconds: Number(d.timeTakenSeconds ?? d.time_taken_seconds ?? 0),
+        rank: d.rank !== undefined ? Number(d.rank) : idx + 1,
+        lastTestTitle: String(d.lastTestTitle || d.testTitle || 'Grand Line Test'),
+        updatedAt: toTimestampCompat(d.updatedAt || d.createdAt),
+      };
+    });
   } catch {
     return [];
   }
@@ -602,11 +677,30 @@ export async function hasUserAttemptedTest(testId: string, _userUid?: string): P
 
 export async function getGlobalGrandLineTopScorers(
   maxCount = 10
-): Promise<Array<{ name: string; score: number }>> {
+): Promise<
+  Array<{
+    uid: string;
+    name: string;
+    userAvatar?: string | null;
+    score: number;
+    totalQuestions: number;
+    percentage: number;
+    timeTakenSeconds: number;
+    testsCompleted: number;
+    rank: number;
+  }>
+> {
   const entries = await getGrandLineLeaderboard(maxCount);
-  return entries.map((e) => ({
+  return entries.map((e, idx) => ({
+    uid: e.uid,
     name: e.displayName,
-    score: e.totalScore || e.bestPercentage || 0,
+    userAvatar: e.userAvatar || null,
+    score: e.totalScore,
+    totalQuestions: e.totalQuestions,
+    percentage: e.bestPercentage,
+    timeTakenSeconds: e.timeTakenSeconds || 0,
+    testsCompleted: e.testsCompleted,
+    rank: e.rank ?? idx + 1,
   }));
 }
 

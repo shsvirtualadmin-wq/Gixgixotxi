@@ -763,14 +763,37 @@ RULES:
       });
 
       // ─── CLOUDFLARE D1 + R2 POSTS API, SITEMAP, SSR & AUTH/ADMIN ROUTES ────
+      let cfModPromise: Promise<any> | null = null;
       let cfMiddlewarePromise: Promise<any> | null = null;
       server.middlewares.use(async (req: any, res: any, next: () => void) => {
         try {
-          if (!cfMiddlewarePromise) {
-            cfMiddlewarePromise = import('./src/server/cloudflarePostsAndAuthRouter.ts').then(
-              (m) => m.createCloudflarePostsAndAuthMiddleware()
-            );
+          const capturedUrl = req.originalUrl || req.url || '/';
+          if (!cfModPromise) {
+            cfModPromise = import('./src/server/cloudflarePostsAndAuthRouter.ts');
           }
+          const cfMod = await cfModPromise;
+          if (!cfMiddlewarePromise) {
+            cfMiddlewarePromise = Promise.resolve(cfMod.createCloudflarePostsAndAuthMiddleware());
+          }
+          const origEnd = res.end.bind(res);
+          res.end = function (chunk: any, ...args: any[]) {
+            try {
+              const ct = String(res.getHeader?.('content-type') || res.getHeader?.('Content-Type') || '');
+              if (ct.includes('text/html') && chunk) {
+                const rawStr = typeof chunk === 'string' ? chunk : Buffer.isBuffer(chunk) ? chunk.toString('utf-8') : null;
+                if (rawStr && rawStr.includes('<title>')) {
+                  const enriched = cfMod.injectRouteMetaIntoHtml(rawStr, capturedUrl);
+                  if (res.getHeader?.('content-length') || res.getHeader?.('Content-Length')) {
+                    res.setHeader('Content-Length', Buffer.byteLength(enriched, 'utf-8'));
+                  }
+                  return origEnd(enriched, ...args);
+                }
+              }
+            } catch {
+              // ignore meta injection errors
+            }
+            return origEnd(chunk, ...args);
+          };
           const mw = await cfMiddlewarePromise;
           await mw(req, res, next);
         } catch (err) {
@@ -1107,6 +1130,18 @@ RULES:
           res.end(JSON.stringify({ error: err?.message || 'Error serving file' }));
         }
       });
+    },
+    transformIndexHtml: {
+      order: 'pre' as const,
+      async handler(html: string, ctx: any) {
+        try {
+          const reqUrl = ctx?.originalUrl || ctx?.path || '/';
+          const mod = await import('./src/server/cloudflarePostsAndAuthRouter.ts');
+          return mod.injectRouteMetaIntoHtml(html, reqUrl);
+        } catch {
+          return html;
+        }
+      },
     },
   };
 }

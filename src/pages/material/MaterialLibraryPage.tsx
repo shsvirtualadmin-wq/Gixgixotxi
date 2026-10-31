@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import {
   FolderOpen,
   FileText,
@@ -35,12 +35,53 @@ export const MaterialLibraryPage: React.FC = () => {
   const { user } = useAuth();
   const { requireAuth } = useAuthGate();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { subject: routeSubject } = useParams<{ subject?: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const isStudyMaterialPath = location.pathname.startsWith('/study-material');
+  const basePrefix = isStudyMaterialPath ? '/study-material' : '/material';
 
   const [posts, setPosts] = useState<CommonsPost[]>([]);
   const [loading, setLoading] = useState(true);
-  const [subjectFilter, setSubjectFilter] = useState('all');
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const subjectFilter = (
+    routeSubject ||
+    searchParams.get('subject') ||
+    'all'
+  ).toLowerCase();
+  const typeFilter = searchParams.get('type') || 'all';
+  const searchQuery = searchParams.get('q') || '';
+
+  const handleSubjectChange = (slug: string) => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('subject');
+    const qs = nextParams.toString();
+    if (slug === 'all') {
+      navigate(`${basePrefix}${qs ? `?${qs}` : ''}`);
+    } else {
+      navigate(`${basePrefix}/subject/${slug}${qs ? `?${qs}` : ''}`);
+    }
+  };
+
+  const handleTypeChange = (nextType: string) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (nextType === 'all') {
+      nextParams.delete('type');
+    } else {
+      nextParams.set('type', nextType);
+    }
+    setSearchParams(nextParams, { replace: true });
+  };
+
+  const handleSearchChange = (nextQ: string) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (!nextQ) {
+      nextParams.delete('q');
+    } else {
+      nextParams.set('q', nextQ);
+    }
+    setSearchParams(nextParams, { replace: true });
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -94,13 +135,37 @@ export const MaterialLibraryPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6">
       <PageMeta
-        title="Study Material Library — Free FSc, MDCAT & ECAT Notes, PDFs & Past Papers"
+        title={
+          subjectFilter !== 'all'
+            ? `${
+                MATERIAL_SUBJECTS.find((s) => s.slug === subjectFilter)?.label ||
+                subjectFilter
+              } Notes, Past Papers & Formula Sheets — Boardly Study Material`
+            : 'Study Material Library — Free FSc, MDCAT & ECAT Notes, PDFs & Past Papers'
+        }
         description="Browse and preview peer-shared Class 11 & 12 handwritten notes, formula sheets, and solved board past papers across Mathematics, Physics, Chemistry, Biology, and Computer Science."
-        canonicalPath="/material"
+        canonicalPath={
+          subjectFilter !== 'all'
+            ? `${basePrefix}/subject/${subjectFilter}`
+            : basePrefix
+        }
       />
 
       <div className="max-w-5xl mx-auto">
-        <Breadcrumbs items={[{ label: 'Study Material Library' }]} />
+        <Breadcrumbs
+          items={
+            subjectFilter !== 'all'
+              ? [
+                  { label: 'Study Material Library', href: basePrefix },
+                  {
+                    label:
+                      MATERIAL_SUBJECTS.find((s) => s.slug === subjectFilter)?.label ||
+                      subjectFilter,
+                  },
+                ]
+              : [{ label: 'Study Material Library' }]
+          }
+        />
 
         {/* Header */}
         <section className="glass-panel p-8 sm:p-10 mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -110,7 +175,12 @@ export const MaterialLibraryPage: React.FC = () => {
               <span>Open Study Resource Index</span>
             </div>
             <h1 className="font-dot text-3xl sm:text-4xl font-bold text-white mb-2">
-              Study Material Library
+              {subjectFilter !== 'all'
+                ? `${
+                    MATERIAL_SUBJECTS.find((s) => s.slug === subjectFilter)?.label ||
+                    subjectFilter
+                  } Study Material`
+                : 'Study Material Library'}
             </h1>
             <p className="text-sm sm:text-base text-white/70 max-w-2xl leading-relaxed">
               Every resource page shows the title, subject, file details, description, and uploader publicly. Sign in to download full PDFs or upload your own notes.
@@ -139,7 +209,7 @@ export const MaterialLibraryPage: React.FC = () => {
             <button
               key={s.slug}
               type="button"
-              onClick={() => setSubjectFilter(s.slug)}
+              onClick={() => handleSubjectChange(s.slug)}
               className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${
                 subjectFilter === s.slug
                   ? 'bg-[#D71921] text-white border-[#D71921]'
@@ -161,7 +231,7 @@ export const MaterialLibraryPage: React.FC = () => {
             <input
               type="search"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="Search notes, past papers, chapters, or formula sheets..."
               className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-xs sm:text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#D71921]"
             />
@@ -171,7 +241,7 @@ export const MaterialLibraryPage: React.FC = () => {
             <Filter size={14} className="text-white/50 shrink-0" />
             <select
               value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
+              onChange={(e) => handleTypeChange(e.target.value)}
               aria-label="Filter by material type"
               className="px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-xs text-white focus:outline-none"
             >
@@ -199,11 +269,7 @@ export const MaterialLibraryPage: React.FC = () => {
             <div className="flex flex-wrap justify-center gap-3">
               <button
                 type="button"
-                onClick={() => {
-                  setSubjectFilter('all');
-                  setTypeFilter('all');
-                  setSearchQuery('');
-                }}
+                onClick={() => navigate(basePrefix)}
                 className="btn-primary px-5 py-2.5 text-xs font-semibold cursor-pointer"
               >
                 Reset Filters
@@ -241,7 +307,7 @@ export const MaterialLibraryPage: React.FC = () => {
                     </div>
 
                     <Link
-                      to={`/material/${slug}`}
+                      to={`${basePrefix}/${slug}`}
                       className="boardly-post-title font-dot text-lg font-bold text-white hover:text-[#D71921] transition-colors block mb-2 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]"
                     >
                       <MathText text={item.title} />
@@ -259,7 +325,7 @@ export const MaterialLibraryPage: React.FC = () => {
 
                     <div className="flex items-center gap-2 shrink-0">
                       <Link
-                        to={`/material/${slug}`}
+                        to={`${basePrefix}/${slug}`}
                         className="btn-secondary px-3.5 py-1.5 text-xs font-semibold inline-flex items-center gap-1"
                       >
                         <span>Preview</span>

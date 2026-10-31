@@ -76,23 +76,34 @@ const PKTMidnightCountdown = memo(function PKTMidnightCountdown() {
 export function PracticePage() {
   const { user, profile, university } = useUserProfile();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const allTaxonomySubjects = useMemo(() => getAllSubjects(), []);
+  const urlUniversity = searchParams.get('university');
+  const urlSubject = searchParams.get('subject');
   const initialChapterSlug = searchParams.get('chapter') || 'integration-by-parts';
 
-  const [selectedUniversity, setSelectedUniversity] = useState(
-    university || 'FAST-NUCES'
+  const [selectedUniversity, setSelectedUniversityState] = useState(
+    urlUniversity || university || 'FAST-NUCES'
   );
   const [trackPickerOpen, setTrackPickerOpen] = useState(false);
 
   // Targeted Chapter Drill Modal State (4-step flow)
-  const [drillModalOpen, setDrillModalOpen] = useState(false);
-  const [drillStep, setDrillStep] = useState<1 | 2 | 3 | 4>(1);
-  const [drillSubject, setDrillSubject] = useState('mathematics');
+  const [drillModalOpen, setDrillModalOpen] = useState(
+    Boolean(urlSubject || searchParams.get('mode') === 'drill')
+  );
+  const [drillStep, setDrillStep] = useState<1 | 2 | 3 | 4>(urlSubject ? 2 : 1);
+  const [drillSubject, setDrillSubject] = useState(urlSubject || 'mathematics');
   const [drillChapters, setDrillChapters] = useState<string[]>([initialChapterSlug]);
   const [drillCount, setDrillCount] = useState<number>(20);
   const [drillDifficulty, setDrillDifficulty] = useState<'easy' | 'medium' | 'hard' | 'mixed'>('medium');
+
+  const setSelectedUniversity = (nextUni: string) => {
+    setSelectedUniversityState(nextUni);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('university', nextUni);
+    setSearchParams(nextParams, { replace: true });
+  };
 
   const [launching, setLaunching] = useState(false);
   const [launchingType, setLaunchingType] = useState<'sprint' | 'full' | 'drill' | null>(null);
@@ -110,10 +121,12 @@ export function PracticePage() {
   }, []);
 
   useEffect(() => {
-    if (university) {
-      setSelectedUniversity(university);
+    if (urlUniversity) {
+      setSelectedUniversityState(urlUniversity);
+    } else if (university) {
+      setSelectedUniversityState(university);
     }
-  }, [university]);
+  }, [university, urlUniversity]);
 
   useEffect(() => {
     if (launchError && errorBannerRef.current) {

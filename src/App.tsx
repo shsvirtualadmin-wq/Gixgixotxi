@@ -268,7 +268,7 @@ function AppInner() {
           <Route path="crews" element={<AdminCrewsPage />} />
           <Route path="commons" element={<AdminCommonsPage />} />
           <Route path="health" element={<AdminHealthPage />} />
-          <Route path="*" element={<Navigate to="/admin" replace />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
 
         {/* Dashboard shell (Student Portal) — Login-only, noindex */}
@@ -280,6 +280,8 @@ function AppInner() {
           <Route path="weak-chapters" element={<Navigate to="/dashboard/notifications" replace />} />
           <Route path="streaks" element={<StreaksPage />} />
           <Route path="history" element={<ResultsListPage />} />
+          <Route path="results" element={<ResultsListPage />} />
+          <Route path="store" element={<StorePage />} />
           <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />
           <Route path="arena" element={<ArenaDashboardPage />} />
           <Route path="ai-tutor" element={<AiTutorPage />} />
@@ -287,12 +289,12 @@ function AppInner() {
           <Route path="study-circles" element={<PlaceholderPage title="Study Circles" />} />
           <Route path="crew" element={<CrewDashboardPage />} />
           <Route path="captain" element={<AmbassadorDashboardPage />} />
-          <Route path="ambassador" element={<Navigate to="/dashboard/captain" replace />} />
+          <Route path="ambassador" element={<AmbassadorDashboardPage />} />
           <Route path="plans" element={<PlansBillingPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="contact" element={<Navigate to="/contact" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
 
         {/* Dedicated Login-Only Top-Level Routes (wrapped in DashboardShell, noindex) */}
@@ -374,13 +376,21 @@ function AppInner() {
           <Route path="/guidelines" element={<CommunityGuidelinesPage />} />
           <Route path="/commons/guidelines" element={<CommunityGuidelinesPage />} />
 
-          {/* Public MCQ Subject & Chapter Pages */}
+          {/* Public MCQ Subject, University & Chapter Pages */}
           <Route path="/mcqs" element={<McqsHubPage />} />
           <Route path="/mcqs/:subject" element={<McqSubjectPage />} />
           <Route path="/mcqs/:subject/:chapter" element={<McqChapterPage />} />
+          <Route path="/mcqs/:university/:subject/:chapter" element={<McqChapterPage />} />
+
+          {/* Public Subjects Hub, Subject Detail & Chapter Pages */}
+          <Route path="/subjects" element={<McqsHubPage />} />
+          <Route path="/subjects/:subjectId" element={<McqSubjectPage />} />
+          <Route path="/subjects/:subjectId/:chapter" element={<McqChapterPage />} />
 
           {/* Public Boardly Commons Feed, Post Permalinks, Subject Feeds & Info */}
           <Route path="/commons" element={<CommonsFeedPage />} />
+          <Route path="/commons/trending" element={<CommonsFeedPage />} />
+          <Route path="/commons/following" element={<CommonsFeedPage />} />
           <Route path="/commons/about" element={<CommonsAboutPage />} />
           <Route path="/about-commons" element={<Navigate to="/commons/about" replace />} />
           <Route path="/commons/post/:idSlug" element={<PublicPostDetailPage />} />
@@ -390,8 +400,12 @@ function AppInner() {
           <Route path="/material" element={<MaterialLibraryPage />} />
           <Route path="/material/subject/:subject" element={<MaterialSubjectPage />} />
           <Route path="/material/:idSlug" element={<MaterialDetailPage />} />
+          <Route path="/study-material" element={<MaterialLibraryPage />} />
+          <Route path="/study-material/subject/:subject" element={<MaterialSubjectPage />} />
+          <Route path="/study-material/:itemId" element={<MaterialDetailPage />} />
 
           {/* Public Grand Line, Test Info & Leaderboard */}
+          <Route path="/leaderboard" element={<GrandLineLeaderboardPage />} />
           <Route path="/grand-line" element={<GrandLinePage />} />
           <Route path="/grand-line/about" element={<GrandLineAboutPage />} />
           <Route path="/grand-line/leaderboard" element={<GrandLineLeaderboardPage />} />
@@ -417,6 +431,7 @@ function AppInner() {
 
           {/* Public User Profile & Search */}
           <Route path="/u/:username" element={<PublicUserProfilePage />} />
+          <Route path="/profile/:userId" element={<PublicUserProfilePage />} />
           <Route path="/search" element={<SearchPage />} />
 
           {/* Custom 410 Gone & 404 Not Found Pages */}

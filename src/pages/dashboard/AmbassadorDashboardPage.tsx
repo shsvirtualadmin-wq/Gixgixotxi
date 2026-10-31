@@ -53,6 +53,7 @@ import {
 } from '@/services/crewService';
 import { NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
 import { showApiToast } from '@/lib/api';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 
 const SUBJECT_OPTIONS = [
   'Physics',
@@ -791,12 +792,20 @@ export function AmbassadorDashboardPage() {
                       const rank = r.rank ?? index + 1;
                       const mins = Math.floor((r.timeTakenSeconds || 0) / 60);
                       const secs = (r.timeTakenSeconds || 0) % 60;
+                      const displayName =
+                        (r.userName || r.studentName || '').trim() || 'Student';
+                      const isCurrentUser =
+                        Boolean(user?.uid && r.studentUid && r.studentUid === user.uid);
                       return (
                         <div
-                          key={r.id}
-                          className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between gap-3"
+                          key={r.id || `${rank}-${displayName}`}
+                          className={`p-3 rounded-xl border flex items-center justify-between gap-2 sm:gap-3 ${
+                            isCurrentUser
+                              ? 'bg-[#D71921]/10 border-[#D71921]/50'
+                              : 'bg-[var(--surface-2)] border-[var(--border)]'
+                          }`}
                         >
-                          <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                             <span
                               className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-mono font-bold shrink-0 tabular-nums ${
                                 rank === 1
@@ -810,22 +819,35 @@ export function AmbassadorDashboardPage() {
                             >
                               #{rank}
                             </span>
-                            <div className="min-w-0">
-                              <p className="text-xs sm:text-sm font-bold text-[var(--text)] truncate">
-                                {r.studentName}
-                              </p>
-                              <p className="text-[11px] text-[var(--muted)] font-mono tabular-nums">
-                                Time: {mins}m {secs}s
+                            <BoardlyAvatar
+                              uid={r.studentUid || `${rank}-${displayName}`}
+                              name={displayName}
+                              photoURL={r.userAvatar || null}
+                              size="sm"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <p className="text-xs sm:text-sm font-bold text-[var(--text)] truncate">
+                                  {displayName}
+                                </p>
+                                {isCurrentUser && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#D71921] text-white shrink-0">
+                                    You
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-[var(--muted)] font-mono tabular-nums truncate">
+                                Time: {mins > 0 ? `${mins}m ${secs}s` : `${secs}s`} · {r.percentage}% accuracy
                               </p>
                             </div>
                           </div>
 
                           <div className="text-right shrink-0 tabular-nums">
-                            <p className="text-sm font-bold text-[#D71921]">
-                              {r.percentage}%
-                            </p>
-                            <p className="text-[11px] text-[var(--muted)] font-mono">
+                            <p className="text-xs sm:text-sm font-bold text-[var(--text)] font-mono">
                               {r.score}/{r.totalQuestions}
+                            </p>
+                            <p className="text-[11px] font-bold text-[#D71921]">
+                              {r.percentage}%
                             </p>
                           </div>
                         </div>

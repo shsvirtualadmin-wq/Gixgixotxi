@@ -3,6 +3,10 @@ import { auth } from './firebase';
 export interface ApiError extends Error {
   status?: number;
   code?: string;
+  attemptId?: string;
+  attempt?: any;
+  rawMessage?: string;
+  data?: any;
 }
 
 export type ToastKind = 'error' | 'success' | 'info';
@@ -174,6 +178,10 @@ export async function apiRequest<T = any>(
     const err: ApiError = new Error(fullMessage);
     err.status = response.status;
     err.code = serverCode || `HTTP_${response.status}`;
+    err.rawMessage = serverError;
+    err.attemptId = data?.attemptId;
+    err.attempt = data?.attempt;
+    err.data = data;
     if (!silentErrorToast) {
       showApiToast(fullMessage, 'error');
     }

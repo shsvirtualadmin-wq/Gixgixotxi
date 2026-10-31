@@ -3,10 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { PageMeta } from '@/components/ui/PageMeta';
-import { Badge } from '@/components/ui/Badge';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import {
   Compass,
   Trophy,
@@ -14,30 +13,31 @@ import {
   Info,
   AlertCircle,
   Play,
-  Mail,
-  User,
+  CheckCircle2,
+  Download,
+  Eye,
+  Loader2,
 } from 'lucide-react';
 import {
   getAllPublicGrandLineTests,
+  getMyTestAttempts,
   getTestLeaderboard,
-  hasUserAttemptedTest,
+  type AmbassadorTestAttempt,
   type AmbassadorTestDoc,
   type PublicLeaderboardEntry,
 } from '@/services/ambassadorTestService';
+import { downloadDrillResultPdfByTestId } from '@/utils/testPdfExporter';
+import { showApiToast } from '@/lib/api';
 import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
-
 import { useAuthGate } from '@/contexts/AuthGateContext';
 
-const ENTRY_TEST_CHOICES = [
-  'FAST-NUCES (CS/SE/AI)',
-  'NUST NET (Engineering & CS)',
-  'GIKI Entrance Exam',
-  'MDCAT (Medical & Dental)',
-  'ECAT Punjab (UET)',
-  'NED Karachi',
-  'COMSATS (NTS NAT)',
-  'IBA / LUMS',
-];
+function formatTimeTaken(seconds?: number): string {
+  const sec = Math.max(0, Math.round(Number(seconds || 0)));
+  const mins = Math.floor(sec / 60);
+  const rem = sec % 60;
+  if (mins <= 0) return `${rem}s`;
+  return `${mins}m ${rem}s`;
+}
 
 export function GrandLinePage() {
   const { user } = useAuth();
@@ -46,60 +46,90 @@ export function GrandLinePage() {
   const navigate = useNavigate();
 
   const [tests, setTests] = useState<AmbassadorTestDoc[]>([]);
+  const [myAttemptsMap, setMyAttemptsMap] = useState<Record<string, AmbassadorTestAttempt>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [subjectFilter, setSubjectFilter] = useState('all');
+  const [downloadingTestId, setDownloadingTestId] = useState<string | null>(null);
 
   // Selected test for leaderboard preview
   const [activeLeaderboardTestId, setActiveLeaderboardTestId] = useState<string | null>(null);
   const [leaderboard, setLeaderboard] = useState<PublicLeaderboardEntry[]>([]);
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
-
-  // Guest Registration Modal to take test
-  const [selectedTestForStart, setSelectedTestForStart] = useState<AmbassadorTestDoc | null>(null);
-  const [guestName, setGuestName] = useState('');
-  const [guestEmail, setGuestEmail] = useState('');
-  const [guestEntryTest, setGuestEntryTest] = useState(ENTRY_TEST_CHOICES[0]);
-  const [guestError, setGuestError] = useState<string | null>(null);
-  const [checkingEligibility, setCheckingEligibility] = useState(false);
+  const [bannerError, setBannerError] = useState<string | null>(null);
 
   useEffect(() => {
+    let active = true;
     async function load() {
       setLoading(true);
       try {
         const data = await getAllPublicGrandLineTests();
+        if (!active) return;
         setTests(data);
         if (data.length > 0) {
-          setActiveLeaderboardTestId(data[0].id);
+          setActiveLeaderboardTestId((prev) => prev || data[0].id);
         }
       } catch (err) {
         console.warn('Error loading Grand Line tests:', err);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
     load();
+    return () => {
+      active = false;
+    };
   }, []);
+
+  // Load current student's attempts and map by testId
+  useEffect(() => {
+    let active = true;
+    if (!user) {
+      setMyAttemptsMap({});
+      return;
+    }
+    getMyTestAttempts()
+      .then((attempts) => {
+        if (!active) return;
+        const map: Record<string, AmbassadorTestAttempt> = {};
+        for (const att of attempts) {
+          if (att.testId && !map[att.testId]) {
+            map[att.testId] = att;
+          }
+        }
+        setMyAttemptsMap(map);
+      })
+      .catch((err) => {
+        console.warn('Error loading student attempts:', err);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user]);
 
   // Load leaderboard when active test changes
   useEffect(() => {
     if (!activeLeaderboardTestId) return;
+    let active = true;
     async function loadBoard() {
       setLoadingLeaderboard(true);
       try {
         const board = await getTestLeaderboard(activeLeaderboardTestId!);
-        setLeaderboard(board);
+        if (active) setLeaderboard(board);
       } catch (err) {
         console.warn('Error loading leaderboard:', err);
       } finally {
-        setLoadingLeaderboard(false);
+        if (active) setLoadingLeaderboard(false);
       }
     }
     loadBoard();
+    return () => {
+      active = false;
+    };
   }, [activeLeaderboardTestId]);
 
-  const handleStartTestClick = async (test: AmbassadorTestDoc) => {
-    setGuestError(null);
+  const handleStartTestClick = (test: AmbassadorTestDoc) => {
+    setBannerError(null);
     if (!user) {
       requireAuth(
         `take "${test.title}" on Grand Line`,
@@ -109,74 +139,47 @@ export function GrandLinePage() {
       return;
     }
 
-    const userEmail = user.email || '';
-    try {
-      const already = await hasUserAttemptedTest(test.id, userEmail);
-      if (already) {
-        setGuestError('You have already taken this test. In Grand Line drills, only 1 verified attempt per student is permitted.');
-        return;
-      }
-      sessionStorage.setItem(`grandline_taker_${test.id}`, JSON.stringify({
-        name: profile?.displayName || user.displayName || 'Student',
-        email: userEmail,
+    sessionStorage.setItem(
+      `grandline_taker_${test.id}`,
+      JSON.stringify({
+        name:
+          profile?.displayName ||
+          user.displayName ||
+          user.email?.split('@')[0] ||
+          'Student',
+        email: user.email || '',
         entryTest: 'General Prep',
-      }));
-      navigate(`/grand-line/test/${test.id}/run`);
-    } catch (err) {
-      console.warn('Error checking attempt status:', err);
-      navigate(`/grand-line/test/${test.id}/run`);
-    }
+      })
+    );
+    navigate(`/grand-line/test/${test.id}/run`);
   };
 
-  const handleGuestSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedTestForStart) return;
-
-    const emailTrim = guestEmail.trim().toLowerCase();
-    const nameTrim = guestName.trim();
-
-    if (!nameTrim) {
-      setGuestError('Please enter your full name.');
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
-      setGuestError('Please enter a valid email address (e.g. yourname@gmail.com).');
-      return;
-    }
-
-    setCheckingEligibility(true);
-    setGuestError(null);
-
+  const handleDownloadPdfForTest = async (
+    testId: string,
+    fallbackAttempt?: AmbassadorTestAttempt
+  ) => {
+    if (downloadingTestId) return;
+    setDownloadingTestId(testId);
     try {
-      const already = await hasUserAttemptedTest(selectedTestForStart.id, emailTrim);
-      if (already) {
-        setGuestError('This email has already attempted this test. Only 1 attempt per email is allowed.');
-        setCheckingEligibility(false);
-        return;
-      }
-
-      sessionStorage.setItem(`grandline_taker_${selectedTestForStart.id}`, JSON.stringify({
-        name: nameTrim,
-        email: emailTrim,
-        entryTest: guestEntryTest,
-      }));
-
-      const testId = selectedTestForStart.id;
-      setSelectedTestForStart(null);
-      navigate(`/grand-line/test/${testId}`);
-    } catch (err) {
-      setGuestError(err instanceof Error ? err.message : 'Error validating email eligibility.');
-      setCheckingEligibility(false);
+      await downloadDrillResultPdfByTestId(testId, fallbackAttempt);
+      showApiToast('Result PDF downloaded!', 'success');
+    } catch (err: any) {
+      showApiToast(err?.rawMessage || err?.message || 'Failed to download PDF.', 'error');
+    } finally {
+      setDownloadingTestId(null);
     }
   };
 
   const filteredTests = tests.filter((t) => {
-    if (subjectFilter !== 'all' && t.subject !== subjectFilter) return false;
+    if (subjectFilter !== 'all' && t.subject.toLowerCase() !== subjectFilter.toLowerCase()) {
+      return false;
+    }
     if (search.trim()) {
       const term = search.toLowerCase();
+      const author = (t.creatorName || t.captainName || '').toLowerCase();
       return (
         t.title.toLowerCase().includes(term) ||
-        t.creatorName.toLowerCase().includes(term) ||
+        author.includes(term) ||
         t.subject.toLowerCase().includes(term)
       );
     }
@@ -192,7 +195,7 @@ export function GrandLinePage() {
         description={`Challenge verified entrance exam mock tests authored by ${NAKAMA_CAPTAINS_NAME}. Open to all students with real-time tie-broken rankings.`}
       />
 
-      <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12 sm:space-y-14">
+      <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12 sm:space-y-14 overflow-x-hidden">
         {/* Hero Header */}
         <div className="text-center max-w-3xl mx-auto space-y-4">
           <div className="section-chip section-chip-red">
@@ -239,7 +242,7 @@ export function GrandLinePage() {
                 key={subj}
                 type="button"
                 onClick={() => setSubjectFilter(subj)}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-mono capitalize transition-all cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-full text-xs font-mono capitalize transition-all cursor-pointer shrink-0 ${
                   subjectFilter === subj
                     ? 'bg-[#D71921] text-white font-bold shadow-[0_2px_12px_rgba(215,25,33,0.3)]'
                     : 'glass-pill text-[var(--muted)] hover:text-white'
@@ -253,15 +256,15 @@ export function GrandLinePage() {
 
         {/* ── Test List (Dedicated Captain Tests Section) ── */}
         <div className="max-w-4xl mx-auto space-y-4">
-          {guestError && !selectedTestForStart && (
+          {bannerError && (
             <div className="p-3.5 rounded-2xl bg-red-950/40 border border-red-500/40 text-red-300 text-xs flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <AlertCircle size={15} className="shrink-0 text-red-400" />
-                <span>{guestError}</span>
+                <span>{bannerError}</span>
               </div>
               <button
                 type="button"
-                onClick={() => setGuestError(null)}
+                onClick={() => setBannerError(null)}
                 className="text-red-200 hover:text-white underline font-semibold shrink-0 cursor-pointer"
               >
                 Dismiss
@@ -269,7 +272,7 @@ export function GrandLinePage() {
             </div>
           )}
 
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <h2
               className="text-lg font-bold text-[var(--text)] font-dot"
               style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
@@ -277,7 +280,7 @@ export function GrandLinePage() {
               Captain Tests ({filteredTests.length})
             </h2>
             <span className="text-xs font-mono text-[var(--text-faint)]">
-              1 Attempt per Candidate
+              1 Verified Attempt per Drill
             </span>
           </div>
 
@@ -291,54 +294,107 @@ export function GrandLinePage() {
             <div className="p-12 text-center rounded-[28px] glass-panel text-[var(--muted)] text-sm space-y-2">
               <Compass size={32} className="mx-auto text-[var(--text-faint)]" />
               <p>No tests match your filter right now.</p>
-              <p className="text-xs text-[var(--text-faint)]">Check back soon or apply as an ambassador to author your own mock!</p>
+              <p className="text-xs text-[var(--text-faint)]">
+                Check back soon or apply as an ambassador to author your own mock!
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3.5">
-              {filteredTests.map((test) => (
-                <div
-                  key={test.id}
-                  className="glass-card glass-card-interactive p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-[24px]"
-                >
-                  <div className="space-y-1.5 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-base font-bold text-[var(--text)] font-heading">
-                        {test.title}
-                      </span>
-                      <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-[#D71921]/15 border border-[#D71921]/30 text-[#D71921]">
-                        {test.subject}
-                      </span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/[0.05] border border-white/10 text-[var(--muted)]">
-                        {test.questionCount} Questions
-                      </span>
+              {filteredTests.map((test) => {
+                const myAttempt = myAttemptsMap[test.id];
+                const isAttempted = Boolean(myAttempt);
+                const isDownloadingThis = downloadingTestId === test.id;
+
+                return (
+                  <div
+                    key={test.id}
+                    className="glass-card glass-card-interactive p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-[24px] min-w-0"
+                  >
+                    <div className="space-y-1.5 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-base font-bold text-[var(--text)] font-heading break-words">
+                          {test.title}
+                        </span>
+                        <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-[#D71921]/15 border border-[#D71921]/30 text-[#D71921]">
+                          {test.subject}
+                        </span>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/[0.05] border border-white/10 text-[var(--muted)]">
+                          {test.questionCount} Questions
+                        </span>
+                        {isAttempted && myAttempt && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/35 text-emerald-400">
+                            <CheckCircle2 size={11} />
+                            <span>
+                              Attempted · {myAttempt.score}/{myAttempt.totalQuestions} ({myAttempt.percentage}%)
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-[var(--muted)] flex items-center gap-2 truncate">
+                        <span>
+                          Authored by:{' '}
+                          <strong className="text-[var(--text)]">
+                            {test.creatorName || test.captainName}
+                          </strong>{' '}
+                          (#{test.creatorShortId || 'CAPT'})
+                        </span>
+                      </p>
                     </div>
-                    <p className="text-xs text-[var(--muted)] flex items-center gap-2">
-                      <span>Authored by: <strong className="text-[var(--text)]">{test.creatorName}</strong> (#{test.creatorShortId})</span>
-                    </p>
-                  </div>
 
-                  <div className="flex items-center gap-2.5 shrink-0">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setActiveLeaderboardTestId(test.id)}
-                      className={activeLeaderboardTestId === test.id ? 'border-[#D71921] text-[#D71921]' : ''}
-                    >
-                      <Trophy size={13} />
-                      <span>Leaderboard</span>
-                    </Button>
+                    <div className="flex items-center gap-2 flex-wrap shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setActiveLeaderboardTestId(test.id)}
+                        className={
+                          activeLeaderboardTestId === test.id
+                            ? 'border-[#D71921] text-[#D71921]'
+                            : ''
+                        }
+                      >
+                        <Trophy size={13} />
+                        <span>Leaderboard</span>
+                      </Button>
 
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => handleStartTestClick(test)}
-                    >
-                      <Play size={13} />
-                      <span>Take Test</span>
-                    </Button>
+                      {isAttempted ? (
+                        <>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => navigate(`/grand-line/test/${test.id}/run?mode=result`)}
+                          >
+                            <Eye size={13} />
+                            <span>View Result</span>
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={isDownloadingThis}
+                            onClick={() => handleDownloadPdfForTest(test.id, myAttempt)}
+                          >
+                            {isDownloadingThis ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <Download size={13} />
+                            )}
+                            <span>{isDownloadingThis ? 'PDF...' : 'Download PDF'}</span>
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => handleStartTestClick(test)}
+                        >
+                          <Play size={13} />
+                          <span>Take Test</span>
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -346,11 +402,11 @@ export function GrandLinePage() {
         {/* ── Test Leaderboard Section ── */}
         <div className="max-w-4xl mx-auto pt-8 border-t border-white/10 space-y-6">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <Trophy size={20} className="text-[#D71921]" />
+                <Trophy size={20} className="text-[#D71921] shrink-0" />
                 <h2
-                  className="text-xl font-bold text-[var(--text)] font-dot"
+                  className="text-lg sm:text-xl font-bold text-[var(--text)] font-dot truncate"
                   style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
                 >
                   {activeTest ? `Leaderboard: ${activeTest.title}` : 'Test Leaderboard'}
@@ -362,60 +418,106 @@ export function GrandLinePage() {
             </div>
 
             {activeTest && (
-              <span className="glass-pill px-3 py-1 text-xs font-mono text-[var(--muted)]">
-                {leaderboard.length} Attempts Recorded
+              <span className="glass-pill px-3 py-1 text-xs font-mono text-[var(--muted)] shrink-0">
+                {leaderboard.length} {leaderboard.length === 1 ? 'Attempt' : 'Attempts'} Recorded
               </span>
             )}
           </div>
 
           {loadingLeaderboard ? (
-            <div className="space-y-2">
-              <Skeleton height={50} />
-              <Skeleton height={50} />
+            <div className="space-y-2.5">
+              <Skeleton height={56} />
+              <Skeleton height={56} />
+              <Skeleton height={56} />
             </div>
           ) : leaderboard.length === 0 ? (
             <div className="p-8 text-center rounded-2xl glass-panel text-xs text-[var(--muted)]">
               No attempts submitted yet for this test. Be the first to claim rank #1!
             </div>
           ) : (
-            <div className="glass-panel p-4 sm:p-6 rounded-[28px] space-y-2">
-              {leaderboard.map((entry) => {
+            <div className="glass-panel p-3 sm:p-6 rounded-[28px] space-y-2 overflow-hidden">
+              {leaderboard.map((entry, idx) => {
+                const rank = entry.rank ?? idx + 1;
+                const studentName =
+                  String(
+                    entry.userName || entry.studentName || entry.name || 'Student'
+                  ).trim() || 'Student';
+                const totalQ = Math.max(1, Number(entry.totalQuestions || 0));
+                const accuracyPct =
+                  typeof entry.percentage === 'number'
+                    ? entry.percentage
+                    : Math.round((Number(entry.score || 0) / totalQ) * 100);
+                const isOwnRow = Boolean(
+                  user &&
+                    ((entry.userUid && entry.userUid === user.uid) ||
+                      (entry.studentUid && entry.studentUid === user.uid))
+                );
+
                 return (
                   <div
-                    key={entry.rank}
-                    className="p-3.5 rounded-2xl glass-row flex items-center justify-between text-xs"
+                    key={entry.id || `${rank}-${studentName}-${idx}`}
+                    className={`p-3 sm:p-3.5 rounded-2xl glass-row flex items-center justify-between gap-2.5 sm:gap-3 text-xs min-w-0 ${
+                      isOwnRow
+                        ? 'border border-[#D71921]/50 bg-[#D71921]/10'
+                        : ''
+                    }`}
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
                       <div
-                        className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 font-dot ${
-                          entry.rank === 1
+                        className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center font-bold text-[11px] sm:text-xs shrink-0 font-dot tabular-nums ${
+                          rank === 1
                             ? 'bg-amber-400 text-black'
-                            : entry.rank === 2
+                            : rank === 2
                             ? 'bg-slate-300 text-black'
-                            : entry.rank === 3
+                            : rank === 3
                             ? 'bg-amber-600 text-white'
                             : 'bg-white/[0.05] text-[var(--muted)] border border-white/10'
                         }`}
                       >
-                        {entry.rank}
+                        {rank}
                       </div>
-                      <div>
-                        {/* Candidate Name only — NEVER show emails publicly */}
-                        <span className="font-bold text-sm text-[var(--text)]">
-                          {entry.name}
-                        </span>
-                        <span className="text-[10px] font-mono text-[var(--text-faint)] block">
-                          Completed in {entry.timeTakenSeconds}s · {entry.date}
+
+                      <BoardlyAvatar
+                        size={32}
+                        name={studentName}
+                        equippedAvatar={
+                          entry.userAvatar?.startsWith('pfp_') ? entry.userAvatar : undefined
+                        }
+                        avatarUrl={
+                          entry.userAvatar && !entry.userAvatar.startsWith('pfp_')
+                            ? entry.userAvatar
+                            : undefined
+                        }
+                        forceStatic
+                      />
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="font-bold text-xs sm:text-sm text-[var(--text)] truncate"
+                            title={studentName}
+                          >
+                            {studentName}
+                          </span>
+                          {isOwnRow && (
+                            <span className="px-1.5 py-0.2 rounded-full bg-[#D71921] text-white text-[9px] font-mono font-bold uppercase shrink-0">
+                              You
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] font-mono text-[var(--text-faint)] block truncate tabular-nums">
+                          {formatTimeTaken(entry.timeTakenSeconds)}
+                          {entry.date ? ` · ${entry.date}` : ''}
                         </span>
                       </div>
                     </div>
 
-                    <div className="text-right">
-                      <span className="text-sm font-bold font-dot text-[#D71921]">
-                        {entry.score} / {entry.totalQuestions}
+                    <div className="text-right shrink-0 tabular-nums">
+                      <span className="text-xs sm:text-sm font-bold font-dot text-[#D71921] block">
+                        {entry.score}/{entry.totalQuestions}
                       </span>
-                      <span className="text-[10px] text-[var(--text-faint)] block">
-                        {Math.round((entry.score / entry.totalQuestions) * 100)}% accuracy
+                      <span className="text-[10px] font-mono text-[var(--text-faint)] block">
+                        {accuracyPct}% accuracy
                       </span>
                     </div>
                   </div>
@@ -425,105 +527,9 @@ export function GrandLinePage() {
           )}
         </div>
       </div>
-
-      {/* ── Guest Registration Modal for Visitors ── */}
-      {selectedTestForStart && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
-          <div className="w-full max-w-md rounded-[28px] glass-panel p-6 sm:p-7 shadow-2xl flex flex-col gap-4 border border-white/15">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div>
-                <h3
-                  className="text-lg font-bold text-[var(--text)] font-dot"
-                  style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
-                >
-                  Start {GRAND_LINE_NAME} Mock
-                </h3>
-                <p className="text-xs text-[var(--muted)]">Please enter your candidate information to start.</p>
-              </div>
-              <button
-                onClick={() => setSelectedTestForStart(null)}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--muted)] hover:text-white hover:bg-white/[0.08] cursor-pointer transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleGuestSubmit} className="space-y-3.5">
-              <div>
-                <label className="text-xs font-semibold text-[var(--text-muted)] block mb-1">
-                  Full Name
-                </label>
-                <div className="relative">
-                  <User size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
-                  <input
-                    type="text"
-                    required
-                    value={guestName}
-                    onChange={(e) => setGuestName(e.target.value)}
-                    placeholder="e.g. Daniyal Tariq"
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-2xl bg-white/[0.04] border border-white/12 text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-[var(--text-muted)] block mb-1">
-                  Gmail / Email Address
-                </label>
-                <div className="relative">
-                  <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
-                  <input
-                    type="email"
-                    required
-                    value={guestEmail}
-                    onChange={(e) => setGuestEmail(e.target.value)}
-                    placeholder="yourname@gmail.com"
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-2xl bg-white/[0.04] border border-white/12 text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
-                  />
-                </div>
-                <span className="text-[10px] text-[var(--text-faint)] mt-1 block">
-                  Strictly 1 attempt per email. Your email is never shown publicly.
-                </span>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-[var(--text-muted)] block mb-1">
-                  Entrance Exam
-                </label>
-                <select
-                  value={guestEntryTest}
-                  onChange={(e) => setGuestEntryTest(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-2xl bg-white/[0.04] border border-white/12 text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
-                >
-                  {ENTRY_TEST_CHOICES.map((choice) => (
-                    <option key={choice} value={choice} className="bg-[#121216] text-white">
-                      {choice}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {guestError && (
-                <div className="p-3 rounded-xl bg-red-950/40 border border-red-500/50 text-xs text-red-400 flex items-center gap-2">
-                  <AlertCircle size={15} className="shrink-0" />
-                  <span>{guestError}</span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
-                <Button variant="ghost" size="sm" type="button" onClick={() => setSelectedTestForStart(null)}>
-                  Cancel
-                </Button>
-                <Button variant="primary" size="md" type="submit" loading={checkingEligibility}>
-                  Proceed to Test
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   );
 }
 
 export default GrandLinePage;
+

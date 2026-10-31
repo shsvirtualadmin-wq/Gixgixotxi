@@ -15,6 +15,11 @@ import {
   type GeminiKeyStatusRecord,
 } from '../services/botContentGenerator';
 import { validateAndNormalizeQuestionMath } from '../utils/katexValidator';
+import {
+  resolveStaticOrPatternRouteMeta,
+  injectMetaIntoIndexHtml,
+  type ResolvedRouteMeta,
+} from '../utils/routeSeoMeta';
 
 const R2_PUBLIC_BASE_URL = (
   process.env.R2_PUBLIC_BASE_URL ||
@@ -617,6 +622,7 @@ export interface VerifiedWorkerUser {
   uid: string;
   email: string;
   name: string;
+  tokenName?: string;
   picture: string;
   role: 'student' | 'captain' | 'superadmin';
   customRole: string | null;
@@ -693,10 +699,14 @@ export async function verifyFirebaseJwtZeroFirestore(
       customRole = customRole || 'Nakama Captain';
     }
 
+    const tokenName = String(payload.name || '').trim();
+    const emailPrefix = email ? email.split('@')[0].trim() : '';
+
     return {
       uid,
       email,
-      name: payload.name || email.split('@')[0] || 'Student',
+      name: tokenName || emailPrefix || 'Student',
+      tokenName,
       picture: payload.picture || '',
       role,
       customRole,
@@ -4366,6 +4376,77 @@ ${allUrls
   });
 
   // ── D1 Captain Tests & Grand Line Public Tests ─────────────────────────────
+  const inFlightAttemptSubmissions = new Set<string>();
+  const ALREADY_ATTEMPTED_MESSAGE =
+    'You have already taken this drill. Only one verified attempt per student is permitted for each drill.';
+
+  function resolveAttemptUserName(
+    frontendName: unknown,
+    tokenName: unknown,
+    email: unknown
+  ): string {
+    const fromFrontend = String(frontendName ?? '').trim();
+    if (fromFrontend && fromFrontend.toLowerCase() !== 'student') {
+      return fromFrontend.slice(0, 120);
+    }
+    const fromToken = String(tokenName ?? '').trim();
+    if (fromToken && fromToken.toLowerCase() !== 'student') {
+      return fromToken.slice(0, 120);
+    }
+    const emailStr = String(email ?? '').trim();
+    const emailPrefix = emailStr.includes('@') ? emailStr.split('@')[0].trim() : emailStr;
+    if (emailPrefix) {
+      return emailPrefix.slice(0, 120);
+    }
+    if (fromFrontend) return fromFrontend.slice(0, 120);
+    if (fromToken) return fromToken.slice(0, 120);
+    return 'Student';
+  }
+
+  function resolveLeaderboardDisplayName(attemptRow: any, store: any): string {
+    const rawStored = String(attemptRow?.userName ?? attemptRow?.user_name ?? attemptRow?.studentName ?? '').trim();
+    if (rawStored) return rawStored;
+    const uid = String(attemptRow?.userUid ?? attemptRow?.user_uid ?? attemptRow?.studentUid ?? '').trim();
+    if (uid && Array.isArray(store?.userRoles)) {
+      const roleEntry = store.userRoles.find((r: any) => r.uid === uid);
+      const email = String(roleEntry?.email || '').trim();
+      if (email && email.includes('@')) {
+        const prefix = email.split('@')[0].trim();
+        if (prefix) return prefix;
+      }
+    }
+    return 'Student';
+  }
+
+  function buildGradedQuestionsForAttempt(attemptRow: any, testRow: any): any[] {
+    if (Array.isArray(attemptRow?.gradedQuestions) && attemptRow.gradedQuestions.length > 0) {
+      return attemptRow.gradedQuestions.map((q: any, idx: number) => ({
+        id: q.id || `q_${idx}`,
+        position: typeof q.position === 'number' ? q.position : idx,
+        question: String(q.question || q.question_text || ''),
+        options: Array.isArray(q.options) ? q.options.map(String) : ['', '', '', ''],
+        selectedIndex: typeof q.selectedIndex === 'number' ? q.selectedIndex : -1,
+        correctIndex: Number(q.correctIndex ?? q.correct_index ?? 0),
+        isCorrect: Boolean(q.isCorrect ?? (q.selectedIndex === Number(q.correctIndex ?? 0))),
+        explanation: String(q.explanation || ''),
+      }));
+    }
+    const questions = Array.isArray(testRow?.questions) ? testRow.questions : [];
+    return questions.map((q: any, idx: number) => {
+      const correctIndex = Number(q.correctIndex ?? q.correct_index ?? 0);
+      return {
+        id: q.id || `q_${idx}`,
+        position: typeof q.position === 'number' ? q.position : idx,
+        question: String(q.question || q.question_text || ''),
+        options: Array.isArray(q.options) ? q.options.map(String) : ['', '', '', ''],
+        selectedIndex: -1,
+        correctIndex,
+        isCorrect: false,
+        explanation: String(q.explanation || ''),
+      };
+    });
+  }
+
   app.get('/api/tests/public', (req: Request, res: Response) => {
     const store = loadD1Store() as any;
     if (!Array.isArray(store.captainTests)) store.captainTests = [];
@@ -4458,14 +4539,93 @@ ${allUrls
     return res.status(201).json(newTest);
   });
 
-  app.get('/api/tests/:id', async (req: Request, res: Response) => {
+  app.get('/api/tests/:id/my-attempt', async (req: Request, res: Response) => {
     const user = await verifyFirebaseJwtZeroFirestore(req);
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
     if (!Array.isArray(store.captainTests)) store.captainTests = [];
+    if (!Array.isArray(store.testAttempts)) store.testAttempts = [];
+
+    const testId = decodeURIComponent(String(req.params.id || ''));
+    const test = store.captainTests.find((t: any) => t.id === testId);
+    const existingAttempt = store.testAttempts.find(
+      (a: any) =>
+        String(a.testId || a.test_id || '') === testId &&
+        String(a.userUid || a.user_uid || '') === user.uid
+    );
+
+    if (!existingAttempt) {
+      if (!test) {
+        return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
+      }
+      return res.status(403).json({
+        error: 'You must attempt this drill before viewing or downloading its answer key and result PDF.',
+        code: 'ATTEMPT_REQUIRED',
+      });
+    }
+
+    const resolvedName = resolveLeaderboardDisplayName(existingAttempt, store);
+    const gradedQuestions = buildGradedQuestionsForAttempt(existingAttempt, test);
+
+    return res.status(200).json({
+      attempt: {
+        ...existingAttempt,
+        testId,
+        testTitle: existingAttempt.testTitle || test?.title || 'Grand Line Drill',
+        subject: existingAttempt.subject || test?.subject || 'General',
+        captainUid: existingAttempt.captainUid || test?.captainUid || '',
+        captainName: existingAttempt.captainName || test?.captainName || 'Captain',
+        userUid: user.uid,
+        userName: resolvedName,
+        studentName: resolvedName,
+        name: resolvedName,
+        gradedQuestions,
+      },
+      test: test
+        ? {
+            id: test.id,
+            title: test.title,
+            description: test.description || '',
+            subject: test.subject,
+            durationMinutes: Number(test.durationMinutes || 20),
+            questionCount: Number(test.questionCount ?? (test.questions?.length || 0)),
+            captainUid: test.captainUid,
+            captainName: test.captainName,
+            crewId: test.crewId || null,
+            crewName: test.crewName || 'Grand Line Crew',
+          }
+        : null,
+    });
+  });
+
+  app.get('/api/tests/:id', async (req: Request, res: Response) => {
+    const store = loadD1Store() as any;
+    if (!Array.isArray(store.captainTests)) store.captainTests = [];
+    if (!Array.isArray(store.testAttempts)) store.testAttempts = [];
     const testId = decodeURIComponent(String(req.params.id || ''));
     const test = store.captainTests.find((t: any) => t.id === testId);
     if (!test) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
+
+    const isInfoOnly = req.query.view === 'info';
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+
+    if (isInfoOnly) {
+      if (test.visibility === 'private') {
+        if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+        const roleRow = resolveD1Role(store, user);
+        const isOwnerOrAdmin = test.captainUid === user.uid || ['admin', 'superadmin'].includes(roleRow.role);
+        if (!isOwnerOrAdmin) return res.status(403).json({ error: 'This test is private.', code: 'FORBIDDEN' });
+      }
+      return res.status(200).json({
+        test: {
+          ...test,
+          questionCount: Number(test.questionCount ?? (test.questions?.length || 0)),
+          questions: [],
+        },
+      });
+    }
+
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
 
     const roleRow = resolveD1Role(store, user);
     const isOwnerOrAdmin =
@@ -4475,6 +4635,41 @@ ${allUrls
     }
 
     const includeAnswers = isOwnerOrAdmin && req.query.includeAnswers === '1';
+
+    // Enforce ONE verified attempt per drill (test_id + user_uid) when student opens/starts test
+    if (!includeAnswers) {
+      const existingAttempt = store.testAttempts.find(
+        (a: any) =>
+          String(a.testId || a.test_id || '') === testId &&
+          String(a.userUid || a.user_uid || '') === user.uid
+      );
+      if (existingAttempt) {
+        const resolvedName = resolveLeaderboardDisplayName(existingAttempt, store);
+        return res.status(409).json({
+          error: ALREADY_ATTEMPTED_MESSAGE,
+          message: ALREADY_ATTEMPTED_MESSAGE,
+          code: 'ALREADY_ATTEMPTED',
+          attemptId: existingAttempt.id,
+          attempt: {
+            id: existingAttempt.id,
+            testId: test.id,
+            testTitle: existingAttempt.testTitle || test.title,
+            subject: existingAttempt.subject || test.subject,
+            captainUid: existingAttempt.captainUid || test.captainUid,
+            captainName: existingAttempt.captainName || test.captainName,
+            userUid: user.uid,
+            userName: resolvedName,
+            studentName: resolvedName,
+            score: Number(existingAttempt.score || 0),
+            totalQuestions: Number(existingAttempt.totalQuestions || (test.questions?.length || 0)),
+            percentage: Number(existingAttempt.percentage || 0),
+            timeTakenSeconds: Number(existingAttempt.timeTakenSeconds || 0),
+            createdAt: existingAttempt.createdAt,
+          },
+        });
+      }
+    }
+
     const sanitizedQuestions = (test.questions || []).map((q: any, idx: number) => {
       const base: any = {
         id: q.id || `q_${idx}`,
@@ -4631,80 +4826,150 @@ ${allUrls
     });
   });
 
-
   app.post('/api/tests/:id/attempts', async (req: Request, res: Response) => {
     const user = await verifyFirebaseJwtZeroFirestore(req);
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
-    const store = loadD1Store() as any;
-    if (!Array.isArray(store.captainTests)) store.captainTests = [];
-    if (!Array.isArray(store.testAttempts)) store.testAttempts = [];
 
     const testId = decodeURIComponent(String(req.params.id || ''));
-    const test = store.captainTests.find((t: any) => t.id === testId);
-    if (!test) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
+    const lockKey = `${testId}:${user.uid}`;
 
-    const questions = test.questions || [];
-    const body = req.body || {};
-    const rawAnswers = body.answers || {};
-    let score = 0;
+    if (inFlightAttemptSubmissions.has(lockKey)) {
+      const storeSnap = loadD1Store() as any;
+      const existingInStore = (storeSnap.testAttempts || []).find(
+        (a: any) =>
+          String(a.testId || a.test_id || '') === testId &&
+          String(a.userUid || a.user_uid || '') === user.uid
+      );
+      return res.status(409).json({
+        error: ALREADY_ATTEMPTED_MESSAGE,
+        message: ALREADY_ATTEMPTED_MESSAGE,
+        code: 'ALREADY_ATTEMPTED',
+        attemptId: existingInStore?.id || null,
+        attempt: existingInStore || null,
+      });
+    }
 
-    const gradedQuestions = questions.map((q: any, idx: number) => {
-      let selectedIndex = -1;
-      if (Array.isArray(rawAnswers)) {
-        selectedIndex = Number(rawAnswers[idx] ?? -1);
-      } else if (rawAnswers && typeof rawAnswers === 'object') {
-        selectedIndex = Number(rawAnswers[q.id] ?? rawAnswers[idx] ?? -1);
+    inFlightAttemptSubmissions.add(lockKey);
+    try {
+      const store = loadD1Store() as any;
+      if (!Array.isArray(store.captainTests)) store.captainTests = [];
+      if (!Array.isArray(store.testAttempts)) store.testAttempts = [];
+
+      const test = store.captainTests.find((t: any) => t.id === testId);
+      if (!test) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
+
+      const existingAttempt = store.testAttempts.find(
+        (a: any) =>
+          String(a.testId || a.test_id || '') === testId &&
+          String(a.userUid || a.user_uid || '') === user.uid
+      );
+      if (existingAttempt) {
+        const resolvedName = resolveLeaderboardDisplayName(existingAttempt, store);
+        return res.status(409).json({
+          error: ALREADY_ATTEMPTED_MESSAGE,
+          message: ALREADY_ATTEMPTED_MESSAGE,
+          code: 'ALREADY_ATTEMPTED',
+          attemptId: existingAttempt.id,
+          attempt: {
+            ...existingAttempt,
+            userName: resolvedName,
+            studentName: resolvedName,
+            name: resolvedName,
+          },
+        });
       }
-      const correctIndex = Number(q.correctIndex ?? 0);
-      const isCorrect = selectedIndex === correctIndex;
-      if (isCorrect) score++;
-      return {
-        id: q.id || `q_${idx}`,
-        position: idx,
-        question: q.question,
-        options: q.options,
-        selectedIndex,
-        correctIndex,
-        isCorrect,
-        explanation: q.explanation || '',
+
+      const questions = test.questions || [];
+      const body = req.body || {};
+      const rawAnswers = body.answers || {};
+      let score = 0;
+
+      const gradedQuestions = questions.map((q: any, idx: number) => {
+        let selectedIndex = -1;
+        if (Array.isArray(rawAnswers)) {
+          selectedIndex = Number(rawAnswers[idx] ?? -1);
+        } else if (rawAnswers && typeof rawAnswers === 'object') {
+          selectedIndex = Number(rawAnswers[q.id] ?? rawAnswers[idx] ?? -1);
+        }
+        if (Number.isNaN(selectedIndex)) selectedIndex = -1;
+        const correctIndex = Number(q.correctIndex ?? 0);
+        const isCorrect = selectedIndex === correctIndex;
+        if (isCorrect) score++;
+        return {
+          id: q.id || `q_${idx}`,
+          position: idx,
+          question: q.question,
+          options: q.options,
+          selectedIndex,
+          correctIndex,
+          isCorrect,
+          explanation: q.explanation || '',
+        };
+      });
+
+      const totalQuestions = questions.length;
+      const percentage = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 0;
+      const resolvedUserName = resolveAttemptUserName(
+        body.userName ?? body.studentName,
+        user.tokenName,
+        user.email
+      );
+      const resolvedAvatar =
+        typeof body.userAvatar === 'string' && body.userAvatar.trim()
+          ? body.userAvatar.trim()
+          : user.picture || null;
+
+      const attempt = {
+        id: crypto.randomUUID(),
+        testId: test.id,
+        testTitle: test.title,
+        subject: test.subject,
+        captainUid: test.captainUid,
+        captainName: test.captainName,
+        userUid: user.uid,
+        userName: resolvedUserName,
+        studentName: resolvedUserName,
+        name: resolvedUserName,
+        userAvatar: resolvedAvatar,
+        score,
+        totalQuestions,
+        percentage,
+        timeTakenSeconds: Math.max(0, Number(body.timeTakenSeconds || 0)),
+        createdAt: Date.now(),
+        gradedQuestions,
       };
-    });
 
-    const totalQuestions = questions.length;
-    const percentage = totalQuestions > 0 ? Math.round((score / totalQuestions) * 100) : 0;
-    const attempt = {
-      id: crypto.randomUUID(),
-      testId: test.id,
-      testTitle: test.title,
-      subject: test.subject,
-      captainUid: test.captainUid,
-      captainName: test.captainName,
-      userUid: user.uid,
-      userName: String(body.userName || user.email?.split('@')[0] || 'Student'),
-      userAvatar: body.userAvatar || null,
-      score,
-      totalQuestions,
-      percentage,
-      timeTakenSeconds: Number(body.timeTakenSeconds || 0),
-      createdAt: Date.now(),
-      gradedQuestions,
-    };
+      store.testAttempts.unshift(attempt);
+      const prevAttempts = Number(test.attemptsCount || 0);
+      const prevAvg = Number(test.avgScore || 0);
+      test.attemptsCount = prevAttempts + 1;
+      test.avgScore = Math.round(((prevAvg * prevAttempts + percentage) / test.attemptsCount) * 10) / 10;
+      saveD1Store(store);
 
-    store.testAttempts.unshift(attempt);
-    const prevAttempts = Number(test.attemptsCount || 0);
-    const prevAvg = Number(test.avgScore || 0);
-    test.attemptsCount = prevAttempts + 1;
-    test.avgScore = Math.round(((prevAvg * prevAttempts + percentage) / test.attemptsCount) * 10) / 10;
-    saveD1Store(store);
-
-    return res.status(201).json({ attempt });
+      return res.status(201).json({ attempt });
+    } finally {
+      inFlightAttemptSubmissions.delete(lockKey);
+    }
   });
 
   app.get('/api/attempts/mine', async (req: Request, res: Response) => {
     const user = await verifyFirebaseJwtZeroFirestore(req);
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
-    const attempts = (store.testAttempts || []).filter((a: any) => a.userUid === user.uid);
+    const attempts = (store.testAttempts || [])
+      .filter((a: any) => String(a.userUid || a.user_uid || '') === user.uid)
+      .sort((a: any, b: any) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+      .map((a: any) => {
+        const resolvedName = resolveLeaderboardDisplayName(a, store);
+        return {
+          ...a,
+          testId: a.testId || a.test_id,
+          userUid: a.userUid || a.user_uid,
+          userName: resolvedName,
+          studentName: resolvedName,
+          name: resolvedName,
+        };
+      });
     return res.status(200).json({ attempts });
   });
 
@@ -4712,9 +4977,27 @@ ${allUrls
     const store = loadD1Store() as any;
     const testId = decodeURIComponent(String(req.params.id || ''));
     const list = (store.testAttempts || [])
-      .filter((a: any) => a.testId === testId)
-      .sort((a: any, b: any) => b.percentage - a.percentage || a.timeTakenSeconds - b.timeTakenSeconds)
-      .map((a: any, idx: number) => ({ ...a, rank: idx + 1 }));
+      .filter((a: any) => String(a.testId || a.test_id || '') === testId)
+      .sort(
+        (a: any, b: any) =>
+          Number(b.percentage || 0) - Number(a.percentage || 0) ||
+          Number(b.score || 0) - Number(a.score || 0) ||
+          Number(a.timeTakenSeconds || 0) - Number(b.timeTakenSeconds || 0)
+      )
+      .map((a: any, idx: number) => {
+        const resolvedName = resolveLeaderboardDisplayName(a, store);
+        const { gradedQuestions: _omitGraded, ...publicFields } = a;
+        return {
+          ...publicFields,
+          testId: a.testId || a.test_id,
+          userUid: a.userUid || a.user_uid,
+          userName: resolvedName,
+          studentName: resolvedName,
+          name: resolvedName,
+          userAvatar: a.userAvatar ?? a.user_avatar ?? null,
+          rank: idx + 1,
+        };
+      });
     return res.status(200).json({ results: list });
   };
 
@@ -4726,28 +5009,59 @@ ${allUrls
     const attempts = store.testAttempts || [];
     const byUser = new Map<string, any>();
     for (const a of attempts) {
-      const existing = byUser.get(a.userUid);
+      const uid = String(a.userUid || a.user_uid || '');
+      if (!uid) continue;
+      const resolvedName = resolveLeaderboardDisplayName(a, store);
+      const avatar = a.userAvatar ?? a.user_avatar ?? null;
+      const timeSec = Number(a.timeTakenSeconds ?? a.time_taken_seconds ?? 0);
+      const existing = byUser.get(uid);
       if (!existing) {
-        byUser.set(a.userUid, {
-          uid: a.userUid,
-          displayName: a.userName,
+        byUser.set(uid, {
+          uid,
+          userUid: uid,
+          displayName: resolvedName,
+          userName: resolvedName,
+          studentName: resolvedName,
+          name: resolvedName,
+          userAvatar: avatar,
           testsCompleted: 1,
-          totalScore: a.score,
-          totalQuestions: a.totalQuestions,
-          bestPercentage: a.percentage,
-          lastTestTitle: a.testTitle,
+          totalScore: Number(a.score || 0),
+          totalQuestions: Number(a.totalQuestions || 0),
+          bestPercentage: Number(a.percentage || 0),
+          timeTakenSeconds: timeSec,
+          lastTestTitle: a.testTitle || 'Grand Line Drill',
           updatedAt: a.createdAt,
         });
       } else {
         existing.testsCompleted += 1;
-        existing.totalScore += a.score;
-        existing.totalQuestions += a.totalQuestions;
-        existing.bestPercentage = Math.max(existing.bestPercentage, a.percentage);
+        existing.totalScore += Number(a.score || 0);
+        existing.totalQuestions += Number(a.totalQuestions || 0);
+        if (Number(a.percentage || 0) > existing.bestPercentage) {
+          existing.bestPercentage = Number(a.percentage || 0);
+          existing.timeTakenSeconds = timeSec;
+        }
+        if (existing.displayName === 'Student' && resolvedName !== 'Student') {
+          existing.displayName = resolvedName;
+          existing.userName = resolvedName;
+          existing.studentName = resolvedName;
+          existing.name = resolvedName;
+        }
+        if (!existing.userAvatar && avatar) {
+          existing.userAvatar = avatar;
+        }
       }
     }
-    const leaderboard = Array.from(byUser.values()).sort(
-      (a, b) => b.bestPercentage - a.bestPercentage || b.totalScore - a.totalScore
-    );
+    const leaderboard = Array.from(byUser.values())
+      .sort(
+        (a, b) =>
+          b.bestPercentage - a.bestPercentage ||
+          b.totalScore - a.totalScore ||
+          a.timeTakenSeconds - b.timeTakenSeconds
+      )
+      .map((entry, idx) => ({
+        ...entry,
+        rank: idx + 1,
+      }));
     return res.status(200).json({ leaderboard });
   });
 
@@ -4916,11 +5230,133 @@ function escapeHtmlAttr(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
+export function resolveServerRouteMeta(pathname: string) {
+  const cleanPath = (pathname || '/').split('?')[0].split('#')[0].replace(/\/+$/, '') || '/';
+  const rawBase = resolveStaticOrPatternRouteMeta(cleanPath);
+  const baseMeta = {
+    ...rawBase,
+    canonical: rawBase.canonicalUrl || `https://boardly.cfd${cleanPath === '/' ? '' : cleanPath}`,
+    robots: rawBase.noindex
+      ? 'noindex, nofollow'
+      : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1',
+    h1: rawBase.title.split('—')[0].split('|')[0].trim() || rawBase.title,
+    statusCode: cleanPath === '/410' ? 410 : 200,
+  };
+
+  if (
+    cleanPath.startsWith('/commons/post/') ||
+    cleanPath.startsWith('/material/') ||
+    cleanPath.startsWith('/study-material/')
+  ) {
+    if (
+      cleanPath.startsWith('/material/subject/') ||
+      cleanPath.startsWith('/study-material/subject/')
+    ) {
+      return baseMeta;
+    }
+    const slugParam = decodeURIComponent(
+      cleanPath
+        .replace(/^\/commons\/post\//, '')
+        .replace(/^\/study-material\//, '')
+        .replace(/^\/material\//, '')
+        .replace(/\/+$/, '')
+    );
+    const lookupId = extractIdFromSlugOrId(slugParam);
+    const d1Row = loadD1Store().posts.find(
+      (p) => (p.slug === slugParam || p.id === slugParam || p.id === lookupId) && !p.is_hidden
+    );
+    if (d1Row) {
+      const isMaterial = cleanPath.startsWith('/material/') || cleanPath.startsWith('/study-material/');
+      const title = isMaterial
+        ? `${d1Row.title} — ${d1Row.subject || 'Study Material'} PDF & Notes | Boardly`
+        : `${d1Row.title} — ${d1Row.subject || 'Student Discussion'} | Boardly Commons`;
+      const rawDesc = String(d1Row.description || '').replace(/\s+/g, ' ').trim();
+      const authorLabel = d1Row.is_anonymous
+        ? 'Anonymous Student'
+        : d1Row.author_name || 'Boardly Student';
+      const description = rawDesc
+        ? `${rawDesc.slice(0, 180)}${rawDesc.length > 180 ? '...' : ''} — Shared by ${authorLabel} (${d1Row.subject || 'Academic'}, Class ${d1Row.class_level || '11/12'}).`
+        : `Read "${d1Row.title}" in ${d1Row.subject || 'Boardly Commons'} on Boardly.`;
+      return {
+        ...baseMeta,
+        title,
+        description,
+        ogType: 'article' as const,
+        h1: d1Row.title,
+      };
+    }
+  }
+
+  return baseMeta;
+}
+
+export function injectRouteMetaIntoHtml(html: string, pathname: string): string {
+  const meta = resolveServerRouteMeta(pathname);
+  const t = escapeHtmlAttr(meta.title);
+  const d = escapeHtmlAttr(meta.description);
+  const c = escapeHtmlAttr(meta.canonical);
+  const img = escapeHtmlAttr(meta.ogImage);
+
+  return html
+    .replace(/<title>[\s\S]*?<\/title>/i, `<title>${t}</title>`)
+    .replace(
+      /<meta\s+name="title"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="title" content="${t}" />`
+    )
+    .replace(
+      /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="description" content="${d}" />`
+    )
+    .replace(
+      /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="robots" content="${escapeHtmlAttr(meta.robots)}" />`
+    )
+    .replace(
+      /<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/i,
+      `<link rel="canonical" href="${c}" />`
+    )
+    .replace(
+      /<meta\s+property="og:type"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:type" content="${meta.ogType}" />`
+    )
+    .replace(
+      /<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:url" content="${c}" />`
+    )
+    .replace(
+      /<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:title" content="${t}" />`
+    )
+    .replace(
+      /<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:description" content="${d}" />`
+    )
+    .replace(
+      /<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:image" content="${img}" />`
+    )
+    .replace(
+      /<meta\s+name="twitter:url"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:url" content="${c}" />`
+    )
+    .replace(
+      /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:title" content="${t}" />`
+    )
+    .replace(
+      /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:description" content="${d}" />`
+    )
+    .replace(
+      /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:image" content="${img}" />`
+    );
+}
+
 /**
  * Creates a universal Node HTTP / Connect / Express middleware that serves all
  * Cloudflare D1 + R2 `/api/posts*`, `/api/r2/*`, `/sitemap.xml`, `/api/auth/*`,
- * `/api/admin/users/delete`, and pre-rendered SEO HTML for `/commons/post/:slug`
- * and `/material/:slug`.
+ * `/api/admin/users/delete`, and pre-rendered SEO HTML for crawlers.
  */
 export function createCloudflarePostsAndAuthMiddleware(options?: {
   getGoogleAccessToken?: () => Promise<string | null>;
@@ -4970,10 +5406,14 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
     const parsedUrl = new URL(fullUrl, 'http://localhost');
     const pathname = parsedUrl.pathname;
 
-    // 1. Pre-rendered SEO HTML for search engine & social crawlers on /commons/post/:slug and /material/:slug
+    // 1. Pre-rendered SEO HTML for search engine & social crawlers on any page route
     if (
       req.method === 'GET' &&
-      (pathname.startsWith('/commons/post/') || pathname.startsWith('/material/'))
+      !pathname.startsWith('/api/') &&
+      !pathname.startsWith('/assets/') &&
+      !pathname.startsWith('/src/') &&
+      !pathname.startsWith('/@') &&
+      !/\.(js|css|png|jpg|jpeg|webp|svg|ico|xml|txt|json|woff2?|map)$/i.test(pathname)
     ) {
       const ua = String(req.headers?.['user-agent'] || '').toLowerCase();
       const isBot =
@@ -4984,61 +5424,35 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
         parsedUrl.searchParams.get('crawler') === 'true';
 
       if (isBot) {
-        const slugParam = decodeURIComponent(
-          pathname
-            .replace(/^\/commons\/post\//, '')
-            .replace(/^\/material\//, '')
-            .replace(/\/+$/, '')
-        );
-        const d1Row = loadD1Store().posts.find(
-          (p) => (p.slug === slugParam || p.id === slugParam) && !p.is_hidden
-        );
-        const postTitle = d1Row
-          ? `${d1Row.title} — ${d1Row.subject || 'Study Notes'} | Boardly Commons`
-          : `${slugParam.replace(/[-_]+/g, ' ')} — Study Material | Boardly Commons`;
-        const postDesc = d1Row
-          ? String(d1Row.description || '').replace(/\s+/g, ' ').slice(0, 220)
-          : `Read and download verified ${slugParam.replace(/[-_]+/g, ' ')} notes, formula sheets, and past papers on Boardly Commons.`;
-        const canonical = `https://boardly.cfd${pathname}`;
+        const meta = resolveServerRouteMeta(pathname);
         const html = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${escapeHtmlAttr(postTitle)}</title>
-  <meta name="description" content="${escapeHtmlAttr(postDesc)}" />
-  <meta name="robots" content="index, follow, max-image-preview:large" />
-  <link rel="canonical" href="${escapeHtmlAttr(canonical)}" />
-  <meta property="og:type" content="article" />
+  <title>${escapeHtmlAttr(meta.title)}</title>
+  <meta name="description" content="${escapeHtmlAttr(meta.description)}" />
+  <meta name="robots" content="${escapeHtmlAttr(meta.robots)}" />
+  <link rel="canonical" href="${escapeHtmlAttr(meta.canonical)}" />
+  <meta property="og:type" content="${meta.ogType}" />
   <meta property="og:site_name" content="Boardly" />
-  <meta property="og:title" content="${escapeHtmlAttr(postTitle)}" />
-  <meta property="og:description" content="${escapeHtmlAttr(postDesc)}" />
-  <meta property="og:url" content="${escapeHtmlAttr(canonical)}" />
+  <meta property="og:title" content="${escapeHtmlAttr(meta.title)}" />
+  <meta property="og:description" content="${escapeHtmlAttr(meta.description)}" />
+  <meta property="og:url" content="${escapeHtmlAttr(meta.canonical)}" />
+  <meta property="og:image" content="${escapeHtmlAttr(meta.ogImage)}" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="${escapeHtmlAttr(postTitle)}" />
-  <meta name="twitter:description" content="${escapeHtmlAttr(postDesc)}" />
-  <script type="application/ld+json">${JSON.stringify({
-    '@context': 'https://schema.org',
-    '@type': 'LearningResource',
-    name: d1Row?.title || postTitle,
-    description: postDesc,
-    url: canonical,
-    educationalLevel: d1Row?.class_level || 'High School',
-    about: d1Row?.subject || 'STEM',
-    author: {
-      '@type': 'Person',
-      name: d1Row?.is_anonymous ? 'Anonymous Student' : d1Row?.author_name || 'Boardly Student',
-    },
-  })}</script>
+  <meta name="twitter:title" content="${escapeHtmlAttr(meta.title)}" />
+  <meta name="twitter:description" content="${escapeHtmlAttr(meta.description)}" />
+  <meta name="twitter:image" content="${escapeHtmlAttr(meta.ogImage)}" />
 </head>
 <body>
   <main>
-    <h1>${escapeHtmlAttr(d1Row?.title || postTitle)}</h1>
-    <p>${escapeHtmlAttr(d1Row?.description || postDesc)}</p>
+    <h1>${escapeHtmlAttr(meta.h1)}</h1>
+    <p>${escapeHtmlAttr(meta.description)}</p>
   </main>
 </body>
 </html>`;
-        res.statusCode = 200;
+        res.statusCode = meta.statusCode || 200;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.end(html);
         return;

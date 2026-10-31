@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import {
   ThumbsUp,
   MessageSquare,
@@ -14,6 +14,8 @@ import {
   Check,
   Send,
   Loader2,
+  Reply,
+  Link2,
 } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
@@ -49,8 +51,12 @@ import {
 } from '@/utils/privacy';
 
 export const PublicPostDetailPage: React.FC = () => {
-  const { idSlug } = useParams<{ idSlug: string }>();
-  const postId = extractIdFromSlug(idSlug);
+  const { idSlug, postId: rawPostIdParam } = useParams<{
+    idSlug?: string;
+    postId?: string;
+  }>();
+  const postId = extractIdFromSlug(idSlug || rawPostIdParam || '');
+  const location = useLocation();
   const { user } = useAuth();
   const { profile } = useUserProfile();
   const { requireAuth } = useAuthGate();
@@ -63,11 +69,15 @@ export const PublicPostDetailPage: React.FC = () => {
   const [hasVoted, setHasVoted] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedCommentId, setCopiedCommentId] = useState<string | null>(null);
+  const [highlightedCommentId, setHighlightedCommentId] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<{ id: string; authorName: string } | null>(null);
   const [commentText, setCommentText] = useState('');
   const [isAnonComment, setIsAnonComment] = useState(false);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [viewerImage, setViewerImage] = useState<{ url: string; name?: string } | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const loadData = useCallback(async () => {
     if (!postId) {
@@ -91,18 +101,46 @@ export const PublicPostDetailPage: React.FC = () => {
 
       const [loadedComments, recentFeed] = await Promise.all([
         fetchPostComments(fetched.id).catch(() => []),
-        fetchCommonsPosts({ feedTab: 'all', pageSize: 8 }).catch(() => ({
+        fetchCommonsPosts({ feedTab: 'all', pageSize: 24 }).catch(() => ({
           posts: [],
           lastDoc: null,
           hasMore: false,
         })),
       ]);
       setComments(loadedComments);
-      setRelatedPosts(
-        recentFeed.posts
-          .filter((p) => p.id !== fetched.id)
-          .slice(0, 4)
-      );
+
+      // Score and sort related posts by subject, chapter, and tag overlap, falling back to latest
+      const targetSubj = (fetched.subject || '').toLowerCase().trim();
+      const targetChap = (fetched.chapter || '').toLowerCase().trim();
+      const targetTags = new Set((fetched.tags || []).map((t) => t.toLowerCase()));
+
+      const candidates = recentFeed.posts.filter((p) => p.id !== fetched.id);
+      const scored = candidates
+        .map((candidate) => {
+          let score = 0;
+          if (targetSubj && (candidate.subject || '').toLowerCase().trim() === targetSubj) {
+            score += 4;
+          }
+          if (
+            targetChap &&
+            targetChap !== 'general' &&
+            (candidate.chapter || '').toLowerCase().trim() === targetChap
+          ) {
+            score += 3;
+          }
+          for (const t of candidate.tags || []) {
+            if (targetTags.has(t.toLowerCase())) {
+              score += 2;
+            }
+          }
+          if (candidate.type === fetched.type) {
+            score += 1;
+          }
+          return { candidate, score };
+        })
+        .sort((a, b) => b.score - a.score);
+
+      setRelatedPosts(scored.slice(0, 4).map((s) => s.candidate));
 
       if (user?.uid) {
         const [voted, saved] = await Promise.all([
@@ -120,6 +158,35 @@ export const PublicPostDetailPage: React.FC = () => {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // Scroll to and highlight #comment-:commentId or #comments when hash is present
+  useEffect(() => {
+    if (status !== 'ready') return;
+    const rawHash = location.hash || '';
+    if (!rawHash) return;
+
+    if (rawHash.startsWith('#comment-')) {
+      const targetCmtId = decodeURIComponent(rawHash.slice('#comment-'.length));
+      setHighlightedCommentId(targetCmtId);
+      const timer = setTimeout(() => {
+        const el = document.getElementById(`comment-${targetCmtId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+
+    if (rawHash === '#comments') {
+      const timer = setTimeout(() => {
+        const el = document.getElementById('comments');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [status, comments.length, location.hash]);
 
   if (status === 'loading') {
     return (
@@ -241,12 +308,38 @@ export const PublicPostDetailPage: React.FC = () => {
   };
 
   const handleShare = () => {
-    const shareUrl = `https://boardly.cfd${canonicalPath}`;
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://boardly.cfd';
+    const shareUrl = `${origin}${canonicalPath}`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2200);
     }
+  };
+
+  const handleCopyCommentLink = (commentId: string) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://boardly.cfd';
+    const commentUrl = `${origin}${canonicalPath}#comment-${commentId}`;
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', `${canonicalPath}#comment-${commentId}`);
+    }
+    setHighlightedCommentId(commentId);
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(commentUrl);
+      setCopiedCommentId(commentId);
+      setTimeout(() => {
+        setCopiedCommentId((prev) => (prev === commentId ? null : prev));
+      }, 2200);
+    }
+  };
+
+  const handleReplyToComment = (commentId: string, authorName: string) => {
+    setReplyingTo({ id: commentId, authorName });
+    const prefix = `@${authorName} `;
+    if (!commentText.startsWith(prefix)) {
+      setCommentText(prefix + commentText);
+    }
+    commentInputRef.current?.focus();
   };
 
   const handleDocumentDownload = async (
@@ -539,7 +632,10 @@ export const PublicPostDetailPage: React.FC = () => {
         </article>
 
         {/* Public Comments Section */}
-        <section className="glass-panel p-5 sm:p-8 mb-8 w-full max-w-full min-w-0 box-border overflow-x-hidden">
+        <section
+          id="comments"
+          className="glass-panel p-5 sm:p-8 mb-8 w-full max-w-full min-w-0 box-border overflow-x-hidden scroll-mt-24"
+        >
           <div className="flex items-center justify-between mb-6 min-w-0">
             <h2 className="font-dot text-xl font-bold text-white flex items-center gap-2">
               <MessageSquare size={18} className="text-[#D71921]" />
@@ -549,7 +645,22 @@ export const PublicPostDetailPage: React.FC = () => {
 
           {/* Comment Composer (Requires Login on Submit/Focus) */}
           <form onSubmit={handleCommentSubmit} className="mb-6 space-y-3 min-w-0">
+            {replyingTo && (
+              <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-[#D71921]/15 border border-[#D71921]/30 text-xs text-white/85">
+                <span>
+                  Replying to <strong>{replyingTo.authorName}</strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setReplyingTo(null)}
+                  className="text-white/60 hover:text-white font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
             <textarea
+              ref={commentInputRef}
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               onFocus={() => {
@@ -593,15 +704,97 @@ export const PublicPostDetailPage: React.FC = () => {
             <div className="space-y-3 w-full max-w-full min-w-0">
               {comments.map((c) => {
                 const cAuthor = c.isAnonymous
-                  ? c.anonymousAlias || 'Anonymous Student'
+                  ? (c as any).anonymousAlias || 'Anonymous Student'
                   : sanitizeStudentDisplayName(c.authorName, c.authorUid);
+                const isHighlighted = highlightedCommentId === c.id;
+                const isCommentCopied = copiedCommentId === c.id;
+                const commentTime = c.createdAt
+                  ? new Date(
+                      typeof c.createdAt === 'string'
+                        ? c.createdAt
+                        : c.createdAt?.toDate
+                        ? c.createdAt.toDate()
+                        : Date.now()
+                    ).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                    })
+                  : 'Recently';
+
                 return (
-                  <div key={c.id} className="boardly-post-card glass-card p-4 w-full max-w-full min-w-0 box-border overflow-x-hidden">
-                    <div className="flex items-center justify-between gap-2 mb-1.5 min-w-0">
-                      <span className="text-xs font-bold text-white truncate">{cAuthor}</span>
+                  <div
+                    key={c.id}
+                    id={`comment-${c.id}`}
+                    className={`boardly-post-card glass-card p-4 w-full max-w-full min-w-0 box-border overflow-x-hidden transition-all scroll-mt-28 ${
+                      isHighlighted
+                        ? 'border-[#D71921] ring-2 ring-[#D71921]/40 bg-[#D71921]/[0.08]'
+                        : ''
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {!c.isAnonymous && c.authorUid ? (
+                          <Link
+                            to={`/u/${encodeURIComponent(c.authorUid)}`}
+                            className="text-xs font-bold text-white hover:text-[#D71921] transition-colors truncate"
+                          >
+                            {cAuthor}
+                          </Link>
+                        ) : (
+                          <span className="text-xs font-bold text-white truncate">{cAuthor}</span>
+                        )}
+                        <span className="text-white/35">·</span>
+                        <a
+                          href={`${canonicalPath}#comment-${c.id}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleCopyCommentLink(c.id);
+                          }}
+                          className="text-[11px] text-white/50 hover:text-white hover:underline"
+                          title="Permalink to this comment"
+                        >
+                          {commentTime}
+                        </a>
+                        {isHighlighted && (
+                          <span className="px-2 py-0.5 rounded-full bg-[#D71921]/20 border border-[#D71921]/40 text-[10px] font-semibold text-[#FCA5A5]">
+                            Linked Comment
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleReplyToComment(c.id, cAuthor)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] border border-white/10 text-[11px] text-white/70 hover:text-white transition-colors cursor-pointer"
+                          title="Reply to this comment"
+                        >
+                          <Reply size={12} />
+                          <span>Reply</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyCommentLink(c.id)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] border border-white/10 text-[11px] text-white/70 hover:text-white transition-colors cursor-pointer"
+                          title="Copy permalink to this comment"
+                        >
+                          {isCommentCopied ? (
+                            <>
+                              <Check size={12} className="text-emerald-400" />
+                              <span className="text-emerald-400 font-semibold">Link Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Link2 size={12} />
+                              <span>Copy Link</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
+
                     <div className="boardly-post-content text-xs sm:text-sm text-white/80 whitespace-pre-wrap leading-relaxed min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
-                      <MathText text={maskPublicUserText(c.body || c.text)} block />
+                      <MathText text={maskPublicUserText((c as any).body || c.text)} block />
                     </div>
                   </div>
                 );
@@ -613,9 +806,17 @@ export const PublicPostDetailPage: React.FC = () => {
         {/* Related Posts */}
         {relatedPosts.length > 0 && (
           <section className="glass-panel p-5 sm:p-8 w-full max-w-full min-w-0 box-border overflow-x-hidden">
-            <h2 className="font-dot text-xl font-bold text-white mb-4">
-              More in Boardly Commons
-            </h2>
+            <div className="flex items-center justify-between gap-2 mb-4">
+              <h2 className="font-dot text-xl font-bold text-white">
+                Related Posts in {post.subject || 'Boardly Commons'}
+              </h2>
+              <Link
+                to={post.subject ? `/commons/subject/${subjectSlug}` : '/commons'}
+                className="text-xs text-[#D71921] hover:underline font-semibold"
+              >
+                View All →
+              </Link>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0">
               {relatedPosts.map((rp) => (
                 <Link
@@ -623,9 +824,14 @@ export const PublicPostDetailPage: React.FC = () => {
                   to={`/commons/post/${buildEntitySlug(rp.id, rp.title)}`}
                   className="boardly-post-card glass-card-interactive p-4 block min-w-0 max-w-full box-border overflow-x-hidden"
                 >
-                  <span className="text-[11px] text-[#D71921] font-semibold uppercase">
-                    {rp.subject || 'Commons'}
-                  </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-[#D71921] font-semibold uppercase">
+                      {rp.subject || 'Commons'}
+                    </span>
+                    <span className="text-[11px] text-white/45">
+                      👍 {rp.upvotes || 0} · 💬 {rp.commentCount || 0}
+                    </span>
+                  </div>
                   <h3 className="boardly-post-title text-sm font-bold text-white mt-1 line-clamp-2 [overflow-wrap:anywhere] [word-break:break-word]">
                     <MathText text={rp.title} />
                   </h3>

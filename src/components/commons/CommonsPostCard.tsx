@@ -363,7 +363,9 @@ export const CommonsPostCard = memo(function CommonsPostCard({
               <div className="min-w-0">
                 <span className="text-[15px] font-bold text-primary">Anonymous</span>
                 <div className="flex items-center gap-1.5 text-xs text-muted mt-0.5 flex-wrap">
-                  <span>{formatTime(post.createdAt)}</span>
+                  <Link to={postPermalink} className="hover:underline hover:text-primary transition-colors">
+                    {formatTime(post.createdAt)}
+                  </Link>
                   <span aria-hidden="true">·</span>
                   <span className="inline-flex items-center gap-1">
                     <EyeOff size={12} />
@@ -403,7 +405,9 @@ export const CommonsPostCard = memo(function CommonsPostCard({
                   />
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-muted mt-0.5 flex-wrap">
-                  <span>{formatTime(post.createdAt)}</span>
+                  <Link to={postPermalink} className="hover:underline hover:text-primary transition-colors">
+                    {formatTime(post.createdAt)}
+                  </Link>
                   <span aria-hidden="true">·</span>
                   <span className="inline-flex items-center gap-1">
                     <Globe size={12} />
@@ -507,9 +511,12 @@ export const CommonsPostCard = memo(function CommonsPostCard({
       {/* ── Post Body (Preserve line breaks, paragraphs, KaTeX math, 4 lines + See more) ── */}
       {post.description && (
         <div className="boardly-post-content text-[15px] text-secondary leading-relaxed whitespace-pre-wrap font-normal mb-3 font-sans min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
-          <div className={`min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word] ${expanded ? '' : 'line-clamp-4'}`}>
+          <Link
+            to={postPermalink}
+            className={`block min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word] hover:text-primary transition-colors ${expanded ? '' : 'line-clamp-4'}`}
+          >
             <MathText text={maskPublicUserText(post.description)} block />
-          </div>
+          </Link>
           {!expanded && isLongDescription && (
             <button
               onClick={() => setExpanded(true)}
@@ -598,23 +605,27 @@ export const CommonsPostCard = memo(function CommonsPostCard({
           <span className="truncate">Like</span>
         </button>
 
-        {/* Comment */}
-        <button
-          onClick={() => onOpenComments(post)}
+        {/* Comment (Opens Permalink Post Detail Page) */}
+        <Link
+          to={`${postPermalink}#comments`}
           className="flex-1 min-w-0 flex items-center justify-center gap-1.5 sm:gap-2 px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer"
         >
           <MessageSquare size={15} className="shrink-0" />
           <span className="truncate">Comment</span>
-        </button>
+        </Link>
 
         {/* Share */}
         <button
           onClick={handleShare}
           className="flex-1 min-w-0 flex items-center justify-center gap-1.5 sm:gap-2 px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer"
-          title="Share link"
+          title="Copy post permalink"
         >
-          <Share2 size={15} className="shrink-0" />
-          <span className="truncate">Share</span>
+          {copied ? (
+            <Check size={15} className="shrink-0 text-accent" />
+          ) : (
+            <Share2 size={15} className="shrink-0" />
+          )}
+          <span className="truncate">{copied ? 'Copied!' : 'Share'}</span>
         </button>
 
         {/* Save Bookmark */}

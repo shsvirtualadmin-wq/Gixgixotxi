@@ -32,14 +32,29 @@ export function DashboardShell() {
 
   useEffect(() => {
     if (!profileLoading && !user) {
-      const target = `${location.pathname}${location.search}`;
+      const target = `${location.pathname}${location.search}${location.hash}`;
+      try {
+        sessionStorage.setItem('boardly_post_login_redirect', target);
+      } catch {
+        // ignore storage errors
+      }
       navigate(`/login?redirect=${encodeURIComponent(target)}`, { replace: true });
     }
-  }, [user, profileLoading, navigate, location.pathname, location.search]);
+  }, [user, profileLoading, navigate, location.pathname, location.search, location.hash]);
 
-  // Route guard: Logged-out users visiting /dashboard/* are redirected to login
+  if (profileLoading && !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg)] text-[var(--text)]">
+        <BoardlySuspenseBoundary variant="page">
+          <div className="py-24 text-center text-xs text-[var(--muted)]">Verifying session...</div>
+        </BoardlySuspenseBoundary>
+      </div>
+    );
+  }
+
+  // Route guard: Logged-out users visiting protected routes are redirected to login with exact return URL
   if (!isAuthenticated && !profileLoading && !user) {
-    const target = `${location.pathname}${location.search}`;
+    const target = `${location.pathname}${location.search}${location.hash}`;
     return <Navigate to={`/login?redirect=${encodeURIComponent(target)}`} replace />;
   }
 

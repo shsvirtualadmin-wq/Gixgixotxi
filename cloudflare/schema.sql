@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS test_attempts (
 CREATE INDEX IF NOT EXISTS idx_test_attempts_test_id ON test_attempts(test_id, percentage DESC, time_taken_seconds ASC);
 CREATE INDEX IF NOT EXISTS idx_test_attempts_user_uid ON test_attempts(user_uid, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_test_attempts_captain_uid ON test_attempts(captain_uid, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_test_attempts_unique_user_test ON test_attempts(test_id, user_uid);
 
 CREATE TABLE IF NOT EXISTS attempt_answers (
   id TEXT PRIMARY KEY,

@@ -229,3 +229,11 @@ export function getAllChaptersForSubject(subjectKey: string): SyllabusChapter[] 
   const sub = SYLLABUS_MAP[normKey] || SYLLABUS_MAP['mathematics'];
   return [...sub.chaptersClass11, ...sub.chaptersClass12];
 }
+
+export const TOPIC_LISTS: Record<string, string[]> = Object.fromEntries(
+  Object.entries(SYLLABUS_MAP).map(([key, sub]) => [
+    sub.name,
+    [...sub.chaptersClass11, ...sub.chaptersClass12].map((c) => c.name),
+  ])
+);
+

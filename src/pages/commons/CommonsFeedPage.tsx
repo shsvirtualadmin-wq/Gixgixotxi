@@ -31,10 +31,11 @@ import {
   fetchCommonsPostById,
 } from '@/services/commonsService';
 import type { CommonsPost, CommonsPostType } from '@/types/commons';
-import { Link, useSearchParams, useLocation } from 'react-router-dom';
+import { Link, useSearchParams, useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
+import { buildEntitySlug } from '@/utils/privacy';
 
 const SUBJECT_FILTERS = [
   { slug: 'all', label: 'All Subjects' },
@@ -52,12 +53,73 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
   const { requireAuth } = useAuthGate();
   const { openProfile } = useProfileModal();
   const location = useLocation();
+  const navigate = useNavigate();
+  const { subject: routeSubject } = useParams<{ subject?: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isPublicRoute = location.pathname.startsWith('/commons');
+  const baseCommonsPath = location.pathname.startsWith('/dashboard/commons')
+    ? '/dashboard/commons'
+    : '/commons';
 
-  // Feed Options: "All", "Trending", and "Following"
-  const [feedTab, setFeedTab] = useState<'all' | 'trending' | 'following'>('all');
-  const [subjectFilter, setSubjectFilter] = useState<string>('all');
-  const [classFilter, setClassFilter] = useState<string>('all');
+  // Derive Feed Tab ("all" | "trending" | "following") and filters directly from URL
+  const feedTab: 'all' | 'trending' | 'following' =
+    location.pathname.endsWith('/trending') || searchParams.get('tab') === 'trending'
+      ? 'trending'
+      : location.pathname.endsWith('/following') || searchParams.get('tab') === 'following'
+      ? 'following'
+      : 'all';
+
+  const normalizedRouteSubj = (routeSubject || '').toLowerCase();
+  const subjectFilter =
+    normalizedRouteSubj === 'computer-science'
+      ? 'computer'
+      : normalizedRouteSubj || searchParams.get('subject') || 'all';
+  const classFilter = searchParams.get('class') || 'all';
+
+  const setFeedTab = useCallback(
+    (nextTab: 'all' | 'trending' | 'following') => {
+      const nextParams = new URLSearchParams(searchParams);
+      if (nextTab === 'all') {
+        nextParams.delete('tab');
+      } else {
+        nextParams.set('tab', nextTab);
+      }
+      const qs = nextParams.toString();
+      const targetPath =
+        subjectFilter !== 'all'
+          ? `/commons/subject/${subjectFilter}`
+          : baseCommonsPath;
+      navigate(`${targetPath}${qs ? `?${qs}` : ''}`);
+    },
+    [searchParams, subjectFilter, baseCommonsPath, navigate]
+  );
+
+  const setSubjectFilter = useCallback(
+    (nextSubj: string) => {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('subject');
+      const qs = nextParams.toString();
+      if (nextSubj === 'all') {
+        navigate(`${baseCommonsPath}${qs ? `?${qs}` : ''}`);
+      } else {
+        navigate(`/commons/subject/${nextSubj}${qs ? `?${qs}` : ''}`);
+      }
+    },
+    [searchParams, baseCommonsPath, navigate]
+  );
+
+  const setClassFilter = useCallback(
+    (nextClass: string) => {
+      const nextParams = new URLSearchParams(searchParams);
+      if (nextClass === 'all') {
+        nextParams.delete('class');
+      } else {
+        nextParams.set('class', nextClass);
+      }
+      setSearchParams(nextParams, { replace: true });
+    },
+    [searchParams, setSearchParams]
+  );
 
   // Posts State (strictly real Firestore posts, 10 per page)
   const [posts, setPosts] = useState<CommonsPost[]>([]);
@@ -104,7 +166,6 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const [searchParams] = useSearchParams();
   const targetPostId = searchParams.get('post') || searchParams.get('id');
 
   const loadPosts = useCallback(async () => {
@@ -285,7 +346,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       window.scrollTo({ top: 0, behavior: 'smooth' });
       void loadPosts();
     },
-    [loadPosts]
+    [loadPosts, setClassFilter, setFeedTab, setSubjectFilter]
   );
 
   const handleDeletePost = useCallback(
@@ -303,7 +364,12 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
     [user, isAdmin]
   );
 
-  const handleOpenComments = useCallback((p: CommonsPost) => setCommentsPost(p), []);
+  const handleOpenComments = useCallback(
+    (p: CommonsPost) => {
+      navigate(`/commons/post/${buildEntitySlug(p.id, p.title)}#comments`);
+    },
+    [navigate]
+  );
   const handleOpenReport = useCallback((p: CommonsPost) => setReportPost(p), []);
   const handleAuthorClick = useCallback(
     (authorUid: string) => openProfile(authorUid),

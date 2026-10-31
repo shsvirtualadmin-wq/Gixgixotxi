@@ -32,8 +32,8 @@ import type { CommonsPost } from '@/types/commons';
 import { COMMONS_POST_TYPES } from '@/types/commons';
 
 export const MaterialDetailPage: React.FC = () => {
-  const { idSlug } = useParams<{ idSlug: string }>();
-  const materialId = extractIdFromSlug(idSlug);
+  const { idSlug, itemId } = useParams<{ idSlug?: string; itemId?: string }>();
+  const materialId = extractIdFromSlug(idSlug || itemId || '');
   const { user } = useAuth();
   const { requireAuth } = useAuthGate();
 
