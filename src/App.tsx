@@ -227,6 +227,9 @@ const CommunityGuidelinesPage = lazyWithRetry(() =>
 const CommonsAboutPage = lazyWithRetry(() =>
   import('./pages/commons/CommonsAboutPage').then(m => ({ default: m.CommonsAboutPage }))
 );
+const ZenryuDevPreviewPage = lazyWithRetry(() =>
+  import('./components/dashboard/DragonCompanion').then(m => ({ default: m.ZenryuDevPreviewPage }))
+);
 
 import { BoardlySuspenseBoundary } from './components/ui/BoardlyLoader';
 import { AuthGateProvider } from './contexts/AuthGateContext';
@@ -240,6 +243,9 @@ function AppInner() {
       <ScrollToTop />
       <BoardlySuspenseBoundary variant="overlay">
       <Routes>
+        {import.meta.env.DEV && (
+          <Route path="/dev/zenryu" element={<ZenryuDevPreviewPage />} />
+        )}
         {/* Test Engine — full-screen distraction-free, no Navbar/Footer */}
         <Route path="/test" element={<Navigate to="/dashboard/practice" replace />} />
         <Route path="/test/:attemptId/result" element={<TestResultPage />} />

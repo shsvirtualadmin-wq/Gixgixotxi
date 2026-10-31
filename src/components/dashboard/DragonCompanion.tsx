@@ -28,6 +28,11 @@ import { type D1McqRow } from '@/constants/d1Universities';
 import { MathText } from '@/components/ui/MathText';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useSmoothMode } from '@/utils/smoothMode';
+import type {
+  ZenryuEngineController,
+  ZenryuPose,
+  ZenryuCameraPreset,
+} from './zenryuEngine3D';
 
 // ── Single Constant for Dragon Name & Unlock Threshold ──────────────────────
 export const DRAGON_COMPANION_NAME = 'Zenryu';
@@ -39,17 +44,13 @@ const HIDE_DRAGON_EVENT = 'boardly-dragon-visibility-changed';
 const AWAKENED_STORAGE_PREFIX = 'boardly_zenryu_awakened_v1_';
 const SOUND_ENABLED_STORAGE_KEY = 'boardly_zenryu_sound_enabled';
 
-// ── Layered Transparent WebP Asset Paths (/assets/zenryu/*) ─────────────────
-export const ZENRYU_ASSETS = {
-  wingLeft: '/assets/zenryu/wing-l.webp',
-  tail: '/assets/zenryu/tail.webp',
-  body: '/assets/zenryu/zenryu-body.webp',
-  wingRight: '/assets/zenryu/wing-r.webp',
-  head: '/assets/zenryu/head.webp',
-  eyesGlow: '/assets/zenryu/eyes-glow.webp',
-  flameRoar: '/assets/zenryu/flame-roar.webp',
-  egg: '/assets/zenryu/dragon-egg.webp',
-} as const;
+export const ZENRYU_EGG_ASSET = '/assets/zenryu/dragon-egg.webp';
+export const ZENRYU_STATIC_BODY_ASSET = '/assets/zenryu/zenryu-body.webp';
+export const ZENRYU_STATIC_WING_L_ASSET = '/assets/zenryu/wing-l.webp';
+export const ZENRYU_STATIC_WING_R_ASSET = '/assets/zenryu/wing-r.webp';
+export const ZENRYU_STATIC_TAIL_ASSET = '/assets/zenryu/tail.webp';
+export const ZENRYU_STATIC_HEAD_ASSET = '/assets/zenryu/head.webp';
+export const ZENRYU_STATIC_EYES_ASSET = '/assets/zenryu/eyes-glow.webp';
 
 /**
  * Feature flag check (`dragon_companion_enabled`, default ON).
@@ -253,126 +254,98 @@ function playSoftDragonRoarSound(): void {
   }
 }
 
-// ── Layered Transparent WebP Dragon Rig (NO SVG Dragon Fallback) ─────────────
-interface ZenryuLayeredRigProps {
-  isSleeping: boolean;
-  isRoaring: boolean;
-  isStaticMode: boolean;
-  headRef?: React.RefObject<HTMLDivElement | null>;
-  compactAvatar?: boolean;
-}
+// ── 12 CSS Ember Particles Configuration Inside Stage ───────────────────────
+const STAGE_CSS_EMBERS = [
+  { left: '12%', delay: '0s', duration: '3.6s', size: 5 },
+  { left: '21%', delay: '0.7s', duration: '4.1s', size: 4 },
+  { left: '29%', delay: '1.4s', duration: '3.4s', size: 6 },
+  { left: '37%', delay: '0.3s', duration: '3.9s', size: 4 },
+  { left: '45%', delay: '1.9s', duration: '4.3s', size: 5 },
+  { left: '53%', delay: '0.9s', duration: '3.5s', size: 6 },
+  { left: '61%', delay: '2.2s', duration: '4.0s', size: 4 },
+  { left: '68%', delay: '0.5s', duration: '3.7s', size: 5 },
+  { left: '75%', delay: '1.6s', duration: '4.2s', size: 6 },
+  { left: '82%', delay: '1.1s', duration: '3.8s', size: 4 },
+  { left: '88%', delay: '2.5s', duration: '3.6s', size: 5 },
+  { left: '93%', delay: '0.2s', duration: '4.4s', size: 4 },
+] as const;
 
-const ZenryuLayeredRig = memo(function ZenryuLayeredRig({
-  isSleeping,
-  isRoaring,
-  isStaticMode,
-  headRef,
-  compactAvatar = false,
-}: ZenryuLayeredRigProps) {
-  const [bodyLoaded, setBodyLoaded] = useState(false);
-  const [missingSlot, setMissingSlot] = useState<string | null>(null);
-
-  const rigStateClass = isRoaring
-    ? 'zenryu-rig--roaring'
-    : isSleeping
-    ? 'zenryu-rig--sleeping'
-    : isStaticMode
-    ? 'zenryu-rig--static'
-    : 'zenryu-rig--flying';
-
+// ── Static Soft-Glow Fallback Pose (For Reduced Motion, Low-End or WebGL Fallback) ──
+const StaticDragonFallback = memo(function StaticDragonFallback({
+  onSummon,
+  compact = false,
+}: {
+  onSummon?: () => void;
+  compact?: boolean;
+}) {
   return (
     <div
-      className={`zenryu-rig ${
-        compactAvatar ? 'zenryu-rig--avatar' : 'zenryu-rig--stage'
-      } ${rigStateClass}`}
-      aria-hidden="true"
+      onClick={onSummon}
+      role={onSummon ? 'button' : undefined}
+      tabIndex={onSummon ? 0 : undefined}
+      onKeyDown={
+        onSummon
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSummon();
+              }
+            }
+          : undefined
+      }
+      aria-label={
+        onSummon ? `Summon ${DRAGON_COMPANION_NAME}, your Boardly dragon companion` : undefined
+      }
+      className={
+        compact
+          ? 'zenryu-rig zenryu-rig--avatar'
+          : 'zenryu-static-fallback-btn'
+      }
     >
-      {/* Soft Glow Placeholder until lazy-loaded WebP layers finish decoding */}
-      {!bodyLoaded && !missingSlot && (
-        <div className="zenryu-rig-placeholder" />
-      )}
-
-      {/* Named Asset Slot Fallback if a developer deletes /assets/zenryu/*.webp */}
-      {missingSlot ? (
-        <div className="zenryu-slot-notice">
-          <span>Asset slot: /assets/zenryu/{missingSlot}</span>
-        </div>
-      ) : (
-        <>
-          {/* Layer 1: Far/Left Swept Wing (wing-l.webp) */}
-          <img
-            src={ZENRYU_ASSETS.wingLeft}
-            alt=""
-            decoding="async"
-            draggable={false}
-            onError={() => setMissingSlot('wing-l.webp')}
-            className="zenryu-layer zenryu-layer--wing-l"
-          />
-
-          {/* Layer 2: Long Spiked Whip Tail (tail.webp) */}
-          <img
-            src={ZENRYU_ASSETS.tail}
-            alt=""
-            decoding="async"
-            draggable={false}
-            onError={() => setMissingSlot('tail.webp')}
-            className="zenryu-layer zenryu-layer--tail"
-          />
-
-          {/* Layer 3: Armored Crimson & Black Scaled Body (zenryu-body.webp) */}
-          <img
-            src={ZENRYU_ASSETS.body}
-            alt=""
-            decoding="async"
-            draggable={false}
-            onLoad={() => setBodyLoaded(true)}
-            onError={() => setMissingSlot('zenryu-body.webp')}
-            className="zenryu-layer zenryu-layer--body"
-          />
-
-          {/* Layer 4: Near/Right Foreground Wing with Visible Veins (wing-r.webp) */}
-          <img
-            src={ZENRYU_ASSETS.wingRight}
-            alt=""
-            decoding="async"
-            draggable={false}
-            onError={() => setMissingSlot('wing-r.webp')}
-            className="zenryu-layer zenryu-layer--wing-r"
-          />
-
-          {/* Layer 5 & 6: Articulated Horned Head + Glowing Ember Eyes (Follows Finger) */}
-          <div ref={headRef} className="zenryu-head-pivot">
-            <img
-              src={ZENRYU_ASSETS.head}
-              alt=""
-              decoding="async"
-              draggable={false}
-              onError={() => setMissingSlot('head.webp')}
-              className="zenryu-layer zenryu-layer--head"
-            />
-            <img
-              src={ZENRYU_ASSETS.eyesGlow}
-              alt=""
-              decoding="async"
-              draggable={false}
-              onError={() => setMissingSlot('eyes-glow.webp')}
-              className={`zenryu-layer zenryu-layer--eyes ${
-                isSleeping ? 'zenryu-layer--eyes-sleeping' : ''
-              }`}
-            />
-            {/* Layer 7: Roar Flame Burst (flame-roar.webp) */}
-            <img
-              src={ZENRYU_ASSETS.flameRoar}
-              alt=""
-              decoding="async"
-              draggable={false}
-              className={`zenryu-layer zenryu-layer--flame ${
-                isRoaring ? 'zenryu-layer--flame-active' : ''
-              }`}
-            />
-          </div>
-        </>
-      )}
+      <div className={compact ? 'relative w-full h-full' : 'zenryu-rig zenryu-rig--stage'}>
+        <img
+          src={ZENRYU_STATIC_WING_L_ASSET}
+          alt=""
+          decoding="async"
+          draggable={false}
+          className="zenryu-layer"
+        />
+        <img
+          src={ZENRYU_STATIC_TAIL_ASSET}
+          alt=""
+          decoding="async"
+          draggable={false}
+          className="zenryu-layer"
+        />
+        <img
+          src={ZENRYU_STATIC_BODY_ASSET}
+          alt=""
+          decoding="async"
+          draggable={false}
+          className="zenryu-layer"
+        />
+        <img
+          src={ZENRYU_STATIC_WING_R_ASSET}
+          alt=""
+          decoding="async"
+          draggable={false}
+          className="zenryu-layer"
+        />
+        <img
+          src={ZENRYU_STATIC_HEAD_ASSET}
+          alt=""
+          decoding="async"
+          draggable={false}
+          className="zenryu-layer"
+        />
+        <img
+          src={ZENRYU_STATIC_EYES_ASSET}
+          alt=""
+          decoding="async"
+          draggable={false}
+          className="zenryu-layer"
+        />
+      </div>
     </div>
   );
 });
@@ -430,7 +403,7 @@ function detectLowEndDevice(): boolean {
   return false;
 }
 
-// ── Inner Component ─────────────────────────────────────────────────────────
+// ── Inner Cockpit Component ─────────────────────────────────────────────────
 function DragonCompanionInner({
   weakChapters = [],
   currentMcq = null,
@@ -440,17 +413,16 @@ function DragonCompanionInner({
   const { smoothMode } = useSmoothMode();
   const { hideDragon } = useDragonHiddenPreference();
 
-  // Feature flag check (default ON)
   const featureEnabled = useMemo(() => isDragonCompanionEnabled(), []);
 
-  // Lazy-load assets after first paint so Cockpit initial paint is never delayed
+  // Wait until after first paint before importing Three.js or building 3D geometry
   const [postPaintReady, setPostPaintReady] = useState(false);
   useEffect(() => {
     let cancelled = false;
     const rafId = window.requestAnimationFrame(() => {
       const timerId = window.setTimeout(() => {
         if (!cancelled) setPostPaintReady(true);
-      }, 60);
+      }, 65);
       return () => window.clearTimeout(timerId);
     });
     return () => {
@@ -534,12 +506,13 @@ function DragonCompanionInner({
     return () => mq.removeEventListener('change', handler);
   }, []);
 
-  const isStaticPose = prefersReducedMotion || smoothMode || isLowEndDevice;
+  const shouldUseStaticPose = prefersReducedMotion || smoothMode || isLowEndDevice;
 
-  // ── Stage-Contained Flight, Sleep, Roar, Head-Tracking & Drag State ───────
+  // ── 3D Engine Lifecycle, Sleep, Roar, Pointer-Follow & Drag State ─────────
   const [isSleeping, setIsSleeping] = useState(false);
-  const [isRoaring, setIsRoaring] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [engineReady, setEngineReady] = useState(false);
+  const [webglFailed, setWebglFailed] = useState(false);
   const [isTabHidden, setIsTabHidden] = useState<boolean>(() =>
     typeof document !== 'undefined' ? document.hidden : false
   );
@@ -569,9 +542,8 @@ function DragonCompanionInner({
   }, []);
 
   const stageRef = useRef<HTMLElement | null>(null);
-  const dragonMoverRef = useRef<HTMLDivElement | null>(null);
-  const headPivotRef = useRef<HTMLDivElement | null>(null);
-  const emberRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const canvasMountRef = useRef<HTMLDivElement | null>(null);
+  const engineRef = useRef<ZenryuEngineController | null>(null);
   const lastInteractionRef = useRef<number>(Date.now());
   const isSleepingRef = useRef<boolean>(false);
 
@@ -579,15 +551,74 @@ function DragonCompanionInner({
     isSleepingRef.current = isSleeping;
   }, [isSleeping]);
 
-  const markActivity = useCallback(() => {
+  const wakeAndMarkActivity = useCallback(() => {
     lastInteractionRef.current = Date.now();
     if (isSleepingRef.current) {
       isSleepingRef.current = false;
       setIsSleeping(false);
+      if (engineRef.current && engineRef.current.getPose() === 'sleep') {
+        engineRef.current.setPose('fly');
+      }
     }
   }, []);
 
-  // Pause when browser tab is hidden
+  // Dynamic import of Three.js & zenryuEngine3D ONLY after first paint and ONLY when unlocked
+  useEffect(() => {
+    if (
+      !postPaintReady ||
+      !isUnlocked ||
+      hideDragon ||
+      shouldUseStaticPose ||
+      webglFailed
+    ) {
+      return;
+    }
+
+    const mountNode = canvasMountRef.current;
+    if (!mountNode) return;
+
+    let cancelled = false;
+    let instance: ZenryuEngineController | null = null;
+
+    void import('./zenryuEngine3D')
+      .then((mod) => {
+        if (cancelled || !canvasMountRef.current) return;
+        const probe = mod.detectSoftwareWebGL();
+        if (!probe.supported) {
+          setWebglFailed(true);
+          return;
+        }
+        instance = mod.createZenryu3DEngine({
+          container: canvasMountRef.current,
+          initialPose: 'fly',
+          initialCamera: 'stage',
+        });
+        engineRef.current = instance;
+        setEngineReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setWebglFailed(true);
+        }
+      });
+
+    const onResize = () => {
+      engineRef.current?.resize();
+    };
+    window.addEventListener('resize', onResize);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('resize', onResize);
+      if (instance) {
+        instance.dispose();
+      }
+      engineRef.current = null;
+      setEngineReady(false);
+    };
+  }, [postPaintReady, isUnlocked, hideDragon, shouldUseStaticPose, webglFailed]);
+
+  // Pause 3D render loop when tab is hidden, stage is off-screen, or modal/sheet is open
   useEffect(() => {
     const onVisChange = () => {
       setIsTabHidden(document.hidden);
@@ -596,7 +627,6 @@ function DragonCompanionInner({
     return () => document.removeEventListener('visibilitychange', onVisChange);
   }, []);
 
-  // Pause when the Dragon Stage is scrolled off-screen
   useEffect(() => {
     const el = stageRef.current;
     if (!el || typeof IntersectionObserver === 'undefined') return;
@@ -613,269 +643,34 @@ function DragonCompanionInner({
     return () => obs.disconnect();
   }, [postPaintReady, isUnlocked]);
 
-  // Idle timer -> Perch on the right edge of the stage & sleep after 20s idle
   useEffect(() => {
-    if (!isUnlocked || hideDragon || isStaticPose || isSheetOpen) return;
+    const shouldPause = isTabHidden || !isStageVisible || isSheetOpen || isTestModalOpen;
+    engineRef.current?.setPaused(shouldPause);
+  }, [isTabHidden, isStageVisible, isSheetOpen, isTestModalOpen, engineReady]);
+
+  // Idle 20 seconds -> transition to SLEEP pose
+  useEffect(() => {
+    if (!isUnlocked || hideDragon || shouldUseStaticPose || isSheetOpen) return;
     const interval = window.setInterval(() => {
       if (Date.now() - lastInteractionRef.current >= 20000 && !isSleepingRef.current) {
         isSleepingRef.current = true;
         setIsSleeping(true);
+        engineRef.current?.setPose('sleep');
       }
     }, 1500);
     return () => window.clearInterval(interval);
-  }, [isUnlocked, hideDragon, isStaticPose, isSheetOpen]);
+  }, [isUnlocked, hideDragon, shouldUseStaticPose, isSheetOpen]);
 
-  // ── Stage-Contained Flight, Head Tracking & Ember Physics Loop ────────────
-  const stageFlightRef = useRef({
-    phase: 0,
-    x: 0,
-    y: 0,
-    facing: 1, // 1 = facing right, -1 = facing left
-    bankDeg: 0,
-    headAngleDeg: 0,
-    targetHeadAngleDeg: 0,
-    pointerLocalX: null as number | null,
-    pointerLocalY: null as number | null,
-    isDragging: false,
-    dragStartX: 0,
-    dragStartY: 0,
-    pointerStartX: 0,
-    pointerStartY: 0,
-    movedDistance: 0,
-    initialized: false,
-    emberTick: 0,
-    embers: Array.from({ length: 7 }, () => ({
-      x: 0,
-      y: 0,
-      life: 0,
-      scale: 1,
-    })),
+  // ── Canvas Pointer-Follow, Drag (+-60deg Yaw) & Tap (Roar + Open Sheet) ───
+  const dragStateRef = useRef({
+    active: false,
+    startX: 0,
+    startY: 0,
+    movedDist: 0,
   });
 
-  // Compute safe bounds strictly inside the Dragon Stage
-  const getStageMetrics = useCallback(() => {
-    const stageEl = stageRef.current;
-    const stageW = stageEl ? stageEl.clientWidth : 360;
-    const stageH = stageEl ? stageEl.clientHeight : 204;
-    const moverEl = dragonMoverRef.current;
-    const dragonW = moverEl && moverEl.offsetWidth > 0
-      ? moverEl.offsetWidth
-      : stageW < 520
-      ? Math.min(272, Math.max(220, stageW * 0.68))
-      : Math.min(365, Math.max(280, stageW * 0.48));
-    const dragonH = dragonW * (640 / 960);
-
-    const minX = 4;
-    const maxX = Math.max(minX, stageW - dragonW - 4);
-    const minY = -Math.round(dragonH * 0.06);
-    const maxY = Math.max(minY, stageH - dragonH * 0.86);
-
-    // Right-edge perch coordinates inside the stage
-    const perchX = maxX;
-    const perchY = Math.round((minY + maxY) * 0.52);
-
-    return {
-      stageW,
-      stageH,
-      dragonW,
-      dragonH,
-      minX,
-      maxX,
-      minY,
-      maxY,
-      perchX,
-      perchY,
-    };
-  }, []);
-
-  useEffect(() => {
-    if (
-      !postPaintReady ||
-      !isUnlocked ||
-      hideDragon ||
-      isTabHidden ||
-      !isStageVisible ||
-      isSheetOpen ||
-      isTestModalOpen
-    ) {
-      return;
-    }
-
-    const mover = dragonMoverRef.current;
-    if (!mover) return;
-
-    const st = stageFlightRef.current;
-    const initialMetrics = getStageMetrics();
-
-    if (!st.initialized) {
-      st.x = initialMetrics.perchX;
-      st.y = initialMetrics.perchY;
-      st.facing = -1;
-      st.initialized = true;
-    }
-
-    // Static perched pose on right edge for prefers-reduced-motion / Smooth Mode / low-end devices
-    if (isStaticPose) {
-      const m = getStageMetrics();
-      st.x = m.perchX;
-      st.y = m.perchY;
-      st.facing = -1;
-      mover.style.transform = `translate3d(${Math.round(st.x)}px, ${Math.round(
-        st.y
-      )}px, 0) scaleX(-1)`;
-      if (headPivotRef.current) {
-        headPivotRef.current.style.transform = 'rotate(0deg)';
-      }
-      return;
-    }
-
-    let rafId = 0;
-    let lastTs = performance.now();
-
-    const step = (now: number) => {
-      const dt = Math.min(0.05, Math.max(0.008, (now - lastTs) / 1000));
-      lastTs = now;
-
-      const m = getStageMetrics();
-      const centerX = (m.minX + m.maxX) * 0.5;
-      const spanX = Math.max(8, (m.maxX - m.minX) * 0.48);
-      const centerY = (m.minY + m.maxY) * 0.46;
-      const spanY = Math.max(6, (m.maxY - m.minY) * 0.42);
-
-      if (!st.isDragging) {
-        if (isSleepingRef.current) {
-          // Glide to the right-edge perch inside the stage and sleep
-          const dx = m.perchX - st.x;
-          const dy = m.perchY - st.y;
-          st.x += dx * Math.min(1, dt * 3.0);
-          st.y += dy * Math.min(1, dt * 3.0);
-          st.bankDeg += (0 - st.bankDeg) * Math.min(1, dt * 6);
-          st.facing = -1;
-        } else {
-          // Smooth figure-8 gliding path strictly inside the stage
-          st.phase += dt * 0.68;
-          const targetX = centerX + Math.sin(st.phase) * spanX;
-          const targetY = centerY + Math.sin(st.phase * 2) * spanY;
-
-          const prevX = st.x;
-          st.x += (targetX - st.x) * Math.min(1, dt * 3.6);
-          st.y += (targetY - st.y) * Math.min(1, dt * 3.6);
-
-          // Clamp strictly to stage bounds
-          st.x = Math.max(m.minX, Math.min(m.maxX, st.x));
-          st.y = Math.max(m.minY, Math.min(m.maxY, st.y));
-
-          const velX = (st.x - prevX) / dt;
-          if (Math.abs(velX) > 3.5) {
-            st.facing = velX >= 0 ? 1 : -1;
-          }
-          const desiredBank = Math.max(-9, Math.min(9, velX * 0.055));
-          st.bankDeg += (desiredBank - st.bankDeg) * Math.min(1, dt * 6);
-        }
-      }
-
-      if (mover) {
-        mover.style.transform = `translate3d(${st.x.toFixed(1)}px, ${st.y.toFixed(
-          1
-        )}px, 0) rotate(${st.bankDeg.toFixed(1)}deg) scaleX(${st.facing})`;
-      }
-
-      // Head turn that follows the user's finger/cursor inside the stage
-      if (
-        !isSleepingRef.current &&
-        st.pointerLocalX !== null &&
-        st.pointerLocalY !== null
-      ) {
-        const headCenterX =
-          st.x + (st.facing === 1 ? m.dragonW * 0.72 : m.dragonW * 0.28);
-        const headCenterY = st.y + m.dragonH * 0.36;
-        const dx = (st.pointerLocalX - headCenterX) * st.facing;
-        const dy = st.pointerLocalY - headCenterY;
-        const rawAngle = Math.atan2(dy, Math.max(28, dx)) * (180 / Math.PI);
-        st.targetHeadAngleDeg = Math.max(-18, Math.min(18, rawAngle * 0.55));
-      } else {
-        st.targetHeadAngleDeg = isSleepingRef.current ? 8 : 0;
-      }
-
-      st.headAngleDeg +=
-        (st.targetHeadAngleDeg - st.headAngleDeg) * Math.min(1, dt * 8);
-      if (headPivotRef.current) {
-        headPivotRef.current.style.transform = `rotate(${st.headAngleDeg.toFixed(
-          1
-        )}deg)`;
-      }
-
-      // Stage-contained ember particles (GPU transform/opacity only)
-      st.emberTick += dt;
-      if (st.emberTick >= 0.085) {
-        st.emberTick = 0;
-        const slot = st.embers.find((e) => e.life <= 0.05) || st.embers[0];
-        if (slot) {
-          slot.x =
-            st.x + m.dragonW * 0.48 + (Math.random() - 0.5) * (m.dragonW * 0.42);
-          slot.y =
-            st.y + m.dragonH * 0.55 + (Math.random() - 0.5) * (m.dragonH * 0.24);
-          slot.life = 1;
-          slot.scale = 0.65 + Math.random() * 0.65;
-        }
-      }
-
-      for (let i = 0; i < st.embers.length; i++) {
-        const emp = st.embers[i];
-        const el = emberRefs.current[i];
-        if (!el) continue;
-        if (emp.life > 0) {
-          emp.life = Math.max(0, emp.life - dt * 1.75);
-          emp.y -= dt * 22;
-          emp.x -= st.facing * dt * 10;
-          el.style.opacity = (emp.life * 0.82).toFixed(2);
-          el.style.transform = `translate3d(${emp.x.toFixed(1)}px, ${emp.y.toFixed(
-            1
-          )}px, 0) scale(${(emp.scale * emp.life).toFixed(2)})`;
-        } else {
-          el.style.opacity = '0';
-        }
-      }
-
-      rafId = window.requestAnimationFrame(step);
-    };
-
-    rafId = window.requestAnimationFrame(step);
-    return () => {
-      if (rafId) window.cancelAnimationFrame(rafId);
-    };
-  }, [
-    postPaintReady,
-    isUnlocked,
-    hideDragon,
-    isTabHidden,
-    isStageVisible,
-    isSheetOpen,
-    isTestModalOpen,
-    isStaticPose,
-    getStageMetrics,
-  ]);
-
-  // Track finger/pointer inside the stage so Zenryu's head follows it
-  const handleStagePointerMove = useCallback(
-    (e: React.PointerEvent<HTMLElement>) => {
-      const rect = stageRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      stageFlightRef.current.pointerLocalX = e.clientX - rect.left;
-      stageFlightRef.current.pointerLocalY = e.clientY - rect.top;
-      markActivity();
-    },
-    [markActivity]
-  );
-
-  const handleStagePointerLeave = useCallback(() => {
-    stageFlightRef.current.pointerLocalX = null;
-    stageFlightRef.current.pointerLocalY = null;
-  }, []);
-
-  // ── Tap (Roar + Flame Burst + Open Sheet) & Stage-Clamped Drag Handlers ───
-  const openCompanionSheet = useCallback(() => {
-    markActivity();
+  const triggerRoarAndOpenSheet = useCallback(() => {
+    wakeAndMarkActivity();
     try {
       if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
         navigator.vibrate(18);
@@ -886,77 +681,87 @@ function DragonCompanionInner({
     if (soundEnabled) {
       playSoftDragonRoarSound();
     }
-    setIsRoaring(true);
-    window.setTimeout(() => {
-      setIsRoaring(false);
+    if (engineRef.current) {
+      engineRef.current.triggerRoar();
+      window.setTimeout(() => {
+        setIsSheetOpen(true);
+      }, 620);
+    } else {
       setIsSheetOpen(true);
-    }, 380);
-  }, [markActivity, soundEnabled]);
+    }
+  }, [wakeAndMarkActivity, soundEnabled]);
 
-  const handleDragonPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
-      markActivity();
-      const st = stageFlightRef.current;
-      st.isDragging = true;
-      st.pointerStartX = e.clientX;
-      st.pointerStartY = e.clientY;
-      st.dragStartX = st.x;
-      st.dragStartY = st.y;
-      st.movedDistance = 0;
+  const handleCanvasPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      wakeAndMarkActivity();
+      const st = dragStateRef.current;
+      st.active = true;
+      st.startX = e.clientX;
+      st.startY = e.clientY;
+      st.movedDist = 0;
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
       } catch {
-        // Ignore capture errors
+        // Ignore
       }
     },
-    [markActivity]
+    [wakeAndMarkActivity]
   );
 
-  const handleDragonPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
-      const st = stageFlightRef.current;
-      if (!st.isDragging) return;
-      const dx = e.clientX - st.pointerStartX;
-      const dy = e.clientY - st.pointerStartY;
-      st.movedDistance = Math.hypot(dx, dy);
-
-      const m = getStageMetrics();
-      const nextX = Math.max(m.minX, Math.min(m.maxX, st.dragStartX + dx));
-      const nextY = Math.max(m.minY, Math.min(m.maxY, st.dragStartY + dy));
-
-      if (Math.abs(dx) > 3) {
-        st.facing = dx >= 0 ? 1 : -1;
+  const handleCanvasPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      wakeAndMarkActivity();
+      const rect = e.currentTarget.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        const ny = ((e.clientY - rect.top) / rect.height) * 2 - 1;
+        engineRef.current?.setPointerNorm(nx, ny);
       }
-      st.x = nextX;
-      st.y = nextY;
 
-      const mover = dragonMoverRef.current;
-      if (mover) {
-        mover.style.transform = `translate3d(${st.x.toFixed(1)}px, ${st.y.toFixed(
-          1
-        )}px, 0) scaleX(${st.facing})`;
-      }
+      const st = dragStateRef.current;
+      if (!st.active) return;
+      const dx = e.clientX - st.startX;
+      const dy = e.clientY - st.startY;
+      st.movedDist = Math.hypot(dx, dy);
+
+      // Drag rotates the whole dragon within +-60deg yaw
+      const maxYaw = Math.PI / 3;
+      const yawRad = Math.max(
+        -maxYaw,
+        Math.min(maxYaw, (dx / Math.max(180, rect.width * 0.5)) * maxYaw)
+      );
+      engineRef.current?.setDragYaw(yawRad, true);
     },
-    [getStageMetrics]
+    [wakeAndMarkActivity]
   );
 
-  const handleDragonPointerUp = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
-      const st = stageFlightRef.current;
-      if (!st.isDragging) return;
-      st.isDragging = false;
+  const handleCanvasPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const st = dragStateRef.current;
+      if (!st.active) return;
+      st.active = false;
       try {
         e.currentTarget.releasePointerCapture(e.pointerId);
       } catch {
         // Ignore
       }
-      // If movement was under 10px, treat as a tap -> roar + flame burst + open sheet
-      if (st.movedDistance < 10) {
-        openCompanionSheet();
+      engineRef.current?.setDragYaw(0, false);
+
+      // Tap (< 10px drag distance): roar, vibrate lightly, then open the Zenryu sheet
+      if (st.movedDist < 10) {
+        triggerRoarAndOpenSheet();
       }
     },
-    [openCompanionSheet]
+    [triggerRoarAndOpenSheet]
   );
+
+  const handleCanvasPointerLeave = useCallback(() => {
+    engineRef.current?.setPointerNorm(null, null);
+    if (dragStateRef.current.active) {
+      dragStateRef.current.active = false;
+      engineRef.current?.setDragYaw(0, false);
+    }
+  }, []);
 
   // ── Zenryu AI Companion Sheet State & Handlers ────────────────────────────
   const [messages, setMessages] = useState<ZenryuChatMessage[]>(() => [
@@ -972,7 +777,6 @@ function DragonCompanionInner({
   const [aiComingSoon, setAiComingSoon] = useState(false);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
-  // Sheet swipe-down to close state
   const [sheetDragY, setSheetDragY] = useState(0);
   const sheetSwipeRef = useRef({ active: false, startY: 0 });
 
@@ -1142,7 +946,7 @@ function DragonCompanionInner({
     <>
       {/* ── DEDICATED GLASS DRAGON STAGE (Between Greeting & Choose Your University) ── */}
       {!isUnlocked ? (
-        /* STATE A: Locked (< 1,000 Correct MCQs & Not Admin) -> Dragon Egg Card in Stage Slot */
+        /* STATE A: Locked (< 1,000 Correct MCQs & Not Admin) -> Dragon Egg Card (Downloads Zero 3D Code) */
         <section
           ref={stageRef}
           className="zenryu-stage zenryu-stage--egg p-4 sm:p-5"
@@ -1152,7 +956,7 @@ function DragonCompanionInner({
           <div className="relative z-10 flex items-center gap-3.5 sm:gap-5 w-full">
             <div className="zenryu-egg-icon-wrap">
               <img
-                src={ZENRYU_ASSETS.egg}
+                src={ZENRYU_EGG_ASSET}
                 alt=""
                 decoding="async"
                 draggable={false}
@@ -1209,17 +1013,32 @@ function DragonCompanionInner({
           </div>
         </section>
       ) : (
-        /* STATE B: Unlocked Dragon Stage (180–240px Tall Glass Hero Strip, Strict Overflow Clipping) */
+        /* STATE B: Unlocked 3D Dragon Stage (240–280px Tall Glass Hero Strip) */
         <section
           ref={stageRef}
-          onPointerMove={handleStagePointerMove}
-          onPointerLeave={handleStagePointerLeave}
           className="zenryu-stage zenryu-stage--active"
-          aria-label={`${DRAGON_COMPANION_NAME} Dragon Companion Stage`}
+          aria-label={`${DRAGON_COMPANION_NAME} 3D Dragon Companion Stage`}
         >
-          {/* Stage Atmospheric Gradient & Decorative Ridge Silhouette (pointer-events: none) */}
+          {/* Dark-Red Radial Glow & Stage Vignette (pointer-events: none) */}
           <div className="zenryu-stage-decor" aria-hidden="true" />
-          <div className="zenryu-stage-horizon" aria-hidden="true" />
+          <div className="zenryu-stage-vignette" aria-hidden="true" />
+
+          {/* Up to 12 CSS Ember Particles Inside Stage (pointer-events: none) */}
+          {!shouldUseStaticPose &&
+            STAGE_CSS_EMBERS.map((emb, idx) => (
+              <span
+                key={idx}
+                className="zenryu-css-ember"
+                style={{
+                  left: emb.left,
+                  width: `${emb.size}px`,
+                  height: `${emb.size}px`,
+                  animationDelay: emb.delay,
+                  animationDuration: emb.duration,
+                }}
+                aria-hidden="true"
+              />
+            ))}
 
           {/* One-Time Awakening Toast Inside Stage Top-Left */}
           {showAwakeningCelebration && (
@@ -1241,54 +1060,37 @@ function DragonCompanionInner({
             </div>
           )}
 
-          {/* Fast-Fading Pooled Ember Trail Particles Inside the Stage (pointer-events: none) */}
-          {postPaintReady &&
-            !isStaticPose &&
-            Array.from({ length: 7 }).map((_, idx) => (
-              <span
-                key={idx}
-                ref={(el) => {
-                  emberRefs.current[idx] = el;
-                }}
-                className="zenryu-stage-ember"
-                aria-hidden="true"
-              />
-            ))}
-
-          {/* Reserved Stage Placeholder Glow Before First Paint */}
-          {!postPaintReady ? (
+          {/* Soft Red Glow Placeholder While Building 3D Scene */}
+          {!engineReady && !shouldUseStaticPose && !webglFailed && (
             <div className="zenryu-stage-loading-glow" aria-hidden="true" />
-          ) : (
-            /* Moving Dragon Container Strictly Inside the Stage */
-            <div ref={dragonMoverRef} className="zenryu-stage-mover">
-              <button
-                type="button"
-                onPointerDown={handleDragonPointerDown}
-                onPointerMove={handleDragonPointerMove}
-                onPointerUp={handleDragonPointerUp}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    openCompanionSheet();
-                  }
-                }}
-                aria-label={`Summon ${DRAGON_COMPANION_NAME}, your Boardly dragon companion`}
-                title={`${DRAGON_COMPANION_NAME} — Tap to roar & open companion, drag within stage`}
-                className="zenryu-hitbox"
-              >
-                <div className="zenryu-bob-wrapper">
-                  <ZenryuLayeredRig
-                    isSleeping={isSleeping}
-                    isRoaring={isRoaring}
-                    isStaticMode={isStaticPose}
-                    headRef={headPivotRef}
-                  />
-                </div>
-              </button>
-            </div>
           )}
 
-          {/* Stationary Bottom-Left Glass Label Pill (12px text, never moves with the dragon) */}
+          {/* Static Soft-Glow Pose Fallback (Reduced Motion, Low-End Device, or WebGL Failure) */}
+          {shouldUseStaticPose || webglFailed ? (
+            <StaticDragonFallback onSummon={triggerRoarAndOpenSheet} />
+          ) : (
+            /* 3D WebGL Canvas Mount (Pointer-Events Apply ONLY to the Canvas) */
+            <div
+              ref={canvasMountRef}
+              onPointerDown={handleCanvasPointerDown}
+              onPointerMove={handleCanvasPointerMove}
+              onPointerUp={handleCanvasPointerUp}
+              onPointerLeave={handleCanvasPointerLeave}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  triggerRoarAndOpenSheet();
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              aria-label={`Summon ${DRAGON_COMPANION_NAME}, your 3D Boardly dragon companion`}
+              title={`${DRAGON_COMPANION_NAME} — Tap to roar & summon, drag to rotate`}
+              className="zenryu-canvas-mount"
+            />
+          )}
+
+          {/* Stationary Bottom-Left 12px Glass Pill ("Zenryu · Tap to summon") */}
           <div className="zenryu-stage-corner-label">
             <span
               className={`zenryu-status-dot ${
@@ -1296,9 +1098,8 @@ function DragonCompanionInner({
               }`}
               aria-hidden="true"
             />
-            <span className="zenryu-stage-corner-name">{DRAGON_COMPANION_NAME}</span>
-            <span className="zenryu-stage-corner-hint">
-              {isSleeping ? 'Resting · Tap to wake' : 'Tap to summon'}
+            <span className="zenryu-stage-corner-name">
+              {DRAGON_COMPANION_NAME} · {isSleeping ? 'Resting' : 'Tap to summon'}
             </span>
           </div>
         </section>
@@ -1356,12 +1157,7 @@ function DragonCompanionInner({
             <div className="zenryu-sheet-header">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="zenryu-avatar-badge">
-                  <ZenryuLayeredRig
-                    isSleeping={false}
-                    isRoaring={false}
-                    isStaticMode
-                    compactAvatar
-                  />
+                  <StaticDragonFallback compact />
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -1518,6 +1314,222 @@ function DragonCompanionInner({
         </div>
       )}
     </>
+  );
+}
+
+// ============================================================================
+// 8. DEV-ONLY PREVIEW ROUTE (/dev/zenryu — Disabled in Production)
+// ============================================================================
+export function ZenryuDevPreviewPage() {
+  const { user, isAdmin } = useAuth();
+  const mountRef = useRef<HTMLDivElement | null>(null);
+  const stagePhoneMountRef = useRef<HTMLDivElement | null>(null);
+  const engineRef = useRef<ZenryuEngineController | null>(null);
+  const phoneEngineRef = useRef<ZenryuEngineController | null>(null);
+
+  const [pose, setPoseState] = useState<ZenryuPose>('fly');
+  const [camPreset, setCamPresetState] = useState<ZenryuCameraPreset>('three-quarter');
+  const [showPhoneStage, setShowPhoneStage] = useState(false);
+  const [dockCollapsed, setDockCollapsed] = useState(false);
+
+  // Disabled in production builds
+  const isDevBuild = Boolean(import.meta.env.DEV);
+
+  useEffect(() => {
+    if (!isDevBuild) return;
+    const node = mountRef.current;
+    if (!node) return;
+
+    let cancelled = false;
+    let ctrl: ZenryuEngineController | null = null;
+
+    void import('./zenryuEngine3D').then((mod) => {
+      if (cancelled || !mountRef.current) return;
+      ctrl = mod.createZenryu3DEngine({
+        container: mountRef.current,
+        initialPose: 'fly',
+        initialCamera: 'three-quarter',
+        enableOrbitControls: true,
+        opaqueStageBackground: true,
+      });
+      engineRef.current = ctrl;
+    });
+
+    const onResize = () => engineRef.current?.resize();
+    window.addEventListener('resize', onResize);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('resize', onResize);
+      ctrl?.dispose();
+      engineRef.current = null;
+    };
+  }, [isDevBuild]);
+
+  useEffect(() => {
+    if (!isDevBuild || !showPhoneStage || !stagePhoneMountRef.current) return;
+    let cancelled = false;
+    let ctrl: ZenryuEngineController | null = null;
+
+    void import('./zenryuEngine3D').then((mod) => {
+      if (cancelled || !stagePhoneMountRef.current) return;
+      ctrl = mod.createZenryu3DEngine({
+        container: stagePhoneMountRef.current,
+        initialPose: pose,
+        initialCamera: 'stage',
+      });
+      phoneEngineRef.current = ctrl;
+    });
+
+    return () => {
+      cancelled = true;
+      ctrl?.dispose();
+      phoneEngineRef.current = null;
+    };
+  }, [isDevBuild, showPhoneStage, pose]);
+
+  if (!isDevBuild) {
+    return null;
+  }
+
+  // In dev mode, allow admin or local dev inspection
+  const allowed = isAdmin || Boolean(user) || isDevBuild;
+  if (!allowed) {
+    return null;
+  }
+
+  const handlePose = (next: ZenryuPose) => {
+    setPoseState(next);
+    if (next === 'roar') {
+      engineRef.current?.triggerRoar();
+      phoneEngineRef.current?.triggerRoar();
+    } else {
+      engineRef.current?.setPose(next);
+      phoneEngineRef.current?.setPose(next);
+    }
+  };
+
+  const handleCamera = (next: ZenryuCameraPreset) => {
+    setCamPresetState(next);
+    engineRef.current?.setCameraPreset(next);
+  };
+
+  return (
+    <div className="relative w-screen h-screen overflow-hidden bg-[#0b0608] text-white select-none">
+      {/* Top-Left Minimal Spec Badge */}
+      <div className="fixed top-4 left-4 z-20 px-3.5 py-2 rounded-2xl bg-black/75 border border-white/15 text-xs flex items-center gap-3">
+        <span className="font-bold text-red-500">ZENRYU 3D INSPECTOR</span>
+        <span className="text-zinc-400">
+          Pose: <strong className="text-white uppercase">{pose}</strong>
+        </span>
+        <span className="text-zinc-400">
+          View: <strong className="text-white uppercase">{camPreset}</strong>
+        </span>
+      </div>
+
+      {/* Main Full-Viewport 3D OrbitControls Canvas */}
+      <div ref={mountRef} className="w-full h-full" />
+
+      {/* Optional 390px Phone Cockpit Stage Overlay for Silhouette Check */}
+      {showPhoneStage && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-30 w-[390px] max-w-[95vw] p-3 rounded-3xl bg-[#110b0e] border border-white/15 shadow-2xl space-y-2.5">
+          <div className="text-xs font-bold text-zinc-300 px-1">
+            390px Phone Cockpit Stage Preview (256px height)
+          </div>
+          <div className="zenryu-stage zenryu-stage--active">
+            <div className="zenryu-stage-decor" />
+            <div className="zenryu-stage-vignette" />
+            <div ref={stagePhoneMountRef} className="zenryu-canvas-mount" />
+            <div className="zenryu-stage-corner-label">
+              <span className="zenryu-status-dot" />
+              <span className="zenryu-stage-corner-name">
+                {DRAGON_COMPANION_NAME} · Tap to summon
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unified Collapsible Bottom Control Dock */}
+      <div
+        className="fixed bottom-5 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center transition-transform duration-200"
+        style={{
+          transform: dockCollapsed
+            ? 'translate(-50%, calc(100% - 32px))'
+            : 'translate(-50%, 0)',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setDockCollapsed((c) => !c)}
+          className="px-3.5 py-1 rounded-t-xl bg-zinc-900/95 border border-b-0 border-white/15 text-[11px] font-semibold text-zinc-300 cursor-pointer"
+        >
+          {dockCollapsed ? '▴ Show Controls' : '▾ Hide Controls'}
+        </button>
+        <div className="px-4 py-3 rounded-2xl bg-zinc-900/95 border border-white/15 shadow-2xl flex items-center gap-3 flex-wrap justify-center max-w-[94vw]">
+          {/* Pose Buttons */}
+          <div className="flex items-center gap-1.5">
+            {(['fly', 'roar', 'sleep'] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                data-pose={p}
+                onClick={() => handlePose(p)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase cursor-pointer ${
+                  pose === p
+                    ? 'bg-red-600 text-white'
+                    : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+
+          <div className="h-5 w-px bg-white/15" />
+
+          {/* Camera Angle Presets */}
+          <div className="flex items-center gap-1.5">
+            {(
+              [
+                ['three-quarter', '3/4 View'],
+                ['front', 'Front'],
+                ['side', 'Side'],
+                ['stage', 'Stage Framing'],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                data-camera={id}
+                onClick={() => handleCamera(id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer ${
+                  camPreset === id
+                    ? 'bg-white text-black'
+                    : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="h-5 w-px bg-white/15" />
+
+          <button
+            type="button"
+            data-phone-toggle="true"
+            onClick={() => setShowPhoneStage((s) => !s)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer ${
+              showPhoneStage
+                ? 'bg-amber-500 text-black'
+                : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+            }`}
+          >
+            390px Stage Overlay
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
