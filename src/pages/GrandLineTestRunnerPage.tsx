@@ -510,7 +510,7 @@ export function GrandLineTestRunnerPage() {
             <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
               <PdfDownloadButton
                 label="Download Verified Report"
-                onDownload={async (onProgress) => {
+                onDownload={async (onProgress, signal) => {
                   if (!scoreResult) return;
                   await exportDrillResultToPdf({
                     testId: testId || test?.id,
@@ -523,6 +523,7 @@ export function GrandLineTestRunnerPage() {
                     percentage: scoreResult.percentage,
                     timeTakenSeconds: scoreResult.timeTakenSeconds,
                     gradedQuestions: scoreResult.gradedQuestions,
+                    signal,
                     onProgress,
                   });
                   showApiToast('Result PDF downloaded successfully!', 'success');

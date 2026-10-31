@@ -302,12 +302,13 @@ export const GrandLineTestInfoPage: React.FC = () => {
                   label="Download PDF Report"
                   variant="secondary"
                   className="px-5 py-3 text-xs sm:text-sm font-semibold"
-                  onDownload={async (onProgress) => {
+                  onDownload={async (onProgress, signal) => {
                     await downloadDrillResultPdfByTestId(
                       test.id,
                       myAttempt,
                       studentFallbackName,
-                      onProgress
+                      onProgress,
+                      signal
                     );
                     showApiToast('Result PDF downloaded successfully!', 'success');
                   }}

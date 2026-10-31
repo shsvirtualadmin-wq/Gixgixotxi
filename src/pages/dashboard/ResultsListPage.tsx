@@ -350,13 +350,14 @@ export function ResultsListPage() {
                         variant="secondary"
                         label="Download PDF"
                         className="text-xs py-1.5 px-3 h-8 font-semibold"
-                        onDownload={async (onProgress) => {
+                        onDownload={async (onProgress, signal) => {
                           if (!glAtt.testId) return;
                           await downloadDrillResultPdfByTestId(
                             glAtt.testId,
                             glAtt,
                             studentFallbackName,
-                            onProgress
+                            onProgress,
+                            signal
                           );
                           showApiToast('Result PDF downloaded successfully!', 'success');
                         }}

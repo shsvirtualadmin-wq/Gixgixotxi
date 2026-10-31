@@ -128,3 +128,75 @@ export function getBoardlyDottedLogoSvg(color = '#000000', opacity = 1): string 
 
   return `<svg role="img" aria-label="Boardly" viewBox="0 0 1768 824" xmlns="http://www.w3.org/2000/svg" style="opacity: ${opacity}; display: block; width: 100%; height: auto;"><g>${boxCircles}${letterCircles}</g></svg>`;
 }
+
+let cachedWatermarkPng: string | null = null;
+let cachedWhiteLogoPng: string | null = null;
+
+/**
+ * Generates an off-screen canvas once and caches a PNG Data URL of the dotted logo
+ * with 8% black opacity, ready for stamping directly into jsPDF vector pages with zero DOM overhead.
+ */
+export function getWatermarkLogoPngDataUrl(): string {
+  if (cachedWatermarkPng) return cachedWatermarkPng;
+  if (typeof document === 'undefined') return '';
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 884;
+  canvas.height = 412;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  const scale = 0.5;
+  ctx.scale(scale, scale);
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+
+  for (const [cx, cy] of BOX_OUTLINE_DOTS) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, 9.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  for (const [cx, cy] of BOARDLY_LOGO_DOTS) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, 13, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  cachedWatermarkPng = canvas.toDataURL('image/png');
+  return cachedWatermarkPng;
+}
+
+/**
+ * Generates an off-screen canvas once and caches a PNG Data URL of the dotted logo
+ * in solid white, ready for stamping into the Page 1 dark header banner with zero DOM overhead.
+ */
+export function getWhiteHeaderLogoPngDataUrl(): string {
+  if (cachedWhiteLogoPng) return cachedWhiteLogoPng;
+  if (typeof document === 'undefined') return '';
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 884;
+  canvas.height = 412;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  const scale = 0.5;
+  ctx.scale(scale, scale);
+  ctx.fillStyle = '#ffffff';
+
+  for (const [cx, cy] of BOX_OUTLINE_DOTS) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, 9.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  for (const [cx, cy] of BOARDLY_LOGO_DOTS) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, 13, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  cachedWhiteLogoPng = canvas.toDataURL('image/png');
+  return cachedWhiteLogoPng;
+}
+

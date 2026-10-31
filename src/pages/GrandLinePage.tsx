@@ -401,12 +401,13 @@ export function GrandLinePage() {
                             variant="outline"
                             label="PDF"
                             className="text-xs py-1 px-2.5 h-8 font-semibold"
-                            onDownload={async (onProgress) => {
+                            onDownload={async (onProgress, signal) => {
                               await downloadDrillResultPdfByTestId(
                                 test.id,
                                 myAttempt,
                                 user?.displayName || 'Student',
-                                onProgress
+                                onProgress,
+                                signal
                               );
                               showApiToast('Result PDF downloaded successfully!', 'success');
                             }}
