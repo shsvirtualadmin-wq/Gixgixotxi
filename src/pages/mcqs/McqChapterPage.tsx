@@ -10,8 +10,6 @@ import {
   FolderOpen,
   RotateCcw,
 } from 'lucide-react';
-import { collection, getDocs, query, limit } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { MathText } from '@/components/ui/MathText';
@@ -19,7 +17,6 @@ import { SYLLABUS_MAP } from '@/constants/syllabusMap';
 import { formatSubjectName, formatChapterName, slugify } from '@/constants/taxonomy';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
-import { USE_FIRESTORE_QUESTION_READER } from '@/config/questionBankSources';
 
 export interface SampleMcqItem {
   id: string;
@@ -345,120 +342,51 @@ export const McqChapterPage: React.FC = () => {
   );
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({});
 
-  // Attempt to load up to 4 real published D1 questions (or Firestore if feature flag enabled) for this subject/chapter
+  // Attempt to load up to 4 real published D1 questions for this subject/chapter
   useEffect(() => {
     let mounted = true;
     const curated = getCuratedSampleQuestions(subject, matchedChapterTitle);
     setSampleQuestions(curated);
     setSelectedAnswers({});
 
-    if (!USE_FIRESTORE_QUESTION_READER) {
-      fetch(`/api/questions?subject=${encodeURIComponent(subject)}&limit=15`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          if (!mounted || !data || !Array.isArray(data.questions)) return;
-          const matching: SampleMcqItem[] = [];
-          for (const d of data.questions) {
-            const opts = Array.isArray(d.options) ? d.options : [];
-            const qText = String(d.question_text || d.questionText || '');
-            if (opts.length >= 4 && qText) {
-              const topicStr = String(d.topic || '').toLowerCase();
-              if (
-                topicStr.includes(chapter.replace(/-/g, ' ').slice(0, 8)) ||
-                matching.length < 4
-              ) {
-                matching.push({
-                  id: String(d.id),
-                  question: qText,
-                  options: [
-                    String(opts[0]),
-                    String(opts[1]),
-                    String(opts[2]),
-                    String(opts[3]),
-                  ],
-                  correctIndex:
-                    typeof d.correct_answer === 'number' ? d.correct_answer : -1,
-                  explanation:
-                    d.explanation ||
-                    'Step-by-step solution verified by Boardly Academic Review.',
-                  difficulty:
-                    d.difficulty === 'hard'
-                      ? 'Hard'
-                      : d.difficulty === 'easy'
-                      ? 'Easy'
-                      : 'Medium',
-                });
-              }
-            }
-          }
-          if (matching.length >= 3) {
-            setSampleQuestions(matching.slice(0, 4));
-          }
-        })
-        .catch(() => {
-          // Keep curated sample questions with KaTeX derivations
-        });
-
-      return () => {
-        mounted = false;
-      };
-    }
-
-    const colName =
-      subject.toLowerCase().includes('math')
-        ? 'questions_mathematics'
-        : subject.toLowerCase().includes('phys')
-        ? 'questions_physics'
-        : subject.toLowerCase().includes('chem')
-        ? 'questions_chemistry'
-        : subject.toLowerCase().includes('bio')
-        ? 'questions_biology'
-        : subject.toLowerCase().includes('comp')
-        ? 'questions_computer'
-        : subject.toLowerCase().includes('eng')
-        ? 'questions_english'
-        : 'questions';
-
-    getDocs(query(collection(db, colName), limit(15)))
-      .then((snap) => {
-        if (!mounted || snap.empty) return;
+    fetch(`/api/questions?subject=${encodeURIComponent(subject)}&limit=15`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!mounted || !data || !Array.isArray(data.questions)) return;
         const matching: SampleMcqItem[] = [];
-        snap.docs.forEach((d) => {
-          const data = d.data();
-          if (
-            Array.isArray(data.options) &&
-            data.options.length >= 4 &&
-            typeof data.correctAnswer === 'number' &&
-            data.questionText
-          ) {
-            const topicStr = `${data.topic || ''} ${data.chapter || ''}`.toLowerCase();
+        for (const d of data.questions) {
+          const opts = Array.isArray(d.options) ? d.options : [];
+          const qText = String(d.question_text || d.questionText || '');
+          if (opts.length >= 4 && qText) {
+            const topicStr = String(d.topic || '').toLowerCase();
             if (
               topicStr.includes(chapter.replace(/-/g, ' ').slice(0, 8)) ||
               matching.length < 4
             ) {
               matching.push({
-                id: d.id,
-                question: data.questionText,
+                id: String(d.id),
+                question: qText,
                 options: [
-                  String(data.options[0]),
-                  String(data.options[1]),
-                  String(data.options[2]),
-                  String(data.options[3]),
+                  String(opts[0]),
+                  String(opts[1]),
+                  String(opts[2]),
+                  String(opts[3]),
                 ],
-                correctIndex: data.correctAnswer,
+                correctIndex:
+                  typeof d.correct_answer === 'number' ? d.correct_answer : -1,
                 explanation:
-                  data.explanation ||
+                  d.explanation ||
                   'Step-by-step solution verified by Boardly Academic Review.',
                 difficulty:
-                  data.difficulty === 'hard'
+                  d.difficulty === 'hard'
                     ? 'Hard'
-                    : data.difficulty === 'easy'
+                    : d.difficulty === 'easy'
                     ? 'Easy'
                     : 'Medium',
               });
             }
           }
-        });
+        }
         if (matching.length >= 3) {
           setSampleQuestions(matching.slice(0, 4));
         }

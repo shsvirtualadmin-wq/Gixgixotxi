@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   computeStreakData,
@@ -65,16 +64,15 @@ export function StreaksPage() {
       setHasError(false);
 
       // 1. Fetch user profile for freeze, badges, and cached counters
-      const userRef = doc(db, 'users', user.uid);
-      const userSnap = await getDoc(userRef);
-      const uData = userSnap.exists() ? userSnap.data() : {};
+      const userRes = await api.get<{ profile?: Record<string, unknown> }>('/api/users/me');
+      const uData = userRes.profile || {};
 
       const isFreezeActive = Boolean(uData.streakFreezeActive);
       const currentFreezes = Number(uData.streakFreezes ?? 1);
       setStreakFreezes(currentFreezes);
       setFreezeActive(isFreezeActive);
-      setRedeemedBadges(Array.isArray(uData.redeemedBadges) ? uData.redeemedBadges : []);
-      setEquippedBadges(Array.isArray(uData.equippedBadges) ? uData.equippedBadges : []);
+      setRedeemedBadges(Array.isArray(uData.redeemedBadges) ? (uData.redeemedBadges as string[]) : []);
+      setEquippedBadges(Array.isArray(uData.equippedBadges) ? (uData.equippedBadges as string[]) : []);
 
       // 2. Fetch all completed session PKT dates across attempts & usage
       const sessionDates = await fetchUserCompletedSessionDates(user.uid);
@@ -87,10 +85,9 @@ export function StreaksPage() {
 
       // 4. Mirror accurate streak to user doc if it diverged
       if (uData.streak !== computed.currentStreak || uData.longestStreak !== computed.longestStreak) {
-        updateDoc(userRef, {
+        api.put('/api/users/me', {
           streak: computed.currentStreak,
           longestStreak: computed.longestStreak,
-          updatedAt: serverTimestamp(),
         }).catch((err) => {
           console.warn('[StreaksPage] Non-critical user doc mirror warning:', err);
         });
@@ -134,19 +131,10 @@ export function StreaksPage() {
 
     try {
       setFreezeToggling(true);
-      const userRef = doc(db, 'users', user.uid);
-      const updates = {
+      await api.put('/api/users/me', {
         streakFreezeActive: nextActive,
         streakFreezes: nextFreezes,
-        updatedAt: serverTimestamp(),
-      };
-
-      try {
-        await updateDoc(userRef, updates);
-      } catch (_updateErr) {
-        // Fallback to setDoc with merge if document is new or needs initial fields
-        await setDoc(userRef, { uid: user.uid, ...updates }, { merge: true });
-      }
+      });
 
       setFreezeActive(nextActive);
       setStreakFreezes(nextFreezes);

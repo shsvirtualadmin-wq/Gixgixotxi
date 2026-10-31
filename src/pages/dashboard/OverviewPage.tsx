@@ -23,9 +23,6 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { DashboardErrorBoundary } from '@/components/dashboard/DashboardErrorBoundary';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
-import { collection, doc, serverTimestamp, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
 import { startTestSessionWithLimit, DailyTestLimitError } from '@/services/testLimits';
 import { DailyLimitBlockedSheet } from '@/components/test/DailyLimitBlockedSheet';
@@ -157,8 +154,7 @@ export function OverviewPage() {
       );
     }, 15000);
 
-    const newAttemptRef = doc(collection(db, 'attempts'));
-    const attemptId = newAttemptRef.id;
+    const attemptId = `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     const attemptPayload = {
       id: attemptId,
@@ -175,7 +171,7 @@ export function OverviewPage() {
       totalQuestions: blueprint.totalQuestions,
       durationSeconds: blueprint.durationMinutes * 60,
       timed: true,
-      createdAt: serverTimestamp(),
+      createdAt: new Date().toISOString(),
     };
 
     try {

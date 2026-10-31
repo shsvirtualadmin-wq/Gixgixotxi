@@ -1,10 +1,4 @@
-import { auth, db } from '@/lib/firebase';
-import {
-  collection,
-  getDocs,
-  query,
-  limit,
-} from 'firebase/firestore';
+import { auth } from '@/lib/firebase';
 import type {
   CommonsPost,
   CommonsPostType,
@@ -598,43 +592,36 @@ export async function reportCommonsPost(params: {
 }
 
 export async function searchPeople(searchTerm: string): Promise<CommonsUserPreview[]> {
-  const cleaned = searchTerm.trim().toLowerCase();
+  const cleaned = searchTerm.trim();
   if (!cleaned) return [];
 
   try {
-    const q = query(collection(db, 'publicProfiles'), limit(40));
-    const snap = await getDocs(q);
-    const results: CommonsUserPreview[] = [];
-
-    snap.docs.forEach((d) => {
-      const data = d.data();
-      const rawName = data.displayName || data.name || data.username || '';
-      const displayName = sanitizeStudentDisplayName(rawName, d.id);
-      const shortId = data.shortId ? String(data.shortId) : '';
-      const bio = data.bio || data.tagline || '';
-
-      if (
-        displayName.toLowerCase().includes(cleaned) ||
-        shortId.toLowerCase().includes(cleaned)
-      ) {
-        results.push({
-          uid: d.id,
-          displayName,
-          avatar: data.avatar || data.avatarUrl || data.equipped?.avatar || null,
-          frame: data.frame || data.equipped?.frame || null,
-          equippedAvatar: data.equipped?.avatar || data.equippedAvatar || null,
-          photoURL: data.photoURL || null,
-          shortId: shortId || null,
-          bio: bio || null,
-          followersCount: Number(data.followersCount || 0),
-          followingCount: Number(data.followingCount || 0),
-          role: data.role || 'student',
-          customRole: data.customRole || null,
-        });
-      }
+    const resp = await fetch(`/api/public-profiles?search=${encodeURIComponent(cleaned)}&limit=12`, {
+      cache: 'no-store',
     });
+    if (!resp.ok) return [];
+    const json = await resp.json();
+    const list: Record<string, any>[] = Array.isArray(json?.profiles) ? json.profiles : [];
 
-    return results.slice(0, 12);
+    return list.slice(0, 12).map((data) => {
+      const uid = String(data.uid || data.id || '');
+      const rawName = data.displayName || data.name || data.username || '';
+      const displayName = sanitizeStudentDisplayName(rawName, uid);
+      return {
+        uid,
+        displayName,
+        avatar: data.avatar || data.avatarUrl || data.equipped?.avatar || null,
+        frame: data.frame || data.equipped?.frame || null,
+        equippedAvatar: data.equipped?.avatar || data.equippedAvatar || null,
+        photoURL: data.photoURL || null,
+        shortId: data.shortId ? String(data.shortId) : null,
+        bio: data.bio || data.tagline || null,
+        followersCount: Number(data.followersCount || 0),
+        followingCount: Number(data.followingCount || 0),
+        role: data.role || 'student',
+        customRole: data.customRole || null,
+      };
+    });
   } catch {
     return [];
   }

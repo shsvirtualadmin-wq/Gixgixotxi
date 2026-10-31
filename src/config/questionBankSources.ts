@@ -1,27 +1,8 @@
-import { initializeApp, getApps } from 'firebase/app';
-import {
-  getFirestore,
-  initializeFirestore,
-  memoryLocalCache,
-  type Firestore,
-} from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, signOut, type Auth, type User } from 'firebase/auth';
-import { db as legacyDb } from '@/lib/firebase';
+import { initializeApp, getApps } from 'firebase/app';
 
-/**
- * MASTER SWITCH FOR MULTI-SOURCE QUESTION BANK
- * If false, app behaves exactly as before using solely the legacy main database.
- */
 export const ENABLE_MULTI_SOURCE_BANK = true;
-
-/**
- * FEATURE FLAG: Keep the old client-side Firestore question reader behind a flag
- * until counts are confirmed in Cloudflare D1 (`boardly-posts-db`).
- * Default: false (reads & writes use `/api/questions` backed by Cloudflare D1).
- */
-export const USE_FIRESTORE_QUESTION_READER =
-  typeof import.meta !== 'undefined' &&
-  Boolean((import.meta as unknown as { env?: Record<string, string> }).env?.VITE_USE_FIRESTORE_QUESTIONS === 'true');
+export const USE_FIRESTORE_QUESTION_READER = false;
 
 export interface BankSourceConfig {
   id: string;
@@ -57,31 +38,28 @@ export const bank2Config = {
   appId: '1:569279973107:web:15c5bd7f739112a7b99986',
 };
 
-/**
- * Adding a third source only requires adding its entry to this list!
- */
 export const BANK_SOURCE_CONFIGS: BankSourceConfig[] = [
   {
     id: 'legacy',
     name: 'Core Bank',
-    description: 'Primary Master Bank (AI Studio)',
+    description: 'Primary Master Bank (Cloudflare D1)',
     isDefaultWrite: false,
     requiresDedicatedAuth: false,
   },
   {
     id: 'bank1',
     name: 'Alpha Bank',
-    description: 'Secondary Question Bank (boardly-8c0cd)',
+    description: 'Secondary Question Bank (Cloudflare D1)',
     isDefaultWrite: false,
-    requiresDedicatedAuth: true,
+    requiresDedicatedAuth: false,
     firebaseConfig: bank1Config,
   },
   {
     id: 'bank2',
     name: 'Beta Bank',
-    description: 'Tertiary Question Bank (boardly-2)',
+    description: 'Tertiary Question Bank (Cloudflare D1)',
     isDefaultWrite: true,
-    requiresDedicatedAuth: true,
+    requiresDedicatedAuth: false,
     firebaseConfig: bank2Config,
   },
 ];
@@ -90,7 +68,7 @@ export interface ActiveBankSource {
   id: string;
   name: string;
   description: string;
-  db: Firestore;
+  db: unknown;
   auth?: Auth;
   isDefaultWrite: boolean;
   requiresDedicatedAuth: boolean;
@@ -104,7 +82,6 @@ export interface ActiveBankSource {
   };
 }
 
-// Initialize bank1 app and Firestore instance
 function getNamedBankApp(name: string, config: typeof bank1Config) {
   const existing = getApps().find((a) => a.name === name);
   if (existing) return existing;
@@ -113,83 +90,40 @@ function getNamedBankApp(name: string, config: typeof bank1Config) {
 
 const bank1App = getNamedBankApp('bank1', bank1Config);
 export const bank1Auth: Auth = getAuth(bank1App);
-export const bank1Db: Firestore = (() => {
-  try {
-    return initializeFirestore(bank1App, {
-      localCache: memoryLocalCache(),
-      ignoreUndefinedProperties: true,
-    });
-  } catch {
-    return getFirestore(bank1App);
-  }
-})();
+export const bank1Db: unknown = null;
 
-// Initialize bank2 app and Firestore instance (Beta Bank, project boardly-2)
 const bank2App = getNamedBankApp('bank2', bank2Config);
 export const bank2Auth: Auth = getAuth(bank2App);
-export const bank2Db: Firestore = (() => {
-  try {
-    return initializeFirestore(bank2App, {
-      localCache: memoryLocalCache(),
-      ignoreUndefinedProperties: true,
-    });
-  } catch {
-    return getFirestore(bank2App);
-  }
-})();
+export const bank2Db: unknown = null;
 
-if (typeof window !== 'undefined') {
-  const win = window as unknown as Record<string, unknown>;
-  win.bank1Db = bank1Db;
-  win.bank1App = bank1App;
-  win.bank2Db = bank2Db;
-  win.bank2App = bank2App;
-}
-
-/**
- * Returns all active bank sources
- */
 export function getBankSources(): ActiveBankSource[] {
-  if (!ENABLE_MULTI_SOURCE_BANK) {
-    return [
-      {
-        id: 'legacy',
-        name: 'Core Bank',
-        description: 'Primary Master Bank (AI Studio)',
-        db: legacyDb,
-        isDefaultWrite: true,
-        requiresDedicatedAuth: false,
-      },
-    ];
-  }
-
   return [
     {
       id: 'legacy',
       name: 'Core Bank',
-      description: 'Primary Master Bank (AI Studio)',
-      db: legacyDb,
+      description: 'Primary Master Bank (Cloudflare D1)',
+      db: null,
       isDefaultWrite: false,
       requiresDedicatedAuth: false,
     },
     {
       id: 'bank1',
       name: 'Alpha Bank',
-      description: 'Secondary Question Bank (boardly-8c0cd)',
-      db: bank1Db,
+      description: 'Secondary Question Bank (Cloudflare D1)',
+      db: null,
       auth: bank1Auth,
       isDefaultWrite: false,
-      requiresDedicatedAuth: true,
+      requiresDedicatedAuth: false,
       firebaseConfig: bank1Config,
     },
     {
       id: 'bank2',
       name: 'Beta Bank',
-      description: 'Tertiary Question Bank (boardly-2)',
-      db: bank2Db,
+      description: 'Tertiary Question Bank (Cloudflare D1)',
+      db: null,
       auth: bank2Auth,
       isDefaultWrite: true,
-      requiresDedicatedAuth: true,
+      requiresDedicatedAuth: false,
       firebaseConfig: bank2Config,
     },
   ];
@@ -204,7 +138,6 @@ export function getDefaultWriteSource(): ActiveBankSource {
   return sources.find((s) => s.isDefaultWrite) || sources[0];
 }
 
-// ─── SOURCE HEALTH TRACKING & DETAILED ERROR DIAGNOSTICS ─────────────────────
 export interface SourceHealthDiagnostic {
   id: string;
   name: string;
@@ -215,7 +148,7 @@ export interface SourceHealthDiagnostic {
   bySubject?: Record<string, number>;
   lastImportAt?: string | null;
   storageBackend?: 'cloudflare-d1' | 'firestore';
-  errorCode?: string; // 'permission-denied' | 'not-found' | 'unauthenticated' | 'resource-exhausted' | 'failed-precondition' | etc.
+  errorCode?: string;
   errorMessage?: string;
   operation?: string;
   lastChecked: Date;
@@ -226,7 +159,7 @@ export function extractFirestoreErrorCode(error: unknown): string {
   if (!error) return 'unknown';
   const e = error as { code?: string; message?: string; status?: string };
   if (typeof e.code === 'string') {
-    return e.code.replace('firestore/', '').toLowerCase();
+    return e.code.toLowerCase();
   }
   if (typeof e.status === 'string') {
     return e.status.toLowerCase().replace('_', '-');
@@ -244,9 +177,6 @@ export function extractFirestoreErrorCode(error: unknown): string {
   if (msg.includes('not-found') || msg.includes('not found')) {
     return 'not-found';
   }
-  if (msg.includes('failed-precondition') || msg.includes('requires an index')) {
-    return 'failed-precondition';
-  }
   if (msg.includes('unavailable') || msg.includes('network') || msg.includes('failed to fetch')) {
     return 'unavailable';
   }
@@ -261,12 +191,6 @@ export function recordSourceFailure(sourceId: string, error?: unknown, operation
   const errMsg = (error as { message?: string })?.message || String(error || 'Unknown error');
   const src = getBankSource(sourceId);
   const existing = sourceHealthMap.get(sourceId);
-
-  // Log real Firestore error code and message to browser console
-  console.error(
-    `[Bank Source Health: ${sourceId}] ${operation ? `${operation} ` : ''}failed with code [${code}]: ${errMsg}`,
-    error
-  );
 
   sourceHealthMap.set(sourceId, {
     id: sourceId,
@@ -376,147 +300,74 @@ export function subscribeBankSourceHealth(
   };
 }
 
-/**
- * Actively probes all bank sources with a lightweight query to test real-time connectivity, permissions, and question counts
- */
 export async function checkAllBankSourcesHealth(): Promise<SourceHealthDiagnostic[]> {
   const sources = getBankSources();
-
-  if (!USE_FIRESTORE_QUESTION_READER) {
-    const startTime = Date.now();
-    try {
-      const resp = await fetch('/api/questions/health');
-      if (!resp.ok) {
-        throw new Error(`D1 /api/questions/health returned HTTP ${resp.status}`);
-      }
-      const data = await resp.json();
-      const latencyMs = Date.now() - startTime;
-      const banksData = (data?.banks || {}) as Record<
-        string,
-        {
-          total?: number;
-          published?: number;
-          needsReview?: number;
-          bySubject?: Record<string, number>;
-          lastImportAt?: string | null;
-        }
-      >;
-
-      const results: SourceHealthDiagnostic[] = sources.map((src) => {
-        const b = banksData[src.id] || {};
-        const count = Number(b.total ?? 0);
-        const diag: SourceHealthDiagnostic = {
-          id: src.id,
-          name: src.name,
-          healthy: true,
-          questionCount: count,
-          publishedCount: Number(b.published ?? count),
-          needsReviewCount: Number(b.needsReview ?? 0),
-          bySubject: b.bySubject || {},
-          lastImportAt: b.lastImportAt || data?.lastImportAt || null,
-          storageBackend: 'cloudflare-d1',
-          operation: 'Cloudflare D1 (boardly-posts-db)',
-          lastChecked: new Date(),
-          latencyMs,
-        };
-        sourceHealthMap.set(src.id, diag);
-        return diag;
-      });
-
-      notifyHealthListeners();
-      return results;
-    } catch (err) {
-      const errMsg = (err as { message?: string })?.message || String(err || 'Unknown D1 error');
-      const results: SourceHealthDiagnostic[] = sources.map((src) => {
-        const diag: SourceHealthDiagnostic = {
-          id: src.id,
-          name: src.name,
-          healthy: false,
-          errorCode: 'unavailable',
-          errorMessage: errMsg,
-          storageBackend: 'cloudflare-d1',
-          operation: 'GET /api/questions/health',
-          lastChecked: new Date(),
-          latencyMs: Date.now() - startTime,
-        };
-        sourceHealthMap.set(src.id, diag);
-        return diag;
-      });
-      notifyHealthListeners();
-      return results;
+  const startTime = Date.now();
+  try {
+    const resp = await fetch('/api/questions/health');
+    if (!resp.ok) {
+      throw new Error(`D1 /api/questions/health returned HTTP ${resp.status}`);
     }
-  }
-
-  const results: SourceHealthDiagnostic[] = [];
-
-  for (const src of sources) {
-    const startTime = Date.now();
-    try {
-      const { collection, getDocs, limit, query, doc, getDoc } = await import('firebase/firestore');
-
-      // 1. Probe subject pool: check if collection read works
-      const testColl = collection(src.db, 'questions_mathematics');
-      await getDocs(query(testColl, limit(1)));
-
-      // 2. Probe stats document read & compute total question counts
-      const statsRef = doc(src.db, 'stats', 'questionCounts');
-      const statsSnap = await getDoc(statsRef);
-      let count = 0;
-      if (statsSnap.exists()) {
-        const data = statsSnap.data();
-        const subCounts = (data.subjectCounts || {}) as Record<string, number>;
-        count = Object.values(subCounts).reduce((acc, curr) => acc + (Number(curr) || 0), 0);
-      } else if (src.id === 'legacy') {
-        // Fallback probe for legacy bank questions collection
-        try {
-          const qSnap = await getDocs(query(collection(src.db, 'questions'), limit(10)));
-          count = qSnap.size;
-        } catch {
-          // Non-fatal
-        }
+    const data = await resp.json();
+    const latencyMs = Date.now() - startTime;
+    const banksData = (data?.banks || {}) as Record<
+      string,
+      {
+        total?: number;
+        published?: number;
+        needsReview?: number;
+        bySubject?: Record<string, number>;
+        lastImportAt?: string | null;
       }
+    >;
 
-      const latencyMs = Date.now() - startTime;
-      recordSourceSuccess(src.id, 'probe check', latencyMs, count);
-      results.push({
+    const results: SourceHealthDiagnostic[] = sources.map((src) => {
+      const b = banksData[src.id] || {};
+      const count = Number(b.total ?? 0);
+      const diag: SourceHealthDiagnostic = {
         id: src.id,
         name: src.name,
         healthy: true,
         questionCount: count,
-        storageBackend: 'firestore',
+        publishedCount: Number(b.published ?? count),
+        needsReviewCount: Number(b.needsReview ?? 0),
+        bySubject: b.bySubject || {},
+        lastImportAt: b.lastImportAt || data?.lastImportAt || null,
+        storageBackend: 'cloudflare-d1',
+        operation: 'Cloudflare D1 (boardly-posts-db)',
         lastChecked: new Date(),
         latencyMs,
-      });
-    } catch (err) {
-      const code = extractFirestoreErrorCode(err);
-      const errMsg = (err as { message?: string })?.message || String(err || 'Unknown error');
-      recordSourceFailure(src.id, err, 'probe check');
-      results.push({
+      };
+      sourceHealthMap.set(src.id, diag);
+      return diag;
+    });
+
+    notifyHealthListeners();
+    return results;
+  } catch (err) {
+    const errMsg = (err as { message?: string })?.message || String(err || 'Unknown D1 error');
+    const results: SourceHealthDiagnostic[] = sources.map((src) => {
+      const diag: SourceHealthDiagnostic = {
         id: src.id,
         name: src.name,
         healthy: false,
-        questionCount: undefined,
-        errorCode: code,
+        errorCode: 'unavailable',
         errorMessage: errMsg,
-        storageBackend: 'firestore',
-        operation: 'probe query on questions_mathematics / stats',
+        storageBackend: 'cloudflare-d1',
+        operation: 'GET /api/questions/health',
         lastChecked: new Date(),
         latencyMs: Date.now() - startTime,
-      });
-    }
+      };
+      sourceHealthMap.set(src.id, diag);
+      return diag;
+    });
+    notifyHealthListeners();
+    return results;
   }
-
-  return results;
 }
 
-// ─── DEDICATED ADMIN AUTH (IN-MEMORY SESSION) ───────────────────────────────
-// Passwords are NEVER stored. Auth sessions are maintained in memory by Firebase Auth.
-
-// ─── ALPHA BANK (bank1, boardly-8c0cd)
 export function isBank1Unlocked(): boolean {
-  if (!USE_FIRESTORE_QUESTION_READER) return true;
-  if (!ENABLE_MULTI_SOURCE_BANK) return true;
-  return Boolean(bank1Auth.currentUser);
+  return true;
 }
 
 export function getBank1AdminUser(): User | null {
@@ -533,11 +384,8 @@ export async function lockBank1(): Promise<void> {
   await signOut(bank1Auth);
 }
 
-// ─── BETA BANK (bank2, boardly-2)
 export function isBank2Unlocked(): boolean {
-  if (!USE_FIRESTORE_QUESTION_READER) return true;
-  if (!ENABLE_MULTI_SOURCE_BANK) return true;
-  return Boolean(bank2Auth.currentUser);
+  return true;
 }
 
 export function getBank2AdminUser(): User | null {
@@ -554,13 +402,7 @@ export async function lockBank2(): Promise<void> {
   await signOut(bank2Auth);
 }
 
-// ─── UNIFIED UNLOCK HELPERS (Supports all sources)
-export function isBankUnlocked(sourceId: string): boolean {
-  if (!USE_FIRESTORE_QUESTION_READER) return true;
-  if (!ENABLE_MULTI_SOURCE_BANK) return true;
-  if (sourceId === 'legacy') return true;
-  if (sourceId === 'bank1') return isBank1Unlocked();
-  if (sourceId === 'bank2') return isBank2Unlocked();
+export function isBankUnlocked(_sourceId: string): boolean {
   return true;
 }
 
@@ -574,4 +416,3 @@ export async function lockBankSource(sourceId: string): Promise<void> {
   if (sourceId === 'bank1') return lockBank1();
   if (sourceId === 'bank2') return lockBank2();
 }
-

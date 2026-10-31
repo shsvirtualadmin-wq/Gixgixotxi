@@ -1,18 +1,4 @@
-import {
-  collection,
-  doc,
-  getDocs,
-  getDoc,
-  setDoc,
-  updateDoc,
-  query,
-  where,
-  orderBy,
-  serverTimestamp,
-  writeBatch,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { syncPublicProfile } from '@/services/publicProfileService';
+import { api } from '@/lib/api';
 
 export interface NameRequestDoc {
   id: string;
@@ -27,7 +13,7 @@ export interface NameRequestDoc {
 }
 
 /**
- * Submits a new display name request to the admin for review.
+ * Submits a new display name request to the admin for review via D1.
  */
 export async function submitNameRequest(params: {
   uid: string;
@@ -39,66 +25,36 @@ export async function submitNameRequest(params: {
     throw new Error('User ID and requested name are required.');
   }
 
-  const cleanRequested = params.requestedName.trim();
-  const requestRef = doc(collection(db, 'nameRequests'));
-
-  const data: Omit<NameRequestDoc, 'id'> = {
-    uid: params.uid,
-    requestedName: cleanRequested,
+  const res = await api.post<{ success: boolean; id: string }>('/api/name-requests', {
+    requestedName: params.requestedName.trim(),
     currentDisplayName: params.currentDisplayName || undefined,
     userEmail: params.userEmail || undefined,
-    status: 'pending',
-    createdAt: serverTimestamp(),
-  };
+  });
 
-  await setDoc(requestRef, data);
-
-  return { success: true, id: requestRef.id };
+  return { success: true, id: res.id || '' };
 }
 
 /**
- * Fetches all name requests for the admin panel.
+ * Fetches all name requests for the admin panel from D1.
  */
-export async function fetchNameRequests(filterStatus?: 'pending' | 'approved' | 'rejected' | 'all'): Promise<NameRequestDoc[]> {
+export async function fetchNameRequests(
+  filterStatus?: 'pending' | 'approved' | 'rejected' | 'all'
+): Promise<NameRequestDoc[]> {
   try {
-    const colRef = collection(db, 'nameRequests');
-    let q;
-
-    if (filterStatus && filterStatus !== 'all') {
-      q = query(colRef, where('status', '==', filterStatus), orderBy('createdAt', 'desc'));
-    } else {
-      q = query(colRef, orderBy('createdAt', 'desc'));
-    }
-
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => ({
-      id: d.id,
-      ...(d.data() as Omit<NameRequestDoc, 'id'>),
-    }));
+    const qs = filterStatus && filterStatus !== 'all' ? `?status=${encodeURIComponent(filterStatus)}` : '';
+    const res = await api.get<{ requests: NameRequestDoc[] }>(`/api/name-requests${qs}`);
+    return Array.isArray(res.requests) ? res.requests : [];
   } catch (err) {
     console.warn('[nameRequestService] error fetching name requests:', err);
-    // Fallback without orderBy if index is still building
-    try {
-      const snap = await getDocs(collection(db, 'nameRequests'));
-      const list = snap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<NameRequestDoc, 'id'>),
-      }));
-      if (filterStatus && filterStatus !== 'all') {
-        return list.filter((r) => r.status === filterStatus);
-      }
-      return list;
-    } catch {
-      return [];
-    }
+    return [];
   }
 }
 
 /**
- * Approves a name request:
- * 1. Sets status to 'approved' in nameRequests/{requestId}
+ * Approves a name request in D1:
+ * 1. Sets status to 'approved' in name_requests
  * 2. Updates users/{uid} displayName
- * 3. Updates publicProfiles/{uid} displayName
+ * 3. Updates public_profiles/{uid} displayName
  */
 export async function approveNameRequest(
   requestId: string,
@@ -106,52 +62,25 @@ export async function approveNameRequest(
   approvedName: string,
   reviewerEmail?: string | null
 ): Promise<{ success: boolean }> {
-  const requestRef = doc(db, 'nameRequests', requestId);
-  const userRef = doc(db, 'users', uid);
-  const now = serverTimestamp();
-
-  // 1. Update request status
-  await updateDoc(requestRef, {
+  await api.post(`/api/admin/name-requests/${encodeURIComponent(requestId)}/review`, {
     status: 'approved',
-    reviewedAt: now,
+    uid,
+    approvedName,
     reviewedBy: reviewerEmail || 'admin',
   });
-
-  // 2. Update student account
-  try {
-    await updateDoc(userRef, {
-      displayName: approvedName,
-      updatedAt: now,
-    });
-  } catch (err) {
-    console.warn('[nameRequestService] update user displayName error:', err);
-  }
-
-  // 3. Sync to publicProfiles
-  try {
-    await syncPublicProfile(uid, {
-      displayName: approvedName,
-    });
-  } catch (err) {
-    console.warn('[nameRequestService] sync public profile error:', err);
-  }
-
   return { success: true };
 }
 
 /**
- * Rejects a name request.
+ * Rejects a name request in D1.
  */
 export async function rejectNameRequest(
   requestId: string,
   reviewerEmail?: string | null
 ): Promise<{ success: boolean }> {
-  const requestRef = doc(db, 'nameRequests', requestId);
-  await updateDoc(requestRef, {
+  await api.post(`/api/admin/name-requests/${encodeURIComponent(requestId)}/review`, {
     status: 'rejected',
-    reviewedAt: serverTimestamp(),
     reviewedBy: reviewerEmail || 'admin',
   });
-
   return { success: true };
 }

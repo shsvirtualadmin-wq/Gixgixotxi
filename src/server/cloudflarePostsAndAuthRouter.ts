@@ -15,6 +15,7 @@ import {
   type GeminiKeyStatusRecord,
 } from '../services/botContentGenerator';
 import { validateAndNormalizeQuestionMath } from '../utils/katexValidator';
+import { tryHandleD1PagesFunctionRoute } from './localD1Adapter';
 
 const R2_PUBLIC_BASE_URL = (
   process.env.R2_PUBLIC_BASE_URL ||
@@ -5045,7 +5046,15 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
       }
     }
 
-    // 2. Match registered API / sitemap / R2 routes
+    // 2. Delegate new D1 Pages Functions routes (/api/users, /api/wallet, /api/shop, /api/admin, etc.)
+    try {
+      const handledByD1PagesFn = await tryHandleD1PagesFunctionRoute(req, res);
+      if (handledByD1PagesFn) return;
+    } catch (d1Err) {
+      console.error('[cloudflareMiddleware] D1 Pages Function route error:', d1Err);
+    }
+
+    // 3. Match registered API / sitemap / R2 routes
     const method = String(req.method || 'GET').toUpperCase();
     if (
       method === 'OPTIONS' &&

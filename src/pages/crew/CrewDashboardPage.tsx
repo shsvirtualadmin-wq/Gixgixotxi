@@ -12,8 +12,7 @@ import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { updateCrewSettings } from '@/services/crewService';
 import { getPast7PKTDateKeys, getPKTDateKey } from '@/hooks/usePKTDate';
 import { useSmartBack } from '@/utils/homeUrl';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import {
   ArrowLeft,
   Share2,
@@ -177,11 +176,10 @@ export function CrewDashboardPage() {
         const dateKeys = getPast7PKTDateKeys();
         const promises = dateKeys.map(async (key) => {
           try {
-            const snap = await getDoc(doc(db, 'users', user.uid, 'usage', key));
-            if (snap.exists()) {
-              const d = snap.data();
-              return Number(d.questionsSolved || 0);
-            }
+            const res = await api.get<{ usage?: { questionsSolved?: number } }>(
+              `/api/usage?uid=${encodeURIComponent(user.uid)}&dateKey=${encodeURIComponent(key)}`
+            );
+            return Number(res.usage?.questionsSolved || 0);
           } catch {
             // Non-critical read failure
           }

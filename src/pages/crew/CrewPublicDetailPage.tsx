@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Users, Flame, Shield, Lock, ArrowRight } from 'lucide-react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -27,11 +26,13 @@ export const CrewPublicDetailPage: React.FC = () => {
       return;
     }
     setLoading(true);
-    getDoc(doc(db, 'crews', crewId))
-      .then((snap) => {
+    api
+      .get<{ crew?: Record<string, unknown> }>(`/api/crews/${encodeURIComponent(crewId)}`)
+      .then((res) => {
         if (!mounted) return;
-        if (snap.exists()) {
-          setCrew({ id: snap.id, ...snap.data() });
+        const c = res?.crew || (res && 'id' in res ? (res as unknown as Record<string, unknown>) : null);
+        if (c) {
+          setCrew(c);
         } else {
           setCrew(null);
         }

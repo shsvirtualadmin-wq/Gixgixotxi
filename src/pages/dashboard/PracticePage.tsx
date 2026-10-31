@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo, useRef, memo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useUserProfile } from '@/hooks/useUserProfile';
-import { collection, doc, getDoc, getDocs, query, where, limit, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import {
@@ -30,15 +29,12 @@ import { isQuotaExhaustedError } from '@/utils/quota';
 import {
   getAllSubjects,
   formatSubjectName,
-  isSubjectPoolSupported,
-  getSubjectPoolCollection,
 } from '@/constants/taxonomy';
 import {
   TARGET_UNIVERSITY_CRITERIA,
   getUniversityCriteria,
 } from '@/constants/universityCriteria';
 import {
-  USE_FIRESTORE_QUESTION_READER,
   getMultiSourceQuestionCounts,
 } from '@/services/multiSourceQuestionBank';
 
@@ -125,14 +121,15 @@ export function PracticePage() {
   const isPro = effectivePlan.isUnlimited;
   const testsLeft = isPro ? 'Unlimited' : Math.max(0, FREE_DAILY_TESTS - todayAttempts);
 
-  // Fetch today's usage from Firestore
+  // Fetch today's usage from D1
   useEffect(() => {
     if (!user) return;
     const dateKey = getPKTDateKey();
-    getDoc(doc(db, 'users', user.uid, 'usage', dateKey))
-      .then((snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
+    api
+      .get<{ usage?: { testsStarted?: number; practiceAttempts?: number } }>(`/api/usage?dateKey=${encodeURIComponent(dateKey)}`)
+      .then((res) => {
+        const data = res.usage;
+        if (data) {
           setTodayAttempts(Number(data?.testsStarted ?? data?.practiceAttempts ?? 0));
         }
       })
@@ -199,59 +196,19 @@ export function PracticePage() {
 
       // Pre-flight check: verify required subjects have questions
       try {
-        if (!USE_FIRESTORE_QUESTION_READER) {
-          const countsDoc = await getMultiSourceQuestionCounts();
-          const subCounts = countsDoc.subjectCounts || {};
-          for (const split of criteria.subjectsSplit) {
-            const subSlug = split.subject.toLowerCase();
-            if ((subCounts[subSlug] || 0) <= 0) {
-              if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
-              setLaunchError(
-                `Not enough questions yet for ${formatSubjectName(subSlug)}. Please choose another subject or check back soon.`
-              );
-              setLaunching(false);
-              setLaunchingType(null);
-              setLaunchStatus(null);
-              return;
-            }
-          }
-        } else {
-          const questionsColl = collection(db, 'questions');
-          for (const split of criteria.subjectsSplit) {
-            const subSlug = split.subject.toLowerCase();
-            let hasQuestions = false;
-
-            if (isSubjectPoolSupported(subSlug)) {
-              const poolColl = getSubjectPoolCollection(subSlug);
-              const poolSnap = await getDocs(
-                query(collection(db, poolColl), where('status', '==', 'published'), limit(1))
-              );
-              hasQuestions = !poolSnap.empty;
-            }
-
-            if (!hasQuestions) {
-              const qSnap = await getDocs(
-                query(
-                  questionsColl,
-                  where('status', '==', 'published'),
-                  where('active', '==', true),
-                  where('subject', '==', subSlug),
-                  limit(1)
-                )
-              );
-              hasQuestions = !qSnap.empty;
-            }
-
-            if (!hasQuestions) {
-              if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
-              setLaunchError(
-                `Not enough questions yet for ${formatSubjectName(subSlug)}. Please choose another subject or check back soon.`
-              );
-              setLaunching(false);
-              setLaunchingType(null);
-              setLaunchStatus(null);
-              return;
-            }
+        const countsDoc = await getMultiSourceQuestionCounts();
+        const subCounts = countsDoc.subjectCounts || {};
+        for (const split of criteria.subjectsSplit) {
+          const subSlug = split.subject.toLowerCase();
+          if ((subCounts[subSlug] || 0) <= 0) {
+            if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
+            setLaunchError(
+              `Not enough questions yet for ${formatSubjectName(subSlug)}. Please choose another subject or check back soon.`
+            );
+            setLaunching(false);
+            setLaunchingType(null);
+            setLaunchStatus(null);
+            return;
           }
         }
       } catch (err: unknown) {
@@ -267,8 +224,7 @@ export function PracticePage() {
       title = `${formatSubjectName(subjectSlugToUse)} Drill`;
     }
 
-    const newAttemptRef = doc(collection(db, 'attempts'));
-    const attemptId = newAttemptRef.id;
+    const attemptId = `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     const attemptPayload = {
       id: attemptId,
@@ -284,7 +240,7 @@ export function PracticePage() {
       durationSeconds: duration,
       timed: true,
       difficulty: customConfig?.difficulty || drillDifficulty,
-      createdAt: serverTimestamp(),
+      createdAt: new Date().toISOString(),
     };
 
     try {

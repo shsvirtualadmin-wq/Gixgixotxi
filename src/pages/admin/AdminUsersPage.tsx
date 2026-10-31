@@ -14,7 +14,6 @@ import { backfillAllPublicProfiles } from '@/services/publicProfileService';
 import { formatStudentId } from '@/utils/shortId';
 import { maskEmail } from '@/utils/privacy';
 import type { UserProfile } from '@/types';
-import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 
 let cachedAdminUsers: UserProfile[] = [];
 
@@ -25,7 +24,8 @@ export function AdminUsersPage() {
   const [allUsers, setAllUsers] = useState<UserProfile[]>(() => cachedAdminUsers);
   const [loading, setLoading] = useState(() => cachedAdminUsers.length === 0);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [lastDoc, setLastDoc] = useState<any>(null);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<AdminDiagnosticError | null>(null);
 

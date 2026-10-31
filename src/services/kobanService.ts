@@ -1,17 +1,4 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  updateDoc,
-  addDoc,
-  query,
-  where,
-  limit,
-  runTransaction,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import type { CosmeticItem } from '@/data/cosmeticsCatalog';
 import type { KobanRequest, WalletLedgerEntry } from '@/types';
 import { logAdminAction } from './adminService';
@@ -29,187 +16,73 @@ export interface WalletData {
 }
 
 /**
- * Executes a purchase transaction:
- * - Checks wallet balance >= item.priceKobans
- * - Checks item is not already owned
- * - Decrements wallet balance by exactly catalog price
- * - Appends item to owned[]
- * - Appends immutable ledger document in wallets/{uid}/ledger/{entryId}
- */
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '@/lib/firebase';
-
-/**
- * Purchases and unlocks a cosmetic item:
- * - Calls callable Cloud Function "unlockItem" which runs an atomic Firestore transaction.
- * - Server validates price, balance, and prevents double unlocks.
- * - Deducts Kobans and writes to users/{uid}/unlocked/{itemId}.
- * - Emits clear, helpful error messages for the user.
+ * Purchases and unlocks a cosmetic item via 100% server-side atomic D1 batch in `POST /api/shop/purchase`:
+ * - Server looks up price from `store_items` / catalog (never trusts client price)
+ * - Checks item is active and not already owned
+ * - Deducts balance and writes `wallet_ledger` + `user_unlocked_items` atomically
  */
 export async function purchaseCosmeticItem(
   userId: string,
   item: CosmeticItem,
-  isSuperAdmin = false
+  _isSuperAdmin = false,
+  couponCode?: string
 ): Promise<{ success: boolean; newBalance: number }> {
   if (!userId) throw new Error('You must be signed in to purchase cosmetics.');
 
-  const userRef = doc(db, 'users', userId);
-  const walletRef = doc(db, 'wallets', userId);
-  const unlockedDocRef = doc(db, 'users', userId, 'unlocked', item.id);
-  const storeItemRef = doc(db, 'storeItems', item.id);
-  const legacyStoreItemRef = doc(db, 'store_items', item.id);
+  const res = await api.post<{
+    success: boolean;
+    newBalance: number;
+    owned?: string[];
+  }>('/api/shop/purchase', {
+    itemId: item.id,
+    couponCode: couponCode || undefined,
+  });
 
-  try {
-    const newBalance = await runTransaction(db, async (tx) => {
-      // 1. Reads
-      const [userSnap, walletSnap, unlockedSnap] = await Promise.all([
-        tx.get(userRef),
-        tx.get(walletRef),
-        tx.get(unlockedDocRef),
-      ]);
+  return {
+    success: Boolean(res?.success ?? true),
+    newBalance: Number(res?.newBalance ?? 0),
+  };
+}
 
-      if (unlockedSnap.exists()) {
-        throw new Error(`You have already unlocked "${item.name}".`);
-      }
+export async function validateShopCoupon(
+  code: string,
+  itemId?: string
+): Promise<{
+  valid: boolean;
+  code?: string;
+  discountPercent?: number;
+  discountKobans?: number;
+  bonusKobans?: number;
+  finalPrice?: number;
+  error?: string;
+}> {
+  const res = await api.post<{
+    valid: boolean;
+    code?: string;
+    discountPercent?: number;
+    discountKobans?: number;
+    bonusKobans?: number;
+    finalPrice?: number;
+    error?: string;
+  }>('/api/shop/coupons/validate', { code, itemId });
+  return res;
+}
 
-      const walletData = walletSnap.exists() ? walletSnap.data() : null;
-      const currentOwned: string[] = Array.isArray(walletData?.owned) ? walletData.owned : [];
-      if (currentOwned.includes(item.id)) {
-        throw new Error(`You already own "${item.name}".`);
-      }
-
-      // Check item price from Firestore store items if present
-      let effectivePrice = item.priceKobans;
-      const storeItemSnap = await tx.get(storeItemRef);
-      if (storeItemSnap.exists()) {
-        const sData = storeItemSnap.data();
-        if (sData.active === false && !isSuperAdmin) {
-          throw new Error(`"${item.name}" is currently inactive in the Boardly Store.`);
-        }
-        if (typeof sData.priceKobans === 'number') {
-          effectivePrice = Math.max(0, sData.priceKobans);
-        }
-      } else {
-        const legacySnap = await tx.get(legacyStoreItemRef);
-        if (legacySnap.exists()) {
-          const sData = legacySnap.data();
-          if (sData.active === false && !isSuperAdmin) {
-            throw new Error(`"${item.name}" is currently inactive in the Boardly Store.`);
-          }
-          if (typeof sData.priceKobans === 'number') {
-            effectivePrice = Math.max(0, sData.priceKobans);
-          }
-        }
-      }
-
-      if (isSuperAdmin) {
-        effectivePrice = 0;
-      }
-
-      // Read current balance from wallets doc and users doc (use highest synced balance)
-      const userData = userSnap.exists() ? userSnap.data() : null;
-      const userKobans =
-        userData && typeof userData.kobans === 'number'
-          ? userData.kobans
-          : userData && typeof userData.kobanBalance === 'number'
-          ? userData.kobanBalance
-          : 0;
-      const walletBalance =
-        walletData && typeof walletData.balance === 'number' ? walletData.balance : 0;
-      const currentBalance = Math.max(userKobans, walletBalance);
-
-      if (currentBalance < effectivePrice) {
-        throw new Error(
-          `Insufficient Kobans. You have ${currentBalance.toLocaleString()} Kobans, but ${item.name} costs ${effectivePrice.toLocaleString()} Kobans.`
-        );
-      }
-
-      const balanceAfter = Math.max(0, currentBalance - effectivePrice);
-      const updatedOwned = Array.from(new Set([...currentOwned, item.id]));
-
-      // 2. Writes in same atomic batch:
-      // A. Update users doc (decrement only kobans and kobanBalance down)
-      if (userSnap.exists()) {
-        tx.update(userRef, {
-          kobans: balanceAfter,
-          kobanBalance: balanceAfter,
-          updatedAt: serverTimestamp(),
-        });
-      } else {
-        tx.set(
-          userRef,
-          {
-            uid: userId,
-            kobans: balanceAfter,
-            kobanBalance: balanceAfter,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      }
-
-      // B. Create users/{uid}/unlocked/{itemId}
-      tx.set(unlockedDocRef, {
-        itemId: item.id,
-        itemName: item.name,
-        pricePaid: effectivePrice,
-        unlockedAt: serverTimestamp(),
-      });
-
-      // C. Update wallets/{uid} balance & owned
-      if (walletSnap.exists()) {
-        tx.update(walletRef, {
-          balance: balanceAfter,
-          owned: updatedOwned,
-          updatedAt: serverTimestamp(),
-        });
-      } else {
-        tx.set(
-          walletRef,
-          {
-            balance: balanceAfter,
-            owned: updatedOwned,
-            equipped: { effect: null, frame: null, nameplate: null, avatar: null, banner: null },
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      }
-
-      // D. Append immutable ledger document
-      const ledgerEntryRef = doc(
-        collection(db, 'wallets', userId, 'ledger'),
-        `purchase_${item.id}_${Date.now()}`
-      );
-      tx.set(ledgerEntryRef, {
-        id: ledgerEntryRef.id,
-        type: 'purchase',
-        amount: -effectivePrice,
-        balanceAfter,
-        itemId: item.id,
-        itemName: item.name,
-        reason: isSuperAdmin ? `Super Admin unlock: ${item.name}` : `Store purchase: ${item.name}`,
-        timestamp: serverTimestamp(),
-      });
-
-      return balanceAfter;
-    });
-
-    return { success: true, newBalance };
-  } catch (err: any) {
-    console.error(
-      '[kobanService] purchaseCosmeticItem error:',
-      err?.code || 'ERROR',
-      `users/${userId}/unlocked/${item.id}`,
-      err
-    );
-    throw err;
-  }
+export async function redeemShopCoupon(code: string): Promise<{
+  success: boolean;
+  newBalance: number;
+  bonusKobans: number;
+}> {
+  const res = await api.post<{
+    success: boolean;
+    newBalance: number;
+    bonusKobans: number;
+  }>('/api/shop/coupons/redeem', { code });
+  return res;
 }
 
 /**
- * Creates a pending Koban purchase verification request for student.
- * Minimum 500 Kobans (PKR 50), whole multiples of 10.
+ * Creates a pending Koban purchase verification request in D1 (`koban_requests`).
  */
 export async function submitKobanRequest(params: {
   userId: string;
@@ -235,7 +108,7 @@ export async function submitKobanRequest(params: {
 
   const pkrAmount = Math.floor(amount / 10);
 
-  const docRef = await addDoc(collection(db, 'kobanRequests'), {
+  const res = await api.post<{ id: string }>('/api/koban-requests', {
     userId: params.userId,
     userEmail: params.userEmail || '',
     userName: params.userName || '',
@@ -244,33 +117,21 @@ export async function submitKobanRequest(params: {
     transactionId: params.transactionId.trim(),
     paymentMethod: params.paymentMethod,
     note: params.note || '',
-    status: 'pending',
-    createdAt: serverTimestamp(),
   });
 
-  return docRef.id;
+  return String(res?.id || '');
 }
 
 /**
- * Fetches Koban requests for the Admin portal.
+ * Fetches Koban requests for the Admin portal from D1.
  */
 export async function fetchKobanRequests(statusFilter = 'all'): Promise<KobanRequest[]> {
   try {
-    const colRef = collection(db, 'kobanRequests');
-    const q =
-      statusFilter !== 'all'
-        ? query(colRef, where('status', '==', statusFilter), limit(100))
-        : query(colRef, limit(100));
-
-    const snap = await getDocs(q);
-    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as KobanRequest));
-    // Sort client-side by createdAt desc
-    list.sort((a, b) => {
-      const tA = (a.createdAt as { seconds?: number })?.seconds || 0;
-      const tB = (b.createdAt as { seconds?: number })?.seconds || 0;
-      return tB - tA;
-    });
-    return list;
+    const res = await api.get<{ requests?: KobanRequest[] }>(
+      `/api/admin/kobans/requests?status=${encodeURIComponent(statusFilter)}`,
+      { silentToast: true }
+    );
+    return Array.isArray(res?.requests) ? res.requests : [];
   } catch (err) {
     console.error('[kobanService] fetchKobanRequests error:', err);
     return [];
@@ -278,10 +139,7 @@ export async function fetchKobanRequests(statusFilter = 'all'): Promise<KobanReq
 }
 
 /**
- * Superadmin approves a pending Koban request.
- * - Allows modifying approvedAmount (if student sent more or less).
- * - Credits student wallet + appends ledger entry.
- * - Notifies student.
+ * Superadmin approves a pending Koban request via D1 atomic batch.
  */
 export async function approveKobanRequest(
   superadminEmail: string,
@@ -294,96 +152,18 @@ export async function approveKobanRequest(
   const amount = Math.floor(approvedAmount);
   if (amount <= 0) throw new Error('Approved amount must be greater than zero');
 
-  const walletRef = doc(db, 'wallets', targetUserId);
-  const userRef = doc(db, 'users', targetUserId);
-  const reqRef = doc(db, 'kobanRequests', requestId);
-
-  await runTransaction(db, async (tx) => {
-    const [walletSnap, userSnap] = await Promise.all([
-      tx.get(walletRef),
-      tx.get(userRef),
-    ]);
-    let curBalance = 0;
-    let curOwned: string[] = [];
-    let curEquipped = { effect: null, frame: null, nameplate: null, avatar: null, banner: null };
-
-    if (walletSnap.exists()) {
-      const wData = walletSnap.data();
-      curBalance = typeof wData.balance === 'number' ? wData.balance : 0;
-      curOwned = Array.isArray(wData.owned) ? wData.owned : [];
-      curEquipped = wData.equipped || curEquipped;
-    } else if (userSnap.exists()) {
-      const uData = userSnap.data();
-      curBalance = typeof uData.kobans === 'number' ? uData.kobans : 0;
-    }
-
-    const newBalance = curBalance + amount;
-
-    // 1. Update request status
-    tx.update(reqRef, {
-      status: 'approved',
-      grantedAmount: amount,
-      approvedAt: serverTimestamp(),
-      approvedBy: superadminEmail,
-    });
-
-    // 2. Credit wallet & sync users/{uid}.kobans
-    tx.set(
-      walletRef,
-      {
-        balance: newBalance,
-        owned: curOwned,
-        equipped: curEquipped,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    tx.set(
-      userRef,
-      {
-        kobans: newBalance,
-        kobanBalance: newBalance,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    // 3. Write ledger
-    const ledgerRef = doc(
-      collection(db, 'wallets', targetUserId, 'ledger'),
-      `koban_req_${requestId}`
-    );
-    tx.set(ledgerRef, {
-      id: ledgerRef.id,
-      type: 'grant',
-      amount,
-      balanceAfter: newBalance,
-      reason: `Koban payment verified (Tx: ${txId || requestId})`,
-      adminEmail: superadminEmail,
-      timestamp: serverTimestamp(),
-    });
+  await api.post(`/api/admin/kobans/requests/${encodeURIComponent(requestId)}/approve`, {
+    targetUserId,
+    approvedAmount: amount,
+    txId,
   });
-
-  // Create notification for student
-  try {
-    await addDoc(collection(db, 'notifications'), {
-      userId: targetUserId,
-      title: 'Kobans Credited! 🪙',
-      message: `Your payment was verified! +${amount.toLocaleString()} Kobans have been added to your balance. Head over to the Boardly Store to unlock custom frames, nameplates, and aura effects!`,
-      read: false,
-      createdAt: serverTimestamp(),
-    });
-  } catch (nErr) {
-    console.warn('[kobanService] Notification error:', nErr);
-  }
 
   await logAdminAction(
     superadminEmail,
     'approve_koban_request',
     { requestId, targetUserId, amount, txId },
     targetUserId
-  );
+  ).catch(() => {});
 }
 
 /**
@@ -395,38 +175,21 @@ export async function rejectKobanRequest(
   targetUserId: string,
   reason: string
 ): Promise<void> {
-  const reqRef = doc(db, 'kobanRequests', requestId);
-  await updateDoc(reqRef, {
-    status: 'rejected',
-    rejectionReason: reason || 'Transaction could not be verified on mobile banking portal.',
-    rejectedAt: serverTimestamp(),
-    rejectedBy: superadminEmail,
+  await api.post(`/api/admin/kobans/requests/${encodeURIComponent(requestId)}/reject`, {
+    targetUserId,
+    reason: reason || 'Transaction could not be verified on mobile banking portal.',
   });
-
-  // Notify student
-  try {
-    await addDoc(collection(db, 'notifications'), {
-      userId: targetUserId,
-      title: 'Koban Request Update',
-      message: `Your Kobans request could not be approved: ${reason}`,
-      read: false,
-      createdAt: serverTimestamp(),
-    });
-  } catch (nErr) {
-    console.warn('[kobanService] Notification error:', nErr);
-  }
 
   await logAdminAction(
     superadminEmail,
     'reject_koban_request',
     { requestId, targetUserId, reason },
     targetUserId
-  );
+  ).catch(() => {});
 }
 
 /**
- * Superadmin manual adjustment: grant or deduct any integer amount.
- * NO CAP: positive whole number checks only, with confirmation dialog.
+ * Superadmin manual adjustment: grant or deduct any integer amount in D1.
  */
 export async function adminAdjustKobans(
   superadminEmail: string,
@@ -439,110 +202,48 @@ export async function adminAdjustKobans(
   const delta = Math.floor(deltaAmount);
   if (delta === 0) throw new Error('Adjustment amount cannot be zero');
 
-  const walletRef = doc(db, 'wallets', targetUserId);
-  const userRef = doc(db, 'users', targetUserId);
-
-  const newBalance = await runTransaction(db, async (tx) => {
-    const [snap, userSnap] = await Promise.all([
-      tx.get(walletRef),
-      tx.get(userRef),
-    ]);
-    let curBalance = 0;
-    let curOwned: string[] = [];
-    let curEquipped = { effect: null, frame: null, nameplate: null, avatar: null };
-
-    if (snap.exists()) {
-      const wData = snap.data();
-      curBalance = typeof wData.balance === 'number' ? wData.balance : 0;
-      curOwned = Array.isArray(wData.owned) ? wData.owned : [];
-      curEquipped = wData.equipped || curEquipped;
-    } else if (userSnap.exists()) {
-      const uData = userSnap.data();
-      curBalance = typeof uData.kobans === 'number' ? uData.kobans : 0;
-    }
-
-    const calculated = curBalance + delta;
-    const finalBalance = Math.max(0, calculated);
-
-    tx.set(
-      walletRef,
-      {
-        balance: finalBalance,
-        owned: curOwned,
-        equipped: curEquipped,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    tx.set(
-      userRef,
-      {
-        kobans: finalBalance,
-        kobanBalance: finalBalance,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    const ledgerRef = doc(
-      collection(db, 'wallets', targetUserId, 'ledger'),
-      `admin_adj_${Date.now()}`
-    );
-
-    tx.set(ledgerRef, {
-      id: ledgerRef.id,
-      type: delta > 0 ? 'grant' : 'deduction',
-      amount: delta,
-      balanceAfter: finalBalance,
-      reason: reason || (delta > 0 ? 'Superadmin grant' : 'Superadmin deduction'),
-      adminEmail: superadminEmail,
-      timestamp: serverTimestamp(),
-    });
-
-    return finalBalance;
+  const res = await api.post<{ newBalance: number }>('/api/admin/kobans/adjust', {
+    targetUserId,
+    deltaAmount: delta,
+    reason: reason || (delta > 0 ? 'Superadmin grant' : 'Superadmin deduction'),
+    targetUserEmail,
   });
 
   await logAdminAction(
     superadminEmail,
     'admin_adjust_kobans',
-    { targetUserId, delta, newBalance, reason },
+    { targetUserId, delta, newBalance: res?.newBalance, reason },
     targetUserId,
     targetUserEmail
-  );
+  ).catch(() => {});
 
-  return { newBalance };
+  return { newBalance: Number(res?.newBalance ?? 0) };
 }
 
 /**
- * Returns user's ledger entries.
+ * Returns user's ledger entries from D1.
  */
-export async function fetchUserLedger(userId: string, maxLimit = 50): Promise<WalletLedgerEntry[]> {
+export async function fetchUserLedger(
+  userId: string,
+  maxLimit = 50
+): Promise<WalletLedgerEntry[]> {
   try {
-    const colRef = collection(db, 'wallets', userId, 'ledger');
-    const q = query(colRef, limit(maxLimit));
-    const snap = await getDocs(q);
-    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as WalletLedgerEntry));
-    list.sort((a, b) => {
-      const tA = (a.timestamp as { seconds?: number })?.seconds || 0;
-      const tB = (b.timestamp as { seconds?: number })?.seconds || 0;
-      return tB - tA;
-    });
-    return list;
+    const res = await api.get<{ ledger?: WalletLedgerEntry[] }>(
+      `/api/wallet/ledger?uid=${encodeURIComponent(userId)}&limit=${maxLimit}`,
+      { silentToast: true }
+    );
+    return Array.isArray(res?.ledger) ? res.ledger : [];
   } catch (err) {
     console.error('[kobanService] fetchUserLedger error:', err);
     return [];
   }
 }
 
-/**
- * Computes PKT (UTC+5) month key (e.g. "2026_10") and human-readable label ("October 2026").
- */
 export function getCurrentPktMonth(): { key: string; label: string } {
   const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
   const pktDate = new Date(Date.now() + PKT_OFFSET_MS);
   const year = pktDate.getUTCFullYear();
-  const month = pktDate.getUTCMonth(); // 0-indexed
+  const month = pktDate.getUTCMonth();
   const monthStr = String(month + 1).padStart(2, '0');
   const key = `${year}-${monthStr}`;
 
@@ -555,11 +256,6 @@ export function getCurrentPktMonth(): { key: string; label: string } {
   return { key, label };
 }
 
-/**
- * Checks whether an approved Nakama Captain has already received their 5,000 Kobans allotment
- * for the current PKT month.
- * Idempotent ledger doc ID: captain_allotment_<uid>_<YYYY-MM>
- */
 export async function getCaptainAllotmentStatus(captainUid: string): Promise<{
   granted: boolean;
   date: Date | null;
@@ -567,41 +263,29 @@ export async function getCaptainAllotmentStatus(captainUid: string): Promise<{
   monthLabel: string;
 }> {
   const { key: monthKey, label: monthLabel } = getCurrentPktMonth();
-  const docId = `captain_allotment_${captainUid}_${monthKey}`;
-  const ledgerDocRef = doc(db, 'wallets', captainUid, 'ledger', docId);
-
   try {
-    const snap = await getDoc(ledgerDocRef);
-    if (snap.exists()) {
-      const data = snap.data();
-      const sec = (data.timestamp as { seconds?: number })?.seconds;
-      const date = sec ? new Date(sec * 1000) : new Date();
-      return { granted: true, date, monthKey, monthLabel };
-    }
-
-    // Fallback check for underscore format if previously created
-    const altDocId = `captain_allotment_${captainUid}_${monthKey.replace('-', '_')}`;
-    if (altDocId !== docId) {
-      const altSnap = await getDoc(doc(db, 'wallets', captainUid, 'ledger', altDocId));
-      if (altSnap.exists()) {
-        const data = altSnap.data();
-        const sec = (data.timestamp as { seconds?: number })?.seconds;
-        const date = sec ? new Date(sec * 1000) : new Date();
-        return { granted: true, date, monthKey, monthLabel };
-      }
+    const res = await api.get<{
+      granted?: boolean;
+      timestamp?: number | null;
+      monthKey?: string;
+    }>(
+      `/api/admin/kobans/captain-allotment?captainUid=${encodeURIComponent(captainUid)}&monthKey=${encodeURIComponent(monthKey)}`,
+      { silentToast: true }
+    );
+    if (res?.granted) {
+      return {
+        granted: true,
+        date: res.timestamp ? new Date(Number(res.timestamp)) : new Date(),
+        monthKey,
+        monthLabel,
+      };
     }
   } catch (err) {
     console.warn('[kobanService] getCaptainAllotmentStatus error:', err);
   }
-
   return { granted: false, date: null, monthKey, monthLabel };
 }
 
-/**
- * Grants 5,000 Kobans to a single approved Captain for the current PKT month.
- * Idempotent: doc ID = captain_allotment_<uid>_<YYYY_MM>.
- * Prevents double-granting.
- */
 export async function grantCaptainMonthlyAllotment(
   superadminEmail: string,
   captainUid: string,
@@ -609,88 +293,16 @@ export async function grantCaptainMonthlyAllotment(
   captainEmail?: string
 ): Promise<{ success: boolean; newBalance: number }> {
   const { key: monthKey, label: monthLabel } = getCurrentPktMonth();
-  const docId = `captain_allotment_${captainUid}_${monthKey}`;
-  const ledgerDocRef = doc(db, 'wallets', captainUid, 'ledger', docId);
-  const walletRef = doc(db, 'wallets', captainUid);
-  const userRef = doc(db, 'users', captainUid);
-
-  const newBalance = await runTransaction(db, async (tx) => {
-    // 1. Check if already granted
-    const ledgerSnap = await tx.get(ledgerDocRef);
-    if (ledgerSnap.exists()) {
-      throw new Error(`Captain allotment for ${monthLabel} has already been granted to this captain.`);
-    }
-
-    // 2. Fetch current wallet & user
-    const [walletSnap, userSnap] = await Promise.all([
-      tx.get(walletRef),
-      tx.get(userRef),
-    ]);
-    let curBalance = 0;
-    let curOwned: string[] = [];
-    let curEquipped = { effect: null, frame: null, nameplate: null, avatar: null };
-
-    if (walletSnap.exists()) {
-      const wData = walletSnap.data();
-      curBalance = typeof wData.balance === 'number' ? wData.balance : 0;
-      curOwned = Array.isArray(wData.owned) ? wData.owned : [];
-      curEquipped = wData.equipped || curEquipped;
-    } else if (userSnap.exists()) {
-      const uData = userSnap.data();
-      curBalance = typeof uData.kobans === 'number' ? uData.kobans : 0;
-    }
-
-    const finalBalance = curBalance + 5000;
-
-    // 3. Update wallet & sync users/{uid}.kobans
-    tx.set(
-      walletRef,
-      {
-        balance: finalBalance,
-        owned: curOwned,
-        equipped: curEquipped,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    tx.set(
-      userRef,
-      {
-        kobans: finalBalance,
-        kobanBalance: finalBalance,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    // 4. Create ledger entry with idempotent docId
-    tx.set(ledgerDocRef, {
-      id: docId,
-      type: 'captain_allotment',
-      amount: 5000,
-      balanceAfter: finalBalance,
+  const res = await api.post<{ success: boolean; newBalance: number }>(
+    '/api/admin/kobans/captain-allotment',
+    {
+      captainUid,
+      captainName,
+      captainEmail,
       monthKey,
-      reason: `Nakama Captain Monthly Allotment (${monthLabel})`,
-      adminEmail: superadminEmail,
-      timestamp: serverTimestamp(),
-    });
-
-    return finalBalance;
-  });
-
-  // Notify captain
-  try {
-    await addDoc(collection(db, 'notifications'), {
-      userId: captainUid,
-      title: 'Nakama Captain Monthly Allotment! ⚓',
-      message: `Your monthly leadership allowance of 5,000 Kobans for ${monthLabel} has been granted! Thank you for leading your campus crew.`,
-      read: false,
-      createdAt: serverTimestamp(),
-    });
-  } catch (nErr) {
-    console.warn('[kobanService] Captain notification error:', nErr);
-  }
+      monthLabel,
+    }
+  );
 
   await logAdminAction(
     superadminEmail,
@@ -698,14 +310,14 @@ export async function grantCaptainMonthlyAllotment(
     { captainUid, captainName, monthKey, amount: 5000 },
     captainUid,
     captainEmail
-  );
+  ).catch(() => {});
 
-  return { success: true, newBalance };
+  return {
+    success: Boolean(res?.success ?? true),
+    newBalance: Number(res?.newBalance ?? 0),
+  };
 }
 
-/**
- * Grants 5,000 Kobans to ALL approved Captains who have not yet received it this month.
- */
 export async function grantAllCaptainsMonthlyAllotment(
   superadminEmail: string,
   captains: Array<{ captainUid: string; captainName: string; captainEmail?: string }>
@@ -737,7 +349,7 @@ export async function grantAllCaptainsMonthlyAllotment(
     superadminEmail,
     'grant_all_captains_monthly_allotment',
     { totalCaptains: captains.length, grantedCount, skippedCount }
-  );
+  ).catch(() => {});
 
   return { grantedCount, skippedCount };
 }

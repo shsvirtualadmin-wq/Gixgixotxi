@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, query, orderBy, limit, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWallet } from '@/hooks/useWallet';
 import { Card } from '@/components/ui/Card';
@@ -57,26 +56,25 @@ export function ArenaDashboardPage() {
     let isMounted = true;
     async function fetchLeaderboardData() {
       try {
-        let snap = await getDocs(query(collection(db, 'publicProfiles'), orderBy('publicStats.score', 'desc'), limit(15))).catch(() => null);
-        if (!snap || snap.empty) {
-          snap = await getDocs(query(collection(db, 'users'), orderBy('score', 'desc'), limit(15))).catch(() => null);
-        }
+        const res = await api.get<{ profiles?: Array<Record<string, unknown>> }>('/api/public-profiles?limit=15&sort=score').catch(() => null);
         if (!isMounted) return;
 
-        if (snap && !snap.empty) {
-          const items: LeaderboardItem[] = snap.docs.map((d) => {
-            const data = d.data();
+        const docs = res?.profiles || [];
+        if (docs.length > 0) {
+          const items: LeaderboardItem[] = docs.map((data) => {
+            const pubStats = (data.publicStats || {}) as { score?: number; streak?: number };
+            const uid = String(data.uid || data.id || '');
             return {
-              id: d.id,
-              uid: d.id,
-              displayName: data.displayName || data.name || 'Anonymous Student',
-              university: data.targetUniversity || 'Top Tier University',
-              city: data.city || 'Pakistan',
-              score: typeof data.publicStats?.score === 'number' ? data.publicStats.score : (typeof data.score === 'number' ? data.score : 0),
-              streak: typeof data.publicStats?.streak === 'number' ? data.publicStats.streak : (typeof data.streak === 'number' ? data.streak : 0),
-              avatarKey: data.avatarKey,
-              avatarVariant: data.avatarVariant,
-              equipped: data.equipped,
+              id: uid,
+              uid,
+              displayName: String(data.displayName || data.name || 'Anonymous Student'),
+              university: String(data.targetUniversity || 'Top Tier University'),
+              city: String(data.city || 'Pakistan'),
+              score: typeof pubStats.score === 'number' ? pubStats.score : (typeof data.score === 'number' ? data.score : 0),
+              streak: typeof pubStats.streak === 'number' ? pubStats.streak : (typeof data.streak === 'number' ? data.streak : 0),
+              avatarKey: data.avatarKey as string | undefined,
+              avatarVariant: data.avatarVariant as string | undefined,
+              equipped: data.equipped as LeaderboardItem['equipped'],
             };
           });
           setLeaderboard(items);

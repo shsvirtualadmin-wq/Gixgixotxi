@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Mail, MessageCircle, Phone, Send, CheckCircle2, AlertCircle, Clock, ArrowLeft } from 'lucide-react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
@@ -94,20 +93,19 @@ export function ContactPage() {
     setSubmitting(true);
     let firestoreTicketSaved = false;
 
-    // Step 1: Save ticket to Firestore "supportTickets" collection first as guaranteed backup
+    // Step 1: Save ticket to D1 "support_tickets" table first as guaranteed backup
     try {
-      await addDoc(collection(db, 'supportTickets'), {
+      await api.post('/api/support-tickets', {
         name: formData.name.trim(),
         email: formData.email.trim().toLowerCase(),
         phone: formData.phone.trim() || '',
         message: formData.message.trim(),
         status: 'open',
         pageOrigin: window.location.href,
-        createdAt: serverTimestamp(),
       });
       firestoreTicketSaved = true;
     } catch (dbErr) {
-      console.warn('[ContactPage] Could not save support ticket to Firestore:', dbErr);
+      console.warn('[ContactPage] Could not save support ticket to D1:', dbErr);
     }
 
     // Step 2: Trigger server-side Resend email notification via /api/contact

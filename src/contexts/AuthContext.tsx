@@ -19,21 +19,9 @@ import {
   updateProfile as firebaseUpdateProfile,
   type User,
 } from 'firebase/auth';
-import {
-  doc,
-  getDoc,
-  setDoc,
-  deleteDoc,
-  collection,
-  query,
-  where,
-  getDocs,
-  runTransaction,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import type { UserProfile } from '@/types';
-import { debugTracker } from '@/utils/debugTracker';
 import { deriveFallbackShortId, ensureUserShortId } from '@/utils/shortId';
 import { processAmbassadorReferralOnSignup } from '@/services/referralService';
 
@@ -44,18 +32,17 @@ const SUPER_ADMIN_EMAIL_SCHOLARIO = 'support@scholario.me';
 const SUPER_ADMIN_UID = 'A5YMRimdHRcmeDWutxtUGt2e4hf2';
 const REFERRAL_LS_KEY = 'boardly_ref_code';
 
-// ─── Timeout Helper (prevents hanging Firestore calls from freezing auth) ────
 function withTimeout<T>(
   promise: Promise<T>,
   ms = 12000,
-  timeoutMsg = 'Database operation timed out. Check Firestore rules or connectivity.'
+  timeoutMsg = 'Operation timed out.'
 ): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) =>
       setTimeout(() => {
         const err = new Error(timeoutMsg);
-        (err as unknown as { code: string }).code = 'firestore/timeout';
+        (err as unknown as { code: string }).code = 'api/timeout';
         reject(err);
       }, ms)
     ),
@@ -110,10 +97,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     )) ||
     profile?.role === 'admin' ||
     profile?.role === 'superadmin' ||
-    (profile as any)?.isSuperAdmin === true
+    (profile as unknown as { isSuperAdmin?: boolean })?.isSuperAdmin === true
   );
 
-  // ── Helper to determine target dashboard URL by role ─────────────────────
   const getRoleRedirectUrl = useCallback(
     (customRole?: string) => {
       if (isAdmin) return '/admin';
@@ -125,35 +111,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [isAdmin, profile]
   );
 
-  // ── Create referral document after first signup ──────────────────────────
+  // ── Create referral document after first signup via D1 API ───────────────
   const createReferralDoc = useCallback(async (uid: string, email: string) => {
     const refCode = localStorage.getItem(REFERRAL_LS_KEY);
     if (!refCode) return;
     try {
-      const refDocRef = doc(db, 'referrals', uid);
-      const existing = await getDoc(refDocRef);
-      if (existing.exists()) return;
-      await setDoc(refDocRef, {
+      await api.post('/api/referrals/signup', {
         referrerCode: refCode,
-        referredUserId: uid,
-        referredUid: uid,
-        referredEmail: email.toLowerCase(),
-        status: 'pending',
-        activated: false,
-        signedUpAt: serverTimestamp(),
-        emailVerified: false,
-        firstTestCompleted: false,
+        newUid: uid,
+        newEmail: email.toLowerCase(),
       });
     } catch (err) {
-      console.warn('[Boardly] Referral doc creation failed:', err);
+      console.warn('[Boardly] Referral registration notice:', err);
     }
   }, []);
 
-  // ── Fetch / create user profile (protected with fast race & fallback) ────
+  // ── Fetch / create user profile from D1 (/api/users/me) ──────────────────
   const loadProfile = useCallback(async (firebaseUser: User) => {
     setProfileLoading(true);
     setProfileError(null);
-    const path = `users/${firebaseUser.uid}`;
+    const path = `/api/users/me`;
 
     const emailLower = (firebaseUser.email ?? '').toLowerCase();
     const isSuperAdminAccount =
@@ -182,67 +159,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profileCompleted: isSuperAdminAccount ? true : false,
       onboardingCompleted: isSuperAdminAccount ? true : false,
       streak: 0,
+      shortId: deriveFallbackShortId(firebaseUser.uid),
     };
 
     try {
-      const docRef = doc(db, 'users', firebaseUser.uid);
-
       let loadedProfile: UserProfile | null = null;
+      let isNew = false;
 
-      // 1. Fast path read: 99.9% of users already have a profile document
       try {
-        const snap = await Promise.race([
-          getDoc(docRef),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
+        const res = await Promise.race([
+          api.get<{ profile: UserProfile | null; isNew?: boolean }>('/api/users/me'),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
         ]);
-        if (snap && typeof snap.exists === 'function' && snap.exists()) {
-          loadedProfile = snap.data() as UserProfile;
-        } else if (snap && typeof snap.exists === 'function' && !snap.exists()) {
-          // Truly new user: initialize clean defaults
-          const baseUserDoc: UserProfile = {
-            uid: firebaseUser.uid,
-            name: fallbackName,
-            displayName: fallbackName,
-            email: emailLower,
-            photoURL: firebaseUser.photoURL ?? null,
-            role: isSuperAdminAccount ? 'admin' : 'student',
-            plan: isSuperAdminAccount ? 'pro' : 'free',
-            status: 'active',
-            profileCompleted: isSuperAdminAccount ? true : false,
-            onboardingCompleted: isSuperAdminAccount ? true : false,
-            streak: 0,
-            shortId: deriveFallbackShortId(firebaseUser.uid),
-          };
-          await setDoc(docRef, {
-            ...baseUserDoc,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-          loadedProfile = baseUserDoc;
-          createReferralDoc(firebaseUser.uid, firebaseUser.email ?? '').catch(() => {});
-          processAmbassadorReferralOnSignup({
-            newUid: firebaseUser.uid,
-            newEmail: firebaseUser.email ?? '',
-            newName: fallbackName,
-            newShortId: baseUserDoc.shortId || deriveFallbackShortId(firebaseUser.uid),
-          }).catch(() => {});
-          ensureUserShortId(firebaseUser.uid, baseUserDoc.shortId).catch(() => {});
+
+        if (res && res.profile) {
+          loadedProfile = res.profile;
+          isNew = !!res.isNew;
         }
       } catch (readErr: unknown) {
-        console.warn(`[Boardly] User doc read notice at ${path}:`, readErr);
-        const code = (readErr as { code?: string })?.code;
-        if (code === 'permission-denied') {
-          debugTracker.recordPlanLog({
-            action: 'auth_load_profile',
-            status: 'permission_denied',
-            errorCode: code,
-            details: (readErr as Error)?.message,
-          });
-        }
+        console.warn(`[Boardly] D1 user profile read notice at ${path}:`, readErr);
       }
 
       if (loadedProfile) {
-        // Suspension check
         if (loadedProfile.suspended === true || loadedProfile.isSuspended === true) {
           await firebaseSignOut(auth);
           setUser(null);
@@ -255,28 +193,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // Ensure displayName is populated without touching plan/role
         if (!loadedProfile.displayName || loadedProfile.displayName === 'Unnamed Student') {
           loadedProfile.displayName = fallbackName;
-          setDoc(docRef, { displayName: fallbackName }, { merge: true }).catch(() => {});
+          api.put('/api/users/me', { displayName: fallbackName }).catch(() => {});
+        }
+
+        if (isNew) {
+          createReferralDoc(firebaseUser.uid, firebaseUser.email ?? '').catch(() => {});
+          processAmbassadorReferralOnSignup({
+            newUid: firebaseUser.uid,
+            newEmail: firebaseUser.email ?? '',
+            newName: fallbackName,
+            newShortId: loadedProfile.shortId || deriveFallbackShortId(firebaseUser.uid),
+          }).catch(() => {});
+          ensureUserShortId(firebaseUser.uid, loadedProfile.shortId).catch(() => {});
         }
 
         setProfile(loadedProfile);
       } else {
-        // Doc read timed out or failed — use fallback profile in-memory ONLY.
-        // NEVER write this fallback profile to Firestore, as that would overwrite the user's real plan!
-        console.warn(`[Boardly] Profile read timed out or offline at ${path}. Keeping in-memory fallback.`);
         setProfile(defaultProfile);
       }
     } catch (err: unknown) {
-      console.warn(`[Boardly] Firestore profile read fallback at ${path}:`, err);
+      console.warn(`[Boardly] D1 profile read fallback at ${path}:`, err);
       setProfile(defaultProfile);
     } finally {
       setProfileLoading(false);
     }
   }, [createReferralDoc]);
 
-  // Clean up any legacy redirect session markers on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -288,7 +232,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // ── Hard 3-second timeout on initial profileLoading to prevent stuck states ─
   useEffect(() => {
     const timer = setTimeout(() => {
       setProfileLoading(false);
@@ -296,7 +239,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer);
   }, []);
 
-  // ── Auth state listener ──────────────────────────────────────────────────
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
@@ -304,11 +246,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           localStorage.setItem('boardly_user_authenticated', 'true');
         } catch {
-          // Ignore storage errors in restricted contexts
+          // Ignore storage errors
         }
-        // Warm-up read of config/{any} right after sign-in so the first connection is opened early
-        getDoc(doc(db, 'config', 'app')).catch(() => {});
-
         loadProfile(firebaseUser).catch((err) => {
           console.warn('[Boardly Auth] onAuthStateChanged profile load error:', err);
         });
@@ -334,7 +273,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const credential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
       const { user: newUser } = credential;
 
-      // Resolve and save displayName immediately
       const resolvedName =
         displayName?.trim() ||
         (cleanEmail.includes('@') ? cleanEmail.split('@')[0] : 'Student');
@@ -345,29 +283,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn('Could not update Firebase Auth profile displayName:', err);
       }
 
-      // Clean up any leftover orphan profile records with the same email under an old UID
       try {
-        const orphanPubSnap = await getDocs(
-          query(collection(db, 'publicProfiles'), where('email', '==', cleanEmail))
-        ).catch(() => null);
-        if (orphanPubSnap && !orphanPubSnap.empty) {
-          for (const d of orphanPubSnap.docs) {
-            if (d.id !== newUser.uid) {
-              await deleteDoc(doc(db, 'publicProfiles', d.id)).catch(() => {});
-              await deleteDoc(doc(db, 'users', d.id)).catch(() => {});
-            }
-          }
-        }
-      } catch {
-        // Non-fatal orphan cleanup
-      }
-
-      // Always write/overwrite the user document for the new Auth user (overwriting any orphan doc)
-      const userDocRef = doc(db, 'users', newUser.uid);
-      await withTimeout(
-        setDoc(
-          userDocRef,
-          {
+        await withTimeout(
+          api.put('/api/users/me', {
             uid: newUser.uid,
             name: resolvedName,
             displayName: resolvedName,
@@ -376,17 +294,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             role: 'student',
             plan: 'free',
             status: 'active',
-            deleted: false,
             onboardingCompleted: false,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        ),
-        6000
-      );
+          }),
+          6000
+        );
+      } catch (err) {
+        console.warn('[Boardly] Initial D1 user doc creation notice:', err);
+      }
 
-      // Send email verification
       try {
         await sendEmailVerification(newUser);
       } catch (e) {
@@ -398,18 +313,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [createReferralDoc]
   );
 
-  // ── Pure popup-only Google sign-in (no redirects, no device branching) ───
   const signInWithGoogle = useCallback(async (): Promise<User | null> => {
     setAuthError(null);
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
 
     try {
-      // ONLY signInWithPopup - modern mobile browsers support popup on direct user tap
       const credential = await signInWithPopup(auth, provider);
       if (credential?.user) {
         setUser(credential.user);
-        // Load profile with timeout; non-fatal if Firestore rules are slow
         try {
           await loadProfile(credential.user);
         } catch (dbErr) {
@@ -421,7 +333,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (popupErr: unknown) {
       const fe = popupErr as { code?: string; message?: string };
 
-      // 1. User intentionally closed or cancelled popup window
       if (
         fe.code === 'auth/popup-closed-by-user' ||
         fe.code === 'auth/cancelled-popup-request'
@@ -429,7 +340,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       }
 
-      // 2. Popup blocked by browser
       if (fe.code === 'auth/popup-blocked') {
         const errPayload = {
           code: 'auth/popup-blocked',
@@ -440,7 +350,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw popupErr;
       }
 
-      // 3. Other Firebase auth error (e.g. auth/unauthorized-domain, auth/network-request-failed)
       const errPayload = {
         code: fe.code || 'auth/popup-failed',
         message: fe.message || 'Google sign-in could not be completed.',
@@ -469,25 +378,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const cleanEmail = email.trim().toLowerCase();
 
     try {
-      // Call sendPasswordResetEmail WITHOUT restrictive continueUrl first to avoid
-      // Firebase Identity Toolkit internal error -26 (auth/error-code:-26) on auth.boardly.cfd
       await withTimeout(
         sendPasswordResetEmail(auth, cleanEmail),
         12000,
         'Password reset request timed out.'
       );
       return;
-    } catch (sdkErr: any) {
-      const code = String(sdkErr?.code || '');
-      const msg = String(sdkErr?.message || '');
+    } catch (sdkErr: unknown) {
+      const errObj = sdkErr as { code?: string; message?: string };
+      const code = String(errObj?.code || '');
+      const msg = String(errObj?.message || '');
 
-      // If Firebase explicitly reports user-not-found or invalid-email, rethrow immediately
       if (code === 'auth/user-not-found' || code === 'auth/invalid-email') {
         throw sdkErr;
       }
 
-      // For auth/error-code:-26, unauthorized-continue-uri, or custom authDomain errors,
-      // fallback to the server-side Identity Toolkit endpoint
       if (
         code.includes('-26') ||
         msg.includes('-26') ||
@@ -502,9 +407,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok || !data?.success) {
-          const fallbackErr: any = new Error(
+          const fallbackErr = new Error(
             data?.error || 'Could not send password reset email.'
-          );
+          ) as Error & { code?: string };
           fallbackErr.code = data?.code || code || 'auth/error-code:-26';
           throw fallbackErr;
         }
@@ -537,7 +442,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (user) {
         try {
           await withTimeout(
-            setDoc(doc(db, 'users', user.uid), updates, { merge: true }),
+            api.put('/api/users/me', updates),
             6000,
             'Profile update timed out.'
           );

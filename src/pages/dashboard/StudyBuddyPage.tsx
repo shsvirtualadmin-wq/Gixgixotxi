@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -17,18 +17,7 @@ import {
   Send,
   MessageSquare,
 } from 'lucide-react';
-import {
-  collection,
-  doc,
-  setDoc,
-  onSnapshot,
-  query,
-  where,
-  serverTimestamp,
-  addDoc,
-  limit,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api';
 
 interface ActiveBuddy {
   uid: string;
@@ -72,175 +61,105 @@ export function StudyBuddyPage() {
 
   const crewId = profile?.crewId || crew?.id;
 
-  // 1. Presence Heartbeat: updates student presence in `study_buddy_presence/{crewId}_{uid}` every 30 seconds
+  const fetchStudyBuddyState = useCallback(async () => {
+    if (!crewId) return;
+    try {
+      const [presRes, logsRes, msgsRes] = await Promise.all([
+        api.get<{ presence?: Array<Record<string, unknown>> }>(`/api/study-buddy/presence?crewId=${encodeURIComponent(crewId)}`).catch(() => ({ presence: [] })),
+        api.get<{ logs?: Array<Record<string, unknown>> }>(`/api/study-buddy/logs?crewId=${encodeURIComponent(crewId)}`).catch(() => ({ logs: [] })),
+        api.get<{ messages?: Array<Record<string, unknown>> }>(`/api/study-buddy/messages?crewId=${encodeURIComponent(crewId)}`).catch(() => ({ messages: [] })),
+      ]);
+
+      const now = Date.now();
+      const list: ActiveBuddy[] = [];
+      for (const data of presRes.presence || []) {
+        const lastAct = Number(data.lastActive || 0);
+        if (lastAct && now - lastAct < 90000) {
+          const uid = String(data.uid || '');
+          list.push({
+            uid,
+            displayName: String(data.displayName || 'Squad Member'),
+            shortId: String(data.shortId || uid.slice(0, 5)),
+            avatarKey: data.avatarKey as string | undefined,
+            lastActive: lastAct,
+            questionsSolvedThisSession: Number(data.questionsSolvedThisSession || 0),
+          });
+        }
+      }
+      setActiveBuddies(list);
+
+      const logs: StudyBuddyLogItem[] = (logsRes.logs || []).map((d) => {
+        let timeStr = 'Recently';
+        if (typeof d.createdAt === 'string') {
+          const dt = new Date(d.createdAt);
+          if (!isNaN(dt.getTime())) {
+            timeStr = dt.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' });
+          }
+        }
+        return {
+          id: String(d.id || ''),
+          studentName: String(d.studentName || 'Student'),
+          studentShortId: String(d.studentShortId || '00000'),
+          timestamp: timeStr,
+          questionsSolved: Number(d.questionsSolved || 0),
+          topic: String(d.topic || 'General Practice'),
+        };
+      });
+      setSessionLogs(logs);
+
+      const msgs: StudyBuddyMessage[] = (msgsRes.messages || []).map((d) => {
+        let timeStr = 'Now';
+        if (typeof d.createdAt === 'string') {
+          const dt = new Date(d.createdAt);
+          if (!isNaN(dt.getTime())) {
+            timeStr = dt.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' });
+          }
+        }
+        return {
+          id: String(d.id || ''),
+          senderName: String(d.senderName || 'Student'),
+          senderShortId: String(d.studentShortId || d.senderShortId || '00000'),
+          senderUid: String(d.senderUid || ''),
+          senderRole: String(d.senderRole || 'Student'),
+          senderCustomRole: (d.senderCustomRole as string) || undefined,
+          text: String(d.text || ''),
+          timestamp: timeStr,
+        };
+      });
+      setMessages(msgs);
+    } catch (err) {
+      console.warn('[StudyBuddy] Poll error:', err);
+    }
+  }, [crewId]);
+
+  // 1. Presence Heartbeat & Polling
   useEffect(() => {
     if (!user || !crewId) return;
 
-    const myPresenceRef = doc(db, 'study_buddy_presence', `${crewId}_${user.uid}`);
-
     const sendHeartbeat = async () => {
       try {
-        await setDoc(
-          myPresenceRef,
-          {
-            crewId,
-            uid: user.uid,
-            displayName: profile?.displayName || user.displayName || 'Student',
-            shortId: profile?.shortId || user.uid.slice(0, 5),
-            lastActive: Date.now(),
-            questionsSolvedThisSession: profile?.totalQuestionsSolved || 0,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
+        await api.post('/api/study-buddy/presence', {
+          crewId,
+          uid: user.uid,
+          displayName: profile?.displayName || user.displayName || 'Student',
+          shortId: profile?.shortId || user.uid.slice(0, 5),
+          lastActive: Date.now(),
+          questionsSolvedThisSession: profile?.totalQuestionsSolved || 0,
+        });
       } catch (err) {
         console.warn('[StudyBuddy] Presence heartbeat error:', err);
       }
     };
 
-    sendHeartbeat();
-    const interval = setInterval(sendHeartbeat, 25000);
+    sendHeartbeat().then(() => fetchStudyBuddyState());
+    const hbInterval = setInterval(sendHeartbeat, 25000);
+    const pollInterval = setInterval(fetchStudyBuddyState, 8000);
 
     return () => {
-      clearInterval(interval);
+      clearInterval(hbInterval);
+      clearInterval(pollInterval);
     };
-  }, [user, crewId, profile]);
-
-  // 2. Real-time Presence Listener for Crew Members on Study Buddy
-  useEffect(() => {
-    if (!crewId) return;
-
-    const q = query(
-      collection(db, 'study_buddy_presence'),
-      where('crewId', '==', crewId)
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const now = Date.now();
-        const list: ActiveBuddy[] = [];
-
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          // Active if heartbeat received within last 90 seconds
-          if (data.lastActive && now - data.lastActive < 90000) {
-            list.push({
-              uid: data.uid,
-              displayName: data.displayName || 'Squad Member',
-              shortId: data.shortId || data.uid.slice(0, 5),
-              avatarKey: data.avatarKey,
-              lastActive: data.lastActive,
-              questionsSolvedThisSession: data.questionsSolvedThisSession || 0,
-            });
-          }
-        });
-
-        setActiveBuddies(list);
-      },
-      (err) => {
-        console.warn('[StudyBuddy] Presence snapshot notice:', err);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [crewId]);
-
-  // 3. Real-time Shared Logs of Study Sessions
-  useEffect(() => {
-    if (!crewId) return;
-
-    const qLogs = query(
-      collection(db, 'study_buddy_logs'),
-      where('crewId', '==', crewId),
-      limit(25)
-    );
-
-    const unsubscribe = onSnapshot(
-      qLogs,
-      (snapshot) => {
-        const logs: StudyBuddyLogItem[] = [];
-        snapshot.forEach((docSnap) => {
-          const d = docSnap.data();
-          let timeStr = 'Recently';
-          if (d.createdAt?.toDate) {
-            timeStr = d.createdAt.toDate().toLocaleTimeString('en-PK', {
-              hour: '2-digit',
-              minute: '2-digit',
-            });
-          } else if (d.createdAt?.seconds) {
-            timeStr = new Date(d.createdAt.seconds * 1000).toLocaleTimeString('en-PK', {
-              hour: '2-digit',
-              minute: '2-digit',
-            });
-          }
-
-          logs.push({
-            id: docSnap.id,
-            studentName: d.studentName || 'Student',
-            studentShortId: d.studentShortId || '00000',
-            timestamp: timeStr,
-            questionsSolved: d.questionsSolved || 0,
-            topic: d.topic || 'General Practice',
-          });
-        });
-
-        setSessionLogs(logs);
-      },
-      (err) => {
-        console.warn('[StudyBuddy] Logs snapshot notice:', err);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [crewId]);
-
-  // 4. Real-time Live Squad Chat / Motivation Notes
-  useEffect(() => {
-    if (!crewId) return;
-
-    const qMsgs = query(
-      collection(db, 'study_buddy_messages'),
-      where('crewId', '==', crewId),
-      limit(40)
-    );
-
-    const unsubscribe = onSnapshot(
-      qMsgs,
-      (snapshot) => {
-        const msgs: StudyBuddyMessage[] = [];
-        snapshot.forEach((docSnap) => {
-          const d = docSnap.data();
-          let timeStr = 'Now';
-          if (d.createdAt?.toDate) {
-            timeStr = d.createdAt.toDate().toLocaleTimeString('en-PK', {
-              hour: '2-digit',
-              minute: '2-digit',
-            });
-          }
-
-          msgs.push({
-            id: docSnap.id,
-            senderName: d.senderName || 'Student',
-            senderShortId: d.studentShortId || d.senderShortId || '00000',
-            senderUid: d.senderUid,
-            senderRole: d.senderRole || 'Student',
-            senderCustomRole: d.senderCustomRole || undefined,
-            text: d.text || '',
-            timestamp: timeStr,
-          });
-        });
-
-        // Sort client-side by id or timestamp
-        setMessages(msgs);
-      },
-      (err) => {
-        console.warn('[StudyBuddy] Messages snapshot notice:', err);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [crewId]);
+  }, [user, crewId, profile, fetchStudyBuddyState]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -248,7 +167,7 @@ export function StudyBuddyPage() {
 
     setSendingMsg(true);
     try {
-      await addDoc(collection(db, 'study_buddy_messages'), {
+      await api.post('/api/study-buddy/messages', {
         crewId,
         senderUid: user.uid,
         senderName: profile?.displayName || user.displayName || 'Student',
@@ -256,9 +175,9 @@ export function StudyBuddyPage() {
         senderRole: profile?.role || 'Student',
         senderCustomRole: profile?.customRole || null,
         text: newMessage.trim(),
-        createdAt: serverTimestamp(),
       });
       setNewMessage('');
+      await fetchStudyBuddyState();
     } catch (err) {
       console.warn('[StudyBuddy] Message send error:', err);
     } finally {
@@ -275,15 +194,15 @@ export function StudyBuddyPage() {
     if (isNaN(num) || num <= 0) return;
 
     try {
-      await addDoc(collection(db, 'study_buddy_logs'), {
+      await api.post('/api/study-buddy/logs', {
         crewId,
         studentUid: user.uid,
         studentName: profile?.displayName || user.displayName || 'Student',
         studentShortId: profile?.shortId || user.uid.slice(0, 5),
         questionsSolved: num,
         topic: profile?.targetUniversity || 'General Practice',
-        createdAt: serverTimestamp(),
       });
+      await fetchStudyBuddyState();
     } catch (err) {
       console.warn('[StudyBuddy] Log session error:', err);
     }

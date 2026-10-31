@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, addDoc, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useStudyCrew } from '@/hooks/useStudyCrew';
@@ -40,12 +39,8 @@ export function PlansBillingPage() {
     if (!user) return;
     async function loadPaymentRequests() {
       try {
-        const q = query(
-          collection(db, 'paymentRequests'),
-          where('userId', '==', user!.uid)
-        );
-        const snap = await getDocs(q);
-        setPendingRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        const res = await api.get<{ requests?: PaymentRequestItem[] }>('/api/payment-requests');
+        setPendingRequests(res.requests || []);
       } catch (err) {
         console.warn('[PlansBillingPage] Error loading requests:', err);
       }
@@ -63,7 +58,7 @@ export function PlansBillingPage() {
       const amount = isCrewUpgrade ? DEFAULT_CREW_PRICING.largeCrewPricePKR : 199;
       const planName = isCrewUpgrade ? 'large_crew' : 'pro';
 
-      await addDoc(collection(db, 'paymentRequests'), {
+      await api.post('/api/payment-requests', {
         userId: user.uid,
         userEmail: user.email?.toLowerCase(),
         displayName: senderName.trim() || user.displayName || user.email?.split('@')[0],
@@ -75,7 +70,6 @@ export function PlansBillingPage() {
         method,
         transactionId: transactionId.trim().toUpperCase(),
         status: 'pending',
-        createdAt: serverTimestamp(),
       });
       setSubmittedSuccess(true);
       setModalOpen(false);

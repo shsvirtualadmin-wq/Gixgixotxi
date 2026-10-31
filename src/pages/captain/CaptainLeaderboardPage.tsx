@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Badge } from '@/components/ui/Badge';
 import { Trophy, Medal, ArrowLeft, Building2 } from 'lucide-react';
@@ -27,15 +26,13 @@ export function CaptainLeaderboardPage() {
     async function fetchLeaderboard() {
       try {
         setLoading(true);
-        const q = query(collection(db, 'captains'), orderBy('points', 'desc'), limit(30));
-        const snap = await getDocs(q);
-
-        if (!snap.empty) {
-          const list = snap.docs.map((d, idx) => ({
-            id: d.id,
+        const res = await api.get<{ captains?: CaptainEntry[] }>('/api/captains?limit=30');
+        const docs = res.captains || [];
+        if (docs.length > 0) {
+          const list = docs.map((d, idx) => ({
+            ...d,
             rank: idx + 1,
-            ...d.data(),
-          })) as CaptainEntry[];
+          }));
           setCaptains(list);
         } else {
           setCaptains([]);

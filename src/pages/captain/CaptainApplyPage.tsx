@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import { CheckCircle2, ArrowLeft, AlertCircle, LogIn, Clock } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
@@ -51,13 +50,13 @@ export function CaptainApplyPage() {
     async function checkExisting() {
       if (!user) return;
       try {
-        const snap = await getDoc(doc(db, 'captainApplications', user.uid));
+        const res = await api.get<{ application?: Record<string, unknown> }>('/api/applications/mine?type=captain').catch(() => null);
         if (!isMounted) return;
-        if (snap.exists()) {
-          const data = snap.data();
+        const data = res?.application;
+        if (data) {
           setExistingApp({
-            status: data.status || 'Pending',
-            appliedAt: data.appliedAt?.toDate ? data.appliedAt.toDate().toLocaleDateString() : undefined,
+            status: String(data.status || 'Pending'),
+            appliedAt: typeof data.appliedAt === 'string' ? new Date(data.appliedAt).toLocaleDateString() : undefined,
           });
           setSubmitted(true);
         }
@@ -154,26 +153,11 @@ export function CaptainApplyPage() {
       grade: grade.trim(),
       city: city.trim(),
       statement: statement.trim(),
-      status: 'Pending', // Security rules require status 'Pending'
-      createdAt: serverTimestamp(),
-      appliedAt: serverTimestamp(),
+      status: 'Pending',
     };
 
-    console.log('[CaptainApply] Writing application payload to Firestore:', payload);
-
     try {
-      // Key application by user.uid so each logged-in student has exactly one application document
-      await setDoc(doc(db, 'captainApplications', user.uid), payload);
-      console.log('[CaptainApply] Successfully written to captainApplications/' + user.uid);
-
-      // Best effort mirror to applications collection
-      try {
-        await setDoc(doc(db, 'applications', user.uid), payload);
-        console.log('[CaptainApply] Successfully mirrored to applications/' + user.uid);
-      } catch (mirrorErr) {
-        console.warn('[CaptainApply] Mirror to applications collection warning:', mirrorErr);
-      }
-
+      await api.post('/api/applications', payload);
       setSubmitted(true);
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string; name?: string };

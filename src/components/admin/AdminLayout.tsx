@@ -53,6 +53,7 @@ const SECONDARY_NAV: AdminNavItem[] = [
   { to: '/admin/payments', label: 'Payments', icon: CreditCard },
   { to: '/admin/audit-logs', label: 'Audit log', icon: Terminal },
   { to: '/admin/health', label: 'Health & Tests', icon: Activity },
+  { to: '/admin/import-firestore', label: 'Firestore → D1 Import', icon: Database },
 ];
 
 const ALL_SIDEBAR_NAV: AdminNavItem[] = [

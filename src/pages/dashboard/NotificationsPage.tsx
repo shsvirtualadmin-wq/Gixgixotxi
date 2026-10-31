@@ -30,7 +30,6 @@ import {
   type AppNotification,
   type AnnouncementItem,
 } from '@/services/notificationService';
-import type { DocumentSnapshot } from 'firebase/firestore';
 
 type FilterType = 'all' | 'following' | 'announcements';
 
@@ -65,7 +64,8 @@ export function NotificationsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [lastDoc, setLastDoc] = useState<any>(null);
   const [hasMoreNotifications, setHasMoreNotifications] = useState(false);
 
   // Announcement detail modal

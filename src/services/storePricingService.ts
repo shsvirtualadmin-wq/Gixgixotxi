@@ -1,15 +1,4 @@
-import {
-  collection,
-  doc,
-  getDocs,
-  setDoc,
-  serverTimestamp,
-  writeBatch,
-  query,
-  orderBy,
-  limit,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import { COSMETICS_CATALOG, type CosmeticItem } from '@/data/cosmeticsCatalog';
 import type { CosmeticType } from '@/types';
 
@@ -72,7 +61,6 @@ export interface BulkPreviewResult {
   }>;
 }
 
-// Map catalog item type to StoreCategory
 export function mapCatalogTypeToStoreCategory(catalogType: CosmeticType): StoreCategory {
   if (catalogType === 'frame') return 'avatar_frame';
   if (catalogType === 'effect') return 'profile_effect';
@@ -81,7 +69,6 @@ export function mapCatalogTypeToStoreCategory(catalogType: CosmeticType): StoreC
   return 'avatar';
 }
 
-// Convert catalog item to StoreItemDoc
 export function catalogItemToStoreDoc(item: CosmeticItem): StoreItemDoc {
   return {
     id: item.id,
@@ -97,60 +84,27 @@ export function catalogItemToStoreDoc(item: CosmeticItem): StoreItemDoc {
 }
 
 /**
- * Initializes or seeds the store_items collection from COSMETICS_CATALOG.
- * Safe to call repeatedly; uses batched writes (chunked <= 400).
+ * Seeds or syncs store items in D1 (`store_items`).
  */
-export async function seedStoreItemsIfEmpty(superAdminEmail: string): Promise<number> {
-  const colRef = collection(db, 'store_items');
-  const snap = await getDocs(colRef);
-
-  if (!snap.empty) {
-    return snap.size;
-  }
-
-  // Seed all catalog items
-  const items = COSMETICS_CATALOG.map(catalogItemToStoreDoc);
-  const CHUNK_SIZE = 400;
-
-  for (let i = 0; i < items.length; i += CHUNK_SIZE) {
-    const chunk = items.slice(i, i + CHUNK_SIZE);
-    const batch = writeBatch(db);
-
-    for (const item of chunk) {
-      const docRef = doc(db, 'store_items', item.id);
-      batch.set(docRef, {
-        ...item,
-        updatedAt: serverTimestamp(),
-        updatedBy: superAdminEmail,
-      });
-    }
-
-    await batch.commit();
-  }
-
+export async function seedStoreItemsIfEmpty(_superAdminEmail: string): Promise<number> {
+  const items = await fetchStoreItems();
   return items.length;
 }
 
 /**
- * Fetches all store items from Firestore.
- * If Firestore collection is empty, returns items built from catalog as fallback.
+ * Fetches all store items from D1 `/api/shop/items` with catalog fallback.
  */
 export async function fetchStoreItems(): Promise<StoreItemDoc[]> {
   try {
-    const colRef = collection(db, 'store_items');
-    const snap = await getDocs(colRef);
-
-    if (snap.empty) {
-      return COSMETICS_CATALOG.map(catalogItemToStoreDoc);
-    }
-
-    return snap.docs.map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        name: data.name || d.id,
+    const res = await api.get<{ items?: StoreItemDoc[] }>('/api/shop/items', {
+      silentToast: true,
+    });
+    if (Array.isArray(res?.items) && res.items.length > 0) {
+      return res.items.map((data) => ({
+        id: data.id,
+        name: data.name || data.id,
         category: data.category || 'avatar',
-        type: data.type || (data.animated ? 'animated' : 'static'),
+        type: data.type || 'static',
         priceKobans: typeof data.priceKobans === 'number' ? Math.max(0, data.priceKobans) : 0,
         active: data.active !== false,
         rarity: data.rarity,
@@ -158,8 +112,9 @@ export async function fetchStoreItems(): Promise<StoreItemDoc[]> {
         previewColor: data.previewColor,
         updatedAt: data.updatedAt,
         updatedBy: data.updatedBy,
-      } as StoreItemDoc;
-    });
+      }));
+    }
+    return COSMETICS_CATALOG.map(catalogItemToStoreDoc);
   } catch (err) {
     console.warn('[storePricingService] fetchStoreItems error, using catalog fallback:', err);
     return COSMETICS_CATALOG.map(catalogItemToStoreDoc);
@@ -167,59 +122,37 @@ export async function fetchStoreItems(): Promise<StoreItemDoc[]> {
 }
 
 /**
- * Update pricing and active status for a single item.
+ * Update pricing and active status for a single item in D1.
  */
 export async function updateSingleItemPricing(
-  superAdminEmail: string,
+  _superAdminEmail: string,
   itemId: string,
   updates: { priceKobans?: number; active?: boolean },
   previousItem?: StoreItemDoc
 ): Promise<void> {
-  const docRef = doc(db, 'store_items', itemId);
-  const cleanPrice = updates.priceKobans !== undefined ? Math.max(0, Math.floor(updates.priceKobans)) : undefined;
+  const cleanPrice =
+    updates.priceKobans !== undefined
+      ? Math.max(0, Math.floor(updates.priceKobans))
+      : undefined;
 
-  const payload: Record<string, unknown> = {
-    updatedAt: serverTimestamp(),
-    updatedBy: superAdminEmail,
-  };
-  if (cleanPrice !== undefined) payload.priceKobans = cleanPrice;
-  if (updates.active !== undefined) payload.active = Boolean(updates.active);
-
-  await setDoc(docRef, payload, { merge: true });
-
-  // Log to price history
-  const historyRef = doc(collection(db, 'storePriceHistory'));
-  await setDoc(historyRef, {
-    id: historyRef.id,
-    changedBy: superAdminEmail,
-    timestamp: serverTimestamp(),
-    filterSummary: `Single item update: ${previousItem?.name || itemId}`,
-    affectedCount: 1,
-    mode: 'single',
-    changesSample: [
-      {
-        itemId,
-        itemName: previousItem?.name || itemId,
-        oldPrice: previousItem?.priceKobans ?? 0,
-        newPrice: cleanPrice !== undefined ? cleanPrice : previousItem?.priceKobans ?? 0,
-      },
-    ],
+  await api.put(`/api/admin/shop/items/${encodeURIComponent(itemId)}`, {
+    priceKobans: cleanPrice,
+    active: updates.active,
+    name: previousItem?.name || itemId,
+    category: previousItem?.category || 'avatar',
+    type: previousItem?.type || 'static',
+    oldPrice: previousItem?.priceKobans ?? 0,
   });
 }
 
-/**
- * Calculates preview of bulk price changes without writing to Firestore.
- */
 export function previewBulkPriceChanges(
   items: StoreItemDoc[],
   params: BulkFilterParams
 ): BulkPreviewResult {
   const matches = items.filter((item) => {
-    // 1. Category check
     if (params.category !== 'all' && item.category !== params.category) {
       return false;
     }
-    // 2. Type check (static / animated / both)
     if (params.type !== 'both' && item.type !== params.type) {
       return false;
     }
@@ -266,11 +199,10 @@ export function previewBulkPriceChanges(
 }
 
 /**
- * Commits bulk price changes to Firestore using batched writes (max 450 per batch).
- * Appends audit record to storePriceHistory.
+ * Commits bulk price changes to D1 `store_items` and `store_price_history`.
  */
 export async function executeBulkPriceChanges(
-  superAdminEmail: string,
+  _superAdminEmail: string,
   preview: BulkPreviewResult,
   filterSummary: string,
   mode: string
@@ -279,72 +211,25 @@ export async function executeBulkPriceChanges(
     return { updatedCount: 0 };
   }
 
-  const BATCH_CHUNK_SIZE = 450;
-  const items = preview.affectedItems;
-
-  for (let i = 0; i < items.length; i += BATCH_CHUNK_SIZE) {
-    const chunk = items.slice(i, i + BATCH_CHUNK_SIZE);
-    const batch = writeBatch(db);
-
-    for (const item of chunk) {
-      const docRef = doc(db, 'store_items', item.id);
-      batch.set(
-        docRef,
-        {
-          priceKobans: item.newPrice,
-          updatedAt: serverTimestamp(),
-          updatedBy: superAdminEmail,
-        },
-        { merge: true }
-      );
-    }
-
-    await batch.commit();
-  }
-
-  // Write history log record
-  const historyRef = doc(collection(db, 'storePriceHistory'));
-  const sample = items.slice(0, 10).map((it) => ({
-    itemId: it.id,
-    itemName: it.name,
-    oldPrice: it.oldPrice,
-    newPrice: it.newPrice,
-  }));
-
-  await setDoc(historyRef, {
-    id: historyRef.id,
-    changedBy: superAdminEmail,
-    timestamp: serverTimestamp(),
+  const res = await api.post<{ updatedCount: number }>('/api/admin/shop/bulk-price', {
+    items: preview.affectedItems,
     filterSummary,
-    affectedCount: items.length,
     mode,
-    changesSample: sample,
   });
 
-  return { updatedCount: items.length };
+  return { updatedCount: Number(res?.updatedCount ?? preview.affectedItems.length) };
 }
 
 /**
- * Fetches recent price history records.
+ * Fetches recent price history records from D1.
  */
 export async function fetchPriceHistory(limitCount = 40): Promise<PriceHistoryRecord[]> {
   try {
-    const colRef = collection(db, 'storePriceHistory');
-    const q = query(colRef, orderBy('timestamp', 'desc'), limit(limitCount));
-    const snap = await getDocs(q);
-
-    return snap.docs.map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        changedBy: data.changedBy || 'Super Admin',
-        timestamp: data.timestamp,
-        filterSummary: data.filterSummary || 'Bulk price update',
-        affectedCount: data.affectedCount || 0,
-        mode: data.mode || 'bulk',
-        changesSample: Array.isArray(data.changesSample) ? data.changesSample : [],
-      };
-    });
+    const res = await api.get<{ history?: PriceHistoryRecord[] }>(
+      `/api/admin/shop/price-history?limit=${limitCount}`,
+      { silentToast: true }
+    );
+    return Array.isArray(res?.history) ? res.history : [];
   } catch (err) {
     console.warn('[storePricingService] fetchPriceHistory error:', err);
     return [];

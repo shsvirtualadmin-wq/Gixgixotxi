@@ -1,15 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  collection,
-  query,
-  limit,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { auth, db, TARGET_DATABASE_ID } from '@/lib/firebase';
+import { auth, TARGET_DATABASE_ID } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import { RefreshCw, CheckCircle2, XCircle, ShieldCheck, Database, Wifi } from 'lucide-react';
 
 interface DiagnosticResult<T = unknown> {
@@ -27,10 +18,10 @@ export function FirestoreDebugPanel() {
   const [running, setRunning] = useState(false);
   const [onlineStatus, setOnlineStatus] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
 
-  // A) db.app.options.projectId and databaseId
-  const dbProjectId = db.app.options.projectId || '(undefined)';
+  // A) Project & D1 database info
+  const dbProjectId = auth.app.options.projectId || '(undefined)';
   const dbPassedId = TARGET_DATABASE_ID;
-  const dbInternalId = ((db as unknown as { _databaseId?: { database?: string; projectId?: string } })._databaseId?.database) || TARGET_DATABASE_ID;
+  const dbInternalId = 'boardly-posts-db (Cloudflare D1)';
 
   // B) auth.app.options.projectId and currentUser
   const currentUser = auth.currentUser;
@@ -42,17 +33,17 @@ export function FirestoreDebugPanel() {
   const [tokenClaims, setTokenClaims] = useState<Record<string, unknown> | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
 
-  // D) getDoc test
+  // D) getDoc test (/api/users/me)
   const [getDocTest, setGetDocTest] = useState<DiagnosticResult<{ exists: boolean; dataSnippet?: string }>>({
     status: 'idle',
   });
 
-  // E) getDocs test
+  // E) getDocs test (/api/health)
   const [getDocsTest, setGetDocsTest] = useState<DiagnosticResult<{ count: number; sampleDocId?: string }>>({
     status: 'idle',
   });
 
-  // F) setDoc debugPing test
+  // F) setDoc debugPing test (PUT /api/users/me)
   const [setDocTest, setSetDocTest] = useState<DiagnosticResult<{ pingConfirmed: boolean }>>({
     status: 'idle',
   });
@@ -95,20 +86,20 @@ export function FirestoreDebugPanel() {
       setTokenError('No authenticated user session found in Firebase Auth.');
     }
 
-    // D) Test getDoc(doc(db, "users", auth.currentUser.uid))
+    // D) Test GET /api/users/me
     if (auth.currentUser?.uid) {
-      const uid = auth.currentUser.uid;
       setGetDocTest({ status: 'running' });
       const t0 = performance.now();
       try {
-        const snap = await getDoc(doc(db, 'users', uid));
+        const res = await api.get<{ profile?: Record<string, unknown> }>('/api/users/me');
         const durationMs = Math.round(performance.now() - t0);
+        const profileData = res.profile || res;
         setGetDocTest({
           status: 'success',
           durationMs,
           data: {
-            exists: snap.exists(),
-            dataSnippet: snap.exists() ? JSON.stringify(snap.data()).slice(0, 160) : undefined,
+            exists: Boolean(profileData),
+            dataSnippet: profileData ? JSON.stringify(profileData).slice(0, 160) : undefined,
           },
         });
       } catch (err: unknown) {
@@ -123,23 +114,22 @@ export function FirestoreDebugPanel() {
     } else {
       setGetDocTest({
         status: 'error',
-        error: { code: 'UNAUTHENTICATED', message: 'Cannot read users/{uid} because currentUser is null.' },
+        error: { code: 'UNAUTHENTICATED', message: 'Cannot read /api/users/me because currentUser is null.' },
       });
     }
 
-    // E) Test getDocs(query(collection(db, "users"), limit(1)))
+    // E) Test GET /api/health
     setGetDocsTest({ status: 'running' });
     const tDocs0 = performance.now();
     try {
-      const q = query(collection(db, 'users'), limit(1));
-      const snap = await getDocs(q);
+      const res = await api.get<Record<string, unknown>>('/api/health');
       const durationMs = Math.round(performance.now() - tDocs0);
       setGetDocsTest({
         status: 'success',
         durationMs,
         data: {
-          count: snap.size,
-          sampleDocId: snap.docs[0]?.id,
+          count: 1,
+          sampleDocId: String(res.status || 'ok'),
         },
       });
     } catch (err: unknown) {
@@ -152,30 +142,15 @@ export function FirestoreDebugPanel() {
       });
     }
 
-    // F) Test setDoc with { debugPing: true } merged into user's own doc (with 15s timeout)
+    // F) Test PUT /api/users/me with { debugPing: true }
     if (auth.currentUser?.uid) {
-      const uid = auth.currentUser.uid;
       setSetDocTest({ status: 'running' });
       const tSet0 = performance.now();
       try {
-        const setDocPromise = setDoc(
-          doc(db, 'users', uid),
-          {
-            debugPing: true,
-            lastPingAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => {
-            const err = new Error('setDoc write took over 15s (queued in background)');
-            (err as { code?: string }).code = 'TIMEOUT_15S';
-            reject(err);
-          }, 15000);
+        await api.put('/api/users/me', {
+          debugPing: true,
+          lastPingAt: new Date().toISOString(),
         });
-
-        await Promise.race([setDocPromise, timeoutPromise]);
         const durationMs = Math.round(performance.now() - tSet0);
         setSetDocTest({
           status: 'success',

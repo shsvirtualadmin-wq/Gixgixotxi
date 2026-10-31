@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { UserPlus, UserCheck, MessageSquare, Shield, BookOpen, Lock } from 'lucide-react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
@@ -34,21 +33,21 @@ export const PublicUserProfilePage: React.FC = () => {
       setLoading(true);
       try {
         let uid = username.trim();
-        const unameSnap = await getDoc(doc(db, 'usernames', uid.toLowerCase()));
-        if (unameSnap.exists() && unameSnap.data()?.uid) {
-          uid = unameSnap.data().uid;
+        const unameRes = await api.get<{ uid?: string; exists?: boolean }>(`/api/usernames/${encodeURIComponent(uid.toLowerCase())}`).catch(() => null);
+        if (unameRes?.uid) {
+          uid = unameRes.uid;
         }
 
-        const pubSnap = await getDoc(doc(db, 'publicProfiles', uid));
+        const pubRes = await api.get<{ profile?: Record<string, any> }>(`/api/public-profiles/${encodeURIComponent(uid)}`).catch(() => null);
         if (!mounted) return;
 
-        if (!pubSnap.exists()) {
+        const data = pubRes?.profile || (pubRes && 'uid' in pubRes ? (pubRes as unknown as Record<string, any>) : null);
+        if (!data) {
           setProfileData(null);
           setLoading(false);
           return;
         }
 
-        const data = pubSnap.data();
         setTargetUid(uid);
         setProfileData(data);
 

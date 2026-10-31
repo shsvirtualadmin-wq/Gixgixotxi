@@ -2,8 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
-import { doc, getDoc, setDoc, increment } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import { MathText } from '@/components/ui/MathText';
 import { Button } from '@/components/ui/Button';
 import { Bot, Send, Sparkles, Zap, RotateCcw } from 'lucide-react';
@@ -46,15 +45,14 @@ export function AiTutorPage() {
 
   const dateKey = getPKTDateKey();
 
-  // Load today's token usage from Firestore
+  // Load today's token usage from D1
   useEffect(() => {
     if (!user) return;
-    const usageRef = doc(db, 'users', user.uid, 'usage', dateKey);
-    getDoc(usageRef)
-      .then((snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          setTokensUsed(data.aiTutorTokens ?? 0);
+    api
+      .get<{ usage?: { aiTutorTokens?: number } }>(`/api/usage?dateKey=${encodeURIComponent(dateKey)}`)
+      .then((res) => {
+        if (res.usage) {
+          setTokensUsed(res.usage.aiTutorTokens ?? 0);
         }
       })
       .catch((e) => console.warn('[AiTutor] Failed to fetch usage:', e));
@@ -112,10 +110,9 @@ export function AiTutorPage() {
 
       setMessages((prev) => [...prev, botMsg]);
 
-      // Update Firestore usage counter
+      // Update D1 usage counter
       if (user) {
-        const usageRef = doc(db, 'users', user.uid, 'usage', dateKey);
-        await setDoc(usageRef, { aiTutorTokens: increment(1) }, { merge: true });
+        await api.post('/api/usage/increment', { dateKey, field: 'aiTutorTokens', delta: 1 });
         setTokensUsed((c) => c + 1);
       }
     } catch (err) {

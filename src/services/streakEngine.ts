@@ -1,27 +1,10 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  updateDoc,
-  query,
-  where,
-  serverTimestamp,
-  type DocumentData,
-  type QueryDocumentSnapshot,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import { syncPublicProfile } from '@/services/publicProfileService';
 
 /**
  * ─── DATE & TIMEZONE HELPERS (SINGLE SOURCE OF TRUTH: PKT UTC+5) ─────────────
  */
 
-/**
- * Converts any timestamp (Date, number, string, Firestore Timestamp) to PKT date 'YYYY-MM-DD'.
- * Boundary is precisely 00:00:00 PKT (Asia/Karachi, UTC+5).
- */
 export function toPKTDateString(timestamp: unknown): string | null {
   if (!timestamp) return null;
   let date: Date;
@@ -65,9 +48,6 @@ export function toPKTDateString(timestamp: unknown): string | null {
   return `${y}-${m}-${day}`;
 }
 
-/**
- * Returns today's calendar date in PKT as 'YYYY-MM-DD'.
- */
 export function getCurrentPKTDate(): string {
   try {
     const formatted = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' });
@@ -90,10 +70,6 @@ export function getCurrentPKTDate(): string {
   return `${y}-${m}-${day}`;
 }
 
-/**
- * Shifts a PKT date string 'YYYY-MM-DD' by N days using deterministic UTC arithmetic.
- * Free from browser local timezone, DST or client clock interference.
- */
 export function shiftPKTDate(pktDate?: string | null, daysOffset = 0): string {
   const base = pktDate ? String(pktDate).replace(/\//g, '-').trim() : getCurrentPKTDate();
   const parts = base.split('-').map(Number);
@@ -107,10 +83,6 @@ export function shiftPKTDate(pktDate?: string | null, daysOffset = 0): string {
   return utcDate.toISOString().slice(0, 10);
 }
 
-/**
- * Returns deterministic date parts for any PKT date 'YYYY-MM-DD'.
- * Uses UTC noon to eliminate all local timezone, DST, and client clock offsets.
- */
 export function getPKTDateParts(pktDate?: string | null) {
   const base = pktDate ? String(pktDate).replace(/\//g, '-').trim() : getCurrentPKTDate();
   const parts = base.split('-').map(Number);
@@ -121,8 +93,8 @@ export function getPKTDateParts(pktDate?: string | null) {
   if (isNaN(utcDate.getTime())) {
     utcDate = new Date();
   }
-  const dayOfWeek = utcDate.getUTCDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
-  const daysSinceMonday = (dayOfWeek + 6) % 7; // 0 = Mon, 1 = Tue, ..., 6 = Sun
+  const dayOfWeek = utcDate.getUTCDay();
+  const daysSinceMonday = (dayOfWeek + 6) % 7;
 
   let monthShort = 'Jan';
   let monthLong = 'January';
@@ -155,10 +127,6 @@ export function getPKTWeekday(pktDate?: string | null): { short: string; narrow:
   return { short: parts.weekdayShort, narrow: parts.weekdayInitial, dayNum: parts.dayNum, month: parts.monthShort };
 }
 
-/**
- * ─── STREAK CALCULATION INTERFACES ──────────────────────────────────────────
- */
-
 export interface StreakCalendarDay {
   date: string;
   dayNum: number;
@@ -189,7 +157,7 @@ export interface StreakDayInfo {
 
 export interface SevenDayItem {
   date: string;
-  label: string; // e.g. 'M', 'T', 'W'
+  label: string;
   isActive: boolean;
   isToday: boolean;
   isFrozen?: boolean;
@@ -224,16 +192,6 @@ export interface StreakComputationResult {
   totalCompletedSessions: number;
 }
 
-/**
- * ONE shared authoritative streak calculation function:
- * Takes the user's activity days (as PKT calendar dates or detail map) and returns:
- * - currentStreak
- * - longestStreak
- * - todayStatus
- * - last7Days (Monday through Sunday of the current week in PKT)
- * - last28Days (4 full calendar weeks of 7 days: M T W T F S S in PKT)
- * All views must use this function, and the day boundary is midnight PKT everywhere.
- */
 export function computeStreakData(
   activityInput: string[] | Record<string, any>,
   options?: {
@@ -245,7 +203,6 @@ export function computeStreakData(
   const yesterday = shiftPKTDate(today, -1);
   const freezeActive = Boolean(options?.freezeActive);
 
-  // 1. Normalize activity inputs into dayDetails map & activePKTDaysSet
   const sessionsByDay: Record<string, number> = {};
   const dayDetails: Record<
     string,
@@ -298,11 +255,6 @@ export function computeStreakData(
   const todayActive = activePKTDaysSet.has(today);
   const todayPending = !todayActive;
 
-  // 2. Authoritative Current Streak Calculation
-  // Current streak = consecutive streak days ending today (if practiced today),
-  // or ending yesterday while today is still pending.
-  // A pending today NEVER breaks the streak.
-  // A Streak Freeze covers one missed day and keeps the chain unbroken.
   let currentStreak = 0;
   let freezeUsed = false;
   let freezeDate: string | null = null;
@@ -310,7 +262,6 @@ export function computeStreakData(
   let checkDate = todayActive ? today : yesterday;
   let chainBroken = false;
 
-  // If today is not active and yesterday was also not active:
   if (!todayActive && !activePKTDaysSet.has(yesterday)) {
     if (freezeActive) {
       freezeUsed = true;
@@ -337,7 +288,6 @@ export function computeStreakData(
     }
   }
 
-  // 3. Longest Streak Calculation across all history
   let longestStreak = currentStreak;
   if (activePKTDays.length > 0) {
     let maxChain = 0;
@@ -363,10 +313,9 @@ export function computeStreakData(
     longestStreak = Math.max(longestStreak, maxChain);
   }
 
-  // 4. Build 4-week calendar grid (28 cells: 4 full weeks of Monday to Sunday in PKT)
   const { daysSinceMonday } = getPKTDateParts(today);
   const currentWeekMonday = shiftPKTDate(today, -daysSinceMonday);
-  const gridStartMonday = shiftPKTDate(currentWeekMonday, -21); // 3 weeks prior
+  const gridStartMonday = shiftPKTDate(currentWeekMonday, -21);
 
   const last28Days: StreakCalendarDay[] = [];
   const history28: StreakDayInfo[] = [];
@@ -408,7 +357,6 @@ export function computeStreakData(
 
     last28Days.push(dayItem);
 
-    // Backwards-compatible history28 entry
     history28.push({
       date: dStr,
       dayNum: parts.dayNum,
@@ -422,8 +370,6 @@ export function computeStreakData(
     });
   }
 
-  // 5. Build 7-day row ("This week": Monday through Sunday of current week in PKT)
-  // These are the last 7 items in last28Days (offset 21 to 27)
   const thisWeek: StreakCalendarDay[] = last28Days.slice(21, 28);
   const last7Days: StreakCalendarDay[] = thisWeek;
 
@@ -455,9 +401,6 @@ export function computeStreakData(
   };
 }
 
-/**
- * Backwards compatibility wrapper for computeStreakFromSessions
- */
 export function computeStreakFromSessions(
   sessionPKTDates: string[],
   options?: {
@@ -469,41 +412,19 @@ export function computeStreakFromSessions(
 }
 
 /**
- * ─── FIRESTORE QUERY & SYNC ───────────────────────────────────────────────────
- */
-
-/**
- * Extracts completed session dates from attempts and usage records for a user.
+ * Extracts completed session dates from D1 practice attempts and usage records for a user.
  */
 export async function fetchUserCompletedSessionDates(uid: string): Promise<string[]> {
   const dates: string[] = [];
 
   try {
-    // 1. Fetch completed attempts for user
-    const attemptsRef = collection(db, 'attempts');
-    let attemptDocs: QueryDocumentSnapshot<DocumentData>[] = [];
+    const [attemptsRes, usageRes] = await Promise.all([
+      api.get<{ attempts: any[] }>(`/api/practice-attempts?uid=${encodeURIComponent(uid)}&limit=200`).catch(() => ({ attempts: [] })),
+      api.get<{ usage: any[] }>(`/api/usage?uid=${encodeURIComponent(uid)}&limit=100`).catch(() => ({ usage: [] })),
+    ]);
 
-    try {
-      const q1 = query(attemptsRef, where('uid', '==', uid));
-      const snap1 = await getDocs(q1);
-      attemptDocs = snap1.docs;
-    } catch {
-      // Fallback if index on uid is building
-    }
-
-    if (attemptDocs.length === 0) {
-      try {
-        const q2 = query(attemptsRef, where('userId', '==', uid));
-        const snap2 = await getDocs(q2);
-        attemptDocs = snap2.docs;
-      } catch {
-        // Fallback
-      }
-    }
-
-    for (const d of attemptDocs) {
-      const data = d.data();
-      // Valid session check: completed status (test, sprint, drill, mock, arena, grand line)
+    const attempts = Array.isArray(attemptsRes?.attempts) ? attemptsRes.attempts : [];
+    for (const data of attempts) {
       const isCompleted =
         data.status === 'completed' ||
         data.percentage !== undefined ||
@@ -512,7 +433,6 @@ export async function fetchUserCompletedSessionDates(uid: string): Promise<strin
 
       if (!isCompleted) continue;
 
-      // Completion time is the single source of truth (completion time, not start time)
       const completionTimestamp =
         data.completedAt ||
         data.submittedAt ||
@@ -526,23 +446,15 @@ export async function fetchUserCompletedSessionDates(uid: string): Promise<strin
       }
     }
 
-    // 2. Fetch usage subcollection records as secondary source for past practice days
-    try {
-      const usageSnap = await getDocs(collection(db, 'users', uid, 'usage'));
-      usageSnap.docs.forEach((d) => {
-        const udata = d.data();
-        const practiceCount = Number(udata.practiceAttempts ?? 0);
-        const arenaCount = Number(udata.arenaSessions ?? 0);
-        const testCount = Number(udata.testsUsed ?? 0);
-        if (practiceCount > 0 || arenaCount > 0 || testCount > 0) {
-          // Document ID is already a PKT date string 'YYYY-MM-DD'
-          if (/^\d{4}-\d{2}-\d{2}$/.test(d.id)) {
-            dates.push(d.id);
-          }
-        }
-      });
-    } catch {
-      // Ignore if subcollection is empty
+    const usageList = Array.isArray(usageRes?.usage) ? usageRes.usage : [];
+    for (const udata of usageList) {
+      const practiceCount = Number(udata.practiceAttempts ?? 0);
+      const arenaCount = Number(udata.arenaSessions ?? 0);
+      const testCount = Number(udata.testsUsed ?? 0);
+      const dateStr = String(udata.dateKey || udata.id || '');
+      if ((practiceCount > 0 || arenaCount > 0 || testCount > 0) && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        dates.push(dateStr);
+      }
     }
   } catch (err) {
     console.warn('[streakEngine] Error fetching completed sessions for user:', uid, err);
@@ -552,70 +464,47 @@ export async function fetchUserCompletedSessionDates(uid: string): Promise<strin
 }
 
 /**
- * Recomputes streak for a user, saves to streaks/{uid}, mirrors to users/{uid} & publicProfiles/{uid}.
+ * Recomputes streak for a user and saves to D1 (`/api/streaks/sync`), mirroring to users & public_profiles.
  */
 export async function syncUserStreak(
   uid: string,
   options?: { freezeActive?: boolean }
 ): Promise<StreakComputationResult> {
-  // 1. Fetch user doc for freeze setting
   let freezeActive = options?.freezeActive ?? false;
   try {
-    const userSnap = await getDoc(doc(db, 'users', uid));
-    if (userSnap.exists()) {
-      const udata = userSnap.data();
-      if (options?.freezeActive === undefined) {
-        freezeActive = Boolean(udata.streakFreezeActive);
+    if (options?.freezeActive === undefined) {
+      const userRes = await api.get<{ user: any }>(`/api/users/${encodeURIComponent(uid)}`).catch(() => null);
+      if (userRes?.user) {
+        freezeActive = Boolean(userRes.user.streakFreezeActive);
       }
     }
   } catch (err) {
     console.warn('[streakEngine] Could not read user doc:', err);
   }
 
-  // 2. Fetch all completed session PKT dates
   const sessionDates = await fetchUserCompletedSessionDates(uid);
-
-  // 3. Run shared calculation
   const result = computeStreakFromSessions(sessionDates, { freezeActive });
 
-  // 4. Save to streaks/{uid}
   try {
-    const streakDocRef = doc(db, 'streaks', uid);
-    await setDoc(
-      streakDocRef,
-      {
-        currentStreak: result.currentStreak,
-        longestStreak: result.longestStreak,
-        todayActive: result.todayActive,
-        todayPending: result.todayPending,
-        activeDaysCount: result.activePKTDays.length,
-        totalSessions: result.totalCompletedSessions,
-        lastActivePKT: result.activePKTDays[result.activePKTDays.length - 1] || null,
-        freezeActive: result.freezeActive,
-        freezeUsed: result.freezeUsed,
-        freezeDate: result.freezeDate || null,
-        history28: result.history28,
-        last7Days: result.last7Days,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-  } catch (err) {
-    console.warn('[streakEngine] Failed to save streaks/{uid}:', err);
-  }
-
-  // 5. Mirror to users/{uid}
-  try {
-    await updateDoc(doc(db, 'users', uid), {
-      streak: result.currentStreak,
-      lastActiveDate: result.activePKTDays[result.activePKTDays.length - 1] || null,
-      updatedAt: serverTimestamp(),
+    await api.post('/api/streaks/sync', {
+      uid,
+      currentStreak: result.currentStreak,
+      longestStreak: result.longestStreak,
+      todayActive: result.todayActive,
+      todayPending: result.todayPending,
+      activeDaysCount: result.activePKTDays.length,
+      totalSessions: result.totalCompletedSessions,
+      lastActivePKT: result.activePKTDays[result.activePKTDays.length - 1] || null,
+      freezeActive: result.freezeActive,
+      freezeUsed: result.freezeUsed,
+      freezeDate: result.freezeDate || null,
+      history28: result.history28,
+      last7Days: result.last7Days,
     });
   } catch (err) {
-    console.warn('[streakEngine] Failed to mirror streak to users/{uid}:', err);
+    console.warn('[streakEngine] Failed to save streak to D1:', err);
   }
 
-  // 6. Mirror to publicProfiles/{uid} for leaderboards and squad views
   try {
     await syncPublicProfile(uid, {
       publicStats: {
@@ -630,27 +519,17 @@ export async function syncUserStreak(
 }
 
 /**
- * Superadmin batch recalculator: recalculates streaks for all registered users.
+ * Superadmin batch recalculator: recalculates streaks for all registered users in D1.
  */
 export async function recalculateAllUserStreaks(): Promise<{ processed: number; errors: number }> {
-  let processed = 0;
-  let errors = 0;
-
   try {
-    const usersSnap = await getDocs(collection(db, 'users'));
-    for (const uDoc of usersSnap.docs) {
-      try {
-        await syncUserStreak(uDoc.id);
-        processed++;
-      } catch (err) {
-        console.error(`[recalculateAllUserStreaks] Failed for user ${uDoc.id}:`, err);
-        errors++;
-      }
-    }
+    const res = await api.post<{ processed: number; errors: number }>('/api/admin/streaks/recalculate', {});
+    return {
+      processed: Number(res.processed || 0),
+      errors: Number(res.errors || 0),
+    };
   } catch (err) {
     console.error('[recalculateAllUserStreaks] Batch query failed:', err);
     throw err;
   }
-
-  return { processed, errors };
 }

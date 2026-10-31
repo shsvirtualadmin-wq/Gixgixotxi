@@ -62,8 +62,7 @@ import { ProfilePostsSection } from './ProfilePostsSection';
 import { FollowListModal } from './FollowListModal';
 import { EditProfileSheet } from './EditProfileSheet';
 import { ShareProfileCardModal } from './ShareProfileCardModal';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api';
 import { fetchUserCommonsPosts } from '@/services/commonsService';
 import { deriveFallbackShortId } from '@/utils/shortId';
 import { sanitizeStudentDisplayName, isAdminAccount } from '@/utils/privacy';
@@ -170,20 +169,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       if (!uid) return;
 
       try {
-        // 1. Read publicProfiles/{uid} for everyone; only read users/{uid} when viewing self or as admin
-        //    (reading users/{uid} for another user as a non-admin throws permission-denied and would reject Promise.all!)
-        const userDocRef = doc(db, 'users', uid);
         const canReadPrivateUserDoc = uid === currentUid || isAdmin;
 
-        const [userSnap, publicSnap] = await Promise.all([
+        const [userRes, pubData] = await Promise.all([
           canReadPrivateUserDoc
-            ? getDoc(userDocRef).catch(() => null)
+            ? (uid === currentUid
+                ? api.get<{ profile?: Record<string, any> }>('/api/users/me').catch(() => null)
+                : api.get<{ profile?: Record<string, any> }>(`/api/users/${encodeURIComponent(uid)}`).catch(() => null))
             : Promise.resolve(null),
-          getDoc(doc(db, 'publicProfiles', uid)).catch(() => null),
+          getPublicProfile(uid).catch(() => null),
         ]);
 
-        const uData = userSnap && userSnap.exists() ? userSnap.data() : null;
-        const pubData = publicSnap && publicSnap.exists() ? publicSnap.data() : null;
+        const uData = (userRes?.profile || (userRes && 'uid' in userRes ? userRes : null)) as Record<string, any> | null;
 
         // 2. Fallback check: Read author details from recent post if user doc lacks displayName / photo
         let postAuthorName: string | null = null;
@@ -238,13 +235,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           cleanName = 'SHS Virtual Academy';
           // Ensure admin user doc and public profile have the official name and role
           if (uData && (!uData.displayName || uData.displayName !== 'SHS Virtual Academy' || uData.role !== 'admin')) {
-            setDoc(userDocRef, { displayName: 'SHS Virtual Academy', role: 'admin' }, { merge: true }).catch(() => {});
+            const targetPath = uid === currentUid ? '/api/users/me' : `/api/users/${encodeURIComponent(uid)}`;
+            api.put(targetPath, { displayName: 'SHS Virtual Academy', role: 'admin' }).catch(() => {});
           }
           if (pubData && (!pubData.displayName || pubData.displayName !== 'SHS Virtual Academy' || pubData.role !== 'admin')) {
-            setDoc(doc(db, 'publicProfiles', uid), { displayName: 'SHS Virtual Academy', role: 'admin' }, { merge: true }).catch(() => {});
+            api.put(`/api/public-profiles/${encodeURIComponent(uid)}`, { displayName: 'SHS Virtual Academy', role: 'admin' }).catch(() => {});
           }
           if (postAuthorPhotoURL && !uData?.photoURL) {
-            setDoc(userDocRef, { photoURL: postAuthorPhotoURL }, { merge: true }).catch(() => {});
+            const targetPath = uid === currentUid ? '/api/users/me' : `/api/users/${encodeURIComponent(uid)}`;
+            api.put(targetPath, { photoURL: postAuthorPhotoURL }).catch(() => {});
           }
         } else {
           // Priority: displayName -> username -> name -> postAuthorName -> fallback
@@ -349,11 +348,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           setPinnedShowcase(initialPinned);
         }
 
-        // Check follow relationship directly from users/{currentUid}/following/{uid}
+        // Check follow relationship via D1 followService
         if (currentUid && uid !== currentUid) {
-          const followSnap = await getDoc(doc(db, 'users', currentUid, 'following', uid));
+          const followingStatus = await isFollowing(currentUid, uid).catch(() => false);
           if (!isMounted) return;
-          setIsFollowedByMe(followSnap.exists());
+          setIsFollowedByMe(followingStatus);
         }
       } catch (err: any) {
         if (!isMounted) return;
@@ -643,8 +642,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         ? [...prev.slice(1), id]
         : [...prev, id];
 
-      setDoc(doc(db, 'users', currentUid), { pinnedStamps: next }, { merge: true }).catch(() => {});
-      setDoc(doc(db, 'publicProfiles', currentUid), { pinnedStamps: next }, { merge: true }).catch(() => {});
+      api.put('/api/users/me', { pinnedStamps: next }).catch(() => {});
+      api.put(`/api/public-profiles/${encodeURIComponent(currentUid)}`, { pinnedStamps: next }).catch(() => {});
       return next;
     });
   };
