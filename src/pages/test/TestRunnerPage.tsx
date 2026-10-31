@@ -356,14 +356,17 @@ export function TestRunnerPage() {
     setPdfSuccessMessage('Generating test PDF with KaTeX math rendering...');
 
     try {
-      await exportTestToPdf({
-        title: testTitle,
-        university: attempt?.university || 'General Entrance Drill',
-        markingScheme: getUniversityRulesSummary(attempt?.university),
-        studentName: user.displayName || 'Candidate',
-        studentEmail: user.email || '',
-        questions,
-      });
+      await exportTestToPdf(
+        {
+          title: testTitle,
+          university: attempt?.university || 'General Entrance Drill',
+          markingScheme: getUniversityRulesSummary(attempt?.university),
+          studentName: user.displayName || 'Candidate',
+          studentEmail: user.email || '',
+          questions,
+        },
+        (progressText) => setPdfSuccessMessage(progressText)
+      );
 
       setPdfSuccessMessage('Test PDF downloaded successfully!');
       setTimeout(() => setPdfSuccessMessage(null), 3500);

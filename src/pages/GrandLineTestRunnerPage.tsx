@@ -63,6 +63,7 @@ export function GrandLineTestRunnerPage() {
   } | null>(null);
   const [loadingMyResult, setLoadingMyResult] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [pdfProgressText, setPdfProgressText] = useState<string | null>(null);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
@@ -317,6 +318,7 @@ export function GrandLineTestRunnerPage() {
   const handleDownloadPdf = async () => {
     if (!scoreResult || downloadingPdf) return;
     setDownloadingPdf(true);
+    setPdfProgressText('Formatting PDF...');
     try {
       await exportDrillResultToPdf({
         testId: testId || test?.id,
@@ -329,12 +331,17 @@ export function GrandLineTestRunnerPage() {
         percentage: scoreResult.percentage,
         timeTakenSeconds: scoreResult.timeTakenSeconds,
         gradedQuestions: scoreResult.gradedQuestions,
+        onProgress: (prog) => {
+          setPdfProgressText(prog.message);
+        },
       });
-      showApiToast('Result PDF downloaded!', 'success');
+      showApiToast('Result PDF downloaded successfully!', 'success');
     } catch (err: any) {
-      showApiToast(err?.rawMessage || err?.message || 'Failed to generate PDF.', 'error');
+      console.error('[GrandLineTestRunnerPage] PDF download error:', err);
+      showApiToast(err?.message || 'Failed to generate PDF. Tap Download PDF to retry.', 'error');
     } finally {
       setDownloadingPdf(false);
+      setPdfProgressText(null);
     }
   };
 
@@ -509,7 +516,7 @@ export function GrandLineTestRunnerPage() {
                 {downloadingPdf ? (
                   <>
                     <Loader2 size={14} className="animate-spin" />
-                    <span>Generating PDF...</span>
+                    <span>{pdfProgressText || 'Generating PDF...'}</span>
                   </>
                 ) : (
                   <>

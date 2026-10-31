@@ -57,6 +57,7 @@ export function ResultsListPage() {
   const [attempts, setAttempts] = useState<AttemptDoc[]>([]);
   const [grandLineAttempts, setGrandLineAttempts] = useState<AmbassadorTestAttempt[]>([]);
   const [downloadingTestId, setDownloadingTestId] = useState<string | null>(null);
+  const [pdfProgressText, setPdfProgressText] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
@@ -147,13 +148,20 @@ export function ResultsListPage() {
     e.stopPropagation();
     if (!glAttempt.testId || downloadingTestId) return;
     setDownloadingTestId(glAttempt.testId);
+    setPdfProgressText('Preparing PDF...');
     try {
-      await downloadDrillResultPdfByTestId(glAttempt.testId, glAttempt, studentFallbackName);
+      await downloadDrillResultPdfByTestId(
+        glAttempt.testId,
+        glAttempt,
+        studentFallbackName,
+        (progress) => setPdfProgressText(progress)
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to generate PDF.';
       showApiToast(msg, 'error');
     } finally {
       setDownloadingTestId(null);
+      setPdfProgressText(null);
     }
   };
 
@@ -345,7 +353,7 @@ export function ResultsListPage() {
                       >
                         {isDownloading ? (
                           <>
-                            <Loader2 size={13} className="animate-spin" /> Generating PDF...
+                            <Loader2 size={13} className="animate-spin" /> {pdfProgressText || 'Generating PDF...'}
                           </>
                         ) : (
                           <>

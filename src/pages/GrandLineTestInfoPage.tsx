@@ -57,6 +57,7 @@ export const GrandLineTestInfoPage: React.FC = () => {
   const [retryCount, setRetryCount] = useState(0);
   const [copied, setCopied] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [pdfProgressText, setPdfProgressText] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -172,13 +173,21 @@ export const GrandLineTestInfoPage: React.FC = () => {
   const handleDownloadPdf = async () => {
     if (!myAttempt || downloadingPdf) return;
     setDownloadingPdf(true);
+    setPdfProgressText('Formatting PDF...');
     try {
-      await downloadDrillResultPdfByTestId(test.id, myAttempt, studentFallbackName);
+      await downloadDrillResultPdfByTestId(
+        test.id,
+        myAttempt,
+        studentFallbackName,
+        (prog) => setPdfProgressText(prog.message)
+      );
+      showApiToast('Result PDF downloaded successfully!', 'success');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to generate PDF.';
+      const msg = err instanceof Error ? err.message : 'Failed to generate PDF. Tap to retry.';
       showApiToast(msg, 'error');
     } finally {
       setDownloadingPdf(false);
+      setPdfProgressText(null);
     }
   };
 
@@ -295,7 +304,7 @@ export const GrandLineTestInfoPage: React.FC = () => {
                   className="btn-secondary px-5 py-3 text-xs sm:text-sm font-semibold inline-flex items-center gap-2 cursor-pointer disabled:opacity-60"
                 >
                   {downloadingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                  <span>{downloadingPdf ? 'Generating PDF...' : 'Download PDF'}</span>
+                  <span>{downloadingPdf ? (pdfProgressText || 'Generating PDF...') : 'Download PDF'}</span>
                 </button>
               </>
             ) : (
