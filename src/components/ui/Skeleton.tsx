@@ -1,5 +1,3 @@
-import { BubbleLoader } from './BubbleLoader';
-
 interface SkeletonProps {
   width?: string | number;
   height?: string | number;
@@ -52,17 +50,14 @@ export function SkeletonCard({ className = '' }: { className?: string }) {
 }
 
 /**
- * Skeleton placeholder matching the Boardly Commons feed post card layout,
- * paired with BubbleLoader top-bar so layout never jumps while showing
- * the unified red scaleX progress line, 1-100% counter, and 3s rotating messages.
+ * Skeleton placeholder matching the Boardly Commons feed post card layout.
  */
 export function CommonsPostCardSkeleton({ count = 3 }: { count?: number }) {
   return (
-    <div className="space-y-3">
-      <BubbleLoader
-        variant="top-bar"
-        messages={['Loading Commons discussions...']}
-      />
+    <div role="status" aria-live="polite" className="space-y-3">
+      <p className="text-xs font-mono text-[var(--text-muted)] px-1">
+        Loading Commons...
+      </p>
       {Array.from({ length: count }).map((_, n) => (
         <div
           key={n}
@@ -103,16 +98,18 @@ export function CommonsPostCardSkeleton({ count = 3 }: { count?: number }) {
 }
 
 /**
- * Skeleton placeholder matching the Study Material Library card layout,
- * paired with BubbleLoader top-bar.
+ * Skeleton placeholder matching the Study Material Library card layout.
  */
 export function MaterialCardSkeleton({ count = 4 }: { count?: number }) {
   return (
-    <div className="space-y-3">
-      <BubbleLoader
-        variant="top-bar"
-        messages={['Preparing your study material, please wait...']}
-      />
+    <div
+      role="status"
+      aria-live="polite"
+      className="space-y-3"
+    >
+      <p className="text-xs font-mono text-[var(--text-muted)] px-1">
+        Loading study material...
+      </p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {Array.from({ length: count }).map((_, i) => (
           <div
@@ -120,32 +117,32 @@ export function MaterialCardSkeleton({ count = 4 }: { count?: number }) {
             aria-hidden="true"
             className="glass-card p-6 flex flex-col justify-between gap-4"
           >
-            <div>
-              {/* Subject / type label + file size pill */}
-              <div className="flex items-center justify-between gap-2 mb-3">
-                <div className="w-32 h-3 skeleton rounded" />
-                <div className="w-14 h-4 skeleton rounded-full" />
-              </div>
-
-              {/* Material title */}
-              <div className="w-4/5 h-5 skeleton rounded mb-2.5" />
-
-              {/* Material description (2 lines) */}
-              <div className="space-y-2">
-                <div className="w-full h-3 skeleton rounded" />
-                <div className="w-2/3 h-3 skeleton rounded" />
-              </div>
+          <div>
+            {/* Subject / type label + file size pill */}
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="w-32 h-3 skeleton rounded" />
+              <div className="w-14 h-4 skeleton rounded-full" />
             </div>
 
-            {/* Footer: uploader name + Details & Download buttons */}
-            <div className="flex items-center justify-between pt-3 border-t border-border">
-              <div className="w-24 h-3 skeleton rounded" />
-              <div className="flex items-center gap-2">
-                <div className="w-16 h-7 skeleton rounded-full" />
-                <div className="w-20 h-7 skeleton rounded-full" />
-              </div>
+            {/* Material title */}
+            <div className="w-4/5 h-5 skeleton rounded mb-2.5" />
+
+            {/* Material description (2 lines) */}
+            <div className="space-y-2">
+              <div className="w-full h-3 skeleton rounded" />
+              <div className="w-2/3 h-3 skeleton rounded" />
             </div>
           </div>
+
+          {/* Footer: uploader name + Details & Download buttons */}
+          <div className="flex items-center justify-between pt-3 border-t border-border">
+            <div className="w-24 h-3 skeleton rounded" />
+            <div className="flex items-center gap-2">
+              <div className="w-16 h-7 skeleton rounded-full" />
+              <div className="w-20 h-7 skeleton rounded-full" />
+            </div>
+          </div>
+        </div>
         ))}
       </div>
     </div>

@@ -8,13 +8,13 @@ import {
   Heart,
   MessageCircle,
   X,
+  Loader2,
   AlertCircle,
   Clock,
   Sparkles,
   Maximize2,
   Check,
 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import {
   UserPost,
   fetchUserPosts,
@@ -471,12 +471,13 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
             <button
               type="submit"
               disabled={isSubmitting || (!postText.trim() && !attachedImage?.dataUrl)}
-              className={`h-8 px-4 rounded-lg bg-[var(--red)] hover:bg-[var(--red-dark)] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-heading font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs ${
-                isSubmitting ? 'min-w-[140px]' : ''
-              }`}
+              className="h-8 px-4 rounded-lg bg-[var(--red)] hover:bg-[var(--red-dark)] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-heading font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
             >
               {isSubmitting ? (
-                <BubbleLoader variant="inline" customMessages={['Posting to profile...']} />
+                <>
+                  <Loader2 size={13} className="animate-spin" />
+                  <span>Posting...</span>
+                </>
               ) : (
                 <>
                   <Send size={13} />
@@ -490,13 +491,9 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
 
       {/* ── 2. POSTS FEED LIST ── */}
       {loading ? (
-        <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)]">
-          <BubbleLoader
-            variant="section"
-            showSkeletons
-            skeletonCount={2}
-            customMessages={['Loading posts...']}
-          />
+        <div className="p-8 rounded-2xl bg-[var(--card)] border border-[var(--border)] flex flex-col items-center justify-center gap-3">
+          <Loader2 size={24} className="animate-spin text-[var(--red)]" />
+          <span className="text-xs font-mono text-[var(--muted)]">Loading posts...</span>
         </div>
       ) : feedError ? (
         <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs flex items-center gap-2">
@@ -671,16 +668,10 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                         type="button"
                         onClick={() => handleSaveEdit(post.id)}
                         disabled={isUpdating}
-                        className="h-8 px-3.5 rounded-lg bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold flex items-center justify-center gap-1 cursor-pointer min-w-[120px]"
+                        className="h-8 px-3.5 rounded-lg bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold flex items-center gap-1 cursor-pointer"
                       >
-                        {isUpdating ? (
-                          <BubbleLoader variant="inline" customMessages={['Saving changes...']} />
-                        ) : (
-                          <>
-                            <Check size={12} />
-                            <span>Save Changes</span>
-                          </>
-                        )}
+                        {isUpdating ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                        <span>Save Changes</span>
                       </button>
                     </div>
                   </div>
@@ -757,10 +748,13 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                 type="button"
                 onClick={handleLoadMore}
                 disabled={loadingMore}
-                className="h-10 px-5 rounded-xl border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs min-w-[160px]"
+                className="h-10 px-5 rounded-xl border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
               >
                 {loadingMore ? (
-                  <BubbleLoader variant="inline" customMessages={['Loading more posts...']} />
+                  <>
+                    <Loader2 size={14} className="animate-spin text-[var(--red)]" />
+                    <span>Loading more...</span>
+                  </>
                 ) : (
                   <span>Load more posts</span>
                 )}
@@ -801,16 +795,10 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                 type="button"
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
-                className="h-9 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-heading font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs min-w-[120px]"
+                className="h-9 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
               >
-                {isDeleting ? (
-                  <BubbleLoader variant="inline" customMessages={['Deleting post...']} />
-                ) : (
-                  <>
-                    <Trash2 size={13} />
-                    <span>Delete</span>
-                  </>
-                )}
+                {isDeleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                <span>Delete</span>
               </button>
             </div>
           </div>

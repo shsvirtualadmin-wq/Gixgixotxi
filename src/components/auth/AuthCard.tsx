@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { logRedirect } from '@/utils/debugTracker';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 interface AuthCardProps {
   initialMode?: 'signin' | 'signup';
@@ -448,23 +447,19 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
       )}
 
       {/* Continue with Google: Full-width white button, 52px tall, official Google icon, black text, 2px red border, pill shape */}
-      {googleLoading ? (
-        <div className="w-full p-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)]">
-          <BubbleLoader
-            variant="inline"
-            loading={googleLoading}
-            messages={['Connecting with Google...']}
-            successText="Signed in!"
+      <button
+        type="button"
+        onClick={handleGoogleSignIn}
+        disabled={googleLoading || loading}
+        className="auth-google-btn"
+        aria-label="Continue with Google"
+      >
+        {googleLoading ? (
+          <span
+            className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"
+            aria-hidden="true"
           />
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={handleGoogleSignIn}
-          disabled={googleLoading || loading}
-          className="auth-google-btn"
-          aria-label="Continue with Google"
-        >
+        ) : (
           <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
             <path
               fill="#4285F4"
@@ -483,9 +478,9 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
               d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98Z"
             />
           </svg>
-          <span>Continue with Google</span>
-        </button>
-      )}
+        )}
+        <span>Continue with Google</span>
+      </button>
 
       {/* Divider: "or use email" */}
       <div className="flex items-center gap-3 my-1">
@@ -665,29 +660,23 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
         )}
 
         {/* Primary Red Button: 52px tall, full width */}
-        {loading ? (
-          <div className="w-full p-3 mt-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)]">
-            <BubbleLoader
-              variant="inline"
-              loading={loading}
-              messages={[
-                mode === 'signin'
-                  ? 'Signing into your student workspace...'
-                  : 'Creating your student account...',
-              ]}
-              successText={mode === 'signin' ? 'Welcome back!' : 'Account ready!'}
+        <button
+          type="submit"
+          disabled={loading || googleLoading}
+          className="btn-red w-full mt-2 cursor-pointer disabled:opacity-50"
+          style={{ height: '52px' }}
+        >
+          {loading ? (
+            <span
+              className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"
+              aria-hidden="true"
             />
-          </div>
-        ) : (
-          <button
-            type="submit"
-            disabled={loading || googleLoading}
-            className="btn-red w-full mt-2 cursor-pointer disabled:opacity-50"
-            style={{ height: '52px' }}
-          >
-            {mode === 'signin' ? 'Sign In' : 'Create Account'}
-          </button>
-        )}
+          ) : mode === 'signin' ? (
+            'Sign In'
+          ) : (
+            'Create Account'
+          )}
+        </button>
 
         {mode === 'signup' && (
           <p className="text-[11px] text-center text-[var(--muted)] leading-relaxed mt-2">

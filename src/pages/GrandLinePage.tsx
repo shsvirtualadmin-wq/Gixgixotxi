@@ -14,8 +14,9 @@ import {
   AlertCircle,
   Play,
   CheckCircle2,
+  Download,
   Eye,
-  RefreshCw,
+  Loader2,
 } from 'lucide-react';
 import {
   getAllPublicGrandLineTests,
@@ -30,8 +31,8 @@ import { showApiToast } from '@/lib/api';
 import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { routes } from '@/utils/routes';
+import { RefreshCw } from 'lucide-react';
 import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 function formatTimeTaken(seconds?: number): string {
   const sec = Math.max(0, Math.round(Number(seconds || 0)));
@@ -54,6 +55,7 @@ export function GrandLinePage() {
   const [retryCount, setRetryCount] = useState(0);
   const [search, setSearch] = useState('');
   const [subjectFilter, setSubjectFilter] = useState('all');
+  const [downloadingTestId, setDownloadingTestId] = useState<string | null>(null);
 
   // Selected test for leaderboard preview
   const [activeLeaderboardTestId, setActiveLeaderboardTestId] = useState<string | null>(null);
@@ -159,6 +161,22 @@ export function GrandLinePage() {
       })
     );
     navigate(routes.grandLineTestRun(test.id));
+  };
+
+  const handleDownloadPdfForTest = async (
+    testId: string,
+    fallbackAttempt?: AmbassadorTestAttempt
+  ) => {
+    if (downloadingTestId) return;
+    setDownloadingTestId(testId);
+    try {
+      await downloadDrillResultPdfByTestId(testId, fallbackAttempt);
+      showApiToast('Result PDF downloaded!', 'success');
+    } catch (err: any) {
+      showApiToast(err?.rawMessage || err?.message || 'Failed to download PDF.', 'error');
+    } finally {
+      setDownloadingTestId(null);
+    }
   };
 
   const filteredTests = tests.filter((t) => {
@@ -277,10 +295,6 @@ export function GrandLinePage() {
 
           {loading ? (
             <div className="space-y-3">
-              <BubbleLoader
-                variant="top-bar"
-                messages={['Loading Grand Line public drills...']}
-              />
               <Skeleton height={80} />
               <Skeleton height={80} />
               <Skeleton height={80} />
@@ -316,6 +330,7 @@ export function GrandLinePage() {
               {filteredTests.map((test) => {
                 const myAttempt = myAttemptsMap[test.id];
                 const isAttempted = Boolean(myAttempt);
+                const isDownloadingThis = downloadingTestId === test.id;
 
                 return (
                   <div
@@ -443,10 +458,6 @@ export function GrandLinePage() {
 
           {loadingLeaderboard ? (
             <div className="space-y-2.5">
-              <BubbleLoader
-                variant="top-bar"
-                messages={['Loading live Grand Line rankings...']}
-              />
               <Skeleton height={56} />
               <Skeleton height={56} />
               <Skeleton height={56} />

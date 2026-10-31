@@ -13,10 +13,10 @@ import {
   Globe,
   Check,
   Send,
+  Loader2,
   Reply,
   Link2,
 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
@@ -702,16 +702,10 @@ export const PublicPostDetailPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={submittingComment}
-                className="btn-primary px-5 py-2 text-xs font-semibold inline-flex items-center gap-2 cursor-pointer min-w-[160px] justify-center"
+                className="btn-primary px-5 py-2 text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
               >
-                {submittingComment ? (
-                  <BubbleLoader variant="inline" customMessages={['Posting comment...']} />
-                ) : (
-                  <>
-                    <Send size={14} />
-                    <span>{user ? 'Post Comment' : 'Sign in to Comment'}</span>
-                  </>
-                )}
+                {submittingComment ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                <span>{user ? 'Post Comment' : 'Sign in to Comment'}</span>
               </button>
             </div>
           </form>

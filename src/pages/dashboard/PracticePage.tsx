@@ -26,7 +26,6 @@ import { startTestSessionWithLimit, DailyTestLimitError } from '@/services/testL
 import { DailyLimitBlockedSheet } from '@/components/test/DailyLimitBlockedSheet';
 import { DashboardErrorBoundary } from '@/components/dashboard/DashboardErrorBoundary';
 import { isQuotaExhaustedError } from '@/utils/quota';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 import {
   getAllSubjects,
@@ -389,12 +388,9 @@ export function PracticePage() {
 
         {/* ── Launch Status Bar ── */}
         {launchStatus && (
-          <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-xs">
-            <BubbleLoader
-              variant="inline"
-              loading={Boolean(launchStatus)}
-              messages={[launchStatus]}
-            />
+          <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-xs flex items-center gap-2.5">
+            <span className="w-3.5 h-3.5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin shrink-0" />
+            <span className="font-medium">{launchStatus}</span>
           </div>
         )}
 
@@ -453,25 +449,24 @@ export function PracticePage() {
               </div>
             </div>
 
-            {launchingType === 'sprint' ? (
-              <div className="w-full mt-4 p-2.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)]">
-                <BubbleLoader
-                  variant="inline"
-                  loading={true}
-                  messages={['Preparing your 10-Minute Sprint...']}
-                />
-              </div>
-            ) : (
-              <button
-                onClick={() => launchTest('sprint')}
-                disabled={launching}
-                className="btn-red w-full mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
-                style={{ height: '48px' }}
-              >
-                <span>Start Sprint</span>
-                <ArrowRight size={16} />
-              </button>
-            )}
+            <button
+              onClick={() => launchTest('sprint')}
+              disabled={launching}
+              className="btn-red w-full mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ height: '48px' }}
+            >
+              {launchingType === 'sprint' ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Starting Sprint...</span>
+                </>
+              ) : (
+                <>
+                  <span>Start Sprint</span>
+                  <ArrowRight size={16} />
+                </>
+              )}
+            </button>
           </Card>
 
           {/* Card 2: Full Mock Test (Formerly Full Past Paper Mock) */}
@@ -563,25 +558,24 @@ export function PracticePage() {
               </div>
             </div>
 
-            {launchingType === 'full' ? (
-              <div className="w-full mt-4 p-2.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)]">
-                <BubbleLoader
-                  variant="inline"
-                  loading={true}
-                  messages={['Generating your Full Mock Test...']}
-                />
-              </div>
-            ) : (
-              <button
-                onClick={() => launchTest('full')}
-                disabled={launching}
-                className="btn-outline w-full mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
-                style={{ height: '48px' }}
-              >
-                <span>Start Full Mock Test</span>
-                <ArrowRight size={16} />
-              </button>
-            )}
+            <button
+              onClick={() => launchTest('full')}
+              disabled={launching}
+              className="btn-outline w-full mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ height: '48px' }}
+            >
+              {launchingType === 'full' ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-[var(--text)] border-t-transparent rounded-full animate-spin" />
+                  <span>Starting Full Mock Test...</span>
+                </>
+              ) : (
+                <>
+                  <span>Start Full Mock Test</span>
+                  <ArrowRight size={16} />
+                </>
+              )}
+            </button>
           </Card>
 
           {/* Card 3: Focused Chapter Drill (Rebuilt with step-by-step popup) */}
@@ -623,28 +617,27 @@ export function PracticePage() {
               </div>
             </div>
 
-            {launchingType === 'drill' ? (
-              <div className="w-full mt-4 p-2.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)]">
-                <BubbleLoader
-                  variant="inline"
-                  loading={true}
-                  messages={['Preparing your Focused Chapter Drill...']}
-                />
-              </div>
-            ) : (
-              <button
-                onClick={() => {
-                  setDrillStep(1);
-                  setDrillModalOpen(true);
-                }}
-                disabled={launching}
-                className="btn-outline w-full mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
-                style={{ height: '48px' }}
-              >
-                <Sliders size={16} />
-                <span>Configure &amp; Start Drill</span>
-              </button>
-            )}
+            <button
+              onClick={() => {
+                setDrillStep(1);
+                setDrillModalOpen(true);
+              }}
+              disabled={launching}
+              className="btn-outline w-full mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ height: '48px' }}
+            >
+              {launchingType === 'drill' ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-[var(--text)] border-t-transparent rounded-full animate-spin" />
+                  <span>Starting Drill...</span>
+                </>
+              ) : (
+                <>
+                  <Sliders size={16} />
+                  <span>Configure &amp; Start Drill</span>
+                </>
+              )}
+            </button>
           </Card>
         </div>
 

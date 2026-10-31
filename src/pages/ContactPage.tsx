@@ -3,7 +3,6 @@ import { Mail, MessageCircle, Phone, Send, CheckCircle2, AlertCircle, Clock, Arr
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { PageMeta } from '@/components/ui/PageMeta';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { Link, useNavigate } from 'react-router-dom';
@@ -481,7 +480,10 @@ export function ContactPage() {
                     style={{ height: '52px' }}
                   >
                     {submitting ? (
-                      <BubbleLoader variant="inline" customMessages={['Submitting ticket...']} />
+                      <>
+                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Submitting Ticket...</span>
+                      </>
                     ) : (
                       <>
                         <Send size={16} />

@@ -9,9 +9,9 @@ import {
   FileText,
   Trash2,
   Sparkles,
+  Loader2,
   RefreshCw,
 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import { compressPhoto } from '@/utils/imageCompression';
 import {
   COMMONS_POST_TYPES,
@@ -883,21 +883,16 @@ export function PostingWizardModal({
 
                           <div className="flex items-center gap-1.5 shrink-0">
                             {file.status === 'compressing' && (
-                              <div className="w-32">
-                                <BubbleLoader
-                                  variant="inline"
-                                  customMessages={['Optimizing file...']}
-                                />
-                              </div>
+                              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted px-1.5 py-0.5 rounded bg-surface-muted">
+                                <Loader2 size={11} className="animate-spin text-accent" />
+                                <span>Optimizing...</span>
+                              </span>
                             )}
                             {file.status === 'uploading' && (
-                              <div className="w-32">
-                                <BubbleLoader
-                                  variant="inline"
-                                  progress={file.progress}
-                                  customMessages={['Uploading file...']}
-                                />
-                              </div>
+                              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-accent px-1.5 py-0.5 rounded bg-accent-soft">
+                                <Loader2 size={11} className="animate-spin" />
+                                <span>{file.progress}%</span>
+                              </span>
                             )}
                             {file.status === 'uploaded' && (
                               <span
@@ -1091,10 +1086,10 @@ export function PostingWizardModal({
                   className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm bg-accent hover:opacity-90 disabled:bg-surface-muted disabled:text-muted disabled:cursor-not-allowed text-on-accent shadow-xs transition-all active:scale-[0.99] cursor-pointer"
                 >
                   {isSubmitting ? (
-                    <BubbleLoader
-                      variant="inline"
-                      customMessages={[uploadStatus || 'Posting to Commons...']}
-                    />
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      <span>{uploadStatus || 'Publishing to Commons...'}</span>
+                    </>
                   ) : (
                     <>
                       <Sparkles size={16} />

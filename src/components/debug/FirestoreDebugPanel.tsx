@@ -11,7 +11,6 @@ import {
 } from 'firebase/firestore';
 import { auth, db, TARGET_DATABASE_ID } from '@/lib/firebase';
 import { RefreshCw, CheckCircle2, XCircle, ShieldCheck, Database, Wifi } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 interface DiagnosticResult<T = unknown> {
   status: 'idle' | 'running' | 'success' | 'error';
@@ -248,16 +247,10 @@ export function FirestoreDebugPanel() {
             type="button"
             onClick={runDiagnostics}
             disabled={running}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-semibold cursor-pointer transition-all disabled:opacity-50 min-w-[130px]"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-semibold cursor-pointer transition-all disabled:opacity-50"
           >
-            {running ? (
-              <BubbleLoader variant="inline" customMessages={['Running diagnostics...']} />
-            ) : (
-              <>
-                <RefreshCw size={13} />
-                <span>Re-run Tests</span>
-              </>
-            )}
+            <RefreshCw size={13} className={running ? 'animate-spin' : ''} />
+            <span>{running ? 'Running…' : 'Re-run Tests'}</span>
           </button>
         </div>
       </div>
@@ -508,9 +501,9 @@ function TestStatusBadge({
 }) {
   if (status === 'running') {
     return (
-      <div className="w-32">
-        <BubbleLoader variant="inline" customMessages={['Testing...']} />
-      </div>
+      <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-yellow-300 bg-yellow-950/60 px-2 py-0.5 rounded border border-yellow-500/40">
+        <RefreshCw size={10} className="animate-spin" /> Testing…
+      </span>
     );
   }
   if (status === 'success') {

@@ -7,14 +7,13 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Button } from '@/components/ui/Button';
-import { BookOpen, CheckCircle, Clock, ArrowRight, RefreshCw, BarChart2, Trophy } from 'lucide-react';
+import { BookOpen, CheckCircle, Clock, ArrowRight, RefreshCw, BarChart2, Download, Loader2, Trophy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { AttemptDoc } from '@/types/index';
 import { getMyTestAttempts, type AmbassadorTestAttempt } from '@/services/ambassadorTestService';
 import { downloadDrillResultPdfByTestId } from '@/utils/testPdfExporter';
 import { showApiToast } from '@/lib/api';
 import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 function getTimestampSeconds(val: unknown): number {
   if (!val || typeof val !== 'object') return 0;
@@ -58,6 +57,8 @@ export function ResultsListPage() {
 
   const [attempts, setAttempts] = useState<AttemptDoc[]>([]);
   const [grandLineAttempts, setGrandLineAttempts] = useState<AmbassadorTestAttempt[]>([]);
+  const [downloadingTestId, setDownloadingTestId] = useState<string | null>(null);
+  const [pdfProgressText, setPdfProgressText] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
@@ -141,6 +142,27 @@ export function ResultsListPage() {
       console.warn('[ResultsListPage] Load more error:', err);
     } finally {
       setLoadingMore(false);
+    }
+  };
+
+  const handleDownloadDrillPdf = async (e: React.MouseEvent, glAttempt: AmbassadorTestAttempt) => {
+    e.stopPropagation();
+    if (!glAttempt.testId || downloadingTestId) return;
+    setDownloadingTestId(glAttempt.testId);
+    setPdfProgressText('Preparing PDF...');
+    try {
+      await downloadDrillResultPdfByTestId(
+        glAttempt.testId,
+        glAttempt,
+        studentFallbackName,
+        (progress) => setPdfProgressText(progress)
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to generate PDF.';
+      showApiToast(msg, 'error');
+    } finally {
+      setDownloadingTestId(null);
+      setPdfProgressText(null);
     }
   };
 
@@ -231,10 +253,6 @@ export function ResultsListPage() {
       {/* Attempts List */}
       {loading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <BubbleLoader
-            variant="top-bar"
-            messages={['Loading your test results & history...']}
-          />
           <Skeleton height={80} />
           <Skeleton height={80} />
           <Skeleton height={80} />
@@ -265,6 +283,7 @@ export function ResultsListPage() {
                 const score = glAtt.score ?? 0;
                 const total = glAtt.totalQuestions ?? 0;
                 const dateStr = formatTimestampDate(glAtt.submittedAt);
+                const isDownloading = downloadingTestId === glAtt.testId;
 
                 return (
                   <GlassCard
@@ -456,10 +475,9 @@ export function ResultsListPage() {
                     variant="outline"
                     size="sm"
                     onClick={handleLoadMore}
-                    loading={loadingMore}
-                    loadingMessages={['Loading older test results...']}
+                    disabled={loadingMore}
                   >
-                    Load older test results
+                    {loadingMore ? 'Loading older results...' : 'Load older test results'}
                   </Button>
                 </div>
               )}

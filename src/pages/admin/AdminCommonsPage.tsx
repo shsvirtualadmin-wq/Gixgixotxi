@@ -3,7 +3,6 @@ import { auth } from '@/lib/firebase';
 import { Shield, AlertTriangle, Eye, EyeOff, Trash2, Ban, CheckCircle2, RefreshCw } from 'lucide-react';
 import { normalizeCloudflarePost } from '@/services/commonsService';
 import type { CommonsPost, CommonsReport } from '@/types/commons';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 export function AdminCommonsPage() {
   const [flaggedPosts, setFlaggedPosts] = useState<CommonsPost[]>([]);
@@ -138,7 +137,7 @@ export function AdminCommonsPage() {
           disabled={loading}
           className="flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 transition-colors"
         >
-          <RefreshCw size={14} />
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           <span>Refresh</span>
         </button>
       </div>
@@ -157,13 +156,8 @@ export function AdminCommonsPage() {
         </h2>
 
         {loading ? (
-          <div className="p-6 rounded-2xl border border-neutral-800 bg-[#0c0c0e]">
-            <BubbleLoader
-              variant="section"
-              showSkeletons
-              skeletonCount={3}
-              customMessages={['Loading flagged posts...']}
-            />
+          <div className="py-12 text-center text-xs text-neutral-500 font-mono">
+            Loading flagged posts...
           </div>
         ) : flaggedPosts.length === 0 ? (
           <div className="p-8 rounded-2xl border border-neutral-800 bg-[#0c0c0e] text-center space-y-2">

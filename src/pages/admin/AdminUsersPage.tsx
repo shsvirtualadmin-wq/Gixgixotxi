@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, RefreshCw, UserCheck, Shield, Users as UsersIcon, Clock, Tag, Trash2 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { Search, RefreshCw, UserCheck, Loader2, Shield, Users as UsersIcon, Clock, Tag, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserOverrideDrawer } from '@/components/admin/UserOverrideDrawer';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
@@ -251,17 +250,11 @@ export function AdminUsersPage() {
               type="button"
               onClick={handleCleanupOrphans}
               disabled={cleaningOrphans}
-              className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--red)]/50 text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer min-w-[180px]"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--red)]/50 text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
               title="Find and remove orphan database profiles with no matching active Firebase Auth user"
             >
-              {cleaningOrphans ? (
-                <BubbleLoader variant="inline" customMessages={['Cleaning orphan profiles...']} />
-              ) : (
-                <>
-                  <Trash2 size={14} className="text-[#D71921]" />
-                  <span>Clean Up Orphan Profiles</span>
-                </>
-              )}
+              <Trash2 size={14} className={cleaningOrphans ? 'animate-spin text-[#D71921]' : 'text-[#D71921]'} />
+              <span>{cleaningOrphans ? 'Cleaning orphans...' : 'Clean Up Orphan Profiles'}</span>
             </button>
           )}
 
@@ -269,34 +262,22 @@ export function AdminUsersPage() {
             type="button"
             onClick={handleBackfillPublicProfiles}
             disabled={backfillingProfiles}
-            className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer min-w-[170px]"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
             title="Batch backfill student public profiles for privacy protection"
           >
-            {backfillingProfiles ? (
-              <BubbleLoader variant="inline" customMessages={['Syncing profiles...']} />
-            ) : (
-              <>
-                <Shield size={14} className="text-[#D71921]" />
-                <span>Backfill public profiles</span>
-              </>
-            )}
+            <Shield size={14} className={backfillingProfiles ? 'animate-spin text-[#D71921]' : 'text-[#D71921]'} />
+            <span>{backfillingProfiles ? 'Syncing profiles...' : 'Backfill public profiles'}</span>
           </button>
 
           <button
             type="button"
             onClick={handleBackfillNames}
             disabled={backfilling}
-            className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 min-w-[150px]"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
             title="Update missing display names for existing accounts"
           >
-            {backfilling ? (
-              <BubbleLoader variant="inline" customMessages={['Filling names...']} />
-            ) : (
-              <>
-                <UserCheck size={14} />
-                <span>Fill missing names</span>
-              </>
-            )}
+            <UserCheck size={14} />
+            <span>{backfilling ? 'Filling names...' : 'Fill missing names'}</span>
           </button>
 
           <button
@@ -305,15 +286,11 @@ export function AdminUsersPage() {
             disabled={loading}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
           >
-            <RefreshCw size={14} />
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             <span>Refresh</span>
           </button>
         </div>
       </div>
-
-      {loading && (
-        <BubbleLoader variant="top-bar" customMessages={['Loading registered users...']} />
-      )}
 
       <AdminDiagnosticBanner
         error={error}
@@ -726,10 +703,13 @@ export function AdminUsersPage() {
             type="button"
             onClick={handleLoadMore}
             disabled={loadingMore}
-            className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-[14px] border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] text-[13px] font-heading font-medium text-[var(--text)] transition-colors disabled:opacity-50 min-w-[160px]"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-[14px] border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] text-[13px] font-heading font-medium text-[var(--text)] transition-colors disabled:opacity-50"
           >
             {loadingMore ? (
-              <BubbleLoader variant="inline" customMessages={['Loading more users...']} />
+              <>
+                <Loader2 size={16} className="animate-spin text-[var(--muted)]" />
+                <span>Loading more users...</span>
+              </>
             ) : (
               <span>Load More Users</span>
             )}

@@ -3,6 +3,7 @@ import {
   ShieldCheck,
   Trash2,
   X,
+  Loader2,
   CheckCircle2,
   Info,
 } from 'lucide-react';
@@ -12,7 +13,6 @@ import {
   type UserResetPreview,
 } from '@/services/adminService';
 import { Button } from '@/components/ui/Button';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 interface ResetUsersModalProps {
   isOpen: boolean;
@@ -138,13 +138,9 @@ export function ResetUsersModal({
           </div>
 
           {loadingPreview ? (
-            <div className="py-4">
-              <BubbleLoader
-                variant="section"
-                showSkeletons
-                skeletonCount={2}
-                customMessages={['Scanning users database...']}
-              />
+            <div className="py-8 flex flex-col items-center justify-center gap-2 text-[var(--muted)]">
+              <Loader2 size={24} className="animate-spin text-[var(--red)]" />
+              <span>Scanning users database...</span>
             </div>
           ) : result ? (
             <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-500/40 text-emerald-200 space-y-2 text-center">
@@ -270,18 +266,20 @@ export function ResetUsersModal({
             <Button
               size="sm"
               onClick={handleExecuteReset}
-              loading={executing}
-              loadingProgress={
-                progress && progress.total > 0
-                  ? Math.round((progress.done / progress.total) * 100)
-                  : undefined
-              }
-              loadingMessages={['Resetting user batches...']}
               disabled={confirmInput.trim() !== 'RESET' || executing || loadingPreview}
               className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-4 py-2 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5"
             >
-              <Trash2 size={13} />
-              <span>Confirm &amp; Reset All Users</span>
+              {executing ? (
+                <>
+                  <Loader2 size={13} className="animate-spin" />
+                  <span>Resetting Users...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 size={13} />
+                  <span>Confirm &amp; Reset All Users</span>
+                </>
+              )}
             </Button>
           </div>
         )}

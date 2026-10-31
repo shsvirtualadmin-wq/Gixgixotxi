@@ -4,10 +4,10 @@ import {
   ExternalLink,
   CheckCircle2,
   XCircle,
+  Loader2,
   Copy,
   Check,
 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   fetchPaymentRequests,
@@ -191,14 +191,10 @@ export function AdminPaymentsPage() {
           disabled={loading}
           className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-xs sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
         >
-          <RefreshCw size={14} />
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           <span>Refresh</span>
         </button>
       </div>
-
-      {loading && (
-        <BubbleLoader variant="top-bar" customMessages={['Loading payment verification queue...']} />
-      )}
 
       {bannerNotice && (
         <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500 text-emerald-300 text-xs font-heading flex items-center gap-2 animate-in fade-in">
@@ -522,16 +518,10 @@ export function AdminPaymentsPage() {
                 type="button"
                 disabled={kobanApproving || kobanEditableAmount <= 0}
                 onClick={handleConfirmKobanApprove}
-                className="btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
+                className="btn-red flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
               >
-                {kobanApproving ? (
-                  <BubbleLoader variant="inline" customMessages={['Crediting Kobans...']} />
-                ) : (
-                  <>
-                    <CheckCircle2 size={14} />
-                    <span>Credit {kobanEditableAmount.toLocaleString()} Kobans</span>
-                  </>
-                )}
+                {kobanApproving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                <span>Credit {kobanEditableAmount.toLocaleString()} Kobans</span>
               </button>
             </div>
           </div>
@@ -563,14 +553,8 @@ export function AdminPaymentsPage() {
                 onClick={handleConfirmKobanReject}
                 className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white flex-1 text-xs font-bold flex items-center justify-center gap-1.5"
               >
-                {kobanRejecting ? (
-                  <BubbleLoader variant="inline" customMessages={['Rejecting request...']} />
-                ) : (
-                  <>
-                    <XCircle size={14} />
-                    <span>Confirm Rejection</span>
-                  </>
-                )}
+                {kobanRejecting ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />}
+                <span>Confirm Rejection</span>
               </button>
             </div>
           </div>

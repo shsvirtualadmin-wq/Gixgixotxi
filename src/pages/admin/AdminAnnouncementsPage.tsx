@@ -15,7 +15,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import {
   createAnnouncement,
@@ -206,7 +205,7 @@ export function AdminAnnouncementsPage() {
           className="p-2.5 rounded-xl bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] transition-colors self-start sm:self-auto cursor-pointer"
           title="Refresh"
         >
-          <RotateCcw size={16} />
+          <RotateCcw size={16} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
 
@@ -289,10 +288,13 @@ export function AdminAnnouncementsPage() {
             <button
               type="submit"
               disabled={savingWelcome || !welcomeTitle.trim() || !welcomeMessage.trim()}
-              className="btn-red text-xs px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 min-w-[200px]"
+              className="btn-red text-xs px-5 py-2.5 rounded-xl flex items-center gap-2 cursor-pointer disabled:opacity-50"
             >
               {savingWelcome ? (
-                <BubbleLoader variant="inline" customMessages={['Saving welcome notice...']} />
+                <>
+                  <RotateCcw size={14} className="animate-spin" />
+                  <span>Saving...</span>
+                </>
               ) : (
                 <>
                   <Save size={15} />
@@ -369,10 +371,13 @@ export function AdminAnnouncementsPage() {
             <button
               type="submit"
               disabled={submitting || !title.trim() || !message.trim()}
-              className="btn-red text-xs px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 min-w-[170px]"
+              className="btn-red text-xs px-5 py-2.5 rounded-xl flex items-center gap-2 cursor-pointer disabled:opacity-50"
             >
               {submitting ? (
-                <BubbleLoader variant="inline" customMessages={['Posting announcement...']} />
+                <>
+                  <RotateCcw size={14} className="animate-spin" />
+                  <span>Posting...</span>
+                </>
               ) : (
                 <>
                   <Plus size={15} />
@@ -398,7 +403,6 @@ export function AdminAnnouncementsPage() {
 
         {loading ? (
           <div className="space-y-3">
-            <BubbleLoader variant="top-bar" customMessages={['Loading broadcast announcements...']} />
             <Skeleton height={80} count={3} />
           </div>
         ) : announcements.length === 0 ? (
@@ -458,9 +462,7 @@ export function AdminAnnouncementsPage() {
                     title="Delete announcement"
                   >
                     {isDeleting ? (
-                      <div className="w-24">
-                        <BubbleLoader variant="inline" customMessages={['Deleting...']} />
-                      </div>
+                      <RotateCcw size={15} className="animate-spin text-red-500" />
                     ) : (
                       <Trash2 size={15} />
                     )}

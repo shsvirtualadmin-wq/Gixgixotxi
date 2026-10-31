@@ -35,7 +35,6 @@ import {
   getUniversityCriteria,
   type UniversityCriteria,
 } from '@/constants/universityCriteria';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 export function OverviewPage() {
   const { user, profile, university, testDate } = useUserProfile();
@@ -405,12 +404,9 @@ export function OverviewPage() {
 
       {/* ── Status Banner (When launching test) ── */}
       {launchStatus && (
-        <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-xs">
-          <BubbleLoader
-            variant="inline"
-            loading={Boolean(launchStatus)}
-            messages={[launchStatus]}
-          />
+        <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-xs flex items-center gap-2.5">
+          <span className="w-3.5 h-3.5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin shrink-0" />
+          <span className="font-medium">{launchStatus}</span>
         </div>
       )}
 
@@ -594,28 +590,27 @@ export function OverviewPage() {
               </span>
             </div>
 
-            {launching ? (
-              <div className="w-full sm:w-64 p-2.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)]">
-                <BubbleLoader
-                  variant="inline"
-                  loading={launching}
-                  messages={['Preparing your Complete Test simulation...']}
-                />
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => handleStartCompleteTest()}
-                disabled={launching}
-                className="btn-red w-full sm:w-auto px-6 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-md sm:min-w-[200px]"
-                style={{ height: '48px' }}
-              >
-                <span>
-                  {weightedChapter ? `Start Complete Test (${weightedChapter})` : 'Start Complete Test'}
-                </span>
-                <ArrowRight size={16} />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => handleStartCompleteTest()}
+              disabled={launching}
+              className="btn-red w-full sm:w-auto px-6 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-md sm:min-w-[200px]"
+              style={{ height: '48px' }}
+            >
+              {launching ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Preparing Test...</span>
+                </>
+              ) : (
+                <>
+                  <span>
+                    {weightedChapter ? `Start Complete Test (${weightedChapter})` : 'Start Complete Test'}
+                  </span>
+                  <ArrowRight size={16} />
+                </>
+              )}
+            </button>
           </div>
         </div>
       </Card>

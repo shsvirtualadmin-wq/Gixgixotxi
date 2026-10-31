@@ -30,7 +30,6 @@ import {
   Award,
   RefreshCw,
 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 export function AdminCrewsPage() {
   const { user } = useAuth();
@@ -281,7 +280,7 @@ export function AdminCrewsPage() {
           onClick={loadCrews}
           className="p-2 sm:px-3 sm:py-2 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-xs text-[var(--text)] flex items-center gap-2 transition-colors self-start sm:self-auto"
         >
-          <RefreshCw size={14} />
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           <span>Refresh Crews</span>
         </button>
       </div>
@@ -329,8 +328,7 @@ export function AdminCrewsPage() {
         {/* Left: Table */}
         <div className={selectedCrewId ? 'lg:col-span-7 space-y-3' : 'lg:col-span-12 space-y-3'}>
           {loading ? (
-            <div className="space-y-3">
-              <BubbleLoader variant="top-bar" customMessages={['Loading study crews...']} />
+            <div className="space-y-2">
               {[1, 2, 3, 4, 5].map((i) => (
                 <div key={i} className="h-16 rounded-xl bg-[var(--surface-2)] animate-pulse" />
               ))}
