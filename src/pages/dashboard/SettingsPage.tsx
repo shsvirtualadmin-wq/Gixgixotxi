@@ -38,6 +38,10 @@ import { validateNickname, validateUsernameFormat, isForbiddenAdminRole } from '
 import { submitNameRequest } from '@/services/nameRequestService';
 import { useSmoothMode } from '@/utils/smoothMode';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
+import {
+  useDragonHiddenPreference,
+  DRAGON_COMPANION_NAME,
+} from '@/components/dashboard/DragonCompanion';
 
 const SELECTABLE_USER_ROLES = [
   'Student',
@@ -55,6 +59,7 @@ export function SettingsPage() {
   const { profile, loading } = useUserProfile();
   const effectivePlan = useEffectivePlan();
   const { smoothMode, setSmoothMode } = useSmoothMode();
+  const { hideDragon, setHideDragon } = useDragonHiddenPreference();
   const navigate = useNavigate();
 
   // Display Name state
@@ -735,6 +740,40 @@ export function SettingsPage() {
             <span
               className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
                 smoothMode ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </section>
+
+        {/* ── 6b. Hide Dragon Companion (Cockpit) ────────────────────────── */}
+        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap">
+          <div className="space-y-1 max-w-lg">
+            <div className="flex items-center gap-2">
+              <Sparkles size={16} className="text-[var(--muted)]" />
+              <h2 className="text-base font-bold text-[var(--text)] font-heading">
+                Hide dragon
+              </h2>
+              {hideDragon && <Badge color="gray">Hidden</Badge>}
+            </div>
+            <p className="text-xs text-[var(--muted)] leading-relaxed">
+              Hide {DRAGON_COMPANION_NAME}, the animated Cockpit dragon companion and Dragon Egg progress card (shown by default).
+            </p>
+          </div>
+
+          <button
+            type="button"
+            role="switch"
+            aria-checked={hideDragon}
+            aria-label="Hide dragon"
+            onClick={() => setHideDragon(!hideDragon)}
+            className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              hideDragon ? 'bg-[var(--red)]' : 'bg-[var(--surface-2)] border-[var(--border)]'
+            }`}
+          >
+            <span className="sr-only">Hide dragon</span>
+            <span
+              className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                hideDragon ? 'translate-x-5' : 'translate-x-0'
               }`}
             />
           </button>

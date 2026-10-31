@@ -37,6 +37,7 @@ import {
 } from '@/constants/d1Universities';
 import { MathText } from '@/components/ui/MathText';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
+import { DragonCompanion } from '@/components/dashboard/DragonCompanion';
 
 function getUniversityInitials(name: string): string {
   const cleaned = (name || '').replace(/\(.*?\)/g, '').trim();
@@ -685,6 +686,13 @@ export function OverviewPage() {
           </div>
         </div>
       </section>
+
+      {/* Zenryu Dragon Companion (Egg card under 1,000 correct; flying dragon once awakened or for admin/superadmin) */}
+      <DragonCompanion
+        weakChapters={d1Stats.weakChapters}
+        currentMcq={testStage === 'running' ? testMcqs[currentIndex] ?? null : null}
+        isTestModalOpen={Boolean(activeUni)}
+      />
 
       {/* 5. Weak Chapters: built only from D1 university MCQ attempts; hidden until attempts exist */}
       <WeakChapters

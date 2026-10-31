@@ -4845,3 +4845,561 @@ body,
     animation: none !important;
   }
 }
+
+/* ==========================================================================
+   ZENRYU — COCKPIT DRAGON COMPANION (GPU Transform/Opacity Only, Glass UI)
+   ========================================================================== */
+
+.zenryu-egg-card,
+.zenryu-awakening-banner {
+  position: relative;
+  border-radius: 22px;
+  background-color: var(--glass-surface);
+  backdrop-filter: blur(18px) saturate(155%);
+  -webkit-backdrop-filter: blur(18px) saturate(155%);
+  border: 1px solid var(--glass-border);
+  border-top-color: var(--glass-border-highlight);
+  box-shadow: var(--glass-shadow), var(--glass-glow);
+  overflow: hidden;
+}
+
+.zenryu-egg-card::before,
+.zenryu-awakening-banner::before {
+  content: '';
+  position: absolute;
+  top: -36px;
+  left: -24px;
+  width: 140px;
+  height: 140px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, var(--blob-1) 0%, transparent 72%);
+  pointer-events: none;
+}
+
+.zenryu-egg-icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 68px;
+  height: 76px;
+  border-radius: 18px;
+  background-color: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--glass-border));
+  flex-shrink: 0;
+}
+
+.zenryu-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background-color: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+}
+
+.zenryu-egg-progress-fill {
+  background: linear-gradient(90deg, #991b1b 0%, var(--accent) 60%, #f97316 100%);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* Full-viewport non-blocking stage (pointer-events: none) */
+.zenryu-flight-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 38;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.zenryu-ember-particle {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, #fef08a 0%, #f97316 55%, #e11d2a 100%);
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.zenryu-mover {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* Tight interactive hitbox ONLY on the dragon itself */
+.zenryu-hitbox {
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+  background: transparent;
+  border: none;
+  padding: 2px;
+  border-radius: 20px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  outline: none;
+}
+
+.zenryu-hitbox:active {
+  cursor: grabbing;
+}
+
+.zenryu-hitbox:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.zenryu-bob-wrapper {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  animation: zenryuHoverBob 2.8s ease-in-out infinite;
+  will-change: transform;
+}
+
+.zenryu-name-pill {
+  margin-top: -6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-heading);
+  color: var(--text);
+  background-color: var(--glass-surface-strong);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+  opacity: 0.88;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.zenryu-hitbox:hover .zenryu-name-pill {
+  opacity: 1;
+}
+
+.zenryu-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background-color: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
+/* Layered SVG Part Transform Origins & GPU Keyframe Animations */
+.zenryu-part-wing-front {
+  transform-origin: 122px 78px;
+  will-change: transform;
+}
+
+.zenryu-part-wing-back {
+  transform-origin: 112px 72px;
+  will-change: transform;
+}
+
+.zenryu-part-tail {
+  transform-origin: 92px 90px;
+  will-change: transform;
+}
+
+.zenryu-part-head {
+  transform-origin: 146px 68px;
+  will-change: transform;
+}
+
+.zenryu-part-aura {
+  transform-origin: 118px 88px;
+  will-change: transform, opacity;
+}
+
+.zenryu-svg--flying .zenryu-part-wing-front {
+  animation: zenryuWingFlapFront 0.68s ease-in-out infinite alternate;
+}
+
+.zenryu-svg--flying .zenryu-part-wing-back {
+  animation: zenryuWingFlapBack 0.68s ease-in-out infinite alternate-reverse;
+}
+
+.zenryu-svg--flying .zenryu-part-tail {
+  animation: zenryuTailSway 1.35s ease-in-out infinite alternate;
+}
+
+.zenryu-svg--flying .zenryu-part-aura {
+  animation: zenryuAuraPulse 2.2s ease-in-out infinite alternate;
+}
+
+/* Sleeping / Perched State */
+.zenryu-svg--sleeping .zenryu-part-wing-front {
+  transform: rotate(-18deg) scaleY(0.84);
+}
+
+.zenryu-svg--sleeping .zenryu-part-wing-back {
+  transform: rotate(-14deg) scaleY(0.82);
+}
+
+.zenryu-svg--sleeping {
+  animation: zenryuSleepBreathe 3.4s ease-in-out infinite alternate;
+}
+
+/* Roar on Tap State */
+.zenryu-svg--roaring {
+  animation: zenryuRoarBurst 0.34s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.zenryu-svg--roaring .zenryu-part-wing-front {
+  transform: rotate(14deg) scale(1.06);
+}
+
+.zenryu-egg--pulse {
+  animation: zenryuEggBreathe 2.8s ease-in-out infinite alternate;
+}
+
+.zenryu-egg--hatching {
+  animation: zenryuEggHatch 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes zenryuHoverBob {
+  0% {
+    transform: translate3d(0, -4px, 0);
+  }
+  50% {
+    transform: translate3d(0, 5px, 0);
+  }
+  100% {
+    transform: translate3d(0, -4px, 0);
+  }
+}
+
+@keyframes zenryuWingFlapFront {
+  0% {
+    transform: rotate(-16deg) scaleY(0.86);
+  }
+  100% {
+    transform: rotate(15deg) scaleY(1.04);
+  }
+}
+
+@keyframes zenryuWingFlapBack {
+  0% {
+    transform: rotate(-12deg) scaleY(0.88);
+  }
+  100% {
+    transform: rotate(12deg) scaleY(1.02);
+  }
+}
+
+@keyframes zenryuTailSway {
+  0% {
+    transform: rotate(-7deg);
+  }
+  100% {
+    transform: rotate(8deg);
+  }
+}
+
+@keyframes zenryuAuraPulse {
+  0% {
+    opacity: 0.65;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes zenryuSleepBreathe {
+  0% {
+    transform: scale(0.97);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.02);
+    opacity: 1;
+  }
+}
+
+@keyframes zenryuRoarBurst {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.12) rotate(-4deg);
+  }
+  100% {
+    transform: scale(1.04);
+  }
+}
+
+@keyframes zenryuEggBreathe {
+  0% {
+    transform: scale(0.97);
+  }
+  100% {
+    transform: scale(1.03);
+  }
+}
+
+@keyframes zenryuEggHatch {
+  0% {
+    transform: rotate(-4deg) scale(1.02);
+  }
+  100% {
+    transform: rotate(4deg) scale(1.08);
+  }
+}
+
+/* ── Zenryu Glass Bottom Sheet (~85% Viewport Height) ─────────────────────── */
+.zenryu-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  background-color: var(--overlay);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.zenryu-sheet-panel {
+  width: 100%;
+  max-width: 680px;
+  height: 85dvh;
+  max-height: 85dvh;
+  display: flex;
+  flex-direction: column;
+  border-top-left-radius: 26px;
+  border-top-right-radius: 26px;
+  background-color: var(--glass-surface-strong);
+  backdrop-filter: blur(18px) saturate(165%);
+  -webkit-backdrop-filter: blur(18px) saturate(165%);
+  border: 1px solid var(--glass-border);
+  border-top-color: var(--glass-border-highlight);
+  box-shadow: var(--glass-shadow), var(--glass-glow);
+  overflow: hidden;
+  will-change: transform;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.zenryu-sheet-handle-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 0 6px;
+  cursor: grab;
+  touch-action: none;
+  flex-shrink: 0;
+}
+
+.zenryu-sheet-pill {
+  width: 42px;
+  height: 4px;
+  border-radius: 9999px;
+  background-color: var(--border-strong);
+}
+
+.zenryu-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 18px 14px;
+  border-bottom: 1px solid var(--glass-border);
+  flex-shrink: 0;
+}
+
+.zenryu-avatar-badge {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--glass-border));
+  flex-shrink: 0;
+}
+
+.zenryu-icon-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--surface-2);
+  border: 1px solid var(--glass-border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+
+.zenryu-icon-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.zenryu-chips-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--glass-border);
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+
+.zenryu-chips-row::-webkit-scrollbar {
+  display: none;
+}
+
+.zenryu-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  background-color: var(--surface-2);
+  border: 1px solid var(--glass-border);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.zenryu-chip-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background-color: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
+}
+
+.zenryu-chip-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.zenryu-chat-thread {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.zenryu-msg-bubble {
+  max-width: 86%;
+  padding: 11px 14px;
+  border-radius: 18px;
+  font-size: 13px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.zenryu-msg-bubble--dragon {
+  background-color: var(--surface-2);
+  border: 1px solid var(--glass-border);
+  color: var(--text);
+  border-top-left-radius: 6px;
+}
+
+.zenryu-msg-bubble--user {
+  background-color: var(--accent);
+  color: #ffffff;
+  border: 1px solid color-mix(in srgb, #ffffff 18%, var(--accent));
+  border-top-right-radius: 6px;
+}
+
+.zenryu-coming-soon-box {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background-color: color-mix(in srgb, var(--accent) 8%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--glass-border));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.zenryu-sheet-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px calc(14px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--glass-border);
+  background-color: var(--surface);
+  flex-shrink: 0;
+}
+
+.zenryu-chat-input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 14px;
+  font-size: 13px;
+  background-color: var(--surface-2);
+  border: 1px solid var(--glass-border);
+  color: var(--text);
+  outline: none;
+}
+
+.zenryu-chat-input:focus {
+  border-color: var(--accent);
+}
+
+.zenryu-send-btn {
+  position: relative;
+  overflow: hidden;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--accent);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.zenryu-send-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zenryu-bob-wrapper,
+  .zenryu-svg--flying .zenryu-part-wing-front,
+  .zenryu-svg--flying .zenryu-part-wing-back,
+  .zenryu-svg--flying .zenryu-part-tail,
+  .zenryu-svg--flying .zenryu-part-aura,
+  .zenryu-svg--sleeping,
+  .zenryu-svg--roaring,
+  .zenryu-egg--pulse,
+  .zenryu-egg--hatching {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
