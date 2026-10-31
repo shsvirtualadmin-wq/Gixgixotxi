@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { getSectionCriteria, getUniversityRulesSummary } from '@/constants/universityCriteria';
+import { getUniversityRulesSummary } from '@/constants/universityCriteria';
 import { formatSubjectName } from '@/constants/taxonomy';
 import {
   getMyTestAttemptForTest,
@@ -177,14 +177,43 @@ async function resolveQuestionKeys(questions: AttemptQuestion[]): Promise<Attemp
 }
 
 /**
+ * Stamps the background layers (centered black dotted Boardly logo at 8% opacity +
+ * faint diagonal "Boardly · boardly.cfd" text watermark) onto the currently active page
+ * BEFORE foreground question cards are drawn so cards never get covered.
+ */
+function stampPageBackgroundWatermarks(doc: jsPDF, watermarkLogoPng: string, pageWidth = 210): void {
+  // 1. Faint Diagonal Watermark Text: Boardly · boardly.cfd
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(242, 245, 249);
+  const wmRows = [50, 100, 150, 200, 250];
+  const wmCols = [25, 75, 125, 175];
+  for (let r = 0; r < wmRows.length; r++) {
+    const offset = (r % 2) * 25;
+    for (const c of wmCols) {
+      doc.text('Boardly · boardly.cfd', c + offset, wmRows[r], { angle: -28 });
+    }
+  }
+
+  // 2. Centered Black Dotted Boardly Logo (pre-rasterized once at 8% opacity)
+  if (watermarkLogoPng) {
+    const wmW = 132;
+    const wmH = wmW * (824 / 1768);
+    const wmX = (pageWidth - wmW) / 2;
+    const wmY = (297 - wmH) / 2;
+    doc.addImage(watermarkLogoPng, 'PNG', wmX, wmY, wmW, wmH, undefined, 'FAST');
+  }
+}
+
+/**
  * Pure Vector Grand Line Verified Drill Report Exporter:
  * - 100% direct jsPDF drawing: text, badges, cards, tables, bars rendered as crisp vectors.
  * - Zero html2canvas, zero DOM staging, zero browser freezing or layout shifts.
- * - Dotted Boardly logo rasterized once as small PNG and stamped onto each page.
+ * - Dotted Boardly logo rasterized once as small PNG and stamped behind content on each page.
  * - Diagonal watermark ("Boardly · boardly.cfd") drawn natively in jsPDF.
- * - Chunked processing (5 questions per yield) with setTimeout(0) keeps UI responsive at 60fps.
+ * - Chunked processing (5 questions per yield) with setTimeout(28) keeps UI & messages smooth.
  * - AbortSignal & 60-second timeout support with safe scroll lock release.
- * - Tightly packs ~83 questions into ~8 to 10 pages (~25 KB vector PDF).
+ * - Tightly packs ~83 questions into ~9 pages (~24 KB vector PDF).
  */
 export async function exportDrillResultToPdf(options: ExportDrillResultPdfOptions): Promise<void> {
   const {
@@ -202,7 +231,6 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     onProgress,
   } = options;
 
-  // Enforce 60-second timeout safety guard
   const timeoutId = setTimeout(() => {
     if (!signal?.aborted) {
       console.warn('[testPdfExporter] PDF generation timeout reached (60s).');
@@ -300,7 +328,7 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       /mock|mdcat|nums|etea|ecat/i.test(testTitle) || totalQuestions >= 60;
     const modePillText = isFullMock ? 'Full Mock' : 'Chapter Drill';
 
-    // Pre-generate / retrieve cached lightweight PNG Data URLs for the dotted logo
+    // Retrieve cached lightweight PNG Data URLs for the dotted logo (generated once)
     const watermarkLogoPng = getWatermarkLogoPngDataUrl();
     const whiteHeaderLogoPng = getWhiteHeaderLogoPngDataUrl();
 
@@ -312,7 +340,6 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       compress: true,
     });
 
-    // Set document properties
     doc.setDocumentProperties({
       title: `Grand Line Verified Drill Report - ${testTitle}`,
       subject: `Verified Drill Report for ${studentName}`,
@@ -322,20 +349,40 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     });
 
     const pageWidth = 210;
-    const contentWidth = 186; // margins: left 12, right 12
-    const maxUsableY = 280; // bottom margin reserved for footer at 285-294mm
+    const contentWidth = 186;
+    const maxUsableY = 280;
+
+    // Stamp background watermarks on Page 1 BEFORE drawing foreground
+    stampPageBackgroundWatermarks(doc, watermarkLogoPng, pageWidth);
 
     // ==========================================
-    // Page 1 Header Banner (Dark + White Dotted Logo)
+    // Page 1 Header Banner (Dark + Dot-Grid Texture + White Dotted Logo)
     // ==========================================
     let currentY = 12;
 
     doc.setFillColor(15, 23, 42); // #0f172a
     doc.roundedRect(12, currentY, contentWidth, 20, 2, 2, 'F');
 
+    // Faint dot-grid texture inside the dark banner
+    doc.setFillColor(38, 49, 71);
+    for (let gx = 15; gx < 195; gx += 4.5) {
+      for (let gy = currentY + 2.5; gy < currentY + 18.5; gy += 4.5) {
+        doc.circle(gx, gy, 0.22, 'F');
+      }
+    }
+
     // Stamp white dotted logo
     if (whiteHeaderLogoPng) {
-      doc.addImage(whiteHeaderLogoPng, 'PNG', 15, currentY + 3.2, 24, 24 * (824 / 1768), undefined, 'FAST');
+      doc.addImage(
+        whiteHeaderLogoPng,
+        'PNG',
+        15,
+        currentY + 3.2,
+        24,
+        24 * (824 / 1768),
+        undefined,
+        'FAST'
+      );
     }
 
     // Header divider line
@@ -366,7 +413,7 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     doc.setTextColor(203, 213, 225);
     doc.text(formatSubjectName(subject || 'General'), 178, currentY + 14, { align: 'center' });
 
-    currentY += 23; // now 35mm
+    currentY += 23;
 
     // ==========================================
     // Page 1 Summary Strip + Accuracy Bar
@@ -376,7 +423,6 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     doc.setLineWidth(0.25);
     doc.roundedRect(12, currentY, contentWidth, 14, 2, 2, 'FD');
 
-    // Summary metadata items
     doc.setFontSize(6.5);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(100, 116, 139);
@@ -404,7 +450,6 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     doc.setTextColor(71, 85, 105);
     doc.text(String(skippedCount), 177, currentY + 4.5);
 
-    // Row 2: Time & Date + Accuracy Bar
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6);
     doc.setTextColor(100, 116, 139);
@@ -436,7 +481,7 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       doc.rect(barX + cW + wW, barY, sW, barH, 'F');
     }
 
-    currentY += 16.5; // now 51.5mm
+    currentY += 16.5;
 
     // ==========================================
     // Page 1 Subject-Wise Breakdown Table
@@ -489,7 +534,7 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       currentY += 3.8;
     }
 
-    currentY += 3.5; // spacing before questions
+    currentY += 3.5;
 
     // ==========================================
     // Compact Question Cards Layout (Vector)
@@ -499,10 +544,9 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     for (let i = 0; i < totalQCount; i++) {
       if (signal?.aborted) throw new Error('PDF export cancelled.');
 
-      // Yield event loop every CHUNK_SIZE items so scrolling/animation stays silky smooth
+      // Yield event loop every CHUNK_SIZE items so scrolling and progress bar stay silky smooth
       if (i % CHUNK_SIZE === 0) {
-        await new Promise((r) => setTimeout(r, 0));
-        const progressVal = Math.round(((i + 1) / totalQCount) * 100);
+        await new Promise((r) => setTimeout(r, 28));
         onProgress?.({
           current: i + 1,
           totalPages: totalQCount,
@@ -525,7 +569,6 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       const stemLines = doc.splitTextToSize(cleanStem, 178);
       const stemH = Math.max(3.5, stemLines.length * 3.1);
 
-      // Options
       const opts = Array.isArray(q.options) && q.options.length >= 2 ? q.options : ['A', 'B', 'C', 'D'];
       const cleanOpts = opts.slice(0, 4).map((o) => cleanMathForPdf(String(o || '')));
 
@@ -549,20 +592,19 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       const expLines = doc.splitTextToSize(cleanExp, 172);
       const expH = Math.min(8.5, Math.max(3.2, expLines.length * 2.6 + 1.2));
 
-      // Calculate total question card height
       const cardHeight = 4.5 + stemH + optionsTotalH + 3.2 + expH + 2;
 
-      // Overflow check: if card overflows current page, add new page
+      // Overflow check: if card overflows current page, add new page and stamp watermark FIRST
       if (currentY + cardHeight > maxUsableY) {
         doc.addPage();
-        currentY = 16; // top margin on page 2+
+        stampPageBackgroundWatermarks(doc, watermarkLogoPng, pageWidth);
+        currentY = 16;
       }
 
-      // 1. Draw Card Background Box
-      doc.setFillColor(255, 255, 255);
+      // 1. Draw Card Border (without solid white fill so the faint background dotted logo shines through)
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.25);
-      doc.roundedRect(12, currentY, contentWidth, cardHeight, 1.5, 1.5, 'FD');
+      doc.roundedRect(12, currentY, contentWidth, cardHeight, 1.5, 1.5, 'S');
 
       // 2. Question Header & Status Badge
       doc.setFont('helvetica', 'bold');
@@ -570,7 +612,6 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       doc.setTextColor(15, 23, 42);
       doc.text(`Q${i + 1}.`, 15, currentY + 3.8);
 
-      // Status badge (unclipped, centered vector)
       const badgeW = 20;
       const badgeH = 3.6;
       const badgeX = 174;
@@ -605,22 +646,23 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
         const isOptCorrect = optIdx === correctIdx;
         const isOptSelected = optIdx === selectedIdx;
 
+        doc.setLineWidth(0.2);
+
         if (isOptCorrect) {
           doc.setFillColor(236, 253, 245); // #ecfdf5
           doc.setDrawColor(16, 185, 129); // #10b981
-          doc.setTextColor(6, 95, 70); // #065f46
+          doc.roundedRect(x, y, optColW, h, 1, 1, 'FD');
+          doc.setTextColor(6, 95, 70);
         } else if (isOptSelected) {
           doc.setFillColor(254, 242, 242); // #fef2f2
           doc.setDrawColor(239, 68, 68); // #ef4444
-          doc.setTextColor(153, 27, 27); // #991b1b
+          doc.roundedRect(x, y, optColW, h, 1, 1, 'FD');
+          doc.setTextColor(153, 27, 27);
         } else {
-          doc.setFillColor(248, 250, 252); // #f8fafc
           doc.setDrawColor(226, 232, 240); // #e2e8f0
-          doc.setTextColor(51, 65, 85); // #334155
+          doc.roundedRect(x, y, optColW, h, 1, 1, 'S');
+          doc.setTextColor(51, 65, 85);
         }
-
-        doc.setLineWidth(0.2);
-        doc.roundedRect(x, y, optColW, h, 1, 1, 'FD');
 
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(6.2);
@@ -662,12 +704,10 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
 
       // 6. Short Explanation Box
       const expY = ansY + 2.2;
-      doc.setFillColor(248, 250, 252);
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.2);
-      doc.roundedRect(15, expY, 180, expH, 0.8, 0.8, 'F');
+      doc.roundedRect(15, expY, 180, expH, 0.8, 0.8, 'S');
 
-      // Accent border on left
       doc.setFillColor(148, 163, 184);
       doc.rect(15, expY, 1.2, expH, 'F');
 
@@ -688,6 +728,7 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     // ==========================================
     if (currentY + 13 > maxUsableY) {
       doc.addPage();
+      stampPageBackgroundWatermarks(doc, watermarkLogoPng, pageWidth);
       currentY = 16;
     }
 
@@ -716,36 +757,14 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     );
 
     // ==========================================
-    // Stamp Watermark, Headers, and Running Footers on ALL Pages
+    // Stamp Running Headers & Running Footers on ALL Pages
     // ==========================================
     const totalPages = doc.getNumberOfPages();
 
     for (let p = 0; p < totalPages; p++) {
       doc.setPage(p + 1);
 
-      // 1. Watermark Dotted Logo: Centered, 8% opacity pre-rasterized
-      if (watermarkLogoPng) {
-        const wmW = 130;
-        const wmH = 130 * (824 / 1768);
-        const wmX = (pageWidth - wmW) / 2;
-        const wmY = (297 - wmH) / 2;
-        doc.addImage(watermarkLogoPng, 'PNG', wmX, wmY, wmW, wmH, undefined, 'FAST');
-      }
-
-      // 2. Faint Diagonal Watermark Text: Boardly · boardly.cfd
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      doc.setTextColor(244, 246, 250);
-      const wmRows = [50, 100, 150, 200, 250];
-      const wmCols = [25, 75, 125, 175];
-      for (let r = 0; r < wmRows.length; r++) {
-        const offset = (r % 2) * 25;
-        for (const c of wmCols) {
-          doc.text('Boardly · boardly.cfd', c + offset, wmRows[r], { angle: -28 });
-        }
-      }
-
-      // 3. Slim Running Header (Pages 2+)
+      // Slim Running Header (Pages 2+)
       if (p > 0) {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7);
@@ -762,7 +781,7 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
         doc.line(12, 12, 198, 12);
       }
 
-      // 4. Running Footer on EVERY page
+      // Running Footer on EVERY page
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.25);
       doc.line(12, 285, 198, 285);
@@ -796,7 +815,6 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     doc.save(filename);
   } finally {
     clearTimeout(timeoutId);
-    // Guarantee that body scroll lock or pointer events are always restored
     if (typeof document !== 'undefined' && document.body) {
       document.body.style.overflow = '';
       document.body.style.pointerEvents = '';
@@ -907,13 +925,23 @@ export async function exportTestToPdf(
     creator: 'Boardly (boardly.cfd)',
   });
 
+  const pageWidth = 210;
   const contentWidth = 186;
   const maxUsableY = 280;
   let currentY = 12;
 
+  stampPageBackgroundWatermarks(doc, watermarkLogoPng, pageWidth);
+
   // Header Banner
   doc.setFillColor(15, 23, 42);
   doc.roundedRect(12, currentY, contentWidth, 20, 2, 2, 'F');
+
+  doc.setFillColor(38, 49, 71);
+  for (let gx = 15; gx < 195; gx += 4.5) {
+    for (let gy = currentY + 2.5; gy < currentY + 18.5; gy += 4.5) {
+      doc.circle(gx, gy, 0.22, 'F');
+    }
+  }
 
   if (whiteHeaderLogoPng) {
     doc.addImage(whiteHeaderLogoPng, 'PNG', 15, currentY + 3.2, 24, 24 * (824 / 1768), undefined, 'FAST');
@@ -972,7 +1000,7 @@ export async function exportTestToPdf(
     if (signal?.aborted) throw new Error('PDF export cancelled.');
 
     if (i % 5 === 0) {
-      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 20));
     }
 
     const q = resolvedQuestions[i];
@@ -1001,13 +1029,13 @@ export async function exportTestToPdf(
 
     if (currentY + cardHeight > maxUsableY) {
       doc.addPage();
+      stampPageBackgroundWatermarks(doc, watermarkLogoPng, pageWidth);
       currentY = 16;
     }
 
-    doc.setFillColor(255, 255, 255);
     doc.setDrawColor(226, 232, 240);
     doc.setLineWidth(0.25);
-    doc.roundedRect(12, currentY, contentWidth, cardHeight, 1.5, 1.5, 'FD');
+    doc.roundedRect(12, currentY, contentWidth, cardHeight, 1.5, 1.5, 'S');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
@@ -1026,11 +1054,10 @@ export async function exportTestToPdf(
 
     const drawPaperOpt = (optIdx: number, x: number, y: number, h: number, lines: string[]) => {
       const letter = OPT_LABELS[optIdx] || String(optIdx + 1);
-      doc.setFillColor(248, 250, 252);
       doc.setDrawColor(226, 232, 240);
       doc.setTextColor(51, 65, 85);
       doc.setLineWidth(0.2);
-      doc.roundedRect(x, y, optColW, h, 1, 1, 'FD');
+      doc.roundedRect(x, y, optColW, h, 1, 1, 'S');
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.2);
@@ -1051,6 +1078,7 @@ export async function exportTestToPdf(
   // Answer Key Section
   if (currentY + 20 > maxUsableY) {
     doc.addPage();
+    stampPageBackgroundWatermarks(doc, watermarkLogoPng, pageWidth);
     currentY = 16;
   }
 
@@ -1076,12 +1104,12 @@ export async function exportTestToPdf(
 
     if (currentY + keyCardH > maxUsableY) {
       doc.addPage();
+      stampPageBackgroundWatermarks(doc, watermarkLogoPng, pageWidth);
       currentY = 16;
     }
 
-    doc.setFillColor(248, 250, 252);
     doc.setDrawColor(226, 232, 240);
-    doc.roundedRect(12, currentY, contentWidth, keyCardH, 1, 1, 'FD');
+    doc.roundedRect(12, currentY, contentWidth, keyCardH, 1, 1, 'S');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.8);
@@ -1101,28 +1129,10 @@ export async function exportTestToPdf(
     currentY += keyCardH + 1.8;
   }
 
-  // Stamp Watermark and Running Footer on all pages
+  // Stamp Running Headers and Footers on all pages
   const totalPages = doc.getNumberOfPages();
   for (let p = 0; p < totalPages; p++) {
     doc.setPage(p + 1);
-
-    if (watermarkLogoPng) {
-      const wmW = 130;
-      const wmH = 130 * (824 / 1768);
-      doc.addImage(watermarkLogoPng, 'PNG', 40, (297 - wmH) / 2, wmW, wmH, undefined, 'FAST');
-    }
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(244, 246, 250);
-    const wmRows = [50, 100, 150, 200, 250];
-    const wmCols = [25, 75, 125, 175];
-    for (let r = 0; r < wmRows.length; r++) {
-      const offset = (r % 2) * 25;
-      for (const c of wmCols) {
-        doc.text('Boardly · boardly.cfd', c + offset, wmRows[r], { angle: -28 });
-      }
-    }
 
     if (p > 0) {
       doc.setFont('helvetica', 'bold');
@@ -1149,4 +1159,3 @@ export async function exportTestToPdf(
   const filename = `${title.replace(/[^a-zA-Z0-9_-]/g, '_')}_Boardly.pdf`;
   doc.save(filename);
 }
-

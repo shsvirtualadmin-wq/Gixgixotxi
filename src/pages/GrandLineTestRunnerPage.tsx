@@ -63,8 +63,6 @@ export function GrandLineTestRunnerPage() {
     attempt?: Partial<AmbassadorTestAttempt>;
   } | null>(null);
   const [loadingMyResult, setLoadingMyResult] = useState(false);
-  const [downloadingPdf, setDownloadingPdf] = useState(false);
-  const [pdfProgressText, setPdfProgressText] = useState<string | null>(null);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
@@ -315,36 +313,6 @@ export function GrandLineTestRunnerPage() {
       setSubmitting(false);
     }
   }, [test, submitted, submitting, answers, resolveStudentProfileName, resolveStudentAvatar]);
-
-  const handleDownloadPdf = async () => {
-    if (!scoreResult || downloadingPdf) return;
-    setDownloadingPdf(true);
-    setPdfProgressText('Formatting PDF...');
-    try {
-      await exportDrillResultToPdf({
-        testId: testId || test?.id,
-        testTitle: scoreResult.testTitle,
-        subject: scoreResult.subject,
-        studentName: scoreResult.studentName || resolveStudentProfileName(),
-        date: scoreResult.date,
-        score: scoreResult.score,
-        totalQuestions: scoreResult.totalQuestions,
-        percentage: scoreResult.percentage,
-        timeTakenSeconds: scoreResult.timeTakenSeconds,
-        gradedQuestions: scoreResult.gradedQuestions,
-        onProgress: (prog) => {
-          setPdfProgressText(prog.message);
-        },
-      });
-      showApiToast('Result PDF downloaded successfully!', 'success');
-    } catch (err: any) {
-      console.error('[GrandLineTestRunnerPage] PDF download error:', err);
-      showApiToast(err?.message || 'Failed to generate PDF. Tap Download PDF to retry.', 'error');
-    } finally {
-      setDownloadingPdf(false);
-      setPdfProgressText(null);
-    }
-  };
 
   // Countdown timer
   useEffect(() => {

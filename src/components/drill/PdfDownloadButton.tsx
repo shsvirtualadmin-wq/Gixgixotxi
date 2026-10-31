@@ -29,7 +29,7 @@ type DownloadState = 'idle' | 'bubbling' | 'progress' | 'success' | 'error';
 
 export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
   onDownload,
-  label = 'Download PDF Report',
+  label = 'Download PDF',
   className = '',
   variant = 'primary',
   disabled = false,
@@ -67,7 +67,7 @@ export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
       // 1. Soft fade out
       setMessageOpacity(0);
 
-      // 2. Change message after 300ms fade-out
+      // 2. Change message after 260ms fade-out
       setTimeout(() => {
         setCurrentMessage((prev) => {
           const available = FRIENDLY_MESSAGES.filter((m) => m !== prev);
@@ -76,7 +76,7 @@ export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
         });
         // 3. Soft fade in
         setMessageOpacity(1);
-      }, 300);
+      }, 260);
     }, 3000);
 
     return () => {
@@ -96,7 +96,7 @@ export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
   const startDownloadFlow = useCallback(async () => {
     if (disabled || state === 'progress' || state === 'bubbling') return;
 
-    // Reset state & scroll
+    // Reset state & ensure scroll is never locked
     if (typeof document !== 'undefined' && document.body) {
       document.body.style.overflow = '';
       document.body.style.pointerEvents = '';
@@ -120,13 +120,13 @@ export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
       }
     }, 60000);
 
-    // 1. Droplet Bubble Effect (scales up smoothly like a stretching droplet)
+    // 1. Tap "Download PDF": the button bubbles out (scales up smoothly like a stretching droplet)
     setState('bubbling');
-    await new Promise((r) => setTimeout(r, 320));
+    await new Promise((r) => setTimeout(r, 420));
 
     if (abortController.signal.aborted) return;
 
-    // 2. Morph into thin straight red progress line across the card
+    // 2. Morph into a thin straight RED progress line across the card
     setState('progress');
 
     try {
@@ -202,7 +202,8 @@ export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
   if (state === 'success') {
     return (
       <div
-        className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs sm:text-sm shadow-md transition-all duration-300 ${className}`}
+        className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs sm:text-sm shadow-md transition-opacity duration-200 ${className}`}
+        style={{ willChange: 'transform, opacity' }}
         role="status"
         aria-live="polite"
       >
@@ -217,6 +218,7 @@ export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
     return (
       <div
         className={`flex flex-col gap-1.5 p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-600 dark:text-red-400 w-full max-w-sm ${className}`}
+        style={{ willChange: 'transform, opacity' }}
         role="alert"
       >
         <div className="flex items-start gap-1.5">
@@ -235,24 +237,24 @@ export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
     );
   }
 
-  // State: Progress Line or Bubbling Morph
-  if (state === 'progress' || state === 'bubbling') {
+  // State: Progress Line across the card
+  if (state === 'progress') {
     const scaleRatio = Math.max(0.01, Math.min(1, percent / 100));
 
     return (
       <div
-        className={`flex flex-col gap-1.5 w-full max-w-sm select-none ${className}`}
+        className={`flex flex-col gap-1.5 w-full min-w-[230px] max-w-md select-none ${className}`}
         style={{ willChange: 'transform, opacity' }}
       >
         {/* Top Header: Progress percentage & Cancel button */}
         <div className="flex items-center justify-between text-xs font-semibold">
-          <span className="text-[var(--text,#0f172a)] font-mono tabular-nums">
+          <span className="text-[#D71921] font-mono font-bold tabular-nums">
             {percent}%
           </span>
           <button
             type="button"
             onClick={handleCancel}
-            className="inline-flex items-center gap-1 text-[11px] text-[var(--muted,#64748b)] hover:text-red-600 transition-colors cursor-pointer px-1 py-0.5 rounded"
+            className="inline-flex items-center gap-1 text-[11px] text-[var(--muted,#64748b)] hover:text-red-600 transition-colors cursor-pointer px-1.5 py-0.5 rounded"
             title="Cancel PDF export"
           >
             <X size={12} />
@@ -262,7 +264,7 @@ export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
 
         {/* Thin straight RED progress line across the card */}
         <div
-          className="relative w-full h-1 sm:h-1.5 rounded-full overflow-hidden bg-red-100 dark:bg-red-950/40"
+          className="relative w-full h-1.5 rounded-full overflow-hidden bg-red-500/15"
           style={{ willChange: 'transform' }}
         >
           <div
@@ -270,7 +272,7 @@ export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
             style={{
               transformOrigin: 'left center',
               transform: `scaleX(${scaleRatio})`,
-              transition: prefersReducedMotion ? 'none' : 'transform 200ms ease-out',
+              transition: prefersReducedMotion ? 'none' : 'transform 160ms ease-out',
               willChange: 'transform',
             }}
           />
@@ -278,10 +280,10 @@ export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
 
         {/* Friendly motivating messages under the line with soft opacity fade */}
         <div
-          className="h-4 text-[11px] text-[var(--muted,#64748b)] truncate italic"
+          className="min-h-[18px] text-[11px] text-[var(--muted,#64748b)] leading-tight italic"
           style={{
             opacity: messageOpacity,
-            transition: prefersReducedMotion ? 'none' : 'opacity 300ms ease',
+            transition: prefersReducedMotion ? 'none' : 'opacity 260ms ease-in-out',
             willChange: 'opacity',
           }}
         >
@@ -291,16 +293,21 @@ export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
     );
   }
 
-  // State: Idle Button
+  // State: Idle or Bubbling Button (stretching droplet effect before morphing into red line)
+  const isBubbling = state === 'bubbling' && !prefersReducedMotion;
+
   return (
     <button
       type="button"
       onClick={startDownloadFlow}
-      disabled={disabled}
-      className={`group relative inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm cursor-pointer select-none transition-transform duration-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none ${getVariantStyles()} ${className}`}
+      disabled={disabled || state === 'bubbling'}
+      className={`group relative inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm cursor-pointer select-none transition-transform duration-200 active:scale-[0.98] disabled:opacity-90 ${getVariantStyles()} ${className}`}
       style={{
         transformOrigin: 'center center',
-        willChange: 'transform',
+        willChange: 'transform, opacity',
+        animation: isBubbling
+          ? 'boardlyDropletBubble 420ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards'
+          : 'none',
       }}
     >
       <Download
@@ -309,20 +316,23 @@ export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
       />
       <span>{label}</span>
 
-      {/* Bubble droplet CSS animation embedded */}
       <style>{`
-        @keyframes dropletBubble {
+        @keyframes boardlyDropletBubble {
           0% {
-            transform: scale(1);
+            transform: scale(1, 1);
+            opacity: 1;
           }
-          40% {
-            transform: scale(1.12, 0.90);
+          35% {
+            transform: scale(1.16, 0.86);
+            opacity: 1;
           }
-          75% {
-            transform: scale(0.96, 1.08);
+          70% {
+            transform: scale(0.92, 1.14);
+            opacity: 0.95;
           }
           100% {
-            transform: scale(1);
+            transform: scale(1.28, 0.14);
+            opacity: 0.3;
           }
         }
       `}</style>
