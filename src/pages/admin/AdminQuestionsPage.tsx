@@ -26,6 +26,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { MathText, validateMath } from '@/components/ui/MathText';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { D1UniversityRow, D1McqRow, D1McqReportRow } from '@/constants/d1Universities';
 import {
   fetchUniversities,
@@ -845,9 +846,7 @@ export function AdminQuestionsPage() {
             </div>
 
             {loadingUnis ? (
-              <div className="py-6 text-center text-xs text-[var(--text-muted)]">
-                Loading universities from Cloudflare D1...
-              </div>
+              <LineLoader context="universities" variant="section" />
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 max-h-[310px] overflow-y-auto pr-1">
                 {universities.map((uni, idx) => {
@@ -1164,9 +1163,7 @@ export function AdminQuestionsPage() {
             </div>
 
             {loadingMcqs ? (
-              <div className="py-12 text-center text-xs text-[var(--text-muted)]">
-                Loading MCQs from Cloudflare D1...
-              </div>
+              <LineLoader context="admin" variant="section" />
             ) : mcqs.length === 0 ? (
               <div className="py-12 px-4 text-center rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-muted)]/40 flex flex-col items-center gap-3">
                 <Database size={28} className="text-[var(--text-muted)]" />
@@ -1324,8 +1321,8 @@ export function AdminQuestionsPage() {
       {activeTab === 'health' && (
         <div className="flex flex-col gap-5">
           {loadingHealth || !healthData ? (
-            <div className="p-10 rounded-3xl bg-[var(--surface)] border border-[var(--border)] text-center text-xs text-[var(--text-muted)]">
-              Loading Cloudflare D1 bank health metrics...
+            <div className="p-6 rounded-3xl bg-[var(--surface)] border border-[var(--border)]">
+              <LineLoader context="admin" variant="section" />
             </div>
           ) : (
             <>
@@ -1426,9 +1423,7 @@ export function AdminQuestionsPage() {
             Student Question Reports ({(reports || []).length})
           </h3>
           {loadingReports ? (
-            <div className="py-8 text-center text-xs text-[var(--text-muted)]">
-              Loading reports from D1...
-            </div>
+            <LineLoader context="admin" variant="section" />
           ) : (reports || []).length === 0 ? (
             <div className="py-8 text-center text-xs text-[var(--text-muted)]">
               No student reports submitted yet.
@@ -1566,9 +1561,10 @@ export function AdminQuestionsPage() {
               <button
                 type="submit"
                 disabled={uniSaving}
-                className="btn-red px-5 py-2 rounded-xl text-xs font-bold cursor-pointer"
+                className="relative overflow-hidden btn-red px-5 py-2 rounded-xl text-xs font-bold cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {uniSaving ? 'Saving...' : editingUni ? 'Save Changes' : 'Create University'}
+                <span>{uniSaving ? 'Saving...' : editingUni ? 'Save Changes' : 'Create University'}</span>
+                {uniSaving && <ButtonLineLoader />}
               </button>
             </div>
           </form>
@@ -1836,9 +1832,10 @@ export function AdminQuestionsPage() {
               <button
                 type="submit"
                 disabled={savingMcq}
-                className="btn-red px-5 py-2 rounded-xl text-xs font-bold cursor-pointer"
+                className="relative overflow-hidden btn-red px-5 py-2 rounded-xl text-xs font-bold cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {savingMcq ? 'Saving to D1...' : editingMcq ? 'Update MCQ' : 'Save MCQ to D1'}
+                <span>{savingMcq ? 'Saving...' : editingMcq ? 'Update MCQ' : 'Save MCQ to D1'}</span>
+                {savingMcq && <ButtonLineLoader />}
               </button>
             </div>
           </form>
@@ -2009,9 +2006,10 @@ export function AdminQuestionsPage() {
                     type="button"
                     onClick={handleFetchGoogleSheet}
                     disabled={fetchingSheet}
-                    className="btn-red px-4 py-2.5 rounded-xl text-xs font-bold cursor-pointer shrink-0"
+                    className="relative overflow-hidden btn-red px-4 py-2.5 rounded-xl text-xs font-bold cursor-pointer shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {fetchingSheet ? 'Fetching Sheet...' : 'Load Sheet'}
+                    <span>{fetchingSheet ? 'Processing your sheet...' : 'Load Sheet'}</span>
+                    {fetchingSheet && <ButtonLineLoader />}
                   </button>
                 </div>
               </div>
@@ -2053,6 +2051,11 @@ export function AdminQuestionsPage() {
                 className="w-full p-3 rounded-2xl bg-[var(--input-bg)] border border-[var(--border)] text-xs font-mono text-[var(--text)]"
               />
             </div>
+
+            {/* Show LineLoader while waiting for chunked import to start */}
+            {importing && !importProgress && !resumableState && (
+              <LineLoader context="import" variant="inline" delayMs={0} />
+            )}
 
             {/* Live Running Counter & Progress Bar */}
             {(importProgress || resumableState) && (
@@ -2160,16 +2163,15 @@ export function AdminQuestionsPage() {
                     type="button"
                     disabled={importing || parsedPreview.rows.length === 0}
                     onClick={() => startOrResumeImport(false)}
-                    className="btn-red px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
+                    className="relative overflow-hidden btn-red px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                   >
                     <Play size={14} />
                     <span>
                       {importing
-                        ? `Importing (${importProgress?.importedCount ?? 0}/${
-                            importProgress?.totalRows ?? parsedPreview.rows.length
-                          })...`
+                        ? 'Importing...'
                         : `Start Chunked Import (${parsedPreview.rows.length} MCQs)`}
                     </span>
+                    {importing && <ButtonLineLoader />}
                   </button>
                 )}
               </div>
@@ -2303,16 +2305,17 @@ export function AdminQuestionsPage() {
                   type="button"
                   disabled={!legacyConfirmChecked || legacyDeleting}
                   onClick={handleConfirmLegacyDelete}
-                  className="btn-red px-4 py-2 rounded-xl text-xs font-bold disabled:opacity-40 cursor-pointer flex items-center gap-1.5"
+                  className="relative overflow-hidden btn-red px-4 py-2 rounded-xl text-xs font-bold disabled:opacity-40 cursor-pointer flex items-center gap-1.5"
                 >
                   <Check size={14} />
                   <span>
                     {legacyDeleting
-                      ? 'Deleting & Resetting...'
+                      ? 'Deleting...'
                       : (legacySummary?.totalToDelete ?? 0) === 0
                       ? 'Re-Verify Reset (0 Active)'
                       : `Confirm Delete (${legacySummary?.totalToDelete} MCQs)`}
                   </span>
+                  {legacyDeleting && <ButtonLineLoader />}
                 </button>
               </div>
             </div>

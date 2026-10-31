@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { CrewApplyPage } from '@/pages/crew/CrewApplyPage';
 import { CaptainApplyPage } from '@/pages/captain/CaptainApplyPage';
 
@@ -15,16 +15,7 @@ export function RoleGuard({ requiredRole, children }: RoleGuardProps) {
   const location = useLocation();
 
   if (profileLoading) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center p-6">
-        <div className="w-full max-w-[400px]">
-          <Skeleton height={28} width="60%" />
-          <div className="mt-4">
-            <Skeleton height={14} count={4} />
-          </div>
-        </div>
-      </div>
-    );
+    return <LineLoader context="dashboard" variant="section" />;
   }
 
   // Not logged in -> redirect to login with return parameter

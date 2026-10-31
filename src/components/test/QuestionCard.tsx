@@ -17,7 +17,7 @@ import { reportQuestion } from '@/services/testEngine';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatChapterName, formatSubjectName } from '@/constants/taxonomy';
 import { getSectionCriteria } from '@/constants/universityCriteria';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import type { AttemptQuestion } from '@/types/index';
 
 interface QuestionCardProps {
@@ -388,24 +388,15 @@ export const QuestionCard = memo(function QuestionCard({
           )}
 
           {onSubmit && (
-            isSubmitting ? (
-              <div className="w-48 p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-                <BubbleLoader
-                  variant="inline"
-                  loading={isSubmitting}
-                  messages={['Checking your answers...']}
-                />
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={onSubmit}
-                disabled={isSubmitting}
-                className="btn-red px-5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-              >
-                <span>Finish &amp; Submit</span>
-              </button>
-            )
+            <button
+              type="button"
+              onClick={onSubmit}
+              disabled={isSubmitting}
+              className="relative overflow-hidden btn-red px-5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+            >
+              <span>{isSubmitting ? 'Submitting...' : 'Finish & Submit'}</span>
+              {isSubmitting && <ButtonLineLoader />}
+            </button>
           )}
         </div>
       </div>
@@ -470,24 +461,15 @@ export const QuestionCard = memo(function QuestionCard({
                   >
                     Cancel
                   </button>
-                  {reporting ? (
-                    <div className="w-44 p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-                      <BubbleLoader
-                        variant="inline"
-                        loading={reporting}
-                        messages={['Submitting question report...']}
-                      />
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleSendReport}
-                      disabled={reporting}
-                      className="btn-red px-4 py-1.5 rounded-xl text-xs flex items-center gap-1.5"
-                    >
-                      <span>Submit Report</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleSendReport}
+                    disabled={reporting}
+                    className="relative overflow-hidden btn-red px-4 py-1.5 rounded-xl text-xs flex items-center gap-1.5 disabled:opacity-60"
+                  >
+                    <span>{reporting ? 'Submitting...' : 'Submit Report'}</span>
+                    {reporting && <ButtonLineLoader />}
+                  </button>
                 </div>
               </div>
             )}

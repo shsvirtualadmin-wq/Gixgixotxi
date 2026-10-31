@@ -4,7 +4,7 @@ import { AuthLayout } from '@/components/auth/AuthLayout';
 import { AuthCard } from '@/components/auth/AuthCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { PageMeta } from '@/components/ui/PageMeta';
-import { BoardlyLoader } from '@/components/ui/BoardlyLoader';
+import { LineLoader } from '@/components/ui/LineLoader';
 
 export function SignupPage() {
   const { user, profile, profileLoading, getRoleRedirectUrl } = useAuth();
@@ -39,15 +39,7 @@ export function SignupPage() {
         canonicalPath="/signup"
       />
       {user ? (
-        <BoardlyLoader
-          variant="inline"
-          messages={[
-            'Loading Boardly...',
-            'Setting up your workspace...',
-            'Getting things ready...',
-            'Almost there...',
-          ]}
-        />
+        <LineLoader context="signup" variant="section" />
       ) : (
         <AuthCard initialMode="signup" />
       )}

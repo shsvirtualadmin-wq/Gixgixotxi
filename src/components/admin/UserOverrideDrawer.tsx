@@ -23,6 +23,7 @@ import { isCrewPaidActive } from '@/services/crewBackend';
 import { maskEmail } from '@/utils/privacy';
 import type { CrewDoc } from '@/types/crew';
 import { Timestamp } from 'firebase/firestore';
+import { LineLoader } from '@/components/ui/LineLoader';
 
 interface RecentAttemptItem {
   id: string;
@@ -376,7 +377,7 @@ export function UserOverrideDrawer({
             </div>
 
             {loadingCrew ? (
-              <div className="text-[11px] text-[var(--muted)] py-2">Loading squad details...</div>
+              <LineLoader context="admin" variant="inline" />
             ) : userCrew ? (
               <div className="space-y-2 pt-1">
                 <div className="flex items-center justify-between">
@@ -619,9 +620,8 @@ export function UserOverrideDrawer({
               Recent test attempts
             </label>
             {loadingAttempts ? (
-              <div className="p-4 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] space-y-2">
-                <div className="h-4 bg-[var(--border)] rounded w-3/4 animate-pulse" />
-                <div className="h-4 bg-[var(--border)] rounded w-1/2 animate-pulse" />
+              <div className="p-2 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)]">
+                <LineLoader context="admin" variant="inline" />
               </div>
             ) : recentAttempts.length === 0 ? (
               <div className="p-4 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] text-center text-[12px] font-heading text-[var(--muted)]">

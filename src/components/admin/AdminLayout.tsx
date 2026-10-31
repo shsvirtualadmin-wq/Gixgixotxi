@@ -23,7 +23,7 @@ import {
   Bot,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { Button } from '@/components/ui/Button';
 import { Logo } from '@/components/ui/Logo';
 import { motion } from 'framer-motion';
@@ -194,18 +194,7 @@ export function AdminLayout() {
       {/* ─── MAIN CONTENT VIEWPORT ─────────────────────────────────────────── */}
       <main className="flex-1 md:ml-[240px] min-w-0 min-h-[calc(100vh-3.5rem)] md:min-h-screen p-4 sm:p-6 md:p-8 pb-32 sm:pb-36 md:pb-8 max-w-[1400px] w-full mx-auto overflow-x-hidden">
         {profileLoading ? (
-          <div className="space-y-4 max-w-4xl py-4">
-            <Skeleton height={32} width="40%" />
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-              <Skeleton height={120} />
-              <Skeleton height={120} />
-              <Skeleton height={120} />
-              <Skeleton height={120} />
-            </div>
-            <div className="mt-6">
-              <Skeleton height={280} />
-            </div>
-          </div>
+          <LineLoader context="admin" variant="section" />
         ) : !user ? (
           <Navigate to="/login?redirect=/admin" replace />
         ) : !isAdmin ? (

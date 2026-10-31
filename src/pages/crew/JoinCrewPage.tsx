@@ -7,7 +7,7 @@ import { useAuthGate } from '@/contexts/AuthGateContext';
 import { useStudyCrew, type CrewDoc } from '@/hooks/useStudyCrew';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { QrCodeSvg } from '@/components/crew/QrCodeSvg';
 import { Users, Check, Copy, Share2, Sparkles, AlertCircle, ArrowLeft, LogIn } from 'lucide-react';
 
@@ -120,7 +120,7 @@ export function JoinCrewPage() {
         </Link>
 
         {loading ? (
-          <Skeleton height={340} />
+          <LineLoader context="dashboard" variant="section" />
         ) : error && !crewPreview ? (
           <GlassCard style={{ padding: '28px', textAlign: 'center' }}>
             <AlertCircle size={36} className="text-[#D71921] mx-auto mb-3" />

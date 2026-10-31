@@ -30,7 +30,7 @@ import {
   Award,
   RefreshCw,
 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 
 export function AdminCrewsPage() {
   const { user } = useAuth();
@@ -329,12 +329,7 @@ export function AdminCrewsPage() {
         {/* Left: Table */}
         <div className={selectedCrewId ? 'lg:col-span-7 space-y-3' : 'lg:col-span-12 space-y-3'}>
           {loading ? (
-            <div className="space-y-3">
-              <BubbleLoader variant="top-bar" customMessages={['Loading study crews...']} />
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="h-16 rounded-xl bg-[var(--surface-2)] animate-pulse" />
-              ))}
-            </div>
+            <LineLoader context="admin" message="Loading study crews..." />
           ) : filteredCrews.length === 0 ? (
             <div className="p-12 rounded-2xl bg-[var(--surface)] border border-[var(--border)] text-center space-y-2">
               <Users size={28} className="mx-auto text-[var(--muted)]" />
@@ -421,7 +416,7 @@ export function AdminCrewsPage() {
         {selectedCrewId && (
           <div className="lg:col-span-5 bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 space-y-6 self-start sticky top-20 max-h-[85vh] overflow-y-auto">
             {detailsLoading ? (
-              <div className="p-8 text-center text-xs text-[var(--muted)]">Loading squad details...</div>
+              <LineLoader context="admin" message="Loading squad details..." />
             ) : !crewDetails ? (
               <div className="p-8 text-center text-xs text-red-400">Failed to load crew details.</div>
             ) : (
@@ -820,9 +815,10 @@ export function AdminCrewsPage() {
                 <button
                   type="submit"
                   disabled={paymentSubmitting}
-                  className="px-4 py-2 rounded-lg bg-[#D71921] hover:bg-[#b0131a] text-white font-bold text-xs disabled:opacity-50"
+                  className="relative overflow-hidden px-4 py-2 rounded-lg bg-[#D71921] hover:bg-[#b0131a] text-white font-bold text-xs disabled:opacity-50"
                 >
                   {paymentSubmitting ? 'Updating...' : 'Confirm Action'}
+                  {paymentSubmitting && <ButtonLineLoader />}
                 </button>
               </div>
             </form>
@@ -865,9 +861,10 @@ export function AdminCrewsPage() {
                 <button
                   type="submit"
                   disabled={disbandSubmitting || disbandTypedName.trim().toLowerCase() !== crewDetails.name.trim().toLowerCase()}
-                  className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-xs disabled:opacity-40"
+                  className="relative overflow-hidden px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-xs disabled:opacity-40"
                 >
                   {disbandSubmitting ? 'Disbanding...' : 'Confirm Disband'}
+                  {disbandSubmitting && <ButtonLineLoader />}
                 </button>
               </div>
             </form>

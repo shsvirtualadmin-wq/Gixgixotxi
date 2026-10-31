@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { Badge } from '@/components/ui/Badge';
 import { Trophy, Medal, ArrowLeft, Building2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -116,7 +116,7 @@ export function CaptainLeaderboardPage() {
       {/* Leaderboard Table / Cards */}
       <div className="glass-panel p-4 sm:p-6 rounded-[28px] flex flex-col gap-2.5">
         {loading ? (
-          <Skeleton height={60} count={5} />
+          <LineLoader context="dashboard" variant="section" />
         ) : filtered.length === 0 ? (
           <div className="text-center py-12 px-4 text-[var(--muted)]">
             <Building2 size={36} className="mx-auto mb-2 opacity-40" />

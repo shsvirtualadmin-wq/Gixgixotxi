@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Trophy } from 'lucide-react';
 import { getGlobalGrandLineTopScorers } from '@/services/ambassadorTestService';
+import { LineLoader } from '@/components/ui/LineLoader';
 
 interface TopScorer {
   name: string;
@@ -137,8 +138,8 @@ export function ArenaStrip() {
                   </div>
 
                   {loading ? (
-                    <div className="py-8 text-center text-xs text-[var(--muted)]">
-                      Loading standings...
+                    <div className="py-6">
+                      <LineLoader variant="section" context="generic" />
                     </div>
                   ) : topScorers.length > 0 ? (
                     <div className="flex flex-col gap-2">

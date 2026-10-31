@@ -5,6 +5,7 @@ import { collection, doc, getDoc, getDocs, query, where, limit, serverTimestamp 
 import { db } from '@/lib/firebase';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import {
   Zap,
   BookOpen,
@@ -467,9 +468,8 @@ export function PracticePage() {
 
         {/* ── Launch Status Bar ── */}
         {launchStatus && (
-          <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-xs flex items-center gap-2.5">
-            <span className="w-3.5 h-3.5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin shrink-0" />
-            <span className="font-medium">{launchStatus}</span>
+          <div className="rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+            <LineLoader context="test" variant="inline" message={launchStatus.slice(0, 30)} />
           </div>
         )}
 
@@ -543,18 +543,21 @@ export function PracticePage() {
                       label: 'Mixed University Practice',
                     })
                   }
-                  className="btn-red px-3.5 py-2 rounded-xl text-xs font-bold cursor-pointer shrink-0"
+                  className="relative overflow-hidden btn-red px-3.5 py-2 rounded-xl text-xs font-bold cursor-pointer shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {d1LoadingPractice ? 'Loading...' : `Practice Mixed (${activeD1Uni.mcq_count})`}
+                  <span>
+                    {d1LoadingPractice
+                      ? 'Preparing test...'
+                      : `Practice Mixed (${activeD1Uni.mcq_count})`}
+                  </span>
+                  {d1LoadingPractice && <ButtonLineLoader />}
                 </button>
               )}
             </div>
           </div>
 
           {d1LoadingTopics ? (
-            <div className="py-6 text-center text-xs text-[var(--muted)]">
-              Loading subjects &amp; topics for {activeD1Uni?.name || 'university'}...
-            </div>
+            <LineLoader context="universities" variant="section" />
           ) : !activeD1Uni || activeD1Uni.mcq_count === 0 || (d1SubjectsTree || []).length === 0 ? (
             <div className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
               <div>
@@ -689,13 +692,13 @@ export function PracticePage() {
             <button
               onClick={() => launchTest('sprint')}
               disabled={launching}
-              className="btn-red w-full mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              className="relative overflow-hidden btn-red w-full mt-4 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               style={{ height: '48px' }}
             >
               {launchingType === 'sprint' ? (
                 <>
-                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   <span>Starting Sprint...</span>
+                  <ButtonLineLoader />
                 </>
               ) : (
                 <>
@@ -798,13 +801,13 @@ export function PracticePage() {
             <button
               onClick={() => launchTest('full')}
               disabled={launching}
-              className="btn-outline w-full mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              className="relative overflow-hidden btn-outline w-full mt-4 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               style={{ height: '48px' }}
             >
               {launchingType === 'full' ? (
                 <>
-                  <span className="w-4 h-4 border-2 border-[var(--text)] border-t-transparent rounded-full animate-spin" />
-                  <span>Starting Full Mock Test...</span>
+                  <span>Starting Mock Test...</span>
+                  <ButtonLineLoader />
                 </>
               ) : (
                 <>
@@ -860,13 +863,13 @@ export function PracticePage() {
                 setDrillModalOpen(true);
               }}
               disabled={launching}
-              className="btn-outline w-full mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+              className="relative overflow-hidden btn-outline w-full mt-4 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               style={{ height: '48px' }}
             >
               {launchingType === 'drill' ? (
                 <>
-                  <span className="w-4 h-4 border-2 border-[var(--text)] border-t-transparent rounded-full animate-spin" />
                   <span>Starting Drill...</span>
+                  <ButtonLineLoader />
                 </>
               ) : (
                 <>

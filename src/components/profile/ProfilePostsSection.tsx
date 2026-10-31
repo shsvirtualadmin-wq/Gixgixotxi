@@ -14,7 +14,7 @@ import {
   Maximize2,
   Check,
 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import {
   UserPost,
   fetchUserPosts,
@@ -471,12 +471,15 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
             <button
               type="submit"
               disabled={isSubmitting || (!postText.trim() && !attachedImage?.dataUrl)}
-              className={`h-8 px-4 rounded-lg bg-[var(--red)] hover:bg-[var(--red-dark)] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-heading font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs ${
-                isSubmitting ? 'min-w-[140px]' : ''
+              className={`relative overflow-hidden h-8 px-4 rounded-lg bg-[var(--red)] hover:bg-[var(--red-dark)] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-heading font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs ${
+                isSubmitting ? 'min-w-[110px]' : ''
               }`}
             >
               {isSubmitting ? (
-                <BubbleLoader variant="inline" customMessages={['Posting to profile...']} />
+                <>
+                  <span>Posting...</span>
+                  <ButtonLineLoader />
+                </>
               ) : (
                 <>
                   <Send size={13} />
@@ -491,11 +494,10 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
       {/* ── 2. POSTS FEED LIST ── */}
       {loading ? (
         <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)]">
-          <BubbleLoader
+          <LineLoader
             variant="section"
-            showSkeletons
-            skeletonCount={2}
-            customMessages={['Loading posts...']}
+            context="generic"
+            message="Loading posts..."
           />
         </div>
       ) : feedError ? (
@@ -671,10 +673,13 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                         type="button"
                         onClick={() => handleSaveEdit(post.id)}
                         disabled={isUpdating}
-                        className="h-8 px-3.5 rounded-lg bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold flex items-center justify-center gap-1 cursor-pointer min-w-[120px]"
+                        className="relative overflow-hidden h-8 px-3.5 rounded-lg bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold flex items-center justify-center gap-1 cursor-pointer min-w-[120px] disabled:opacity-60"
                       >
                         {isUpdating ? (
-                          <BubbleLoader variant="inline" customMessages={['Saving changes...']} />
+                          <>
+                            <span>Saving...</span>
+                            <ButtonLineLoader />
+                          </>
                         ) : (
                           <>
                             <Check size={12} />
@@ -757,10 +762,13 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                 type="button"
                 onClick={handleLoadMore}
                 disabled={loadingMore}
-                className="h-10 px-5 rounded-xl border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs min-w-[160px]"
+                className="relative overflow-hidden h-10 px-5 rounded-xl border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs min-w-[160px] disabled:opacity-60"
               >
                 {loadingMore ? (
-                  <BubbleLoader variant="inline" customMessages={['Loading more posts...']} />
+                  <>
+                    <span>Loading posts...</span>
+                    <ButtonLineLoader />
+                  </>
                 ) : (
                   <span>Load more posts</span>
                 )}
@@ -801,10 +809,13 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                 type="button"
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
-                className="h-9 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-heading font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs min-w-[120px]"
+                className="relative overflow-hidden h-9 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-heading font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs min-w-[120px] disabled:opacity-60"
               >
                 {isDeleting ? (
-                  <BubbleLoader variant="inline" customMessages={['Deleting post...']} />
+                  <>
+                    <span>Deleting...</span>
+                    <ButtonLineLoader />
+                  </>
                 ) : (
                   <>
                     <Trash2 size={13} />

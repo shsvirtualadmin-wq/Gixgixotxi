@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { ButtonLineLoader } from '@/components/ui/LineLoader';
 
 interface SocialSignInProps {
   onSuccess?: () => void;
@@ -35,25 +35,12 @@ export function SocialSignIn({ onSuccess, onError }: SocialSignInProps) {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="w-full p-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)]">
-        <BubbleLoader
-          variant="inline"
-          loading={loading}
-          messages={['Connecting with Google...']}
-          successText="Signed in!"
-        />
-      </div>
-    );
-  }
-
   return (
     <button
       type="button"
       onClick={handle}
       disabled={loading}
-      className="auth-google-btn"
+      className="auth-google-btn relative overflow-hidden"
       aria-label="Continue with Google"
     >
       <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
@@ -74,7 +61,8 @@ export function SocialSignIn({ onSuccess, onError }: SocialSignInProps) {
           d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98Z"
         />
       </svg>
-      <span>Continue with Google</span>
+      <span>{loading ? 'Logging in...' : 'Continue with Google'}</span>
+      {loading && <ButtonLineLoader />}
     </button>
   );
 }

@@ -3,7 +3,7 @@ import { Mail, MessageCircle, Phone, Send, CheckCircle2, AlertCircle, Clock, Arr
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { PageMeta } from '@/components/ui/PageMeta';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { Link, useNavigate } from 'react-router-dom';
@@ -477,17 +477,12 @@ export function ContactPage() {
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-lg"
+                    className="relative overflow-hidden btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer shadow-lg"
                     style={{ height: '52px' }}
                   >
-                    {submitting ? (
-                      <BubbleLoader variant="inline" customMessages={['Submitting ticket...']} />
-                    ) : (
-                      <>
-                        <Send size={16} />
-                        <span>Send Inquiry</span>
-                      </>
-                    )}
+                    <Send size={16} />
+                    <span>{submitting ? 'Sending...' : 'Send Inquiry'}</span>
+                    {submitting && <ButtonLineLoader />}
                   </button>
                 </form>
               )}

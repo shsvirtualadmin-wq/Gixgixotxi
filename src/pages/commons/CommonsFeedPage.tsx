@@ -23,8 +23,7 @@ import { CommonsCommentsDrawer } from '@/components/commons/CommonsCommentsDrawe
 import { CommonsReportModal } from '@/components/commons/CommonsReportModal';
 import { CommonsSearchModal } from '@/components/commons/CommonsSearchModal';
 import { PageMeta } from '@/components/ui/PageMeta';
-import { CommonsPostCardSkeleton } from '@/components/ui/Skeleton';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader } from '@/components/ui/LineLoader';
 import {
   fetchCommonsPosts,
   deleteCommonsPost,
@@ -479,13 +478,12 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           className="flex justify-center items-center overflow-hidden transition-all text-xs text-muted px-4"
           style={{ height: `${pullDistance}px` }}
         >
-          <div className="w-full max-w-xs">
-            <BubbleLoader
-              variant="inline"
-              progress={Math.min(99, Math.max(5, Math.round((pullDistance / 60) * 100)))}
-              customMessages={[pullDistance > 55 ? 'Release to refresh...' : 'Pull down to refresh...']}
-            />
-          </div>
+          <LineLoader
+            variant="inline"
+            context="generic"
+            message={pullDistance > 55 ? 'Release to refresh...' : 'Pull down to refresh...'}
+            immediate
+          />
         </div>
       )}
 
@@ -685,8 +683,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       {/* ── Posts Stream (10 at a time, skeleton loaders, Facebook style) ── */}
       <div className="boardly-feed-container w-full max-w-full min-w-0 box-border overflow-x-hidden space-y-3 pt-1">
         {loading && displayedPosts.length === 0 ? (
-          /* Skeleton Loaders (No blank screen, no spinner-only state) */
-          <CommonsPostCardSkeleton count={3} />
+          <LineLoader context="dashboard" variant="section" />
         ) : loadError ? (
           /* Error state with retry */
           <div className="p-8 text-center rounded-2xl border border-tag-danger-text/30 bg-tag-danger-bg space-y-3 shadow-xs">
@@ -761,12 +758,12 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
         {/* Infinite Scroll Sentinel */}
         {hasMore && <div ref={sentinelRef} className="h-6 w-full" />}
 
-        {/* Loading More Indicator */}
         {loadingMore && (
           <div className="py-4">
-            <BubbleLoader
-              variant="section"
-              customMessages={['Loading more posts...']}
+            <LineLoader
+              variant="inline"
+              context="generic"
+              message="Loading more posts..."
             />
           </div>
         )}

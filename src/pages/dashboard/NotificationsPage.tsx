@@ -17,10 +17,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { PageMeta } from '@/components/ui/PageMeta';
-import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import {
   subscribeToNotificationStore,
   syncUserNotificationsStore,
@@ -402,22 +401,16 @@ export function NotificationsPage() {
         )}
 
         {refreshing && !isInitialLoading && (
-          <BubbleLoader
-            variant="top-bar"
+          <LineLoader
+            variant="inline"
+            context="dashboard"
             loading={refreshing}
-            messages={['Refreshing your notifications...']}
           />
         )}
 
         {/* ── Content List ──────────────────────────────────────────────── */}
         {isInitialLoading ? (
-          <div className="space-y-3">
-            <BubbleLoader
-              variant="top-bar"
-              messages={['Checking your latest notifications...']}
-            />
-            <Skeleton height={74} count={4} />
-          </div>
+          <LineLoader context="dashboard" variant="section" />
         ) : displayedNotifications.length === 0 ? (
           <EmptyState
             icon={<Bell size={36} />}
@@ -604,24 +597,17 @@ export function NotificationsPage() {
             {/* Load more button if has more user notifications */}
             {hasMoreNotifications && filter !== 'announcements' && (
               <div className="pt-2 flex justify-center">
-                {loadingMore ? (
-                  <div className="w-60 p-2.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)]">
-                    <BubbleLoader
-                      variant="inline"
-                      loading={loadingMore}
-                      messages={['Loading older notifications...']}
-                    />
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleLoadMore}
-                    disabled={loadingMore}
-                    className="btn-outline text-xs px-5 py-2.5 rounded-full cursor-pointer inline-flex items-center gap-2"
-                  >
-                    <span>Load older notifications</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  className="relative overflow-hidden btn-outline text-xs px-5 py-2.5 rounded-full cursor-pointer inline-flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <span>
+                    {loadingMore ? 'Loading notifications...' : 'Load older notifications'}
+                  </span>
+                  {loadingMore && <ButtonLineLoader />}
+                </button>
               </div>
             )}
           </div>

@@ -16,7 +16,7 @@ import {
   Reply,
   Link2,
 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
@@ -192,27 +192,8 @@ export const PublicPostDetailPage: React.FC = () => {
 
   if (status === 'loading') {
     return (
-      <div
-        role="status"
-        aria-live="polite"
-        className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6"
-      >
-        <span className="sr-only">Loading post</span>
-        <div className="max-w-3xl mx-auto space-y-4">
-          <div className="h-4 w-48 skeleton rounded" />
-          <div className="glass-panel p-7 sm:p-8 space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <div className="h-6 w-32 skeleton rounded-full" />
-              <div className="h-6 w-20 skeleton rounded-full" />
-            </div>
-            <div className="h-8 w-3/4 skeleton rounded" />
-            <div className="space-y-2.5 pt-1">
-              <div className="h-3.5 w-full skeleton rounded" />
-              <div className="h-3.5 w-5/6 skeleton rounded" />
-              <div className="h-3.5 w-2/3 skeleton rounded" />
-            </div>
-          </div>
-        </div>
+      <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6 flex items-center justify-center">
+        <LineLoader context="generic" variant="section" />
       </div>
     );
   }
@@ -702,10 +683,13 @@ export const PublicPostDetailPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={submittingComment}
-                className="btn-primary px-5 py-2 text-xs font-semibold inline-flex items-center gap-2 cursor-pointer min-w-[160px] justify-center"
+                className="relative overflow-hidden btn-primary px-5 py-2 text-xs font-semibold inline-flex items-center gap-2 cursor-pointer min-w-[160px] justify-center disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {submittingComment ? (
-                  <BubbleLoader variant="inline" customMessages={['Posting comment...']} />
+                  <>
+                    <span>Posting...</span>
+                    <ButtonLineLoader />
+                  </>
                 ) : (
                   <>
                     <Send size={14} />

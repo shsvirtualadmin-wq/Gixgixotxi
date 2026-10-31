@@ -14,7 +14,7 @@ import {
   Send,
   Sparkles,
 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import {
@@ -360,12 +360,7 @@ export function AdminKobansPage() {
           </div>
 
           {requestsLoading ? (
-            <div className="space-y-3">
-              <BubbleLoader variant="top-bar" customMessages={['Loading Koban requests...']} />
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-20 rounded-2xl bg-[var(--card)] animate-pulse" />
-              ))}
-            </div>
+            <LineLoader context="admin" message="Loading Koban requests..." />
           ) : requests.length === 0 ? (
             <div className="p-10 text-center rounded-2xl bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] space-y-2">
               <Clock size={28} className="mx-auto text-[var(--muted)]" />
@@ -477,7 +472,7 @@ export function AdminKobansPage() {
                 />
               </div>
               {searchingUsers && (
-                <BubbleLoader variant="inline" customMessages={['Searching student accounts...']} />
+                <LineLoader context="admin" message="Searching student accounts..." className="min-h-[80px] py-4" />
               )}
 
               {/* Search dropdown results */}
@@ -621,11 +616,7 @@ export function AdminKobansPage() {
               </div>
 
               {ledgerLoading ? (
-                <div className="space-y-2 py-4">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-12 rounded-xl bg-[var(--surface-2)] animate-pulse" />
-                  ))}
-                </div>
+                <LineLoader context="admin" message="Loading wallet ledger..." />
               ) : !selectedUser ? (
                 <div className="p-10 text-center text-xs text-[var(--muted)]">
                   Select a user on the left to inspect their immutable transaction ledger.
@@ -998,16 +989,13 @@ export function AdminKobansPage() {
                 type="button"
                 disabled={approving || editableAmount <= 0}
                 onClick={handleConfirmApprove}
-                className="btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                className="relative overflow-hidden btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
               >
-                {approving ? (
-                  <BubbleLoader variant="inline" customMessages={['Crediting Kobans...']} />
-                ) : (
-                  <>
-                    <CheckCircle2 size={14} />
-                    <span>Credit {editableAmount.toLocaleString()} Kobans</span>
-                  </>
-                )}
+                <CheckCircle2 size={14} />
+                <span>
+                  {approving ? 'Crediting Kobans...' : `Credit ${editableAmount.toLocaleString()} Kobans`}
+                </span>
+                {approving && <ButtonLineLoader />}
               </button>
             </div>
           </div>
@@ -1048,16 +1036,11 @@ export function AdminKobansPage() {
                 type="button"
                 disabled={rejecting}
                 onClick={handleConfirmReject}
-                className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white flex-1 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                className="relative overflow-hidden px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white flex-1 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
               >
-                {rejecting ? (
-                  <BubbleLoader variant="inline" customMessages={['Rejecting request...']} />
-                ) : (
-                  <>
-                    <XCircle size={14} />
-                    <span>Confirm Rejection</span>
-                  </>
-                )}
+                <XCircle size={14} />
+                <span>{rejecting ? 'Rejecting request...' : 'Confirm Rejection'}</span>
+                {rejecting && <ButtonLineLoader />}
               </button>
             </div>
           </div>
@@ -1128,16 +1111,11 @@ export function AdminKobansPage() {
                 type="button"
                 disabled={adjusting}
                 onClick={handleConfirmAdjustment}
-                className="btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                className="relative overflow-hidden btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
               >
-                {adjusting ? (
-                  <BubbleLoader variant="inline" customMessages={['Authorizing adjustment...']} />
-                ) : (
-                  <>
-                    <Send size={14} />
-                    <span>Authorize Change</span>
-                  </>
-                )}
+                <Send size={14} />
+                <span>{adjusting ? 'Authorizing adjustment...' : 'Authorize Change'}</span>
+                {adjusting && <ButtonLineLoader />}
               </button>
             </div>
           </div>

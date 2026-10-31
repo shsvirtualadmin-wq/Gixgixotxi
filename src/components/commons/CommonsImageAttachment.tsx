@@ -4,6 +4,7 @@ import {
   R2_PUBLIC_BUCKET_URL,
 } from '@/services/commonsUploadService';
 import type { CommonsFileAttachment } from '@/types/commons';
+import { LineLoader } from '@/components/ui/LineLoader';
 
 interface CommonsImageAttachmentProps {
   file: CommonsFileAttachment;
@@ -127,10 +128,9 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
       className="relative w-full max-w-full min-w-0 rounded-xl overflow-hidden border border-border bg-surface-muted/40 cursor-zoom-in group my-1.5"
     >
       {isLoading && (
-        <div
-          aria-hidden="true"
-          className="w-full h-24 sm:h-32 animate-pulse bg-surface-muted"
-        />
+        <div className="w-full py-6 flex items-center justify-center">
+          <LineLoader variant="inline" context="generic" immediate />
+        </div>
       )}
       {resolvedUrl && (
         <img

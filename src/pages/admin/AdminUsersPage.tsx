@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, RefreshCw, UserCheck, Shield, Users as UsersIcon, Clock, Tag, Trash2 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { Search, RefreshCw, UserCheck, Shield, Users as UsersIcon, Tag, Trash2 } from 'lucide-react';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserOverrideDrawer } from '@/components/admin/UserOverrideDrawer';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
@@ -251,17 +251,12 @@ export function AdminUsersPage() {
               type="button"
               onClick={handleCleanupOrphans}
               disabled={cleaningOrphans}
-              className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--red)]/50 text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer min-w-[180px]"
+              className="relative overflow-hidden flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--red)]/50 text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer min-w-[180px]"
               title="Find and remove orphan database profiles with no matching active Firebase Auth user"
             >
-              {cleaningOrphans ? (
-                <BubbleLoader variant="inline" customMessages={['Cleaning orphan profiles...']} />
-              ) : (
-                <>
-                  <Trash2 size={14} className="text-[#D71921]" />
-                  <span>Clean Up Orphan Profiles</span>
-                </>
-              )}
+              <Trash2 size={14} className="text-[#D71921]" />
+              <span>{cleaningOrphans ? 'Cleaning orphan profiles...' : 'Clean Up Orphan Profiles'}</span>
+              {cleaningOrphans && <ButtonLineLoader />}
             </button>
           )}
 
@@ -269,51 +264,38 @@ export function AdminUsersPage() {
             type="button"
             onClick={handleBackfillPublicProfiles}
             disabled={backfillingProfiles}
-            className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer min-w-[170px]"
+            className="relative overflow-hidden flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer min-w-[170px]"
             title="Batch backfill student public profiles for privacy protection"
           >
-            {backfillingProfiles ? (
-              <BubbleLoader variant="inline" customMessages={['Syncing profiles...']} />
-            ) : (
-              <>
-                <Shield size={14} className="text-[#D71921]" />
-                <span>Backfill public profiles</span>
-              </>
-            )}
+            <Shield size={14} className="text-[#D71921]" />
+            <span>{backfillingProfiles ? 'Syncing profiles...' : 'Backfill public profiles'}</span>
+            {backfillingProfiles && <ButtonLineLoader />}
           </button>
 
           <button
             type="button"
             onClick={handleBackfillNames}
             disabled={backfilling}
-            className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 min-w-[150px]"
+            className="relative overflow-hidden flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 min-w-[150px]"
             title="Update missing display names for existing accounts"
           >
-            {backfilling ? (
-              <BubbleLoader variant="inline" customMessages={['Filling names...']} />
-            ) : (
-              <>
-                <UserCheck size={14} />
-                <span>Fill missing names</span>
-              </>
-            )}
+            <UserCheck size={14} />
+            <span>{backfilling ? 'Filling names...' : 'Fill missing names'}</span>
+            {backfilling && <ButtonLineLoader />}
           </button>
 
           <button
             type="button"
             onClick={loadUsers}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
+            className="relative overflow-hidden flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
           >
             <RefreshCw size={14} />
-            <span>Refresh</span>
+            <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
+            {loading && <ButtonLineLoader />}
           </button>
         </div>
       </div>
-
-      {loading && (
-        <BubbleLoader variant="top-bar" customMessages={['Loading registered users...']} />
-      )}
 
       <AdminDiagnosticBanner
         error={error}
@@ -487,20 +469,7 @@ export function AdminUsersPage() {
       {/* ─── USERS LIST: MOBILE CARDS (block md:hidden) ─────────────────────── */}
       <div className="block md:hidden space-y-3">
         {loading ? (
-          Array.from({ length: 5 }).map((_, i) => (
-            <div
-              key={i}
-              className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-3"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[var(--card-2)] border border-[var(--border)] shrink-0" />
-                <div className="space-y-1.5 flex-1">
-                  <div className="h-4 bg-[var(--card-2)] rounded w-1/2" />
-                  <div className="h-3 bg-[var(--card-2)] rounded w-3/4" />
-                </div>
-              </div>
-            </div>
-          ))
+          <LineLoader context="admin" message="Loading registered users..." />
         ) : filteredUsers.length === 0 ? (
           <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center space-y-3">
             <p className="font-heading text-[14px] text-[var(--muted)]">
@@ -619,13 +588,11 @@ export function AdminUsersPage() {
             </thead>
             <tbody className="divide-y divide-[var(--border)] text-[13px] font-heading">
               {loading ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={i}>
-                    <td colSpan={8} className="py-4 px-5">
-                      <div className="h-4 bg-[var(--card-2)] rounded w-3/4 animate-pulse" />
-                    </td>
-                  </tr>
-                ))
+                <tr>
+                  <td colSpan={8} className="py-10 px-5">
+                    <LineLoader context="admin" message="Loading registered users..." />
+                  </td>
+                </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 px-5 text-center text-[var(--muted)]">
@@ -726,13 +693,10 @@ export function AdminUsersPage() {
             type="button"
             onClick={handleLoadMore}
             disabled={loadingMore}
-            className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-[14px] border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] text-[13px] font-heading font-medium text-[var(--text)] transition-colors disabled:opacity-50 min-w-[160px]"
+            className="relative overflow-hidden flex items-center justify-center gap-2 px-5 py-2.5 rounded-[14px] border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] text-[13px] font-heading font-medium text-[var(--text)] transition-colors disabled:opacity-50 min-w-[160px]"
           >
-            {loadingMore ? (
-              <BubbleLoader variant="inline" customMessages={['Loading more users...']} />
-            ) : (
-              <span>Load More Users</span>
-            )}
+            <span>{loadingMore ? 'Loading more users...' : 'Load More Users'}</span>
+            {loadingMore && <ButtonLineLoader />}
           </button>
         </div>
       )}

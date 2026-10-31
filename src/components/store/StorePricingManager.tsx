@@ -22,7 +22,7 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   fetchStoreItems,
@@ -293,11 +293,14 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
             type="button"
             onClick={handleSeed}
             disabled={seeding}
-            className="px-3 py-2 rounded-xl text-xs font-heading font-semibold border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 min-w-[130px]"
+            className="relative overflow-hidden px-3 py-2 rounded-xl text-xs font-heading font-semibold border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 min-w-[130px]"
             title="Seed any missing catalog items into Firestore"
           >
             {seeding ? (
-              <BubbleLoader variant="inline" customMessages={['Syncing catalog...']} />
+              <>
+                <span>Syncing...</span>
+                <ButtonLineLoader />
+              </>
             ) : (
               <>
                 <RefreshCw size={14} />
@@ -491,11 +494,10 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
           {/* Items Table / Cards */}
           {loading ? (
             <div className="p-6 rounded-2xl bg-[var(--card)] border border-[var(--border)]">
-              <BubbleLoader
+              <LineLoader
                 variant="section"
-                showSkeletons
-                skeletonCount={3}
-                customMessages={['Loading store catalog pricing...']}
+                context="admin"
+                message="Loading store catalog pricing..."
               />
             </div>
           ) : filteredItems.length === 0 ? (
@@ -577,13 +579,14 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
                             type="button"
                             disabled={isSavingSingle}
                             onClick={() => handleSaveSinglePrice(item)}
-                            className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer disabled:opacity-50"
+                            className="relative overflow-hidden px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
                             title="Save new price"
                           >
                             {isSavingSingle ? (
-                              <div className="w-20">
-                                <BubbleLoader variant="inline" customMessages={['Saving...']} />
-                              </div>
+                              <>
+                                <span>Saving...</span>
+                                <ButtonLineLoader />
+                              </>
                             ) : (
                               <Check size={13} />
                             )}
@@ -844,11 +847,10 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
 
           {loadingHistory ? (
             <div className="p-6">
-              <BubbleLoader
+              <LineLoader
                 variant="section"
-                showSkeletons
-                skeletonCount={2}
-                customMessages={['Loading audit records...']}
+                context="admin"
+                message="Loading audit records..."
               />
             </div>
           ) : historyRecords.length === 0 ? (
@@ -1013,10 +1015,13 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
                 type="button"
                 disabled={isExecutingBulk || bulkPreview.totalMatches === 0}
                 onClick={handleExecuteBulkUpdate}
-                className="px-5 py-2.5 rounded-xl text-xs font-heading font-bold bg-red-600 hover:bg-red-500 text-white shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 min-w-[200px]"
+                className="relative overflow-hidden px-5 py-2.5 rounded-xl text-xs font-heading font-bold bg-red-600 hover:bg-red-500 text-white shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 min-w-[200px]"
               >
                 {isExecutingBulk ? (
-                  <BubbleLoader variant="inline" customMessages={['Committing Firestore batches...']} />
+                  <>
+                    <span>Saving...</span>
+                    <ButtonLineLoader />
+                  </>
                 ) : (
                   <>
                     <Check size={14} />

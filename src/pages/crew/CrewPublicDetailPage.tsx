@@ -5,6 +5,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
@@ -49,8 +50,8 @@ export const CrewPublicDetailPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4">
-        <div className="max-w-3xl mx-auto glass-panel p-8 h-60 animate-pulse" />
+      <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 flex items-center justify-center">
+        <LineLoader context="dashboard" variant="section" />
       </div>
     );
   }

@@ -17,8 +17,7 @@ import {
 import { auth } from '@/lib/firebase';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { Skeleton } from '@/components/ui/Skeleton';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 
@@ -372,32 +371,22 @@ export function AdminBotsPage() {
             type="button"
             onClick={() => handleTriggerRun()}
             disabled={runningAll || Boolean(runningBotUid)}
-            className="btn-red text-xs px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 min-w-[180px]"
+            className="relative overflow-hidden btn-red text-xs px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 min-w-[180px]"
           >
-            {runningAll ? (
-              <BubbleLoader variant="inline" customMessages={['Running 2-bot batch...']} />
-            ) : (
-              <>
-                <Play size={14} />
-                <span>Run Next Batch (2 Bots)</span>
-              </>
-            )}
+            <Play size={14} />
+            <span>{runningAll ? 'Running 2-bot batch...' : 'Run Next Batch (2 Bots)'}</span>
+            {runningAll && <ButtonLineLoader />}
           </button>
 
           <button
             type="button"
             onClick={() => handleDeleteAllBotContent()}
             disabled={deletingContent}
-            className="px-4 py-2.5 rounded-xl border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50 min-w-[170px]"
+            className="relative overflow-hidden px-4 py-2.5 rounded-xl border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50 min-w-[170px]"
           >
-            {deletingContent ? (
-              <BubbleLoader variant="inline" customMessages={['Deleting bot content...']} />
-            ) : (
-              <>
-                <Trash2 size={14} />
-                <span>Delete All Bot Content</span>
-              </>
-            )}
+            <Trash2 size={14} />
+            <span>{deletingContent ? 'Deleting bot content...' : 'Delete All Bot Content'}</span>
+            {deletingContent && <ButtonLineLoader />}
           </button>
 
           <button
@@ -411,10 +400,6 @@ export function AdminBotsPage() {
           </button>
         </div>
       </div>
-
-      {loading && (
-        <BubbleLoader variant="top-bar" customMessages={['Loading Commons study bots...']} />
-      )}
 
       {/* ── Summary Metrics ── */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
@@ -627,9 +612,7 @@ export function AdminBotsPage() {
 
       {/* ── Bot Accounts List ── */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Skeleton height={150} count={6} />
-        </div>
+        <LineLoader context="admin" message="Loading Commons study bots..." />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {bots.map((bot, idx) => {
@@ -733,16 +716,11 @@ export function AdminBotsPage() {
                         type="button"
                         onClick={() => handleTriggerRun(bot.uid)}
                         disabled={isRunningThis || runningAll || !bot.enabled}
-                        className="px-2.5 py-1 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-300 hover:bg-sky-500/25 font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-40 min-w-[100px]"
+                        className="relative overflow-hidden px-2.5 py-1 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-300 hover:bg-sky-500/25 font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-40 min-w-[100px]"
                       >
-                        {isRunningThis ? (
-                          <BubbleLoader variant="inline" customMessages={['Running...']} />
-                        ) : (
-                          <>
-                            <Play size={11} />
-                            <span>Run Now</span>
-                          </>
-                        )}
+                        <Play size={11} />
+                        <span>{isRunningThis ? 'Running...' : 'Run Now'}</span>
+                        {isRunningThis && <ButtonLineLoader />}
                       </button>
 
                       {(bot.postsCount > 0 || bot.commentsCount > 0 || bot.likesCount > 0) && (

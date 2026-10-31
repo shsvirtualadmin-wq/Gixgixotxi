@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useWallet } from '@/hooks/useWallet';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { Award, Users, Compass, ArrowRight } from 'lucide-react';
@@ -223,9 +223,7 @@ export function ArenaDashboardPage() {
           </div>
 
           {loadingLeaderboard ? (
-            <div className="space-y-2 py-4">
-              <Skeleton height={50} count={5} />
-            </div>
+            <LineLoader context="dashboard" variant="section" />
           ) : leaderboard.length === 0 ? (
             <div className="py-6">
               <EmptyState

@@ -12,13 +12,12 @@ import { TestHeader } from '@/components/test/TestHeader';
 import { QuestionCard } from '@/components/test/QuestionCard';
 import { QuestionPalette } from '@/components/test/QuestionPalette';
 import { ConfirmSubmitModal } from '@/components/test/ConfirmSubmitModal';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { exportTestToPdf } from '@/utils/testPdfExporter';
 import { getUniversityRulesSummary } from '@/constants/universityCriteria';
 import { Sparkles, Lock, X, AlertCircle, Check } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
 
 export function TestRunnerPage() {
@@ -428,27 +427,7 @@ export function TestRunnerPage() {
   ]);
 
   if (loading) {
-    return (
-      <div
-        style={{
-          minHeight: '100dvh',
-          display: 'flex',
-          flexDirection: 'column',
-          padding: '2rem',
-          maxWidth: 820,
-          margin: '0 auto',
-          gap: 24,
-        }}
-      >
-        <BubbleLoader
-          variant="top-bar"
-          messages={['Preparing your study material, please wait...']}
-        />
-        <Skeleton height={48} width="50%" />
-        <Skeleton height={320} />
-        <Skeleton height={60} />
-      </div>
-    );
+    return <LineLoader context="test" variant="page" />;
   }
 
   if (error || !attempt || questions.length === 0) {

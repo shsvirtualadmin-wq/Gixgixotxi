@@ -1,5 +1,5 @@
-import React, { useState, useEffect, type ReactNode, type ButtonHTMLAttributes } from 'react';
-import { BubbleLoader } from './BubbleLoader';
+import { type ReactNode, type ButtonHTMLAttributes } from 'react';
+import { ButtonLineLoader } from './LineLoader';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline';
 type ButtonSize = 'sm' | 'md' | 'lg';
@@ -9,6 +9,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: ButtonSize;
   children: ReactNode;
   loading?: boolean;
+  loadingText?: string;
   progress?: number;
   loadingMessages?: string[];
   successText?: string;
@@ -23,42 +24,14 @@ export function Button({
   size = 'md',
   children,
   loading = false,
-  progress,
+  loadingText,
   loadingMessages,
-  successText = 'Done!',
-  error,
-  onRetry,
-  onCancel,
   fullWidth = false,
   className = '',
   disabled,
   style,
   ...props
 }: ButtonProps) {
-  const [bubbling, setBubbling] = useState(false);
-  const [showLoader, setShowLoader] = useState(loading);
-
-  useEffect(() => {
-    if (loading) {
-      setBubbling(true);
-      const t = setTimeout(() => {
-        setBubbling(false);
-        setShowLoader(true);
-      }, 280);
-      return () => clearTimeout(t);
-    } else if (showLoader || bubbling) {
-      setBubbling(false);
-      const t = setTimeout(() => {
-        setShowLoader(false);
-      }, 420);
-      return () => clearTimeout(t);
-    }
-  }, [loading, showLoader, bubbling]);
-
-  const prefersReducedMotion =
-    typeof window !== 'undefined' &&
-    window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-
   let bg = 'transparent';
   let color = 'var(--text)';
   let border = '1px solid var(--glass-border)';
@@ -85,37 +58,18 @@ export function Button({
   const paddingInline = size === 'sm' ? '14px' : size === 'lg' ? '24px' : '20px';
   const fontSize = size === 'sm' ? '13px' : '14px';
 
-  // Morph into the red progress line while loading or showing completion checkmark
-  if ((showLoader && !bubbling) || error) {
-    return (
-      <div
-        className={`inline-flex items-center justify-center rounded-2xl px-3.5 py-2 border border-[var(--border)] bg-[var(--surface)] ${
-          fullWidth ? 'w-full' : 'min-w-[190px]'
-        } ${className}`}
-        style={{ willChange: 'transform, opacity' }}
-      >
-        <BubbleLoader
-          variant="inline"
-          loading={loading}
-          progress={progress}
-          messages={loadingMessages}
-          successText={successText}
-          error={error}
-          onRetry={onRetry}
-          onCancel={onCancel}
-        />
-      </div>
-    );
-  }
+  const activeLabel = loading
+    ? loadingText || loadingMessages?.[0] || children
+    : children;
 
   return (
     <button
       {...props}
       disabled={disabled || loading}
       className={`
-        inline-flex items-center justify-center gap-2 rounded-full font-semibold
+        relative overflow-hidden inline-flex items-center justify-center gap-2 rounded-full font-semibold
         transition-transform duration-150 cursor-pointer active:scale-[0.98]
-        disabled:opacity-60 disabled:cursor-not-allowed
+        disabled:opacity-75 disabled:cursor-not-allowed
         ${fullWidth ? 'w-full' : ''}
         ${className}
       `}
@@ -130,36 +84,11 @@ export function Button({
         border,
         fontSize,
         boxShadow,
-        transformOrigin: 'center center',
-        willChange: 'transform, opacity',
-        animation:
-          bubbling && !prefersReducedMotion
-            ? 'boardlyDropletBubble 280ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards'
-            : 'none',
         ...style,
       }}
     >
-      {children}
-      <style>{`
-        @keyframes boardlyDropletBubble {
-          0% {
-            transform: scale(1, 1);
-            opacity: 1;
-          }
-          40% {
-            transform: scale(1.14, 0.88);
-            opacity: 1;
-          }
-          75% {
-            transform: scale(0.94, 1.12);
-            opacity: 0.95;
-          }
-          100% {
-            transform: scale(1.22, 0.18);
-            opacity: 0.35;
-          }
-        }
-      `}</style>
+      <span>{activeLabel}</span>
+      {loading && <ButtonLineLoader />}
     </button>
   );
 }

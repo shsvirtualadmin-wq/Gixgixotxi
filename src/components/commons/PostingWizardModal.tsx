@@ -11,7 +11,7 @@ import {
   Sparkles,
   RefreshCw,
 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { compressPhoto } from '@/utils/imageCompression';
 import {
   COMMONS_POST_TYPES,
@@ -883,21 +883,10 @@ export function PostingWizardModal({
 
                           <div className="flex items-center gap-1.5 shrink-0">
                             {file.status === 'compressing' && (
-                              <div className="w-32">
-                                <BubbleLoader
-                                  variant="inline"
-                                  customMessages={['Optimizing file...']}
-                                />
-                              </div>
+                              <span className="text-[11px] text-muted">Optimizing file...</span>
                             )}
                             {file.status === 'uploading' && (
-                              <div className="w-32">
-                                <BubbleLoader
-                                  variant="inline"
-                                  progress={file.progress}
-                                  customMessages={['Uploading file...']}
-                                />
-                              </div>
+                              <span className="text-[11px] text-muted">Uploading file...</span>
                             )}
                             {file.status === 'uploaded' && (
                               <span
@@ -1088,13 +1077,13 @@ export function PostingWizardModal({
                   type="button"
                   onClick={handlePublish}
                   disabled={isSubmitting || !title.trim() || !description.trim() || !consentAcademic}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm bg-accent hover:opacity-90 disabled:bg-surface-muted disabled:text-muted disabled:cursor-not-allowed text-on-accent shadow-xs transition-all active:scale-[0.99] cursor-pointer"
+                  className="relative overflow-hidden w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm bg-accent hover:opacity-90 disabled:bg-surface-muted disabled:text-muted disabled:cursor-not-allowed text-on-accent shadow-xs transition-all active:scale-[0.99] cursor-pointer"
                 >
                   {isSubmitting ? (
-                    <BubbleLoader
-                      variant="inline"
-                      customMessages={[uploadStatus || 'Posting to Commons...']}
-                    />
+                    <>
+                      <span>{uploadStatus || 'Posting...'}</span>
+                      <ButtonLineLoader />
+                    </>
                   ) : (
                     <>
                       <Sparkles size={16} />

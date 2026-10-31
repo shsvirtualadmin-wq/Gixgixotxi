@@ -9,7 +9,7 @@ import {
   Layers,
   Users,
 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { resolveEffectivePlan, type PlanResolverInput } from '@/hooks/useEffectivePlan';
 import {
   startTestSessionWithLimit,
@@ -607,16 +607,11 @@ export function AdminHealthPage() {
             type="button"
             onClick={runAllChecks}
             disabled={running}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-[12px] bg-[#D71921] hover:bg-[#b0141a] text-white text-xs font-heading font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-lg shadow-red-950/40 min-w-[140px]"
+            className="relative overflow-hidden inline-flex items-center justify-center gap-2 px-4 py-2 rounded-[12px] bg-[#D71921] hover:bg-[#b0141a] text-white text-xs font-heading font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-lg shadow-red-950/40 min-w-[140px]"
           >
-            {running ? (
-              <BubbleLoader variant="inline" customMessages={['Running suite...']} />
-            ) : (
-              <>
-                <Play size={14} />
-                <span>Run again</span>
-              </>
-            )}
+            <Play size={14} />
+            <span>{running ? 'Running suite...' : 'Run again'}</span>
+            {running && <ButtonLineLoader />}
           </button>
         </div>
       </div>

@@ -3,7 +3,7 @@ import { useParams, Link, useLocation } from 'react-router-dom';
 import { FolderOpen, Download, ArrowRight, FileText, AlertTriangle, RefreshCw } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
-import { MaterialCardSkeleton } from '@/components/ui/Skeleton';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { fetchCommonsPosts } from '@/services/commonsService';
 import { formatSubjectName } from '@/constants/taxonomy';
 import { useAuth } from '@/contexts/AuthContext';
@@ -105,7 +105,7 @@ export const MaterialSubjectPage: React.FC = () => {
         </div>
 
         {loading ? (
-          <MaterialCardSkeleton count={4} />
+          <LineLoader context="generic" variant="section" />
         ) : loadError ? (
           <div className="glass-panel p-10 text-center">
             <AlertTriangle size={28} className="text-[#D71921] mx-auto mb-3" />

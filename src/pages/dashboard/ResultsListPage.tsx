@@ -3,7 +3,7 @@ import { collection, query, where, orderBy, getDocs, limit, startAfter, type Doc
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Button } from '@/components/ui/Button';
@@ -14,7 +14,6 @@ import { getMyTestAttempts, type AmbassadorTestAttempt } from '@/services/ambass
 import { downloadDrillResultPdfByTestId } from '@/utils/testPdfExporter';
 import { showApiToast } from '@/lib/api';
 import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 function getTimestampSeconds(val: unknown): number {
   if (!val || typeof val !== 'object') return 0;
@@ -230,15 +229,7 @@ export function ResultsListPage() {
 
       {/* Attempts List */}
       {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <BubbleLoader
-            variant="top-bar"
-            messages={['Loading your test results & history...']}
-          />
-          <Skeleton height={80} />
-          <Skeleton height={80} />
-          <Skeleton height={80} />
-        </div>
+        <LineLoader context="results" variant="section" />
       ) : error && grandLineAttempts.length === 0 ? (
         <ErrorState title="Could not load attempts" error={error} onRetry={loadAttempts} />
       ) : totalTests === 0 ? (

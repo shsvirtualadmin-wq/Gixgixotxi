@@ -1236,181 +1236,131 @@
   .page-enter > *:nth-child(8), .stagger-cards > *:nth-child(8) { animation-delay: 280ms; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *:not(.boardly-loader-root):not(.boardly-loader-wordmark):not(.boardly-loader-bar-indeterminate):not(.boardly-loader-message):not(.skeleton):not(.skeleton-shimmer),
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
+/* ===== UNIFIED LINE LOADER (DARK & LIGHT THEME TOKENS + PURE CSS ANIMATION) ===== */
+:root,
+.light,
+[data-theme="light"] {
+  --loader-track: rgba(0, 0, 0, 0.10);
+  --loader-bar: #d91422;
+  --loader-text: #5b5b66;
+  --loader-glow: 0 0 8px rgba(217, 20, 34, 0.30);
 }
 
-/* ===== BOARDLY LOADER & SKELETON PLACEHOLDERS ===== */
-.boardly-loader-root {
-  background-color: var(--bg);
-  color: var(--text);
-  transition: opacity 300ms ease;
+.dark,
+[data-theme="dark"] {
+  --loader-track: rgba(255, 255, 255, 0.12);
+  --loader-bar: #e11d2a;
+  --loader-text: #9a9aa5;
+  --loader-glow: 0 0 10px rgba(225, 29, 42, 0.45);
 }
 
-.boardly-loader-fade-in {
-  opacity: 1;
-}
-
-.boardly-loader-fade-out {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.boardly-loader-backdrop {
-  background-image:
-    radial-gradient(circle at 50% 46%, var(--glow-red) 0%, transparent 60%),
-    radial-gradient(var(--border) 1px, transparent 1px);
-  background-size: 100% 100%, 24px 24px;
-  background-position: center center;
-  opacity: 0.85;
-}
-
-@keyframes boardly-wordmark-enter {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes boardly-bar-shimmer {
+@keyframes line-loader-glide {
   0% {
-    transform: translateX(-100%);
+    transform: translateX(-110%);
   }
   100% {
-    transform: translateX(100%);
+    transform: translateX(250%);
   }
 }
 
-@keyframes boardly-simple-fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes boardly-simple-pulse {
+@keyframes line-loader-calm-pulse {
   0%, 100% {
     opacity: 0.85;
   }
   50% {
-    opacity: 0.4;
+    opacity: 0.35;
   }
 }
 
-.boardly-loader-wordmark {
-  font-family: var(--font-dot);
-  letter-spacing: 0.02em;
-  line-height: 1.1;
-  animation: boardly-wordmark-enter 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+.line-loader-msg {
+  color: var(--loader-text);
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  height: 20px;
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  white-space: nowrap;
+  transition: opacity 175ms ease;
 }
 
-.boardly-loader-track {
-  background-color: var(--track-bg);
+.line-loader-track {
   position: relative;
+  width: 180px;
+  height: 2.5px;
+  border-radius: 9999px;
+  background-color: var(--loader-track);
+  overflow: hidden;
 }
 
-.boardly-loader-bar-determinate {
-  background-color: var(--accent);
-  transition: width 240ms ease;
-}
-
-.boardly-loader-bar-indeterminate {
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--accent) 30%,
-    var(--accent-hover) 50%,
-    var(--accent) 70%,
-    transparent 100%
-  );
-  animation: boardly-bar-shimmer 1.35s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+.line-loader-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 42%;
+  border-radius: 9999px;
+  background-color: var(--loader-bar);
+  box-shadow: var(--loader-glow);
   will-change: transform;
+  animation: line-loader-glide 1.25s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
-.boardly-loader-message {
-  transition: opacity 220ms ease;
+/* Thin 2px bottom-edge line for submitting buttons */
+.line-loader-btn-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background-color: var(--loader-track);
+  overflow: hidden;
+  pointer-events: none;
 }
 
-.boardly-loader-msg-visible {
-  opacity: 1;
+.line-loader-btn-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 42%;
+  border-radius: 9999px;
+  background-color: var(--loader-bar);
+  box-shadow: var(--loader-glow);
+  will-change: transform;
+  animation: line-loader-glide 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
-.boardly-loader-msg-hidden {
-  opacity: 0;
-}
-
-.boardly-loader-timeout {
-  animation: boardly-simple-fade 250ms ease both;
-}
-
-/* Shimmering Skeleton Placeholders for in-page data loading */
-.skeleton,
-.skeleton-shimmer {
+/* Preserved solely for Grand Line which must remain untouched */
+.skeleton {
   position: relative;
   overflow: hidden;
   background-color: var(--skeleton);
   border-radius: var(--r-input);
 }
 
-.skeleton::after,
-.skeleton-shimmer::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--surface-muted) 50%,
-    transparent 100%
-  );
-  opacity: 0.65;
-  animation: boardly-bar-shimmer 1.6s ease-in-out infinite;
-}
-
-@keyframes skeleton-pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.45;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .boardly-loader-root {
-    transition: opacity 250ms ease !important;
+  *:not(.line-loader-bar):not(.line-loader-btn-bar),
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
-  .boardly-loader-wordmark {
-    animation: boardly-simple-fade 250ms ease both !important;
+
+  .line-loader-msg {
+    transition: none !important;
+  }
+
+  .line-loader-bar,
+  .line-loader-btn-bar {
+    width: 100% !important;
     transform: none !important;
-  }
-  .boardly-loader-bar-indeterminate {
-    background: var(--accent) !important;
-    animation: boardly-simple-pulse 2s ease-in-out infinite !important;
-    transform: none !important;
-  }
-  .boardly-loader-message {
-    transition: opacity 200ms ease !important;
-  }
-  .skeleton::after,
-  .skeleton-shimmer::after {
-    display: none !important;
-  }
-  .skeleton,
-  .skeleton-shimmer {
-    animation: boardly-simple-pulse 2s ease-in-out infinite !important;
+    animation: line-loader-calm-pulse 2s ease-in-out infinite !important;
   }
 }
 
@@ -1823,7 +1773,7 @@ body,
 
 /* ===== ACCESSIBILITY & PREFERS REDUCED MOTION ===== */
 @media (prefers-reduced-motion: reduce) {
-  *:not(.boardly-loader-root):not(.boardly-loader-wordmark):not(.boardly-loader-bar-indeterminate):not(.boardly-loader-message):not(.skeleton):not(.skeleton-shimmer),
+  *:not(.line-loader-bar):not(.line-loader-btn-bar),
   *::before,
   *::after {
     animation-duration: 0.01ms !important;

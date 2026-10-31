@@ -9,6 +9,7 @@ import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
 import { ContentUnavailableScreen } from '@/components/ui/ContentUnavailableScreen';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { followUser, unfollowUser, isFollowing } from '@/services/followService';
@@ -142,8 +143,8 @@ export const PublicUserProfilePage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4">
-        <div className="max-w-3xl mx-auto glass-panel p-8 h-64 animate-pulse" />
+      <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 flex items-center justify-center">
+        <LineLoader context="generic" variant="section" />
       </div>
     );
   }

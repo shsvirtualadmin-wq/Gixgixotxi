@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
-import { MaterialCardSkeleton } from '@/components/ui/Skeleton';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { MathText } from '@/components/ui/MathText';
 import { fetchCommonsPosts } from '@/services/commonsService';
 import { resolveCommonsAttachmentUrl } from '@/services/commonsUploadService';
@@ -256,7 +256,7 @@ export const MaterialLibraryPage: React.FC = () => {
 
         {/* Material Cards Grid */}
         {loading ? (
-          <MaterialCardSkeleton count={4} />
+          <LineLoader context="generic" variant="section" />
         ) : filteredMaterials.length === 0 ? (
           <div className="glass-panel p-10 text-center">
             <FileText size={28} className="text-white/40 mx-auto mb-3" />

@@ -5,7 +5,7 @@ import { useStudyCrew, type CrewMember } from '@/hooks/useStudyCrew';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { InAppLeaderboard } from '@/components/crew/InAppLeaderboard';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
@@ -424,27 +424,8 @@ export function CrewDashboardPage() {
 
   if (loading) {
     return (
-      <div className="max-w-3xl mx-auto py-6 px-4 space-y-5">
-        <div className="flex items-center gap-3">
-          <Skeleton height={32} width={32} borderRadius={8} />
-          <Skeleton height={24} width={140} />
-        </div>
-        <div className="p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border)] space-y-3">
-          <Skeleton height={28} width="50%" />
-          <Skeleton height={16} width="30%" />
-          <Skeleton height={44} width="100%" />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border)] h-32">
-            <Skeleton height="100%" />
-          </div>
-          <div className="p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border)] h-32">
-            <Skeleton height="100%" />
-          </div>
-        </div>
-        <div className="p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border)] h-64">
-          <Skeleton height="100%" />
-        </div>
+      <div className="max-w-3xl mx-auto py-12 px-4">
+        <LineLoader context="dashboard" variant="section" />
       </div>
     );
   }
@@ -544,9 +525,10 @@ export function CrewDashboardPage() {
               <button
                 type="submit"
                 disabled={quickJoinLoading || !quickCodeInput.trim()}
-                className="px-4 py-2.5 rounded-xl font-semibold text-xs bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white disabled:opacity-50 min-h-[44px] transition-colors shrink-0"
+                className="relative overflow-hidden px-4 py-2.5 rounded-xl font-semibold text-xs bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px] transition-colors shrink-0"
               >
-                {quickJoinLoading ? 'Joining...' : 'Join'}
+                <span>{quickJoinLoading ? 'Joining...' : 'Join'}</span>
+                {quickJoinLoading && <ButtonLineLoader />}
               </button>
             </form>
           </div>
@@ -1137,9 +1119,10 @@ export function CrewDashboardPage() {
                 <button
                   type="submit"
                   disabled={renameLoading || !newSquadName.trim()}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white disabled:opacity-50 min-h-[44px] transition-colors cursor-pointer"
+                  className="relative overflow-hidden px-4 py-2 rounded-xl text-xs font-semibold bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px] transition-colors cursor-pointer"
                 >
-                  {renameLoading ? 'Saving...' : 'Save Name'}
+                  <span>{renameLoading ? 'Saving...' : 'Save Name'}</span>
+                  {renameLoading && <ButtonLineLoader />}
                 </button>
               </div>
             </form>
@@ -1195,9 +1178,10 @@ export function CrewDashboardPage() {
                 type="button"
                 disabled={transferLoading || !selectedNewLeader}
                 onClick={handleConfirmTransfer}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white disabled:opacity-50 min-h-[44px] transition-colors cursor-pointer"
+                className="relative overflow-hidden px-4 py-2 rounded-xl text-xs font-semibold bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px] transition-colors cursor-pointer"
               >
-                {transferLoading ? 'Transferring...' : 'Confirm'}
+                <span>{transferLoading ? 'Transferring...' : 'Confirm'}</span>
+                {transferLoading && <ButtonLineLoader />}
               </button>
             </div>
           </div>

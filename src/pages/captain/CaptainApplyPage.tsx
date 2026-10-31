@@ -7,7 +7,7 @@ import { CheckCircle2, ArrowLeft, AlertCircle, LogIn, Clock } from 'lucide-react
 import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
 
 interface FieldErrors {
@@ -474,14 +474,15 @@ export function CaptainApplyPage() {
                   console.log('[CaptainApply] Submit button clicked');
                 }}
                 disabled={submitting}
-                className="btn-primary w-full cursor-pointer disabled:opacity-50 relative z-20 shadow-lg flex items-center justify-center px-4"
+                className="relative overflow-hidden btn-primary w-full cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed z-20 shadow-lg flex items-center justify-center px-4"
                 style={{ height: '52px' }}
               >
-                {submitting ? (
-                  <BubbleLoader variant="inline" customMessages={['Submitting application...']} />
-                ) : (
-                  <span>Submit {NAKAMA_CAPTAIN_SINGULAR} Application</span>
-                )}
+                <span>
+                  {submitting
+                    ? 'Submitting...'
+                    : `Submit ${NAKAMA_CAPTAIN_SINGULAR} Application`}
+                </span>
+                {submitting && <ButtonLineLoader />}
               </button>
             </div>
           </form>

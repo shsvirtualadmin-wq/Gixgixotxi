@@ -4,7 +4,7 @@ import { db } from '@/lib/firebase';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useAuth } from '@/contexts/AuthContext';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
 
 interface UsageData {
@@ -83,14 +83,9 @@ export const DailyLimitsMeter = memo(function DailyLimitsMeter({
     };
   }, [uid, user?.uid, profileLoading, dateKey]);
 
-  // If loading or auth/plan resolving, show a small skeleton
+  // If loading or auth/plan resolving, show inline LineLoader
   if (loading || effectivePlan.loading || profileLoading) {
-    return (
-      <div className="w-full space-y-2 py-1">
-        <Skeleton height={16} className="w-3/5 rounded-md" />
-        <Skeleton height={4} className="w-full rounded-full" />
-      </div>
-    );
+    return <LineLoader context="dashboard" variant="inline" />;
   }
 
   // If loading fails, hide completely — never show an empty box

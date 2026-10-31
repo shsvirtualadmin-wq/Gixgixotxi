@@ -12,7 +12,7 @@ import {
   deleteReview,
 } from '@/services/adminService';
 import type { StudentReview } from '@/types';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 
 export function AdminReviewsPage() {
   const { user } = useAuth();
@@ -132,19 +132,8 @@ export function AdminReviewsPage() {
 
       {/* ─── REVIEWS CARDS FEED ─────────────────────────────────────────────── */}
       <div className="space-y-3">
-        {loading && (
-          <BubbleLoader variant="top-bar" customMessages={['Loading student reviews...']} />
-        )}
         {loading ? (
-          Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-3"
-            >
-              <div className="h-4 bg-[var(--card-2)] rounded w-1/4" />
-              <div className="h-4 bg-[var(--card-2)] rounded w-3/4" />
-            </div>
-          ))
+          <LineLoader context="admin" message="Loading student reviews..." />
         ) : reviews.length === 0 ? (
           <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center">
             <p className="font-heading text-[14px] text-[var(--muted)]">
@@ -234,9 +223,10 @@ export function AdminReviewsPage() {
                         type="button"
                         disabled={actionInProgress === r.id}
                         onClick={() => handleApprove(r.id)}
-                        className="px-3.5 py-1.5 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[12px] font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                        className="relative overflow-hidden px-3.5 py-1.5 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[12px] font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
                       >
                         {actionInProgress === r.id ? 'Approving...' : 'Approve'}
+                        {actionInProgress === r.id && <ButtonLineLoader />}
                       </button>
                     )}
                   </div>

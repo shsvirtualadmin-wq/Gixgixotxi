@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db, TARGET_DATABASE_ID } from '@/lib/firebase';
 import { RefreshCw, CheckCircle2, XCircle, ShieldCheck, Database, Wifi } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 
 interface DiagnosticResult<T = unknown> {
   status: 'idle' | 'running' | 'success' | 'error';
@@ -248,10 +248,13 @@ export function FirestoreDebugPanel() {
             type="button"
             onClick={runDiagnostics}
             disabled={running}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-semibold cursor-pointer transition-all disabled:opacity-50 min-w-[130px]"
+            className="relative overflow-hidden inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-semibold cursor-pointer transition-all disabled:opacity-50 min-w-[130px]"
           >
             {running ? (
-              <BubbleLoader variant="inline" customMessages={['Running diagnostics...']} />
+              <>
+                <span>Testing...</span>
+                <ButtonLineLoader />
+              </>
             ) : (
               <>
                 <RefreshCw size={13} />
@@ -509,7 +512,7 @@ function TestStatusBadge({
   if (status === 'running') {
     return (
       <div className="w-32">
-        <BubbleLoader variant="inline" customMessages={['Testing...']} />
+        <LineLoader variant="inline" context="generic" message="Testing..." immediate />
       </div>
     );
   }

@@ -7,7 +7,7 @@ import {
   Copy,
   Check,
 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   fetchPaymentRequests,
@@ -189,16 +189,13 @@ export function AdminPaymentsPage() {
           type="button"
           onClick={loadData}
           disabled={loading}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-xs sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
+          className="relative overflow-hidden flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-xs sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
         >
           <RefreshCw size={14} />
-          <span>Refresh</span>
+          <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
+          {loading && <ButtonLineLoader />}
         </button>
       </div>
-
-      {loading && (
-        <BubbleLoader variant="top-bar" customMessages={['Loading payment verification queue...']} />
-      )}
 
       {bannerNotice && (
         <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500 text-emerald-300 text-xs font-heading flex items-center gap-2 animate-in fade-in">
@@ -267,9 +264,7 @@ export function AdminPaymentsPage() {
       {paymentType === 'plans' && (
         <div className="space-y-3">
           {loading ? (
-            Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] h-28 animate-pulse" />
-            ))
+            <LineLoader context="admin" message="Loading payment verification queue..." />
           ) : planRequests.length === 0 ? (
             <div className="p-10 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center text-xs text-[var(--muted)]">
               No plan subscription payments found matching this filter.
@@ -351,9 +346,7 @@ export function AdminPaymentsPage() {
       {paymentType === 'kobans' && (
         <div className="space-y-3">
           {loading ? (
-            Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] h-28 animate-pulse" />
-            ))
+            <LineLoader context="admin" message="Loading payment verification queue..." />
           ) : kobanRequestsList.length === 0 ? (
             <div className="p-10 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center text-xs text-[var(--muted)]">
               No Koban purchase requests found matching this filter.
@@ -522,16 +515,13 @@ export function AdminPaymentsPage() {
                 type="button"
                 disabled={kobanApproving || kobanEditableAmount <= 0}
                 onClick={handleConfirmKobanApprove}
-                className="btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
+                className="relative overflow-hidden btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
               >
-                {kobanApproving ? (
-                  <BubbleLoader variant="inline" customMessages={['Crediting Kobans...']} />
-                ) : (
-                  <>
-                    <CheckCircle2 size={14} />
-                    <span>Credit {kobanEditableAmount.toLocaleString()} Kobans</span>
-                  </>
-                )}
+                <CheckCircle2 size={14} />
+                <span>
+                  {kobanApproving ? 'Crediting Kobans...' : `Credit ${kobanEditableAmount.toLocaleString()} Kobans`}
+                </span>
+                {kobanApproving && <ButtonLineLoader />}
               </button>
             </div>
           </div>
@@ -561,16 +551,11 @@ export function AdminPaymentsPage() {
                 type="button"
                 disabled={kobanRejecting}
                 onClick={handleConfirmKobanReject}
-                className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white flex-1 text-xs font-bold flex items-center justify-center gap-1.5"
+                className="relative overflow-hidden px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white flex-1 text-xs font-bold flex items-center justify-center gap-1.5"
               >
-                {kobanRejecting ? (
-                  <BubbleLoader variant="inline" customMessages={['Rejecting request...']} />
-                ) : (
-                  <>
-                    <XCircle size={14} />
-                    <span>Confirm Rejection</span>
-                  </>
-                )}
+                <XCircle size={14} />
+                <span>{kobanRejecting ? 'Rejecting request...' : 'Confirm Rejection'}</span>
+                {kobanRejecting && <ButtonLineLoader />}
               </button>
             </div>
           </div>

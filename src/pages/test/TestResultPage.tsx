@@ -4,7 +4,7 @@ import { getAttempt, reportQuestion } from '@/services/testEngine';
 import { useAuth } from '@/contexts/AuthContext';
 import { MathText } from '@/components/ui/MathText';
 import { Button } from '@/components/ui/Button';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { ErrorState } from '@/components/ui/ErrorState';
 import {
   CheckCircle,
@@ -25,7 +25,6 @@ import { getUniversityCriteria, getSectionCriteria } from '@/constants/universit
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { getBoardyExplanation } from '@/services/boardyAiService';
 import { routes } from '@/utils/routes';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
 
 type ReviewFilter = 'all' | 'mistakes' | 'flagged';
@@ -110,14 +109,8 @@ export function TestResultPage() {
 
   if (loading) {
     return (
-      <div style={{ maxWidth: 860, margin: '2rem auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: 20 }}>
-        <BubbleLoader
-          variant="top-bar"
-          messages={['Checking your answers...']}
-        />
-        <Skeleton height={200} />
-        <Skeleton height={140} />
-        <Skeleton height={300} />
+      <div style={{ maxWidth: 860, margin: '2rem auto', padding: '1rem' }}>
+        <LineLoader context="results" variant="section" />
       </div>
     );
   }
@@ -560,25 +553,17 @@ export function TestResultPage() {
                   return (
                     <div className="flex flex-col gap-2.5 min-w-0 max-w-full">
                       {!aiExplanations[idx] ? (
-                        aiExplaining[idx] ? (
-                          <div className="w-full max-w-xs p-2.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)]">
-                            <BubbleLoader
-                              variant="inline"
-                              loading={aiExplaining[idx]}
-                              messages={['Boardy is deriving step-by-step solution...']}
-                              successText="Solution ready!"
-                            />
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => handleRequestAiExplanation(idx, q, userAns, false)}
-                            disabled={aiExplaining[idx]}
-                            className="self-start inline-flex items-center gap-2 px-3.5 py-2 rounded-full border border-[#D71921] bg-transparent text-[var(--text)] text-xs font-semibold cursor-pointer hover:bg-[#D71921] hover:text-white transition-colors disabled:cursor-wait max-w-full"
-                          >
-                            <Bot size={14} className="text-[#D71921]" />
-                            <span>Explain this with Boardy AI</span>
-                          </button>
-                        )
+                        <button
+                          onClick={() => handleRequestAiExplanation(idx, q, userAns, false)}
+                          disabled={aiExplaining[idx]}
+                          className="relative overflow-hidden self-start inline-flex items-center gap-2 px-3.5 py-2 rounded-full border border-[#D71921] bg-transparent text-[var(--text)] text-xs font-semibold cursor-pointer hover:bg-[#D71921] hover:text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed max-w-full"
+                        >
+                          <Bot size={14} className="text-[#D71921]" />
+                          <span>
+                            {aiExplaining[idx] ? 'Deriving solution...' : 'Explain this with Boardy AI'}
+                          </span>
+                          {aiExplaining[idx] && <ButtonLineLoader />}
+                        </button>
                       ) : (
                         <div className="p-3 sm:p-4 rounded-2xl bg-[var(--surface)] border border-[#D71921] flex flex-col gap-2.5 min-w-0 max-w-full overflow-hidden">
                           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -604,10 +589,11 @@ export function TestResultPage() {
                             </div>
                           </div>
                           {aiExplaining[idx] ? (
-                            <BubbleLoader
+                            <LineLoader
                               variant="inline"
+                              context="results"
                               loading={aiExplaining[idx]}
-                              messages={['Re-deriving step-by-step solution...']}
+                              message="Deriving solution..."
                             />
                           ) : (
                             <div className="text-xs sm:text-sm leading-relaxed text-[var(--text)] break-words min-w-0 max-w-full overflow-x-auto">
@@ -685,46 +671,37 @@ export function TestResultPage() {
                   >
                     Cancel
                   </button>
-                  {reporting ? (
-                    <div className="w-44 p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-                      <BubbleLoader
-                        variant="inline"
-                        loading={reporting}
-                        messages={['Submitting question report...']}
-                      />
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (!user || reporting) return;
-                        setReporting(true);
-                        try {
-                          await reportQuestion({
-                            questionId: reportingQuestionId,
-                            reason: reportReason,
-                            comment: reportComment,
-                            userId: user.uid,
-                            userEmail: user.email || '',
-                          });
-                          setReportSuccess(true);
-                          setTimeout(() => {
-                            setReportingQuestionId(null);
-                            setReportSuccess(false);
-                            setReportComment('');
-                          }, 1400);
-                        } catch (err) {
-                          console.warn('Report error:', err);
-                        } finally {
-                          setReporting(false);
-                        }
-                      }}
-                      disabled={reporting}
-                      className="btn-red px-4 py-1.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <span>Submit Report</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    disabled={reporting}
+                    onClick={async () => {
+                      if (!user || reporting) return;
+                      setReporting(true);
+                      try {
+                        await reportQuestion({
+                          questionId: reportingQuestionId,
+                          reason: reportReason,
+                          comment: reportComment,
+                          userId: user.uid,
+                          userEmail: user.email || '',
+                        });
+                        setReportSuccess(true);
+                        setTimeout(() => {
+                          setReportingQuestionId(null);
+                          setReportSuccess(false);
+                          setReportComment('');
+                        }, 1400);
+                      } catch (err) {
+                        console.warn('Report error:', err);
+                      } finally {
+                        setReporting(false);
+                      }
+                    }}
+                    className="relative overflow-hidden btn-red px-4 py-1.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <span>{reporting ? 'Submitting...' : 'Submit Report'}</span>
+                    {reporting && <ButtonLineLoader />}
+                  </button>
                 </div>
               </div>
             )}

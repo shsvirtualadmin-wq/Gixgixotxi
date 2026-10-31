@@ -8,7 +8,7 @@ import type { PublicProfile, UserProfile } from '@/types';
 import { validateDisplayName } from '@/utils/usernameValidation';
 import { submitNameRequest } from '@/services/nameRequestService';
 import { AlertCircle, Send, CheckCircle2 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { ButtonLineLoader } from '@/components/ui/LineLoader';
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -245,10 +245,13 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   type="button"
                   disabled={isSendingRequest}
                   onClick={handleSendNameRequest}
-                  className="self-start mt-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-heading font-semibold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
+                  className="relative overflow-hidden self-start mt-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-heading font-semibold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
                 >
                   {isSendingRequest ? (
-                    <BubbleLoader variant="inline" customMessages={['Sending request...']} />
+                    <>
+                      <span>Sending...</span>
+                      <ButtonLineLoader />
+                    </>
                   ) : (
                     <>
                       <Send size={13} />
@@ -279,10 +282,13 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             <button
               type="submit"
               disabled={isSaving}
-              className="flex-1 min-h-[44px] px-4 rounded-lg border border-red-700 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-xs font-semibold text-white transition-colors shadow-md shadow-red-950/40 flex items-center justify-center"
+              className="relative overflow-hidden flex-1 min-h-[44px] px-4 rounded-lg border border-red-700 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-xs font-semibold text-white transition-colors shadow-md shadow-red-950/40 flex items-center justify-center"
             >
               {isSaving ? (
-                <BubbleLoader variant="inline" customMessages={['Saving changes...']} />
+                <>
+                  <span>Saving...</span>
+                  <ButtonLineLoader />
+                </>
               ) : (
                 'Save changes'
               )}

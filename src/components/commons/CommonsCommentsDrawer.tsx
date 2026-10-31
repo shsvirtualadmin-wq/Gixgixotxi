@@ -7,7 +7,7 @@ import { MathText } from '@/components/ui/MathText';
 import { sanitizeStudentDisplayName, maskPublicUserText } from '@/utils/privacy';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { useAuthGate } from '@/contexts/AuthGateContext';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 
 interface CommonsCommentsDrawerProps {
   post: CommonsPost | null;
@@ -157,11 +157,10 @@ export function CommonsCommentsDrawer({
         <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
           {loading ? (
             <div className="py-6">
-              <BubbleLoader
+              <LineLoader
                 variant="section"
-                showSkeletons
-                skeletonCount={2}
-                customMessages={['Loading comments...']}
+                context="generic"
+                message="Loading comments..."
               />
             </div>
           ) : comments.length === 0 ? (
@@ -325,12 +324,15 @@ export function CommonsCommentsDrawer({
             <button
               type="submit"
               disabled={!currentUser || submitting || !newText.trim()}
-              className={`px-4 py-2.5 bg-accent hover:opacity-90 disabled:bg-surface-muted disabled:text-muted disabled:cursor-not-allowed text-on-accent rounded-xl transition-all shrink-0 cursor-pointer shadow-xs active:scale-95 flex items-center justify-center min-h-[44px] ${
-                submitting ? 'min-w-[140px]' : 'min-w-[44px]'
+              className={`relative overflow-hidden px-4 py-2.5 bg-accent hover:opacity-90 disabled:bg-surface-muted disabled:text-muted disabled:cursor-not-allowed text-on-accent rounded-xl transition-all shrink-0 cursor-pointer shadow-xs active:scale-95 flex items-center justify-center min-h-[44px] text-xs font-semibold ${
+                submitting ? 'min-w-[100px]' : 'min-w-[44px]'
               }`}
             >
               {submitting ? (
-                <BubbleLoader variant="inline" customMessages={['Posting comment...']} />
+                <>
+                  <span>Posting...</span>
+                  <ButtonLineLoader />
+                </>
               ) : (
                 <Send size={15} />
               )}

@@ -9,7 +9,7 @@ import {
   CheckCircle2,
   Sparkles,
 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   fetchCaptainApplications,
@@ -292,16 +292,8 @@ export function AdminApplicationsPage() {
 
       {/* ─── APPLICATIONS LIST ──────────────────────────────────────────────── */}
       <div className="space-y-3">
-        {loading && (
-          <BubbleLoader variant="top-bar" customMessages={['Loading candidate applications...']} />
-        )}
         {loading ? (
-          Array.from({ length: 3 }).map((_, i) => (
-            <div
-              key={i}
-              className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-3 animate-pulse h-28"
-            />
-          ))
+          <LineLoader context="admin" message="Loading candidate applications..." />
         ) : currentList.length === 0 ? (
           <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center">
             <p className="font-heading text-[14px] text-[var(--muted)]">
@@ -407,16 +399,11 @@ export function AdminApplicationsPage() {
                         type="button"
                         disabled={grantingCaptainId === app.userId}
                         onClick={() => handleGrantCaptainAllotment(app.userId, app.name, app.email)}
-                        className="btn-red text-xs px-3.5 py-1.5 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50 shrink-0 min-w-[150px]"
+                        className="relative overflow-hidden btn-red text-xs px-3.5 py-1.5 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50 shrink-0 min-w-[150px]"
                       >
-                        {grantingCaptainId === app.userId ? (
-                          <BubbleLoader variant="inline" customMessages={['Granting...']} />
-                        ) : (
-                          <>
-                            <Sparkles size={13} />
-                            <span>Grant 5,000 Kobans</span>
-                          </>
-                        )}
+                        <Sparkles size={13} />
+                        <span>{grantingCaptainId === app.userId ? 'Granting...' : 'Grant 5,000 Kobans'}</span>
+                        {grantingCaptainId === app.userId && <ButtonLineLoader />}
                       </button>
                     )}
                   </div>
@@ -441,13 +428,10 @@ export function AdminApplicationsPage() {
                       onClick={() =>
                         isCaptain ? handleApproveCaptain(capApp) : handleApproveCrew(crewApp)
                       }
-                      className="px-4 py-2 rounded-xl border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-xs font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer shadow-sm flex items-center justify-center min-w-[150px]"
+                      className="relative overflow-hidden px-4 py-2 rounded-xl border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-xs font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer shadow-sm flex items-center justify-center min-w-[150px]"
                     >
-                      {actionInProgress === app.id ? (
-                        <BubbleLoader variant="inline" customMessages={['Approving...']} />
-                      ) : (
-                        'Approve & grant role'
-                      )}
+                      <span>{actionInProgress === app.id ? 'Approving...' : 'Approve & grant role'}</span>
+                      {actionInProgress === app.id && <ButtonLineLoader />}
                     </button>
                   </div>
                 )}
@@ -511,16 +495,11 @@ export function AdminApplicationsPage() {
                 type="button"
                 disabled={grantingAll || pendingCaptainsForMonth.length === 0}
                 onClick={handleGrantAllApprovedCaptains}
-                className="btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                className="relative overflow-hidden btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
               >
-                {grantingAll ? (
-                  <BubbleLoader variant="inline" customMessages={['Crediting all captains...']} />
-                ) : (
-                  <>
-                    <Sparkles size={14} />
-                    <span>Confirm &amp; Credit All</span>
-                  </>
-                )}
+                <Sparkles size={14} />
+                <span>{grantingAll ? 'Crediting all captains...' : 'Confirm & Credit All'}</span>
+                {grantingAll && <ButtonLineLoader />}
               </button>
             </div>
           </div>

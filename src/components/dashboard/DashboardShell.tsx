@@ -8,6 +8,7 @@ import { DashboardErrorBoundary } from './DashboardErrorBoundary';
 import { RoleSelectionPromptModal } from '@/components/profile/RoleSelectionPromptModal';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { useEffect } from 'react';
 import { ensureWelcomeNotificationForUser } from '@/services/notificationService';
 
@@ -43,13 +44,7 @@ export function DashboardShell() {
   }, [user, profileLoading, navigate, location.pathname, location.search, location.hash]);
 
   if (profileLoading && !user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--bg)] text-[var(--text)]">
-        <BoardlySuspenseBoundary variant="page">
-          <div className="py-24 text-center text-xs text-[var(--muted)]">Verifying session...</div>
-        </BoardlySuspenseBoundary>
-      </div>
-    );
+    return <LineLoader context="dashboard" variant="page" />;
   }
 
   // Route guard: Logged-out users visiting protected routes are redirected to login with exact return URL

@@ -6,7 +6,7 @@ import { db } from '@/lib/firebase';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import {
   Compass,
@@ -131,10 +131,8 @@ export function CaptainDashboardPage() {
 
   if (profileLoading || loading) {
     return (
-      <div style={{ maxWidth: 960, margin: '2rem auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: 20 }}>
-        <Skeleton height={200} />
-        <Skeleton height={140} />
-        <Skeleton height={280} />
+      <div style={{ maxWidth: 960, margin: '2rem auto', padding: '1rem' }}>
+        <LineLoader context="dashboard" variant="section" />
       </div>
     );
   }

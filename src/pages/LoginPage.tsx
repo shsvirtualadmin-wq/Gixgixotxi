@@ -5,7 +5,7 @@ import { AuthCard } from '@/components/auth/AuthCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { logRedirect } from '@/utils/debugTracker';
 import { PageMeta } from '@/components/ui/PageMeta';
-import { BoardlyLoader } from '@/components/ui/BoardlyLoader';
+import { LineLoader } from '@/components/ui/LineLoader';
 
 export function LoginPage() {
   const { user, profile, profileLoading, getRoleRedirectUrl } = useAuth();
@@ -42,15 +42,7 @@ export function LoginPage() {
         canonicalPath="/login"
       />
       {user ? (
-        <BoardlyLoader
-          variant="inline"
-          messages={[
-            'Loading Boardly...',
-            'Setting up your workspace...',
-            'Getting things ready...',
-            'Almost there...',
-          ]}
-        />
+        <LineLoader context="login" variant="section" />
       ) : (
         <AuthCard initialMode="signin" />
       )}

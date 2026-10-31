@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Sparkles, ShoppingBag, Check, Send, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useNavigate } from 'react-router-dom';
 import { ACCENT_PRESETS, DefaultDotMatrixBanner } from '@/components/koban/artwork/bannerArtwork';
 import { AvatarPicture, AvatarFrame } from '@/components/koban/CosmeticRenderers';
@@ -133,10 +133,13 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
                   type="button"
                   disabled={isSendingRequest}
                   onClick={handleSendNameRequest}
-                  className="self-start mt-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-heading font-semibold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
+                  className="relative overflow-hidden self-start mt-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-heading font-semibold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
                 >
                   {isSendingRequest ? (
-                    <BubbleLoader variant="inline" customMessages={['Sending request...']} />
+                    <>
+                      <span>Sending...</span>
+                      <ButtonLineLoader />
+                    </>
                   ) : (
                     <>
                       <Send size={13} />
@@ -340,10 +343,13 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
             <button
               type="submit"
               disabled={isSaving}
-              className="h-11 px-6 rounded-xl bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold transition-colors cursor-pointer flex items-center justify-center gap-2 min-w-[140px]"
+              className="relative overflow-hidden h-11 px-6 rounded-xl bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold transition-colors cursor-pointer flex items-center justify-center gap-2 min-w-[140px] disabled:opacity-60"
             >
               {isSaving ? (
-                <BubbleLoader variant="inline" customMessages={['Saving profile...']} />
+                <>
+                  <span>Saving...</span>
+                  <ButtonLineLoader />
+                </>
               ) : (
                 'Save Profile'
               )}

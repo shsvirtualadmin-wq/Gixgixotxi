@@ -15,8 +15,7 @@ import {
   Megaphone,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { Skeleton } from '@/components/ui/Skeleton';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import {
   fetchAdminStats,
@@ -154,15 +153,16 @@ export function AdminOverviewPage() {
           type="button"
           onClick={loadData}
           disabled={loading}
-          className="flex items-center gap-2 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
+          className="relative overflow-hidden flex items-center gap-2 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
         >
           <RefreshCw size={14} />
-          <span>Refresh</span>
+          <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
+          {loading && <ButtonLineLoader />}
         </button>
       </div>
 
-      {loading && (
-        <BubbleLoader variant="top-bar" customMessages={['Refreshing system metrics...']} />
+      {loading && !stats && (
+        <LineLoader context="admin" message="Loading admin panel..." />
       )}
 
       <AdminDiagnosticBanner
@@ -184,13 +184,9 @@ export function AdminOverviewPage() {
             </span>
             <Users size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {loading && !stats ? (
-            <Skeleton height={40} width="60%" />
-          ) : (
-            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {(Number.isFinite(Number(stats?.totalUsers)) ? Number(stats?.totalUsers) : 0).toLocaleString()}
-            </p>
-          )}
+          <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+            {(Number.isFinite(Number(stats?.totalUsers)) ? Number(stats?.totalUsers) : 0).toLocaleString()}
+          </p>
           <Link
             to="/admin/users"
             className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
@@ -208,13 +204,9 @@ export function AdminOverviewPage() {
             </span>
             <Database size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {loading && !stats ? (
-            <Skeleton height={40} width="60%" />
-          ) : (
-            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {(Number.isFinite(Number(stats?.totalQuestions)) ? Number(stats?.totalQuestions) : 0).toLocaleString()}
-            </p>
-          )}
+          <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+            {(Number.isFinite(Number(stats?.totalQuestions)) ? Number(stats?.totalQuestions) : 0).toLocaleString()}
+          </p>
           <Link
             to="/admin/questions"
             className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
@@ -232,13 +224,9 @@ export function AdminOverviewPage() {
             </span>
             <Activity size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {loading && !stats ? (
-            <Skeleton height={40} width="60%" />
-          ) : (
-            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {(Number.isFinite(Number(stats?.totalAttempts)) ? Number(stats?.totalAttempts) : 0).toLocaleString()}
-            </p>
-          )}
+          <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+            {(Number.isFinite(Number(stats?.totalAttempts)) ? Number(stats?.totalAttempts) : 0).toLocaleString()}
+          </p>
           <span className="font-heading text-[12px] text-[var(--muted)] mt-auto pt-1">
             Student submissions
           </span>
@@ -252,16 +240,12 @@ export function AdminOverviewPage() {
             </span>
             <Award size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {loading && !stats ? (
-            <Skeleton height={40} width="60%" />
-          ) : (
-            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {(
-                (Number.isFinite(Number(stats?.pendingCaptains)) ? Number(stats?.pendingCaptains) : 0) +
-                (Number.isFinite(Number(stats?.pendingCrew)) ? Number(stats?.pendingCrew) : 0)
-              ).toLocaleString()}
-            </p>
-          )}
+          <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+            {(
+              (Number.isFinite(Number(stats?.pendingCaptains)) ? Number(stats?.pendingCaptains) : 0) +
+              (Number.isFinite(Number(stats?.pendingCrew)) ? Number(stats?.pendingCrew) : 0)
+            ).toLocaleString()}
+          </p>
           <Link
             to="/admin/applications"
             className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
@@ -279,13 +263,9 @@ export function AdminOverviewPage() {
             </span>
             <CreditCard size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {loading && !stats ? (
-            <Skeleton height={40} width="60%" />
-          ) : (
-            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {(Number.isFinite(Number(stats?.pendingPayments)) ? Number(stats?.pendingPayments) : 0).toLocaleString()}
-            </p>
-          )}
+          <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+            {(Number.isFinite(Number(stats?.pendingPayments)) ? Number(stats?.pendingPayments) : 0).toLocaleString()}
+          </p>
           <Link
             to="/admin/payments"
             className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
@@ -303,13 +283,9 @@ export function AdminOverviewPage() {
             </span>
             <FileCheck2 size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {loading && !stats ? (
-            <Skeleton height={40} width="60%" />
-          ) : (
-            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {(Number.isFinite(Number(stats?.pendingReviews)) ? Number(stats?.pendingReviews) : 0).toLocaleString()}
-            </p>
-          )}
+          <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+            {(Number.isFinite(Number(stats?.pendingReviews)) ? Number(stats?.pendingReviews) : 0).toLocaleString()}
+          </p>
           <Link
             to="/admin/commons"
             className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
@@ -355,11 +331,7 @@ export function AdminOverviewPage() {
                   {subj}
                 </span>
                 <span className="tabular-nums text-[22px] font-bold text-[var(--text)] mt-2">
-                  {loading && !stats ? (
-                    <span className="inline-block w-8 h-5 rounded bg-[var(--card)] animate-pulse" />
-                  ) : (
-                    count.toLocaleString()
-                  )}
+                  {count.toLocaleString()}
                 </span>
               </div>
             );
@@ -450,9 +422,10 @@ export function AdminOverviewPage() {
               type="button"
               onClick={() => setIsConfirmSeedOpen(true)}
               disabled={seeding}
-              className="w-full sm:w-auto px-4 py-2.5 rounded-[12px] border border-[var(--border)] bg-transparent hover:bg-[var(--surface-hover)] text-[13px] font-heading font-medium text-[var(--text)] transition-colors disabled:opacity-50"
+              className="relative overflow-hidden w-full sm:w-auto px-4 py-2.5 rounded-[12px] border border-[var(--border)] bg-transparent hover:bg-[var(--surface-hover)] text-[13px] font-heading font-medium text-[var(--text)] transition-colors disabled:opacity-50"
             >
               {seeding ? 'Seeding in progress...' : 'Seed balanced question pool'}
+              {seeding && <ButtonLineLoader />}
             </button>
           </div>
         </div>

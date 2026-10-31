@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { MathText } from '@/components/ui/MathText';
 import { CommonsImageAttachment } from '@/components/commons/CommonsImageAttachment';
 import { CommonsImageViewerModal } from '@/components/commons/CommonsImageViewerModal';
@@ -87,38 +88,8 @@ export const MaterialDetailPage: React.FC = () => {
 
   if (status === 'loading') {
     return (
-      <div
-        role="status"
-        aria-live="polite"
-        className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6"
-      >
-        <span className="sr-only">Loading study material</span>
-        <div className="max-w-3xl mx-auto space-y-4">
-          <div className="h-4 w-48 skeleton rounded" />
-          <div className="glass-panel p-7 sm:p-9 space-y-5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="h-6 w-28 skeleton rounded-full" />
-              <div className="flex items-center gap-2">
-                <div className="h-7 w-16 skeleton rounded-full" />
-                <div className="h-7 w-16 skeleton rounded-full" />
-              </div>
-            </div>
-            <div className="h-8 w-3/4 skeleton rounded" />
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[1, 2, 3, 4].map((n) => (
-                <div key={n} className="glass-card p-3.5 space-y-2">
-                  <div className="h-2.5 w-12 skeleton rounded" />
-                  <div className="h-4 w-20 skeleton rounded" />
-                </div>
-              ))}
-            </div>
-            <div className="space-y-2.5 pt-2">
-              <div className="h-3.5 w-full skeleton rounded" />
-              <div className="h-3.5 w-11/12 skeleton rounded" />
-              <div className="h-3.5 w-2/3 skeleton rounded" />
-            </div>
-          </div>
-        </div>
+      <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6 flex items-center justify-center">
+        <LineLoader context="generic" variant="section" />
       </div>
     );
   }

@@ -12,7 +12,7 @@ import {
   ShieldAlert,
   Copy,
 } from 'lucide-react';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import {
   fetchNameRequests,
   approveNameRequest,
@@ -252,14 +252,7 @@ export const AdminNameRequestsSection: React.FC<AdminNameRequestsSectionProps> =
       {/* ── Requests Table / Cards ── */}
       <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] overflow-hidden shadow-xs">
         {loading ? (
-          <div className="p-6">
-            <BubbleLoader
-              variant="section"
-              showSkeletons
-              skeletonCount={3}
-              customMessages={['Loading name requests...']}
-            />
-          </div>
+          <LineLoader context="admin" variant="section" />
         ) : filteredRequests.length === 0 ? (
           <div className="py-16 text-center text-xs text-[var(--muted)] font-heading space-y-1">
             <ShieldAlert size={28} className="mx-auto text-[var(--muted)] mb-2 opacity-50" />
@@ -358,10 +351,13 @@ export const AdminNameRequestsSection: React.FC<AdminNameRequestsSectionProps> =
                               type="button"
                               disabled={isProcessing}
                               onClick={() => handleApprove(req)}
-                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-heading font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-sm min-w-[100px]"
+                              className="relative overflow-hidden px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-heading font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed shadow-sm min-w-[100px]"
                             >
                               {isProcessing ? (
-                                <BubbleLoader variant="inline" customMessages={['Approving...']} />
+                                <>
+                                  <span>Approving...</span>
+                                  <ButtonLineLoader />
+                                </>
                               ) : (
                                 <>
                                   <Check size={13} />

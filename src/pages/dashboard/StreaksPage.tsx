@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
+import { LineLoader } from '@/components/ui/LineLoader';
 import {
   computeStreakData,
   fetchUserCompletedSessionDates,
@@ -234,20 +235,10 @@ export function StreaksPage() {
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };
 
-  // Loading Skeleton State
   if (loading) {
     return (
-      <div className="w-full max-w-xl mx-auto px-4 py-6 flex flex-col gap-6 antialiased pb-32">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-[var(--surface-muted)] animate-pulse" />
-          <div className="flex flex-col gap-2 flex-1">
-            <div className="h-6 w-28 bg-[var(--surface-muted)] rounded-md animate-pulse" />
-            <div className="h-4 w-56 bg-[var(--surface-muted)] rounded-md animate-pulse" />
-          </div>
-        </div>
-        <div className="h-80 w-full rounded-3xl bg-[var(--surface-muted)] animate-pulse" />
-        <div className="h-28 w-full rounded-2xl bg-[var(--surface-muted)] animate-pulse" />
-        <div className="h-64 w-full rounded-2xl bg-[var(--surface-muted)] animate-pulse" />
+      <div className="w-full max-w-xl mx-auto px-4 py-12 flex flex-col items-center justify-center antialiased pb-32">
+        <LineLoader context="dashboard" variant="section" />
       </div>
     );
   }

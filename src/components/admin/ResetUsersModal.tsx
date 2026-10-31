@@ -12,7 +12,7 @@ import {
   type UserResetPreview,
 } from '@/services/adminService';
 import { Button } from '@/components/ui/Button';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader } from '@/components/ui/LineLoader';
 
 interface ResetUsersModalProps {
   isOpen: boolean;
@@ -138,14 +138,7 @@ export function ResetUsersModal({
           </div>
 
           {loadingPreview ? (
-            <div className="py-4">
-              <BubbleLoader
-                variant="section"
-                showSkeletons
-                skeletonCount={2}
-                customMessages={['Scanning users database...']}
-              />
-            </div>
+            <LineLoader context="admin" variant="section" />
           ) : result ? (
             <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-500/40 text-emerald-200 space-y-2 text-center">
               <CheckCircle2 size={32} className="mx-auto text-emerald-400" />

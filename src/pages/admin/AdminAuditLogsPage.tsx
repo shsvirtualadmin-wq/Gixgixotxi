@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { fetchAuditLogs } from '@/services/adminService';
 import type { AuditLog } from '@/types';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader } from '@/components/ui/LineLoader';
 
 export function AdminAuditLogsPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -102,19 +102,8 @@ export function AdminAuditLogsPage() {
 
       {/* ─── LOGS LIST ──────────────────────────────────────────────────────── */}
       <div className="space-y-3">
-        {loading && (
-          <BubbleLoader variant="top-bar" customMessages={['Loading audit logs...']} />
-        )}
         {loading ? (
-          Array.from({ length: 5 }).map((_, i) => (
-            <div
-              key={i}
-              className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-2"
-            >
-              <div className="h-4 bg-[var(--card-2)] rounded w-1/4" />
-              <div className="h-4 bg-[var(--card-2)] rounded w-1/2" />
-            </div>
-          ))
+          <LineLoader context="admin" message="Loading audit logs..." />
         ) : filteredLogs.length === 0 ? (
           <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center">
             <p className="font-heading text-[14px] text-[var(--muted)]">

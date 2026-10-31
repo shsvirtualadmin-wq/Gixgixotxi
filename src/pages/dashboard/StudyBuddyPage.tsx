@@ -5,7 +5,7 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import { useStudyCrew } from '@/hooks/useStudyCrew';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { Badge } from '@/components/ui/Badge';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import {
@@ -292,7 +292,7 @@ export function StudyBuddyPage() {
   if (crewLoading) {
     return (
       <div style={{ maxWidth: 840, margin: '2rem auto', padding: '1rem' }}>
-        <Skeleton height={200} />
+        <LineLoader context="dashboard" variant="section" />
       </div>
     );
   }

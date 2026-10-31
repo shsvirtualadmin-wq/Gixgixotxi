@@ -3,7 +3,7 @@ import { auth } from '@/lib/firebase';
 import { Shield, AlertTriangle, Eye, EyeOff, Trash2, Ban, CheckCircle2, RefreshCw } from 'lucide-react';
 import { normalizeCloudflarePost } from '@/services/commonsService';
 import type { CommonsPost, CommonsReport } from '@/types/commons';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader } from '@/components/ui/LineLoader';
 
 export function AdminCommonsPage() {
   const [flaggedPosts, setFlaggedPosts] = useState<CommonsPost[]>([]);
@@ -158,12 +158,7 @@ export function AdminCommonsPage() {
 
         {loading ? (
           <div className="p-6 rounded-2xl border border-neutral-800 bg-[#0c0c0e]">
-            <BubbleLoader
-              variant="section"
-              showSkeletons
-              skeletonCount={3}
-              customMessages={['Loading flagged posts...']}
-            />
+            <LineLoader context="admin" message="Loading flagged posts..." />
           </div>
         ) : flaggedPosts.length === 0 ? (
           <div className="p-8 rounded-2xl border border-neutral-800 bg-[#0c0c0e] text-center space-y-2">

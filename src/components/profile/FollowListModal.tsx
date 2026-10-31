@@ -5,6 +5,7 @@ import { getPublicProfile, getPublicProfiles } from '@/services/publicProfileSer
 import { AvatarPicture, AvatarFrame } from '@/components/koban/CosmeticRenderers';
 import { getRankTitle } from '@/config/rankLadder';
 import type { PublicProfile } from '@/types';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 
 interface FollowListModalProps {
   isOpen: boolean;
@@ -216,17 +217,9 @@ export const FollowListModal: React.FC<FollowListModalProps> = ({
         {/* List Body */}
         <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-2.5">
           {loading && profiles.length === 0 ? (
-            // Skeleton loader
-            Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 p-2.5 rounded-xl animate-pulse">
-                <div className="w-10 h-10 rounded-full bg-[var(--border)] shrink-0" />
-                <div className="flex-1 space-y-1.5">
-                  <div className="h-3 w-28 bg-[var(--border)] rounded" />
-                  <div className="h-2.5 w-16 bg-[var(--border)] rounded" />
-                </div>
-                <div className="h-8 w-20 bg-[var(--border)] rounded-lg" />
-              </div>
-            ))
+            <div className="py-8">
+              <LineLoader variant="section" context="generic" />
+            </div>
           ) : profiles.length === 0 ? (
             <div className="py-12 flex flex-col items-center justify-center text-center gap-2 text-[var(--muted)]">
               <p className="font-heading font-medium text-sm text-[var(--text)]">
@@ -344,9 +337,10 @@ export const FollowListModal: React.FC<FollowListModalProps> = ({
               <button
                 onClick={confirmUnfollow}
                 disabled={unfollowLoading}
-                className="h-10 px-4 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-heading font-semibold transition-colors cursor-pointer"
+                className="relative overflow-hidden h-10 px-4 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-heading font-semibold transition-colors cursor-pointer disabled:opacity-60"
               >
-                {unfollowLoading ? 'Unfollowing...' : 'Unfollow'}
+                <span>{unfollowLoading ? 'Unfollowing...' : 'Unfollow'}</span>
+                {unfollowLoading && <ButtonLineLoader />}
               </button>
             </div>
           </div>

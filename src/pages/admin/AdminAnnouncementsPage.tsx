@@ -14,8 +14,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { Skeleton } from '@/components/ui/Skeleton';
-import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import {
   createAnnouncement,
@@ -289,16 +288,11 @@ export function AdminAnnouncementsPage() {
             <button
               type="submit"
               disabled={savingWelcome || !welcomeTitle.trim() || !welcomeMessage.trim()}
-              className="btn-red text-xs px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 min-w-[200px]"
+              className="relative overflow-hidden btn-red text-xs px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 min-w-[200px]"
             >
-              {savingWelcome ? (
-                <BubbleLoader variant="inline" customMessages={['Saving welcome notice...']} />
-              ) : (
-                <>
-                  <Save size={15} />
-                  <span>Save Welcome Announcement</span>
-                </>
-              )}
+              <Save size={15} />
+              <span>{savingWelcome ? 'Saving welcome notice...' : 'Save Welcome Announcement'}</span>
+              {savingWelcome && <ButtonLineLoader />}
             </button>
           </div>
         </form>
@@ -369,16 +363,11 @@ export function AdminAnnouncementsPage() {
             <button
               type="submit"
               disabled={submitting || !title.trim() || !message.trim()}
-              className="btn-red text-xs px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 min-w-[170px]"
+              className="relative overflow-hidden btn-red text-xs px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 min-w-[170px]"
             >
-              {submitting ? (
-                <BubbleLoader variant="inline" customMessages={['Posting announcement...']} />
-              ) : (
-                <>
-                  <Plus size={15} />
-                  <span>Post Announcement</span>
-                </>
-              )}
+              <Plus size={15} />
+              <span>{submitting ? 'Posting announcement...' : 'Post Announcement'}</span>
+              {submitting && <ButtonLineLoader />}
             </button>
           </div>
         </form>
@@ -397,10 +386,7 @@ export function AdminAnnouncementsPage() {
         </div>
 
         {loading ? (
-          <div className="space-y-3">
-            <BubbleLoader variant="top-bar" customMessages={['Loading broadcast announcements...']} />
-            <Skeleton height={80} count={3} />
-          </div>
+          <LineLoader context="admin" message="Loading broadcast announcements..." />
         ) : announcements.length === 0 ? (
           <EmptyState
             icon={<Megaphone size={32} />}
@@ -454,16 +440,15 @@ export function AdminAnnouncementsPage() {
                     type="button"
                     onClick={() => handleDelete(a.id)}
                     disabled={isDeleting}
-                    className="p-2.5 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors self-end sm:self-start cursor-pointer shrink-0"
+                    className="relative overflow-hidden p-2.5 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors self-end sm:self-start cursor-pointer shrink-0"
                     title="Delete announcement"
                   >
                     {isDeleting ? (
-                      <div className="w-24">
-                        <BubbleLoader variant="inline" customMessages={['Deleting...']} />
-                      </div>
+                      <span className="text-xs px-2">Deleting...</span>
                     ) : (
                       <Trash2 size={15} />
                     )}
+                    {isDeleting && <ButtonLineLoader />}
                   </button>
                 </div>
               );

@@ -10,7 +10,7 @@ import { isCrewPaidActive } from '@/services/crewBackend';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { Check, Zap, Users, Clock, Sparkles } from 'lucide-react';
 
 interface PaymentRequestItem {
@@ -107,7 +107,7 @@ export function PlansBillingPage() {
 
       {/* Current Plan Banner */}
       {profileLoading ? (
-        <Skeleton height={80} />
+        <LineLoader context="dashboard" variant="inline" />
       ) : (
         <GlassCard
           style={{

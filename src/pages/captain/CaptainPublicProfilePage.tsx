@@ -7,6 +7,7 @@ import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { RoleBadge } from '@/components/ui/RoleBadge';
+import { LineLoader } from '@/components/ui/LineLoader';
 import {
   getAmbassadorTestsForCreator,
   type AmbassadorTestDoc,
@@ -126,11 +127,7 @@ export const CaptainPublicProfilePage: React.FC = () => {
           </h2>
 
           {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {[1, 2].map((i) => (
-                <div key={i} className="glass-card h-32 animate-pulse" />
-              ))}
-            </div>
+            <LineLoader context="dashboard" variant="section" />
           ) : tests.length === 0 ? (
             <div className="glass-card p-8 text-center">
               <BookOpen size={24} className="text-white/40 mx-auto mb-2" />

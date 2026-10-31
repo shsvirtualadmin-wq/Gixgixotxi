@@ -36,6 +36,7 @@ import {
   type D1McqRow,
 } from '@/constants/d1Universities';
 import { MathText } from '@/components/ui/MathText';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 
 function getUniversityInitials(name: string): string {
   const cleaned = (name || '').replace(/\(.*?\)/g, '').trim();
@@ -432,29 +433,13 @@ export function OverviewPage() {
           )}
         </div>
 
-        {/* Loading Skeletons (Glass-style) */}
+        {/* Section-level LineLoader for university grid */}
         {loadingUniversities ? (
-          <div
-            className="cockpit-uni-grid"
-            aria-busy="true"
-            aria-label="Loading universities"
-          >
-            {Array.from({ length: 8 }).map((_, idx) => (
-              <div
-                key={idx}
-                className="cockpit-uni-bubble animate-pulse pointer-events-none"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="cockpit-uni-circle opacity-50" />
-                  <div className="h-5 w-20 rounded-full bg-[var(--surface-2)] opacity-70" />
-                </div>
-                <div className="space-y-2 mt-3">
-                  <div className="h-4 w-28 rounded-md bg-[var(--surface-2)] opacity-80" />
-                  <div className="h-3 w-20 rounded-md bg-[var(--surface-2)] opacity-50" />
-                </div>
-              </div>
-            ))}
-          </div>
+          <LineLoader
+            context="universities"
+            variant="section"
+            onRetry={() => void loadUniversitiesFromD1()}
+          />
         ) : universitiesError ? (
           /* Error State */
           <div className="cockpit-surface-card p-6 text-center space-y-3">
@@ -801,7 +786,7 @@ export function OverviewPage() {
                     Select Subject Scope
                   </label>
                   {loadingTopics ? (
-                    <div className="h-9 rounded-xl bg-[var(--surface-2)] animate-pulse" />
+                    <LineLoader context="universities" variant="inline" />
                   ) : (
                     <div className="flex flex-wrap gap-1.5">
                       <button
@@ -901,12 +886,13 @@ export function OverviewPage() {
                     onClick={() =>
                       void startUniversityD1Test(activeUni, selectedSubject, selectedTopic)
                     }
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs sm:text-sm font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+                    className="relative overflow-hidden inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs sm:text-sm font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-75"
                   >
                     <span>
-                      {loadingMcqs ? 'Loading D1 MCQs...' : `Start ${activeUni.name} Test`}
+                      {loadingMcqs ? 'Preparing your test...' : `Start ${activeUni.name} Test`}
                     </span>
-                    <ArrowRight size={14} />
+                    {!loadingMcqs && <ArrowRight size={14} />}
+                    {loadingMcqs && <ButtonLineLoader />}
                   </button>
                 </div>
               </div>
@@ -1028,10 +1014,11 @@ export function OverviewPage() {
                       type="button"
                       disabled={submittingTest}
                       onClick={() => void submitUniversityD1Test()}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 cursor-pointer disabled:opacity-50"
+                      className="relative overflow-hidden inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 cursor-pointer disabled:opacity-75"
                     >
-                      <CheckCircle2 size={14} />
-                      <span>{submittingTest ? 'Grading...' : 'Finish & Submit'}</span>
+                      {!submittingTest && <CheckCircle2 size={14} />}
+                      <span>{submittingTest ? 'Calculating your score...' : 'Finish & Submit'}</span>
+                      {submittingTest && <ButtonLineLoader />}
                     </button>
                   </div>
                 </div>
