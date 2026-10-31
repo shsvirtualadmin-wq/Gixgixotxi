@@ -406,6 +406,13 @@ export function OverviewPage() {
         </h1>
       </section>
 
+      {/* 2b. Dedicated Dragon Stage (Between Greeting & Choose Your University; collapses with zero gap when hidden/off) */}
+      <DragonCompanion
+        weakChapters={d1Stats.weakChapters}
+        currentMcq={testStage === 'running' ? testMcqs[currentIndex] ?? null : null}
+        isTestModalOpen={Boolean(activeUni)}
+      />
+
       {/* 3. "Choose your university" glass bubble grid — the ONLY test entry */}
       <section
         id="choose-university-section"
@@ -686,13 +693,6 @@ export function OverviewPage() {
           </div>
         </div>
       </section>
-
-      {/* Zenryu Dragon Companion (Egg card under 1,000 correct; flying dragon once awakened or for admin/superadmin) */}
-      <DragonCompanion
-        weakChapters={d1Stats.weakChapters}
-        currentMcq={testStage === 'running' ? testMcqs[currentIndex] ?? null : null}
-        isTestModalOpen={Boolean(activeUni)}
-      />
 
       {/* 5. Weak Chapters: built only from D1 university MCQ attempts; hidden until attempts exist */}
       <WeakChapters

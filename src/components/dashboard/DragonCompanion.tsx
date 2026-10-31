@@ -39,6 +39,18 @@ const HIDE_DRAGON_EVENT = 'boardly-dragon-visibility-changed';
 const AWAKENED_STORAGE_PREFIX = 'boardly_zenryu_awakened_v1_';
 const SOUND_ENABLED_STORAGE_KEY = 'boardly_zenryu_sound_enabled';
 
+// ── Layered Transparent WebP Asset Paths (/assets/zenryu/*) ─────────────────
+export const ZENRYU_ASSETS = {
+  wingLeft: '/assets/zenryu/wing-l.webp',
+  tail: '/assets/zenryu/tail.webp',
+  body: '/assets/zenryu/zenryu-body.webp',
+  wingRight: '/assets/zenryu/wing-r.webp',
+  head: '/assets/zenryu/head.webp',
+  eyesGlow: '/assets/zenryu/eyes-glow.webp',
+  flameRoar: '/assets/zenryu/flame-roar.webp',
+  egg: '/assets/zenryu/dragon-egg.webp',
+} as const;
+
 /**
  * Feature flag check (`dragon_companion_enabled`, default ON).
  */
@@ -203,7 +215,6 @@ function playSoftDragonRoarSound(): void {
     const ctx = new AudioCtx();
     const now = ctx.currentTime;
 
-    // Low draconic resonance + ember breath filter
     const osc = ctx.createOscillator();
     const sub = ctx.createOscillator();
     const filter = ctx.createBiquadFilter();
@@ -242,458 +253,127 @@ function playSoftDragonRoarSound(): void {
   }
 }
 
-// ── Layered Sleek Crimson & Obsidian Anime Dragon SVG ───────────────────────
-interface ZenryuSvgProps {
+// ── Layered Transparent WebP Dragon Rig (NO SVG Dragon Fallback) ─────────────
+interface ZenryuLayeredRigProps {
   isSleeping: boolean;
   isRoaring: boolean;
   isStaticMode: boolean;
-  sizeClass?: string;
+  headRef?: React.RefObject<HTMLDivElement | null>;
+  compactAvatar?: boolean;
 }
 
-const ZenryuDragonSvg = memo(function ZenryuDragonSvg({
+const ZenryuLayeredRig = memo(function ZenryuLayeredRig({
   isSleeping,
   isRoaring,
   isStaticMode,
-  sizeClass = 'w-[136px] h-[104px] sm:w-[154px] sm:h-[118px]',
-}: ZenryuSvgProps) {
-  const stateClass = isRoaring
-    ? 'zenryu-svg--roaring'
+  headRef,
+  compactAvatar = false,
+}: ZenryuLayeredRigProps) {
+  const [bodyLoaded, setBodyLoaded] = useState(false);
+  const [missingSlot, setMissingSlot] = useState<string | null>(null);
+
+  const rigStateClass = isRoaring
+    ? 'zenryu-rig--roaring'
     : isSleeping
-    ? 'zenryu-svg--sleeping'
+    ? 'zenryu-rig--sleeping'
     : isStaticMode
-    ? 'zenryu-svg--static'
-    : 'zenryu-svg--flying';
+    ? 'zenryu-rig--static'
+    : 'zenryu-rig--flying';
 
   return (
-    <svg
-      viewBox="0 0 220 165"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={`zenryu-svg select-none pointer-events-none ${sizeClass} ${stateClass}`}
+    <div
+      className={`zenryu-rig ${
+        compactAvatar ? 'zenryu-rig--avatar' : 'zenryu-rig--stage'
+      } ${rigStateClass}`}
       aria-hidden="true"
     >
-      <defs>
-        {/* Crimson Core Aura */}
-        <radialGradient id="zenryuAuraGrad" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#e11d2a" stopOpacity="0.44" />
-          <stop offset="55%" stopColor="#991b1b" stopOpacity="0.16" />
-          <stop offset="100%" stopColor="#e11d2a" stopOpacity="0" />
-        </radialGradient>
-
-        {/* Wing Membrane Crimson-Obsidian Gradient */}
-        <linearGradient id="zenryuWingMembrane" x1="25" y1="15" x2="145" y2="115" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#ef4444" />
-          <stop offset="45%" stopColor="#b91c1c" />
-          <stop offset="85%" stopColor="#450a0a" />
-          <stop offset="100%" stopColor="#140709" />
-        </linearGradient>
-
-        {/* Back Wing Deeper Crimson */}
-        <linearGradient id="zenryuBackWingMembrane" x1="20" y1="10" x2="130" y2="105" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#991b1b" />
-          <stop offset="60%" stopColor="#450a0a" />
-          <stop offset="100%" stopColor="#0f070a" />
-        </linearGradient>
-
-        {/* Obsidian Armor Scales */}
-        <linearGradient id="zenryuObsidianArmor" x1="60" y1="45" x2="175" y2="130" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#27272a" />
-          <stop offset="45%" stopColor="#18181b" />
-          <stop offset="100%" stopColor="#09090b" />
-        </linearGradient>
-
-        {/* Crimson Chest Belly Scales */}
-        <linearGradient id="zenryuCrimsonBelly" x1="95" y1="68" x2="165" y2="118" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#f87171" />
-          <stop offset="35%" stopColor="#dc2626" />
-          <stop offset="100%" stopColor="#7f1d1d" />
-        </linearGradient>
-
-        {/* Horn & Spine Metallic Ember */}
-        <linearGradient id="zenryuHornGrad" x1="125" y1="32" x2="178" y2="62" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#fca5a5" />
-          <stop offset="40%" stopColor="#dc2626" />
-          <stop offset="100%" stopColor="#18181b" />
-        </linearGradient>
-
-        {/* Roar Flame Burst Gradient */}
-        <linearGradient id="zenryuRoarFlameGrad" x1="172" y1="64" x2="218" y2="56" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#fef08a" />
-          <stop offset="35%" stopColor="#f97316" />
-          <stop offset="75%" stopColor="#e11d2a" />
-          <stop offset="100%" stopColor="#991b1b" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-
-      {/* 1. Ambient Crimson Fire Aura */}
-      <ellipse
-        cx="118"
-        cy="88"
-        rx="74"
-        ry="52"
-        fill="url(#zenryuAuraGrad)"
-        className="zenryu-part-aura"
-      />
-
-      {/* 2. Far / Back Articulated Dragon Wing */}
-      <g className="zenryu-part-wing-back">
-        {/* Wing Membrane */}
-        <path
-          d="M112 72 C96 42, 66 20, 26 14 C38 34, 42 50, 34 66 C54 56, 70 60, 78 74 C90 68, 102 70, 112 76 Z"
-          fill="url(#zenryuBackWingMembrane)"
-          stroke="#dc2626"
-          strokeWidth="1.2"
-          strokeOpacity="0.65"
-        />
-        {/* Wing Bone Struts */}
-        <path
-          d="M112 72 C92 44, 64 22, 26 14 M82 40 L34 66 M94 54 L78 74"
-          stroke="#18181b"
-          strokeWidth="2.4"
-          strokeLinecap="round"
-        />
-      </g>
-
-      {/* 3. Long Sinuous Armored Tail + Bladed Crimson Flame Tip */}
-      <g className="zenryu-part-tail">
-        {/* Tail Dorsal Spines */}
-        <path
-          d="M84 94 L72 84 L74 96 L58 86 L61 98 L44 90 L48 101 L30 94 L35 104"
-          fill="#dc2626"
-        />
-        {/* Main Whip Tail Body */}
-        <path
-          d="M94 94 C72 98, 54 114, 34 110 C20 107, 13 94, 18 82 C22 73, 31 72, 26 82 C22 90, 27 99, 39 101 C56 103, 73 86, 92 85 Z"
-          fill="url(#zenryuObsidianArmor)"
-          stroke="#ef4444"
-          strokeWidth="1.1"
-          strokeOpacity="0.55"
-        />
-        {/* Tail Bladed Crimson Spade Tip */}
-        <path
-          d="M18 82 L6 73 L14 66 L26 60 L23 73 L32 76 L21 84 Z"
-          fill="url(#zenryuWingMembrane)"
-          stroke="#fca5a5"
-          strokeWidth="0.9"
-        />
-      </g>
-
-      {/* 4. Sleek Armored Dragon Body, Chest Plates & Talons */}
-      <g className="zenryu-part-body">
-        {/* Dorsal Ridge Spines along Back */}
-        <path
-          d="M96 82 L89 70 L99 76 L98 63 L109 71 L112 58 L122 68 L128 56 L136 66"
-          fill="#e11d2a"
-        />
-
-        {/* Core Obsidian Torso */}
-        <path
-          d="M86 92 C92 74, 114 64, 138 66 C154 67, 165 77, 162 92 C158 106, 138 112, 114 108 C98 105, 84 100, 86 92 Z"
-          fill="url(#zenryuObsidianArmor)"
-          stroke="#3f3f46"
-          strokeWidth="1.2"
-        />
-
-        {/* Glowing Crimson Armored Chest & Belly Plates */}
-        <path
-          d="M102 98 C116 105, 142 104, 156 92 C160 86, 157 78, 149 76 C139 86, 118 92, 102 98 Z"
-          fill="url(#zenryuCrimsonBelly)"
-        />
-        {/* Scale Plate Segment Lines */}
-        <path
-          d="M114 96 L120 103 M127 94 L133 102 M140 90 L146 98 M150 83 L156 90"
-          stroke="#450a0a"
-          strokeWidth="1.3"
-          strokeLinecap="round"
-        />
-
-        {/* Hind Leg & Obsidian Talons */}
-        <path
-          d="M104 102 L96 116 L105 122 L99 127 M105 122 L106 128 M105 122 L111 125"
-          stroke="#18181b"
-          strokeWidth="3.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M99 127 L96 130 M106 128 L105 132 M111 125 L114 128"
-          stroke="#ef4444"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        />
-
-        {/* Foreleg & Razor Talons */}
-        <path
-          d="M142 98 L148 113 L157 116"
-          stroke="#18181b"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M157 116 L163 115 M157 116 L162 120 M157 116 L156 122"
-          stroke="#ef4444"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        />
-      </g>
-
-      {/* 5. Near / Foreground Swept Anime Dragon Wing */}
-      <g className="zenryu-part-wing-front">
-        {/* Main Swept Wing Membrane */}
-        <path
-          d="M124 78 C108 42, 74 16, 18 18 C34 38, 38 58, 26 78 C50 66, 68 70, 74 88 C90 76, 106 78, 116 90 C121 85, 124 81, 124 78 Z"
-          fill="url(#zenryuWingMembrane)"
-          stroke="#f87171"
-          strokeWidth="1.35"
-        />
-        {/* Inner Wing Energy Veins */}
-        <path
-          d="M92 42 L26 78 M104 54 L74 88 M114 66 L116 90"
-          stroke="#fca5a5"
-          strokeWidth="1.1"
-          strokeOpacity="0.55"
-          strokeLinecap="round"
-        />
-        {/* Obsidian Leading Wing Arm & Claw */}
-        <path
-          d="M124 78 C106 42, 74 18, 18 18"
-          stroke="#09090b"
-          strokeWidth="3.6"
-          strokeLinecap="round"
-        />
-        <path
-          d="M124 78 C106 42, 74 18, 18 18"
-          stroke="#ef4444"
-          strokeWidth="1.2"
-          strokeLinecap="round"
-        />
-        {/* Wing Apex Talon */}
-        <path
-          d="M82 28 L76 16 L88 22 Z"
-          fill="#fca5a5"
-        />
-      </g>
-
-      {/* 6. Fierce Draconic Head, Swept Horns, Glowing Eyes & Roar Flame */}
-      <g className="zenryu-part-head">
-        {/* Armored Neck */}
-        <path
-          d="M134 68 C142 54, 154 48, 166 50 C166 62, 158 76, 146 82 Z"
-          fill="url(#zenryuObsidianArmor)"
-        />
-
-        {/* Back Swept Elder Horn */}
-        <path
-          d="M156 48 C142 34, 124 26, 104 26 C118 33, 134 42, 148 54 Z"
-          fill="url(#zenryuHornGrad)"
-        />
-
-        {/* Primary Crown Swept Horn */}
-        <path
-          d="M164 49 C150 31, 132 19, 108 16 C124 26, 140 38, 154 54 Z"
-          fill="url(#zenryuHornGrad)"
-          stroke="#fca5a5"
-          strokeWidth="0.7"
-          strokeOpacity="0.6"
-        />
-
-        {/* Cheek Fin Spike */}
-        <path
-          d="M158 63 L143 66 L154 71 Z"
-          fill="#dc2626"
-        />
-
-        {/* Upper Skull & Snout */}
-        <path
-          d="M152 50 C166 46, 184 50, 196 58 C192 64, 182 66, 168 65 L154 62 Z"
-          fill="url(#zenryuObsidianArmor)"
-          stroke="#52525b"
-          strokeWidth="1.1"
-        />
-
-        {/* Nasal Crest Horn */}
-        <path
-          d="M184 53 L191 45 L190 55 Z"
-          fill="#ef4444"
-        />
-
-        {/* Lower Hinged Jaw (opens wider when roaring) */}
-        <path
-          d={
-            isRoaring
-              ? 'M156 63 L188 73 L193 68 L170 62 Z'
-              : 'M156 62 L190 65 L193 61 L168 60 Z'
-          }
-          fill="#18181b"
-          stroke="#ef4444"
-          strokeWidth="0.9"
-        />
-
-        {/* Crimson Fang Highlights */}
-        <path
-          d="M178 62 L180 65 L182 62 M186 62 L188 65 L190 62"
-          stroke="#fecaca"
-          strokeWidth="1.1"
-          strokeLinecap="round"
-        />
-
-        {/* Glowing Ember-Red Slit Eye (or Closed Sleeping Eyelid) */}
-        {isSleeping ? (
-          <path
-            d="M167 56 Q173 59 178 56"
-            stroke="#f87171"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          />
-        ) : (
-          <g className="zenryu-part-eye">
-            {/* Outer Eye Glow */}
-            <path
-              d="M165 55 L178 53 L174 59 L166 58 Z"
-              fill="#ef4444"
-              opacity="0.45"
-            />
-            {/* Fierce Angular Anime Dragon Eye */}
-            <path
-              d="M167 55.5 L177 54 L174 58 L168 57.5 Z"
-              fill="#fef08a"
-              stroke="#dc2626"
-              strokeWidth="0.8"
-            />
-            {/* Slit Pupil */}
-            <path
-              d="M172.5 54.5 L172 58"
-              stroke="#7f1d1d"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-            />
-          </g>
-        )}
-
-        {/* Roar Flame Burst from Jaws */}
-        {isRoaring && (
-          <g className="zenryu-part-roar-flame">
-            <path
-              d="M188 62 C198 52, 210 48, 219 52 C212 58, 214 63, 220 67 C209 69, 200 72, 194 76 C196 69, 192 66, 188 62 Z"
-              fill="url(#zenryuRoarFlameGrad)"
-            />
-            <circle cx="206" cy="58" r="2.2" fill="#fef08a" />
-            <circle cx="213" cy="65" r="1.6" fill="#f97316" />
-          </g>
-        )}
-      </g>
-    </svg>
-  );
-});
-
-// ── Cracked Crimson Dragon Egg SVG (For Locked State < 1,000 Correct) ───────
-interface ZenryuEggSvgProps {
-  progressPct: number;
-  isHatching?: boolean;
-}
-
-const ZenryuEggSvg = memo(function ZenryuEggSvg({
-  progressPct,
-  isHatching = false,
-}: ZenryuEggSvgProps) {
-  const crackStage = isHatching
-    ? 4
-    : progressPct >= 75
-    ? 3
-    : progressPct >= 50
-    ? 2
-    : progressPct >= 25
-    ? 1
-    : 0;
-
-  return (
-    <svg
-      viewBox="0 0 88 104"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={`w-14 h-16 sm:w-16 sm:h-[74px] shrink-0 select-none ${
-        isHatching ? 'zenryu-egg--hatching' : 'zenryu-egg--pulse'
-      }`}
-      aria-hidden="true"
-    >
-      <defs>
-        <radialGradient id="zenryuEggGlow" cx="50%" cy="55%" r="50%">
-          <stop offset="0%" stopColor="#e11d2a" stopOpacity="0.55" />
-          <stop offset="70%" stopColor="#991b1b" stopOpacity="0.18" />
-          <stop offset="100%" stopColor="#e11d2a" stopOpacity="0" />
-        </radialGradient>
-        <linearGradient id="zenryuEggShell" x1="20" y1="12" x2="68" y2="92" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#3f3f46" />
-          <stop offset="35%" stopColor="#18181b" />
-          <stop offset="75%" stopColor="#450a0a" />
-          <stop offset="100%" stopColor="#09090b" />
-        </linearGradient>
-        <linearGradient id="zenryuEggCoreFire" x1="44" y1="20" x2="44" y2="86" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#fef08a" />
-          <stop offset="45%" stopColor="#f97316" />
-          <stop offset="100%" stopColor="#e11d2a" />
-        </linearGradient>
-      </defs>
-
-      {/* Ambient Ember Halo */}
-      <ellipse cx="44" cy="56" rx="38" ry="42" fill="url(#zenryuEggGlow)" />
-
-      {/* Egg Silhouette */}
-      <path
-        d="M44 12 C25 12, 14 38, 14 61 C14 81, 27 92, 44 92 C61 92, 74 81, 74 61 C74 38, 63 12, 44 12 Z"
-        fill="url(#zenryuEggShell)"
-        stroke="#ef4444"
-        strokeWidth="1.5"
-        strokeOpacity="0.65"
-      />
-
-      {/* Dragon Scale Etchings on Egg */}
-      <path
-        d="M32 34 Q44 42 56 34 M24 52 Q36 60 44 52 Q52 60 64 52 M26 70 Q44 79 62 70"
-        stroke="#dc2626"
-        strokeWidth="1.1"
-        strokeOpacity="0.42"
-        strokeLinecap="round"
-      />
-
-      {/* Stage 1 Crack (25%+) */}
-      {crackStage >= 1 && (
-        <path
-          d="M44 22 L39 33 L46 40 L41 48"
-          stroke="url(#zenryuEggCoreFire)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+      {/* Soft Glow Placeholder until lazy-loaded WebP layers finish decoding */}
+      {!bodyLoaded && !missingSlot && (
+        <div className="zenryu-rig-placeholder" />
       )}
 
-      {/* Stage 2 Crack (50%+) */}
-      {crackStage >= 2 && (
-        <path
-          d="M46 40 L55 46 L50 57 L58 64 M39 33 L29 39"
-          stroke="url(#zenryuEggCoreFire)"
-          strokeWidth="2.1"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      )}
-
-      {/* Stage 3 Crack (75%+ & 100%) */}
-      {crackStage >= 3 && (
+      {/* Named Asset Slot Fallback if a developer deletes /assets/zenryu/*.webp */}
+      {missingSlot ? (
+        <div className="zenryu-slot-notice">
+          <span>Asset slot: /assets/zenryu/{missingSlot}</span>
+        </div>
+      ) : (
         <>
-          <path
-            d="M41 48 L31 56 L36 68 L27 75 M50 57 L43 72 L49 82"
-            stroke="url(#zenryuEggCoreFire)"
-            strokeWidth="2.3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+          {/* Layer 1: Far/Left Swept Wing (wing-l.webp) */}
+          <img
+            src={ZENRYU_ASSETS.wingLeft}
+            alt=""
+            decoding="async"
+            draggable={false}
+            onError={() => setMissingSlot('wing-l.webp')}
+            className="zenryu-layer zenryu-layer--wing-l"
           />
-          <circle cx="43" cy="46" r="3" fill="#fef08a" opacity="0.85" />
-          <circle cx="51" cy="58" r="2.2" fill="#f97316" opacity="0.85" />
+
+          {/* Layer 2: Long Spiked Whip Tail (tail.webp) */}
+          <img
+            src={ZENRYU_ASSETS.tail}
+            alt=""
+            decoding="async"
+            draggable={false}
+            onError={() => setMissingSlot('tail.webp')}
+            className="zenryu-layer zenryu-layer--tail"
+          />
+
+          {/* Layer 3: Armored Crimson & Black Scaled Body (zenryu-body.webp) */}
+          <img
+            src={ZENRYU_ASSETS.body}
+            alt=""
+            decoding="async"
+            draggable={false}
+            onLoad={() => setBodyLoaded(true)}
+            onError={() => setMissingSlot('zenryu-body.webp')}
+            className="zenryu-layer zenryu-layer--body"
+          />
+
+          {/* Layer 4: Near/Right Foreground Wing with Visible Veins (wing-r.webp) */}
+          <img
+            src={ZENRYU_ASSETS.wingRight}
+            alt=""
+            decoding="async"
+            draggable={false}
+            onError={() => setMissingSlot('wing-r.webp')}
+            className="zenryu-layer zenryu-layer--wing-r"
+          />
+
+          {/* Layer 5 & 6: Articulated Horned Head + Glowing Ember Eyes (Follows Finger) */}
+          <div ref={headRef} className="zenryu-head-pivot">
+            <img
+              src={ZENRYU_ASSETS.head}
+              alt=""
+              decoding="async"
+              draggable={false}
+              onError={() => setMissingSlot('head.webp')}
+              className="zenryu-layer zenryu-layer--head"
+            />
+            <img
+              src={ZENRYU_ASSETS.eyesGlow}
+              alt=""
+              decoding="async"
+              draggable={false}
+              onError={() => setMissingSlot('eyes-glow.webp')}
+              className={`zenryu-layer zenryu-layer--eyes ${
+                isSleeping ? 'zenryu-layer--eyes-sleeping' : ''
+              }`}
+            />
+            {/* Layer 7: Roar Flame Burst (flame-roar.webp) */}
+            <img
+              src={ZENRYU_ASSETS.flameRoar}
+              alt=""
+              decoding="async"
+              draggable={false}
+              className={`zenryu-layer zenryu-layer--flame ${
+                isRoaring ? 'zenryu-layer--flame-active' : ''
+              }`}
+            />
+          </div>
         </>
       )}
-    </svg>
+    </div>
   );
 });
 
@@ -763,14 +443,14 @@ function DragonCompanionInner({
   // Feature flag check (default ON)
   const featureEnabled = useMemo(() => isDragonCompanionEnabled(), []);
 
-  // Lazy activation after first paint so Cockpit load speed is untouched
+  // Lazy-load assets after first paint so Cockpit initial paint is never delayed
   const [postPaintReady, setPostPaintReady] = useState(false);
   useEffect(() => {
     let cancelled = false;
     const rafId = window.requestAnimationFrame(() => {
       const timerId = window.setTimeout(() => {
         if (!cancelled) setPostPaintReady(true);
-      }, 90);
+      }, 60);
       return () => window.clearTimeout(timerId);
     });
     return () => {
@@ -856,14 +536,14 @@ function DragonCompanionInner({
 
   const isStaticPose = prefersReducedMotion || smoothMode || isLowEndDevice;
 
-  // ── Flight, Sleep, Roar, Drag & Visibility State ──────────────────────────
+  // ── Stage-Contained Flight, Sleep, Roar, Head-Tracking & Drag State ───────
   const [isSleeping, setIsSleeping] = useState(false);
   const [isRoaring, setIsRoaring] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isTabHidden, setIsTabHidden] = useState<boolean>(() =>
     typeof document !== 'undefined' ? document.hidden : false
   );
-  const [isAnchorVisible, setIsAnchorVisible] = useState(true);
+  const [isStageVisible, setIsStageVisible] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
     try {
       return window.localStorage.getItem(SOUND_ENABLED_STORAGE_KEY) === 'true';
@@ -888,13 +568,13 @@ function DragonCompanionInner({
     });
   }, []);
 
-  const anchorRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLElement | null>(null);
   const dragonMoverRef = useRef<HTMLDivElement | null>(null);
+  const headPivotRef = useRef<HTMLDivElement | null>(null);
   const emberRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const lastInteractionRef = useRef<number>(Date.now());
   const isSleepingRef = useRef<boolean>(false);
 
-  // Sync ref for rAF loop
   useEffect(() => {
     isSleepingRef.current = isSleeping;
   }, [isSleeping]);
@@ -916,54 +596,46 @@ function DragonCompanionInner({
     return () => document.removeEventListener('visibilitychange', onVisChange);
   }, []);
 
-  // Pause when Cockpit top anchor is scrolled out of view
+  // Pause when the Dragon Stage is scrolled off-screen
   useEffect(() => {
-    const el = anchorRef.current;
+    const el = stageRef.current;
     if (!el || typeof IntersectionObserver === 'undefined') return;
     const obs = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
         if (entry) {
-          setIsAnchorVisible(entry.isIntersecting);
+          setIsStageVisible(entry.isIntersecting);
         }
       },
-      { threshold: 0.01 }
+      { threshold: 0.05 }
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [postPaintReady]);
+  }, [postPaintReady, isUnlocked]);
 
-  // Idle timer -> Perch & Sleep after 20 seconds without interaction
+  // Idle timer -> Perch on the right edge of the stage & sleep after 20s idle
   useEffect(() => {
     if (!isUnlocked || hideDragon || isStaticPose || isSheetOpen) return;
-    const onUserEvent = () => {
-      lastInteractionRef.current = Date.now();
-    };
-    window.addEventListener('pointerdown', onUserEvent, { passive: true });
-    window.addEventListener('keydown', onUserEvent, { passive: true });
-
     const interval = window.setInterval(() => {
       if (Date.now() - lastInteractionRef.current >= 20000 && !isSleepingRef.current) {
         isSleepingRef.current = true;
         setIsSleeping(true);
       }
-    }, 2000);
-
-    return () => {
-      window.removeEventListener('pointerdown', onUserEvent);
-      window.removeEventListener('keydown', onUserEvent);
-      window.clearInterval(interval);
-    };
+    }, 1500);
+    return () => window.clearInterval(interval);
   }, [isUnlocked, hideDragon, isStaticPose, isSheetOpen]);
 
-  // ── Smooth 60fps GPU Flight & Drag Physics Loop ───────────────────────────
-  const flightStateRef = useRef({
+  // ── Stage-Contained Flight, Head Tracking & Ember Physics Loop ────────────
+  const stageFlightRef = useRef({
     phase: 0,
     x: 0,
     y: 0,
-    vx: 0,
-    facing: 1, // 1 = right, -1 = left
+    facing: 1, // 1 = facing right, -1 = facing left
     bankDeg: 0,
+    headAngleDeg: 0,
+    targetHeadAngleDeg: 0,
+    pointerLocalX: null as number | null,
+    pointerLocalY: null as number | null,
     isDragging: false,
     dragStartX: 0,
     dragStartY: 0,
@@ -972,7 +644,7 @@ function DragonCompanionInner({
     movedDistance: 0,
     initialized: false,
     emberTick: 0,
-    embers: Array.from({ length: 5 }, () => ({
+    embers: Array.from({ length: 7 }, () => ({
       x: 0,
       y: 0,
       life: 0,
@@ -980,12 +652,40 @@ function DragonCompanionInner({
     })),
   });
 
-  const getSafePerchPosition = useCallback(() => {
-    const vw = typeof window !== 'undefined' ? window.innerWidth : 390;
-    const dragonW = vw < 640 ? 136 : 154;
-    const x = Math.max(12, vw - dragonW - 18);
-    const y = vw < 640 ? 66 : 74;
-    return { x, y };
+  // Compute safe bounds strictly inside the Dragon Stage
+  const getStageMetrics = useCallback(() => {
+    const stageEl = stageRef.current;
+    const stageW = stageEl ? stageEl.clientWidth : 360;
+    const stageH = stageEl ? stageEl.clientHeight : 204;
+    const moverEl = dragonMoverRef.current;
+    const dragonW = moverEl && moverEl.offsetWidth > 0
+      ? moverEl.offsetWidth
+      : stageW < 520
+      ? Math.min(272, Math.max(220, stageW * 0.68))
+      : Math.min(365, Math.max(280, stageW * 0.48));
+    const dragonH = dragonW * (640 / 960);
+
+    const minX = 4;
+    const maxX = Math.max(minX, stageW - dragonW - 4);
+    const minY = -Math.round(dragonH * 0.06);
+    const maxY = Math.max(minY, stageH - dragonH * 0.86);
+
+    // Right-edge perch coordinates inside the stage
+    const perchX = maxX;
+    const perchY = Math.round((minY + maxY) * 0.52);
+
+    return {
+      stageW,
+      stageH,
+      dragonW,
+      dragonH,
+      minX,
+      maxX,
+      minY,
+      maxY,
+      perchX,
+      perchY,
+    };
   }, []);
 
   useEffect(() => {
@@ -994,7 +694,7 @@ function DragonCompanionInner({
       !isUnlocked ||
       hideDragon ||
       isTabHidden ||
-      !isAnchorVisible ||
+      !isStageVisible ||
       isSheetOpen ||
       isTestModalOpen
     ) {
@@ -1004,22 +704,28 @@ function DragonCompanionInner({
     const mover = dragonMoverRef.current;
     if (!mover) return;
 
-    const st = flightStateRef.current;
+    const st = stageFlightRef.current;
+    const initialMetrics = getStageMetrics();
+
     if (!st.initialized) {
-      const perch = getSafePerchPosition();
-      st.x = perch.x;
-      st.y = perch.y;
+      st.x = initialMetrics.perchX;
+      st.y = initialMetrics.perchY;
+      st.facing = -1;
       st.initialized = true;
     }
 
-    // Static perched mode for prefers-reduced-motion / Smooth Mode / low-end devices
+    // Static perched pose on right edge for prefers-reduced-motion / Smooth Mode / low-end devices
     if (isStaticPose) {
-      const perch = getSafePerchPosition();
-      st.x = perch.x;
-      st.y = perch.y;
+      const m = getStageMetrics();
+      st.x = m.perchX;
+      st.y = m.perchY;
+      st.facing = -1;
       mover.style.transform = `translate3d(${Math.round(st.x)}px, ${Math.round(
         st.y
       )}px, 0) scaleX(-1)`;
+      if (headPivotRef.current) {
+        headPivotRef.current.style.transform = 'rotate(0deg)';
+      }
       return;
     }
 
@@ -1030,40 +736,40 @@ function DragonCompanionInner({
       const dt = Math.min(0.05, Math.max(0.008, (now - lastTs) / 1000));
       lastTs = now;
 
-      const vw = window.innerWidth;
-      const dragonW = vw < 640 ? 136 : 154;
-      const minX = 12;
-      const maxX = Math.max(24, vw - dragonW - 14);
-      const centerX = (minX + maxX) * 0.5;
-      const radiusX = Math.max(28, (maxX - minX) * 0.44);
-      const baseTopY = vw < 640 ? 72 : 82;
-      const radiusY = vw < 640 ? 18 : 24;
+      const m = getStageMetrics();
+      const centerX = (m.minX + m.maxX) * 0.5;
+      const spanX = Math.max(8, (m.maxX - m.minX) * 0.48);
+      const centerY = (m.minY + m.maxY) * 0.46;
+      const spanY = Math.max(6, (m.maxY - m.minY) * 0.42);
 
       if (!st.isDragging) {
         if (isSleepingRef.current) {
-          // Glide gently to top-right perch and rest
-          const perch = getSafePerchPosition();
-          const dx = perch.x - st.x;
-          const dy = perch.y - st.y;
-          st.x += dx * Math.min(1, dt * 3.2);
-          st.y += dy * Math.min(1, dt * 3.2);
+          // Glide to the right-edge perch inside the stage and sleep
+          const dx = m.perchX - st.x;
+          const dy = m.perchY - st.y;
+          st.x += dx * Math.min(1, dt * 3.0);
+          st.y += dy * Math.min(1, dt * 3.0);
           st.bankDeg += (0 - st.bankDeg) * Math.min(1, dt * 6);
           st.facing = -1;
         } else {
-          // Smooth Lissajous / Figure-8 aerial patrol across the upper Cockpit sky
-          st.phase += dt * 0.62;
-          const targetX = centerX + Math.sin(st.phase) * radiusX;
-          const targetY = baseTopY + Math.sin(st.phase * 2) * radiusY;
+          // Smooth figure-8 gliding path strictly inside the stage
+          st.phase += dt * 0.68;
+          const targetX = centerX + Math.sin(st.phase) * spanX;
+          const targetY = centerY + Math.sin(st.phase * 2) * spanY;
 
           const prevX = st.x;
-          st.x += (targetX - st.x) * Math.min(1, dt * 3.8);
-          st.y += (targetY - st.y) * Math.min(1, dt * 3.8);
+          st.x += (targetX - st.x) * Math.min(1, dt * 3.6);
+          st.y += (targetY - st.y) * Math.min(1, dt * 3.6);
+
+          // Clamp strictly to stage bounds
+          st.x = Math.max(m.minX, Math.min(m.maxX, st.x));
+          st.y = Math.max(m.minY, Math.min(m.maxY, st.y));
 
           const velX = (st.x - prevX) / dt;
-          if (Math.abs(velX) > 4) {
+          if (Math.abs(velX) > 3.5) {
             st.facing = velX >= 0 ? 1 : -1;
           }
-          const desiredBank = Math.max(-11, Math.min(11, velX * 0.065));
+          const desiredBank = Math.max(-9, Math.min(9, velX * 0.055));
           st.bankDeg += (desiredBank - st.bankDeg) * Math.min(1, dt * 6);
         }
       }
@@ -1074,16 +780,43 @@ function DragonCompanionInner({
         )}px, 0) rotate(${st.bankDeg.toFixed(1)}deg) scaleX(${st.facing})`;
       }
 
-      // Fast-fading ember trail particles (pooled, GPU transform/opacity only)
+      // Head turn that follows the user's finger/cursor inside the stage
+      if (
+        !isSleepingRef.current &&
+        st.pointerLocalX !== null &&
+        st.pointerLocalY !== null
+      ) {
+        const headCenterX =
+          st.x + (st.facing === 1 ? m.dragonW * 0.72 : m.dragonW * 0.28);
+        const headCenterY = st.y + m.dragonH * 0.36;
+        const dx = (st.pointerLocalX - headCenterX) * st.facing;
+        const dy = st.pointerLocalY - headCenterY;
+        const rawAngle = Math.atan2(dy, Math.max(28, dx)) * (180 / Math.PI);
+        st.targetHeadAngleDeg = Math.max(-18, Math.min(18, rawAngle * 0.55));
+      } else {
+        st.targetHeadAngleDeg = isSleepingRef.current ? 8 : 0;
+      }
+
+      st.headAngleDeg +=
+        (st.targetHeadAngleDeg - st.headAngleDeg) * Math.min(1, dt * 8);
+      if (headPivotRef.current) {
+        headPivotRef.current.style.transform = `rotate(${st.headAngleDeg.toFixed(
+          1
+        )}deg)`;
+      }
+
+      // Stage-contained ember particles (GPU transform/opacity only)
       st.emberTick += dt;
-      if (!isSleepingRef.current && st.emberTick >= 0.09) {
+      if (st.emberTick >= 0.085) {
         st.emberTick = 0;
         const slot = st.embers.find((e) => e.life <= 0.05) || st.embers[0];
         if (slot) {
-          slot.x = st.x + dragonW * 0.45 + (Math.random() - 0.5) * 16;
-          slot.y = st.y + 48 + (Math.random() - 0.5) * 12;
+          slot.x =
+            st.x + m.dragonW * 0.48 + (Math.random() - 0.5) * (m.dragonW * 0.42);
+          slot.y =
+            st.y + m.dragonH * 0.55 + (Math.random() - 0.5) * (m.dragonH * 0.24);
           slot.life = 1;
-          slot.scale = 0.7 + Math.random() * 0.6;
+          slot.scale = 0.65 + Math.random() * 0.65;
         }
       }
 
@@ -1092,9 +825,10 @@ function DragonCompanionInner({
         const el = emberRefs.current[i];
         if (!el) continue;
         if (emp.life > 0) {
-          emp.life = Math.max(0, emp.life - dt * 1.9);
-          emp.y -= dt * 18;
-          el.style.opacity = (emp.life * 0.75).toFixed(2);
+          emp.life = Math.max(0, emp.life - dt * 1.75);
+          emp.y -= dt * 22;
+          emp.x -= st.facing * dt * 10;
+          el.style.opacity = (emp.life * 0.82).toFixed(2);
           el.style.transform = `translate3d(${emp.x.toFixed(1)}px, ${emp.y.toFixed(
             1
           )}px, 0) scale(${(emp.scale * emp.life).toFixed(2)})`;
@@ -1115,14 +849,31 @@ function DragonCompanionInner({
     isUnlocked,
     hideDragon,
     isTabHidden,
-    isAnchorVisible,
+    isStageVisible,
     isSheetOpen,
     isTestModalOpen,
     isStaticPose,
-    getSafePerchPosition,
+    getStageMetrics,
   ]);
 
-  // ── Touch / Drag & Tap Handlers on Zenryu ─────────────────────────────────
+  // Track finger/pointer inside the stage so Zenryu's head follows it
+  const handleStagePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLElement>) => {
+      const rect = stageRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      stageFlightRef.current.pointerLocalX = e.clientX - rect.left;
+      stageFlightRef.current.pointerLocalY = e.clientY - rect.top;
+      markActivity();
+    },
+    [markActivity]
+  );
+
+  const handleStagePointerLeave = useCallback(() => {
+    stageFlightRef.current.pointerLocalX = null;
+    stageFlightRef.current.pointerLocalY = null;
+  }, []);
+
+  // ── Tap (Roar + Flame Burst + Open Sheet) & Stage-Clamped Drag Handlers ───
   const openCompanionSheet = useCallback(() => {
     markActivity();
     try {
@@ -1139,13 +890,13 @@ function DragonCompanionInner({
     window.setTimeout(() => {
       setIsRoaring(false);
       setIsSheetOpen(true);
-    }, 340);
+    }, 380);
   }, [markActivity, soundEnabled]);
 
-  const handlePointerDown = useCallback(
+  const handleDragonPointerDown = useCallback(
     (e: React.PointerEvent<HTMLButtonElement>) => {
       markActivity();
-      const st = flightStateRef.current;
+      const st = stageFlightRef.current;
       st.isDragging = true;
       st.pointerStartX = e.clientX;
       st.pointerStartY = e.clientY;
@@ -1161,37 +912,37 @@ function DragonCompanionInner({
     [markActivity]
   );
 
-  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
-    const st = flightStateRef.current;
-    if (!st.isDragging) return;
-    const dx = e.clientX - st.pointerStartX;
-    const dy = e.clientY - st.pointerStartY;
-    st.movedDistance = Math.hypot(dx, dy);
-
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const dragonW = vw < 640 ? 136 : 154;
-    const nextX = Math.max(6, Math.min(vw - dragonW - 6, st.dragStartX + dx));
-    // Never let the dragon be dragged over the bottom navigation bar
-    const nextY = Math.max(52, Math.min(vh - 180, st.dragStartY + dy));
-
-    if (Math.abs(dx) > 3) {
-      st.facing = dx >= 0 ? 1 : -1;
-    }
-    st.x = nextX;
-    st.y = nextY;
-
-    const mover = dragonMoverRef.current;
-    if (mover) {
-      mover.style.transform = `translate3d(${st.x.toFixed(1)}px, ${st.y.toFixed(
-        1
-      )}px, 0) scaleX(${st.facing})`;
-    }
-  }, []);
-
-  const handlePointerUp = useCallback(
+  const handleDragonPointerMove = useCallback(
     (e: React.PointerEvent<HTMLButtonElement>) => {
-      const st = flightStateRef.current;
+      const st = stageFlightRef.current;
+      if (!st.isDragging) return;
+      const dx = e.clientX - st.pointerStartX;
+      const dy = e.clientY - st.pointerStartY;
+      st.movedDistance = Math.hypot(dx, dy);
+
+      const m = getStageMetrics();
+      const nextX = Math.max(m.minX, Math.min(m.maxX, st.dragStartX + dx));
+      const nextY = Math.max(m.minY, Math.min(m.maxY, st.dragStartY + dy));
+
+      if (Math.abs(dx) > 3) {
+        st.facing = dx >= 0 ? 1 : -1;
+      }
+      st.x = nextX;
+      st.y = nextY;
+
+      const mover = dragonMoverRef.current;
+      if (mover) {
+        mover.style.transform = `translate3d(${st.x.toFixed(1)}px, ${st.y.toFixed(
+          1
+        )}px, 0) scaleX(${st.facing})`;
+      }
+    },
+    [getStageMetrics]
+  );
+
+  const handleDragonPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      const st = stageFlightRef.current;
       if (!st.isDragging) return;
       st.isDragging = false;
       try {
@@ -1199,7 +950,7 @@ function DragonCompanionInner({
       } catch {
         // Ignore
       }
-      // If movement was under 10px, treat as a tap -> roar & open Zenryu sheet
+      // If movement was under 10px, treat as a tap -> roar + flame burst + open sheet
       if (st.movedDistance < 10) {
         openCompanionSheet();
       }
@@ -1225,7 +976,6 @@ function DragonCompanionInner({
   const [sheetDragY, setSheetDragY] = useState(0);
   const sheetSwipeRef = useRef({ active: false, startY: 0 });
 
-  // History / Android back button & Escape key support when sheet is open
   useEffect(() => {
     if (!isSheetOpen) return;
 
@@ -1236,7 +986,6 @@ function DragonCompanionInner({
     };
     window.addEventListener('keydown', onKeyDown);
 
-    // Push a lightweight history entry so Android back button closes the sheet cleanly
     let pushedState = false;
     try {
       window.history.pushState({ zenryuSheet: true }, '');
@@ -1264,7 +1013,6 @@ function DragonCompanionInner({
     };
   }, [isSheetOpen]);
 
-  // Auto-scroll chat thread on new messages
   useEffect(() => {
     if (!isSheetOpen) return;
     const el = chatScrollRef.current;
@@ -1315,8 +1063,6 @@ function DragonCompanionInner({
           isFallback?: boolean;
         };
 
-        // Per hard rules: if no live AI backend is configured or it returns a canned fallback,
-        // mark chat as "Coming soon" without faking AI responses.
         if (!data?.reply || data.isFallback === true) {
           setAiComingSoon(true);
           return;
@@ -1381,7 +1127,7 @@ function DragonCompanionInner({
     [currentMcq, weakChapters, correctCount, sendMessageToZenryu]
   );
 
-  // If feature flag is off or user turned on "Hide dragon" in Settings, render nothing
+  // Collapse the stage completely with zero leftover gap when disabled or hidden
   if (!featureEnabled || hideDragon) {
     return null;
   }
@@ -1394,18 +1140,24 @@ function DragonCompanionInner({
 
   return (
     <>
-      {/* Invisible Cockpit Anchor to detect when user is on the Cockpit viewport */}
-      <div ref={anchorRef} className="w-full h-0 pointer-events-none" aria-hidden="true" />
-
-      {/* ── STATE A: Locked (< 1,000 Correct MCQs & Not Admin/Superadmin) -> Glass Dragon Egg Card ── */}
-      {!isUnlocked && (
+      {/* ── DEDICATED GLASS DRAGON STAGE (Between Greeting & Choose Your University) ── */}
+      {!isUnlocked ? (
+        /* STATE A: Locked (< 1,000 Correct MCQs & Not Admin) -> Dragon Egg Card in Stage Slot */
         <section
-          className="zenryu-egg-card p-4 sm:p-5"
+          ref={stageRef}
+          className="zenryu-stage zenryu-stage--egg p-4 sm:p-5"
           aria-label={`${DRAGON_COMPANION_NAME} Dragon Egg Progress`}
         >
-          <div className="flex items-center gap-3.5 sm:gap-4">
+          <div className="zenryu-stage-decor" aria-hidden="true" />
+          <div className="relative z-10 flex items-center gap-3.5 sm:gap-5 w-full">
             <div className="zenryu-egg-icon-wrap">
-              <ZenryuEggSvg progressPct={progressPct} />
+              <img
+                src={ZENRYU_ASSETS.egg}
+                alt=""
+                decoding="async"
+                draggable={false}
+                className="w-16 h-16 sm:w-20 sm:h-20 object-contain select-none zenryu-egg--pulse"
+              />
             </div>
 
             <div className="min-w-0 flex-1 space-y-2">
@@ -1415,12 +1167,12 @@ function DragonCompanionInner({
                     <Flame size={11} className="shrink-0" />
                     <span>Dragon Egg</span>
                   </span>
-                  <h3
+                  <h2
                     className="text-sm sm:text-base font-bold text-[var(--text)] truncate"
                     style={{ fontFamily: 'var(--font-heading)' }}
                   >
                     {DRAGON_COMPANION_NAME} Slumbers Within
-                  </h3>
+                  </h2>
                 </div>
                 <span className="text-xs font-bold text-[var(--accent)] tabular-nums">
                   {progressPct}%
@@ -1456,103 +1208,103 @@ function DragonCompanionInner({
             </div>
           </div>
         </section>
-      )}
-
-      {/* ── STATE B: One-Time Awakening Celebration Banner (At 1,000 Correct) ── */}
-      {isUnlocked && showAwakeningCelebration && (
+      ) : (
+        /* STATE B: Unlocked Dragon Stage (180–240px Tall Glass Hero Strip, Strict Overflow Clipping) */
         <section
-          className="zenryu-awakening-banner p-4 sm:p-5"
-          role="status"
-          aria-live="polite"
+          ref={stageRef}
+          onPointerMove={handleStagePointerMove}
+          onPointerLeave={handleStagePointerLeave}
+          className="zenryu-stage zenryu-stage--active"
+          aria-label={`${DRAGON_COMPANION_NAME} Dragon Companion Stage`}
         >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3.5 min-w-0">
-              <ZenryuEggSvg progressPct={100} isHatching />
-              <div className="min-w-0 space-y-1">
-                <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--accent)]">
-                  <Sparkles size={12} />
-                  <span>1,000 Correct Answers Milestone</span>
-                </div>
-                <h3
-                  className="text-base sm:text-lg font-bold text-[var(--text)]"
-                  style={{ fontFamily: 'var(--font-heading)' }}
-                >
-                  {DRAGON_COMPANION_NAME} has awakened!
-                </h3>
-                <p className="text-xs text-[var(--text-secondary)]">
-                  Your crimson dragon companion now patrols the Cockpit. Tap{' '}
-                  {DRAGON_COMPANION_NAME} anytime to summon your companion.
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowAwakeningCelebration(false)}
-              aria-label="Dismiss awakening banner"
-              className="w-8 h-8 rounded-full cockpit-subrow flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer shrink-0"
-            >
-              <X size={15} />
-            </button>
-          </div>
-        </section>
-      )}
+          {/* Stage Atmospheric Gradient & Decorative Ridge Silhouette (pointer-events: none) */}
+          <div className="zenryu-stage-decor" aria-hidden="true" />
+          <div className="zenryu-stage-horizon" aria-hidden="true" />
 
-      {/* ── STATE C: Unlocked Flying / Perched Dragon Overlay (Pointer-Events None Layer) ── */}
-      {postPaintReady && isUnlocked && !isTestModalOpen && (
-        <div
-          className="zenryu-flight-stage"
-          aria-hidden={isSheetOpen ? 'true' : undefined}
-        >
-          {/* Fast-fading pooled ember particles (pointer-events: none) */}
-          {!isStaticPose &&
-            Array.from({ length: 5 }).map((_, idx) => (
+          {/* One-Time Awakening Toast Inside Stage Top-Left */}
+          {showAwakeningCelebration && (
+            <div
+              className="zenryu-awakening-pill"
+              role="status"
+              aria-live="polite"
+            >
+              <Sparkles size={13} className="text-[var(--accent)] shrink-0" />
+              <span>{DRAGON_COMPANION_NAME} has awakened!</span>
+              <button
+                type="button"
+                onClick={() => setShowAwakeningCelebration(false)}
+                aria-label="Dismiss awakening notice"
+                className="ml-1 text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
+
+          {/* Fast-Fading Pooled Ember Trail Particles Inside the Stage (pointer-events: none) */}
+          {postPaintReady &&
+            !isStaticPose &&
+            Array.from({ length: 7 }).map((_, idx) => (
               <span
                 key={idx}
                 ref={(el) => {
                   emberRefs.current[idx] = el;
                 }}
-                className="zenryu-ember-particle"
+                className="zenryu-stage-ember"
+                aria-hidden="true"
               />
             ))}
 
-          {/* Moving Dragon Bounding Box (pointer-events: auto ONLY on the dragon itself) */}
-          <div
-            ref={dragonMoverRef}
-            className="zenryu-mover"
-          >
-            <button
-              type="button"
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  openCompanionSheet();
-                }
-              }}
-              aria-label={`Summon ${DRAGON_COMPANION_NAME}, your Boardly dragon companion`}
-              title={`${DRAGON_COMPANION_NAME} — Tap to open companion, drag to move`}
-              className="zenryu-hitbox group"
-            >
-              <div className="zenryu-bob-wrapper">
-                <ZenryuDragonSvg
-                  isSleeping={isSleeping}
-                  isRoaring={isRoaring}
-                  isStaticMode={isStaticPose}
-                />
-                {/* Subtle Glass Name Tag Pill on Hover / Perch */}
-                <span className="zenryu-name-pill">
-                  <span className="zenryu-status-dot" />
-                  <span>{DRAGON_COMPANION_NAME}</span>
-                </span>
-              </div>
-            </button>
+          {/* Reserved Stage Placeholder Glow Before First Paint */}
+          {!postPaintReady ? (
+            <div className="zenryu-stage-loading-glow" aria-hidden="true" />
+          ) : (
+            /* Moving Dragon Container Strictly Inside the Stage */
+            <div ref={dragonMoverRef} className="zenryu-stage-mover">
+              <button
+                type="button"
+                onPointerDown={handleDragonPointerDown}
+                onPointerMove={handleDragonPointerMove}
+                onPointerUp={handleDragonPointerUp}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openCompanionSheet();
+                  }
+                }}
+                aria-label={`Summon ${DRAGON_COMPANION_NAME}, your Boardly dragon companion`}
+                title={`${DRAGON_COMPANION_NAME} — Tap to roar & open companion, drag within stage`}
+                className="zenryu-hitbox"
+              >
+                <div className="zenryu-bob-wrapper">
+                  <ZenryuLayeredRig
+                    isSleeping={isSleeping}
+                    isRoaring={isRoaring}
+                    isStaticMode={isStaticPose}
+                    headRef={headPivotRef}
+                  />
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* Stationary Bottom-Left Glass Label Pill (12px text, never moves with the dragon) */}
+          <div className="zenryu-stage-corner-label">
+            <span
+              className={`zenryu-status-dot ${
+                isSleeping ? 'zenryu-status-dot--sleeping' : ''
+              }`}
+              aria-hidden="true"
+            />
+            <span className="zenryu-stage-corner-name">{DRAGON_COMPANION_NAME}</span>
+            <span className="zenryu-stage-corner-hint">
+              {isSleeping ? 'Resting · Tap to wake' : 'Tap to summon'}
+            </span>
           </div>
-        </div>
+        </section>
       )}
 
-      {/* ── STATE D: Zenryu Glass Bottom Sheet (~85% Height) ─────────────────── */}
+      {/* ── STATE C: Zenryu Glass Bottom Sheet (~85% Height) ─────────────────── */}
       {isSheetOpen && (
         <div
           className="zenryu-sheet-backdrop"
@@ -1604,11 +1356,11 @@ function DragonCompanionInner({
             <div className="zenryu-sheet-header">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="zenryu-avatar-badge">
-                  <ZenryuDragonSvg
+                  <ZenryuLayeredRig
                     isSleeping={false}
                     isRoaring={false}
                     isStaticMode
-                    sizeClass="w-14 h-11"
+                    compactAvatar
                   />
                 </div>
                 <div className="min-w-0">
@@ -1724,8 +1476,8 @@ function DragonCompanionInner({
                     <span className="zenryu-badge">Coming soon</span>
                   </div>
                   <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                    {DRAGON_COMPANION_NAME} is awake and patrolling your Cockpit, while live
-                    AI tutoring responses are currently marked as{' '}
+                    {DRAGON_COMPANION_NAME} is awake and patrolling your Cockpit stage, while
+                    live AI tutoring responses are currently marked as{' '}
                     <strong className="text-[var(--text)]">Coming soon</strong> on this server.
                   </p>
                 </div>
