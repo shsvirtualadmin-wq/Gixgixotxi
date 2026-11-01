@@ -4,7 +4,7 @@ import { ShoppingBag, Sparkles, Lock, Check, ArrowLeft } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { NotFoundPage } from '@/pages/NotFoundPage';
-import { COSMETICS_CATALOG, getCosmeticById } from '@/data/cosmeticsCatalog';
+import { COSMETICS_CATALOG, getCosmeticById, kobansToPkr } from '@/data/cosmeticsCatalog';
 import { KobanAmount } from '@/components/koban/KobanIcon';
 import {
   AvatarPicture,
@@ -13,6 +13,7 @@ import {
   ProfileEffectCardPreview,
 } from '@/components/koban/CosmeticRenderers';
 import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
+import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWallet } from '@/hooks/useWallet';
 import { useAuthGate } from '@/contexts/AuthGateContext';
@@ -115,7 +116,7 @@ export const StoreItemDetailPage: React.FC = () => {
 
         <section className="glass-panel p-7 sm:p-10 mb-8 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
           {/* Live Artwork Preview Box */}
-          <div className="glass-card p-8 flex flex-col items-center justify-center min-h-[260px] relative overflow-hidden">
+          <div className="rounded-2xl bg-[#121216] border border-white/10 p-6 flex flex-col items-center justify-center min-h-[260px] relative overflow-hidden">
             {cosmetic.type === 'avatar' && (
               <AvatarPicture avatarId={cosmetic.id} size={136} animated={cosmetic.animated} />
             )}
@@ -127,20 +128,27 @@ export const StoreItemDetailPage: React.FC = () => {
               </AvatarFrame>
             )}
             {cosmetic.type === 'banner' && (
-              <div className="w-full h-36 rounded-2xl overflow-hidden border border-white/10">
+              <div className="w-full aspect-video rounded-xl overflow-hidden border border-white/10">
                 <BannerRenderer bannerId={cosmetic.id} animated={cosmetic.animated} />
               </div>
             )}
             {cosmetic.type === 'nameplate' && (
-              <Nameplate
-                nameplateId={cosmetic.id}
-                displayName="Boardly Scholar"
-                animated={cosmetic.animated}
-              />
+              <div className="w-full px-2">
+                <Nameplate
+                  nameplateId={cosmetic.id}
+                  displayName={user?.displayName || 'Boardly Scholar'}
+                  animated={cosmetic.animated}
+                  allowWrap="full"
+                />
+              </div>
             )}
             {cosmetic.type === 'effect' && (
-              <div className="w-full h-44 rounded-2xl overflow-hidden border border-white/10 relative">
-                <ProfileEffectCardPreview effectId={cosmetic.id} animated={cosmetic.animated} />
+              <div className="w-full h-44 rounded-xl overflow-hidden relative">
+                <ProfileEffectCardPreview
+                  effectId={cosmetic.id}
+                  animated={cosmetic.animated}
+                  displayName={user?.displayName || 'Boardly Scholar'}
+                />
               </div>
             )}
           </div>
@@ -160,23 +168,28 @@ export const StoreItemDetailPage: React.FC = () => {
               )}
             </div>
 
-            <h1 className="font-dot text-3xl sm:text-4xl font-bold text-white mb-3">
+            <h1 className="font-dot text-3xl sm:text-4xl font-bold text-[var(--text)] mb-3">
               {cosmetic.name}
             </h1>
 
-            <p className="text-sm text-white/75 leading-relaxed mb-6">
+            <p className="text-sm text-[var(--text-muted)] leading-relaxed mb-6">
               {cosmetic.description}
             </p>
 
             <div className="glass-card p-4 mb-6 flex items-center justify-between">
-              <span className="text-xs uppercase tracking-wider text-white/50">
+              <span className="text-xs uppercase tracking-wider text-[var(--text-muted)]">
                 Store Price
               </span>
-              <KobanAmount amount={cosmetic.priceKobans} size="md" />
+              <div className="text-right">
+                <KobanAmount amount={cosmetic.priceKobans} size="md" />
+                <div className="text-[11px] font-mono text-[var(--text-muted)] mt-0.5">
+                  ≈ PKR {kobansToPkr(cosmetic.priceKobans)}
+                </div>
+              </div>
             </div>
 
             {feedback && (
-              <div className="mb-4 p-3 rounded-xl bg-white/[0.06] border border-white/15 text-xs text-white">
+              <div className="mb-4 p-3 rounded-xl bg-white/[0.06] border border-white/15 text-xs text-[var(--text)]">
                 {feedback}
               </div>
             )}
@@ -188,7 +201,9 @@ export const StoreItemDetailPage: React.FC = () => {
                 disabled={busy}
                 className="btn-primary flex-1 py-3 px-6 text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-2 cursor-pointer"
               >
-                {!user ? (
+                {busy ? (
+                  <ButtonLineLoader label={isOwned ? 'Updating...' : 'Unlocking...'} />
+                ) : !user ? (
                   <>
                     <Lock size={15} />
                     <span>Sign in to Unlock ({cosmetic.priceKobans} Kobans)</span>

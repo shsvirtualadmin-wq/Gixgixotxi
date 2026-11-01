@@ -856,6 +856,124 @@ export const FrameRenderer: React.FC<FrameProps> = ({
         </div>
       );
 
+    // ─── 5 NEW PREMIUM AVATAR FRAMES ────────────────────────────────────────
+    case 'frame-dragon-scale-halo':
+      return (
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
+            <defs>
+              <linearGradient id="dsh_scale" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#FEF08A" />
+                <stop offset="45%" stopColor="#EF4444" />
+                <stop offset="100%" stopColor="#7F1D1D" />
+              </linearGradient>
+            </defs>
+            {/* Crimson Scale Armor Ring */}
+            <circle cx="50" cy="50" r="41" stroke="#450A0A" strokeWidth="7" />
+            <circle cx="50" cy="50" r="41" stroke="url(#dsh_scale)" strokeWidth="4.5" strokeDasharray="7 3" />
+            <circle cx="50" cy="50" r="37.5" stroke="#FEF08A" strokeWidth="1.2" opacity="0.85" />
+            {/* Crown Dragon Horns */}
+            <path d="M30 14 C22 2 14 -2 10 4 C16 12 22 18 28 22 Z" fill="#FDE047" stroke="#92400E" strokeWidth="1" />
+            <path d="M70 14 C78 2 86 -2 90 4 C84 12 78 18 72 22 Z" fill="#FDE047" stroke="#92400E" strokeWidth="1" />
+            {/* Rotating Dragonfire Halo */}
+            <g style={canAnimate ? { transformOrigin: '50px 50px', animation: 'koban-orbit-cw 7s linear infinite' } : undefined}>
+              <circle cx="50" cy="6" r="3.5" fill="#FEF08A" />
+              <circle cx="94" cy="50" r="3" fill="#F97316" />
+              <circle cx="50" cy="94" r="3.5" fill="#EF4444" />
+              <circle cx="6" cy="50" r="3" fill="#F59E0B" />
+            </g>
+          </svg>
+          {innerContent}
+        </div>
+      );
+
+    case 'frame-thunder-mandala':
+      return (
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
+            <circle cx="50" cy="50" r="41" stroke="#1E1B4B" strokeWidth="6.5" />
+            <circle cx="50" cy="50" r="41" stroke="#F59E0B" strokeWidth="2.5" strokeDasharray="8 6" />
+            {/* 8 Raijin Taiko Drums */}
+            <g style={canAnimate ? { transformOrigin: '50px 50px', animation: 'koban-orbit-cw 12s linear infinite' } : undefined}>
+              {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
+                <g key={deg} transform={`rotate(${deg} 50 50)`}>
+                  <circle cx="50" cy="6" r="4.5" fill="#FEF08A" stroke="#B45309" strokeWidth="1.2" />
+                  <circle cx="50" cy="6" r="1.8" fill="#78350F" />
+                </g>
+              ))}
+            </g>
+            {/* Crackling Lightning Rim */}
+            <path
+              d="M50 8 L55 12 L47 15 M92 50 L88 55 L85 47 M50 92 L45 88 L53 85 M8 50 L12 45 L15 53"
+              stroke="#38BDF8"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              style={canAnimate ? { animation: 'koban-lightning-flicker 1.8s steps(2, start) infinite' } : undefined}
+            />
+          </svg>
+          {innerContent}
+        </div>
+      );
+
+    case 'frame-sakura-blade-ring':
+      return (
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
+            <defs>
+              <linearGradient id="sbr_steel" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#F8FAFC" />
+                <stop offset="50%" stopColor="#F472B6" />
+                <stop offset="100%" stopColor="#9D174D" />
+              </linearGradient>
+            </defs>
+            {/* Curved Twin Katana Blades */}
+            <path d="M50 7 A43 43 0 0 1 93 50 A40 40 0 0 1 50 89" stroke="url(#sbr_steel)" strokeWidth="5.5" strokeLinecap="round" />
+            <path d="M50 93 A43 43 0 0 1 7 50 A40 40 0 0 1 50 11" stroke="url(#sbr_steel)" strokeWidth="5.5" strokeLinecap="round" />
+            <circle cx="50" cy="50" r="37.5" stroke="#FBCFE8" strokeWidth="1.2" />
+            {/* Floating Blossom Accents */}
+            <g style={canAnimate ? { animation: 'koban-pulse-glow 2.4s ease-in-out infinite' } : undefined}>
+              <circle cx="50" cy="7" r="4" fill="#F472B6" stroke="#FFF1F2" strokeWidth="1" />
+              <circle cx="88" cy="72" r="3.5" fill="#FB7185" stroke="#FFF1F2" strokeWidth="1" />
+              <circle cx="12" cy="28" r="3.5" fill="#F472B6" stroke="#FFF1F2" strokeWidth="1" />
+            </g>
+          </svg>
+          {innerContent}
+        </div>
+      );
+
+    case 'frame-void-obsidian-ring':
+      return (
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
+            <circle cx="50" cy="50" r="41" stroke="#09090B" strokeWidth="7" />
+            <circle cx="50" cy="50" r="41" stroke="#9333EA" strokeWidth="2.5" strokeDasharray="12 6" />
+            <circle cx="50" cy="50" r="37.5" stroke="#C084FC" strokeWidth="1.2" />
+            {/* 4 Obsidian Void Shards */}
+            <polygon points="50,1 55,11 50,15 45,11" fill="#A855F7" stroke="#09090B" strokeWidth="1" />
+            <polygon points="99,50 89,55 85,50 89,45" fill="#A855F7" stroke="#09090B" strokeWidth="1" />
+            <polygon points="50,99 55,89 50,85 45,89" fill="#A855F7" stroke="#09090B" strokeWidth="1" />
+            <polygon points="1,50 11,55 15,50 11,45" fill="#A855F7" stroke="#09090B" strokeWidth="1" />
+          </svg>
+          {innerContent}
+        </div>
+      );
+
+    case 'frame-royal-gold-laurel-crown':
+      return (
+        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
+          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
+            <circle cx="50" cy="50" r="41" stroke="#78350F" strokeWidth="6.5" />
+            <circle cx="50" cy="50" r="41" stroke="#FDE047" strokeWidth="3.5" strokeDasharray="5 3" />
+            <circle cx="50" cy="50" r="37.5" stroke="#F59E0B" strokeWidth="1.5" />
+            {/* Crown Keystone Ruby & Gold Spire */}
+            <polygon points="50,0 57,11 50,16 43,11" fill="#DC2626" stroke="#FEF08A" strokeWidth="1.5" />
+            <polygon points="36,6 42,13 35,15" fill="#FDE047" />
+            <polygon points="64,6 58,13 65,15" fill="#FDE047" />
+          </svg>
+          {innerContent}
+        </div>
+      );
+
     default:
       return (
         <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>

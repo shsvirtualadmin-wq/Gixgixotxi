@@ -273,14 +273,21 @@ const NameplateInner: React.FC<{
   roleBadge?: string;
   className?: string;
   forceStatic?: boolean;
-}> = ({ itemId, name, shortId, roleBadge, className = '', forceStatic = false }) => {
+  allowWrap?: boolean | 'full' | 'two-lines';
+}> = ({ itemId, name, shortId, roleBadge, className = '', forceStatic = false, allowWrap = false }) => {
   const { containerRef, canAnimate } = useCosmeticAnimation(itemId, true, forceStatic);
   const exists = Boolean(itemId && itemId !== 'none' && getCosmeticById(itemId));
+  const wrapCls =
+    allowWrap === 'full'
+      ? 'whitespace-normal break-words leading-snug'
+      : allowWrap
+      ? 'whitespace-normal break-words line-clamp-2 leading-snug'
+      : 'truncate';
 
   if (!exists) {
     return (
-      <div className={`inline-flex items-center gap-1.5 max-w-full truncate ${className}`}>
-        <span className="font-heading font-semibold text-xs text-[var(--text)] truncate">{name}</span>
+      <div className={`inline-flex items-center gap-1.5 max-w-full ${allowWrap ? '' : 'truncate'} ${className}`}>
+        <span className={`font-heading font-semibold text-xs text-[var(--text)] ${wrapCls}`}>{name}</span>
         {shortId && <span className="font-mono text-[10px] text-[var(--muted)] shrink-0">#{shortId}</span>}
       </div>
     );
@@ -295,6 +302,7 @@ const NameplateInner: React.FC<{
         roleBadge={roleBadge}
         canAnimate={canAnimate}
         className={className}
+        allowWrap={allowWrap}
       />
     </div>
   );
@@ -307,10 +315,17 @@ export const Nameplate: React.FC<{
   roleBadge?: string;
   className?: string;
   forceStatic?: boolean;
+  allowWrap?: boolean | 'full' | 'two-lines';
 }> = (props) => {
+  const wrapCls =
+    props.allowWrap === 'full'
+      ? 'whitespace-normal break-words leading-snug'
+      : props.allowWrap
+      ? 'whitespace-normal break-words line-clamp-2 leading-snug'
+      : 'truncate';
   const fallback = (
-    <div className={`inline-flex items-center gap-1.5 max-w-full truncate ${props.className || ''}`}>
-      <span className="font-heading font-semibold text-xs text-[var(--text)] truncate">{props.name}</span>
+    <div className={`inline-flex items-center gap-1.5 max-w-full ${props.allowWrap ? '' : 'truncate'} ${props.className || ''}`}>
+      <span className={`font-heading font-semibold text-xs text-[var(--text)] ${wrapCls}`}>{props.name}</span>
       {props.shortId && <span className="font-mono text-[10px] text-[var(--muted)] shrink-0">#{props.shortId}</span>}
     </div>
   );

@@ -403,6 +403,96 @@ export const EffectAvatarRenderer: React.FC<EffectProps> = ({
         </div>
       );
 
+    // ─── 5 NEW PREMIUM AVATAR EFFECTS ───────────────────────────────────────
+    case 'effect-dragon-fire-aura':
+      return (
+        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
+          <div
+            className="absolute -inset-2.5 rounded-full bg-radial from-[#FEF08A]/25 via-[#DC2626]/40 to-transparent pointer-events-none z-0"
+            style={canAnimate ? { animation: 'koban-flame-flicker 1.8s ease-in-out infinite' } : undefined}
+          />
+          <svg
+            className="absolute -inset-2.5 w-[calc(100%+20px)] h-[calc(100%+20px)] pointer-events-none z-20"
+            viewBox="0 0 100 100"
+            fill="none"
+            style={canAnimate ? { transformOrigin: '50px 50px', animation: 'koban-orbit-cw 8s linear infinite' } : undefined}
+          >
+            <path d="M50 4 C74 4 94 24 94 48" stroke="#F59E0B" strokeWidth="2.5" strokeLinecap="round" />
+            <path d="M50 96 C26 96 6 76 6 52" stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round" />
+            <circle cx="50" cy="4" r="3" fill="#FEF08A" />
+            <circle cx="50" cy="96" r="3" fill="#F97316" />
+          </svg>
+          <div className="relative z-10">{children}</div>
+        </div>
+      );
+
+    case 'effect-thunder-kami-storm':
+      return (
+        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
+          <svg
+            className="absolute -inset-2.5 w-[calc(100%+20px)] h-[calc(100%+20px)] pointer-events-none z-20"
+            viewBox="0 0 100 100"
+            fill="none"
+            style={canAnimate ? { animation: 'koban-lightning-flicker 1.5s steps(2, start) infinite' } : undefined}
+          >
+            <polyline points="50,2 44,16 54,18 46,32" stroke="#FEF08A" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+            <polyline points="94,46 80,52 84,60 70,66" stroke="#38BDF8" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            <polyline points="8,54 22,48 18,40 32,34" stroke="#F59E0B" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <div className="relative z-10">{children}</div>
+        </div>
+      );
+
+    case 'effect-spirit-fox-fire':
+      return (
+        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
+          <div
+            className="absolute -inset-2 pointer-events-none z-20"
+            style={canAnimate ? { transformOrigin: 'center', animation: 'koban-orbit-cw 9s linear infinite' } : undefined}
+          >
+            <span className="absolute top-0 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-[#38BDF8] shadow-[0_0_8px_#00F0FF]" />
+            <span className="absolute bottom-1 left-1 w-2.5 h-2.5 rounded-full bg-[#A855F7] shadow-[0_0_8px_#A855F7]" />
+            <span className="absolute bottom-1 right-1 w-2.5 h-2.5 rounded-full bg-[#38BDF8] shadow-[0_0_8px_#00F0FF]" />
+          </div>
+          <div className="relative z-10">{children}</div>
+        </div>
+      );
+
+    case 'effect-cherry-blossom-gale':
+      return (
+        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
+          <svg
+            className="absolute -inset-2.5 w-[calc(100%+20px)] h-[calc(100%+20px)] pointer-events-none z-20"
+            viewBox="0 0 100 100"
+            fill="none"
+            style={canAnimate ? { animation: 'koban-petal-fall 3s ease-in-out infinite' } : undefined}
+          >
+            <path d="M18 32 C38 14 68 18 86 38" stroke="#F472B6" strokeWidth="2" strokeLinecap="round" opacity="0.75" />
+            <ellipse cx="26" cy="24" rx="5" ry="2.5" transform="rotate(-25 26 24)" fill="#FBCFE8" />
+            <ellipse cx="78" cy="30" rx="4.5" ry="2.2" transform="rotate(20 78 30)" fill="#F472B6" />
+            <ellipse cx="64" cy="82" rx="5" ry="2.5" transform="rotate(-15 64 82)" fill="#FB7185" />
+          </svg>
+          <div className="relative z-10">{children}</div>
+        </div>
+      );
+
+    case 'effect-falling-stars':
+      return (
+        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
+          <svg
+            className="absolute -inset-2.5 w-[calc(100%+20px)] h-[calc(100%+20px)] pointer-events-none z-20"
+            viewBox="0 0 100 100"
+            fill="none"
+          >
+            <line x1="82" y1="12" x2="58" y2="36" stroke="#818CF8" strokeWidth="2" strokeLinecap="round" />
+            <circle cx="58" cy="36" r="2.5" fill="#FEF08A" />
+            <line x1="38" y1="62" x2="16" y2="84" stroke="#38BDF8" strokeWidth="1.8" strokeLinecap="round" />
+            <circle cx="16" cy="84" r="2" fill="#E0E7FF" />
+          </svg>
+          <div className="relative z-10">{children}</div>
+        </div>
+      );
+
     default:
       return (
         <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
@@ -667,49 +757,129 @@ export const ProfileCardEffect: React.FC<ProfileCardEffectProps> = ({ itemId, cl
           style={{ animation: 'koban-water-ripple 3s ease-in-out infinite' }}
         />
       )}
+
+      {/* ─── 5 NEW PREMIUM FULL-CARD EFFECTS ──────────────────────────────── */}
+      {itemId === 'effect-dragon-fire-aura' && (
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 300 200" preserveAspectRatio="none" fill="none">
+          <defs>
+            <linearGradient id="dfa_fire" x1="0" y1="1" x2="1" y2="0">
+              <stop offset="0%" stopColor="#DC2626" stopOpacity="0.65" />
+              <stop offset="55%" stopColor="#F59E0B" stopOpacity="0.45" />
+              <stop offset="100%" stopColor="#FEF08A" stopOpacity="0.2" />
+            </linearGradient>
+          </defs>
+          <path
+            d="M0 200 C50 145 110 175 165 125 C220 75 265 110 300 50 L300 200 Z"
+            fill="url(#dfa_fire)"
+            style={{ animation: 'koban-flame-flicker 2.2s ease-in-out infinite' }}
+          />
+          <path
+            d="M15 165 C85 110 155 140 245 65"
+            stroke="#FEF08A"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeDasharray="8 6"
+            opacity="0.8"
+          />
+          <circle cx="52" cy="138" r="4" fill="#FEF08A" style={{ animation: 'koban-ember-rise 2.2s ease-out infinite' }} />
+          <circle cx="148" cy="108" r="3.5" fill="#F97316" style={{ animation: 'koban-ember-rise 2.6s ease-out infinite 0.5s' }} />
+          <circle cx="235" cy="78" r="4.5" fill="#EF4444" style={{ animation: 'koban-ember-rise 2s ease-out infinite 1s' }} />
+        </svg>
+      )}
+
+      {itemId === 'effect-thunder-kami-storm' && (
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 300 200" preserveAspectRatio="none" fill="none">
+          <g style={{ animation: 'koban-lightning-flicker 1.6s steps(2, start) infinite' }}>
+            <polyline points="45,0 32,48 56,54 28,118" stroke="#FEF08A" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+            <polyline points="248,0 226,56 252,64 214,138" stroke="#38BDF8" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+            <polyline points="155,15 142,60 164,66 146,110" stroke="#F59E0B" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          </g>
+          <circle cx="245" cy="42" r="22" stroke="#F59E0B" strokeWidth="1.8" strokeDasharray="5 4" opacity="0.65" />
+        </svg>
+      )}
+
+      {itemId === 'effect-spirit-fox-fire' && (
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 300 200" fill="none">
+          <g style={{ animation: 'koban-pulse-glow 2.5s ease-in-out infinite' }}>
+            <circle cx="48" cy="145" r="12" fill="#38BDF8" opacity="0.35" />
+            <circle cx="48" cy="145" r="5.5" fill="#E0F2FE" />
+            <path d="M48 139 C44 125 52 115 48 104" stroke="#38BDF8" strokeWidth="2.5" strokeLinecap="round" />
+
+            <circle cx="152" cy="52" r="13" fill="#A855F7" opacity="0.35" />
+            <circle cx="152" cy="52" r="6" fill="#F3E8FF" />
+            <path d="M152 46 C148 32 156 22 152 12" stroke="#C084FC" strokeWidth="2.5" strokeLinecap="round" />
+
+            <circle cx="248" cy="128" r="12" fill="#38BDF8" opacity="0.35" />
+            <circle cx="248" cy="128" r="5.5" fill="#E0F2FE" />
+            <path d="M248 122 C244 108 252 98 248 86" stroke="#38BDF8" strokeWidth="2.5" strokeLinecap="round" />
+          </g>
+        </svg>
+      )}
+
+      {itemId === 'effect-cherry-blossom-gale' && (
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 300 200" fill="none">
+          <path d="M-10 155 C75 105 165 135 310 55" stroke="#F472B6" strokeWidth="2" strokeDasharray="10 6" opacity="0.55" />
+          <path d="M-10 95 C90 55 185 85 310 25" stroke="#FBCFE8" strokeWidth="1.5" strokeDasharray="8 6" opacity="0.45" />
+          <g style={{ animation: 'koban-petal-fall 3.2s ease-in-out infinite' }}>
+            <ellipse cx="55" cy="65" rx="7" ry="3.5" transform="rotate(-25 55 65)" fill="#F472B6" />
+            <ellipse cx="125" cy="95" rx="6" ry="3" transform="rotate(15 125 95)" fill="#FBCFE8" />
+            <ellipse cx="195" cy="52" rx="7.5" ry="3.5" transform="rotate(-30 195 52)" fill="#FB7185" />
+            <ellipse cx="245" cy="118" rx="6.5" ry="3.2" transform="rotate(20 245 118)" fill="#F472B6" />
+          </g>
+        </svg>
+      )}
+
+      {itemId === 'effect-falling-stars' && (
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 300 200" fill="none">
+          <g style={{ animation: 'koban-pulse-glow 2.2s ease-in-out infinite' }}>
+            <line x1="255" y1="18" x2="175" y2="82" stroke="#818CF8" strokeWidth="2.5" strokeLinecap="round" />
+            <circle cx="175" cy="82" r="4" fill="#FEF08A" />
+            <line x1="145" y1="28" x2="72" y2="86" stroke="#38BDF8" strokeWidth="2" strokeLinecap="round" />
+            <circle cx="72" cy="86" r="3.5" fill="#E0F2FE" />
+            <line x1="275" y1="88" x2="198" y2="148" stroke="#C084FC" strokeWidth="2.2" strokeLinecap="round" />
+            <circle cx="198" cy="148" r="3.5" fill="#FEF08A" />
+          </g>
+        </svg>
+      )}
     </div>
-  );
+   );
 };
 
 /**
  * Dedicated Card Preview Renderer for Store and Gallery
- * Displays a realistic sample profile card with the full profile effect active over it!
+ * Displays a realistic sample mini profile card (avatar, name line, effect particles)
+ * strictly clipped inside the tile with overflow: hidden; contain: paint.
+ * No overlapping "PROFILE EFFECT" label inside the mock card, and no gray bars sticking out.
  */
 export const ProfileEffectCardPreview: React.FC<{
   itemId: string;
   className?: string;
   compact?: boolean;
-}> = ({ itemId, className = '', compact: _compact = false }) => {
+  userName?: string;
+}> = ({ itemId, className = '', userName = 'Boardly Scholar' }) => {
   return (
     <div
-      className={`relative w-full h-full rounded-xl overflow-hidden bg-gradient-to-br from-[#18181B] via-[#111113] to-[#09090B] border border-[#27272A] p-3 flex flex-col justify-between shadow-inner select-none ${className}`}
+      className={`relative w-full h-full rounded-xl overflow-hidden bg-gradient-to-br from-[#141418] via-[#0E0E12] to-[#08080B] border border-white/10 p-3 flex flex-col justify-center items-center shadow-inner select-none ${className}`}
+      style={{ overflow: 'hidden', contain: 'paint' }}
     >
-      {/* Sample User Header */}
-      <div className="flex items-center gap-2.5 relative z-10">
-        <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#DC2626] to-[#F59E0B] p-0.5 shrink-0 shadow-sm">
-          <div className="w-full h-full rounded-full bg-[#18181B] flex items-center justify-center p-1.5 text-red-500">
+      {/* Subtle Top Banner Strip Inside Mini Profile Card */}
+      <div className="absolute inset-x-0 top-0 h-9 bg-gradient-to-r from-[#2A080C] via-[#1E1B4B] to-[#0F172A] opacity-80 pointer-events-none" />
+
+      {/* Centered Mini Profile Avatar + Name Line */}
+      <div className="relative z-10 flex flex-col items-center gap-1.5 text-center max-w-full px-1">
+        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#DC2626] to-[#F59E0B] p-0.5 shrink-0 shadow-md">
+          <div className="w-full h-full rounded-full bg-[#121216] flex items-center justify-center p-2 text-[#F59E0B]">
             <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full">
               <path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" />
             </svg>
           </div>
         </div>
-        <div className="min-w-0">
-          <div className="h-3 w-16 bg-white/30 rounded-xs mb-1" />
-          <div className="h-2 w-10 bg-white/15 rounded-xs" />
-        </div>
-      </div>
-
-      {/* Sample Badges */}
-      <div className="flex items-center justify-between relative z-10 pt-1">
-        <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-white/10 text-white/80 font-mono font-bold">
-          PROFILE CARD
-        </span>
-        <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-[#DC2626]/20 text-[#FCA5A5] font-mono font-bold border border-[#DC2626]/30">
-          EFFECT ACTIVE
+        <span className="text-[11px] font-heading font-semibold text-white/90 leading-tight line-clamp-1 max-w-full px-2 py-0.5 rounded-md bg-black/45 border border-white/10">
+          {userName}
         </span>
       </div>
 
-      {/* Looping Full-Card Effect */}
+      {/* Looping Full-Card Effect Clipped Inside */}
       <ProfileCardEffect itemId={itemId} previewMode={true} />
     </div>
   );

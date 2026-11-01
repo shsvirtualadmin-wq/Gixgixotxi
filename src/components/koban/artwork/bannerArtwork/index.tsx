@@ -19,9 +19,23 @@ import {
   LiquidAuroraBanner,
   CosmicGateBanner,
 } from './flagshipBanners';
+import {
+  CrimsonDragonsDescentBanner,
+  NeonKyotoRainBanner,
+  BloodMoonRoninBanner,
+  CelestialKoiRiverBanner,
+  ObsidianShogunCitadelBanner,
+} from './premiumBanners';
 
-// Flagship 12 unique custom banners mapping
+// Flagship & New Premium custom banners mapping
 const FLAGSHIP_BANNER_MAP: Record<string, (animated: boolean) => React.ReactNode> = {
+  // 5 New Premium Banners
+  ban_crimson_dragons_descent: (animated: boolean) => <CrimsonDragonsDescentBanner canAnimate={animated} />,
+  ban_neon_kyoto_rain: (animated: boolean) => <NeonKyotoRainBanner canAnimate={animated} />,
+  ban_blood_moon_ronin: (animated: boolean) => <BloodMoonRoninBanner canAnimate={animated} />,
+  ban_celestial_koi_river: (animated: boolean) => <CelestialKoiRiverBanner canAnimate={animated} />,
+  ban_obsidian_shogun_citadel: () => <ObsidianShogunCitadelBanner />,
+
   // Static 6
   ban_midnight_torii: () => <MidnightToriiBanner />,
   ban_kyoto_rain: () => <KyotoRainBanner />,

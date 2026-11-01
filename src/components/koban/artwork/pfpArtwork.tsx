@@ -952,11 +952,165 @@ export const PfpZenBonsai: React.FC<PfpSvgProps> = ({ className = '' }) => (
   </svg>
 );
 
+// ─── 5 NEW PREMIUM PROFILE PICTURES ─────────────────────────────────────────
+
+// 26. Zenryu Awakened (Mythic) - Animated Eyes & Dragon-Breath Plasma
+export const PfpZenryuAwakened: React.FC<PfpSvgProps> = ({ canAnimate, className = '' }) => (
+  <svg viewBox="0 0 256 256" className={`w-full h-full block ${className}`} fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="zenryu_bg" cx="50%" cy="45%" r="60%">
+        <stop offset="0%" stopColor="#7F1D1D" />
+        <stop offset="55%" stopColor="#2A050A" />
+        <stop offset="100%" stopColor="#090103" />
+      </radialGradient>
+      <linearGradient id="zenryu_horn" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="#FEF08A" />
+        <stop offset="60%" stopColor="#F59E0B" />
+        <stop offset="100%" stopColor="#92400E" />
+      </linearGradient>
+    </defs>
+    <rect width="256" height="256" fill="url(#zenryu_bg)" />
+    {/* Sacred Draconic Halo Ring */}
+    <circle
+      cx="128"
+      cy="128"
+      r="102"
+      stroke="#F59E0B"
+      strokeWidth="2.5"
+      strokeDasharray="10 8"
+      opacity="0.7"
+      style={canAnimate ? { transformOrigin: '128px 128px', animation: 'koban-orbit-cw 16s linear infinite' } : undefined}
+    />
+    {/* Swept Golden Dragon Horns */}
+    <path d="M92 84 C64 42 40 28 24 22 C38 52 56 76 78 98 Z" fill="url(#zenryu_horn)" />
+    <path d="M164 84 C192 42 216 28 232 22 C218 52 200 76 178 98 Z" fill="url(#zenryu_horn)" />
+    {/* Armored Crimson Dragon Head Silhouette */}
+    <polygon points="128,54 176,88 166,158 128,194 90,158 80,88" fill="#450A0A" stroke="#DC2626" strokeWidth="3" />
+    <polygon points="128,68 158,94 148,148 128,176 108,148 98,94" fill="#7F1D1D" />
+    {/* Forehead Crest Jewel */}
+    <polygon points="128,74 136,88 128,102 120,88" fill="#FEF08A" />
+    {/* Glowing Awakened Dragon Eyes */}
+    <g style={canAnimate ? { animation: 'koban-pulse-glow 1.8s ease-in-out infinite' } : undefined}>
+      <polygon points="96,116 118,124 114,132 94,126" fill="#FEF08A" />
+      <polygon points="160,116 138,124 142,132 162,126" fill="#FEF08A" />
+    </g>
+    {/* Molten Breath Plume & Embers */}
+    <path
+      d="M114 184 C106 210 92 232 76 256 L180 256 C164 232 150 210 142 184 Z"
+      fill="#F59E0B"
+      opacity="0.82"
+      style={canAnimate ? { animation: 'koban-flame-flicker 2s ease-in-out infinite' } : undefined}
+    />
+    <circle cx="62" cy="190" r="4" fill="#FEF08A" />
+    <circle cx="194" cy="182" r="4.5" fill="#F97316" />
+  </svg>
+);
+
+// 27. Oni Warlord (Legendary) - Static High-Detail Mask
+export const PfpOniWarlord: React.FC<PfpSvgProps> = ({ className = '' }) => (
+  <svg viewBox="0 0 256 256" className={`w-full h-full block ${className}`} fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="256" height="256" fill="#0F0507" />
+    <circle cx="128" cy="128" r="98" fill="#450A0A" opacity="0.55" />
+    {/* Curved Ivory & Gold Oni Horns */}
+    <path d="M76 82 C54 44 48 24 62 18 C72 36 82 56 96 74 Z" fill="#FDE68A" stroke="#B45309" strokeWidth="2" />
+    <path d="M180 82 C202 44 208 24 194 18 C184 36 174 56 160 74 Z" fill="#FDE68A" stroke="#B45309" strokeWidth="2" />
+    {/* Crimson Lacquer Warlord Mask */}
+    <path d="M68 82 C68 54 188 54 188 82 L196 154 C196 196 162 222 128 226 C94 222 60 196 60 154 Z" fill="#991B1B" stroke="#F59E0B" strokeWidth="3" />
+    {/* Fierce Gold Brow & Eyes */}
+    <path d="M78 106 L120 120 L116 108 Z" fill="#FDE047" />
+    <path d="M178 106 L136 120 L140 108 Z" fill="#FDE047" />
+    <circle cx="100" cy="124" r="9" fill="#FEF08A" stroke="#18181B" strokeWidth="2" />
+    <circle cx="156" cy="124" r="9" fill="#FEF08A" stroke="#18181B" strokeWidth="2" />
+    {/* Armored Jaw & Gold Tusks */}
+    <path d="M76 166 L180 166 L168 204 L88 204 Z" fill="#18181B" stroke="#D97706" strokeWidth="2" />
+    <polygon points="84,188 96,150 106,188" fill="#FEF08A" />
+    <polygon points="172,188 160,150 150,188" fill="#FEF08A" />
+    <polygon points="110,166 118,186 126,166" fill="#FDE68A" />
+    <polygon points="130,166 138,186 146,166" fill="#FDE68A" />
+  </svg>
+);
+
+// 28. Kitsune Moonlight (Legendary) - Animated Swaying Tails & Spirit Orbs
+export const PfpKitsuneMoonlight: React.FC<PfpSvgProps> = ({ canAnimate, className = '' }) => (
+  <svg viewBox="0 0 256 256" className={`w-full h-full block ${className}`} fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="256" height="256" fill="#0B1120" />
+    {/* Giant Silver Moon */}
+    <circle cx="128" cy="112" r="84" fill="#E0F2FE" opacity="0.9" />
+    <circle cx="128" cy="112" r="96" stroke="#38BDF8" strokeWidth="1.5" opacity="0.4" />
+    {/* Nine-Tailed Fox Fan Behind Silhouette */}
+    <g
+      style={canAnimate ? { transformOrigin: '128px 190px', animation: 'koban-pulse-glow 2.8s ease-in-out infinite' } : undefined}
+    >
+      <path d="M128 190 C68 156 36 106 48 64 C78 88 102 132 128 190 Z" fill="#38BDF8" opacity="0.75" />
+      <path d="M128 190 C84 134 72 78 96 44 C114 78 122 132 128 190 Z" fill="#7DD3FC" opacity="0.85" />
+      <path d="M128 190 C188 156 220 106 208 64 C178 88 154 132 128 190 Z" fill="#38BDF8" opacity="0.75" />
+      <path d="M128 190 C172 134 184 78 160 44 C142 78 134 132 128 190 Z" fill="#7DD3FC" opacity="0.85" />
+    </g>
+    {/* White Kitsune Mask Head & Ears */}
+    <polygon points="92,108 78,56 114,88" fill="#F8FAFC" stroke="#EF4444" strokeWidth="2.5" />
+    <polygon points="164,108 178,56 142,88" fill="#F8FAFC" stroke="#EF4444" strokeWidth="2.5" />
+    <polygon points="88,100 168,100 156,162 128,194 100,162" fill="#F8FAFC" stroke="#CBD5E1" strokeWidth="2" />
+    {/* Crimson Kitsune Markings & Glowing Cyan Eyes */}
+    <path d="M98 124 L118 132 M158 124 L138 132" stroke="#DC2626" strokeWidth="4" strokeLinecap="round" />
+    <polygon points="128,106 134,118 128,130 122,118" fill="#DC2626" />
+    <circle cx="108" cy="142" r="4.5" fill="#0284C7" />
+    <circle cx="148" cy="142" r="4.5" fill="#0284C7" />
+  </svg>
+);
+
+// 29. Cyber Samurai Visor (Epic) - Static Neo-Tokyo Tactical Helm
+export const PfpCyberSamuraiVisor: React.FC<PfpSvgProps> = ({ className = '' }) => (
+  <svg viewBox="0 0 256 256" className={`w-full h-full block ${className}`} fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="256" height="256" fill="#090D16" />
+    {/* Cyber Grid Backdrop */}
+    <circle cx="128" cy="128" r="96" stroke="#00F0FF" strokeWidth="1.5" strokeDasharray="6 6" opacity="0.35" />
+    {/* Kabuto Side Flanges */}
+    <polygon points="42,188 72,92 88,188" fill="#1E293B" stroke="#00F0FF" strokeWidth="2" />
+    <polygon points="214,188 184,92 168,188" fill="#1E293B" stroke="#00F0FF" strokeWidth="2" />
+    {/* Helmet Dome & Crest */}
+    <path d="M68 118 C68 64 188 64 188 118 Z" fill="#0F172A" stroke="#38BDF8" strokeWidth="2.5" />
+    <polygon points="128,32 102,78 128,68 154,78" fill="#FF007A" />
+    {/* Illuminated Cyan Tactical Visor */}
+    <polygon points="62,116 194,116 182,148 74,148" fill="#00F0FF" stroke="#E0F2FE" strokeWidth="2" />
+    <line x1="78" y1="132" x2="178" y2="132" stroke="#090D16" strokeWidth="3" strokeDasharray="16 8" />
+    {/* Armored Respirator Mask */}
+    <polygon points="82,152 174,152 156,212 100,212" fill="#1E293B" stroke="#475569" strokeWidth="2" />
+    <line x1="106" y1="172" x2="150" y2="172" stroke="#FF007A" strokeWidth="3" />
+    <line x1="112" y1="188" x2="144" y2="188" stroke="#00F0FF" strokeWidth="3" />
+  </svg>
+);
+
+// 30. Tengu Storm Priest (Epic) - Static Mystic Mountain Priest
+export const PfpTenguStormPriest: React.FC<PfpSvgProps> = ({ className = '' }) => (
+  <svg viewBox="0 0 256 256" className={`w-full h-full block ${className}`} fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="256" height="256" fill="#061A14" />
+    {/* Emerald Wind Vortex Circle */}
+    <circle cx="128" cy="128" r="92" stroke="#10B981" strokeWidth="3" strokeDasharray="18 10" opacity="0.6" />
+    {/* Raven Wings Silhouette */}
+    <polygon points="22,74 88,118 64,186 16,138" fill="#0F172A" stroke="#34D399" strokeWidth="1.5" />
+    <polygon points="234,74 168,118 192,186 240,138" fill="#0F172A" stroke="#34D399" strokeWidth="1.5" />
+    {/* Yamabushi Tokin Cap */}
+    <polygon points="108,42 148,42 142,76 114,76" fill="#18181B" stroke="#F59E0B" strokeWidth="2" />
+    {/* Tengu Crimson Face & Fierce Eyes */}
+    <rect x="84" y="76" width="88" height="108" rx="22" fill="#B91C1C" stroke="#FDE047" strokeWidth="2.5" />
+    <polygon points="96,108 120,116 96,122" fill="#FEF08A" />
+    <polygon points="160,108 136,116 160,122" fill="#FEF08A" />
+    {/* Flowing White Tengu Beard */}
+    <polygon points="88,162 168,162 148,228 128,242 108,228" fill="#F8FAFC" />
+  </svg>
+);
+
 /**
  * Registry mapping ID to Component
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export const PFP_ARTWORK_MAP: Record<string, React.FC<PfpSvgProps>> = {
+  // 5 New Premium Profile Pictures
+  pfp_zenryu_awakened: PfpZenryuAwakened,
+  pfp_oni_warlord: PfpOniWarlord,
+  pfp_kitsune_moonlight: PfpKitsuneMoonlight,
+  pfp_cyber_samurai_visor: PfpCyberSamuraiVisor,
+  pfp_tengu_storm_priest: PfpTenguStormPriest,
   // 12 Animated
   pfp_crimson_ronin: PfpCrimsonRonin,
   pfp_sakura_kitsune: PfpSakuraKitsune,

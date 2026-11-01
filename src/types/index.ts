@@ -65,7 +65,7 @@ export interface UserProfile {
 }
 
 export type CosmeticType = 'effect' | 'frame' | 'nameplate' | 'avatar' | 'banner';
-export type CosmeticRarity = 'common' | 'rare' | 'epic' | 'legendary';
+export type CosmeticRarity = 'common' | 'rare' | 'epic' | 'legendary' | 'mythic';
 
 export interface EquippedCosmetics {
   effect?: string | null;
