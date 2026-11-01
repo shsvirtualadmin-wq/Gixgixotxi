@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StoreFxCanvas } from '../fx/StoreFxCanvas';
-import { StoreLoopVideo } from '../fx/StoreLoopVideo';
+import { StoreLoopVideo, storeVideoGovernor } from '../fx/StoreLoopVideo';
 import {
   COLOR_RAMPS,
   ParticleShape,
@@ -1804,11 +1804,139 @@ export const PfpYokaiLanternGhost: React.FC<PfpSvgProps> = ({ canAnimate = true,
   );
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FLAGSHIP 3D MYTHIC AVATAR: ECLIPSE WYRM (id: eclipse-wyrm)
+// ─────────────────────────────────────────────────────────────────────────────
+export const PfpEclipseWyrm: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '' }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const instanceIdRef = useRef<string>(`pfp-eclipse-wyrm-${Math.random().toString(36).slice(2, 9)}`);
+  const [isVisible, setIsVisible] = useState(true);
+  const [isGovernorActive, setIsGovernorActive] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(() => storeVideoGovernor.isReducedMotion());
+
+  const posterUrl = '/assets/store/eclipse-wyrm/poster.webp';
+  const webmUrl = '/assets/store/eclipse-wyrm/avatar.webm';
+  const mp4Url = '/assets/store/eclipse-wyrm/avatar.mp4';
+
+  const effectiveAnimate = Boolean(canAnimate && !reducedMotion && !videoFailed);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+      setReducedMotion(mql.matches);
+      const onChange = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+      mql.addEventListener('change', onChange);
+      return () => mql.removeEventListener('change', onChange);
+    } catch {
+      return;
+    }
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setIsVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        setIsVisible(Boolean(entry?.isIntersecting));
+      },
+      { threshold: 0.05, rootMargin: '80px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!effectiveAnimate) {
+      setIsGovernorActive(false);
+      return;
+    }
+    const id = instanceIdRef.current;
+    return storeVideoGovernor.register({
+      id,
+      videoEl: videoRef.current,
+      isVisible,
+      canAnimate: effectiveAnimate,
+      priority: 8,
+      setActiveState: setIsGovernorActive,
+    });
+  }, [effectiveAnimate, isVisible]);
+
+  useEffect(() => {
+    storeVideoGovernor.update(instanceIdRef.current, {
+      isVisible,
+      canAnimate: effectiveAnimate,
+      priority: 8,
+    });
+  }, [isVisible, effectiveAnimate]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (effectiveAnimate && isVisible && isGovernorActive) {
+      video.play().catch(() => {});
+    } else {
+      if (!video.paused) {
+        video.pause();
+      }
+    }
+  }, [effectiveAnimate, isVisible, isGovernorActive]);
+
+  return (
+    <div
+      ref={containerRef}
+      className={`relative w-full h-full overflow-hidden select-none aspect-square rounded-full ${className}`}
+      style={{
+        background: 'radial-gradient(circle, #2A080C 0%, #030104 100%)',
+        contain: 'paint',
+      }}
+      data-avatar-id="eclipse-wyrm"
+    >
+      <img
+        src={posterUrl}
+        alt="Eclipse Wyrm Avatar"
+        loading="lazy"
+        decoding="async"
+        className={`absolute inset-0 w-full h-full object-cover rounded-full pointer-events-none transition-opacity duration-300 ${
+          effectiveAnimate && isGovernorActive ? 'opacity-0' : 'opacity-100'
+        }`}
+      />
+      {effectiveAnimate && (
+        <video
+          ref={videoRef}
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="metadata"
+          poster={posterUrl}
+          onError={() => setVideoFailed(true)}
+          className={`absolute inset-0 w-full h-full object-cover rounded-full pointer-events-none transition-opacity duration-300 ${
+            isGovernorActive ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          <source src={webmUrl} type="video/webm" />
+          <source src={mp4Url} type="video/mp4" />
+        </video>
+      )}
+    </div>
+  );
+};
+
 /**
  * Registry mapping ID to Component
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export const PFP_ARTWORK_MAP: Record<string, React.FC<PfpSvgProps>> = {
+  // Flagship Mythic 3D Avatar (Blender 4.2.3 LTS render)
+  'eclipse-wyrm': PfpEclipseWyrm,
+  pfp_eclipse_wyrm: PfpEclipseWyrm,
   // 5 New Premium Profile Pictures (Wave 2)
   pfp_phoenix_ascendant: PfpPhoenixAscendant,
   pfp_ryujin_sea_dragon: PfpRyujinSeaDragon,

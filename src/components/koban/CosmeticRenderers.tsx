@@ -156,10 +156,13 @@ const AvatarPictureInner: React.FC<AvatarPictureProps> = ({
 }) => {
   const avatarId = directAvatarId || itemId || null;
   const numericSize = typeof size === 'number' ? size : parseInt(String(size), 10) || 40;
+  // Performance rule: in dense lists (numericSize < 56, e.g. 40x40 comments, chips, leaderboards), show poster only
+  const isDenseList = Boolean(avatarId === 'eclipse-wyrm' && numericSize < 56);
+  const effectiveForceStatic = Boolean(forceStatic || isDenseList);
   const effectiveVariant = variant || avatarVariant;
   const pfpItem = avatarId ? getCosmeticById(avatarId) : undefined;
   const isPfp = Boolean(pfpItem && pfpItem.type === 'avatar' && PFP_ARTWORK_MAP[avatarId!]);
-  const { containerRef, canAnimate } = useCosmeticAnimation(avatarId || '', false, forceStatic);
+  const { containerRef, canAnimate } = useCosmeticAnimation(avatarId || '', false, effectiveForceStatic);
 
   if (isPfp && avatarId && PFP_ARTWORK_MAP[avatarId]) {
     const PfpComp = PFP_ARTWORK_MAP[avatarId];
@@ -171,7 +174,7 @@ const AvatarPictureInner: React.FC<AvatarPictureProps> = ({
         title={pfpItem?.name}
         aria-label={`${pfpItem?.name} Profile Picture`}
       >
-        <PfpComp canAnimate={canAnimate} />
+        <PfpComp canAnimate={canAnimate && !effectiveForceStatic} />
       </div>
     );
   }

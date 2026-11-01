@@ -20,11 +20,11 @@ if [ "${1:-}" = "--batch" ] && [ -n "${2:-}" ]; then
   if [ "${BATCH_RANGE}" = "0-29" ]; then
     SAVE_ARG="${SCRIPT_DIR}/eclipse_wyrm.blend"
   fi
-  echo "[render_eclipse_wyrm.sh] Rendering batch ${BATCH_RANGE} at 1024x1024 (32 samples + OIDN, 4 bounces)..."
-  blender -b -t 4 -P "${SCRIPT_DIR}/eclipse_wyrm.py" -- \
+  echo "[render_eclipse_wyrm.sh] Rendering batch ${BATCH_RANGE} at 512x512 (24 samples + OIDN, 4 bounces)..."
+  blender -b -P "${SCRIPT_DIR}/eclipse_wyrm.py" -- \
     --frames "${BATCH_RANGE}" \
-    --samples 32 \
-    --res 1024x1024 \
+    --samples 24 \
+    --res 512x512 \
     --output "${FRAMES_DIR}/frame_" \
     --save-blend "${SAVE_ARG}"
   DONE_NOW=$(find "${FRAMES_DIR}" -maxdepth 1 -name 'frame_*.png' 2>/dev/null | wc -l | tr -d '[:space:]')
@@ -51,8 +51,6 @@ if [ "${FRAME_COUNT}" -lt 150 ]; then
   echo "[render_eclipse_wyrm.sh] ERROR: Expected 150 frames, found ${FRAME_COUNT}" >&2
   exit 1
 fi
-
-rm -f "${OUT_PUBLIC}/hero_0045.png" "${OUT_PUBLIC}/hero_40x40.png"
 
 echo "[render_eclipse_wyrm.sh] Computing loop closure SSIM between frame_0000.png and frame_0149.png..."
 SSIM_LINE=$(ffmpeg -hide_banner -i "${FRAMES_DIR}/frame_0000.png" -i "${FRAMES_DIR}/frame_0149.png" -lavfi ssim -f null - 2>&1 | grep "SSIM" || true)

@@ -38,7 +38,7 @@ export interface CosmeticItem {
  * - Legendary: 700–1200 Kobans
  * - Mythic: 1500+ Kobans
  */
-export const COSMETICS_CATALOG: CosmeticItem[] = [
+const COSMETICS_CATALOG_BASE: CosmeticItem[] = [
   // ─────────────────────────────────────────────────────────────────────────────
   // 1. PROFILE BANNERS (25 Total: 5 New Premium + 20 Core Drops) — id prefix "ban_"
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1975,6 +1975,39 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
     isNew: true,
     featuredOrder: -12,
     createdAt: '2026-10-31T22:00:00.000Z',
+    previewColor: '#F59E0B',
+  },
+];
+
+/**
+ * Flagship dynamic price computation:
+ * Strictly higher than every existing item in the Store (at least 1.5x max catalog price and >= 5000 Kobans).
+ * Computed from data once at catalog initialization so it never goes stale.
+ */
+const MAX_BASE_CATALOG_PRICE = Math.max(
+  ...COSMETICS_CATALOG_BASE.map((item) => item.priceKobans || 0)
+);
+
+export const ECLIPSE_WYRM_DEFAULT_PRICE = Math.max(
+  Math.ceil((MAX_BASE_CATALOG_PRICE * 1.5) / 50) * 50,
+  5000
+);
+
+export const COSMETICS_CATALOG: CosmeticItem[] = [
+  ...COSMETICS_CATALOG_BASE,
+  // ─── FLAGSHIP 3D MYTHIC AVATAR: ECLIPSE WYRM (Item 153) ──────────────────
+  {
+    id: 'eclipse-wyrm',
+    name: 'Eclipse Wyrm',
+    type: 'avatar',
+    priceKobans: ECLIPSE_WYRM_DEFAULT_PRICE,
+    rarity: 'mythic',
+    description: 'An ancient wyrm opens its eyes before a black sun, crowned in gold fire.',
+    animated: true,
+    isAnimated: true,
+    isNew: true,
+    featuredOrder: -20,
+    createdAt: '2026-11-01T00:00:00.000Z',
     previewColor: '#F59E0B',
   },
 ];

@@ -129,6 +129,11 @@ const NEW_25_ITEM_SPECS: Record<
   // 25 NEW 3D-RENDERED LOOP STORE ITEMS + OBSIDIAN ECLIPSE (Items 126–151)
   // ═══════════════════════════════════════════════════════════════════════════
 
+  'eclipse-wyrm': {
+    layersOrMode: 'Blender 4.2.3 LTS 3D Render (512×512, 150f @ 30fps, avatar.webm/mp4 + poster.webp)',
+    motionSummary: 'Flagship Mythic Wyrm portrait: breathing head & neck, pulsing molten vertical slit-pupil eyes, curling nostril smoke & embers, gold crown spikes, rotating obsidian ring with gold veins, corona flare',
+  },
+
   'sovereign-of-the-black-sun': {
     layersOrMode: 'Blender 4.2.3 LTS 3D Render (1920×1080 -> 1200×675, 180f @ 30fps, banner.webm/mp4 + poster.webp)',
     motionSummary: 'Colossal 3D winged Sovereign dragon roaring fire toward a pitch-black eclipsed sun + gold-veined obsidian ring + 14 orbiting slabs + lightning + DoF embers',
@@ -320,7 +325,8 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
       ? item.isNew
       : item.createdAt === '2026-10-31T20:00:00.000Z' ||
         item.id === 'obsidian-eclipse' ||
-        item.id === 'sovereign-of-the-black-sun'
+        item.id === 'sovereign-of-the-black-sun' ||
+        item.id === 'eclipse-wyrm'
   );
   const banners = newItems
     .filter((i) => i.type === 'banner')
@@ -331,7 +337,13 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
       if (b.id === 'obsidian-eclipse') return 1;
       return 0;
     });
-  const avatars = newItems.filter((i) => i.type === 'avatar');
+  const avatars = newItems
+    .filter((i) => i.type === 'avatar')
+    .sort((a, b) => {
+      if (a.id === 'eclipse-wyrm') return -1;
+      if (b.id === 'eclipse-wyrm') return 1;
+      return 0;
+    });
   const frames = newItems.filter((i) => i.type === 'frame');
   const nameplates = newItems.filter((i) => i.type === 'nameplate');
   const effects = newItems.filter((i) => i.type === 'effect');
