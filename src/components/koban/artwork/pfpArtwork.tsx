@@ -9,6 +9,7 @@ import {
   type EmitterConfig,
   type LightningConfig,
 } from '../fx/storeFxEngine';
+import { ECLIPSE_WYRM_POSTER_DATA_URI } from './eclipseWyrmPosterFallback';
 
 interface PfpSvgProps {
   canAnimate?: boolean;
@@ -1807,18 +1808,34 @@ export const PfpYokaiLanternGhost: React.FC<PfpSvgProps> = ({ canAnimate = true,
 // ─────────────────────────────────────────────────────────────────────────────
 // FLAGSHIP 3D MYTHIC AVATAR: ECLIPSE WYRM (id: eclipse-wyrm)
 // ─────────────────────────────────────────────────────────────────────────────
+let nextEclipseWyrmInstanceId = 1;
+
 export const PfpEclipseWyrm: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '' }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const instanceIdRef = useRef<string>(`pfp-eclipse-wyrm-${Math.random().toString(36).slice(2, 9)}`);
+  const instanceIdRef = useRef<string>(`pfp-eclipse-wyrm-${nextEclipseWyrmInstanceId++}`);
+
   const [isVisible, setIsVisible] = useState(true);
   const [isGovernorActive, setIsGovernorActive] = useState(false);
-  const [videoFailed, setVideoFailed] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(() => storeVideoGovernor.isReducedMotion());
+  const [posterStage, setPosterStage] = useState<'initial' | 'retry' | 'embedded'>('initial');
+  const [videoRetry, setVideoRetry] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
 
-  const posterUrl = '/assets/store/eclipse-wyrm/poster.webp';
-  const webmUrl = '/assets/store/eclipse-wyrm/avatar.webm';
-  const mp4Url = '/assets/store/eclipse-wyrm/avatar.mp4';
+  const basePosterUrl = '/assets/store/eclipse-wyrm/poster.webp';
+  const baseWebmUrl = '/assets/store/eclipse-wyrm/avatar.webm';
+  const baseMp4Url = '/assets/store/eclipse-wyrm/avatar.mp4';
+
+  const posterUrl =
+    posterStage === 'initial'
+      ? basePosterUrl
+      : posterStage === 'retry'
+        ? `${basePosterUrl}?v=2`
+        : ECLIPSE_WYRM_POSTER_DATA_URI;
+
+  const webmUrl = videoRetry ? `${baseWebmUrl}?v=2` : baseWebmUrl;
+  const mp4Url = videoRetry ? `${baseMp4Url}?v=2` : baseMp4Url;
 
   const effectiveAnimate = Boolean(canAnimate && !reducedMotion && !videoFailed);
 
@@ -1866,7 +1883,7 @@ export const PfpEclipseWyrm: React.FC<PfpSvgProps> = ({ canAnimate = true, class
       priority: 8,
       setActiveState: setIsGovernorActive,
     });
-  }, [effectiveAnimate, isVisible]);
+  }, [effectiveAnimate, isVisible, videoRetry]);
 
   useEffect(() => {
     storeVideoGovernor.update(instanceIdRef.current, {
@@ -1888,41 +1905,68 @@ export const PfpEclipseWyrm: React.FC<PfpSvgProps> = ({ canAnimate = true, class
     }
   }, [effectiveAnimate, isVisible, isGovernorActive]);
 
+  const handleVideoReady = () => {
+    setVideoReady(true);
+    if (effectiveAnimate && isVisible && isGovernorActive && videoRef.current) {
+      videoRef.current.play().catch(() => {});
+    }
+  };
+
+  const handleVideoError = () => {
+    setVideoReady(false);
+    if (!videoRetry) {
+      setVideoRetry(true);
+    } else {
+      setVideoFailed(true);
+    }
+  };
+
   return (
     <div
       ref={containerRef}
-      className={`relative w-full h-full overflow-hidden select-none aspect-square rounded-full ${className}`}
+      className={`eclipse-wyrm-avatar relative w-full h-full overflow-hidden select-none aspect-square rounded-full ${className}`}
       style={{
-        background: 'radial-gradient(circle, #2A080C 0%, #030104 100%)',
+        backgroundImage: `url("${ECLIPSE_WYRM_POSTER_DATA_URI}"), radial-gradient(circle, #2A080C 0%, #030104 100%)`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
         contain: 'paint',
       }}
       data-avatar-id="eclipse-wyrm"
+      data-testid="eclipse-wyrm-avatar"
     >
       <img
         src={posterUrl}
-        alt="Eclipse Wyrm Avatar"
-        loading="lazy"
+        alt=""
+        aria-hidden="true"
+        loading="eager"
         decoding="async"
-        className={`absolute inset-0 w-full h-full object-cover rounded-full pointer-events-none transition-opacity duration-300 ${
-          effectiveAnimate && isGovernorActive ? 'opacity-0' : 'opacity-100'
-        }`}
+        onError={() => {
+          setPosterStage((prev) =>
+            prev === 'initial' ? 'retry' : 'embedded'
+          );
+        }}
+        className="eclipse-wyrm-poster absolute inset-0 w-full h-full object-cover rounded-full pointer-events-none"
       />
       {effectiveAnimate && (
         <video
+          key={videoRetry ? 'retry' : 'initial'}
           ref={videoRef}
+          data-testid="eclipse-wyrm-video"
           autoPlay
           loop
           muted
           playsInline
           preload="metadata"
           poster={posterUrl}
-          onError={() => setVideoFailed(true)}
-          className={`absolute inset-0 w-full h-full object-cover rounded-full pointer-events-none transition-opacity duration-300 ${
-            isGovernorActive ? 'opacity-100' : 'opacity-0'
+          onLoadedData={handleVideoReady}
+          onCanPlay={handleVideoReady}
+          onError={handleVideoError}
+          className={`eclipse-wyrm-video absolute inset-0 w-full h-full object-cover rounded-full pointer-events-none transition-opacity duration-200 ${
+            isVisible && isGovernorActive && videoReady && !videoFailed ? 'opacity-100' : 'opacity-0'
           }`}
         >
           <source src={webmUrl} type="video/webm" />
-          <source src={mp4Url} type="video/mp4" />
+          <source src={mp4Url} type="video/mp4" onError={handleVideoError} />
         </video>
       )}
     </div>

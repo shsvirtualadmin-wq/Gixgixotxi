@@ -1,3 +1,5 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import {
   doc,
   getDoc,
@@ -8,21 +10,20 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import {
-  getAuth,
-  signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signOut,
 } from 'firebase/auth';
 import { db, auth } from '../src/lib/firebase';
-import { getCosmeticById, COSMETICS_CATALOG } from '../src/data/cosmeticsCatalog';
+import { getCosmeticById, COSMETICS_CATALOG, getCosmeticsByType } from '../src/data/cosmeticsCatalog';
 import { purchaseCosmeticItem } from '../src/services/kobanService';
+import { AvatarPicture } from '../src/components/koban/CosmeticRenderers';
+import { BoardlyAvatar } from '../src/components/ui/BoardlyAvatar';
 
 async function runPurchaseVerification() {
   console.log('=============================================================');
-  console.log('STEP 6: Non-Admin Purchase & Equip Verification (Eclipse Wyrm)');
+  console.log('STEP 6: Full Store, Asset, Render & Non-Admin Purchase Check');
   console.log('=============================================================');
 
-  console.log('\n--- TEST 1: Store Catalog Verification ---');
+  console.log('\n--- TEST 1: Store Catalog & Asset Path Verification ---');
   const item = getCosmeticById('eclipse-wyrm');
   if (!item) {
     throw new Error('FAILED: "eclipse-wyrm" not found in getCosmeticById!');
@@ -37,6 +38,31 @@ async function runPurchaseVerification() {
   console.log(`- Price in Kobans: ${item.priceKobans}`);
   console.log(`- Featured Order: ${item.featuredOrder}`);
   console.log(`- isNew: ${item.isNew}, createdAt: ${item.createdAt}`);
+  console.log(`- posterUrl: ${item.posterUrl}`);
+  console.log(`- webmUrl: ${item.webmUrl}`);
+  console.log(`- mp4Url: ${item.mp4Url}`);
+
+  if (item.posterUrl !== '/assets/store/eclipse-wyrm/poster.webp') {
+    throw new Error(`FAILED: Expected posterUrl "/assets/store/eclipse-wyrm/poster.webp", got "${item.posterUrl}"`);
+  }
+  if (item.webmUrl !== '/assets/store/eclipse-wyrm/avatar.webm') {
+    throw new Error(`FAILED: Expected webmUrl "/assets/store/eclipse-wyrm/avatar.webm", got "${item.webmUrl}"`);
+  }
+  if (item.mp4Url !== '/assets/store/eclipse-wyrm/avatar.mp4') {
+    throw new Error(`FAILED: Expected mp4Url "/assets/store/eclipse-wyrm/avatar.mp4", got "${item.mp4Url}"`);
+  }
+
+  const totalItems = COSMETICS_CATALOG.length;
+  const totalAvatars = getCosmeticsByType('avatar').length;
+  console.log(`- Total catalog items: ${totalItems} (Avatars: ${totalAvatars})`);
+
+  // Verify existing Dragon and sovereign-of-the-black-sun are intact
+  for (const existingId of ['sovereign-of-the-black-sun', 'ban_crimson_dragons_descent', 'pfp_waterfall_dragon', 'pfp_ryujin_sea_dragon']) {
+    if (!getCosmeticById(existingId)) {
+      throw new Error(`FAILED: Protected existing item "${existingId}" missing from catalog!`);
+    }
+  }
+  console.log('✅ Protected existing Dragon items and "sovereign-of-the-black-sun" banner verified intact.');
 
   // Check highest other item
   const otherItems = COSMETICS_CATALOG.filter((it) => it.id !== 'eclipse-wyrm');
@@ -53,6 +79,39 @@ async function runPurchaseVerification() {
     throw new Error(`FAILED: Eclipse Wyrm price (${item.priceKobans}) is not >= 5000 Kobans`);
   }
   console.log('✅ Catalog price check PASSED! Flagship is priced at exactly', item.priceKobans, 'Kobans.');
+
+  console.log('\n--- TEST 1B: HTTP Asset Verification & Player Markup Check ---');
+  for (const [assetPath, expectedMime] of [
+    ['/assets/store/eclipse-wyrm/poster.webp', 'image/webp'],
+    ['/assets/store/eclipse-wyrm/avatar.webm', 'video/webm'],
+    ['/assets/store/eclipse-wyrm/avatar.mp4', 'video/mp4'],
+  ] as const) {
+    const res = await fetch(`http://localhost:3000${assetPath}`, { method: 'HEAD' });
+    const ct = res.headers.get('content-type') || '';
+    const cl = Number(res.headers.get('content-length') || 0);
+    console.log(`  GET ${assetPath} -> status=${res.status}, content-type=${ct}, bytes=${cl}`);
+    if (res.status !== 200 || !ct.includes(expectedMime) || cl <= 1000) {
+      throw new Error(`FAILED: Asset ${assetPath} returned status=${res.status} content-type=${ct} bytes=${cl}`);
+    }
+  }
+
+  const largeHtml = renderToStaticMarkup(React.createElement(AvatarPicture, { itemId: 'eclipse-wyrm', size: 148 }));
+  const denseHtml = renderToStaticMarkup(React.createElement(AvatarPicture, { itemId: 'eclipse-wyrm', size: 40 }));
+  const profileHtml = renderToStaticMarkup(React.createElement(BoardlyAvatar, { equippedAvatar: 'eclipse-wyrm', size: 120 }));
+
+  if (!largeHtml.includes('data-avatar-id="eclipse-wyrm"') || !largeHtml.includes('/assets/store/eclipse-wyrm/avatar.webm') || !largeHtml.includes('/assets/store/eclipse-wyrm/avatar.mp4')) {
+    throw new Error('FAILED: Large AvatarPicture did not render expected video & source markup!');
+  }
+  if (largeHtml.includes('Eclipse Wyrm Avatar')) {
+    throw new Error('FAILED: Large AvatarPicture still contains broken-image alt text "Eclipse Wyrm Avatar"!');
+  }
+  if (denseHtml.includes('<video') || !denseHtml.includes('/assets/store/eclipse-wyrm/poster.webp')) {
+    throw new Error('FAILED: Dense 40x40 AvatarPicture should render poster only (no <video>)!');
+  }
+  if (!profileHtml.includes('data-avatar-id="eclipse-wyrm"')) {
+    throw new Error('FAILED: BoardlyAvatar did not render PfpEclipseWyrm when equipped!');
+  }
+  console.log('✅ HTTP asset headers & player markup (Store card, Detail sheet, Dense list, Profile header) PASSED!');
 
   // User 1: Test sufficient balance, purchase deduction, ledger recording, equip, and duplicate block
   console.log('\n--- TEST 2: Sufficient Balance Purchase & Balance Drop (Normal Non-Admin) ---');

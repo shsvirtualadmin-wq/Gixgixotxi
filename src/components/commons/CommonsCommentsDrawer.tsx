@@ -187,13 +187,14 @@ export function CommonsCommentsDrawer({
                       <BoardlyAvatar
                         equippedAvatar={
                           (comment as any).authorEquippedAvatar ||
-                          (comment.authorAvatar?.startsWith('pfp_')
+                          (comment.authorAvatar?.startsWith('pfp_') || comment.authorAvatar === 'eclipse-wyrm'
                             ? comment.authorAvatar
                             : undefined)
                         }
                         avatarUrl={
                           comment.authorAvatar &&
                           !comment.authorAvatar.startsWith('pfp_') &&
+                          comment.authorAvatar !== 'eclipse-wyrm' &&
                           !comment.authorAvatar.includes('googleusercontent')
                             ? comment.authorAvatar
                             : undefined

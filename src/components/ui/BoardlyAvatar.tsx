@@ -41,26 +41,32 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
 }) => {
   const [imageError, setImageError] = useState(false);
 
-  // 1. Check for Boardly equipped avatar (e.g. pfp_ or catalog cosmetic)
-  const hasEquipped = Boolean(
+  // 1. Check for Boardly equipped avatar (e.g. pfp_, eclipse-wyrm, or catalog cosmetic)
+  const rawUrl = avatarUrl || photoURL;
+  const resolvedCosmeticAvatar =
     equippedAvatar &&
     equippedAvatar !== 'none' &&
     equippedAvatar !== '' &&
-    (equippedAvatar.startsWith('pfp_') || getCosmeticById(equippedAvatar))
-  );
+    (equippedAvatar.startsWith('pfp_') || equippedAvatar === 'eclipse-wyrm' || getCosmeticById(equippedAvatar))
+      ? equippedAvatar
+      : rawUrl &&
+          (rawUrl.startsWith('pfp_') || rawUrl === 'eclipse-wyrm' || getCosmeticById(rawUrl))
+        ? rawUrl
+        : null;
+  const hasEquipped = Boolean(resolvedCosmeticAvatar);
 
-  const rawUrl = avatarUrl || photoURL;
-  const cleanAvatarUrl = !imageError && rawUrl && rawUrl.trim() !== '' ? rawUrl.trim() : null;
+  const cleanAvatarUrl =
+    !hasEquipped && !imageError && rawUrl && rawUrl.trim() !== '' ? rawUrl.trim() : null;
   const initial = (name && name.trim().length > 0 ? name.trim().charAt(0) : 'S').toUpperCase();
 
   // Avatar inner content based on priority
   let innerAvatar: React.ReactNode;
 
-  if (hasEquipped) {
+  if (hasEquipped && resolvedCosmeticAvatar) {
     // Priority 1: Boardly chosen cosmetic avatar
     innerAvatar = (
       <AvatarPicture
-        avatarId={equippedAvatar}
+        avatarId={resolvedCosmeticAvatar}
         size={size}
         forceStatic={forceStatic}
         className="w-full h-full object-cover rounded-full"

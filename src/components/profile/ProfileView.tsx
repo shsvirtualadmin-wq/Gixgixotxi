@@ -269,7 +269,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         const avatarUrl =
           (uData?.avatarUrl as string) ||
           (pubData?.avatarUrl as string) ||
-          (postAuthorAvatar && !postAuthorAvatar.startsWith('pfp_') && !postAuthorAvatar.includes('googleusercontent') ? postAuthorAvatar : null) ||
+          (postAuthorAvatar && !postAuthorAvatar.startsWith('pfp_') && postAuthorAvatar !== 'eclipse-wyrm' && !postAuthorAvatar.includes('googleusercontent') ? postAuthorAvatar : null) ||
           null;
         const photoURL =
           (uData?.photoURL as string) ||

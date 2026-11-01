@@ -354,13 +354,14 @@ export const CommonsPostCard = memo(function CommonsPostCard({
               <BoardlyAvatar
                 equippedAvatar={
                   (post as any).authorEquippedAvatar ||
-                  (post.authorAvatar?.startsWith('pfp_')
+                  (post.authorAvatar?.startsWith('pfp_') || post.authorAvatar === 'eclipse-wyrm'
                     ? post.authorAvatar
                     : undefined)
                 }
                 avatarUrl={
                   post.authorAvatar &&
                   !post.authorAvatar.startsWith('pfp_') &&
+                  post.authorAvatar !== 'eclipse-wyrm' &&
                   !post.authorAvatar.includes('googleusercontent')
                     ? post.authorAvatar
                     : undefined

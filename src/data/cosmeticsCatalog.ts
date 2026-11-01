@@ -26,6 +26,9 @@ export interface CosmeticItem {
   isNew?: boolean;
   createdAt?: string;
   featuredOrder?: number;
+  posterUrl?: string;
+  webmUrl?: string;
+  mp4Url?: string;
 }
 
 /**
@@ -2009,6 +2012,9 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
     featuredOrder: -20,
     createdAt: '2026-11-01T00:00:00.000Z',
     previewColor: '#F59E0B',
+    posterUrl: '/assets/store/eclipse-wyrm/poster.webp',
+    webmUrl: '/assets/store/eclipse-wyrm/avatar.webm',
+    mp4Url: '/assets/store/eclipse-wyrm/avatar.mp4',
   },
 ];
 
