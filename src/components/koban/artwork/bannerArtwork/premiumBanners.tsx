@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StoreFxCanvas } from '../../fx/StoreFxCanvas';
+import { StoreLoopVideo } from '../../fx/StoreLoopVideo';
 import {
   COLOR_RAMPS,
   ParticleShape,
@@ -570,3 +571,290 @@ export const ObsidianShogunCitadelBanner: React.FC<BannerProps> = ({ canAnimate 
     />
   );
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5 NEW 3D-RENDERED LOOP BANNERS (Wave 2: Items 126–130)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 6. Phoenix Ember Sunrise (ban_phoenix_ember_sunrise) — Mythic Animated
+ * A giant phoenix rising over a burning horizon, embers drifting.
+ */
+export const PhoenixEmberSunriseBanner: React.FC<BannerProps> = ({ canAnimate = true }) => {
+  const emitters = useMemo<EmitterConfig[]>(
+    () => [
+      {
+        rate: 32,
+        shape: ParticleShape.Spark,
+        additive: true,
+        ramp: COLOR_RAMPS.dragonFire,
+        xMin: 0.05,
+        xMax: 0.95,
+        yMin: 0.65,
+        yMax: 1.02,
+        vxMin: -0.1,
+        vxMax: 0.14,
+        vyMin: -0.46,
+        vyMax: -0.18,
+        gravityY: -0.08,
+        turbulence: 0.35,
+        lifeMin: 1.5,
+        lifeMax: 3.0,
+        sizeStartMin: 2.2,
+        sizeStartMax: 4.4,
+        sizeEndMin: 0.6,
+        sizeEndMax: 1.4,
+        alphaPeak: 0.95,
+      },
+      {
+        rate: 16,
+        shape: ParticleShape.SoftGlow,
+        additive: true,
+        ramp: COLOR_RAMPS.fallingStars,
+        xMin: 0.25,
+        xMax: 0.75,
+        yMin: 0.35,
+        yMax: 0.85,
+        vxMin: -0.06,
+        vxMax: 0.06,
+        vyMin: -0.24,
+        vyMax: -0.08,
+        turbulence: 0.22,
+        lifeMin: 1.6,
+        lifeMax: 3.2,
+        sizeStartMin: 4.0,
+        sizeStartMax: 8.5,
+        sizeEndMin: 1.2,
+        sizeEndMax: 3.2,
+        alphaPeak: 0.7,
+      },
+    ],
+    []
+  );
+
+  return (
+    <div
+      className="relative w-full h-full overflow-hidden select-none"
+      style={{
+        background: 'linear-gradient(180deg, #090204 0%, #450A0A 50%, #B45309 85%, #FEF08A 100%)',
+        contain: 'paint',
+      }}
+    >
+      <StoreLoopVideo
+        itemId="ban_phoenix_ember_sunrise"
+        animated={true}
+        canAnimate={canAnimate}
+        objectFit="cover"
+        className="absolute inset-0 w-full h-full"
+      />
+      <StoreFxCanvas
+        emitters={emitters}
+        maxParticles={90}
+        seed={601}
+        canAnimate={canAnimate}
+        className="absolute inset-0 w-full h-full z-[3]"
+      />
+    </div>
+  );
+};
+
+/**
+ * 7. Cyber Shibuya Night (ban_cyber_shibuya_night) — Legendary Animated
+ * A neon crossing, holographic kanji ads, rain and passing light trails.
+ */
+export const CyberShibuyaNightBanner: React.FC<BannerProps> = ({ canAnimate = true }) => {
+  const emitters = useMemo<EmitterConfig[]>(
+    () => [
+      {
+        rate: 44,
+        shape: ParticleShape.Streak,
+        additive: true,
+        ramp: COLOR_RAMPS.neonKyoto,
+        xMin: -0.05,
+        xMax: 1.08,
+        yMin: -0.08,
+        yMax: 0.15,
+        vxMin: -0.22,
+        vxMax: -0.15,
+        vyMin: 0.85,
+        vyMax: 1.28,
+        lifeMin: 0.6,
+        lifeMax: 1.1,
+        sizeStartMin: 1.4,
+        sizeStartMax: 2.5,
+        sizeEndMin: 1.0,
+        sizeEndMax: 1.8,
+        alphaPeak: 0.82,
+      },
+    ],
+    []
+  );
+
+  return (
+    <div
+      className="relative w-full h-full overflow-hidden select-none"
+      style={{
+        background: 'linear-gradient(180deg, #02040D 0%, #0B132B 55%, #1E1035 100%)',
+        contain: 'paint',
+      }}
+    >
+      <StoreLoopVideo
+        itemId="ban_cyber_shibuya_night"
+        animated={true}
+        canAnimate={canAnimate}
+        objectFit="cover"
+        className="absolute inset-0 w-full h-full"
+      />
+      <StoreFxCanvas
+        emitters={emitters}
+        maxParticles={85}
+        seed={602}
+        canAnimate={canAnimate}
+        className="absolute inset-0 w-full h-full z-[3]"
+      />
+    </div>
+  );
+};
+
+/**
+ * 8. Eclipse Tengu Peak (ban_eclipse_tengu_peak) — Legendary Animated
+ * A tengu silhouette on a mountain under a solar eclipse, wind-blown clouds.
+ */
+export const EclipseTenguPeakBanner: React.FC<BannerProps> = ({ canAnimate = true }) => {
+  const emitters = useMemo<EmitterConfig[]>(
+    () => [
+      {
+        rate: 24,
+        shape: ParticleShape.Petal,
+        additive: true,
+        ramp: COLOR_RAMPS.bloodMoonAsh,
+        xMin: -0.06,
+        xMax: 0.9,
+        yMin: 0.15,
+        yMax: 0.92,
+        vxMin: 0.16,
+        vxMax: 0.34,
+        vyMin: -0.12,
+        vyMax: 0.08,
+        turbulence: 0.32,
+        lifeMin: 1.8,
+        lifeMax: 3.4,
+        sizeStartMin: 2.4,
+        sizeStartMax: 4.8,
+        sizeEndMin: 1.0,
+        sizeEndMax: 2.2,
+        alphaPeak: 0.88,
+      },
+    ],
+    []
+  );
+
+  return (
+    <div
+      className="relative w-full h-full overflow-hidden select-none"
+      style={{
+        background: 'linear-gradient(180deg, #040206 0%, #1C0B19 50%, #431407 100%)',
+        contain: 'paint',
+      }}
+    >
+      <StoreLoopVideo
+        itemId="ban_eclipse_tengu_peak"
+        animated={true}
+        canAnimate={canAnimate}
+        objectFit="cover"
+        className="absolute inset-0 w-full h-full"
+      />
+      <StoreFxCanvas
+        emitters={emitters}
+        maxParticles={75}
+        seed={603}
+        canAnimate={canAnimate}
+        className="absolute inset-0 w-full h-full z-[3]"
+      />
+    </div>
+  );
+};
+
+/**
+ * 9. Spirit Lantern Festival (ban_spirit_lantern_festival) — Epic Animated
+ * Hundreds of glowing lanterns floating up a river valley.
+ */
+export const SpiritLanternFestivalBanner: React.FC<BannerProps> = ({ canAnimate = true }) => {
+  const emitters = useMemo<EmitterConfig[]>(
+    () => [
+      {
+        rate: 24,
+        shape: ParticleShape.SoftGlow,
+        additive: true,
+        ramp: COLOR_RAMPS.fallingStars,
+        xMin: 0.08,
+        xMax: 0.92,
+        yMin: 0.55,
+        yMax: 1.02,
+        vxMin: -0.06,
+        vxMax: 0.08,
+        vyMin: -0.26,
+        vyMax: -0.1,
+        turbulence: 0.2,
+        lifeMin: 2.0,
+        lifeMax: 3.8,
+        sizeStartMin: 3.2,
+        sizeStartMax: 6.8,
+        sizeEndMin: 1.2,
+        sizeEndMax: 2.8,
+        alphaPeak: 0.85,
+      },
+    ],
+    []
+  );
+
+  return (
+    <div
+      className="relative w-full h-full overflow-hidden select-none"
+      style={{
+        background: 'linear-gradient(180deg, #040816 0%, #111C38 55%, #27171C 100%)',
+        contain: 'paint',
+      }}
+    >
+      <StoreLoopVideo
+        itemId="ban_spirit_lantern_festival"
+        animated={true}
+        canAnimate={canAnimate}
+        objectFit="cover"
+        className="absolute inset-0 w-full h-full"
+      />
+      <StoreFxCanvas
+        emitters={emitters}
+        maxParticles={75}
+        seed={604}
+        canAnimate={canAnimate}
+        className="absolute inset-0 w-full h-full z-[3]"
+      />
+    </div>
+  );
+};
+
+/**
+ * 10. Crimson Lotus Lake (ban_crimson_lotus_lake) — Epic Static
+ * A blood-red lotus lake at dusk with a lone pagoda.
+ */
+export const CrimsonLotusLakeBanner: React.FC<BannerProps> = () => {
+  return (
+    <div
+      className="relative w-full h-full overflow-hidden select-none"
+      style={{
+        background: 'linear-gradient(180deg, #090205 0%, #3B0712 50%, #4C0519 100%)',
+        contain: 'paint',
+      }}
+    >
+      <StoreLoopVideo
+        itemId="ban_crimson_lotus_lake"
+        animated={false}
+        canAnimate={false}
+        objectFit="cover"
+        className="absolute inset-0 w-full h-full"
+      />
+    </div>
+  );
+};
+

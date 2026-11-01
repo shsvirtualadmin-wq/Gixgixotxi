@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef } from 'react';
 import { storeFxScheduler } from '../fx/storeFxEngine';
+import { StoreLoopVideo } from '../fx/StoreLoopVideo';
 
 interface NameplateProps {
   itemId: string;
@@ -31,6 +32,8 @@ interface PremiumNameplateConfig {
   ornamentPathLeft: React.ReactNode;
   ornamentPathRight: React.ReactNode;
   borderPathD: string;
+  has3DLoop?: boolean;
+  staticOnly?: boolean;
 }
 
 const PREMIUM_NAMEPLATE_CONFIGS: Record<string, PremiumNameplateConfig> = {
@@ -189,6 +192,162 @@ const PREMIUM_NAMEPLATE_CONFIGS: Record<string, PremiumNameplateConfig> = {
       </g>
     ),
   },
+  // ─── 5 NEW PREMIUM NAMEPLATES (Wave 2: Items 141–145) ───────────────────
+  'plate-phoenix-crest': {
+    id: 'plate-phoenix-crest',
+    has3DLoop: true,
+    bgGradient: 'linear-gradient(125deg, #270507 0%, #7C2D12 42%, #B45309 74%, #3B070B 100%)',
+    shimmerGradient: 'linear-gradient(108deg, transparent 15%, rgba(254,240,138,0.14) 38%, rgba(253,224,71,0.48) 50%, rgba(249,115,22,0.22) 62%, transparent 85%)',
+    smokeColorA: '#F59E0B',
+    smokeColorB: '#EA580C',
+    borderOuterColor: '#F59E0B',
+    borderFlowColor: '#FEF08A',
+    scanlineColor: 'rgba(254, 240, 138, 0.34)',
+    textColor: '#FEFCE8',
+    textShadow: '0 1px 2px rgba(0,0,0,0.95), 0 0 8px rgba(245,158,11,0.85)',
+    shortIdColor: '#FDE68A',
+    badgeBg: '#451A03',
+    badgeText: '#FEF08A',
+    badgeBorder: '#F59E0B',
+    turbulenceFreq: '0.038 0.085',
+    displacementScale: 8,
+    borderPathD: 'M12,1.5 L218,1.5 L228.5,20 L218,38.5 L12,38.5 L1.5,20 Z',
+    ornamentPathLeft: (
+      <g>
+        <path d="M1 12 C4 5 9 2 15 3 C11 7 10 10 13 14 C8 13 4 13 1 12 Z" fill="#FDE047" stroke="#92400E" strokeWidth="0.9" />
+      </g>
+    ),
+    ornamentPathRight: (
+      <g>
+        <path d="M15 12 C12 5 7 2 1 3 C5 7 6 10 3 14 C8 13 12 13 15 12 Z" fill="#FDE047" stroke="#92400E" strokeWidth="0.9" />
+      </g>
+    ),
+  },
+  'plate-raijin-storm-plate': {
+    id: 'plate-raijin-storm-plate',
+    has3DLoop: true,
+    bgGradient: 'linear-gradient(125deg, #050B18 0%, #0F172A 45%, #1E3A8A 78%, #090D16 100%)',
+    shimmerGradient: 'linear-gradient(108deg, transparent 18%, rgba(56,189,248,0.14) 38%, rgba(254,240,138,0.44) 50%, rgba(56,189,248,0.22) 62%, transparent 82%)',
+    smokeColorA: '#38BDF8',
+    smokeColorB: '#FACC15',
+    borderOuterColor: '#0284C7',
+    borderFlowColor: '#FEF08A',
+    scanlineColor: 'rgba(56, 189, 248, 0.35)',
+    textColor: '#F0F9FF',
+    textShadow: '0 1px 2px rgba(0,0,0,0.95), 0 0 8px rgba(56,189,248,0.85)',
+    shortIdColor: '#7DD3FC',
+    badgeBg: '#0C4A6E',
+    badgeText: '#FEF08A',
+    badgeBorder: '#38BDF8',
+    turbulenceFreq: '0.045 0.095',
+    displacementScale: 9,
+    borderPathD: 'M8,1.5 L222,1.5 L228.5,12 L222,38.5 L8,38.5 L1.5,28 Z',
+    ornamentPathLeft: (
+      <g>
+        <polygon points="9,1 3,9 8,9 6,15 14,7 9,7" fill="#FEF08A" stroke="#0284C7" strokeWidth="0.8" />
+      </g>
+    ),
+    ornamentPathRight: (
+      <g>
+        <polygon points="9,1 3,9 8,9 6,15 14,7 9,7" fill="#FEF08A" stroke="#0284C7" strokeWidth="0.8" />
+      </g>
+    ),
+  },
+  'plate-cyber-glitch': {
+    id: 'plate-cyber-glitch',
+    has3DLoop: true,
+    bgGradient: 'linear-gradient(125deg, #060414 0%, #160A2C 45%, #082F49 78%, #090418 100%)',
+    shimmerGradient: 'linear-gradient(102deg, transparent 18%, rgba(255,0,122,0.22) 42%, rgba(0,240,255,0.48) 50%, rgba(253,224,71,0.24) 58%, transparent 82%)',
+    smokeColorA: '#00F0FF',
+    smokeColorB: '#FF007A',
+    borderOuterColor: '#FF007A',
+    borderFlowColor: '#00F0FF',
+    scanlineColor: 'rgba(0, 240, 255, 0.42)',
+    textColor: '#ECFEFF',
+    textShadow: '-1px 0 rgba(255,0,122,0.85), 1px 0 rgba(0,240,255,0.85), 0 1px 2px rgba(0,0,0,0.95)',
+    shortIdColor: '#F472B6',
+    badgeBg: '#3B0764',
+    badgeText: '#00F0FF',
+    badgeBorder: '#FF007A',
+    turbulenceFreq: '0.06 0.14',
+    displacementScale: 8,
+    borderPathD: 'M4,1.5 L224,1.5 L228.5,8 L226,38.5 L6,38.5 L1.5,32 Z',
+    ornamentPathLeft: (
+      <g>
+        <rect x="2" y="3" width="10" height="4" fill="#00F0FF" />
+        <rect x="4" y="9" width="10" height="4" fill="#FF007A" />
+      </g>
+    ),
+    ornamentPathRight: (
+      <g>
+        <rect x="4" y="3" width="10" height="4" fill="#FF007A" />
+        <rect x="2" y="9" width="10" height="4" fill="#00F0FF" />
+      </g>
+    ),
+  },
+  'plate-frozen-sakura-glass': {
+    id: 'plate-frozen-sakura-glass',
+    has3DLoop: true,
+    bgGradient: 'linear-gradient(128deg, #081C2E 0%, #16324F 44%, #3B1A3A 78%, #0B192C 100%)',
+    shimmerGradient: 'linear-gradient(108deg, transparent 16%, rgba(224,242,254,0.16) 40%, rgba(244,114,182,0.42) 50%, rgba(125,211,252,0.22) 60%, transparent 84%)',
+    smokeColorA: '#7DD3FC',
+    smokeColorB: '#F472B6',
+    borderOuterColor: '#38BDF8',
+    borderFlowColor: '#FBCFE8',
+    scanlineColor: 'rgba(224, 242, 254, 0.32)',
+    textColor: '#F8FAFC',
+    textShadow: '0 1px 2px rgba(0,0,0,0.95), 0 0 8px rgba(56,189,248,0.75)',
+    shortIdColor: '#F9A8D4',
+    badgeBg: '#0C4A6E',
+    badgeText: '#FCE7F3',
+    badgeBorder: '#7DD3FC',
+    turbulenceFreq: '0.032 0.075',
+    displacementScale: 6,
+    borderPathD: 'M8,1.5 L222,1.5 L228.5,8 L228.5,32 L222,38.5 L8,38.5 L1.5,32 L1.5,8 Z',
+    ornamentPathLeft: (
+      <g>
+        <path d="M8 2 C11 5 13 9 8 14 C3 9 5 5 8 2 Z" fill="#F472B6" stroke="#E0F2FE" strokeWidth="0.9" />
+      </g>
+    ),
+    ornamentPathRight: (
+      <g>
+        <path d="M8 2 C11 5 13 9 8 14 C3 9 5 5 8 2 Z" fill="#7DD3FC" stroke="#FCE7F3" strokeWidth="0.9" />
+      </g>
+    ),
+  },
+  'plate-ronin-katana-slash': {
+    id: 'plate-ronin-katana-slash',
+    has3DLoop: true,
+    staticOnly: true,
+    bgGradient: 'linear-gradient(125deg, #09090B 0%, #18181B 42%, #450A0A 50%, #09090B 100%)',
+    shimmerGradient: 'linear-gradient(115deg, transparent 46%, rgba(239,68,68,0.55) 49.5%, rgba(255,255,255,0.75) 50%, rgba(220,38,38,0.55) 50.5%, transparent 54%)',
+    smokeColorA: '#DC2626',
+    smokeColorB: '#27272A',
+    borderOuterColor: '#DC2626',
+    borderFlowColor: '#FCA5A5',
+    scanlineColor: 'rgba(239, 68, 68, 0.28)',
+    textColor: '#FAFAFA',
+    textShadow: '0 1px 2px rgba(0,0,0,0.95), 0 0 6px rgba(220,38,38,0.75)',
+    shortIdColor: '#FCA5A5',
+    badgeBg: '#27272A',
+    badgeText: '#FCA5A5',
+    badgeBorder: '#DC2626',
+    turbulenceFreq: '0.03 0.06',
+    displacementScale: 4,
+    borderPathD: 'M10,1.5 L228.5,1.5 L220,38.5 L1.5,38.5 Z',
+    ornamentPathLeft: (
+      <g>
+        <line x1="2" y1="14" x2="14" y2="2" stroke="#E2E8F0" strokeWidth="2.2" strokeLinecap="round" />
+        <line x1="2" y1="14" x2="14" y2="2" stroke="#EF4444" strokeWidth="0.9" />
+      </g>
+    ),
+    ornamentPathRight: (
+      <g>
+        <line x1="2" y1="14" x2="14" y2="2" stroke="#E2E8F0" strokeWidth="2.2" strokeLinecap="round" />
+        <line x1="2" y1="14" x2="14" y2="2" stroke="#EF4444" strokeWidth="0.9" />
+      </g>
+    ),
+  },
 };
 
 const PremiumAnimatedNameplate: React.FC<{
@@ -236,24 +395,25 @@ const PremiumAnimatedNameplate: React.FC<{
       }
     };
 
-    if (!canAnimate) {
+    if (!canAnimate || config.staticOnly) {
       applyFrame(1.4);
       return;
     }
 
-    storeFxScheduler.register({
+    const unregister = storeFxScheduler.register({
       id: taskId,
       element: el,
+      canAnimate: true,
       onFrame: (_dt, elapsed) => applyFrame(elapsed),
       onStaticFrame: () => applyFrame(1.4),
     });
 
     return () => {
-      storeFxScheduler.unregister(taskId);
+      unregister();
     };
-  }, [canAnimate, taskId]);
+  }, [canAnimate, config.staticOnly, taskId]);
 
-  // Full player name is ALWAYS visible (never single-line truncated on the 5 new items; wraps up to 2 lines or full wrap)
+  // Full player name is ALWAYS visible (never single-line truncated on the premium items; wraps up to 2 lines or full wrap)
   const textWrapClass =
     allowWrap === 'full'
       ? 'whitespace-normal break-words leading-snug'
@@ -271,6 +431,17 @@ const PremiumAnimatedNameplate: React.FC<{
         contain: 'paint',
       }}
     >
+      {/* Pre-rendered 3D Plate Decoration Loop (600x120) */}
+      {config.has3DLoop && (
+        <StoreLoopVideo
+          itemId={config.id}
+          animated={!config.staticOnly}
+          canAnimate={canAnimate && !config.staticOnly}
+          objectFit="cover"
+          className="absolute inset-0 w-full h-full opacity-55"
+        />
+      )}
+
       {/* SVG feTurbulence + feDisplacementMap Drifting Smoke & Ornate Border Path */}
       <svg
         className="absolute inset-0 w-full h-full pointer-events-none"

@@ -103,7 +103,7 @@ const NEW_25_ITEM_SPECS: Record<
     motionSummary: 'Continuous crimson shimmer + drifting displaced blood-moon mist + scroll border flow + 2-line wrap',
   },
 
-  // 5 Profile Effects
+  // 5 Profile Effects (Wave 1)
   'effect-dragon-fire-aura': {
     layersOrMode: 'Canvas 2D Only (StoreFxCanvas Typed-Array Pool)',
     motionSummary: 'Rising turbulent additive flames (white -> orange -> crimson -> smoke) + fast rising sparks',
@@ -124,6 +124,125 @@ const NEW_25_ITEM_SPECS: Record<
     layersOrMode: 'Canvas 2D Only (StoreFxCanvas Streak Pool)',
     motionSummary: 'Golden diagonal meteors with tapered fading tails, rare bright streaks & twinkling stardust wake',
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 25 NEW 3D-RENDERED LOOP STORE ITEMS + OBSIDIAN ECLIPSE (Items 126–151)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  'obsidian-eclipse': {
+    layersOrMode: 'Real-Time 3D Three.js/WebGL + 180f Video Loop (banner.webm/mp4)',
+    motionSummary: '3D black eclipse sun + gold corona & diamond-ring flare + bevelled obsidian ring with gold veins + 18 orbiting slabs + 1,200 DoF embers',
+  },
+
+  // 5 Banners (Wave 2)
+  ban_phoenix_ember_sunrise: {
+    layersOrMode: 'Three.js 3D Loop (loop.webm/webp 30fps, 90f) + Canvas FX',
+    motionSummary: '3D articulated golden phoenix flapping over a burning volcanic horizon + helical rising embers',
+  },
+  ban_cyber_shibuya_night: {
+    layersOrMode: 'Three.js 3D Loop (loop.webm/webp 30fps, 90f) + Canvas FX',
+    motionSummary: '3D Shibuya crossing towers with holographic kanji billboards, wet road reflections, rain & light trails',
+  },
+  ban_eclipse_tengu_peak: {
+    layersOrMode: 'Three.js 3D Loop (loop.webm/webp 30fps, 90f) + Canvas FX',
+    motionSummary: '3D winged tengu silhouette atop a mountain peak under a pulsing solar eclipse ring & wind-blown clouds',
+  },
+  ban_spirit_lantern_festival: {
+    layersOrMode: 'Three.js 3D Loop (loop.webm/webp 30fps, 90f) + Canvas FX',
+    motionSummary: '45+ 3D glowing paper lanterns floating & swaying upward through a twilight river valley',
+  },
+  ban_crimson_lotus_lake: {
+    layersOrMode: 'Three.js 3D Painted Static Poster (1200×675 poster.webp)',
+    motionSummary: 'Static high-res 3D blood-red lotus lake at dusk with sculpted crimson lotuses and a 5-tier pagoda',
+  },
+
+  // 5 Avatars (Wave 2)
+  pfp_phoenix_ascendant: {
+    layersOrMode: 'Three.js 3D Loop (loop.webm/webp 30fps, 90f) + Canvas FX',
+    motionSummary: '3D flame phoenix bust with undulating burning feather crest, pulsing solar eyes & rising sparks',
+  },
+  pfp_ryujin_sea_dragon: {
+    layersOrMode: 'Three.js 3D Loop (loop.webm/webp 30fps, 90f) + Canvas FX',
+    motionSummary: '3D teal sea dragon with iridescent PBR scales, swaying whiskers, cyan eyes & water ripples',
+  },
+  pfp_shadow_ninja_mask: {
+    layersOrMode: 'Three.js 3D Loop (loop.webm/webp 30fps, 90f) + Canvas FX',
+    motionSummary: '3D faceted obsidian shinobi mask with glowing crimson eyes and drifting shadow smoke',
+  },
+  pfp_raijin_thunder_god: {
+    layersOrMode: 'Three.js 3D Loop (loop.webm/webp 30fps, 90f) + Lightning FX',
+    motionSummary: '3D thunder god bust surrounded by a rotating 8-drum taiko ring and branching lightning arcs',
+  },
+  pfp_yokai_lantern_ghost: {
+    layersOrMode: 'Three.js 3D Loop (loop.webm/webp 30fps, 90f) + Canvas FX',
+    motionSummary: '3D paper-lantern yokai bobbing in 3D space with a flickering inner soul flame & spirit wisps',
+  },
+
+  // 5 Avatar Frames (Wave 2)
+  'frame-phoenix-feather-halo': {
+    layersOrMode: 'Three.js 3D Alpha Loop (loop.webm/webp 60fps, 90f) + SVG/FX',
+    motionSummary: '3D ring of 16 burning phoenix feathers orbiting clear center + counter-rotating runes & sparks',
+  },
+  'frame-frost-crystal-ring': {
+    layersOrMode: 'Three.js 3D Alpha Loop (loop.webm/webp 60fps, 90f) + SVG/FX',
+    motionSummary: '3D ring of 12 rotating faceted ice crystals with cold specular light sweep & frost motes',
+  },
+  'frame-cyber-circuit-ring': {
+    layersOrMode: 'Three.js 3D Alpha Loop (loop.webm/webp 60fps, 90f) + SVG/FX',
+    motionSummary: '3D neon PCB circuit-board torus with high-speed cyan/magenta data pulses racing around the ring',
+  },
+  'frame-spirit-flame-wreath': {
+    layersOrMode: 'Three.js 3D Alpha Loop (loop.webm/webp 60fps, 90f) + SVG/FX',
+    motionSummary: '3D circular wreath of 14 blue spirit flames orbiting smoothly around the clear avatar center',
+  },
+  'frame-shuriken-orbit': {
+    layersOrMode: 'Three.js 3D Alpha Loop (loop.webm/webp 60fps, 90f) + SVG/FX',
+    motionSummary: 'Four 3D brushed-steel shuriken spinning on their axes while orbiting with cyan motion trails',
+  },
+
+  // 5 Nameplates (Wave 2)
+  'plate-phoenix-crest': {
+    layersOrMode: 'Three.js 3D Loop (600×120 60fps) + SVG Smoke & Shimmer',
+    motionSummary: '3D gold-and-flame beveled plate with flaring wing crests, ember shimmer & 2-line live HTML text',
+  },
+  'plate-raijin-storm-plate': {
+    layersOrMode: 'Three.js 3D Loop (600×120 60fps) + SVG Lightning Border',
+    motionSummary: '3D dark storm-iron plate with Raijin crests, high-voltage border lightning & 2-line live HTML text',
+  },
+  'plate-cyber-glitch': {
+    layersOrMode: 'Three.js 3D Loop (600×120 60fps) + RGB Glitch Shimmer',
+    motionSummary: '3D holographic plate with RGB-split chromatic pulses, scanline sweep & 2-line live HTML text',
+  },
+  'plate-frozen-sakura-glass': {
+    layersOrMode: 'Three.js 3D Loop (600×120 60fps) + Frosted Petal Sweep',
+    motionSummary: '3D frosted ice-glass plate with suspended sakura petals, cold light sweep & 2-line live HTML text',
+  },
+  'plate-ronin-katana-slash': {
+    layersOrMode: 'Three.js 3D Static Poster (600×120 poster.webp) + SVG',
+    motionSummary: 'Static matte-black armor plate bisected by a diagonal katana slash & crimson edge + 2-line HTML text',
+  },
+
+  // 5 Profile Effects (Wave 2)
+  'effect-phoenix-rebirth-flames': {
+    layersOrMode: 'Three.js 3D Alpha Loop (600×800 60fps) + Canvas FX',
+    motionSummary: '3D flame phoenix silhouette rising with swirling ribbons of fire & burning feathers clipped to card',
+  },
+  'effect-frost-spirit-blizzard': {
+    layersOrMode: 'Three.js 3D Alpha Loop (600×800 60fps) + Canvas FX',
+    motionSummary: '3D blizzard vortex of swirling snow and rotating faceted ice shards with cold cyan glow',
+  },
+  'effect-cyber-glitch-matrix': {
+    layersOrMode: 'Three.js 3D Alpha Loop (600×800 60fps) + Canvas FX',
+    motionSummary: '3D falling neon code columns in perspective depth with periodic horizontal holographic glitch bars',
+  },
+  'effect-lantern-spirit-drift': {
+    layersOrMode: 'Three.js 3D Alpha Loop (600×800 60fps) + Canvas FX',
+    motionSummary: '3D glowing paper lanterns floating & swaying upward through the profile card with warm halos',
+  },
+  'effect-shuriken-storm': {
+    layersOrMode: 'Three.js 3D Alpha Loop (600×800 60fps) + Canvas FX',
+    motionSummary: '3D spinning steel shuriken streaking diagonally across the card with luminous slash trails',
+  },
 };
 
 export const StoreItemsDevPreviewPage: React.FC = () => {
@@ -135,6 +254,8 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
   const [visibleTasks, setVisibleTasks] = useState<number>(0);
   const [simulateLongName, setSimulateLongName] = useState<boolean>(false);
   const [pauseAnimations, setPauseAnimations] = useState<boolean>(false);
+  const [showAllWaves, setShowAllWaves] = useState<boolean>(false);
+  const [bannerUiTheme, setBannerUiTheme] = useState<'none' | 'dark' | 'light'>('none');
 
   useEffect(() => {
     if (import.meta.env.DEV) {
@@ -189,8 +310,14 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
     return () => cancelAnimationFrame(rafId);
   }, []);
 
-  const newItems = COSMETICS_CATALOG.filter((item) => item.isNew);
-  const banners = newItems.filter((i) => i.type === 'banner');
+  const newItems = COSMETICS_CATALOG.filter((item) =>
+    showAllWaves
+      ? item.isNew
+      : item.createdAt === '2026-10-31T20:00:00.000Z' || item.id === 'obsidian-eclipse'
+  );
+  const banners = newItems
+    .filter((i) => i.type === 'banner')
+    .sort((a, b) => (a.id === 'obsidian-eclipse' ? -1 : b.id === 'obsidian-eclipse' ? 1 : 0));
   const avatars = newItems.filter((i) => i.type === 'avatar');
   const frames = newItems.filter((i) => i.type === 'frame');
   const nameplates = newItems.filter((i) => i.type === 'nameplate');
@@ -223,17 +350,18 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
   }
 
   const samplePlayerName = simulateLongName
-    ? 'Grandmaster Commander Miyamoto Musashi of Kyoto'
+    ? 'Sir Reginald Von Ravenscroft the Third'
     : 'Zenryu Captain';
 
   const renderSpecFooter = (item: CosmeticItem) => {
     const spec = NEW_25_ITEM_SPECS[item.id];
+    const priceVal = item.priceKobans ?? 0;
     return (
       <div className="p-3.5 border-t border-white/10 bg-[#0C0C12] flex flex-col gap-1.5">
         <div className="flex items-center justify-between gap-2">
           <span className="font-heading font-bold text-sm text-white">{item.name}</span>
           <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
-            {item.rarity} · {item.price.toLocaleString()} K
+            {item.rarity} · {priceVal.toLocaleString()} K
           </span>
         </div>
         <div className="text-[11px] font-mono text-cyan-300/90 flex items-center gap-1.5">
@@ -262,10 +390,13 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
             <div>
               <h1 className="text-base sm:text-lg font-heading font-bold flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-amber-400" />
-                <span>25 New Store Items — Live FX Engine Self-Review (/dev/store-items)</span>
+                <span>
+                  25 New 3D Store Items — Live FX & Loop Self-Review (/dev/store-items) · Catalog Total:{' '}
+                  {COSMETICS_CATALOG.length}
+                </span>
               </h1>
               <p className="text-xs text-zinc-400">
-                Single page-wide rAF loop · IntersectionObserver auto-pause · Typed-array particles · Zero flipbooks
+                Three.js 3D WebM/WebP Loops (90–180 frames, periodic) + Canvas FX · Max 8 concurrent videos · Zero flipbooks
               </p>
             </div>
           </div>
@@ -279,6 +410,29 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
                 {visibleTasks}/{activeTasks} visible tasks
               </span>
             </div>
+
+            <button
+              type="button"
+              data-testid="toggle-banner-ui-theme"
+              onClick={() =>
+                setBannerUiTheme((prev) => (prev === 'none' ? 'dark' : prev === 'dark' ? 'light' : 'none'))
+              }
+              className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-xs font-medium text-zinc-200 transition-colors"
+            >
+              Banner UI Overlay: {bannerUiTheme.toUpperCase()}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowAllWaves((v) => !v)}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                showAllWaves
+                  ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                  : 'bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10'
+              }`}
+            >
+              {showAllWaves ? 'Showing All 50 New Items' : 'Showing Latest 25 Items'}
+            </button>
 
             <button
               type="button"
@@ -309,11 +463,11 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-8 pt-8 space-y-12">
-        {/* 1. BANNERS (5 Items) */}
+        {/* 1. BANNERS */}
         <section className="space-y-4">
           <div className="flex items-baseline justify-between border-b border-white/10 pb-2">
             <h2 className="text-lg font-heading font-bold text-amber-300">
-              1. Banners (5 Items — 16:9 · 5 Transparent WebP Layers + Parallax + Canvas FX)
+              1. Banners ({banners.length} Items — 16:9 · Three.js 3D Loop + Canvas FX)
             </h2>
             <span className="text-xs font-mono text-zinc-400">1200×675 · overflow: hidden; contain: paint</span>
           </div>
@@ -321,13 +475,46 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
             {banners.map((item) => (
               <div
                 key={item.id}
+                data-dev-item-card={item.id}
                 className="rounded-xl border border-white/15 bg-[#101018] overflow-hidden shadow-lg flex flex-col"
               >
                 <div
                   className="relative w-full aspect-[16/9] overflow-hidden"
                   style={{ overflow: 'hidden', contain: 'paint' }}
                 >
-                  <BannerRenderer itemId={item.id} canAnimate={!pauseAnimations} />
+                  <BannerRenderer
+                    bannerId={item.id}
+                    animated={!pauseAnimations && item.animated !== false}
+                    forceStatic={pauseAnimations || item.animated === false}
+                    showReadabilityOverlay={bannerUiTheme !== 'none'}
+                  />
+                  {bannerUiTheme !== 'none' && (
+                    <div
+                      className={`absolute inset-y-0 left-0 w-[44%] flex flex-col justify-end p-5 pointer-events-none z-20 ${
+                        bannerUiTheme === 'light'
+                          ? 'bg-gradient-to-r from-white/85 via-white/55 to-transparent text-zinc-950'
+                          : 'bg-gradient-to-r from-black/75 via-black/40 to-transparent text-white'
+                      }`}
+                    >
+                      <span
+                        className={`text-[10px] font-mono uppercase tracking-widest mb-1 ${
+                          bannerUiTheme === 'light' ? 'text-red-700 font-semibold' : 'text-amber-300'
+                        }`}
+                      >
+                        MYTHIC GRAND LINE CAPTAIN
+                      </span>
+                      <div className="text-lg font-heading font-bold leading-tight drop-shadow-sm">
+                        {samplePlayerName}
+                      </div>
+                      <div
+                        className={`text-xs mt-0.5 ${
+                          bannerUiTheme === 'light' ? 'text-zinc-700 font-medium' : 'text-zinc-300'
+                        }`}
+                      >
+                        Obsidian Eclipse · 2,100 Kobans
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {renderSpecFooter(item)}
               </div>
@@ -339,14 +526,15 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
         <section className="space-y-4">
           <div className="flex items-baseline justify-between border-b border-white/10 pb-2">
             <h2 className="text-lg font-heading font-bold text-amber-300">
-              2. Avatars (5 Items — 512×512 · 4 Transparent WebP Layers + Mesh Sway + Breath FX)
+              2. Avatars ({avatars.length} Items — 512×512 · Three.js 3D Loop + Canvas FX)
             </h2>
-            <span className="text-xs font-mono text-zinc-400">Breathing 1.00–1.02 · Pulsing Eyes · Sine Spine Warp</span>
+            <span className="text-xs font-mono text-zinc-400">3D PBR Bust · Pulsing Eyes · Periodic Loop</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
             {avatars.map((item) => (
               <div
                 key={item.id}
+                data-dev-item-card={item.id}
                 className="rounded-xl border border-white/15 bg-[#101018] overflow-hidden shadow-lg flex flex-col justify-between"
               >
                 <div className="p-5 flex flex-col items-center justify-center gap-4 bg-gradient-to-b from-[#161622] to-[#0B0B12]">
@@ -358,16 +546,16 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
                     <AvatarPicture
                       avatarId={item.id}
                       size={144}
-                      rounded="rounded-2xl"
-                      canAnimate={!pauseAnimations}
+                      className="rounded-2xl"
+                      forceStatic={pauseAnimations}
                     />
                   </div>
                   <div className="flex items-center gap-3">
                     <AvatarPicture
                       avatarId={item.id}
                       size={56}
-                      rounded="rounded-full"
-                      canAnimate={!pauseAnimations}
+                      className="rounded-full"
+                      forceStatic={pauseAnimations}
                     />
                     <span className="text-[11px] font-mono text-zinc-400">Circle Crop</span>
                   </div>
@@ -382,28 +570,29 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
         <section className="space-y-4">
           <div className="flex items-baseline justify-between border-b border-white/10 pb-2">
             <h2 className="text-lg font-heading font-bold text-amber-300">
-              3. Avatar Frames (5 Items — Counter-Rotating SVG Rings + Canvas Sparks & Arcs)
+              3. Avatar Frames ({frames.length} Items — Three.js 3D Alpha Loop + Counter-Rotating SVG Rings)
             </h2>
             <span className="text-xs font-mono text-zinc-400">Avatar visible through center · Clipped to tile</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
             {frames.map((item, idx) => {
-              const pairedAvatar = avatars[idx % avatars.length]?.id || 'pfp_zenryu_awakened';
+              const pairedAvatar = avatars[idx % avatars.length]?.id || 'pfp_phoenix_ascendant';
               return (
                 <div
                   key={item.id}
+                  data-dev-item-card={item.id}
                   className="rounded-xl border border-white/15 bg-[#101018] overflow-hidden shadow-lg flex flex-col justify-between"
                 >
                   <div
                     className="p-6 flex items-center justify-center bg-gradient-to-b from-[#161622] to-[#0B0B12] overflow-hidden"
                     style={{ overflow: 'hidden', contain: 'paint' }}
                   >
-                    <AvatarFrame frameId={item.id} size={116} canAnimate={!pauseAnimations}>
+                    <AvatarFrame itemId={item.id} size={116} forceStatic={pauseAnimations}>
                       <AvatarPicture
                         avatarId={pairedAvatar}
-                        size={116}
-                        rounded="rounded-full"
-                        canAnimate={!pauseAnimations}
+                        size={84}
+                        className="rounded-full"
+                        forceStatic={pauseAnimations}
                       />
                     </AvatarFrame>
                   </div>
@@ -418,7 +607,7 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
         <section className="space-y-4">
           <div className="flex items-baseline justify-between border-b border-white/10 pb-2">
             <h2 className="text-lg font-heading font-bold text-amber-300">
-              4. Nameplates (5 Items — CSS/SVG Shimmer + feTurbulence Smoke + Ornate SVG Paths)
+              4. Nameplates ({nameplates.length} Items — 600×120 Three.js 3D Loop + SVG Shimmer)
             </h2>
             <span className="text-xs font-mono text-zinc-400">Full player name wraps up to 2 lines · Never truncated</span>
           </div>
@@ -426,6 +615,7 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
             {nameplates.map((item) => (
               <div
                 key={item.id}
+                data-dev-item-card={item.id}
                 className="rounded-xl border border-white/15 bg-[#101018] overflow-hidden shadow-lg flex flex-col justify-between"
               >
                 <div
@@ -433,12 +623,12 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
                   style={{ overflow: 'hidden', contain: 'paint' }}
                 >
                   <Nameplate
-                    nameplateId={item.id}
+                    itemId={item.id}
                     name={samplePlayerName}
                     shortId="9042"
                     roleBadge="CAPTAIN"
                     allowWrap="two-lines"
-                    canAnimate={!pauseAnimations}
+                    forceStatic={pauseAnimations || item.animated === false}
                   />
                 </div>
                 {renderSpecFooter(item)}
@@ -451,19 +641,24 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
         <section className="space-y-4">
           <div className="flex items-baseline justify-between border-b border-white/10 pb-2">
             <h2 className="text-lg font-heading font-bold text-amber-300">
-              5. Profile Effects (5 Items — Pure Canvas 2D FX Engine Clipped to Profile Card)
+              5. Profile Effects ({effects.length} Items — 600×800 Three.js 3D Alpha Loop + Canvas FX Clipped to Card)
             </h2>
-            <span className="text-xs font-mono text-zinc-400">Max 150 particles/card · Typed Arrays · Additive Glow</span>
+            <span className="text-xs font-mono text-zinc-400">Max 120 particles/card · Typed Arrays · Additive Glow</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
             {effects.map((item) => (
               <div
                 key={item.id}
+                data-dev-item-card={item.id}
                 className="rounded-xl border border-white/15 bg-[#101018] overflow-hidden shadow-lg flex flex-col justify-between"
               >
                 <div className="p-3 bg-[#0B0B12]">
                   <div className="h-48 w-full">
-                    <ProfileEffectCardPreview itemId={item.id} userName={samplePlayerName} />
+                    <ProfileEffectCardPreview
+                      itemId={item.id}
+                      userName={samplePlayerName}
+                      forceStatic={pauseAnimations}
+                    />
                   </div>
                 </div>
                 {renderSpecFooter(item)}

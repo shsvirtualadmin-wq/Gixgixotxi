@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { StoreFxCanvas } from '../fx/StoreFxCanvas';
+import { StoreLoopVideo } from '../fx/StoreLoopVideo';
 import {
   COLOR_RAMPS,
   ParticleShape,
@@ -1520,12 +1521,301 @@ export const PfpTenguStormPriest: React.FC<PfpSvgProps> = ({ canAnimate = true, 
   );
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 5 NEW 3D-RENDERED LOOP AVATARS (Wave 2: Items 131–135)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 31. Phoenix Ascendant (Mythic)
+export const PfpPhoenixAscendant: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '' }) => {
+  const emitters = useMemo<EmitterConfig[]>(
+    () => [
+      {
+        rate: 22,
+        shape: ParticleShape.Spark,
+        additive: true,
+        ramp: COLOR_RAMPS.dragonFire,
+        xMin: 0.18,
+        xMax: 0.82,
+        yMin: 0.55,
+        yMax: 0.95,
+        vxMin: -0.14,
+        vxMax: 0.14,
+        vyMin: -0.48,
+        vyMax: -0.2,
+        turbulence: 0.35,
+        lifeMin: 0.9,
+        lifeMax: 1.8,
+        sizeStartMin: 2.0,
+        sizeStartMax: 3.8,
+        sizeEndMin: 0.6,
+        sizeEndMax: 1.4,
+        alphaPeak: 0.95,
+      },
+    ],
+    []
+  );
+
+  return (
+    <div
+      className={`relative w-full h-full overflow-hidden select-none ${className}`}
+      style={{ background: 'radial-gradient(circle, #7C2D12 0%, #080102 100%)', contain: 'paint' }}
+    >
+      <StoreLoopVideo
+        itemId="pfp_phoenix_ascendant"
+        animated={true}
+        canAnimate={canAnimate}
+        objectFit="cover"
+        className="absolute inset-0 w-full h-full"
+      />
+      <StoreFxCanvas
+        emitters={emitters}
+        maxParticles={48}
+        seed={631}
+        canAnimate={canAnimate}
+        className="absolute inset-0 w-full h-full z-[3]"
+      />
+    </div>
+  );
+};
+
+// 32. Ryujin Sea Dragon (Legendary)
+export const PfpRyujinSeaDragon: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '' }) => {
+  const emitters = useMemo<EmitterConfig[]>(
+    () => [
+      {
+        rate: 18,
+        shape: ParticleShape.Wisp,
+        additive: true,
+        ramp: COLOR_RAMPS.spiritFox,
+        xMin: 0.15,
+        xMax: 0.85,
+        yMin: 0.5,
+        yMax: 0.95,
+        vxMin: -0.12,
+        vxMax: 0.12,
+        vyMin: -0.34,
+        vyMax: -0.12,
+        turbulence: 0.32,
+        lifeMin: 1.1,
+        lifeMax: 2.2,
+        sizeStartMin: 2.2,
+        sizeStartMax: 4.4,
+        sizeEndMin: 0.8,
+        sizeEndMax: 1.8,
+        alphaPeak: 0.88,
+      },
+    ],
+    []
+  );
+
+  return (
+    <div
+      className={`relative w-full h-full overflow-hidden select-none ${className}`}
+      style={{ background: 'radial-gradient(circle, #0E7490 0%, #020C14 100%)', contain: 'paint' }}
+    >
+      <StoreLoopVideo
+        itemId="pfp_ryujin_sea_dragon"
+        animated={true}
+        canAnimate={canAnimate}
+        objectFit="cover"
+        className="absolute inset-0 w-full h-full"
+      />
+      <StoreFxCanvas
+        emitters={emitters}
+        maxParticles={44}
+        seed={632}
+        canAnimate={canAnimate}
+        className="absolute inset-0 w-full h-full z-[3]"
+      />
+    </div>
+  );
+};
+
+// 33. Shadow Ninja Mask (Legendary)
+export const PfpShadowNinjaMask: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '' }) => {
+  const emitters = useMemo<EmitterConfig[]>(
+    () => [
+      {
+        rate: 18,
+        shape: ParticleShape.Smoke,
+        additive: true,
+        ramp: COLOR_RAMPS.bloodMoonAsh,
+        xMin: 0.2,
+        xMax: 0.8,
+        yMin: 0.55,
+        yMax: 0.92,
+        vxMin: -0.16,
+        vxMax: 0.16,
+        vyMin: -0.32,
+        vyMax: -0.1,
+        turbulence: 0.36,
+        lifeMin: 1.2,
+        lifeMax: 2.2,
+        sizeStartMin: 3.4,
+        sizeStartMax: 6.8,
+        sizeEndMin: 5.0,
+        sizeEndMax: 9.5,
+        alphaPeak: 0.72,
+      },
+    ],
+    []
+  );
+
+  return (
+    <div
+      className={`relative w-full h-full overflow-hidden select-none ${className}`}
+      style={{ background: 'radial-gradient(circle, #3F0D16 0%, #050507 100%)', contain: 'paint' }}
+    >
+      <StoreLoopVideo
+        itemId="pfp_shadow_ninja_mask"
+        animated={true}
+        canAnimate={canAnimate}
+        objectFit="cover"
+        className="absolute inset-0 w-full h-full"
+      />
+      <StoreFxCanvas
+        emitters={emitters}
+        maxParticles={44}
+        seed={633}
+        canAnimate={canAnimate}
+        className="absolute inset-0 w-full h-full z-[3]"
+      />
+    </div>
+  );
+};
+
+// 34. Raijin Thunder God (Epic)
+export const PfpRaijinThunderGod: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '' }) => {
+  const emitters = useMemo<EmitterConfig[]>(
+    () => [
+      {
+        rate: 16,
+        shape: ParticleShape.Spark,
+        additive: true,
+        ramp: COLOR_RAMPS.thunderGold,
+        xMin: 0.15,
+        xMax: 0.85,
+        yMin: 0.25,
+        yMax: 0.88,
+        vxMin: -0.18,
+        vxMax: 0.18,
+        vyMin: -0.38,
+        vyMax: -0.12,
+        turbulence: 0.4,
+        lifeMin: 0.7,
+        lifeMax: 1.5,
+        sizeStartMin: 1.8,
+        sizeStartMax: 3.4,
+        sizeEndMin: 0.5,
+        sizeEndMax: 1.2,
+        alphaPeak: 0.92,
+      },
+    ],
+    []
+  );
+
+  const lightning = useMemo<LightningConfig>(
+    () => ({
+      intervalMin: 0.8,
+      intervalMax: 1.8,
+      decayRate: 5.5,
+      glowColor: '#38BDF8',
+      coreColor: '#FEF08A',
+      ringMode: true,
+      ringRadius: 0.38,
+    }),
+    []
+  );
+
+  return (
+    <div
+      className={`relative w-full h-full overflow-hidden select-none ${className}`}
+      style={{ background: 'radial-gradient(circle, #1E3A8A 0%, #030712 100%)', contain: 'paint' }}
+    >
+      <StoreLoopVideo
+        itemId="pfp_raijin_thunder_god"
+        animated={true}
+        canAnimate={canAnimate}
+        objectFit="cover"
+        className="absolute inset-0 w-full h-full"
+      />
+      <StoreFxCanvas
+        emitters={emitters}
+        lightning={lightning}
+        maxParticles={45}
+        seed={634}
+        canAnimate={canAnimate}
+        className="absolute inset-0 w-full h-full z-[3]"
+      />
+    </div>
+  );
+};
+
+// 35. Yokai Lantern Ghost (Epic)
+export const PfpYokaiLanternGhost: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '' }) => {
+  const emitters = useMemo<EmitterConfig[]>(
+    () => [
+      {
+        rate: 18,
+        shape: ParticleShape.SoftGlow,
+        additive: true,
+        ramp: COLOR_RAMPS.dragonFire,
+        xMin: 0.28,
+        xMax: 0.72,
+        yMin: 0.42,
+        yMax: 0.85,
+        vxMin: -0.1,
+        vxMax: 0.1,
+        vyMin: -0.32,
+        vyMax: -0.1,
+        turbulence: 0.3,
+        lifeMin: 1.0,
+        lifeMax: 2.0,
+        sizeStartMin: 2.8,
+        sizeStartMax: 5.5,
+        sizeEndMin: 1.0,
+        sizeEndMax: 2.2,
+        alphaPeak: 0.88,
+      },
+    ],
+    []
+  );
+
+  return (
+    <div
+      className={`relative w-full h-full overflow-hidden select-none ${className}`}
+      style={{ background: 'radial-gradient(circle, #581C87 0%, #070208 100%)', contain: 'paint' }}
+    >
+      <StoreLoopVideo
+        itemId="pfp_yokai_lantern_ghost"
+        animated={true}
+        canAnimate={canAnimate}
+        objectFit="cover"
+        className="absolute inset-0 w-full h-full"
+      />
+      <StoreFxCanvas
+        emitters={emitters}
+        maxParticles={44}
+        seed={635}
+        canAnimate={canAnimate}
+        className="absolute inset-0 w-full h-full z-[3]"
+      />
+    </div>
+  );
+};
+
 /**
  * Registry mapping ID to Component
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export const PFP_ARTWORK_MAP: Record<string, React.FC<PfpSvgProps>> = {
-  // 5 New Premium Profile Pictures
+  // 5 New Premium Profile Pictures (Wave 2)
+  pfp_phoenix_ascendant: PfpPhoenixAscendant,
+  pfp_ryujin_sea_dragon: PfpRyujinSeaDragon,
+  pfp_shadow_ninja_mask: PfpShadowNinjaMask,
+  pfp_raijin_thunder_god: PfpRaijinThunderGod,
+  pfp_yokai_lantern_ghost: PfpYokaiLanternGhost,
+  // 5 New Premium Profile Pictures (Wave 1)
   pfp_zenryu_awakened: PfpZenryuAwakened,
   pfp_oni_warlord: PfpOniWarlord,
   pfp_kitsune_moonlight: PfpKitsuneMoonlight,
@@ -1559,3 +1849,4 @@ export const PFP_ARTWORK_MAP: Record<string, React.FC<PfpSvgProps>> = {
   pfp_celestial_compass: PfpCelestialCompass,
   pfp_zen_bonsai: PfpZenBonsai,
 };
+

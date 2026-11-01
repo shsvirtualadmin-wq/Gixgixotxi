@@ -25,11 +25,27 @@ import {
   BloodMoonRoninBanner,
   CelestialKoiRiverBanner,
   ObsidianShogunCitadelBanner,
+  PhoenixEmberSunriseBanner,
+  CyberShibuyaNightBanner,
+  EclipseTenguPeakBanner,
+  SpiritLanternFestivalBanner,
+  CrimsonLotusLakeBanner,
 } from './premiumBanners';
+import { ObsidianEclipseBanner } from './ObsidianEclipseBanner';
 
 // Flagship & New Premium custom banners mapping
 const FLAGSHIP_BANNER_MAP: Record<string, (animated: boolean) => React.ReactNode> = {
-  // 5 New Premium Banners
+  // Flagship 3D Mythic Banner: Obsidian Eclipse
+  'obsidian-eclipse': (animated: boolean) => <ObsidianEclipseBanner canAnimate={animated} />,
+
+  // 5 New Premium Banners (Wave 2)
+  ban_phoenix_ember_sunrise: (animated: boolean) => <PhoenixEmberSunriseBanner canAnimate={animated} />,
+  ban_cyber_shibuya_night: (animated: boolean) => <CyberShibuyaNightBanner canAnimate={animated} />,
+  ban_eclipse_tengu_peak: (animated: boolean) => <EclipseTenguPeakBanner canAnimate={animated} />,
+  ban_spirit_lantern_festival: (animated: boolean) => <SpiritLanternFestivalBanner canAnimate={animated} />,
+  ban_crimson_lotus_lake: () => <CrimsonLotusLakeBanner canAnimate={false} />,
+
+  // 5 New Premium Banners (Wave 1)
   ban_crimson_dragons_descent: (animated: boolean) => <CrimsonDragonsDescentBanner canAnimate={animated} />,
   ban_neon_kyoto_rain: (animated: boolean) => <NeonKyotoRainBanner canAnimate={animated} />,
   ban_blood_moon_ronin: (animated: boolean) => <BloodMoonRoninBanner canAnimate={animated} />,

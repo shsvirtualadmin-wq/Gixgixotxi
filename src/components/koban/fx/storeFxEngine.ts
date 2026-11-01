@@ -828,14 +828,16 @@ export function drawSwayingTailMesh(
 // ─── GLOBAL SINGLETON RAF SCHEDULER & SHARED INTERSECTION OBSERVER ──────────
 
 export interface FxTask {
+  id?: string;
   element: HTMLElement;
-  canAnimate: boolean;
+  canAnimate?: boolean;
   onFrame: (dt: number, elapsed: number) => void;
   onStaticFrame?: () => void;
 }
 
 class StoreFxScheduler {
   private tasks = new Map<HTMLElement, FxTask>();
+  private idToElement = new Map<string, HTMLElement>();
   private visibilityMap = new WeakMap<HTMLElement, boolean>();
   private observer: IntersectionObserver | null = null;
   private rafId: number | null = null;
@@ -890,25 +892,51 @@ class StoreFxScheduler {
 
   register(task: FxTask): () => void {
     const el = task.element;
-    this.tasks.set(el, task);
+    const normalizedTask: FxTask = {
+      ...task,
+      canAnimate: task.canAnimate !== false,
+    };
+    this.tasks.set(el, normalizedTask);
+    if (normalizedTask.id) {
+      this.idToElement.set(normalizedTask.id, el);
+    }
     this.visibilityMap.set(el, true);
     this.observer?.observe(el);
 
-    if (this.prefersReducedMotion || !task.canAnimate) {
-      task.onStaticFrame?.();
+    if (this.prefersReducedMotion || !normalizedTask.canAnimate) {
+      normalizedTask.onStaticFrame?.();
     } else {
       // Render initial frame immediately so there is zero blank flash
-      task.onFrame(0.016, this.elapsed);
+      normalizedTask.onFrame(0.016, this.elapsed);
       this.ensureLoop();
     }
 
     return () => {
-      this.tasks.delete(el);
-      this.observer?.unobserve(el);
-      if (this.tasks.size === 0) {
-        this.stopLoop();
-      }
+      this.removeElement(el, normalizedTask.id);
     };
+  }
+
+  unregister(idOrElement: string | HTMLElement): void {
+    if (typeof idOrElement === 'string') {
+      const el = this.idToElement.get(idOrElement);
+      if (el) {
+        this.removeElement(el, idOrElement);
+      }
+    } else if (idOrElement) {
+      const task = this.tasks.get(idOrElement);
+      this.removeElement(idOrElement, task?.id);
+    }
+  }
+
+  private removeElement(el: HTMLElement, id?: string): void {
+    this.tasks.delete(el);
+    if (id) {
+      this.idToElement.delete(id);
+    }
+    this.observer?.unobserve(el);
+    if (this.tasks.size === 0) {
+      this.stopLoop();
+    }
   }
 
   private renderAllStatic(): void {
@@ -920,7 +948,7 @@ class StoreFxScheduler {
   private hasActiveVisibleTask(): boolean {
     if (!this.isTabVisible || this.prefersReducedMotion) return false;
     for (const [el, task] of this.tasks.entries()) {
-      if (task.canAnimate && (this.visibilityMap.get(el) ?? true)) {
+      if (task.canAnimate !== false && (this.visibilityMap.get(el) ?? true)) {
         return true;
       }
     }
@@ -951,13 +979,27 @@ class StoreFxScheduler {
     this.elapsed += dt;
 
     for (const [el, task] of this.tasks.entries()) {
-      if (!task.canAnimate) continue;
+      if (task.canAnimate === false) continue;
       if (!(this.visibilityMap.get(el) ?? true)) continue;
       task.onFrame(dt, this.elapsed);
     }
 
     this.rafId = requestAnimationFrame(this.tick);
   };
+
+  getActiveTaskCount(): number {
+    return this.tasks.size;
+  }
+
+  getVisibleTaskCount(): number {
+    let count = 0;
+    for (const [el, task] of this.tasks.entries()) {
+      if (task.canAnimate !== false && (this.visibilityMap.get(el) ?? true)) {
+        count++;
+      }
+    }
+    return count;
+  }
 }
 
 export const storeFxScheduler = new StoreFxScheduler();

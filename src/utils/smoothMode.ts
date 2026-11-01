@@ -18,25 +18,16 @@ export function detectDefaultSmoothMode(): boolean {
     }
 
     const nav = navigator as Navigator & {
-      deviceMemory?: number;
       connection?: {
         saveData?: boolean;
         effectiveType?: string;
       };
     };
 
-    if (typeof nav.deviceMemory === 'number' && nav.deviceMemory <= 4) {
-      return true;
-    }
-
-    if (typeof nav.hardwareConcurrency === 'number' && nav.hardwareConcurrency <= 4) {
-      return true;
-    }
-
     if (nav.connection) {
       if (nav.connection.saveData) return true;
       const eff = nav.connection.effectiveType;
-      if (eff === 'slow-2g' || eff === '2g' || eff === '3g') {
+      if (eff === 'slow-2g' || eff === '2g') {
         return true;
       }
     }

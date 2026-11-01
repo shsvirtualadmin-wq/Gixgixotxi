@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { StoreFxCanvas } from '../fx/StoreFxCanvas';
+import { StoreLoopVideo } from '../fx/StoreLoopVideo';
 import {
   COLOR_RAMPS,
   LightningPool2D,
@@ -17,12 +18,25 @@ interface EffectProps {
   className?: string;
 }
 
+const WAVE2_3D_EFFECT_IDS = new Set([
+  'effect-phoenix-rebirth-flames',
+  'effect-frost-spirit-blizzard',
+  'effect-cyber-glitch-matrix',
+  'effect-lantern-spirit-drift',
+  'effect-shuriken-storm',
+]);
+
 const PREMIUM_EFFECT_IDS = new Set([
   'effect-dragon-fire-aura',
   'effect-thunder-kami-storm',
   'effect-spirit-fox-fire',
   'effect-cherry-blossom-gale',
   'effect-falling-stars',
+  'effect-phoenix-rebirth-flames',
+  'effect-frost-spirit-blizzard',
+  'effect-cyber-glitch-matrix',
+  'effect-lantern-spirit-drift',
+  'effect-shuriken-storm',
 ]);
 
 /**
@@ -387,6 +401,220 @@ const PremiumProfileEffectCanvas: React.FC<{
     [isCard]
   );
 
+  // ─── 5 NEW WAVE 2 PROFILE EFFECTS (3D Loop + Canvas FX Overlay) ──────────
+  const onStepPhoenixRebirth = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      w: number,
+      h: number,
+      dt: number,
+      elapsed: number,
+      pool: ParticlePool2D
+    ) => {
+      const rand = mulberry32(((elapsed * 1000) | 0) ^ 0xfa8812);
+
+      // Rising Phoenix Flame Silhouette Wing Arcs
+      const cycle = (elapsed * 0.45) % 1;
+      const py = h * (0.85 - cycle * 0.65);
+      const wingSpan = w * (0.28 + 0.1 * Math.sin(elapsed * 4.2));
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const phxGrad = ctx.createRadialGradient(w * 0.5, py, 2, w * 0.5, py, wingSpan);
+      phxGrad.addColorStop(0, 'rgba(254, 240, 138, 0.55)');
+      phxGrad.addColorStop(0.45, 'rgba(249, 115, 22, 0.32)');
+      phxGrad.addColorStop(1, 'rgba(220, 38, 38, 0)');
+      ctx.fillStyle = phxGrad;
+      ctx.beginPath();
+      ctx.ellipse(w * 0.5, py, wingSpan, wingSpan * 0.42, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      pool.emit(dt, isCard ? 28 : 16, () => ({
+        x: (0.12 + rand() * 0.76) * w,
+        y: h + 4,
+        vx: (rand() - 0.5) * 28,
+        vy: -(52 + rand() * (isCard ? 68 : 42)),
+        size0: isCard ? 3.2 + rand() * 2.8 : 2.0 + rand() * 1.8,
+        size1: 0.6,
+        life: 0.9 + rand() * 1.0,
+        drag: 0.992,
+        gravity: -18,
+        turbulence: 46,
+        rotation: rand() * Math.PI * 2,
+        vRot: (rand() - 0.5) * 6,
+        ramp: COLOR_RAMPS.dragonFire,
+        additive: true,
+        shape: ParticleShape.Spark,
+        alphaPeak: 0.95,
+        seed: rand() * 100,
+      }));
+
+      pool.updateAndDraw(ctx, dt, elapsed);
+    },
+    [isCard]
+  );
+
+  const onStepFrostBlizzard = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      w: number,
+      h: number,
+      dt: number,
+      elapsed: number,
+      pool: ParticlePool2D
+    ) => {
+      const rand = mulberry32(((elapsed * 1000) | 0) ^ 0x44ccff);
+
+      pool.emit(dt, isCard ? 30 : 18, () => ({
+        x: -10 + rand() * w * 0.9,
+        y: -10 + rand() * h * 0.7,
+        vx: 45 + rand() * 48,
+        vy: 28 + rand() * 34,
+        size0: isCard ? 2.6 + rand() * 3.2 : 1.8 + rand() * 2.0,
+        size1: 0.8,
+        life: 1.2 + rand() * 1.2,
+        drag: 0.994,
+        gravity: 8,
+        turbulence: 42,
+        rotation: rand() * Math.PI * 2,
+        vRot: (rand() - 0.5) * 6,
+        ramp: COLOR_RAMPS.spiritFox,
+        additive: true,
+        shape: rand() < 0.5 ? ParticleShape.Spark : ParticleShape.SoftGlow,
+        alphaPeak: 0.88,
+        seed: rand() * 100,
+      }));
+
+      pool.updateAndDraw(ctx, dt, elapsed);
+    },
+    [isCard]
+  );
+
+  const onStepCyberMatrix = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      w: number,
+      h: number,
+      dt: number,
+      elapsed: number,
+      pool: ParticlePool2D
+    ) => {
+      const rand = mulberry32(((elapsed * 1000) | 0) ^ 0x10ff88);
+
+      // Falling neon code column streaks + horizontal glitch bars
+      const cols = isCard ? 10 : 6;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let c = 0; c < cols; c++) {
+        const cx = ((c + 0.5) / cols) * w;
+        const headY = ((elapsed * (55 + (c % 4) * 18) + c * 47) % (h + 40)) - 20;
+        const grad = ctx.createLinearGradient(cx, headY - 38, cx, headY);
+        grad.addColorStop(0, 'rgba(0, 240, 255, 0)');
+        grad.addColorStop(0.7, c % 2 === 0 ? 'rgba(0, 240, 255, 0.38)' : 'rgba(16, 185, 129, 0.38)');
+        grad.addColorStop(1, 'rgba(255, 255, 255, 0.85)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(cx - 1.2, headY - 38, 2.4, 38);
+      }
+      if (Math.sin(elapsed * 9.5) > 0.65) {
+        const gy = (Math.sin(elapsed * 17.3) * 0.5 + 0.5) * h;
+        ctx.fillStyle = 'rgba(255, 0, 122, 0.24)';
+        ctx.fillRect(0, gy, w, 3);
+      }
+      ctx.restore();
+
+      pool.emit(dt, isCard ? 18 : 10, () => ({
+        x: rand() * w,
+        y: -6,
+        vx: 0,
+        vy: 65 + rand() * 55,
+        size0: isCard ? 2.2 : 1.5,
+        size1: 0.8,
+        life: 1.0 + rand() * 0.9,
+        drag: 1,
+        ramp: COLOR_RAMPS.neonKyoto,
+        additive: true,
+        shape: ParticleShape.Streak,
+        alphaPeak: 0.85,
+        seed: rand() * 100,
+      }));
+
+      pool.updateAndDraw(ctx, dt, elapsed);
+    },
+    [isCard]
+  );
+
+  const onStepLanternDrift = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      w: number,
+      h: number,
+      dt: number,
+      elapsed: number,
+      pool: ParticlePool2D
+    ) => {
+      const rand = mulberry32(((elapsed * 1000) | 0) ^ 0xffaa33);
+
+      pool.emit(dt, isCard ? 20 : 12, () => ({
+        x: (0.1 + rand() * 0.8) * w,
+        y: h + 8,
+        vx: (rand() - 0.5) * 14,
+        vy: -(28 + rand() * 32),
+        size0: isCard ? 5.5 + rand() * 4.5 : 3.2 + rand() * 2.5,
+        size1: isCard ? 3.5 : 2.0,
+        life: 1.8 + rand() * 1.4,
+        drag: 0.995,
+        gravity: -6,
+        turbulence: 22,
+        ramp: COLOR_RAMPS.fallingStars,
+        additive: true,
+        shape: ParticleShape.SoftGlow,
+        alphaPeak: 0.9,
+        seed: rand() * 100,
+      }));
+
+      pool.updateAndDraw(ctx, dt, elapsed);
+    },
+    [isCard]
+  );
+
+  const onStepShurikenStorm = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      w: number,
+      h: number,
+      dt: number,
+      elapsed: number,
+      pool: ParticlePool2D
+    ) => {
+      const rand = mulberry32(((elapsed * 1000) | 0) ^ 0x88ccff);
+
+      pool.emit(dt, isCard ? 22 : 14, () => {
+        const speed = (125 + rand() * 65) * (isCard ? 1 : 0.75);
+        const angle = Math.PI * 0.22 + (rand() - 0.5) * 0.14;
+        return {
+          x: -12 + rand() * w * 0.55,
+          y: -12 + rand() * h * 0.45,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          size0: isCard ? 3.2 + rand() * 2.0 : 2.2 + rand() * 1.2,
+          size1: 0.6,
+          life: 0.75 + rand() * 0.6,
+          drag: 0.998,
+          rotation: rand() * Math.PI * 2,
+          vRot: 12,
+          ramp: COLOR_RAMPS.neonKyoto,
+          additive: true,
+          shape: ParticleShape.Streak,
+          alphaPeak: 0.92,
+          seed: rand() * 100,
+        };
+      });
+
+      pool.updateAndDraw(ctx, dt, elapsed);
+    },
+    [isCard]
+  );
+
   const stepFn =
     itemId === 'effect-dragon-fire-aura'
       ? onStepDragonFire
@@ -396,17 +624,38 @@ const PremiumProfileEffectCanvas: React.FC<{
       ? onStepSpiritFox
       : itemId === 'effect-cherry-blossom-gale'
       ? onStepCherryBlossomGale
+      : itemId === 'effect-phoenix-rebirth-flames'
+      ? onStepPhoenixRebirth
+      : itemId === 'effect-frost-spirit-blizzard'
+      ? onStepFrostBlizzard
+      : itemId === 'effect-cyber-glitch-matrix'
+      ? onStepCyberMatrix
+      : itemId === 'effect-lantern-spirit-drift'
+      ? onStepLanternDrift
+      : itemId === 'effect-shuriken-storm'
+      ? onStepShurikenStorm
       : onStepFallingStars;
 
   return (
-    <StoreFxCanvas
-      id={`profile-fx-${mode}-${itemId}`}
-      canAnimate={canAnimate}
-      maxParticles={isCard ? 120 : 65}
-      maxBolts={itemId === 'effect-thunder-kami-storm' ? 6 : 2}
-      prewarmSeconds={2.4}
-      onStep={stepFn}
-    />
+    <div className="relative w-full h-full overflow-hidden pointer-events-none" style={{ contain: 'paint' }}>
+      {WAVE2_3D_EFFECT_IDS.has(itemId) && (
+        <StoreLoopVideo
+          itemId={itemId}
+          animated={true}
+          canAnimate={canAnimate}
+          objectFit="cover"
+          className="absolute inset-0 w-full h-full opacity-75 mix-blend-screen"
+        />
+      )}
+      <StoreFxCanvas
+        id={`profile-fx-${mode}-${itemId}`}
+        canAnimate={canAnimate}
+        maxParticles={isCard ? 120 : 65}
+        maxBolts={itemId === 'effect-thunder-kami-storm' ? 6 : 2}
+        prewarmSeconds={2.4}
+        onStep={stepFn}
+      />
+    </div>
   );
 };
 
@@ -1105,7 +1354,8 @@ export const ProfileEffectCardPreview: React.FC<{
   className?: string;
   compact?: boolean;
   userName?: string;
-}> = ({ itemId, className = '', userName = 'Boardly Scholar' }) => {
+  forceStatic?: boolean;
+}> = ({ itemId, className = '', userName = 'Boardly Scholar', forceStatic = false }) => {
   return (
     <div
       className={`relative w-full h-full rounded-xl overflow-hidden bg-gradient-to-br from-[#141418] via-[#0E0E12] to-[#08080B] border border-white/10 p-3 flex flex-col justify-center items-center shadow-inner select-none ${className}`}
@@ -1129,7 +1379,7 @@ export const ProfileEffectCardPreview: React.FC<{
       </div>
 
       {/* Looping Full-Card Effect Clipped Inside */}
-      <ProfileCardEffect itemId={itemId} previewMode={true} />
+      <ProfileCardEffect itemId={itemId} previewMode={true} forceStatic={forceStatic} />
     </div>
   );
 };
