@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, Sparkles, ShoppingBag, Check, Send, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useNavigate } from 'react-router-dom';
-import { ACCENT_PRESETS, DefaultDotMatrixBanner } from '@/components/koban/artwork/bannerArtwork';
+import { ACCENT_PRESETS, BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
 import { AvatarPicture, AvatarFrame } from '@/components/koban/CosmeticRenderers';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { validateDisplayName } from '@/utils/usernameValidation';
@@ -166,7 +166,11 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
             <div className="w-full rounded-2xl overflow-hidden border border-[var(--border)] bg-[var(--card-2)] shadow-sm">
               {/* Preview Banner */}
               <div className="relative h-24 w-full overflow-hidden">
-                <DefaultDotMatrixBanner accentColor={accent} />
+                <BannerRenderer
+                  bannerId={profile.banner || profile.equipped?.banner}
+                  accentColor={accent}
+                  animated
+                />
               </div>
 
               {/* Preview Avatar & Details */}

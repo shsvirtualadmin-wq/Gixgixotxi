@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { storeVideoGovernor } from '../../fx/StoreLoopVideo';
-import { useSmoothMode } from '@/utils/smoothMode';
 
 let nextSovereignBlackSunInstanceId = 1;
 
@@ -37,13 +36,20 @@ export const SovereignBlackSunBanner: React.FC<SovereignBlackSunBannerProps> = (
   const [reducedMotion, setReducedMotion] = useState(() =>
     storeVideoGovernor.isReducedMotion()
   );
-  const { smoothMode } = useSmoothMode();
+  const [posterRetry, setPosterRetry] = useState(false);
+  const [posterFailed, setPosterFailed] = useState(false);
+  const [videoRetry, setVideoRetry] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
 
-  const posterUrl = '/assets/store/sovereign-of-the-black-sun/poster.webp';
-  const webmUrl = '/assets/store/sovereign-of-the-black-sun/banner.webm';
-  const mp4Url = '/assets/store/sovereign-of-the-black-sun/banner.mp4';
+  const basePosterUrl = '/assets/store/sovereign-of-the-black-sun/poster.webp';
+  const baseWebmUrl = '/assets/store/sovereign-of-the-black-sun/banner.webm';
+  const baseMp4Url = '/assets/store/sovereign-of-the-black-sun/banner.mp4';
 
-  const effectiveAnimate = Boolean(canAnimate && !reducedMotion && !smoothMode);
+  const posterUrl = posterRetry ? `${basePosterUrl}?v=2` : basePosterUrl;
+  const webmUrl = videoRetry ? `${baseWebmUrl}?v=2` : baseWebmUrl;
+  const mp4Url = videoRetry ? `${baseMp4Url}?v=2` : baseMp4Url;
+
+  const effectiveAnimate = Boolean(canAnimate && !reducedMotion && !videoFailed);
 
   // 1. Track prefers-reduced-motion: reduce
   useEffect(() => {
@@ -92,7 +98,7 @@ export const SovereignBlackSunBanner: React.FC<SovereignBlackSunBannerProps> = (
       priority: 6,
       setActiveState: setIsGovernorActive,
     });
-  }, [effectiveAnimate, isVisible]);
+  }, [effectiveAnimate, isVisible, videoRetry]);
 
   useEffect(() => {
     storeVideoGovernor.update(instanceIdRef.current, {
@@ -102,26 +108,56 @@ export const SovereignBlackSunBanner: React.FC<SovereignBlackSunBannerProps> = (
     });
   }, [isVisible, effectiveAnimate]);
 
+  const handleVideoReady = () => {
+    if (effectiveAnimate && isVisible && isGovernorActive && videoRef.current) {
+      videoRef.current.play().catch(() => {});
+    }
+  };
+
+  const handleVideoError = () => {
+    if (!videoRetry) {
+      setVideoRetry(true);
+    } else {
+      setVideoFailed(true);
+    }
+  };
+
   return (
     <div
       ref={containerRef}
       className={`sovereign-black-sun-banner relative w-full h-full overflow-hidden bg-[#030106] select-none pointer-events-none ${className}`}
-      style={{ aspectRatio: '16 / 9', contain: 'paint' }}
+      style={{
+        aspectRatio: '16 / 9',
+        contain: 'paint',
+        background:
+          'radial-gradient(circle at 62% 36%, rgba(255, 179, 71, 0.22) 0%, rgba(120, 42, 12, 0.16) 28%, #030106 72%)',
+      }}
       data-banner-id="sovereign-of-the-black-sun"
       data-testid="sovereign-black-sun-banner"
     >
-      {/* Static 1200x675 Hero Poster (shown immediately & when prefers-reduced-motion is active) */}
-      <img
-        src={posterUrl}
-        alt="Sovereign of the Black Sun"
-        loading="lazy"
-        decoding="async"
-        className="sovereign-black-sun-poster absolute inset-0 w-full h-full object-cover pointer-events-none"
-      />
+      {/* Static 1200x675 Hero Poster (shown immediately, when prefers-reduced-motion is active, and as fallback if video fails) */}
+      {!posterFailed && (
+        <img
+          src={posterUrl}
+          alt=""
+          aria-hidden="true"
+          loading="eager"
+          decoding="async"
+          onError={() => {
+            if (!posterRetry) {
+              setPosterRetry(true);
+            } else {
+              setPosterFailed(true);
+            }
+          }}
+          className="sovereign-black-sun-poster absolute inset-0 w-full h-full object-cover pointer-events-none"
+        />
+      )}
 
       {/* Blender 4.2 LTS 180-frame (6.0s @ 30fps) Seamless Video Loop */}
       {effectiveAnimate && (
         <video
+          key={videoRetry ? 'retry' : 'initial'}
           ref={videoRef}
           data-testid="sovereign-black-sun-video"
           autoPlay
@@ -129,15 +165,19 @@ export const SovereignBlackSunBanner: React.FC<SovereignBlackSunBannerProps> = (
           muted
           playsInline
           preload="metadata"
-          poster={posterUrl}
+          poster={posterFailed ? undefined : posterUrl}
+          onLoadedData={handleVideoReady}
+          onCanPlay={handleVideoReady}
+          onError={handleVideoError}
           className={`sovereign-black-sun-video absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-200 ${
-            isVisible && isGovernorActive ? 'opacity-100' : 'opacity-0'
+            isVisible && isGovernorActive && !videoFailed ? 'opacity-100' : 'opacity-0'
           }`}
         >
           <source src={webmUrl} type="video/webm" />
-          <source src={mp4Url} type="video/mp4" />
+          <source src={mp4Url} type="video/mp4" onError={handleVideoError} />
         </video>
       )}
     </div>
   );
 };
+

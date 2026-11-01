@@ -3,6 +3,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  setDoc,
   updateDoc,
   increment,
   serverTimestamp,
@@ -12,12 +13,18 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { notifyUserOfNewFollower } from '@/services/notificationService';
+import { invalidatePublicProfileCache } from '@/services/publicProfileService';
 
 export interface FollowRecord {
   uid: string;
   followerId?: string;
   targetId?: string;
   createdAt?: any;
+}
+
+export interface FollowCountsSeed {
+  uData?: Record<string, any> | null;
+  pubData?: Record<string, any> | null;
 }
 
 async function getOptionalBearerHeader(): Promise<Record<string, string>> {
@@ -83,6 +90,12 @@ async function performFollowStateChange(
 
   const action = nextFollowing ? 'follow' : 'unfollow';
 
+  // Read baseline counts before mutating so out-of-sync counters converge to the exact same integer
+  const [targetBaseline, currentBaseline] = await Promise.all([
+    getFollowCounts(targetUserId).catch(() => null),
+    getFollowCounts(currentUserId).catch(() => null),
+  ]);
+
   let resolvedFollowerName =
     followerMeta?.followerName || auth.currentUser?.displayName || '';
   let resolvedFollowerAvatar =
@@ -143,6 +156,16 @@ async function performFollowStateChange(
   const currentPublicDoc = doc(db, 'publicProfiles', currentUserId);
   const targetPublicDoc = doc(db, 'publicProfiles', targetUserId);
 
+  const delta = nextFollowing ? 1 : -1;
+  const nextTargetFollowers =
+    targetBaseline !== null
+      ? Math.max(0, targetBaseline.followersCount + delta)
+      : null;
+  const nextCurrentFollowing =
+    currentBaseline !== null
+      ? Math.max(0, currentBaseline.followingCount + delta)
+      : null;
+
   let fsSucceeded = false;
   try {
     const batch = writeBatch(db);
@@ -151,9 +174,32 @@ async function performFollowStateChange(
       batch.delete(userFollowerRef);
       batch.delete(pubFollowingRef);
       batch.delete(pubFollowerRef);
-      batch.set(currentUserDoc, { followingCount: increment(-1) }, { merge: true });
-      batch.set(currentPublicDoc, { followingCount: increment(-1) }, { merge: true });
-      batch.set(targetPublicDoc, { followersCount: increment(-1) }, { merge: true });
+      batch.set(
+        currentUserDoc,
+        {
+          followingCount:
+            nextCurrentFollowing !== null ? nextCurrentFollowing : increment(-1),
+        },
+        { merge: true }
+      );
+      batch.set(
+        currentPublicDoc,
+        {
+          followingCount:
+            nextCurrentFollowing !== null ? nextCurrentFollowing : increment(-1),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      batch.set(
+        targetPublicDoc,
+        {
+          followersCount:
+            nextTargetFollowers !== null ? nextTargetFollowers : increment(-1),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
     } else {
       const payloadTarget = {
         uid: targetUserId,
@@ -170,9 +216,32 @@ async function performFollowStateChange(
       batch.set(userFollowerRef, payloadFollower);
       batch.set(pubFollowingRef, payloadTarget);
       batch.set(pubFollowerRef, payloadFollower);
-      batch.set(currentUserDoc, { followingCount: increment(1) }, { merge: true });
-      batch.set(currentPublicDoc, { followingCount: increment(1) }, { merge: true });
-      batch.set(targetPublicDoc, { followersCount: increment(1) }, { merge: true });
+      batch.set(
+        currentUserDoc,
+        {
+          followingCount:
+            nextCurrentFollowing !== null ? nextCurrentFollowing : increment(1),
+        },
+        { merge: true }
+      );
+      batch.set(
+        currentPublicDoc,
+        {
+          followingCount:
+            nextCurrentFollowing !== null ? nextCurrentFollowing : increment(1),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      batch.set(
+        targetPublicDoc,
+        {
+          followersCount:
+            nextTargetFollowers !== null ? nextTargetFollowers : increment(1),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
     }
     await batch.commit();
     fsSucceeded = true;
@@ -183,11 +252,15 @@ async function performFollowStateChange(
   // Update targetUserDoc separately so strict rules on users/{targetId} never block the follow batch
   try {
     await updateDoc(targetUserDoc, {
-      followersCount: increment(nextFollowing ? 1 : -1),
+      followersCount:
+        nextTargetFollowers !== null ? nextTargetFollowers : increment(delta),
     });
   } catch {
-    // Expected when non-admin updates another user's private users/{uid} doc
+    // Expected when non-admin updates another user's private users/{uid} doc if rules restrict it
   }
+
+  invalidatePublicProfileCache(targetUserId);
+  invalidatePublicProfileCache(currentUserId);
 
   if (nextFollowing) {
     void notifyUserOfNewFollower({
@@ -341,26 +414,100 @@ export async function getFollowing(
   return ids.map((uid) => ({ uid, targetId: uid }));
 }
 
+/**
+ * Single shared source of truth for follower and following counts across all profile surfaces
+ * (dashboard profile, Commons public profile, profile modals, and publicProfileService).
+ * Reconciles out-of-sync stored counters between `users/{userId}`, `publicProfiles/{userId}`,
+ * and the deduplicated follower/following subcollections + D1 records.
+ */
 export async function getFollowCounts(
-  userId: string
+  userId: string,
+  seed?: FollowCountsSeed
 ): Promise<{ followersCount: number; followingCount: number }> {
   if (!userId) return { followersCount: 0, followingCount: 0 };
   try {
-    const [followerIds, followingIds, publicSnap] = await Promise.all([
+    const canReadUserDoc =
+      seed?.uData !== undefined ||
+      Boolean(auth.currentUser?.uid && auth.currentUser.uid === userId);
+
+    const [followerIds, followingIds, publicSnap, userSnap] = await Promise.all([
       getFollowerIds(userId),
       getFollowingIds(userId),
-      getDoc(doc(db, 'publicProfiles', userId)).catch(() => null),
+      seed?.pubData !== undefined
+        ? Promise.resolve(null)
+        : getDoc(doc(db, 'publicProfiles', userId)).catch(() => null),
+      seed?.uData !== undefined
+        ? Promise.resolve(null)
+        : canReadUserDoc
+        ? getDoc(doc(db, 'users', userId)).catch(() => null)
+        : Promise.resolve(null),
     ]);
 
-    const pubData = publicSnap?.exists() ? publicSnap.data() : null;
-    const followersCount = Math.max(
-      followerIds.length,
-      Number(pubData?.followersCount || 0)
-    );
-    const followingCount = Math.max(
-      followingIds.length,
-      Number(pubData?.followingCount || 0)
-    );
+    const pubData =
+      seed?.pubData !== undefined
+        ? seed.pubData
+        : publicSnap?.exists()
+        ? publicSnap.data()
+        : null;
+    const uData =
+      seed?.uData !== undefined
+        ? seed.uData
+        : userSnap?.exists()
+        ? userSnap.data()
+        : null;
+
+    const uFollowers =
+      typeof uData?.followersCount === 'number' ? Math.max(0, uData.followersCount) : null;
+    const pubFollowers =
+      typeof pubData?.followersCount === 'number' ? Math.max(0, pubData.followersCount) : null;
+
+    const uFollowing =
+      typeof uData?.followingCount === 'number' ? Math.max(0, uData.followingCount) : null;
+    const pubFollowing =
+      typeof pubData?.followingCount === 'number' ? Math.max(0, pubData.followingCount) : null;
+
+    const isSignedIn = Boolean(auth.currentUser?.uid);
+    const followersCount = isSignedIn
+      ? followerIds.length > 0
+        ? followerIds.length
+        : (pubFollowers ?? uFollowers ?? 0)
+      : Math.max(followerIds.length, pubFollowers ?? uFollowers ?? 0);
+
+    const followingCount = isSignedIn
+      ? followingIds.length > 0
+        ? followingIds.length
+        : (pubFollowing ?? uFollowing ?? 0)
+      : Math.max(followingIds.length, pubFollowing ?? uFollowing ?? 0);
+
+    // Safe recount sync: if publicProfiles/{userId} or users/{userId} has a stale counter, repair it
+    if (
+      auth.currentUser &&
+      pubData &&
+      (pubFollowers !== followersCount || pubFollowing !== followingCount)
+    ) {
+      setDoc(
+        doc(db, 'publicProfiles', userId),
+        {
+          followersCount,
+          followingCount,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      )
+        .then(() => invalidatePublicProfileCache(userId))
+        .catch(() => {});
+    }
+
+    if (
+      auth.currentUser &&
+      uData &&
+      (uFollowers !== followersCount || uFollowing !== followingCount)
+    ) {
+      updateDoc(doc(db, 'users', userId), {
+        followersCount,
+        followingCount,
+      }).catch(() => {});
+    }
 
     return { followersCount, followingCount };
   } catch {

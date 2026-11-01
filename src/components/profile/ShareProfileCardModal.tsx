@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Copy, Check, Share2, Flame, Award, BookOpen } from 'lucide-react';
-import { DefaultDotMatrixBanner } from '@/components/koban/artwork/bannerArtwork';
+import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
 import { AvatarPicture, AvatarFrame } from '@/components/koban/CosmeticRenderers';
 import { getRankTitle } from '@/config/rankLadder';
 import type { PublicProfile } from '@/types';
@@ -68,7 +68,11 @@ export const ShareProfileCardModal: React.FC<ShareProfileCardModalProps> = ({
           >
             {/* Banner */}
             <div className="relative h-28 w-full overflow-hidden">
-              <DefaultDotMatrixBanner accentColor={accentColor} />
+              <BannerRenderer
+                bannerId={profile.banner || profile.equipped?.banner}
+                accentColor={accentColor}
+                animated={false}
+              />
             </div>
 
             {/* Profile Avatar & Info */}

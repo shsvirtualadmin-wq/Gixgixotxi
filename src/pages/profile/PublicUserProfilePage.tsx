@@ -12,7 +12,7 @@ import { ContentUnavailableScreen } from '@/components/ui/ContentUnavailableScre
 import { LineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
-import { followUser, unfollowUser, isFollowing } from '@/services/followService';
+import { followUser, unfollowUser, isFollowing, getFollowCounts } from '@/services/followService';
 import { fetchUserCommonsPosts } from '@/services/commonsService';
 import { syncPublicProfile } from '@/services/publicProfileService';
 import { sanitizeStudentDisplayName, maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
@@ -115,6 +115,14 @@ export const PublicUserProfilePage: React.FC = () => {
           setLoading(false);
           return;
         }
+
+        const followCounts = await getFollowCounts(uid, { pubData: data });
+        if (!mounted) return;
+        data = {
+          ...data,
+          followersCount: followCounts.followersCount,
+          followingCount: followCounts.followingCount,
+        };
 
         setTargetUid(uid);
         setProfileData(data);
@@ -230,14 +238,42 @@ export const PublicUserProfilePage: React.FC = () => {
     }
     if (followBusy || isOwner) return;
     setFollowBusy(true);
+    const wasFollowing = isFollowingState;
+    setIsFollowingState(!wasFollowing);
+    setProfileData((prev) =>
+      prev
+        ? {
+            ...prev,
+            followersCount: Math.max(0, Number(prev.followersCount || 0) + (wasFollowing ? -1 : 1)),
+          }
+        : prev
+    );
     try {
-      if (isFollowingState) {
+      if (wasFollowing) {
         await unfollowUser(user.uid, targetUid);
-        setIsFollowingState(false);
       } else {
         await followUser(user.uid, targetUid);
-        setIsFollowingState(true);
       }
+      const updatedCounts = await getFollowCounts(targetUid);
+      setProfileData((prev) =>
+        prev
+          ? {
+              ...prev,
+              followersCount: updatedCounts.followersCount,
+              followingCount: updatedCounts.followingCount,
+            }
+          : prev
+      );
+    } catch {
+      setIsFollowingState(wasFollowing);
+      setProfileData((prev) =>
+        prev
+          ? {
+              ...prev,
+              followersCount: Math.max(0, Number(prev.followersCount || 0) + (wasFollowing ? 1 : -1)),
+            }
+          : prev
+      );
     } finally {
       setFollowBusy(false);
     }
@@ -266,11 +302,7 @@ export const PublicUserProfilePage: React.FC = () => {
         <section className="glass-panel overflow-hidden mb-8">
           {/* Banner */}
           <div className="h-32 sm:h-40 w-full bg-white/[0.03] relative overflow-hidden border-b border-white/10">
-            {bannerId ? (
-              <BannerRenderer bannerId={bannerId} animated />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-r from-[#D71921]/20 via-black to-white/[0.04]" />
-            )}
+            <BannerRenderer bannerId={bannerId} accentColor={profileData.accent || '#D71921'} animated />
           </div>
 
           <div className="p-6 sm:p-8">

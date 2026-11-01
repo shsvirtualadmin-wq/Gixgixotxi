@@ -47,6 +47,18 @@ function setSessionCachedProfile(uid: string, profile: PublicProfile) {
   }
 }
 
+export function invalidatePublicProfileCache(uid: string): void {
+  if (!uid) return;
+  publicProfileCache.delete(uid);
+  if (typeof window !== 'undefined') {
+    try {
+      sessionStorage.removeItem(`boardly_pub_prof_${uid}`);
+    } catch (_e) {
+      // Ignore storage access errors
+    }
+  }
+}
+
 /**
  * Synchronizes a user's sanitized public information into `publicProfiles/{uid}`.
  * Strictly filters out any private fields: email, phone, payments, planExpiresAt, etc.
@@ -60,8 +72,14 @@ export async function syncPublicProfile(
   const p = profileData as Record<string, any>;
   let existingCached = publicProfileCache.get(uid)?.profile || getSessionCachedProfile(uid)?.profile || null;
 
-  // If cache is cold and partial data is passed (e.g., equipping an item), read existing publicProfiles/{uid} first
-  if (!existingCached && (!p.displayName || !p.equipped)) {
+  // If cache is cold or partial data omits follow counts/displayName/equipped, read existing publicProfiles/{uid} first
+  if (
+    !existingCached ||
+    p.followersCount === undefined ||
+    p.followingCount === undefined ||
+    !p.displayName ||
+    !p.equipped
+  ) {
     try {
       const snap = await getDoc(doc(db, 'publicProfiles', uid));
       if (snap.exists()) {

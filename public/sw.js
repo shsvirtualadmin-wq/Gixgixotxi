@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shs-boardly-mcq-v5';
+const CACHE_NAME = 'shs-boardly-mcq-v6';
 
 const ASSETS_TO_CACHE = [
   '/logo.png',
@@ -95,12 +95,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle JavaScript & CSS Chunks (Never fall back to HTML on missing chunks)
+  // Let browser handle video/audio range & streaming requests directly
+  if (/\.(webm|mp4|ogg|mp3|wav)$/i.test(url.pathname)) {
+    return;
+  }
+
+  // Handle JavaScript, CSS & Store Assets (Never cache HTML fallbacks on missing assets)
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
+          const contentType = (networkResponse && networkResponse.headers && networkResponse.headers.get('content-type')) || '';
+          if (networkResponse && networkResponse.status === 200 && !contentType.includes('text/html')) {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
           }
@@ -111,14 +117,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static Assets (Images, Icons, Fonts: Cache First)
+  // Static Assets (Images, Icons, Fonts: Cache First, never cache HTML fallbacks)
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        return cachedResponse;
+        const cachedType = (cachedResponse.headers && cachedResponse.headers.get('content-type')) || '';
+        if (!cachedType.includes('text/html')) {
+          return cachedResponse;
+        }
       }
       return fetch(event.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
+        const contentType = (networkResponse && networkResponse.headers && networkResponse.headers.get('content-type')) || '';
+        if (networkResponse && networkResponse.status === 200 && !contentType.includes('text/html')) {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
         }

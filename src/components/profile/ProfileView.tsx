@@ -36,7 +36,7 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { getPublicProfile, syncPublicProfile } from '@/services/publicProfileService';
-import { followUser, unfollowUser, isFollowing } from '@/services/followService';
+import { followUser, unfollowUser, isFollowing, getFollowCounts } from '@/services/followService';
 import { getRankTitle } from '@/config/rankLadder';
 import {
   PASSPORT_STAMPS,
@@ -313,6 +313,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           accuracy: Number(uData?.accuracy ?? pubData?.stats?.accuracy ?? 0),
         };
 
+        const followCounts = await getFollowCounts(uid, { uData, pubData });
+
         const resolvedProfile: PublicProfile = {
           uid,
           displayName: cleanName,
@@ -330,8 +332,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           memberSince: uData?.createdAt || pubData?.memberSince || null,
           crewName: uData?.crewName || pubData?.crewName || null,
           stats,
-          followersCount: typeof uData?.followersCount === 'number' ? Math.max(0, uData.followersCount) : (pubData?.followersCount || 0),
-          followingCount: typeof uData?.followingCount === 'number' ? Math.max(0, uData.followingCount) : (pubData?.followingCount || 0),
+          followersCount: followCounts.followersCount,
+          followingCount: followCounts.followingCount,
           lastActiveAt: uData?.lastActiveDate || pubData?.lastActiveAt || null,
           role: isAdminAccountUser ? 'admin' : (uData?.role || pubData?.role || 'student'),
           equipped,
@@ -505,6 +507,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
     try {
       await followUser(currentUid, targetId);
+      const updatedCounts = await getFollowCounts(targetId);
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              followersCount: updatedCounts.followersCount,
+              followingCount: updatedCounts.followingCount,
+            }
+          : null
+      );
     } catch (err: any) {
       console.error('[ProfileView] followUser failed:', err?.code || 'ERROR', `users/${currentUid}/following/${targetId}`, err);
       // Rollback
@@ -527,6 +539,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
     try {
       await unfollowUser(currentUid, targetId);
+      const updatedCounts = await getFollowCounts(targetId);
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              followersCount: updatedCounts.followersCount,
+              followingCount: updatedCounts.followingCount,
+            }
+          : null
+      );
       setUnfollowModalOpen(false);
     } catch (err: any) {
       console.error('[ProfileView] unfollowUser failed:', err?.code || 'ERROR', `users/${currentUid}/following/${targetId}`, err);

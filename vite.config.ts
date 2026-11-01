@@ -1130,6 +1130,20 @@ RULES:
           res.end(JSON.stringify({ error: err?.message || 'Error serving file' }));
         }
       });
+
+      server.middlewares.use('/assets/store', (req: any, res: any, next: any) => {
+        const cleanRel = decodeURIComponent((req.url || '').split('?')[0]).replace(/^\/+/, '');
+        const fullPath = path.join(__dirname, 'public', 'assets', 'store', cleanRel);
+        if (!cleanRel || !fs.existsSync(fullPath) || fs.statSync(fullPath).isDirectory()) {
+          res.writeHead(404, {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-store',
+          });
+          res.end('Not Found');
+          return;
+        }
+        next();
+      });
     },
     transformIndexHtml: {
       order: 'pre' as const,

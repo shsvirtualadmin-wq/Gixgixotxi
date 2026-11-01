@@ -9,7 +9,7 @@ export async function onRequest(context: any): Promise<Response> {
   if (
     pathname.startsWith('/api/') ||
     pathname.startsWith('/assets/') ||
-    /\.(js|css|png|jpg|jpeg|webp|svg|ico|xml|txt|json|woff2?|map|pdf)$/i.test(pathname)
+    /\.(js|css|png|jpg|jpeg|webp|webm|mp4|svg|ico|xml|txt|json|woff2?|map|pdf)$/i.test(pathname)
   ) {
     return next();
   }

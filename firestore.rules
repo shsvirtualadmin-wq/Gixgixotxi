@@ -379,6 +379,9 @@ service cloud.firestore {
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['displayName']) ||
           !isReservedOfficialName(request.resource.data.get('displayName', ''))
         )
+      ) || (
+        isSignedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount', 'followingCount', 'updatedAt'])
       );
 
       allow delete: if isAdmin();
