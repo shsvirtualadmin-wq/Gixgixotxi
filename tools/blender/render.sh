@@ -63,18 +63,18 @@ rm -f "${PASSLOG_PREFIX}"*
 
 echo "[render.sh] Encoding banner.webm (VP9 two-pass, 1200x675, 30fps, CRF 34, <900 KB)..."
 ffmpeg -hide_banner -loglevel error -y -framerate 30 -i "${FRAMES_DIR}/frame_%04d.png" \
-  -vf "scale=1200:675:flags=lanczos" \
+  -vf "hqdn3d=1.6:1.2:2.5:2.0,scale=1200:675:flags=lanczos" \
   -c:v libvpx-vp9 -b:v 780k -minrate 380k -maxrate 920k -crf 34 \
   -pix_fmt yuv420p -row-mt 1 -cpu-used 2 -pass 1 -passlogfile "${PASSLOG_PREFIX}" -an -f null /dev/null
 
 ffmpeg -hide_banner -loglevel error -y -framerate 30 -i "${FRAMES_DIR}/frame_%04d.png" \
-  -vf "scale=1200:675:flags=lanczos" \
+  -vf "hqdn3d=1.6:1.2:2.5:2.0,scale=1200:675:flags=lanczos" \
   -c:v libvpx-vp9 -b:v 780k -minrate 380k -maxrate 920k -crf 34 \
   -pix_fmt yuv420p -row-mt 1 -cpu-used 1 -pass 2 -passlogfile "${PASSLOG_PREFIX}" -an "${OUT_PUBLIC}/banner.webm"
 
 echo "[render.sh] Encoding banner.mp4 (H.264 yuv420p, +faststart, 1200x676, <1.2 MB)..."
 ffmpeg -hide_banner -loglevel error -y -framerate 30 -i "${FRAMES_DIR}/frame_%04d.png" \
-  -vf "scale=1200:676:flags=lanczos" \
+  -vf "hqdn3d=1.6:1.2:2.5:2.0,scale=1200:676:flags=lanczos" \
   -c:v libx264 -preset slow -crf 23 -maxrate 1250k -bufsize 2500k \
   -pix_fmt yuv420p -movflags +faststart -an "${OUT_PUBLIC}/banner.mp4"
 

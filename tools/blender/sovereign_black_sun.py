@@ -1794,7 +1794,7 @@ def setup_compositor(scene):
 
     # 5. Subtle Optical Lens Dispersion / Film Finish
     lens = nt.nodes.new("CompositorNodeLensdist")
-    lens.use_jitter = True
+    lens.use_jitter = False
     lens.use_fit = True
     lens.inputs[1].default_value = -0.006
     lens.inputs[2].default_value = 0.008
@@ -1883,7 +1883,7 @@ def apply_frame_state(
 
     # 3. Colossal Sovereign Dragon Motion (1 slow wing flap per loop with lagging membrane, chest breathing, neck sway, tail wave)
     flap_primary = (1.0 - p_cos) * 0.5
-    flap_secondary = math.sin(theta - 0.55) * math.sin(theta * 0.5)
+    flap_secondary = math.sin(theta - 0.55) * u_raw
 
     breath = (1.0 - p_cos) * 0.045
     chest_pivot.scale = (1.0 + breath, 1.0 + breath * 0.8, 1.0 + breath * 0.5)
@@ -1917,8 +1917,8 @@ def apply_frame_state(
         )
 
     for t_seg, loc0, frac in tail_segments:
-        wave = math.sin(theta_cyclic - frac * 3.2) * math.sin(theta * 0.5) * 0.18 * frac
-        t_seg.location = loc0 + Vector((wave, wave * 0.6, math.sin(theta_cyclic - frac * 2.4) * math.sin(theta * 0.5) * 0.08 * frac))
+        wave = math.sin(theta_cyclic - frac * 3.2) * u_raw * 0.18 * frac
+        t_seg.location = loc0 + Vector((wave, wave * 0.6, math.sin(theta_cyclic - frac * 2.4) * u_raw * 0.08 * frac))
 
     # 4. Forked Crimson-Gold Lightning (flashes twice per loop around frames 46 and 126, 0 at boundaries)
     flash_a = math.exp(-((frame - 46.0) ** 2) / 9.0) + 0.55 * math.exp(-((frame - 51.0) ** 2) / 5.0)
