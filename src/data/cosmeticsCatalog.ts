@@ -1961,6 +1961,22 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
     createdAt: '2026-10-31T21:00:00.000Z',
     previewColor: '#F59E0B',
   },
+
+  // ─── FLAGSHIP 3D MYTHIC BANNER: SOVEREIGN OF THE BLACK SUN (Item 152) ──────
+  {
+    id: 'sovereign-of-the-black-sun',
+    name: 'Sovereign of the Black Sun',
+    type: 'banner',
+    priceKobans: 2200,
+    rarity: 'mythic',
+    description: 'A colossal dragon roars before a black sun as an ancient obsidian ring burns with gold.',
+    animated: true,
+    isAnimated: true,
+    isNew: true,
+    featuredOrder: -12,
+    createdAt: '2026-10-31T22:00:00.000Z',
+    previewColor: '#F59E0B',
+  },
 ];
 
 /**

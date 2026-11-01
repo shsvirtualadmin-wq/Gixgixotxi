@@ -32,9 +32,13 @@ import {
   CrimsonLotusLakeBanner,
 } from './premiumBanners';
 import { ObsidianEclipseBanner } from './ObsidianEclipseBanner';
+import { SovereignBlackSunBanner } from './SovereignBlackSunBanner';
 
 // Flagship & New Premium custom banners mapping
 const FLAGSHIP_BANNER_MAP: Record<string, (animated: boolean) => React.ReactNode> = {
+  // Flagship 3D Mythic Banner: Sovereign of the Black Sun (Blender 4.2 LTS)
+  'sovereign-of-the-black-sun': (animated: boolean) => <SovereignBlackSunBanner canAnimate={animated} />,
+
   // Flagship 3D Mythic Banner: Obsidian Eclipse
   'obsidian-eclipse': (animated: boolean) => <ObsidianEclipseBanner canAnimate={animated} />,
 

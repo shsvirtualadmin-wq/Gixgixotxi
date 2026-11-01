@@ -129,6 +129,11 @@ const NEW_25_ITEM_SPECS: Record<
   // 25 NEW 3D-RENDERED LOOP STORE ITEMS + OBSIDIAN ECLIPSE (Items 126–151)
   // ═══════════════════════════════════════════════════════════════════════════
 
+  'sovereign-of-the-black-sun': {
+    layersOrMode: 'Blender 4.2.3 LTS 3D Render (1920×1080 -> 1200×675, 180f @ 30fps, banner.webm/mp4 + poster.webp)',
+    motionSummary: 'Colossal 3D winged Sovereign dragon roaring fire toward a pitch-black eclipsed sun + gold-veined obsidian ring + 14 orbiting slabs + lightning + DoF embers',
+  },
+
   'obsidian-eclipse': {
     layersOrMode: 'Real-Time 3D Three.js/WebGL + 180f Video Loop (banner.webm/mp4)',
     motionSummary: '3D black eclipse sun + gold corona & diamond-ring flare + bevelled obsidian ring with gold veins + 18 orbiting slabs + 1,200 DoF embers',
@@ -313,11 +318,19 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
   const newItems = COSMETICS_CATALOG.filter((item) =>
     showAllWaves
       ? item.isNew
-      : item.createdAt === '2026-10-31T20:00:00.000Z' || item.id === 'obsidian-eclipse'
+      : item.createdAt === '2026-10-31T20:00:00.000Z' ||
+        item.id === 'obsidian-eclipse' ||
+        item.id === 'sovereign-of-the-black-sun'
   );
   const banners = newItems
     .filter((i) => i.type === 'banner')
-    .sort((a, b) => (a.id === 'obsidian-eclipse' ? -1 : b.id === 'obsidian-eclipse' ? 1 : 0));
+    .sort((a, b) => {
+      if (a.id === 'sovereign-of-the-black-sun') return -1;
+      if (b.id === 'sovereign-of-the-black-sun') return 1;
+      if (a.id === 'obsidian-eclipse') return -1;
+      if (b.id === 'obsidian-eclipse') return 1;
+      return 0;
+    });
   const avatars = newItems.filter((i) => i.type === 'avatar');
   const frames = newItems.filter((i) => i.type === 'frame');
   const nameplates = newItems.filter((i) => i.type === 'nameplate');
