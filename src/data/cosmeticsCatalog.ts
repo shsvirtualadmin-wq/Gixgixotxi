@@ -2016,6 +2016,24 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
     webmUrl: '/assets/store/eclipse-wyrm/avatar.webm',
     mp4Url: '/assets/store/eclipse-wyrm/avatar.mp4',
   },
+  // ─── FLAGSHIP 3D MYTHIC PROFILE EFFECT: BLACK SUN EMBER STORM (Item 154) ──
+  {
+    id: 'black-sun-ember-storm',
+    name: 'Black Sun Ember Storm',
+    type: 'effect',
+    priceKobans: 2400,
+    rarity: 'mythic',
+    description: 'A black sun rises as embers and crimson lightning storm across your profile.',
+    animated: true,
+    isAnimated: true,
+    isNew: true,
+    isActive: true,
+    featuredOrder: -15,
+    createdAt: '2026-11-01T02:00:00.000Z',
+    previewColor: '#F59E0B',
+    posterUrl: '/assets/store/black-sun-ember-storm/poster.png',
+    webmUrl: '/assets/store/black-sun-ember-storm/effect.webm',
+  },
 ];
 
 /**

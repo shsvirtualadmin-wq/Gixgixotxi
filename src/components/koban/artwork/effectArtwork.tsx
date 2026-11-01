@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StoreFxCanvas } from '../fx/StoreFxCanvas';
-import { StoreLoopVideo } from '../fx/StoreLoopVideo';
+import { StoreLoopVideo, storeVideoGovernor } from '../fx/StoreLoopVideo';
 import {
   COLOR_RAMPS,
   LightningPool2D,
@@ -660,6 +660,168 @@ const PremiumProfileEffectCanvas: React.FC<{
 };
 
 /**
+ * 3D Blender Transparent Profile Effect Renderer for "Black Sun Ember Storm" (id: black-sun-ember-storm)
+ * - Uses /assets/store/black-sun-ember-storm/effect.webp, effect.webm (VP9 alpha yuva420p), and poster.png
+ * - Pauses when off-screen (IntersectionObserver) or when tab is hidden (document.visibilityState)
+ * - Shows poster.png only under prefers-reduced-motion: reduce or forceStatic
+ * - pointer-events: none so clicks pass through to all buttons, links, and tabs underneath
+ */
+let nextBlackSunEffectInstanceUid = 1;
+
+const BlackSunEmberStormOverlay: React.FC<{
+  canAnimate?: boolean;
+  mode?: 'card' | 'avatar';
+}> = ({ canAnimate = true, mode = 'card' }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const instanceIdRef = useRef<string>(
+    `black-sun-ember-storm-${mode}-${nextBlackSunEffectInstanceUid++}`
+  );
+  const [isVisible, setIsVisible] = useState(true);
+  const [isGovernorActive, setIsGovernorActive] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
+  const [webpFailed, setWebpFailed] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(() => storeVideoGovernor.isReducedMotion());
+  const [tabVisible, setTabVisible] = useState(() =>
+    typeof document !== 'undefined' ? document.visibilityState === 'visible' : true
+  );
+
+  const posterUrl = '/assets/store/black-sun-ember-storm/poster.png';
+  const webpUrl = '/assets/store/black-sun-ember-storm/effect.webp';
+  const webmUrl = '/assets/store/black-sun-ember-storm/effect.webm';
+
+  const effectiveAnimate = Boolean(canAnimate && !reducedMotion && tabVisible);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+      setReducedMotion(mql.matches);
+      const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+      mql.addEventListener('change', handler);
+      return () => mql.removeEventListener('change', handler);
+    } catch {
+      return;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onVisChange = () => {
+      setTabVisible(document.visibilityState === 'visible');
+    };
+    document.addEventListener('visibilitychange', onVisChange);
+    return () => document.removeEventListener('visibilitychange', onVisChange);
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setIsVisible(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        setIsVisible(Boolean(entry?.isIntersecting));
+      },
+      { threshold: 0.05, rootMargin: '80px' }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const videoEl = videoRef.current;
+    if (!videoEl || !effectiveAnimate || videoFailed) return;
+
+    if (typeof videoEl.canPlayType === 'function') {
+      const support = videoEl.canPlayType('video/webm; codecs="vp9"');
+      if (!support) {
+        setVideoFailed(true);
+        return;
+      }
+    }
+
+    const id = instanceIdRef.current;
+    return storeVideoGovernor.register({
+      id,
+      videoEl,
+      isVisible,
+      canAnimate: effectiveAnimate,
+      priority: mode === 'card' ? 8 : 4,
+      setActiveState: setIsGovernorActive,
+      onPlayError: () => setVideoFailed(true),
+    });
+  }, [effectiveAnimate, isVisible, mode, videoFailed]);
+
+  useEffect(() => {
+    storeVideoGovernor.update(instanceIdRef.current, {
+      isVisible,
+      canAnimate: effectiveAnimate,
+      priority: mode === 'card' ? 8 : 4,
+    });
+  }, [isVisible, effectiveAnimate, mode]);
+
+  const showStaticPosterOnly = !effectiveAnimate || !isVisible;
+  const activeImgSrc = showStaticPosterOnly || webpFailed ? posterUrl : webpUrl;
+
+  return (
+    <div
+      ref={containerRef}
+      data-effect-id="black-sun-ember-storm"
+      data-effect-mode={mode}
+      className="relative w-full h-full overflow-hidden pointer-events-none select-none"
+      style={{ pointerEvents: 'none', contain: 'paint' }}
+      aria-hidden="true"
+    >
+      {/* Static poster (reduced-motion / off-screen / forceStatic) or Animated WebP with alpha */}
+      <img
+        src={activeImgSrc}
+        alt=""
+        aria-hidden="true"
+        loading="eager"
+        decoding="async"
+        onError={() => {
+          if (!webpFailed && activeImgSrc === webpUrl) {
+            setWebpFailed(true);
+          }
+        }}
+        className={`absolute inset-0 w-full h-full object-cover pointer-events-none select-none transition-opacity duration-200 ${
+          !showStaticPosterOnly && !videoFailed && isGovernorActive && videoReady
+            ? 'opacity-0'
+            : 'opacity-100'
+        }`}
+      />
+
+      {/* VP9 Alpha WebM Seamless Loop (yuva420p, 30 fps) */}
+      {!showStaticPosterOnly && !videoFailed && (
+        <video
+          ref={videoRef}
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="metadata"
+          poster={posterUrl}
+          onLoadedData={() => setVideoReady(true)}
+          onCanPlay={() => setVideoReady(true)}
+          onError={() => setVideoFailed(true)}
+          className={`absolute inset-0 w-full h-full object-cover pointer-events-none select-none transition-opacity duration-200 ${
+            isGovernorActive && videoReady ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          <source src={webmUrl} type="video/webm" onError={() => setVideoFailed(true)} />
+        </video>
+      )}
+    </div>
+  );
+};
+
+/**
  * 25 BESPOKE AVATAR-SIZED EFFECT WRAPPERS (<EffectAvatarRenderer />)
  * Renders atmospheric vector/canvas auras around the student's avatar/frame.
  */
@@ -670,6 +832,34 @@ export const EffectAvatarRenderer: React.FC<EffectProps> = ({
   children,
   className = '',
 }) => {
+  if (itemId === 'black-sun-ember-storm') {
+    // Performance rule: in dense lists (comments, chips, leaderboards where size < 56), do not render the profile effect at all
+    if (size < 56) {
+      return (
+        <div
+          className={`relative inline-flex items-center justify-center shrink-0 ${className}`}
+          style={{ width: size, height: size }}
+        >
+          {children}
+        </div>
+      );
+    }
+    return (
+      <div
+        className={`relative inline-flex items-center justify-center shrink-0 ${className}`}
+        style={{ width: size, height: size }}
+      >
+        <div
+          className="absolute -inset-2.5 rounded-full pointer-events-none z-20 overflow-hidden"
+          style={{ overflow: 'hidden', contain: 'paint', pointerEvents: 'none' }}
+        >
+          <BlackSunEmberStormOverlay canAnimate={canAnimate} mode="avatar" />
+        </div>
+        <div className="relative z-10">{children}</div>
+      </div>
+    );
+  }
+
   if (PREMIUM_EFFECT_IDS.has(itemId)) {
     return (
       <div
@@ -1088,9 +1278,15 @@ export interface ProfileCardEffectProps {
   className?: string;
   previewMode?: boolean;
   size?: number;
+  forceStatic?: boolean;
 }
 
-export const ProfileCardEffect: React.FC<ProfileCardEffectProps> = ({ itemId, className = '', previewMode = false }) => {
+export const ProfileCardEffect: React.FC<ProfileCardEffectProps> = ({
+  itemId,
+  className = '',
+  previewMode = false,
+  forceStatic = false,
+}) => {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
@@ -1099,7 +1295,8 @@ export const ProfileCardEffect: React.FC<ProfileCardEffectProps> = ({ itemId, cl
       return;
     }
     setVisible(true);
-    if (!previewMode) {
+    // Flagship 3D seamless loop ('black-sun-ember-storm') loops continuously while visible on-screen
+    if (!previewMode && itemId !== 'black-sun-ember-storm') {
       const timer = setTimeout(() => {
         setVisible(false);
       }, 3600); // 3.6s duration
@@ -1114,12 +1311,17 @@ export const ProfileCardEffect: React.FC<ProfileCardEffectProps> = ({ itemId, cl
       className={`absolute inset-0 pointer-events-none overflow-hidden rounded-2xl z-20 transition-opacity duration-1000 ${
         visible ? 'opacity-100' : 'opacity-0'
       } ${className}`}
-      style={{ overflow: 'hidden', contain: 'paint' }}
+      style={{ overflow: 'hidden', contain: 'paint', pointerEvents: 'none' }}
       aria-hidden="true"
     >
+      {/* ─── FLAGSHIP 3D BLENDER PROFILE EFFECT: BLACK SUN EMBER STORM ────────── */}
+      {itemId === 'black-sun-ember-storm' && (
+        <BlackSunEmberStormOverlay canAnimate={visible && !forceStatic} mode="card" />
+      )}
+
       {/* ─── 5 NEW PREMIUM FULL-CARD EFFECTS (Canvas-2D FX Engine Only) ─────── */}
       {PREMIUM_EFFECT_IDS.has(itemId) && (
-        <PremiumProfileEffectCanvas itemId={itemId} canAnimate={visible} mode="card" />
+        <PremiumProfileEffectCanvas itemId={itemId} canAnimate={visible && !forceStatic} mode="card" />
       )}
 
       {/* ─── 13 STATIC FULL-CARD EFFECTS (Zero Motion) ───────────────────────── */}
