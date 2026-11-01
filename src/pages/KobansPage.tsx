@@ -63,7 +63,7 @@ export function KobansPage() {
 
   const sampleFrame = COSMETICS_CATALOG.find((c) => c.id === 'frame-neon-cyber') || COSMETICS_CATALOG[1];
   const sampleNameplate = COSMETICS_CATALOG.find((c) => c.id === 'plate-galaxy-pioneer') || COSMETICS_CATALOG[11];
-  const sampleEffect = COSMETICS_CATALOG.find((c) => c.id === 'effect-cherry-storm') || COSMETICS_CATALOG[15];
+  const sampleEffect = COSMETICS_CATALOG.find((c) => c.id === 'black-sun-ember-storm') || COSMETICS_CATALOG[15];
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pb-24 overflow-x-hidden">

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StoreFxCanvas } from '../fx/StoreFxCanvas';
 import { StoreLoopVideo, storeVideoGovernor } from '../fx/StoreLoopVideo';
 import {
@@ -14,6 +14,7 @@ import { ECLIPSE_WYRM_POSTER_DATA_URI } from './eclipseWyrmPosterFallback';
 interface PfpSvgProps {
   canAnimate?: boolean;
   className?: string;
+  priority?: number;
 }
 
 /**
@@ -1527,7 +1528,7 @@ export const PfpTenguStormPriest: React.FC<PfpSvgProps> = ({ canAnimate = true, 
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 31. Phoenix Ascendant (Mythic)
-export const PfpPhoenixAscendant: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '' }) => {
+export const PfpPhoenixAscendant: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '', priority = 10 }) => {
   const emitters = useMemo<EmitterConfig[]>(
     () => [
       {
@@ -1565,6 +1566,7 @@ export const PfpPhoenixAscendant: React.FC<PfpSvgProps> = ({ canAnimate = true, 
         itemId="pfp_phoenix_ascendant"
         animated={true}
         canAnimate={canAnimate}
+        priority={priority}
         objectFit="cover"
         className="absolute inset-0 w-full h-full"
       />
@@ -1580,7 +1582,7 @@ export const PfpPhoenixAscendant: React.FC<PfpSvgProps> = ({ canAnimate = true, 
 };
 
 // 32. Ryujin Sea Dragon (Legendary)
-export const PfpRyujinSeaDragon: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '' }) => {
+export const PfpRyujinSeaDragon: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '', priority = 10 }) => {
   const emitters = useMemo<EmitterConfig[]>(
     () => [
       {
@@ -1618,6 +1620,7 @@ export const PfpRyujinSeaDragon: React.FC<PfpSvgProps> = ({ canAnimate = true, c
         itemId="pfp_ryujin_sea_dragon"
         animated={true}
         canAnimate={canAnimate}
+        priority={priority}
         objectFit="cover"
         className="absolute inset-0 w-full h-full"
       />
@@ -1633,7 +1636,7 @@ export const PfpRyujinSeaDragon: React.FC<PfpSvgProps> = ({ canAnimate = true, c
 };
 
 // 33. Shadow Ninja Mask (Legendary)
-export const PfpShadowNinjaMask: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '' }) => {
+export const PfpShadowNinjaMask: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '', priority = 10 }) => {
   const emitters = useMemo<EmitterConfig[]>(
     () => [
       {
@@ -1671,6 +1674,7 @@ export const PfpShadowNinjaMask: React.FC<PfpSvgProps> = ({ canAnimate = true, c
         itemId="pfp_shadow_ninja_mask"
         animated={true}
         canAnimate={canAnimate}
+        priority={priority}
         objectFit="cover"
         className="absolute inset-0 w-full h-full"
       />
@@ -1686,7 +1690,7 @@ export const PfpShadowNinjaMask: React.FC<PfpSvgProps> = ({ canAnimate = true, c
 };
 
 // 34. Raijin Thunder God (Epic)
-export const PfpRaijinThunderGod: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '' }) => {
+export const PfpRaijinThunderGod: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '', priority = 10 }) => {
   const emitters = useMemo<EmitterConfig[]>(
     () => [
       {
@@ -1737,6 +1741,7 @@ export const PfpRaijinThunderGod: React.FC<PfpSvgProps> = ({ canAnimate = true, 
         itemId="pfp_raijin_thunder_god"
         animated={true}
         canAnimate={canAnimate}
+        priority={priority}
         objectFit="cover"
         className="absolute inset-0 w-full h-full"
       />
@@ -1753,7 +1758,7 @@ export const PfpRaijinThunderGod: React.FC<PfpSvgProps> = ({ canAnimate = true, 
 };
 
 // 35. Yokai Lantern Ghost (Epic)
-export const PfpYokaiLanternGhost: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '' }) => {
+export const PfpYokaiLanternGhost: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '', priority = 10 }) => {
   const emitters = useMemo<EmitterConfig[]>(
     () => [
       {
@@ -1791,6 +1796,7 @@ export const PfpYokaiLanternGhost: React.FC<PfpSvgProps> = ({ canAnimate = true,
         itemId="pfp_yokai_lantern_ghost"
         animated={true}
         canAnimate={canAnimate}
+        priority={priority}
         objectFit="cover"
         className="absolute inset-0 w-full h-full"
       />
@@ -1810,9 +1816,9 @@ export const PfpYokaiLanternGhost: React.FC<PfpSvgProps> = ({ canAnimate = true,
 // ─────────────────────────────────────────────────────────────────────────────
 let nextEclipseWyrmInstanceId = 1;
 
-export const PfpEclipseWyrm: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '' }) => {
+export const PfpEclipseWyrm: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '', priority = 10 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const instanceIdRef = useRef<string>(`pfp-eclipse-wyrm-${nextEclipseWyrmInstanceId++}`);
 
   const [isVisible, setIsVisible] = useState(true);
@@ -1821,7 +1827,7 @@ export const PfpEclipseWyrm: React.FC<PfpSvgProps> = ({ canAnimate = true, class
   const [posterStage, setPosterStage] = useState<'initial' | 'retry' | 'embedded'>('initial');
   const [videoRetry, setVideoRetry] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
-  const [videoReady, setVideoReady] = useState(false);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
 
   const basePosterUrl = '/assets/store/eclipse-wyrm/poster.webp';
   const baseWebmUrl = '/assets/store/eclipse-wyrm/avatar.webm';
@@ -1839,12 +1845,23 @@ export const PfpEclipseWyrm: React.FC<PfpSvgProps> = ({ canAnimate = true, class
 
   const effectiveAnimate = Boolean(canAnimate && !reducedMotion && !videoFailed);
 
+  const handleVideoRef = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    if (node) {
+      node.muted = true;
+      node.defaultMuted = true;
+      node.playsInline = true;
+    }
+    storeVideoGovernor.setVideoEl(instanceIdRef.current, node);
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
       const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
-      setReducedMotion(mql.matches);
-      const onChange = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+      setReducedMotion(mql.matches || storeVideoGovernor.isReducedMotion());
+      const onChange = (e: MediaQueryListEvent) =>
+        setReducedMotion(e.matches || storeVideoGovernor.isReducedMotion());
       mql.addEventListener('change', onChange);
       return () => mql.removeEventListener('change', onChange);
     } catch {
@@ -1878,43 +1895,68 @@ export const PfpEclipseWyrm: React.FC<PfpSvgProps> = ({ canAnimate = true, class
     return storeVideoGovernor.register({
       id,
       videoEl: videoRef.current,
+      getVideoEl: () => videoRef.current,
       isVisible,
       canAnimate: effectiveAnimate,
-      priority: 8,
+      priority,
       setActiveState: setIsGovernorActive,
+      onPlayError: () => setAutoplayBlocked(true),
     });
-  }, [effectiveAnimate, isVisible, videoRetry]);
+  }, [effectiveAnimate, isVisible, videoRetry, priority]);
 
   useEffect(() => {
     storeVideoGovernor.update(instanceIdRef.current, {
+      videoEl: videoRef.current,
+      getVideoEl: () => videoRef.current,
       isVisible,
       canAnimate: effectiveAnimate,
-      priority: 8,
+      priority,
     });
-  }, [isVisible, effectiveAnimate]);
+  }, [isVisible, effectiveAnimate, priority]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    if (effectiveAnimate && isVisible && isGovernorActive) {
-      video.play().catch(() => {});
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+    if (effectiveAnimate && isVisible && isGovernorActive && !autoplayBlocked) {
+      const p = video.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch((err: unknown) => {
+          const name = err instanceof Error ? err.name : '';
+          if (name === 'AbortError') return;
+          setAutoplayBlocked(true);
+        });
+      }
     } else {
       if (!video.paused) {
         video.pause();
       }
     }
-  }, [effectiveAnimate, isVisible, isGovernorActive]);
+  }, [effectiveAnimate, isVisible, isGovernorActive, autoplayBlocked]);
 
   const handleVideoReady = () => {
-    setVideoReady(true);
-    if (effectiveAnimate && isVisible && isGovernorActive && videoRef.current) {
-      videoRef.current.play().catch(() => {});
+    setAutoplayBlocked(false);
+    const video = videoRef.current;
+    if (effectiveAnimate && isVisible && isGovernorActive && video && video.paused) {
+      video.muted = true;
+      video.defaultMuted = true;
+      video.playsInline = true;
+      const p = video.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch((err: unknown) => {
+          const name = err instanceof Error ? err.name : '';
+          if (name === 'AbortError') return;
+          setAutoplayBlocked(true);
+        });
+      }
     }
   };
 
   const handleVideoError = () => {
-    setVideoReady(false);
     if (!videoRetry) {
+      setAutoplayBlocked(false);
       setVideoRetry(true);
     } else {
       setVideoFailed(true);
@@ -1950,19 +1992,21 @@ export const PfpEclipseWyrm: React.FC<PfpSvgProps> = ({ canAnimate = true, class
       {effectiveAnimate && (
         <video
           key={videoRetry ? 'retry' : 'initial'}
-          ref={videoRef}
+          ref={handleVideoRef}
           data-testid="eclipse-wyrm-video"
           autoPlay
           loop
           muted
           playsInline
-          preload="metadata"
+          preload="auto"
           poster={posterUrl}
+          onLoadedMetadata={handleVideoReady}
           onLoadedData={handleVideoReady}
           onCanPlay={handleVideoReady}
+          onPlaying={() => setAutoplayBlocked(false)}
           onError={handleVideoError}
           className={`eclipse-wyrm-video absolute inset-0 w-full h-full object-cover rounded-full pointer-events-none transition-opacity duration-200 ${
-            isVisible && isGovernorActive && videoReady && !videoFailed ? 'opacity-100' : 'opacity-0'
+            isVisible && isGovernorActive && !videoFailed && !autoplayBlocked ? 'opacity-100' : 'opacity-0'
           }`}
         >
           <source src={webmUrl} type="video/webm" />

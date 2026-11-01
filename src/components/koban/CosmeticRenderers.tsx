@@ -86,19 +86,19 @@ function useCosmeticAnimation(itemId: string, _isNameplate = false, forceStatic 
   const [isVisible, setIsVisible] = useState(true);
   const { smoothMode } = useSmoothMode();
 
-  const item = itemId ? getCosmeticById(itemId) : undefined;
+  const normalizedId = itemId === 'pfp_eclipse_wyrm' ? 'eclipse-wyrm' : itemId;
+  const item = normalizedId ? getCosmeticById(normalizedId) : undefined;
   // Catalog animated flag is the single source of truth
   const isCatalogAnimated = Boolean(item?.animated && !forceStatic && !smoothMode);
 
   useEffect(() => {
     if (!isCatalogAnimated) {
-      setIsVisible(false);
       return;
     }
 
+    setIsVisible(true);
     const el = containerRef.current;
     if (!el || typeof IntersectionObserver === 'undefined') {
-      setIsVisible(true);
       return;
     }
 
@@ -115,7 +115,7 @@ function useCosmeticAnimation(itemId: string, _isNameplate = false, forceStatic 
     return () => {
       observer.disconnect();
     };
-  }, [isCatalogAnimated]);
+  }, [normalizedId, isCatalogAnimated]);
 
   const canAnimate = isCatalogAnimated && isVisible;
 
@@ -140,7 +140,18 @@ export interface AvatarPictureProps {
   size?: number | string;
   className?: string;
   forceStatic?: boolean;
+  priority?: number;
 }
+
+const VIDEO_LOOP_AVATAR_IDS = new Set([
+  'eclipse-wyrm',
+  'pfp_eclipse_wyrm',
+  'pfp_phoenix_ascendant',
+  'pfp_ryujin_sea_dragon',
+  'pfp_shadow_ninja_mask',
+  'pfp_raijin_thunder_god',
+  'pfp_yokai_lantern_ghost',
+]);
 
 const AvatarPictureInner: React.FC<AvatarPictureProps> = ({
   itemId,
@@ -153,12 +164,15 @@ const AvatarPictureInner: React.FC<AvatarPictureProps> = ({
   size = 40,
   className = '',
   forceStatic = false,
+  priority,
 }) => {
-  const avatarId = directAvatarId || itemId || null;
+  const rawAvatarId = directAvatarId || itemId || null;
+  const avatarId = rawAvatarId === 'pfp_eclipse_wyrm' ? 'eclipse-wyrm' : rawAvatarId;
   const numericSize = typeof size === 'number' ? size : parseInt(String(size), 10) || 40;
-  // Performance rule: in dense lists (numericSize < 56, e.g. 40x40 comments, chips, leaderboards), show poster only
-  const isDenseList = Boolean(avatarId === 'eclipse-wyrm' && numericSize < 56);
+  // Performance rule: in dense lists (numericSize < 56, e.g. 40x40 comments, chips, leaderboards, member lists), show poster only
+  const isDenseList = Boolean(avatarId && VIDEO_LOOP_AVATAR_IDS.has(avatarId) && numericSize < 56);
   const effectiveForceStatic = Boolean(forceStatic || isDenseList);
+  const effectivePriority = priority ?? (numericSize >= 56 ? 10 : 1);
   const effectiveVariant = variant || avatarVariant;
   const pfpItem = avatarId ? getCosmeticById(avatarId) : undefined;
   const isPfp = Boolean(pfpItem && pfpItem.type === 'avatar' && PFP_ARTWORK_MAP[avatarId!]);
@@ -174,7 +188,7 @@ const AvatarPictureInner: React.FC<AvatarPictureProps> = ({
         title={pfpItem?.name}
         aria-label={`${pfpItem?.name} Profile Picture`}
       >
-        <PfpComp canAnimate={canAnimate && !effectiveForceStatic} />
+        <PfpComp canAnimate={canAnimate && !effectiveForceStatic} priority={effectivePriority} />
       </div>
     );
   }

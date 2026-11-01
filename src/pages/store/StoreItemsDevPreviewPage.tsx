@@ -103,30 +103,8 @@ const NEW_25_ITEM_SPECS: Record<
     motionSummary: 'Continuous crimson shimmer + drifting displaced blood-moon mist + scroll border flow + 2-line wrap',
   },
 
-  // 5 Profile Effects (Wave 1)
-  'effect-dragon-fire-aura': {
-    layersOrMode: 'Canvas 2D Only (StoreFxCanvas Typed-Array Pool)',
-    motionSummary: 'Rising turbulent additive flames (white -> orange -> crimson -> smoke) + fast rising sparks',
-  },
-  'effect-thunder-kami-storm': {
-    layersOrMode: 'Canvas 2D Only (StoreFxCanvas + LightningPool2D)',
-    motionSummary: 'Recursive midpoint-displacement branching lightning bolts + radial flash decay + ionized sparks',
-  },
-  'effect-spirit-fox-fire': {
-    layersOrMode: 'Canvas 2D Only (StoreFxCanvas + 2D Noise Orbs)',
-    motionSummary: 'Blue-violet kitsune orbs following smooth 2D gradient noise paths with 9-step soft ribbon trails',
-  },
-  'effect-cherry-blossom-gale': {
-    layersOrMode: 'Canvas 2D Only (StoreFxCanvas 3D Petal Pool)',
-    motionSummary: '3D-tumbling sakura petals in a swirling sinusoidal wind field with depth-sorted size & softness',
-  },
-  'effect-falling-stars': {
-    layersOrMode: 'Canvas 2D Only (StoreFxCanvas Streak Pool)',
-    motionSummary: 'Golden diagonal meteors with tapered fading tails, rare bright streaks & twinkling stardust wake',
-  },
-
   // ═══════════════════════════════════════════════════════════════════════════
-  // 25 NEW 3D-RENDERED LOOP STORE ITEMS + OBSIDIAN ECLIPSE (Items 126–151)
+  // 3D-RENDERED LOOP STORE ITEMS + FLAGSHIPS
   // ═══════════════════════════════════════════════════════════════════════════
 
   'eclipse-wyrm': {
@@ -157,14 +135,6 @@ const NEW_25_ITEM_SPECS: Record<
     layersOrMode: 'Three.js 3D Loop (loop.webm/webp 30fps, 90f) + Canvas FX',
     motionSummary: '3D winged tengu silhouette atop a mountain peak under a pulsing solar eclipse ring & wind-blown clouds',
   },
-  ban_spirit_lantern_festival: {
-    layersOrMode: 'Three.js 3D Loop (loop.webm/webp 30fps, 90f) + Canvas FX',
-    motionSummary: '45+ 3D glowing paper lanterns floating & swaying upward through a twilight river valley',
-  },
-  ban_crimson_lotus_lake: {
-    layersOrMode: 'Three.js 3D Painted Static Poster (1200×675 poster.webp)',
-    motionSummary: 'Static high-res 3D blood-red lotus lake at dusk with sculpted crimson lotuses and a 5-tier pagoda',
-  },
 
   // 5 Avatars (Wave 2)
   pfp_phoenix_ascendant: {
@@ -188,33 +158,7 @@ const NEW_25_ITEM_SPECS: Record<
     motionSummary: '3D paper-lantern yokai bobbing in 3D space with a flickering inner soul flame & spirit wisps',
   },
 
-  // 5 Avatar Frames (Wave 2)
-  'frame-phoenix-feather-halo': {
-    layersOrMode: 'Three.js 3D Alpha Loop (loop.webm/webp 60fps, 90f) + SVG/FX',
-    motionSummary: '3D ring of 16 burning phoenix feathers orbiting clear center + counter-rotating runes & sparks',
-  },
-  'frame-frost-crystal-ring': {
-    layersOrMode: 'Three.js 3D Alpha Loop (loop.webm/webp 60fps, 90f) + SVG/FX',
-    motionSummary: '3D ring of 12 rotating faceted ice crystals with cold specular light sweep & frost motes',
-  },
-  'frame-cyber-circuit-ring': {
-    layersOrMode: 'Three.js 3D Alpha Loop (loop.webm/webp 60fps, 90f) + SVG/FX',
-    motionSummary: '3D neon PCB circuit-board torus with high-speed cyan/magenta data pulses racing around the ring',
-  },
-  'frame-spirit-flame-wreath': {
-    layersOrMode: 'Three.js 3D Alpha Loop (loop.webm/webp 60fps, 90f) + SVG/FX',
-    motionSummary: '3D circular wreath of 14 blue spirit flames orbiting smoothly around the clear avatar center',
-  },
-  'frame-shuriken-orbit': {
-    layersOrMode: 'Three.js 3D Alpha Loop (loop.webm/webp 60fps, 90f) + SVG/FX',
-    motionSummary: 'Four 3D brushed-steel shuriken spinning on their axes while orbiting with cyan motion trails',
-  },
-
-  // 5 Nameplates (Wave 2)
-  'plate-phoenix-crest': {
-    layersOrMode: 'Three.js 3D Loop (600×120 60fps) + SVG Smoke & Shimmer',
-    motionSummary: '3D gold-and-flame beveled plate with flaring wing crests, ember shimmer & 2-line live HTML text',
-  },
+  // 4 Nameplates (Wave 2)
   'plate-raijin-storm-plate': {
     layersOrMode: 'Three.js 3D Loop (600×120 60fps) + SVG Lightning Border',
     motionSummary: '3D dark storm-iron plate with Raijin crests, high-voltage border lightning & 2-line live HTML text',
@@ -230,28 +174,6 @@ const NEW_25_ITEM_SPECS: Record<
   'plate-ronin-katana-slash': {
     layersOrMode: 'Three.js 3D Static Poster (600×120 poster.webp) + SVG',
     motionSummary: 'Static matte-black armor plate bisected by a diagonal katana slash & crimson edge + 2-line HTML text',
-  },
-
-  // 5 Profile Effects (Wave 2)
-  'effect-phoenix-rebirth-flames': {
-    layersOrMode: 'Three.js 3D Alpha Loop (600×800 60fps) + Canvas FX',
-    motionSummary: '3D flame phoenix silhouette rising with swirling ribbons of fire & burning feathers clipped to card',
-  },
-  'effect-frost-spirit-blizzard': {
-    layersOrMode: 'Three.js 3D Alpha Loop (600×800 60fps) + Canvas FX',
-    motionSummary: '3D blizzard vortex of swirling snow and rotating faceted ice shards with cold cyan glow',
-  },
-  'effect-cyber-glitch-matrix': {
-    layersOrMode: 'Three.js 3D Alpha Loop (600×800 60fps) + Canvas FX',
-    motionSummary: '3D falling neon code columns in perspective depth with periodic horizontal holographic glitch bars',
-  },
-  'effect-lantern-spirit-drift': {
-    layersOrMode: 'Three.js 3D Alpha Loop (600×800 60fps) + Canvas FX',
-    motionSummary: '3D glowing paper lanterns floating & swaying upward through the profile card with warm halos',
-  },
-  'effect-shuriken-storm': {
-    layersOrMode: 'Three.js 3D Alpha Loop (600×800 60fps) + Canvas FX',
-    motionSummary: '3D spinning steel shuriken streaking diagonally across the card with luminous slash trails',
   },
 };
 

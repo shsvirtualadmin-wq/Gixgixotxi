@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { getSmoothMode } from '@/utils/smoothMode';
 
 /**
  * Global Concurrent Video Loop Governor for the Boardly Store
@@ -9,6 +10,7 @@ const MAX_CONCURRENT_VIDEOS = 8;
 interface VideoSubscriber {
   id: string;
   videoEl?: HTMLVideoElement | null;
+  getVideoEl?: () => HTMLVideoElement | null;
   isVisible: boolean;
   canAnimate: boolean;
   priority: number;
@@ -22,6 +24,26 @@ class StoreVideoPlaybackGovernor {
   private prefersReducedMotion = false;
   private isTabVisible = true;
   private initialized = false;
+
+  private resolveVideoEl(sub: VideoSubscriber): HTMLVideoElement | null {
+    return sub.getVideoEl ? sub.getVideoEl() : (sub.videoEl ?? null);
+  }
+
+  private tryPlay(sub: VideoSubscriber, videoEl: HTMLVideoElement) {
+    videoEl.muted = true;
+    videoEl.defaultMuted = true;
+    videoEl.playsInline = true;
+    if (videoEl.paused) {
+      const p = videoEl.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch((err: unknown) => {
+          const name = err instanceof Error ? err.name : '';
+          if (name === 'AbortError') return;
+          sub.onPlayError?.();
+        });
+      }
+    }
+  }
 
   private initListeners() {
     if (this.initialized || typeof window === 'undefined') return;
@@ -49,7 +71,7 @@ class StoreVideoPlaybackGovernor {
 
   isReducedMotion(): boolean {
     this.initListeners();
-    return this.prefersReducedMotion;
+    return this.prefersReducedMotion || getSmoothMode();
   }
 
   register(sub: VideoSubscriber) {
@@ -63,18 +85,29 @@ class StoreVideoPlaybackGovernor {
     };
   }
 
-  update(id: string, patch: Partial<Pick<VideoSubscriber, 'isVisible' | 'canAnimate' | 'priority'>>) {
+  update(
+    id: string,
+    patch: Partial<Pick<VideoSubscriber, 'isVisible' | 'canAnimate' | 'priority' | 'videoEl' | 'getVideoEl'>>
+  ) {
     const sub = this.subscribers.get(id);
     if (!sub) return;
     Object.assign(sub, patch);
     this.rebalance();
   }
 
+  setVideoEl(id: string, videoEl: HTMLVideoElement | null) {
+    const sub = this.subscribers.get(id);
+    if (!sub) return;
+    sub.videoEl = videoEl;
+    this.rebalance();
+  }
+
   private rebalance() {
-    if (this.prefersReducedMotion || !this.isTabVisible) {
+    if (this.prefersReducedMotion || getSmoothMode() || !this.isTabVisible) {
       for (const [, sub] of this.subscribers) {
-        if (sub.videoEl && !sub.videoEl.paused) {
-          sub.videoEl.pause();
+        const videoEl = this.resolveVideoEl(sub);
+        if (videoEl && !videoEl.paused) {
+          videoEl.pause();
         }
         sub.setActiveState(false);
       }
@@ -84,11 +117,12 @@ class StoreVideoPlaybackGovernor {
 
     const eligible: VideoSubscriber[] = [];
     for (const [, sub] of this.subscribers) {
+      const videoEl = this.resolveVideoEl(sub);
       if (sub.isVisible && sub.canAnimate) {
         eligible.push(sub);
       } else {
-        if (sub.videoEl && !sub.videoEl.paused) {
-          sub.videoEl.pause();
+        if (videoEl && !videoEl.paused) {
+          videoEl.pause();
         }
         this.activeIds.delete(sub.id);
         sub.setActiveState(false);
@@ -105,17 +139,16 @@ class StoreVideoPlaybackGovernor {
     const nextActive = new Set<string>();
     for (let i = 0; i < eligible.length; i++) {
       const sub = eligible[i];
+      const videoEl = this.resolveVideoEl(sub);
       if (i < MAX_CONCURRENT_VIDEOS) {
         nextActive.add(sub.id);
         sub.setActiveState(true);
-        if (sub.videoEl && sub.videoEl.paused) {
-          sub.videoEl.play().catch(() => {
-            sub.onPlayError?.();
-          });
+        if (videoEl) {
+          this.tryPlay(sub, videoEl);
         }
       } else {
-        if (sub.videoEl && !sub.videoEl.paused) {
-          sub.videoEl.pause();
+        if (videoEl && !videoEl.paused) {
+          videoEl.pause();
         }
         sub.setActiveState(false);
       }
@@ -160,7 +193,7 @@ export const StoreLoopVideo: React.FC<StoreLoopVideoProps> = ({
   style,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const instanceIdRef = useRef<string>(`store-loop-${itemId}-${nextInstanceUid++}`);
   const [isVisible, setIsVisible] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -173,12 +206,29 @@ export const StoreLoopVideo: React.FC<StoreLoopVideoProps> = ({
 
   const effectiveAnimate = Boolean(animated && canAnimate && !reducedMotion);
 
+  const handleVideoRef = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    if (node) {
+      node.muted = true;
+      node.defaultMuted = true;
+      node.playsInline = true;
+      if (typeof node.canPlayType === 'function') {
+        const support = node.canPlayType('video/webm; codecs="vp9"');
+        if (!support) {
+          setVideoFailed(true);
+          return;
+        }
+      }
+    }
+    storeVideoGovernor.setVideoEl(instanceIdRef.current, node);
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
       const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
-      setReducedMotion(mql.matches);
-      const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+      setReducedMotion(mql.matches || getSmoothMode());
+      const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches || getSmoothMode());
       mql.addEventListener('change', handler);
       return () => mql.removeEventListener('change', handler);
     } catch {
@@ -206,22 +256,16 @@ export const StoreLoopVideo: React.FC<StoreLoopVideoProps> = ({
   }, []);
 
   useEffect(() => {
-    const videoEl = videoRef.current;
-    if (!videoEl || !effectiveAnimate || videoFailed) return;
-
-    // Check if browser supports VP9 WebM decoding; if not, switch immediately to animated WebP loop
-    if (typeof videoEl.canPlayType === 'function') {
-      const support = videoEl.canPlayType('video/webm; codecs="vp9"');
-      if (!support) {
-        setVideoFailed(true);
-        return;
-      }
+    if (!effectiveAnimate || videoFailed) {
+      setIsPlaying(false);
+      return;
     }
 
     const id = instanceIdRef.current;
     return storeVideoGovernor.register({
       id,
-      videoEl,
+      videoEl: videoRef.current,
+      getVideoEl: () => videoRef.current,
       isVisible,
       canAnimate: effectiveAnimate,
       priority,
@@ -232,6 +276,8 @@ export const StoreLoopVideo: React.FC<StoreLoopVideoProps> = ({
 
   useEffect(() => {
     storeVideoGovernor.update(instanceIdRef.current, {
+      videoEl: videoRef.current,
+      getVideoEl: () => videoRef.current,
       isVisible,
       canAnimate: effectiveAnimate,
       priority,
@@ -265,7 +311,7 @@ export const StoreLoopVideo: React.FC<StoreLoopVideoProps> = ({
       {/* Animated 3D Seamless Loop Video (VP9 WebM with alpha + Animated WebP fallback) */}
       {effectiveAnimate && isVisible && !videoFailed && (
         <video
-          ref={videoRef}
+          ref={handleVideoRef}
           autoPlay
           loop
           muted

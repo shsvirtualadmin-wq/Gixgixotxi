@@ -237,7 +237,12 @@ export const PublicUserProfilePage: React.FC = () => {
   // Strictly expose ONLY safe public fields (displayName, avatar, frame, banner, role, public counts)
   const safeName = sanitizeStudentDisplayName(profileData.displayName, targetUid);
   const bannerId = profileData.equipped?.banner || profileData.banner;
-  const avatarId = profileData.equipped?.avatar || profileData.equippedAvatar;
+  const avatarId =
+    profileData.equipped?.avatar ||
+    profileData.equippedAvatar ||
+    (profileData.avatar && !String(profileData.avatar).includes('googleusercontent')
+      ? profileData.avatar
+      : undefined);
   const frameId = profileData.equipped?.frame || profileData.frame;
   const role = profileData.role || 'student';
   const followersCount = Number(profileData.followersCount || 0);

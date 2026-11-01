@@ -14,6 +14,7 @@ export interface BoardlyAvatarProps {
   avatarVariant?: string | null;
   forceStatic?: boolean;
   isSuperAdmin?: boolean;
+  priority?: number;
 }
 
 /**
@@ -38,6 +39,7 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
   avatarVariant,
   forceStatic = false,
   isSuperAdmin = false,
+  priority,
 }) => {
   const [imageError, setImageError] = useState(false);
 
@@ -69,6 +71,7 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
         avatarId={resolvedCosmeticAvatar}
         size={size}
         forceStatic={forceStatic}
+        priority={priority ?? (size >= 56 ? 10 : 1)}
         className="w-full h-full object-cover rounded-full"
       />
     );

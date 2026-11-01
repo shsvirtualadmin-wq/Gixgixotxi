@@ -169,7 +169,7 @@ const CATEGORY_META: Array<{
     label: 'Profile Effects',
     shortLabel: 'Effects',
     subtitle: 'Full-card particle auras',
-    sampleId: 'effect-dragon-fire-aura',
+    sampleId: 'black-sun-ember-storm',
   },
 ];
 
@@ -867,6 +867,7 @@ export function StorePage() {
             <AvatarPicture
               itemId={item.id}
               size={circleSize}
+              priority={isLarge ? 9 : 2}
               className="!w-full !h-full !rounded-full"
             />
           </div>
@@ -885,6 +886,7 @@ export function StorePage() {
               avatarVariant={profile?.avatarVariant}
               seed={user?.uid || 'student'}
               size={Math.round(frameSize * 0.72)}
+              priority={isLarge ? 9 : 2}
               className="rounded-full"
             />
           </AvatarFrame>
@@ -1302,6 +1304,7 @@ export function StorePage() {
                       avatarVariant={profile?.avatarVariant}
                       seed={user?.uid || 'student'}
                       size={56}
+                      priority={10}
                       className="rounded-full"
                     />
                   </AvatarFrame>

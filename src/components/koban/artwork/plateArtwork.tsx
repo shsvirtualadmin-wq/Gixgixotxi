@@ -192,37 +192,7 @@ const PREMIUM_NAMEPLATE_CONFIGS: Record<string, PremiumNameplateConfig> = {
       </g>
     ),
   },
-  // ─── 5 NEW PREMIUM NAMEPLATES (Wave 2: Items 141–145) ───────────────────
-  'plate-phoenix-crest': {
-    id: 'plate-phoenix-crest',
-    has3DLoop: true,
-    bgGradient: 'linear-gradient(125deg, #270507 0%, #7C2D12 42%, #B45309 74%, #3B070B 100%)',
-    shimmerGradient: 'linear-gradient(108deg, transparent 15%, rgba(254,240,138,0.14) 38%, rgba(253,224,71,0.48) 50%, rgba(249,115,22,0.22) 62%, transparent 85%)',
-    smokeColorA: '#F59E0B',
-    smokeColorB: '#EA580C',
-    borderOuterColor: '#F59E0B',
-    borderFlowColor: '#FEF08A',
-    scanlineColor: 'rgba(254, 240, 138, 0.34)',
-    textColor: '#FEFCE8',
-    textShadow: '0 1px 2px rgba(0,0,0,0.95), 0 0 8px rgba(245,158,11,0.85)',
-    shortIdColor: '#FDE68A',
-    badgeBg: '#451A03',
-    badgeText: '#FEF08A',
-    badgeBorder: '#F59E0B',
-    turbulenceFreq: '0.038 0.085',
-    displacementScale: 8,
-    borderPathD: 'M12,1.5 L218,1.5 L228.5,20 L218,38.5 L12,38.5 L1.5,20 Z',
-    ornamentPathLeft: (
-      <g>
-        <path d="M1 12 C4 5 9 2 15 3 C11 7 10 10 13 14 C8 13 4 13 1 12 Z" fill="#FDE047" stroke="#92400E" strokeWidth="0.9" />
-      </g>
-    ),
-    ornamentPathRight: (
-      <g>
-        <path d="M15 12 C12 5 7 2 1 3 C5 7 6 10 3 14 C8 13 12 13 15 12 Z" fill="#FDE047" stroke="#92400E" strokeWidth="0.9" />
-      </g>
-    ),
-  },
+  // ─── 4 NEW PREMIUM NAMEPLATES (Wave 2: Items 142–145) ───────────────────
   'plate-raijin-storm-plate': {
     id: 'plate-raijin-storm-plate',
     has3DLoop: true,

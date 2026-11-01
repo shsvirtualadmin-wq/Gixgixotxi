@@ -779,12 +779,6 @@ All 25 new Store cosmetics use continuous procedural motion driven by the shared
    - \`frame-void-obsidian-ring\`: Counter-rotating obsidian shard & rune rings, \`stroke-dashoffset\` void conduits, and Canvas FX abyssal violet sparks & micro-arcs.
 4. **Nameplates (5)**:
    - \`plate-dragon-lord\`, \`plate-shinobi-shadow\`, \`plate-neon-ronin\`, \`plate-imperial-jade\`, \`plate-blood-moon-scroll\`: Pure CSS/SVG with animated shimmer gradient sweeps, SVG \`<feTurbulence>\` + \`<feDisplacementMap>\` drifting smoke, scanline pulse, ornate SVG border paths, and full 2-line name wrapping (never truncated).
-5. **Profile Effects (5)**:
-   - \`effect-dragon-fire-aura\`: Canvas 2D rising additive flames with turbulence, white->orange->crimson->smoke color ramp, and sparks.
-   - \`effect-thunder-kami-storm\`: Canvas 2D midpoint-displacement branching lightning bolts with flash decay and afterglow.
-   - \`effect-spirit-fox-fire\`: Canvas 2D blue-violet foxfire wisps following smooth 2D noise paths with ribbon trails.
-   - \`effect-cherry-blossom-gale\`: Canvas 2D 3D-tumbling sakura petals in a swirling wind field with depth-based size and softness.
-   - \`effect-falling-stars\`: Canvas 2D golden meteors with tapered fading tails and bright streaks.
 `;
 
   await fs.writeFile(path.join(OUT_ROOT, 'README.md'), readme, 'utf8');

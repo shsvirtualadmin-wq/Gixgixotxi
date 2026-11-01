@@ -30,26 +30,6 @@
     "webpKB": 92.2
   },
   {
-    "id": "ban_spirit_lantern_festival",
-    "category": "banner",
-    "animated": true,
-    "fps": 30,
-    "frames": 90,
-    "posterKB": 12.7,
-    "webmKB": 141.4,
-    "webpKB": 231.1
-  },
-  {
-    "id": "ban_crimson_lotus_lake",
-    "category": "banner",
-    "animated": false,
-    "fps": 30,
-    "frames": 1,
-    "posterKB": 8.1,
-    "webmKB": 0,
-    "webpKB": 0
-  },
-  {
     "id": "pfp_phoenix_ascendant",
     "category": "avatar",
     "animated": true,
@@ -100,66 +80,6 @@
     "webpKB": 153.8
   },
   {
-    "id": "frame-phoenix-feather-halo",
-    "category": "avatar_frame",
-    "animated": true,
-    "fps": 60,
-    "frames": 90,
-    "posterKB": 14.4,
-    "webmKB": 130.4,
-    "webpKB": 324.9
-  },
-  {
-    "id": "frame-frost-crystal-ring",
-    "category": "avatar_frame",
-    "animated": true,
-    "fps": 60,
-    "frames": 90,
-    "posterKB": 11.2,
-    "webmKB": 117.3,
-    "webpKB": 291.3
-  },
-  {
-    "id": "frame-cyber-circuit-ring",
-    "category": "avatar_frame",
-    "animated": true,
-    "fps": 60,
-    "frames": 90,
-    "posterKB": 13.4,
-    "webmKB": 128.7,
-    "webpKB": 321
-  },
-  {
-    "id": "frame-spirit-flame-wreath",
-    "category": "avatar_frame",
-    "animated": true,
-    "fps": 60,
-    "frames": 90,
-    "posterKB": 13,
-    "webmKB": 131.1,
-    "webpKB": 310.1
-  },
-  {
-    "id": "frame-shuriken-orbit",
-    "category": "avatar_frame",
-    "animated": true,
-    "fps": 60,
-    "frames": 90,
-    "posterKB": 13.2,
-    "webmKB": 129.8,
-    "webpKB": 324.9
-  },
-  {
-    "id": "plate-phoenix-crest",
-    "category": "nameplate",
-    "animated": true,
-    "fps": 60,
-    "frames": 90,
-    "posterKB": 1.6,
-    "webmKB": 24.5,
-    "webpKB": 17.1
-  },
-  {
     "id": "plate-raijin-storm-plate",
     "category": "nameplate",
     "animated": true,
@@ -198,55 +118,5 @@
     "posterKB": 1.2,
     "webmKB": 0,
     "webpKB": 0
-  },
-  {
-    "id": "effect-phoenix-rebirth-flames",
-    "category": "profile_effect",
-    "animated": true,
-    "fps": 60,
-    "frames": 90,
-    "posterKB": 18.5,
-    "webmKB": 145.3,
-    "webpKB": 385.8
-  },
-  {
-    "id": "effect-frost-spirit-blizzard",
-    "category": "profile_effect",
-    "animated": true,
-    "fps": 60,
-    "frames": 90,
-    "posterKB": 20.7,
-    "webmKB": 146.3,
-    "webpKB": 417.7
-  },
-  {
-    "id": "effect-cyber-glitch-matrix",
-    "category": "profile_effect",
-    "animated": true,
-    "fps": 60,
-    "frames": 90,
-    "posterKB": 4.4,
-    "webmKB": 95.3,
-    "webpKB": 134
-  },
-  {
-    "id": "effect-lantern-spirit-drift",
-    "category": "profile_effect",
-    "animated": true,
-    "fps": 60,
-    "frames": 90,
-    "posterKB": 13.2,
-    "webmKB": 135.2,
-    "webpKB": 310.5
-  },
-  {
-    "id": "effect-shuriken-storm",
-    "category": "profile_effect",
-    "animated": true,
-    "fps": 60,
-    "frames": 90,
-    "posterKB": 14.9,
-    "webmKB": 179,
-    "webpKB": 323.3
   }
 ]

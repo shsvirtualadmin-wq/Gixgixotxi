@@ -1,6 +1,6 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, initializeFirestore, memoryLocalCache } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, memoryLocalCache, setLogLevel } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 import {
   TARGET_PROJECT_ID,
@@ -24,13 +24,20 @@ export {
   firebaseConfig,
 };
 
+// Suppress noisy internal @firebase/firestore transport/offline timeout console errors in proxied iframe previews
+try {
+  setLogLevel('silent');
+} catch {
+  // Ignore if Firestore logger cannot be configured
+}
+
 // Single shared Firebase App instance used by both Auth and Firestore
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 export const functions = getFunctions(app);
 
 // Initialize Firestore with the unified database:
-// Uses experimentalAutoDetectLongPolling: true to prevent 10s backend unreachable timeouts while supporting restricted proxies
+// Uses experimentalForceLongPolling: true to avoid 10s WebChannel stalls in restricted proxy/iframe environments
 // Uses memoryLocalCache() to prevent multi-tab IndexedDB lock contention & write queue stalls
 // Uses ignoreUndefinedProperties: true to prevent invalid data errors on optional fields
 export const db = (() => {
@@ -38,7 +45,7 @@ export const db = (() => {
     return initializeFirestore(
       app,
       {
-        experimentalAutoDetectLongPolling: true,
+        experimentalForceLongPolling: true,
         localCache: memoryLocalCache(),
         ignoreUndefinedProperties: true,
       } as unknown as Parameters<typeof initializeFirestore>[1],
