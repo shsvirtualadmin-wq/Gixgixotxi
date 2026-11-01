@@ -16,3 +16,17 @@ scripts/migrate-questions/*.key.json
 bun.lock
 bun.lockb
 
+# Untracked bloat / duplicates / render caches (kept on disk, excluded from Git for AI Studio 1,000-file import limit)
+.aistudio/artifacts/
+/assets/store/
+/assets/zenryu/
+tools/blender/.frames_cache_*/
+generated-materials/
+data/commons-uploads/
+public/backups/
+data/backups/
+app/applet/scripts/inspect-wallets.mjs
+duplicates-report.md
+math-review.md
+log.json
+public/screenshots/phase_a_390px.png
