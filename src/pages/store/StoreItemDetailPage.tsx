@@ -81,13 +81,13 @@ export const StoreItemDetailPage: React.FC = () => {
         await equipCosmetic(cosmetic.type, isEquipped ? null : cosmetic.id);
         setFeedback(isEquipped ? 'Unequipped item.' : 'Equipped to your student profile!');
       } else {
-        const res = await purchaseCosmetic(cosmetic.id);
+        const res = await purchaseCosmetic(cosmetic);
         if (res.success) {
           setFeedback('Unlocked! You can now equip this item.');
-        } else {
-          setFeedback(res.error || 'Insufficient Kobans.');
         }
       }
+    } catch (err: unknown) {
+      setFeedback(err instanceof Error ? err.message : 'Insufficient Kobans.');
     } finally {
       setBusy(false);
     }

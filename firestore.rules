@@ -358,13 +358,23 @@ service cloud.firestore {
           'isSuspended',
           'suspended',
           'status',
-          'kobanBalance',
           'coins',
           'xp',
           'isCaptain',
           'captainCode',
           'permissions'
         ]) &&
+        (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['kobans', 'kobanBalance']) ||
+          (
+            request.resource.data.get('kobans', 0) is int &&
+            request.resource.data.get('kobans', 0) >= 0 &&
+            request.resource.data.get('kobans', 0) <= resource.data.get('kobans', resource.data.get('kobanBalance', 0)) &&
+            request.resource.data.get('kobanBalance', 0) is int &&
+            request.resource.data.get('kobanBalance', 0) >= 0 &&
+            request.resource.data.get('kobanBalance', 0) <= resource.data.get('kobanBalance', resource.data.get('kobans', 0))
+          )
+        ) &&
         (
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['displayName']) ||
           !isReservedOfficialName(request.resource.data.get('displayName', ''))
@@ -514,13 +524,40 @@ service cloud.firestore {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isAdmin() || (
         isOwner(userId) &&
-        request.resource.data.get('balance', 0) == 0
+        request.resource.data.get('balance', 0) is int &&
+        request.resource.data.get('balance', 0) >= 0 &&
+        (
+          request.resource.data.get('balance', 0) == 0 ||
+          (
+            exists(/databases/$(database)/documents/users/$(userId)) &&
+            request.resource.data.get('balance', 0) <= get(/databases/$(database)/documents/users/$(userId)).data.get('kobans', 0)
+          )
+        )
       );
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['balance', 'owned', 'equipped', 'updatedAt']) &&
+        request.resource.data.get('balance', 0) is int &&
+        request.resource.data.get('balance', 0) >= 0 &&
+        (
+          request.resource.data.get('balance', 0) <= resource.data.get('balance', 0) ||
+          (
+            exists(/databases/$(database)/documents/users/$(userId)) &&
+            request.resource.data.get('balance', 0) <= get(/databases/$(database)/documents/users/$(userId)).data.get('kobans', 0)
+          )
+        )
+      );
+      allow delete: if isAdmin();
 
       match /ledger/{entryId} {
         allow read: if isOwner(userId) || isAdmin();
-        allow write: if isAdmin();
+        allow create: if isAdmin() || (
+          isOwner(userId) &&
+          request.resource.data.get('type', '') == 'purchase' &&
+          request.resource.data.get('amount', 0) is int &&
+          request.resource.data.get('amount', 0) <= 0
+        );
+        allow update, delete: if isAdmin();
       }
     }
 

@@ -102,11 +102,7 @@ export async function purchaseCosmeticItem(
         }
       }
 
-      if (isSuperAdmin) {
-        effectivePrice = 0;
-      }
-
-      // Read current balance from wallets doc and users doc (use highest synced balance)
+      // Read current balance from wallets doc (fallback to users doc only if wallet is uninitialized)
       const userData = userSnap.exists() ? userSnap.data() : null;
       const userKobans =
         userData && typeof userData.kobans === 'number'
@@ -114,9 +110,13 @@ export async function purchaseCosmeticItem(
           : userData && typeof userData.kobanBalance === 'number'
           ? userData.kobanBalance
           : 0;
-      const walletBalance =
-        walletData && typeof walletData.balance === 'number' ? walletData.balance : 0;
-      const currentBalance = Math.max(userKobans, walletBalance);
+      const hasInitializedWallet =
+        walletSnap.exists() &&
+        typeof walletData?.balance === 'number' &&
+        (walletData.balance > 0 || currentOwned.length > 0);
+      const currentBalance = hasInitializedWallet
+        ? (walletData!.balance as number)
+        : Math.max(userKobans, typeof walletData?.balance === 'number' ? walletData.balance : 0);
 
       if (currentBalance < effectivePrice) {
         throw new Error(
@@ -188,7 +188,7 @@ export async function purchaseCosmeticItem(
         balanceAfter,
         itemId: item.id,
         itemName: item.name,
-        reason: isSuperAdmin ? `Super Admin unlock: ${item.name}` : `Store purchase: ${item.name}`,
+        reason: `Store purchase: ${item.name}`,
         timestamp: serverTimestamp(),
       });
 
