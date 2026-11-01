@@ -2574,12 +2574,205 @@
       "updated_at": 1743465600000
     }
   ],
-  "userWelcomeStatus": [],
+  "userWelcomeStatus": [
+    {
+      "user_uid": "A5YMRimdHRcmeDWutxtUGt2e4hf2",
+      "welcomed": 1,
+      "read_welcome": 0,
+      "welcomed_at": 1793476419291,
+      "read_at": null
+    }
+  ],
   "userReadAnnouncements": [],
   "follows": [],
   "notifications": [],
   "questions": [],
   "questionsImportLog": [],
+  "universities": [
+    {
+      "id": "uni_fast_nuces",
+      "name": "FAST-NUCES",
+      "slug": "fast-nuces",
+      "logo_url": "",
+      "sort_order": 1,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_nust_net",
+      "name": "NUST (NET)",
+      "slug": "nust-net",
+      "logo_url": "",
+      "sort_order": 2,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_giki",
+      "name": "GIKI",
+      "slug": "giki",
+      "logo_url": "",
+      "sort_order": 3,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_comsats",
+      "name": "COMSATS",
+      "slug": "comsats",
+      "logo_url": "",
+      "sort_order": 4,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_lums_lcat",
+      "name": "LUMS (LCAT)",
+      "slug": "lums-lcat",
+      "logo_url": "",
+      "sort_order": 5,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_iba_karachi",
+      "name": "IBA Karachi",
+      "slug": "iba-karachi",
+      "logo_url": "",
+      "sort_order": 6,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_uet_ecat",
+      "name": "UET (ECAT)",
+      "slug": "uet-ecat",
+      "logo_url": "",
+      "sort_order": 7,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_pieas",
+      "name": "PIEAS",
+      "slug": "pieas",
+      "logo_url": "",
+      "sort_order": 8,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_air_university",
+      "name": "Air University",
+      "slug": "air-university",
+      "logo_url": "",
+      "sort_order": 9,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_bahria_university",
+      "name": "Bahria University",
+      "slug": "bahria-university",
+      "logo_url": "",
+      "sort_order": 10,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_ned_university",
+      "name": "NED University",
+      "slug": "ned-university",
+      "logo_url": "",
+      "sort_order": 11,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_ecat",
+      "name": "ECAT",
+      "slug": "ecat",
+      "logo_url": "",
+      "sort_order": 12,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_mdcat",
+      "name": "MDCAT",
+      "slug": "mdcat",
+      "logo_url": "",
+      "sort_order": 13,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_nums",
+      "name": "NUMS",
+      "slug": "nums",
+      "logo_url": "",
+      "sort_order": 14,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_etea",
+      "name": "ETEA",
+      "slug": "etea",
+      "logo_url": "",
+      "sort_order": 15,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_nts_nat",
+      "name": "NTS NAT",
+      "slug": "nts-nat",
+      "logo_url": "",
+      "sort_order": 16,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_usat_hec",
+      "name": "USAT (HEC)",
+      "slug": "usat-hec",
+      "logo_url": "",
+      "sort_order": 17,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    },
+    {
+      "id": "uni_aku",
+      "name": "AKU",
+      "slug": "aku",
+      "logo_url": "",
+      "sort_order": 18,
+      "mcq_count": 0,
+      "is_live": 0,
+      "created_at": "2025-04-01T00:00:00.000Z"
+    }
+  ],
+  "mcqs": [],
+  "mcqReports": [],
+  "imports": [],
   "legacyAdminBankPurgedAt": "2026-10-31T10:54:04.098Z",
   "legacyAdminBankBackupSummary": {
     "deletedD1AdminBankCount": 42,

@@ -27,7 +27,6 @@ import {
 import { type D1McqRow } from '@/constants/d1Universities';
 import { MathText } from '@/components/ui/MathText';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
-import { useSmoothMode } from '@/utils/smoothMode';
 import type {
   ZenryuEngineController,
   ZenryuPose,
@@ -270,7 +269,7 @@ const STAGE_CSS_EMBERS = [
   { left: '93%', delay: '0.2s', duration: '4.4s', size: 4 },
 ] as const;
 
-// ── Static Soft-Glow Fallback Pose (For Reduced Motion, Low-End or WebGL Fallback) ──
+// ── Static Soft-Glow Fallback Pose (Framed to Fit Stage with Zero Clipping) ──
 const StaticDragonFallback = memo(function StaticDragonFallback({
   onSummon,
   compact = false,
@@ -390,13 +389,31 @@ function getTimeLabel(): string {
   }
 }
 
+/**
+ * Strictly checks for truly low-end hardware (1 core or <=1GB RAM with <=2 cores or Data Saver)
+ * so desktop/tablet devices with 2-4 reported cores or privacy-capped navigator properties
+ * never get misclassified as low-end.
+ */
 function detectLowEndDevice(): boolean {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
   try {
-    const cores = navigator.hardwareConcurrency;
-    if (typeof cores === 'number' && cores > 0 && cores <= 2) return true;
-    const conn = (navigator as unknown as { connection?: { saveData?: boolean } }).connection;
-    if (conn?.saveData === true) return true;
+    const nav = navigator as Navigator & {
+      deviceMemory?: number;
+      connection?: { saveData?: boolean };
+    };
+    const cores = nav.hardwareConcurrency;
+    const mem = nav.deviceMemory;
+    if (typeof cores === 'number' && cores > 0 && cores <= 1) return true;
+    if (
+      typeof cores === 'number' &&
+      cores <= 2 &&
+      typeof mem === 'number' &&
+      mem > 0 &&
+      mem <= 1
+    ) {
+      return true;
+    }
+    if (nav.connection?.saveData === true) return true;
   } catch {
     // Ignore
   }
@@ -409,8 +426,7 @@ function DragonCompanionInner({
   currentMcq = null,
   isTestModalOpen = false,
 }: DragonCompanionProps) {
-  const { user } = useAuth();
-  const { smoothMode } = useSmoothMode();
+  const { user, isAdmin } = useAuth();
   const { hideDragon } = useDragonHiddenPreference();
 
   const featureEnabled = useMemo(() => isDragonCompanionEnabled(), []);
@@ -419,19 +435,20 @@ function DragonCompanionInner({
   const [postPaintReady, setPostPaintReady] = useState(false);
   useEffect(() => {
     let cancelled = false;
+    let timerId = 0;
     const rafId = window.requestAnimationFrame(() => {
-      const timerId = window.setTimeout(() => {
+      timerId = window.setTimeout(() => {
         if (!cancelled) setPostPaintReady(true);
-      }, 65);
-      return () => window.clearTimeout(timerId);
+      }, 40);
     });
     return () => {
       cancelled = true;
       window.cancelAnimationFrame(rafId);
+      if (timerId) window.clearTimeout(timerId);
     };
   }, []);
 
-  // 1. Server-verified role check (default null = treated as locked)
+  // 1. Server-verified role check + AuthContext admin check
   const [verifiedRole, setVerifiedRole] = useState<VerifiedServerRole>(null);
   useEffect(() => {
     let active = true;
@@ -466,7 +483,7 @@ function DragonCompanionInner({
   }, [user?.uid]);
 
   const isAdminBypass =
-    verifiedRole === 'admin' || verifiedRole === 'superadmin';
+    Boolean(isAdmin) || verifiedRole === 'admin' || verifiedRole === 'superadmin';
   const isUnlockedByCount = correctCount >= DRAGON_UNLOCK_THRESHOLD;
   const isUnlocked = isAdminBypass || isUnlockedByCount;
 
@@ -491,7 +508,7 @@ function DragonCompanionInner({
     }
   }, [user?.uid, isAdminBypass, isUnlockedByCount]);
 
-  // Reduced motion & low-end device detection
+  // Reduced motion & truly low-end device detection (never misclassifies desktop as low-end)
   const [prefersReducedMotion, setPrefersReducedMotion] = useState<boolean>(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return false;
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -506,10 +523,10 @@ function DragonCompanionInner({
     return () => mq.removeEventListener('change', handler);
   }, []);
 
-  const shouldUseStaticPose = prefersReducedMotion || smoothMode || isLowEndDevice;
+  const shouldUseStaticPose = prefersReducedMotion || isLowEndDevice;
 
-  // ── 3D Engine Lifecycle, Sleep, Roar, Pointer-Follow & Drag State ─────────
-  const [isSleeping, setIsSleeping] = useState(false);
+  // ── 3D Engine Lifecycle, Actual Pose State, Pointer-Follow & Drag State ───
+  const [activePose, setActivePose] = useState<ZenryuPose>('fly');
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [engineReady, setEngineReady] = useState(false);
   const [webglFailed, setWebglFailed] = useState(false);
@@ -545,17 +562,17 @@ function DragonCompanionInner({
   const canvasMountRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<ZenryuEngineController | null>(null);
   const lastInteractionRef = useRef<number>(Date.now());
-  const isSleepingRef = useRef<boolean>(false);
+  const activePoseRef = useRef<ZenryuPose>('fly');
 
   useEffect(() => {
-    isSleepingRef.current = isSleeping;
-  }, [isSleeping]);
+    activePoseRef.current = activePose;
+  }, [activePose]);
 
   const wakeAndMarkActivity = useCallback(() => {
     lastInteractionRef.current = Date.now();
-    if (isSleepingRef.current) {
-      isSleepingRef.current = false;
-      setIsSleeping(false);
+    if (activePoseRef.current === 'sleep') {
+      activePoseRef.current = 'fly';
+      setActivePose('fly');
       if (engineRef.current && engineRef.current.getPose() === 'sleep') {
         engineRef.current.setPose('fly');
       }
@@ -575,10 +592,12 @@ function DragonCompanionInner({
     }
 
     const mountNode = canvasMountRef.current;
+    const stageNode = stageRef.current;
     if (!mountNode) return;
 
     let cancelled = false;
     let instance: ZenryuEngineController | null = null;
+    let resizeObs: ResizeObserver | null = null;
 
     void import('./zenryuEngine3D')
       .then((mod) => {
@@ -592,9 +611,39 @@ function DragonCompanionInner({
           container: canvasMountRef.current,
           initialPose: 'fly',
           initialCamera: 'stage',
+          onPoseChange: (nextPose) => {
+            if (!cancelled) {
+              activePoseRef.current = nextPose;
+              setActivePose(nextPose);
+              if (nextPose !== 'sleep') {
+                lastInteractionRef.current = Date.now();
+              }
+            }
+          },
         });
         engineRef.current = instance;
+        activePoseRef.current = instance.getPose();
+        setActivePose(instance.getPose());
         setEngineReady(true);
+
+        // Expose pose controller on window in dev mode for automated pose inspection
+        if (typeof window !== 'undefined') {
+          (
+            window as unknown as {
+              __zenryuDebugSetPose?: (p: ZenryuPose) => void;
+            }
+          ).__zenryuDebugSetPose = (p: ZenryuPose) => {
+            lastInteractionRef.current = Date.now();
+            activePoseRef.current = p;
+            setActivePose(p);
+            if (p === 'roar') {
+              instance?.triggerRoar();
+            } else {
+              instance?.setPose(p);
+            }
+            instance?.renderNow();
+          };
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -602,14 +651,31 @@ function DragonCompanionInner({
         }
       });
 
-    const onResize = () => {
+    // ResizeObserver on the stage itself (not only window) so any stage/layout change refits Box3 camera
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObs = new ResizeObserver(() => {
+        engineRef.current?.resize();
+      });
+      if (stageNode) resizeObs.observe(stageNode);
+      resizeObs.observe(mountNode);
+    }
+
+    const onWindowResize = () => {
       engineRef.current?.resize();
     };
-    window.addEventListener('resize', onResize);
+    window.addEventListener('resize', onWindowResize);
 
     return () => {
       cancelled = true;
-      window.removeEventListener('resize', onResize);
+      window.removeEventListener('resize', onWindowResize);
+      resizeObs?.disconnect();
+      if (typeof window !== 'undefined') {
+        delete (
+          window as unknown as {
+            __zenryuDebugSetPose?: (p: ZenryuPose) => void;
+          }
+        ).__zenryuDebugSetPose;
+      }
       if (instance) {
         instance.dispose();
       }
@@ -652,12 +718,15 @@ function DragonCompanionInner({
   useEffect(() => {
     if (!isUnlocked || hideDragon || shouldUseStaticPose || isSheetOpen) return;
     const interval = window.setInterval(() => {
-      if (Date.now() - lastInteractionRef.current >= 20000 && !isSleepingRef.current) {
-        isSleepingRef.current = true;
-        setIsSleeping(true);
+      if (
+        Date.now() - lastInteractionRef.current >= 20000 &&
+        activePoseRef.current === 'fly'
+      ) {
+        activePoseRef.current = 'sleep';
+        setActivePose('sleep');
         engineRef.current?.setPose('sleep');
       }
-    }, 1500);
+    }, 1000);
     return () => window.clearInterval(interval);
   }, [isUnlocked, hideDragon, shouldUseStaticPose, isSheetOpen]);
 
@@ -682,6 +751,8 @@ function DragonCompanionInner({
       playSoftDragonRoarSound();
     }
     if (engineRef.current) {
+      activePoseRef.current = 'roar';
+      setActivePose('roar');
       engineRef.current.triggerRoar();
       window.setTimeout(() => {
         setIsSheetOpen(true);
@@ -755,7 +826,7 @@ function DragonCompanionInner({
     [triggerRoarAndOpenSheet]
   );
 
-  const handleCanvasPointerLeave = useCallback(() => {
+  const handleCanvasPointerLeaveOrCancel = useCallback(() => {
     engineRef.current?.setPointerNorm(null, null);
     if (dragStateRef.current.active) {
       dragStateRef.current.active = false;
@@ -942,6 +1013,15 @@ function DragonCompanionInner({
     Math.round((clampedCorrect / DRAGON_UNLOCK_THRESHOLD) * 100)
   );
 
+  // Label strictly reflects actual animation state:
+  // "Tap to summon" while flying/idle, "Resting" only in sleep pose, "Roaring" during roar
+  const stageStatusText =
+    activePose === 'roar'
+      ? 'Roaring'
+      : activePose === 'sleep'
+      ? 'Resting'
+      : 'Tap to summon';
+
   return (
     <>
       {/* ── DEDICATED GLASS DRAGON STAGE (Between Greeting & Choose Your University) ── */}
@@ -1013,10 +1093,11 @@ function DragonCompanionInner({
           </div>
         </section>
       ) : (
-        /* STATE B: Unlocked 3D Dragon Stage (240–280px Tall Glass Hero Strip) */
+        /* STATE B: Unlocked 3D Dragon Stage (Responsive across Mobile, Tablet & Desktop; Dark Crimson Window in Both Themes) */
         <section
           ref={stageRef}
-          className="zenryu-stage zenryu-stage--active"
+          data-zenryu-pose={activePose}
+          className="zenryu-stage zenryu-stage--active dark-surface-preserve"
           aria-label={`${DRAGON_COMPANION_NAME} 3D Dragon Companion Stage`}
         >
           {/* Dark-Red Radial Glow & Stage Vignette (pointer-events: none) */}
@@ -1053,7 +1134,7 @@ function DragonCompanionInner({
                 type="button"
                 onClick={() => setShowAwakeningCelebration(false)}
                 aria-label="Dismiss awakening notice"
-                className="ml-1 text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+                className="ml-1 text-white/70 hover:text-white cursor-pointer"
               >
                 <X size={12} />
               </button>
@@ -1065,17 +1146,18 @@ function DragonCompanionInner({
             <div className="zenryu-stage-loading-glow" aria-hidden="true" />
           )}
 
-          {/* Static Soft-Glow Pose Fallback (Reduced Motion, Low-End Device, or WebGL Failure) */}
+          {/* Static Soft-Glow Pose Fallback (Reduced Motion, Truly Low-End Device, or WebGL Unavailable) */}
           {shouldUseStaticPose || webglFailed ? (
             <StaticDragonFallback onSummon={triggerRoarAndOpenSheet} />
           ) : (
-            /* 3D WebGL Canvas Mount (Pointer-Events Apply ONLY to the Canvas) */
+            /* 3D WebGL Canvas Mount (Pointer Events support Mouse, Touch & Pen) */
             <div
               ref={canvasMountRef}
               onPointerDown={handleCanvasPointerDown}
               onPointerMove={handleCanvasPointerMove}
               onPointerUp={handleCanvasPointerUp}
-              onPointerLeave={handleCanvasPointerLeave}
+              onPointerCancel={handleCanvasPointerLeaveOrCancel}
+              onPointerLeave={handleCanvasPointerLeaveOrCancel}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
@@ -1090,16 +1172,16 @@ function DragonCompanionInner({
             />
           )}
 
-          {/* Stationary Bottom-Left 12px Glass Pill ("Zenryu · Tap to summon") */}
+          {/* Stationary Bottom-Left 12px Glass Pill Inside Reserved 44px Safe Zone */}
           <div className="zenryu-stage-corner-label">
             <span
               className={`zenryu-status-dot ${
-                isSleeping ? 'zenryu-status-dot--sleeping' : ''
+                activePose === 'sleep' ? 'zenryu-status-dot--sleeping' : ''
               }`}
               aria-hidden="true"
             />
             <span className="zenryu-stage-corner-name">
-              {DRAGON_COMPANION_NAME} · {isSleeping ? 'Resting' : 'Tap to summon'}
+              {DRAGON_COMPANION_NAME} · {stageStatusText}
             </span>
           </div>
         </section>
@@ -1126,28 +1208,43 @@ function DragonCompanionInner({
             }
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Top Drag Handle (Swipe down to close) */}
+            {/* Top Drag Handle (Swipe down to close via Pointer Events) */}
             <div
               className="zenryu-sheet-handle-bar"
-              onTouchStart={(e) => {
+              onPointerDown={(e) => {
                 sheetSwipeRef.current.active = true;
-                sheetSwipeRef.current.startY = e.touches[0]?.clientY ?? 0;
+                sheetSwipeRef.current.startY = e.clientY;
+                try {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                } catch {
+                  // Ignore
+                }
               }}
-              onTouchMove={(e) => {
+              onPointerMove={(e) => {
                 if (!sheetSwipeRef.current.active) return;
-                const dy = (e.touches[0]?.clientY ?? 0) - sheetSwipeRef.current.startY;
+                const dy = e.clientY - sheetSwipeRef.current.startY;
                 if (dy > 0) {
                   setSheetDragY(dy);
                 }
               }}
-              onTouchEnd={() => {
+              onPointerUp={(e) => {
+                if (!sheetSwipeRef.current.active) return;
                 sheetSwipeRef.current.active = false;
+                try {
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                } catch {
+                  // Ignore
+                }
                 if (sheetDragY > 90) {
                   setSheetDragY(0);
                   setIsSheetOpen(false);
                 } else {
                   setSheetDragY(0);
                 }
+              }}
+              onPointerCancel={() => {
+                sheetSwipeRef.current.active = false;
+                setSheetDragY(0);
               }}
             >
               <span className="zenryu-sheet-pill" />
@@ -1332,16 +1429,20 @@ export function ZenryuDevPreviewPage() {
   const [showPhoneStage, setShowPhoneStage] = useState(false);
   const [dockCollapsed, setDockCollapsed] = useState(false);
 
-  // Disabled in production builds
   const isDevBuild = Boolean(import.meta.env.DEV);
+  const isCockpitStageMode =
+    isDevBuild &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('cockpit') === '1';
 
   useEffect(() => {
-    if (!isDevBuild) return;
+    if (!isDevBuild || isCockpitStageMode) return;
     const node = mountRef.current;
     if (!node) return;
 
     let cancelled = false;
     let ctrl: ZenryuEngineController | null = null;
+    let resizeObs: ResizeObserver | null = null;
 
     void import('./zenryuEngine3D').then((mod) => {
       if (cancelled || !mountRef.current) return;
@@ -1351,24 +1452,39 @@ export function ZenryuDevPreviewPage() {
         initialCamera: 'three-quarter',
         enableOrbitControls: true,
         opaqueStageBackground: true,
+        onPoseChange: (next) => {
+          if (!cancelled) setPoseState(next);
+        },
       });
       engineRef.current = ctrl;
     });
+
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObs = new ResizeObserver(() => {
+        engineRef.current?.resize();
+      });
+      resizeObs.observe(node);
+    }
 
     const onResize = () => engineRef.current?.resize();
     window.addEventListener('resize', onResize);
     return () => {
       cancelled = true;
       window.removeEventListener('resize', onResize);
+      resizeObs?.disconnect();
       ctrl?.dispose();
       engineRef.current = null;
     };
-  }, [isDevBuild]);
+  }, [isDevBuild, isCockpitStageMode]);
 
   useEffect(() => {
-    if (!isDevBuild || !showPhoneStage || !stagePhoneMountRef.current) return;
+    if (!isDevBuild || isCockpitStageMode || !showPhoneStage || !stagePhoneMountRef.current) {
+      return;
+    }
     let cancelled = false;
     let ctrl: ZenryuEngineController | null = null;
+    let resizeObs: ResizeObserver | null = null;
+    const node = stagePhoneMountRef.current;
 
     void import('./zenryuEngine3D').then((mod) => {
       if (cancelled || !stagePhoneMountRef.current) return;
@@ -1376,25 +1492,61 @@ export function ZenryuDevPreviewPage() {
         container: stagePhoneMountRef.current,
         initialPose: pose,
         initialCamera: 'stage',
+        onPoseChange: (next) => {
+          if (!cancelled) setPoseState(next);
+        },
       });
       phoneEngineRef.current = ctrl;
     });
 
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObs = new ResizeObserver(() => {
+        phoneEngineRef.current?.resize();
+      });
+      resizeObs.observe(node);
+    }
+
     return () => {
       cancelled = true;
+      resizeObs?.disconnect();
       ctrl?.dispose();
       phoneEngineRef.current = null;
     };
-  }, [isDevBuild, showPhoneStage, pose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDevBuild, isCockpitStageMode, showPhoneStage]);
 
   if (!isDevBuild) {
     return null;
   }
 
-  // In dev mode, allow admin or local dev inspection
   const allowed = isAdmin || Boolean(user) || isDevBuild;
   if (!allowed) {
     return null;
+  }
+
+  if (isCockpitStageMode) {
+    return (
+      <div className="min-h-screen w-full bg-[var(--bg)] text-[var(--text)] px-4 py-5 sm:px-6 md:px-8 transition-colors">
+        <div className="max-w-[1100px] mx-auto space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--accent)]">
+                Boardly Cockpit
+              </p>
+              <h1
+                className="text-lg sm:text-xl font-bold text-[var(--text)]"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                Welcome back, Captain
+              </h1>
+            </div>
+            <span className="zenryu-badge">1,240 Correct MCQs</span>
+          </div>
+
+          <DragonCompanion />
+        </div>
+      </div>
+    );
   }
 
   const handlePose = (next: ZenryuPose) => {
@@ -1413,10 +1565,13 @@ export function ZenryuDevPreviewPage() {
     engineRef.current?.setCameraPreset(next);
   };
 
+  const statusText =
+    pose === 'roar' ? 'Roaring' : pose === 'sleep' ? 'Resting' : 'Tap to summon';
+
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#0b0608] text-white select-none">
+    <div className="relative w-screen h-screen overflow-hidden bg-[#0b0406] text-white select-none">
       {/* Top-Left Minimal Spec Badge */}
-      <div className="fixed top-4 left-4 z-20 px-3.5 py-2 rounded-2xl bg-black/75 border border-white/15 text-xs flex items-center gap-3">
+      <div className="fixed top-4 left-4 z-20 px-3.5 py-2 rounded-2xl bg-black/75 border border-white/15 text-xs flex items-center gap-3 dark-surface-preserve">
         <span className="font-bold text-red-500">ZENRYU 3D INSPECTOR</span>
         <span className="text-zinc-400">
           Pose: <strong className="text-white uppercase">{pose}</strong>
@@ -1429,20 +1584,27 @@ export function ZenryuDevPreviewPage() {
       {/* Main Full-Viewport 3D OrbitControls Canvas */}
       <div ref={mountRef} className="w-full h-full" />
 
-      {/* Optional 390px Phone Cockpit Stage Overlay for Silhouette Check */}
+      {/* Optional Cockpit Stage Overlay for Responsive Silhouette Check */}
       {showPhoneStage && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-30 w-[390px] max-w-[95vw] p-3 rounded-3xl bg-[#110b0e] border border-white/15 shadow-2xl space-y-2.5">
-          <div className="text-xs font-bold text-zinc-300 px-1">
-            390px Phone Cockpit Stage Preview (256px height)
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-30 w-[92vw] max-w-[1100px] p-3 rounded-3xl bg-[var(--bg)] border border-[var(--glass-border)] shadow-2xl space-y-2.5">
+          <div className="text-xs font-bold text-[var(--text)] px-1">
+            Cockpit Stage Preview (Responsive Height &amp; Theme Check)
           </div>
-          <div className="zenryu-stage zenryu-stage--active">
+          <div
+            data-zenryu-pose={pose}
+            className="zenryu-stage zenryu-stage--active dark-surface-preserve"
+          >
             <div className="zenryu-stage-decor" />
             <div className="zenryu-stage-vignette" />
             <div ref={stagePhoneMountRef} className="zenryu-canvas-mount" />
             <div className="zenryu-stage-corner-label">
-              <span className="zenryu-status-dot" />
+              <span
+                className={`zenryu-status-dot ${
+                  pose === 'sleep' ? 'zenryu-status-dot--sleeping' : ''
+                }`}
+              />
               <span className="zenryu-stage-corner-name">
-                {DRAGON_COMPANION_NAME} · Tap to summon
+                {DRAGON_COMPANION_NAME} · {statusText}
               </span>
             </div>
           </div>
@@ -1451,7 +1613,7 @@ export function ZenryuDevPreviewPage() {
 
       {/* Unified Collapsible Bottom Control Dock */}
       <div
-        className="fixed bottom-5 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center transition-transform duration-200"
+        className="fixed bottom-5 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center transition-transform duration-200 dark-surface-preserve"
         style={{
           transform: dockCollapsed
             ? 'translate(-50%, calc(100% - 32px))'
@@ -1525,7 +1687,7 @@ export function ZenryuDevPreviewPage() {
                 : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
             }`}
           >
-            390px Stage Overlay
+            Stage Overlay
           </button>
         </div>
       </div>
