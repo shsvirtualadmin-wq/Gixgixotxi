@@ -468,14 +468,17 @@ export async function fetchUsersPaginated(options?: {
                 plan: su.plan,
                 role: (su.role as any) || 'student',
                 kobans: su.kobans,
-              } as UserProfile);
+                onboardingCompleted: true,
+              } as unknown as UserProfile);
             } else {
               const existing = byUid.get(su.uid)!;
               byUid.set(su.uid, {
                 ...existing,
                 email: existing.email || su.email,
                 displayName: existing.displayName || su.displayName || su.name,
-                kobans: typeof existing.kobans === 'number' ? existing.kobans : su.kobans,
+                ...((typeof (existing as any).kobans === 'number' || typeof su.kobans === 'number')
+                  ? { kobans: typeof (existing as any).kobans === 'number' ? (existing as any).kobans : su.kobans }
+                  : {}),
               });
             }
           }

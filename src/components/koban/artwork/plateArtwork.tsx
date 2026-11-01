@@ -34,7 +34,16 @@ interface PremiumNameplateConfig {
   borderPathD: string;
   has3DLoop?: boolean;
   staticOnly?: boolean;
+  videoPosterOnly?: boolean;
+  calmCenterZone?: boolean;
+  textBackingBg?: string;
+  textBackingBorder?: string;
+  textBackingShadow?: string;
+  flankMotif?: 'sakura-glass' | 'katana-slash';
 }
+
+const CALM_CENTER_FLANK_MASK =
+  'linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.72) 15%, rgba(0,0,0,0.05) 22%, rgba(0,0,0,0.02) 50%, rgba(0,0,0,0.05) 78%, rgba(0,0,0,0.72) 85%, rgba(0,0,0,0.92) 100%)';
 
 const PREMIUM_NAMEPLATE_CONFIGS: Record<string, PremiumNameplateConfig> = {
   'plate-dragon-lord': {
@@ -258,63 +267,77 @@ const PREMIUM_NAMEPLATE_CONFIGS: Record<string, PremiumNameplateConfig> = {
   'plate-frozen-sakura-glass': {
     id: 'plate-frozen-sakura-glass',
     has3DLoop: true,
-    bgGradient: 'linear-gradient(128deg, #081C2E 0%, #16324F 44%, #3B1A3A 78%, #0B192C 100%)',
-    shimmerGradient: 'linear-gradient(108deg, transparent 16%, rgba(224,242,254,0.16) 40%, rgba(244,114,182,0.42) 50%, rgba(125,211,252,0.22) 60%, transparent 84%)',
+    calmCenterZone: true,
+    flankMotif: 'sakura-glass',
+    bgGradient: 'linear-gradient(128deg, #07192B 0%, #102A45 26%, #09192B 50%, #2E1330 78%, #091728 100%)',
+    shimmerGradient: 'linear-gradient(108deg, transparent 10%, rgba(186,230,253,0.28) 28%, rgba(244,114,182,0.45) 50%, rgba(125,211,252,0.28) 72%, transparent 90%)',
     smokeColorA: '#7DD3FC',
     smokeColorB: '#F472B6',
     borderOuterColor: '#38BDF8',
     borderFlowColor: '#FBCFE8',
-    scanlineColor: 'rgba(224, 242, 254, 0.32)',
-    textColor: '#F8FAFC',
-    textShadow: '0 1px 2px rgba(0,0,0,0.95), 0 0 8px rgba(56,189,248,0.75)',
-    shortIdColor: '#F9A8D4',
-    badgeBg: '#0C4A6E',
+    scanlineColor: 'rgba(186, 230, 253, 0.24)',
+    textColor: '#FFFFFF',
+    textShadow: '0 1px 2px rgba(2,6,23,0.98), 0 0 4px rgba(2,6,23,0.95), 0 0 9px rgba(14,116,144,0.55)',
+    shortIdColor: '#FBCFE8',
+    badgeBg: '#082F49',
     badgeText: '#FCE7F3',
     badgeBorder: '#7DD3FC',
+    textBackingBg: 'linear-gradient(180deg, rgba(6, 18, 32, 0.86) 0%, rgba(11, 22, 39, 0.90) 100%)',
+    textBackingBorder: 'rgba(125, 211, 252, 0.34)',
+    textBackingShadow: '0 1px 6px rgba(2, 6, 23, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.14)',
     turbulenceFreq: '0.032 0.075',
-    displacementScale: 6,
+    displacementScale: 5,
     borderPathD: 'M8,1.5 L222,1.5 L228.5,8 L228.5,32 L222,38.5 L8,38.5 L1.5,32 L1.5,8 Z',
     ornamentPathLeft: (
       <g>
-        <path d="M8 2 C11 5 13 9 8 14 C3 9 5 5 8 2 Z" fill="#F472B6" stroke="#E0F2FE" strokeWidth="0.9" />
+        <path d="M8 1.5 C11.2 4.8 13.2 8.8 8 14.5 C2.8 8.8 4.8 4.8 8 1.5 Z" fill="#F472B6" stroke="#E0F2FE" strokeWidth="0.9" />
+        <circle cx="8" cy="8" r="1.4" fill="#E0F2FE" />
       </g>
     ),
     ornamentPathRight: (
       <g>
-        <path d="M8 2 C11 5 13 9 8 14 C3 9 5 5 8 2 Z" fill="#7DD3FC" stroke="#FCE7F3" strokeWidth="0.9" />
+        <path d="M8 1.5 C11.2 4.8 13.2 8.8 8 14.5 C2.8 8.8 4.8 4.8 8 1.5 Z" fill="#7DD3FC" stroke="#FCE7F3" strokeWidth="0.9" />
+        <circle cx="8" cy="8" r="1.4" fill="#FCE7F3" />
       </g>
     ),
   },
   'plate-ronin-katana-slash': {
     id: 'plate-ronin-katana-slash',
     has3DLoop: true,
-    staticOnly: true,
-    bgGradient: 'linear-gradient(125deg, #09090B 0%, #18181B 42%, #450A0A 50%, #09090B 100%)',
-    shimmerGradient: 'linear-gradient(115deg, transparent 46%, rgba(239,68,68,0.55) 49.5%, rgba(255,255,255,0.75) 50%, rgba(220,38,38,0.55) 50.5%, transparent 54%)',
+    videoPosterOnly: true,
+    calmCenterZone: true,
+    flankMotif: 'katana-slash',
+    bgGradient: 'linear-gradient(125deg, #07070A 0%, #16161B 24%, #09090D 50%, #36080C 80%, #09090B 100%)',
+    shimmerGradient: 'linear-gradient(115deg, transparent 42%, rgba(239,68,68,0.52) 48.5%, rgba(255,255,255,0.82) 50%, rgba(220,38,38,0.52) 51.5%, transparent 58%)',
     smokeColorA: '#DC2626',
     smokeColorB: '#27272A',
     borderOuterColor: '#DC2626',
     borderFlowColor: '#FCA5A5',
-    scanlineColor: 'rgba(239, 68, 68, 0.28)',
-    textColor: '#FAFAFA',
-    textShadow: '0 1px 2px rgba(0,0,0,0.95), 0 0 6px rgba(220,38,38,0.75)',
-    shortIdColor: '#FCA5A5',
-    badgeBg: '#27272A',
-    badgeText: '#FCA5A5',
+    scanlineColor: 'rgba(239, 68, 68, 0.22)',
+    textColor: '#FFFFFF',
+    textShadow: '0 1px 2px rgba(0,0,0,0.98), 0 0 4px rgba(0,0,0,0.95), 0 0 9px rgba(185,28,28,0.55)',
+    shortIdColor: '#FECDD3',
+    badgeBg: '#18181B',
+    badgeText: '#FECDD3',
     badgeBorder: '#DC2626',
+    textBackingBg: 'linear-gradient(180deg, rgba(8, 8, 12, 0.88) 0%, rgba(15, 10, 14, 0.92) 100%)',
+    textBackingBorder: 'rgba(239, 68, 68, 0.34)',
+    textBackingShadow: '0 1px 6px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(254, 202, 202, 0.12)',
     turbulenceFreq: '0.03 0.06',
     displacementScale: 4,
     borderPathD: 'M10,1.5 L228.5,1.5 L220,38.5 L1.5,38.5 Z',
     ornamentPathLeft: (
       <g>
-        <line x1="2" y1="14" x2="14" y2="2" stroke="#E2E8F0" strokeWidth="2.2" strokeLinecap="round" />
-        <line x1="2" y1="14" x2="14" y2="2" stroke="#EF4444" strokeWidth="0.9" />
+        <line x1="2" y1="14" x2="14" y2="2" stroke="#F8FAFC" strokeWidth="2.2" strokeLinecap="round" />
+        <line x1="2.5" y1="13.5" x2="13.5" y2="2.5" stroke="#EF4444" strokeWidth="0.9" strokeLinecap="round" />
+        <line x1="5" y1="4" x2="12" y2="11" stroke="#DC2626" strokeWidth="1.1" strokeLinecap="round" />
       </g>
     ),
     ornamentPathRight: (
       <g>
-        <line x1="2" y1="14" x2="14" y2="2" stroke="#E2E8F0" strokeWidth="2.2" strokeLinecap="round" />
-        <line x1="2" y1="14" x2="14" y2="2" stroke="#EF4444" strokeWidth="0.9" />
+        <line x1="2" y1="14" x2="14" y2="2" stroke="#F8FAFC" strokeWidth="2.2" strokeLinecap="round" />
+        <line x1="2.5" y1="13.5" x2="13.5" y2="2.5" stroke="#EF4444" strokeWidth="0.9" strokeLinecap="round" />
+        <line x1="4" y1="5" x2="11" y2="12" stroke="#DC2626" strokeWidth="1.1" strokeLinecap="round" />
       </g>
     ),
   },
@@ -336,6 +359,8 @@ const PremiumAnimatedNameplate: React.FC<{
   const smokeGroupRef = useRef<SVGGElement | null>(null);
   const borderFlowRef = useRef<SVGPathElement | null>(null);
   const scanlineRef = useRef<HTMLDivElement | null>(null);
+  const flankFxLeftRef = useRef<SVGGElement | null>(null);
+  const flankFxRightRef = useRef<SVGGElement | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -349,7 +374,7 @@ const PremiumAnimatedNameplate: React.FC<{
         shimmerRef.current.style.transform = `translate3d(${pct.toFixed(1)}%, 0, 0)`;
       }
       if (smokeGroupRef.current) {
-        const dx = Math.sin(elapsed * 0.75) * 14;
+        const dx = Math.sin(elapsed * 0.75) * (config.calmCenterZone ? 6 : 14);
         const dy = Math.cos(elapsed * 0.52) * 3.5;
         smokeGroupRef.current.setAttribute('transform', `translate(${dx.toFixed(2)}, ${dy.toFixed(2)})`);
       }
@@ -359,9 +384,35 @@ const PremiumAnimatedNameplate: React.FC<{
       }
       if (scanlineRef.current) {
         const scanY = (Math.sin(elapsed * 1.6) * 0.5 + 0.5) * 100;
-        const scanAlpha = 0.35 + 0.35 * Math.sin(elapsed * 2.4);
+        const scanAlpha = config.calmCenterZone
+          ? 0.14 + 0.14 * Math.sin(elapsed * 2.4)
+          : 0.35 + 0.35 * Math.sin(elapsed * 2.4);
         scanlineRef.current.style.top = `${scanY.toFixed(1)}%`;
         scanlineRef.current.style.opacity = `${scanAlpha.toFixed(2)}`;
+      }
+      if (config.flankMotif === 'katana-slash') {
+        // Quick katana flash at the left and right ends only (never crosses center text)
+        const slashPhase = (elapsed * 0.55) % 1;
+        const flashOpacity = slashPhase < 0.22 ? Math.sin((slashPhase / 0.22) * Math.PI) : 0.28;
+        const shift = slashPhase < 0.22 ? (slashPhase / 0.22) * 8 - 4 : 0;
+        if (flankFxLeftRef.current) {
+          flankFxLeftRef.current.style.opacity = `${flashOpacity.toFixed(2)}`;
+          flankFxLeftRef.current.setAttribute('transform', `translate(${shift.toFixed(1)}, ${(-shift * 0.5).toFixed(1)})`);
+        }
+        if (flankFxRightRef.current) {
+          flankFxRightRef.current.style.opacity = `${flashOpacity.toFixed(2)}`;
+          flankFxRightRef.current.setAttribute('transform', `translate(${(-shift).toFixed(1)}, ${(shift * 0.5).toFixed(1)})`);
+        }
+      } else if (config.flankMotif === 'sakura-glass') {
+        // Gentle falling sakura drift in left and right endzones
+        const driftY = Math.sin(elapsed * 1.1) * 3.2;
+        const driftX = Math.cos(elapsed * 0.85) * 2.4;
+        if (flankFxLeftRef.current) {
+          flankFxLeftRef.current.setAttribute('transform', `translate(${driftX.toFixed(2)}, ${driftY.toFixed(2)})`);
+        }
+        if (flankFxRightRef.current) {
+          flankFxRightRef.current.setAttribute('transform', `translate(${(-driftX).toFixed(2)}, ${(-driftY).toFixed(2)})`);
+        }
       }
     };
 
@@ -381,7 +432,7 @@ const PremiumAnimatedNameplate: React.FC<{
     return () => {
       unregister();
     };
-  }, [canAnimate, config.staticOnly, taskId]);
+  }, [canAnimate, config.calmCenterZone, config.flankMotif, config.staticOnly, taskId]);
 
   // Full player name is ALWAYS visible (never single-line truncated on the premium items; wraps up to 2 lines or full wrap)
   const textWrapClass =
@@ -390,6 +441,13 @@ const PremiumAnimatedNameplate: React.FC<{
       : 'whitespace-normal break-words line-clamp-2 leading-snug';
 
   const filterId = `np-smoke-${rawUid}`;
+  const isCalmCenter = Boolean(config.calmCenterZone);
+  const edgeMaskStyle: React.CSSProperties | undefined = isCalmCenter
+    ? {
+        maskImage: CALM_CENTER_FLANK_MASK,
+        WebkitMaskImage: CALM_CENTER_FLANK_MASK,
+      }
+    : undefined;
 
   return (
     <div
@@ -403,13 +461,18 @@ const PremiumAnimatedNameplate: React.FC<{
     >
       {/* Pre-rendered 3D Plate Decoration Loop (600x120) */}
       {config.has3DLoop && (
-        <StoreLoopVideo
-          itemId={config.id}
-          animated={!config.staticOnly}
-          canAnimate={canAnimate && !config.staticOnly}
-          objectFit="cover"
-          className="absolute inset-0 w-full h-full opacity-55"
-        />
+        <div
+          className="absolute inset-0 w-full h-full pointer-events-none"
+          style={edgeMaskStyle}
+        >
+          <StoreLoopVideo
+            itemId={config.id}
+            animated={!config.staticOnly && !config.videoPosterOnly}
+            canAnimate={canAnimate && !config.staticOnly && !config.videoPosterOnly}
+            objectFit="cover"
+            className={`absolute inset-0 w-full h-full ${isCalmCenter ? 'opacity-45' : 'opacity-55'}`}
+          />
+        </div>
       )}
 
       {/* SVG feTurbulence + feDisplacementMap Drifting Smoke & Ornate Border Path */}
@@ -437,16 +500,76 @@ const PremiumAnimatedNameplate: React.FC<{
             />
           </filter>
           <linearGradient id={`${filterId}-smoke`} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor={config.smokeColorA} stopOpacity="0.28" />
-            <stop offset="50%" stopColor={config.smokeColorB} stopOpacity="0.18" />
-            <stop offset="100%" stopColor={config.smokeColorA} stopOpacity="0.26" />
+            <stop offset="0%" stopColor={config.smokeColorA} stopOpacity={isCalmCenter ? '0.24' : '0.28'} />
+            <stop offset="50%" stopColor={config.smokeColorB} stopOpacity={isCalmCenter ? '0.04' : '0.18'} />
+            <stop offset="100%" stopColor={config.smokeColorA} stopOpacity={isCalmCenter ? '0.24' : '0.26'} />
           </linearGradient>
         </defs>
 
-        <g ref={smokeGroupRef} filter={`url(#${filterId})`}>
-          <ellipse cx="65" cy="20" rx="58" ry="16" fill={`url(#${filterId}-smoke)`} />
-          <ellipse cx="165" cy="20" rx="62" ry="15" fill={`url(#${filterId}-smoke)`} />
-        </g>
+        {isCalmCenter ? (
+          <g ref={smokeGroupRef} filter={`url(#${filterId})`}>
+            {/* Flank-only smoke clouds leaving the central 60% text zone clear */}
+            <ellipse cx="22" cy="20" rx="24" ry="14" fill={`url(#${filterId}-smoke)`} />
+            <ellipse cx="208" cy="20" rx="24" ry="14" fill={`url(#${filterId}-smoke)`} />
+          </g>
+        ) : (
+          <g ref={smokeGroupRef} filter={`url(#${filterId})`}>
+            <ellipse cx="65" cy="20" rx="58" ry="16" fill={`url(#${filterId}-smoke)`} />
+            <ellipse cx="165" cy="20" rx="62" ry="15" fill={`url(#${filterId}-smoke)`} />
+          </g>
+        )}
+
+        {/* Flank-Only Decorative Artwork for Ronin Katana Slash */}
+        {config.flankMotif === 'katana-slash' && (
+          <g>
+            {/* Left Endzone Katana Blade & Crimson Ink Accents (x: 2..42) */}
+            <path d="M 3 34 L 34 4 L 38 4 L 9 34 Z" fill="#DC2626" fillOpacity="0.42" />
+            <path d="M 12 36 L 40 8" stroke="#FCA5A5" strokeWidth="1.1" strokeOpacity="0.65" strokeLinecap="round" />
+            <circle cx="20" cy="11" r="1.4" fill="#EF4444" fillOpacity="0.7" />
+            <circle cx="31" cy="29" r="1.1" fill="#FCA5A5" fillOpacity="0.6" />
+            <g ref={flankFxLeftRef}>
+              <line x1="4" y1="35" x2="36" y2="3" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" />
+              <line x1="8" y1="36" x2="42" y2="6" stroke="#EF4444" strokeWidth="1.2" strokeLinecap="round" />
+            </g>
+
+            {/* Right Endzone Katana Blade & Crimson Ink Accents (x: 188..228) */}
+            <path d="M 192 36 L 223 6 L 227 6 L 198 36 Z" fill="#DC2626" fillOpacity="0.42" />
+            <path d="M 190 32 L 218 4" stroke="#FCA5A5" strokeWidth="1.1" strokeOpacity="0.65" strokeLinecap="round" />
+            <circle cx="210" cy="12" r="1.3" fill="#EF4444" fillOpacity="0.7" />
+            <circle cx="198" cy="28" r="1.1" fill="#FCA5A5" fillOpacity="0.6" />
+            <g ref={flankFxRightRef}>
+              <line x1="194" y1="37" x2="226" y2="5" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" />
+              <line x1="188" y1="34" x2="222" y2="4" stroke="#EF4444" strokeWidth="1.2" strokeLinecap="round" />
+            </g>
+          </g>
+        )}
+
+        {/* Flank-Only Decorative Artwork for Frozen Sakura Glass */}
+        {config.flankMotif === 'sakura-glass' && (
+          <g>
+            {/* Icy Glass Facet Highlights at Left & Right Ends (x: 2..44 and 186..228) */}
+            <polygon points="2,8 28,2 18,38 2,32" fill="#7DD3FC" fillOpacity="0.16" />
+            <polygon points="18,2 40,2 26,38 10,38" fill="#F472B6" fillOpacity="0.12" />
+            <polygon points="228,8 202,2 212,38 228,32" fill="#7DD3FC" fillOpacity="0.16" />
+            <polygon points="212,2 190,2 204,38 220,38" fill="#F472B6" fillOpacity="0.12" />
+
+            {/* Left Endzone Falling Sakura Petals & Ice Crystals */}
+            <g ref={flankFxLeftRef}>
+              <path d="M 22 7 C 25 9 25 13 22 15 C 19 13 19 9 22 7 Z" fill="#F9A8D4" fillOpacity="0.85" />
+              <path d="M 34 23 C 36.5 25 36.5 28.5 34 30.5 C 31.5 28.5 31.5 25 34 23 Z" fill="#F472B6" fillOpacity="0.75" />
+              <circle cx="15" cy="27" r="1.3" fill="#E0F2FE" fillOpacity="0.85" />
+              <circle cx="37" cy="11" r="1.1" fill="#BAE6FD" fillOpacity="0.8" />
+            </g>
+
+            {/* Right Endzone Falling Sakura Petals & Ice Crystals */}
+            <g ref={flankFxRightRef}>
+              <path d="M 208 9 C 211 11 211 15 208 17 C 205 15 205 11 208 9 Z" fill="#F9A8D4" fillOpacity="0.85" />
+              <path d="M 196 24 C 198.5 26 198.5 29.5 196 31.5 C 193.5 29.5 193.5 26 196 24 Z" fill="#F472B6" fillOpacity="0.75" />
+              <circle cx="215" cy="28" r="1.3" fill="#E0F2FE" fillOpacity="0.85" />
+              <circle cx="193" cy="12" r="1.1" fill="#BAE6FD" fillOpacity="0.8" />
+            </g>
+          </g>
+        )}
 
         {/* Ornate Base Border Path */}
         <path
@@ -471,18 +594,28 @@ const PremiumAnimatedNameplate: React.FC<{
         />
       </svg>
 
-      {/* Continuous Animated Shimmer Sweep */}
+      {/* Continuous Animated Shimmer Sweep (Masked away from center text when calmCenterZone is true) */}
       <div
-        ref={shimmerRef}
-        className="absolute inset-0 w-full h-full pointer-events-none will-change-transform"
-        style={{ background: config.shimmerGradient }}
-      />
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        style={edgeMaskStyle}
+      >
+        <div
+          ref={shimmerRef}
+          className="absolute inset-0 w-full h-full pointer-events-none will-change-transform"
+          style={{ background: config.shimmerGradient }}
+        />
+      </div>
 
-      {/* Subtle Horizontal Scanline Pulse */}
+      {/* Subtle Horizontal Scanline Pulse (Masked away from center text when calmCenterZone is true) */}
       <div
         ref={scanlineRef}
         className="absolute inset-x-0 h-[1.5px] pointer-events-none"
-        style={{ background: config.scanlineColor, top: '45%', opacity: 0.45 }}
+        style={{
+          background: config.scanlineColor,
+          top: '45%',
+          opacity: isCalmCenter ? 0.16 : 0.45,
+          ...(edgeMaskStyle || {}),
+        }}
       />
 
       {/* Left Crest SVG */}
@@ -490,37 +623,85 @@ const PremiumAnimatedNameplate: React.FC<{
         {config.ornamentPathLeft}
       </svg>
 
-      {/* Player Name — Always readable, wraps up to 2 lines, never truncated */}
-      <span
-        className={`font-heading font-bold text-xs tracking-wider text-center ${textWrapClass} min-w-0 z-10`}
-        style={{
-          color: config.textColor,
-          textShadow: config.textShadow,
-        }}
-      >
-        {name}
-      </span>
-
-      {shortId && (
-        <span
-          className="font-mono text-[10px] shrink-0 z-10"
-          style={{ color: config.shortIdColor, textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}
-        >
-          #{shortId}
-        </span>
-      )}
-
-      {roleBadge && (
-        <span
-          className="text-[9px] uppercase px-1.5 py-0.5 rounded font-bold border shrink-0 z-10"
+      {/* Player Name & Tag — Calm high-contrast backing pill when calmCenterZone is enabled */}
+      {isCalmCenter ? (
+        <div
+          className="inline-flex items-center justify-center gap-1.5 px-2.5 py-0.5 rounded min-w-0 max-w-full z-10"
           style={{
-            backgroundColor: config.badgeBg,
-            color: config.badgeText,
-            borderColor: config.badgeBorder,
+            background: config.textBackingBg,
+            border: `1px solid ${config.textBackingBorder || 'rgba(255,255,255,0.18)'}`,
+            boxShadow: config.textBackingShadow,
           }}
         >
-          {roleBadge}
-        </span>
+          <span
+            className={`font-heading font-bold text-xs tracking-wider text-center ${textWrapClass} min-w-0`}
+            style={{
+              color: config.textColor,
+              textShadow: config.textShadow,
+            }}
+          >
+            {name}
+          </span>
+
+          {shortId && (
+            <span
+              className="font-mono text-[10px] font-semibold shrink-0"
+              style={{
+                color: config.shortIdColor,
+                textShadow: '0 1px 2px rgba(0,0,0,0.98), 0 0 4px rgba(0,0,0,0.9)',
+              }}
+            >
+              #{shortId}
+            </span>
+          )}
+
+          {roleBadge && (
+            <span
+              className="text-[9px] uppercase px-1.5 py-0.5 rounded font-bold border shrink-0"
+              style={{
+                backgroundColor: config.badgeBg,
+                color: config.badgeText,
+                borderColor: config.badgeBorder,
+              }}
+            >
+              {roleBadge}
+            </span>
+          )}
+        </div>
+      ) : (
+        <>
+          <span
+            className={`font-heading font-bold text-xs tracking-wider text-center ${textWrapClass} min-w-0 z-10`}
+            style={{
+              color: config.textColor,
+              textShadow: config.textShadow,
+            }}
+          >
+            {name}
+          </span>
+
+          {shortId && (
+            <span
+              className="font-mono text-[10px] shrink-0 z-10"
+              style={{ color: config.shortIdColor, textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}
+            >
+              #{shortId}
+            </span>
+          )}
+
+          {roleBadge && (
+            <span
+              className="text-[9px] uppercase px-1.5 py-0.5 rounded font-bold border shrink-0 z-10"
+              style={{
+                backgroundColor: config.badgeBg,
+                color: config.badgeText,
+                borderColor: config.badgeBorder,
+              }}
+            >
+              {roleBadge}
+            </span>
+          )}
+        </>
       )}
 
       {/* Right Crest SVG */}

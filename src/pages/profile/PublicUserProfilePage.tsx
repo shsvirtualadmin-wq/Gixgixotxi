@@ -319,8 +319,8 @@ export const PublicUserProfilePage: React.FC = () => {
         {/* Profile Card */}
         <section className="glass-panel overflow-hidden mb-8">
           {/* Banner */}
-          <div className="h-32 sm:h-40 w-full bg-white/[0.03] relative overflow-hidden border-b border-white/10">
-            <BannerRenderer bannerId={bannerId} accentColor={profileData.accent || '#D71921'} animated />
+          <div className="h-28 sm:h-36 w-full bg-white/[0.03] relative overflow-hidden border-b border-white/10">
+            <BannerRenderer bannerId={bannerId} accentColor={profileData.accent || '#D71921'} animated showReadabilityOverlay={true} />
           </div>
 
           <div className="p-6 sm:p-8">

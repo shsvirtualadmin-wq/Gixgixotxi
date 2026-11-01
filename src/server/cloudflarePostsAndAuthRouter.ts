@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { type Request, type Response, type Express } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';

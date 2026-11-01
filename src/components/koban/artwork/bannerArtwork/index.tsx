@@ -30,6 +30,7 @@ import {
 } from './premiumBanners';
 import { ObsidianEclipseBanner } from './ObsidianEclipseBanner';
 import { SovereignBlackSunBanner } from './SovereignBlackSunBanner';
+import { PixelPopArcadeBanner } from './PixelPopArcadeBanner';
 
 // Flagship & New Premium custom banners mapping
 const FLAGSHIP_BANNER_MAP: Record<string, (animated: boolean) => React.ReactNode> = {
@@ -38,6 +39,9 @@ const FLAGSHIP_BANNER_MAP: Record<string, (animated: boolean) => React.ReactNode
 
   // Flagship 3D Mythic Banner: Obsidian Eclipse
   'obsidian-eclipse': (animated: boolean) => <ObsidianEclipseBanner canAnimate={animated} />,
+
+  // 3D Epic Banner: Pixel Pop Arcade (Blender 4.2 LTS)
+  ban_pixel_pop_arcade: (animated: boolean) => <PixelPopArcadeBanner canAnimate={animated} />,
 
   // 3 New Premium Banners (Wave 2)
   ban_phoenix_ember_sunrise: (animated: boolean) => <PhoenixEmberSunriseBanner canAnimate={animated} />,

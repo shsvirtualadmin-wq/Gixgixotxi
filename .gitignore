@@ -18,6 +18,7 @@ bun.lockb
 
 # Untracked bloat / duplicates / render caches (kept on disk, excluded from Git for AI Studio 1,000-file import limit)
 .aistudio/artifacts/
+.render-cache/
 /assets/store/
 /assets/zenryu/
 tools/blender/.frames_cache_*/

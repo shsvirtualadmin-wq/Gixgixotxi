@@ -602,111 +602,305 @@ export const AuroraFrostBanner: React.FC = () => (
 export const StarfallBanner: React.FC<{ canAnimate: boolean }> = ({ canAnimate }) => (
   <svg viewBox="0 0 900 300" preserveAspectRatio="xMidYMid slice" className="w-full h-full">
     <defs>
-      <linearGradient id="sf_sky" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stopColor="#040212" />
-        <stop offset="40%" stopColor="#0C0A2A" />
-        <stop offset="75%" stopColor="#1E1145" />
-        <stop offset="100%" stopColor="#090518" />
+      {/* Cool Night Sky: Deep Indigo -> Royal Violet -> Luminous Teal Horizon */}
+      <linearGradient id="sf_sky" x1="0.15" y1="0" x2="0.85" y2="1">
+        <stop offset="0%" stopColor="#05081D" />
+        <stop offset="36%" stopColor="#121647" />
+        <stop offset="68%" stopColor="#1E1B5E" />
+        <stop offset="88%" stopColor="#0D4B68" />
+        <stop offset="100%" stopColor="#0A3A52" />
       </linearGradient>
 
-      {/* Cosmic Nebula Clouds */}
-      <radialGradient id="sf_nebula_1" cx="30%" cy="40%" r="50%">
-        <stop offset="0%" stopColor="#818CF8" stopOpacity="0.3" />
-        <stop offset="60%" stopColor="#C084FC" stopOpacity="0.12" />
-        <stop offset="100%" stopColor="#000000" stopOpacity="0" />
+      {/* Left-Third Calm Vignette for Name Overlay Legibility */}
+      <linearGradient id="sf_left_calm" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stopColor="#040717" stopOpacity="0.68" />
+        <stop offset="32%" stopColor="#070B24" stopOpacity="0.32" />
+        <stop offset="52%" stopColor="#070B24" stopOpacity="0" />
+      </linearGradient>
+
+      {/* Soft Aurora Ribbon & Nebula Band Gradients */}
+      <linearGradient id="sf_aurora_ribbon" x1="0" y1="0.2" x2="1" y2="0.8">
+        <stop offset="0%" stopColor="#38BDF8" stopOpacity="0" />
+        <stop offset="22%" stopColor="#2DD4BF" stopOpacity="0.22" />
+        <stop offset="52%" stopColor="#38BDF8" stopOpacity="0.42" />
+        <stop offset="78%" stopColor="#A78BFA" stopOpacity="0.38" />
+        <stop offset="100%" stopColor="#6366F1" stopOpacity="0.12" />
+      </linearGradient>
+      <linearGradient id="sf_aurora_secondary" x1="0" y1="0.8" x2="1" y2="0.2">
+        <stop offset="0%" stopColor="#818CF8" stopOpacity="0" />
+        <stop offset="35%" stopColor="#C084FC" stopOpacity="0.24" />
+        <stop offset="70%" stopColor="#22D3EE" stopOpacity="0.32" />
+        <stop offset="100%" stopColor="#2DD4BF" stopOpacity="0.08" />
+      </linearGradient>
+      <radialGradient id="sf_nebula_teal" cx="68%" cy="42%" r="48%">
+        <stop offset="0%" stopColor="#22D3EE" stopOpacity="0.28" />
+        <stop offset="48%" stopColor="#818CF8" stopOpacity="0.16" />
+        <stop offset="100%" stopColor="#05081D" stopOpacity="0" />
       </radialGradient>
-      <radialGradient id="sf_nebula_2" cx="75%" cy="60%" r="45%">
-        <stop offset="0%" stopColor="#EC4899" stopOpacity="0.25" />
-        <stop offset="50%" stopColor="#8B5CF6" stopOpacity="0.1" />
-        <stop offset="100%" stopColor="#000000" stopOpacity="0" />
+      <radialGradient id="sf_nebula_violet" cx="44%" cy="28%" r="42%">
+        <stop offset="0%" stopColor="#A78BFA" stopOpacity="0.22" />
+        <stop offset="55%" stopColor="#38BDF8" stopOpacity="0.1" />
+        <stop offset="100%" stopColor="#05081D" stopOpacity="0" />
       </radialGradient>
 
-      {/* Shooting Star Trail */}
-      <linearGradient id="sf_meteor_trail" x1="0" y1="0" x2="1" y2="1">
+      {/* Shooting Star Glowing Trails (Near, Mid, Far) */}
+      <linearGradient id="sf_meteor_trail_cyan" x1="0" y1="1" x2="1" y2="0">
         <stop offset="0%" stopColor="#FFFFFF" stopOpacity="1" />
-        <stop offset="25%" stopColor="#93C5FD" stopOpacity="0.8" />
-        <stop offset="70%" stopColor="#A855F7" stopOpacity="0.3" />
-        <stop offset="100%" stopColor="#000000" stopOpacity="0" />
+        <stop offset="22%" stopColor="#67E8F9" stopOpacity="0.92" />
+        <stop offset="58%" stopColor="#38BDF8" stopOpacity="0.45" />
+        <stop offset="85%" stopColor="#818CF8" stopOpacity="0.15" />
+        <stop offset="100%" stopColor="#818CF8" stopOpacity="0" />
       </linearGradient>
+      <linearGradient id="sf_meteor_trail_violet" x1="0" y1="1" x2="1" y2="0">
+        <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.95" />
+        <stop offset="28%" stopColor="#A5F3FC" stopOpacity="0.8" />
+        <stop offset="65%" stopColor="#C084FC" stopOpacity="0.35" />
+        <stop offset="100%" stopColor="#6366F1" stopOpacity="0" />
+      </linearGradient>
+
+      {/* Reflective Lake Surface & Horizon Glow */}
+      <linearGradient id="sf_lake" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#0E4F6E" stopOpacity="0.92" />
+        <stop offset="35%" stopColor="#0A2E4D" stopOpacity="0.96" />
+        <stop offset="100%" stopColor="#040D1F" stopOpacity="1" />
+      </linearGradient>
+      <linearGradient id="sf_horizon_mist" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.18" />
+        <stop offset="35%" stopColor="#67E8F9" stopOpacity="0.45" />
+        <stop offset="68%" stopColor="#2DD4BF" stopOpacity="0.65" />
+        <stop offset="90%" stopColor="#A78BFA" stopOpacity="0.45" />
+        <stop offset="100%" stopColor="#38BDF8" stopOpacity="0.25" />
+      </linearGradient>
+
+      {/* Soft Star Halo Filter */}
+      <filter id="sf_star_glow" x="-80%" y="-80%" width="260%" height="260%">
+        <feGaussianBlur stdDeviation="2.2" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
 
       <style>{`
-        @keyframes sf_twinkle {
-          0%, 100% { opacity: 0.3; transform: scale(0.9); }
-          50% { opacity: 1; transform: scale(1.2); }
+        @keyframes sf_twinkle_far {
+          0%, 100% { opacity: 0.35; }
+          50% { opacity: 0.85; }
         }
+        @keyframes sf_twinkle_mid {
+          0%, 100% { opacity: 0.45; transform: scale(0.92); }
+          50% { opacity: 1; transform: scale(1.12); }
+        }
+        @keyframes sf_twinkle_near {
+          0%, 100% { opacity: 0.65; transform: scale(0.95); }
+          50% { opacity: 1; transform: scale(1.18); }
+        }
+        @keyframes sf_aurora_sway {
+          0%, 100% { transform: translate3d(0, 0, 0) scaleY(1); opacity: 0.88; }
+          50% { transform: translate3d(-16px, 4px, 0) scaleY(1.06); opacity: 1; }
+        }
+        /* Staggered overlapping meteor cycles so >=2 shooting stars are visible at every instant */
         @keyframes sf_meteor_1 {
-          0% { transform: translate3d(0, 0, 0); opacity: 0; }
-          4% { opacity: 1; }
-          12% { transform: translate3d(-340px, 200px, 0); opacity: 0; }
-          100% { transform: translate3d(-340px, 200px, 0); opacity: 0; }
+          0% { transform: translate3d(130px, -65px, 0); opacity: 0; }
+          8% { opacity: 1; }
+          48% { opacity: 0.95; }
+          62% { transform: translate3d(-180px, 90px, 0); opacity: 0; }
+          100% { transform: translate3d(-180px, 90px, 0); opacity: 0; }
         }
         @keyframes sf_meteor_2 {
-          0% { transform: translate3d(0, 0, 0); opacity: 0; }
-          50% { transform: translate3d(0, 0, 0); opacity: 0; }
-          54% { opacity: 1; }
-          62% { transform: translate3d(-300px, 180px, 0); opacity: 0; }
-          100% { transform: translate3d(-300px, 180px, 0); opacity: 0; }
+          0%, 18% { transform: translate3d(140px, -70px, 0); opacity: 0; }
+          26% { opacity: 1; }
+          68% { opacity: 0.9; }
+          82% { transform: translate3d(-190px, 95px, 0); opacity: 0; }
+          100% { transform: translate3d(-190px, 95px, 0); opacity: 0; }
         }
-        .sf-twinkle-a {
-          animation: ${canAnimate ? 'sf_twinkle 3s ease-in-out infinite' : 'none'};
+        @keyframes sf_meteor_3 {
+          0% { transform: translate3d(-30px, 15px, 0); opacity: 0.92; }
+          28% { transform: translate3d(-170px, 85px, 0); opacity: 0; }
+          42% { transform: translate3d(120px, -60px, 0); opacity: 0; }
+          52% { opacity: 0.95; }
+          92% { opacity: 0.95; }
+          100% { transform: translate3d(-30px, 15px, 0); opacity: 0.92; }
         }
-        .sf-twinkle-b {
-          animation: ${canAnimate ? 'sf_twinkle 4.5s ease-in-out infinite 1.5s' : 'none'};
+        @keyframes sf_meteor_4 {
+          0%, 36% { transform: translate3d(110px, -55px, 0); opacity: 0; }
+          45% { opacity: 0.85; }
+          84% { opacity: 0.8; }
+          96%, 100% { transform: translate3d(-150px, 75px, 0); opacity: 0; }
+        }
+        @keyframes sf_meteor_5 {
+          0% { transform: translate3d(-60px, 30px, 0); opacity: 0.85; }
+          22% { transform: translate3d(-160px, 80px, 0); opacity: 0; }
+          58% { transform: translate3d(110px, -55px, 0); opacity: 0; }
+          68% { opacity: 0.9; }
+          100% { transform: translate3d(-60px, 30px, 0); opacity: 0.85; }
+        }
+        .sf-aurora {
+          animation: ${canAnimate ? 'sf_aurora_sway 8s ease-in-out infinite' : 'none'};
+          transform-origin: center;
+        }
+        .sf-twinkle-far {
+          animation: ${canAnimate ? 'sf_twinkle_far 4.2s ease-in-out infinite' : 'none'};
+        }
+        .sf-twinkle-mid {
+          animation: ${canAnimate ? 'sf_twinkle_mid 3.4s ease-in-out infinite 0.9s' : 'none'};
+          transform-box: fill-box;
+          transform-origin: center;
+        }
+        .sf-twinkle-near {
+          animation: ${canAnimate ? 'sf_twinkle_near 2.8s ease-in-out infinite 0.4s' : 'none'};
+          transform-box: fill-box;
+          transform-origin: center;
         }
         .sf-meteor-1 {
-          animation: ${canAnimate ? 'sf_meteor_1 7s linear infinite' : 'none'};
+          animation: ${canAnimate ? 'sf_meteor_1 3.6s linear infinite' : 'none'};
         }
         .sf-meteor-2 {
-          animation: ${canAnimate ? 'sf_meteor_2 9s linear infinite' : 'none'};
+          animation: ${canAnimate ? 'sf_meteor_2 4.4s linear infinite' : 'none'};
+        }
+        .sf-meteor-3 {
+          animation: ${canAnimate ? 'sf_meteor_3 3.2s linear infinite' : 'none'};
+        }
+        .sf-meteor-4 {
+          animation: ${canAnimate ? 'sf_meteor_4 5.0s linear infinite' : 'none'};
+        }
+        .sf-meteor-5 {
+          animation: ${canAnimate ? 'sf_meteor_5 4.0s linear infinite' : 'none'};
         }
         @media (prefers-reduced-motion: reduce) {
-          .sf-twinkle-a, .sf-twinkle-b, .sf-meteor-1, .sf-meteor-2 {
+          .sf-aurora,
+          .sf-twinkle-far,
+          .sf-twinkle-mid,
+          .sf-twinkle-near,
+          .sf-meteor-1,
+          .sf-meteor-2,
+          .sf-meteor-3,
+          .sf-meteor-4,
+          .sf-meteor-5 {
             animation: none !important;
           }
         }
       `}</style>
     </defs>
 
-    {/* Void Background */}
+    {/* 1. Cool Indigo-Violet-Teal Sky Base & Nebulae */}
     <rect width="900" height="300" fill="url(#sf_sky)" />
-    <rect width="900" height="300" fill="url(#sf_nebula_1)" />
-    <rect width="900" height="300" fill="url(#sf_nebula_2)" />
+    <rect width="900" height="250" fill="url(#sf_nebula_teal)" />
+    <rect width="900" height="250" fill="url(#sf_nebula_violet)" />
 
-    {/* Twinkling Star Clusters */}
-    <g className="sf-twinkle-a" fill="#FFFFFF">
+    {/* 2. Sweeping Aurora Ribbons (concentrated in center & right, gentle fade on left) */}
+    <g className="sf-aurora">
+      <path
+        d="M 160 155 C 290 78, 430 172, 590 92 C 710 34, 815 118, 920 64 L 920 142 C 810 185, 700 112, 575 162 C 425 220, 290 132, 160 190 Z"
+        fill="url(#sf_aurora_ribbon)"
+      />
+      <path
+        d="M 240 110 C 380 42, 520 138, 670 68 C 770 22, 845 78, 920 42 L 920 96 C 840 128, 755 78, 655 118 C 510 178, 375 92, 240 142 Z"
+        fill="url(#sf_aurora_secondary)"
+      />
+    </g>
+
+    {/* 3. Depth Layer 1 (Far): Fine Pinpoint Cyan-White Starfield */}
+    <g className="sf-twinkle-far" fill="#BAE6FD" opacity="0.72">
       {[
-        [60, 40, 1.2], [140, 95, 1.5], [210, 30, 2], [320, 80, 1],
-        [430, 50, 2.2], [540, 90, 1.3], [670, 35, 2.5], [780, 75, 1.4],
-        [850, 45, 1.8], [720, 120, 1.6], [380, 140, 1.2]
+        [45, 38, 0.9], [95, 82, 0.8], [135, 44, 1.0], [190, 112, 0.9], [245, 58, 1.1],
+        [305, 34, 1.1], [340, 108, 0.9], [395, 62, 1.0], [445, 28, 1.1], [485, 96, 0.9],
+        [530, 48, 1.0], [575, 134, 0.9], [615, 30, 1.2], [655, 88, 1.0], [705, 52, 1.1],
+        [745, 138, 0.9], [785, 26, 1.1], [825, 74, 1.0], [868, 42, 1.1], [882, 128, 0.9],
+        [315, 178, 0.9], [465, 168, 1.0], [635, 174, 0.9], [795, 165, 1.0], [855, 185, 0.8],
       ].map(([cx, cy, r], i) => (
         <circle key={i} cx={cx} cy={cy} r={r} />
       ))}
     </g>
 
-    <g className="sf-twinkle-b" fill="#C4B5FD">
+    {/* 4. Depth Layer 2 (Mid): Glowing White-Cyan & Soft Violet Stars */}
+    <g className="sf-twinkle-mid" fill="#E0F2FE" filter="url(#sf_star_glow)">
       {[
-        [100, 160, 1], [180, 120, 1.8], [270, 70, 2.4], [350, 40, 1.5],
-        [490, 110, 1.8], [610, 70, 2], [740, 40, 1.2], [820, 110, 2.2],
-        [880, 80, 1.1], [530, 150, 1.4]
+        [78, 62, 1.4], [168, 48, 1.5], [262, 92, 1.7], [338, 52, 1.8],
+        [418, 118, 1.6], [498, 42, 2.0], [562, 84, 1.8], [642, 56, 2.1],
+        [718, 106, 1.9], [774, 48, 2.2], [838, 96, 1.8], [876, 62, 1.6],
+        [378, 156, 1.5], [588, 152, 1.7], [738, 162, 1.6],
       ].map(([cx, cy, r], i) => (
         <circle key={i} cx={cx} cy={cy} r={r} />
       ))}
     </g>
 
-    {/* Shooting Star 1 */}
-    <g transform="translate(680, 10)" className="sf-meteor-1">
-      <line x1="0" y1="0" x2="160" y2="-90" stroke="url(#sf_meteor_trail)" strokeWidth="2.5" strokeLinecap="round" />
-      <circle cx="0" cy="0" r="2.5" fill="#FFFFFF" />
+    {/* 5. Depth Layer 3 (Near): Bright 4-Point Diamond Star Flares */}
+    <g className="sf-twinkle-near" fill="#FFFFFF" filter="url(#sf_star_glow)">
+      {[
+        [365, 68, 5.5], [525, 58, 6.5], [685, 42, 7.0], [812, 66, 6.0], [620, 124, 5.0],
+      ].map(([cx, cy, s], i) => (
+        <g key={i}>
+          <circle cx={cx} cy={cy} r="2.2" fill="#67E8F9" opacity="0.85" />
+          <polygon
+            points={`${cx},${cy - s} ${cx + 1.4},${cy - 1.4} ${cx + s},${cy} ${cx + 1.4},${cy + 1.4} ${cx},${cy + s} ${cx - 1.4},${cy + 1.4} ${cx - s},${cy} ${cx - 1.4},${cy - 1.4}`}
+            fill="#FFFFFF"
+          />
+        </g>
+      ))}
     </g>
 
-    {/* Shooting Star 2 */}
-    <g transform="translate(880, 30)" className="sf-meteor-2">
-      <line x1="0" y1="0" x2="140" y2="-80" stroke="url(#sf_meteor_trail)" strokeWidth="2" strokeLinecap="round" />
-      <circle cx="0" cy="0" r="2" fill="#FFFFFF" />
+    {/* 6. Multi-Depth Shooting Stars (5 meteors; resting positions are inside the sky for static/reduced-motion) */}
+    {/* Far Depth Meteor 4 */}
+    <g transform="translate(450, 92)">
+      <g className="sf-meteor-4">
+        <line x1="0" y1="0" x2="78" y2="-39" stroke="url(#sf_meteor_trail_violet)" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="0" cy="0" r="1.6" fill="#E0F2FE" />
+      </g>
     </g>
 
-    {/* Distant Mountain Crest Silhouette */}
-    <path d="M0 260 Q240 235 480 255 T900 240 L900 300 L0 300 Z" fill="#06030F" />
+    {/* Far Depth Meteor 5 */}
+    <g transform="translate(760, 142)">
+      <g className="sf-meteor-5">
+        <line x1="0" y1="0" x2="86" y2="-43" stroke="url(#sf_meteor_trail_violet)" strokeWidth="1.6" strokeLinecap="round" />
+        <circle cx="0" cy="0" r="1.8" fill="#A5F3FC" />
+      </g>
+    </g>
+
+    {/* Mid Depth Meteor 2 */}
+    <g transform="translate(560, 128)">
+      <g className="sf-meteor-2" filter="url(#sf_star_glow)">
+        <line x1="0" y1="0" x2="118" y2="-59" stroke="url(#sf_meteor_trail_cyan)" strokeWidth="2.2" strokeLinecap="round" />
+        <circle cx="0" cy="0" r="2.3" fill="#FFFFFF" />
+      </g>
+    </g>
+
+    {/* Near Depth Meteor 1 (Primary Hero Starfall) */}
+    <g transform="translate(650, 86)">
+      <g className="sf-meteor-1" filter="url(#sf_star_glow)">
+        <line x1="0" y1="0" x2="148" y2="-74" stroke="url(#sf_meteor_trail_cyan)" strokeWidth="2.8" strokeLinecap="round" />
+        <circle cx="0" cy="0" r="3" fill="#FFFFFF" />
+        <circle cx="0" cy="0" r="5" fill="#67E8F9" opacity="0.45" />
+      </g>
+    </g>
+
+    {/* Near Depth Meteor 3 (Secondary Hero Starfall) */}
+    <g transform="translate(805, 108)">
+      <g className="sf-meteor-3" filter="url(#sf_star_glow)">
+        <line x1="0" y1="0" x2="132" y2="-66" stroke="url(#sf_meteor_trail_cyan)" strokeWidth="2.5" strokeLinecap="round" />
+        <circle cx="0" cy="0" r="2.6" fill="#FFFFFF" />
+        <circle cx="0" cy="0" r="4.5" fill="#38BDF8" opacity="0.4" />
+      </g>
+    </g>
+
+    {/* 7. Left-Third Calm Overlay so User Name & Avatar Pop */}
+    <rect width="420" height="244" fill="url(#sf_left_calm)" />
+
+    {/* 8. Tranquil Reflective Horizon Line & Starlit Lake (Replaces Mountain Ridge) */}
+    <rect x="0" y="242" width="900" height="58" fill="url(#sf_lake)" />
+    <ellipse cx="580" cy="242" rx="340" ry="6" fill="url(#sf_horizon_mist)" opacity="0.55" />
+    <line x1="0" y1="242" x2="900" y2="242" stroke="url(#sf_horizon_mist)" strokeWidth="1.6" />
+
+    {/* Faint Starlight & Aurora Ripples on the Lake */}
+    <g stroke="#67E8F9" strokeLinecap="round" opacity="0.38">
+      <line x1="340" y1="252" x2="430" y2="252" strokeWidth="1.2" />
+      <line x1="490" y1="256" x2="620" y2="256" strokeWidth="1.5" />
+      <line x1="660" y1="251" x2="770" y2="251" strokeWidth="1.3" />
+      <line x1="410" y1="266" x2="540" y2="266" strokeWidth="1.1" stroke="#A78BFA" />
+      <line x1="580" y1="270" x2="710" y2="270" strokeWidth="1.2" />
+      <line x1="740" y1="264" x2="845" y2="264" strokeWidth="1.1" stroke="#2DD4BF" />
+      <line x1="515" y1="282" x2="665" y2="282" strokeWidth="1.0" opacity="0.7" />
+      <line x1="690" y1="286" x2="810" y2="286" strokeWidth="0.9" stroke="#A78BFA" opacity="0.65" />
+    </g>
   </svg>
 );
 

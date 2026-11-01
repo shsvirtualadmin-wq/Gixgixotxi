@@ -158,7 +158,7 @@ export async function handleCrewApi(req: IncomingMessage, res: ServerResponse): 
         return;
       }
 
-      await adminDisbandCrew(crewId, confirmName, adminEmail || 'admin');
+      await adminDisbandCrew(crewId);
       sendJson(res, 200, { success: true, message: 'Crew successfully disbanded.' });
       return;
     }
@@ -175,16 +175,8 @@ export async function handleCrewApi(req: IncomingMessage, res: ServerResponse): 
 
       const result = await executeJoinCrewServer({
         crewId,
-        user: {
-          uid: user.uid,
-          email: user.email || '',
-          displayName: user.displayName || user.name || 'Member',
-          streak: Number(user.streak) || 0,
-          score: Number(user.score) || 0,
-          avatarKey: user.avatarKey,
-          avatarVariant: user.avatarVariant,
-        },
-      });
+        code: body.code,
+      } as any);
 
       sendJson(res, 200, result);
       return;
@@ -236,7 +228,7 @@ export async function handleCrewApi(req: IncomingMessage, res: ServerResponse): 
         return;
       }
 
-      await updateCrewSettings(crewId, updates, operator);
+      await updateCrewSettings(crewId, updates);
       sendJson(res, 200, { success: true, message: 'Crew settings updated successfully.' });
       return;
     }
@@ -282,7 +274,7 @@ export async function handleCrewApi(req: IncomingMessage, res: ServerResponse): 
       }
 
       // Sanitize member emails from public output
-      const sanitizedMembers = (crew.members || []).map((m) => ({
+      const sanitizedMembers = (crew.members || []).map((m: any) => ({
         uid: m.uid,
         displayName: m.displayName,
         role: m.role,

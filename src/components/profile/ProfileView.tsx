@@ -736,8 +736,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
       {/* ── MAIN CARD CONTAINER ── */}
       <div className="relative w-full rounded-2xl sm:rounded-3xl border border-[var(--border)] bg-[var(--card)] shadow-lg overflow-hidden flex flex-col">
-        {/* ── 1. BANNER (Full width: 160px mobile, 200px desktop) ── */}
-        <div className="relative w-full h-[160px] sm:h-[200px] overflow-hidden shrink-0 select-none">
+        {/* ── 1. BANNER (Matches Store header framing: h-28 mobile, sm:h-36 desktop) ── */}
+        <div className="relative w-full h-28 sm:h-36 overflow-hidden shrink-0 select-none">
           <CosmeticErrorBoundary
             fallback={<DefaultDotMatrixBanner accentColor={accentColor} />}
           >
@@ -745,6 +745,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               bannerId={profile?.banner}
               accentColor={accentColor}
               animated={true}
+              showReadabilityOverlay={true}
             />
           </CosmeticErrorBoundary>
 

@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getCosmeticById } from '@/data/cosmeticsCatalog';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
-import { PFP_ARTWORK_MAP } from './artwork/pfpArtwork';
+import { PFP_ARTWORK_MAP, type PfpSvgProps } from './artwork/pfpArtwork';
 import { FrameRenderer } from './artwork/frameArtwork';
 import { NameplateRenderer } from './artwork/plateArtwork';
 import {
@@ -10,9 +10,189 @@ import {
   ProfileEffectCardPreview,
   type ProfileCardEffectProps,
 } from './artwork/effectArtwork';
+import { storeVideoGovernor } from './fx/StoreLoopVideo';
 import { useSmoothMode } from '@/utils/smoothMode';
 
 export { ProfileEffectCardPreview };
+
+let nextPixelPopPfpUid = 1;
+
+const PixelPopCubeAvatar: React.FC<PfpSvgProps> = ({
+  className = '',
+  canAnimate = true,
+  priority = 2,
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const instanceIdRef = useRef<string>(`pfp-pixel-pop-arcade-${nextPixelPopPfpUid++}`);
+  const [isVisible, setIsVisible] = useState(true);
+  const [isGovernorActive, setIsGovernorActive] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(() =>
+    storeVideoGovernor.isReducedMotion()
+  );
+
+  const posterUrl = '/assets/store/pfp_pixel_pop_arcade/poster.webp';
+  const webmUrl = '/assets/store/pfp_pixel_pop_arcade/pfp.webm';
+  const mp4Url = '/assets/store/pfp_pixel_pop_arcade/pfp.mp4';
+
+  const effectiveAnimate = Boolean(canAnimate && !reducedMotion && !videoFailed);
+
+  const handleVideoRef = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    if (node) {
+      node.muted = true;
+      node.defaultMuted = true;
+      node.playsInline = true;
+    }
+    storeVideoGovernor.setVideoEl(instanceIdRef.current, node);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+      setReducedMotion(mql.matches || storeVideoGovernor.isReducedMotion());
+      const onChange = (e: MediaQueryListEvent) =>
+        setReducedMotion(e.matches || storeVideoGovernor.isReducedMotion());
+      mql.addEventListener('change', onChange);
+      return () => mql.removeEventListener('change', onChange);
+    } catch {
+      return;
+    }
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setIsVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        setIsVisible(Boolean(entry?.isIntersecting));
+      },
+      { threshold: 0.05, rootMargin: '80px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!effectiveAnimate) {
+      setIsGovernorActive(false);
+      return;
+    }
+    const id = instanceIdRef.current;
+    return storeVideoGovernor.register({
+      id,
+      videoEl: videoRef.current,
+      getVideoEl: () => videoRef.current,
+      isVisible,
+      canAnimate: effectiveAnimate,
+      priority,
+      setActiveState: setIsGovernorActive,
+      onPlayError: () => setAutoplayBlocked(true),
+    });
+  }, [effectiveAnimate, isVisible, priority]);
+
+  useEffect(() => {
+    storeVideoGovernor.update(instanceIdRef.current, {
+      videoEl: videoRef.current,
+      getVideoEl: () => videoRef.current,
+      isVisible,
+      canAnimate: effectiveAnimate,
+      priority,
+    });
+  }, [isVisible, effectiveAnimate, priority]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+    if (effectiveAnimate && isVisible && isGovernorActive && !autoplayBlocked) {
+      const p = video.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch((err: unknown) => {
+          const name = err instanceof Error ? err.name : '';
+          if (name === 'AbortError') return;
+          setAutoplayBlocked(true);
+        });
+      }
+    } else if (!video.paused) {
+      video.pause();
+    }
+  }, [effectiveAnimate, isVisible, isGovernorActive, autoplayBlocked]);
+
+  const handleVideoReady = () => {
+    setAutoplayBlocked(false);
+    const video = videoRef.current;
+    if (effectiveAnimate && isVisible && isGovernorActive && video && video.paused) {
+      video.muted = true;
+      video.defaultMuted = true;
+      video.playsInline = true;
+      const p = video.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch((err: unknown) => {
+          const name = err instanceof Error ? err.name : '';
+          if (name === 'AbortError') return;
+          setAutoplayBlocked(true);
+        });
+      }
+    }
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      className={`pfp-pixel-pop-arcade relative w-full h-full overflow-hidden select-none aspect-square rounded-full ${className}`}
+      style={{
+        background: 'radial-gradient(circle, #00E0C6 0%, #008276 100%)',
+        contain: 'paint',
+      }}
+      data-avatar-id="pfp_pixel_pop_arcade"
+      data-testid="pfp-pixel-pop-arcade"
+    >
+      <img
+        src={posterUrl}
+        alt=""
+        aria-hidden="true"
+        loading="eager"
+        decoding="async"
+        className="pfp-pixel-pop-arcade-poster absolute inset-0 w-full h-full object-cover rounded-full pointer-events-none"
+      />
+      {effectiveAnimate && (
+        <video
+          ref={handleVideoRef}
+          data-testid="pfp-pixel-pop-arcade-video"
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="auto"
+          poster={posterUrl}
+          onLoadedMetadata={handleVideoReady}
+          onLoadedData={handleVideoReady}
+          onCanPlay={handleVideoReady}
+          onPlaying={() => setAutoplayBlocked(false)}
+          onError={() => setVideoFailed(true)}
+          className={`pfp-pixel-pop-arcade-video absolute inset-0 w-full h-full object-cover rounded-full pointer-events-none transition-opacity duration-200 ${
+            isVisible && isGovernorActive && !videoFailed && !autoplayBlocked
+              ? 'opacity-100'
+              : 'opacity-0'
+          }`}
+        >
+          <source src={webmUrl} type="video/webm" />
+          <source src={mp4Url} type="video/mp4" onError={() => setVideoFailed(true)} />
+        </video>
+      )}
+    </div>
+  );
+};
 
 interface BaseCosmeticProps {
   itemId: string;
@@ -146,6 +326,7 @@ export interface AvatarPictureProps {
 const VIDEO_LOOP_AVATAR_IDS = new Set([
   'eclipse-wyrm',
   'pfp_eclipse_wyrm',
+  'pfp_pixel_pop_arcade',
   'pfp_phoenix_ascendant',
   'pfp_ryujin_sea_dragon',
   'pfp_shadow_ninja_mask',
@@ -175,11 +356,16 @@ const AvatarPictureInner: React.FC<AvatarPictureProps> = ({
   const effectivePriority = priority ?? (numericSize >= 56 ? 10 : 1);
   const effectiveVariant = variant || avatarVariant;
   const pfpItem = avatarId ? getCosmeticById(avatarId) : undefined;
-  const isPfp = Boolean(pfpItem && pfpItem.type === 'avatar' && PFP_ARTWORK_MAP[avatarId!]);
+  const PfpComp =
+    avatarId === 'pfp_pixel_pop_arcade'
+      ? PixelPopCubeAvatar
+      : avatarId
+        ? PFP_ARTWORK_MAP[avatarId]
+        : undefined;
+  const isPfp = Boolean(pfpItem && pfpItem.type === 'avatar' && PfpComp);
   const { containerRef, canAnimate } = useCosmeticAnimation(avatarId || '', false, effectiveForceStatic);
 
-  if (isPfp && avatarId && PFP_ARTWORK_MAP[avatarId]) {
-    const PfpComp = PFP_ARTWORK_MAP[avatarId];
+  if (isPfp && avatarId && PfpComp) {
     return (
       <div
         ref={containerRef}

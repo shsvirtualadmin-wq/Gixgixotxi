@@ -452,7 +452,7 @@ export async function createCommonsPost(params: {
           await notifyFollowersOfPost({
             followerUids,
             authorId: author.uid,
-            authorName: normalized.authorName || cleanAuthorName,
+            authorName: normalized.authorName || cleanPublicName,
             authorAvatar:
               author.avatarUrl ||
               author.photoURL ||
@@ -461,7 +461,7 @@ export async function createCommonsPost(params: {
               null,
             authorFrame: author.frame || normalized.authorFrame || null,
             postId: normalized.id,
-            postSlug: normalized.slug || normalized.id,
+            postSlug: (normalized as any).slug || normalized.id,
             postTitle: normalized.title,
             postType: normalized.type,
             postDescription: normalized.description,
@@ -821,11 +821,11 @@ export async function searchPeople(searchTerm: string): Promise<CommonsUserPrevi
         results.push({
           uid: d.id,
           displayName,
-          avatar: data.avatar || data.avatarUrl || data.equipped?.avatar || null,
+          avatarUrl: data.avatar || data.avatarUrl || data.equipped?.avatar || null,
           frame: data.frame || data.equipped?.frame || null,
           equippedAvatar: data.equipped?.avatar || data.equippedAvatar || null,
           photoURL: data.photoURL || null,
-          shortId: shortId || null,
+          shortId: shortId || undefined,
           bio: bio || null,
           followersCount: Number(data.followersCount || 0),
           followingCount: Number(data.followingCount || 0),
