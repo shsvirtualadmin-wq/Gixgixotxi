@@ -1,4 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { StoreFxCanvas } from '../fx/StoreFxCanvas';
+import {
+  COLOR_RAMPS,
+  LightningPool2D,
+  ParticlePool2D,
+  ParticleShape,
+  mulberry32,
+  noise2D,
+} from '../fx/storeFxEngine';
 
 interface EffectProps {
   itemId: string;
@@ -8,11 +17,402 @@ interface EffectProps {
   className?: string;
 }
 
+const PREMIUM_EFFECT_IDS = new Set([
+  'effect-dragon-fire-aura',
+  'effect-thunder-kami-storm',
+  'effect-spirit-fox-fire',
+  'effect-cherry-blossom-gale',
+  'effect-falling-stars',
+]);
+
+/**
+ * Pure Canvas-2D renderer for the 5 new Store Profile Effects,
+ * driven by the shared single-rAF StoreFxCanvas engine.
+ */
+const PremiumProfileEffectCanvas: React.FC<{
+  itemId: string;
+  canAnimate?: boolean;
+  mode: 'card' | 'avatar';
+}> = ({ itemId, canAnimate = true, mode }) => {
+  const isCard = mode === 'card';
+
+  const onStepDragonFire = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      w: number,
+      h: number,
+      dt: number,
+      elapsed: number,
+      pool: ParticlePool2D
+    ) => {
+      const rand = mulberry32(((elapsed * 1000) | 0) ^ 0xdf1234);
+
+      // Warm ambient underglow at base of card/avatar
+      const baseGlow = ctx.createLinearGradient(0, h, 0, h * 0.25);
+      const pulse = 0.22 + 0.08 * Math.sin(elapsed * 4.2);
+      baseGlow.addColorStop(0, `rgba(220, 38, 38, ${pulse.toFixed(3)})`);
+      baseGlow.addColorStop(0.5, `rgba(249, 115, 22, ${(pulse * 0.55).toFixed(3)})`);
+      baseGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = baseGlow;
+      ctx.fillRect(0, 0, w, h);
+
+      // Rising soft additive flame plumes with turbulence (white -> orange -> crimson -> smoke)
+      pool.emit(dt, isCard ? 36 : 22, () => {
+        const edgeBias = rand() < 0.65 ? (rand() < 0.5 ? rand() * 0.28 : 0.72 + rand() * 0.28) : rand();
+        return {
+          x: edgeBias * w,
+          y: h + 6,
+          vx: (rand() - 0.5) * 18,
+          vy: -(38 + rand() * (isCard ? 54 : 34)),
+          size0: isCard ? 14 + rand() * 14 : 7 + rand() * 7,
+          size1: isCard ? 26 + rand() * 18 : 13 + rand() * 9,
+          life: 1.2 + rand() * 1.1,
+          drag: 0.99,
+          gravity: -16,
+          turbulence: 42,
+          ramp: COLOR_RAMPS.dragonFire,
+          additive: true,
+          shape: ParticleShape.SoftGlow,
+          alphaPeak: 0.72,
+          seed: rand() * 100,
+        };
+      });
+
+      // Rising dark smoke wisps near top of flames
+      pool.emit(dt, isCard ? 10 : 5, () => ({
+        x: (0.1 + rand() * 0.8) * w,
+        y: h * (0.65 + rand() * 0.3),
+        vx: (rand() - 0.5) * 14,
+        vy: -(24 + rand() * 28),
+        size0: isCard ? 12 + rand() * 10 : 6 + rand() * 5,
+        size1: isCard ? 28 + rand() * 16 : 14 + rand() * 8,
+        life: 1.5 + rand() * 1.1,
+        drag: 0.985,
+        gravity: -8,
+        turbulence: 28,
+        ramp: COLOR_RAMPS.obsidianAsh,
+        additive: false,
+        shape: ParticleShape.Smoke,
+        alphaPeak: 0.28,
+        seed: rand() * 100,
+      }));
+
+      // Fast bright rising dragon sparks
+      pool.emit(dt, isCard ? 24 : 14, () => ({
+        x: rand() * w,
+        y: h + 4,
+        vx: (rand() - 0.5) * 36,
+        vy: -(58 + rand() * (isCard ? 78 : 48)),
+        size0: isCard ? 2.4 + rand() * 2.2 : 1.6 + rand() * 1.5,
+        size1: 0.5,
+        life: 0.85 + rand() * 0.95,
+        drag: 0.992,
+        gravity: -20,
+        turbulence: 52,
+        rotation: rand() * Math.PI * 2,
+        vRot: (rand() - 0.5) * 8,
+        ramp: COLOR_RAMPS.dragonEmber,
+        additive: true,
+        shape: ParticleShape.Spark,
+        alphaPeak: 0.95,
+        seed: rand() * 100,
+      }));
+
+      pool.updateAndDraw(ctx, dt, elapsed);
+    },
+    [isCard]
+  );
+
+  const onStepThunderKami = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      w: number,
+      h: number,
+      dt: number,
+      elapsed: number,
+      pool: ParticlePool2D,
+      lightning: LightningPool2D
+    ) => {
+      const rand = mulberry32(((elapsed * 1000) | 0) ^ 0x77a9bc);
+
+      // Storm cloud afterglow & flash decay
+      const flashAlpha = lightning.getFlashAlpha();
+      if (flashAlpha > 0.01) {
+        const flashGrad = ctx.createRadialGradient(w * 0.5, h * 0.2, 4, w * 0.5, h * 0.5, Math.max(w, h) * 0.85);
+        flashGrad.addColorStop(0, `rgba(254, 249, 195, ${(flashAlpha * 0.42).toFixed(3)})`);
+        flashGrad.addColorStop(0.5, `rgba(56, 189, 248, ${(flashAlpha * 0.24).toFixed(3)})`);
+        flashGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = flashGrad;
+        ctx.fillRect(0, 0, w, h);
+      }
+
+      // Procedural branching lightning strikes with afterglow
+      lightning.updateAndDraw(ctx, dt, () => {
+        if (rand() < dt * (isCard ? 4.2 : 3.2)) {
+          const isGold = rand() < 0.55;
+          const x1 = (0.12 + rand() * 0.76) * w;
+          const y1 = rand() * h * 0.18;
+          const x2 = x1 + (rand() - 0.5) * w * 0.42;
+          const y2 = h * (0.62 + rand() * 0.35);
+          lightning.triggerBolt({
+            x1,
+            y1,
+            x2,
+            y2,
+            life: 0.22 + rand() * 0.16,
+            colorCore: '#FFFFFF',
+            colorGlow: isGold ? '#FACC15' : '#38BDF8',
+            width: isCard ? 2.1 : 1.5,
+            displacement: isCard ? 24 : 13,
+            branchChance: 0.5,
+            seed: ((elapsed * 1000) | 0) + ((rand() * 999) | 0),
+          });
+        }
+      });
+
+      // Ionized electric sparks & afterglow motes
+      pool.emit(dt, isCard ? 26 : 14, () => ({
+        x: (0.08 + rand() * 0.84) * w,
+        y: (0.1 + rand() * 0.8) * h,
+        vx: (rand() - 0.5) * 45,
+        vy: (rand() - 0.5) * 45,
+        size0: isCard ? 2.2 + rand() * 2.2 : 1.5 + rand() * 1.4,
+        size1: 0.4,
+        life: 0.35 + rand() * 0.45,
+        drag: 0.94,
+        turbulence: 65,
+        rotation: rand() * Math.PI * 2,
+        vRot: (rand() - 0.5) * 10,
+        ramp: COLOR_RAMPS.thunderGold,
+        additive: true,
+        shape: ParticleShape.Spark,
+        alphaPeak: 0.92,
+        seed: rand() * 100,
+      }));
+
+      pool.updateAndDraw(ctx, dt, elapsed);
+    },
+    [isCard]
+  );
+
+  const onStepSpiritFox = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      w: number,
+      h: number,
+      dt: number,
+      elapsed: number,
+      pool: ParticlePool2D
+    ) => {
+      const rand = mulberry32(((elapsed * 1000) | 0) ^ 0x5f0911);
+
+      // 5 primary Fox-Fire orbs following smooth continuous 2D noise paths with soft glowing ribbon trails
+      const orbCount = isCard ? 5 : 3;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < orbCount; i++) {
+        const phase = i * 1.2566 + elapsed * 0.55;
+        const trailSteps = 9;
+        for (let s = trailSteps - 1; s >= 0; s--) {
+          const tSample = elapsed - s * 0.045;
+          const nx = noise2D(tSample * 0.48 + i * 3.7, i * 1.9 + 0.5);
+          const ny = noise2D(i * 2.3 + 1.1, tSample * 0.48 + i * 4.1);
+          const ox = w * (0.5 + 0.36 * Math.cos(phase - s * 0.08) + nx * 0.14);
+          const oy = h * (0.5 + 0.32 * Math.sin(phase * 1.15 - s * 0.08) + ny * 0.14);
+          const frac = 1 - s / trailSteps;
+          const r = (isCard ? 11 : 6.5) * (0.35 + 0.65 * frac);
+          const isViolet = i % 2 === 1;
+
+          const grad = ctx.createRadialGradient(ox, oy, 0, ox, oy, r * 1.7);
+          if (s === 0) {
+            grad.addColorStop(0, 'rgba(240, 249, 255, 0.95)');
+          } else {
+            grad.addColorStop(0, isViolet ? `rgba(192, 132, 252, ${(0.42 * frac).toFixed(3)})` : `rgba(56, 189, 248, ${(0.42 * frac).toFixed(3)})`);
+          }
+          grad.addColorStop(0.55, isViolet ? `rgba(147, 51, 234, ${(0.28 * frac).toFixed(3)})` : `rgba(14, 165, 233, ${(0.28 * frac).toFixed(3)})`);
+          grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(ox, oy, r * 1.7, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+
+      // Secondary drifting spirit wisps with ribbon trails in the particle pool
+      pool.emit(dt, isCard ? 18 : 10, () => ({
+        x: (0.1 + rand() * 0.8) * w,
+        y: (0.15 + rand() * 0.75) * h,
+        vx: (rand() - 0.5) * 20,
+        vy: -(16 + rand() * 22),
+        size0: isCard ? 4.2 + rand() * 3.2 : 2.5 + rand() * 2,
+        size1: 1.0,
+        life: 1.5 + rand() * 1.2,
+        drag: 0.992,
+        gravity: -6,
+        turbulence: 44,
+        ramp: COLOR_RAMPS.spiritFox,
+        additive: true,
+        shape: ParticleShape.Wisp,
+        alphaPeak: 0.85,
+        seed: rand() * 100,
+      }));
+
+      pool.updateAndDraw(ctx, dt, elapsed);
+    },
+    [isCard]
+  );
+
+  const onStepCherryBlossomGale = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      w: number,
+      h: number,
+      dt: number,
+      elapsed: number,
+      pool: ParticlePool2D
+    ) => {
+      const rand = mulberry32(((elapsed * 1000) | 0) ^ 0xca4419);
+
+      // Swirling wind field ribbons (subtle translucent silk currents)
+      ctx.save();
+      ctx.strokeStyle = 'rgba(244, 114, 182, 0.16)';
+      ctx.lineWidth = isCard ? 1.4 : 1;
+      for (let i = 0; i < 2; i++) {
+        ctx.beginPath();
+        const yBase = h * (0.32 + i * 0.36);
+        for (let x = 0; x <= w; x += 12) {
+          const y =
+            yBase +
+            Math.sin(x * 0.025 - elapsed * 2.4 + i * 1.8) * (isCard ? 14 : 7) +
+            Math.cos(x * 0.012 + elapsed * 1.5) * 5;
+          if (x === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Depth-sorted sakura petals with 3D-looking tumble rotation & swirling wind turbulence
+      pool.emit(dt, isCard ? 26 : 15, () => {
+        // Depth factor: 0 = far/small, 1 = close/large/soft
+        const depth = rand();
+        const baseSize = isCard
+          ? 3.2 + depth * 5.2
+          : 2.2 + depth * 3.0;
+        const fromTop = rand() < 0.45;
+        return {
+          x: fromTop ? rand() * w * 0.85 : -10,
+          y: fromTop ? -10 : rand() * h * 0.85,
+          vx: (36 + depth * 42) * (isCard ? 1 : 0.7),
+          vy: (18 + depth * 24) * (isCard ? 1 : 0.7),
+          size0: baseSize,
+          size1: baseSize * 0.85,
+          life: 2.2 + rand() * 1.6,
+          drag: 0.996,
+          gravity: 6,
+          turbulence: 34 + depth * 22,
+          rotation: rand() * Math.PI * 2,
+          vRot: (rand() - 0.5) * 4.5,
+          ramp: COLOR_RAMPS.sakuraGale,
+          additive: depth > 0.72,
+          shape: ParticleShape.Petal,
+          alphaPeak: 0.55 + depth * 0.4,
+          seed: rand() * 100,
+        };
+      });
+
+      pool.updateAndDraw(ctx, dt, elapsed);
+    },
+    [isCard]
+  );
+
+  const onStepFallingStars = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      w: number,
+      h: number,
+      dt: number,
+      elapsed: number,
+      pool: ParticlePool2D
+    ) => {
+      const rand = mulberry32(((elapsed * 1000) | 0) ^ 0x9988aa);
+
+      // Regular golden meteors with fading tapered tails
+      pool.emit(dt, isCard ? 14 : 9, () => {
+        const isRareBright = rand() < 0.18;
+        const speed = (isRareBright ? 155 : 95 + rand() * 45) * (isCard ? 1 : 0.72);
+        const angle = Math.PI * 0.72 + (rand() - 0.5) * 0.12; // ~130 deg diagonal down-left
+        return {
+          x: (0.2 + rand() * 0.95) * w,
+          y: -8 + rand() * h * 0.35,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          size0: isRareBright ? (isCard ? 3.8 : 2.6) : isCard ? 2.2 + rand() * 1.1 : 1.6 + rand() * 0.8,
+          size1: 0.4,
+          life: 0.75 + rand() * 0.65,
+          drag: 0.998,
+          gravity: 12,
+          turbulence: 4,
+          ramp: COLOR_RAMPS.fallingStars,
+          additive: true,
+          shape: ParticleShape.Streak,
+          alphaPeak: isRareBright ? 1.0 : 0.85,
+          seed: rand() * 100,
+        };
+      });
+
+      // Twinkling golden stardust wake
+      pool.emit(dt, isCard ? 16 : 9, () => ({
+        x: (0.08 + rand() * 0.84) * w,
+        y: (0.08 + rand() * 0.84) * h,
+        vx: -8 + (rand() - 0.5) * 8,
+        vy: 6 + (rand() - 0.5) * 8,
+        size0: isCard ? 1.8 + rand() * 1.6 : 1.2 + rand() * 1.2,
+        size1: 0.3,
+        life: 1.1 + rand() * 1.0,
+        drag: 0.98,
+        turbulence: 10,
+        rotation: rand() * Math.PI * 2,
+        vRot: (rand() - 0.5) * 4,
+        ramp: COLOR_RAMPS.fallingStars,
+        additive: true,
+        shape: ParticleShape.Spark,
+        alphaPeak: 0.8,
+        seed: rand() * 100,
+      }));
+
+      pool.updateAndDraw(ctx, dt, elapsed);
+    },
+    [isCard]
+  );
+
+  const stepFn =
+    itemId === 'effect-dragon-fire-aura'
+      ? onStepDragonFire
+      : itemId === 'effect-thunder-kami-storm'
+      ? onStepThunderKami
+      : itemId === 'effect-spirit-fox-fire'
+      ? onStepSpiritFox
+      : itemId === 'effect-cherry-blossom-gale'
+      ? onStepCherryBlossomGale
+      : onStepFallingStars;
+
+  return (
+    <StoreFxCanvas
+      id={`profile-fx-${mode}-${itemId}`}
+      canAnimate={canAnimate}
+      maxParticles={isCard ? 120 : 65}
+      maxBolts={itemId === 'effect-thunder-kami-storm' ? 6 : 2}
+      prewarmSeconds={2.4}
+      onStep={stepFn}
+    />
+  );
+};
+
 /**
  * 25 BESPOKE AVATAR-SIZED EFFECT WRAPPERS (<EffectAvatarRenderer />)
- * Renders atmospheric vector auras around the student's avatar/frame.
- * Static items (animated: false) have ZERO motion anywhere.
- * Animated items (animated: true) animate using transform & opacity only.
+ * Renders atmospheric vector/canvas auras around the student's avatar/frame.
  */
 export const EffectAvatarRenderer: React.FC<EffectProps> = ({
   itemId,
@@ -21,6 +421,23 @@ export const EffectAvatarRenderer: React.FC<EffectProps> = ({
   children,
   className = '',
 }) => {
+  if (PREMIUM_EFFECT_IDS.has(itemId)) {
+    return (
+      <div
+        className={`relative inline-flex items-center justify-center shrink-0 ${className}`}
+        style={{ width: size, height: size }}
+      >
+        <div
+          className="absolute -inset-2.5 rounded-full pointer-events-none z-20 overflow-hidden"
+          style={{ overflow: 'hidden', contain: 'paint' }}
+        >
+          <PremiumProfileEffectCanvas itemId={itemId} canAnimate={canAnimate} mode="avatar" />
+        </div>
+        <div className="relative z-10">{children}</div>
+      </div>
+    );
+  }
+
   switch (itemId) {
     // ─── 13 STATIC AVATAR EFFECTS ──────────────────────────────────────────
     case 'effect-whispering-mist':
@@ -403,96 +820,6 @@ export const EffectAvatarRenderer: React.FC<EffectProps> = ({
         </div>
       );
 
-    // ─── 5 NEW PREMIUM AVATAR EFFECTS ───────────────────────────────────────
-    case 'effect-dragon-fire-aura':
-      return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <div
-            className="absolute -inset-2.5 rounded-full bg-radial from-[#FEF08A]/25 via-[#DC2626]/40 to-transparent pointer-events-none z-0"
-            style={canAnimate ? { animation: 'koban-flame-flicker 1.8s ease-in-out infinite' } : undefined}
-          />
-          <svg
-            className="absolute -inset-2.5 w-[calc(100%+20px)] h-[calc(100%+20px)] pointer-events-none z-20"
-            viewBox="0 0 100 100"
-            fill="none"
-            style={canAnimate ? { transformOrigin: '50px 50px', animation: 'koban-orbit-cw 8s linear infinite' } : undefined}
-          >
-            <path d="M50 4 C74 4 94 24 94 48" stroke="#F59E0B" strokeWidth="2.5" strokeLinecap="round" />
-            <path d="M50 96 C26 96 6 76 6 52" stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round" />
-            <circle cx="50" cy="4" r="3" fill="#FEF08A" />
-            <circle cx="50" cy="96" r="3" fill="#F97316" />
-          </svg>
-          <div className="relative z-10">{children}</div>
-        </div>
-      );
-
-    case 'effect-thunder-kami-storm':
-      return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg
-            className="absolute -inset-2.5 w-[calc(100%+20px)] h-[calc(100%+20px)] pointer-events-none z-20"
-            viewBox="0 0 100 100"
-            fill="none"
-            style={canAnimate ? { animation: 'koban-lightning-flicker 1.5s steps(2, start) infinite' } : undefined}
-          >
-            <polyline points="50,2 44,16 54,18 46,32" stroke="#FEF08A" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-            <polyline points="94,46 80,52 84,60 70,66" stroke="#38BDF8" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-            <polyline points="8,54 22,48 18,40 32,34" stroke="#F59E0B" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <div className="relative z-10">{children}</div>
-        </div>
-      );
-
-    case 'effect-spirit-fox-fire':
-      return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <div
-            className="absolute -inset-2 pointer-events-none z-20"
-            style={canAnimate ? { transformOrigin: 'center', animation: 'koban-orbit-cw 9s linear infinite' } : undefined}
-          >
-            <span className="absolute top-0 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-[#38BDF8] shadow-[0_0_8px_#00F0FF]" />
-            <span className="absolute bottom-1 left-1 w-2.5 h-2.5 rounded-full bg-[#A855F7] shadow-[0_0_8px_#A855F7]" />
-            <span className="absolute bottom-1 right-1 w-2.5 h-2.5 rounded-full bg-[#38BDF8] shadow-[0_0_8px_#00F0FF]" />
-          </div>
-          <div className="relative z-10">{children}</div>
-        </div>
-      );
-
-    case 'effect-cherry-blossom-gale':
-      return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg
-            className="absolute -inset-2.5 w-[calc(100%+20px)] h-[calc(100%+20px)] pointer-events-none z-20"
-            viewBox="0 0 100 100"
-            fill="none"
-            style={canAnimate ? { animation: 'koban-petal-fall 3s ease-in-out infinite' } : undefined}
-          >
-            <path d="M18 32 C38 14 68 18 86 38" stroke="#F472B6" strokeWidth="2" strokeLinecap="round" opacity="0.75" />
-            <ellipse cx="26" cy="24" rx="5" ry="2.5" transform="rotate(-25 26 24)" fill="#FBCFE8" />
-            <ellipse cx="78" cy="30" rx="4.5" ry="2.2" transform="rotate(20 78 30)" fill="#F472B6" />
-            <ellipse cx="64" cy="82" rx="5" ry="2.5" transform="rotate(-15 64 82)" fill="#FB7185" />
-          </svg>
-          <div className="relative z-10">{children}</div>
-        </div>
-      );
-
-    case 'effect-falling-stars':
-      return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
-          <svg
-            className="absolute -inset-2.5 w-[calc(100%+20px)] h-[calc(100%+20px)] pointer-events-none z-20"
-            viewBox="0 0 100 100"
-            fill="none"
-          >
-            <line x1="82" y1="12" x2="58" y2="36" stroke="#818CF8" strokeWidth="2" strokeLinecap="round" />
-            <circle cx="58" cy="36" r="2.5" fill="#FEF08A" />
-            <line x1="38" y1="62" x2="16" y2="84" stroke="#38BDF8" strokeWidth="1.8" strokeLinecap="round" />
-            <circle cx="16" cy="84" r="2" fill="#E0E7FF" />
-          </svg>
-          <div className="relative z-10">{children}</div>
-        </div>
-      );
-
     default:
       return (
         <div className={`relative inline-flex items-center justify-center shrink-0 ${className}`} style={{ width: size, height: size }}>
@@ -538,8 +865,14 @@ export const ProfileCardEffect: React.FC<ProfileCardEffectProps> = ({ itemId, cl
       className={`absolute inset-0 pointer-events-none overflow-hidden rounded-2xl z-20 transition-opacity duration-1000 ${
         visible ? 'opacity-100' : 'opacity-0'
       } ${className}`}
+      style={{ overflow: 'hidden', contain: 'paint' }}
       aria-hidden="true"
     >
+      {/* ─── 5 NEW PREMIUM FULL-CARD EFFECTS (Canvas-2D FX Engine Only) ─────── */}
+      {PREMIUM_EFFECT_IDS.has(itemId) && (
+        <PremiumProfileEffectCanvas itemId={itemId} canAnimate={visible} mode="card" />
+      )}
+
       {/* ─── 13 STATIC FULL-CARD EFFECTS (Zero Motion) ───────────────────────── */}
       {itemId === 'effect-whispering-mist' && (
         <svg className="absolute inset-0 w-full h-full" viewBox="0 0 300 200" preserveAspectRatio="none" fill="none">
@@ -757,92 +1090,8 @@ export const ProfileCardEffect: React.FC<ProfileCardEffectProps> = ({ itemId, cl
           style={{ animation: 'koban-water-ripple 3s ease-in-out infinite' }}
         />
       )}
-
-      {/* ─── 5 NEW PREMIUM FULL-CARD EFFECTS ──────────────────────────────── */}
-      {itemId === 'effect-dragon-fire-aura' && (
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 300 200" preserveAspectRatio="none" fill="none">
-          <defs>
-            <linearGradient id="dfa_fire" x1="0" y1="1" x2="1" y2="0">
-              <stop offset="0%" stopColor="#DC2626" stopOpacity="0.65" />
-              <stop offset="55%" stopColor="#F59E0B" stopOpacity="0.45" />
-              <stop offset="100%" stopColor="#FEF08A" stopOpacity="0.2" />
-            </linearGradient>
-          </defs>
-          <path
-            d="M0 200 C50 145 110 175 165 125 C220 75 265 110 300 50 L300 200 Z"
-            fill="url(#dfa_fire)"
-            style={{ animation: 'koban-flame-flicker 2.2s ease-in-out infinite' }}
-          />
-          <path
-            d="M15 165 C85 110 155 140 245 65"
-            stroke="#FEF08A"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeDasharray="8 6"
-            opacity="0.8"
-          />
-          <circle cx="52" cy="138" r="4" fill="#FEF08A" style={{ animation: 'koban-ember-rise 2.2s ease-out infinite' }} />
-          <circle cx="148" cy="108" r="3.5" fill="#F97316" style={{ animation: 'koban-ember-rise 2.6s ease-out infinite 0.5s' }} />
-          <circle cx="235" cy="78" r="4.5" fill="#EF4444" style={{ animation: 'koban-ember-rise 2s ease-out infinite 1s' }} />
-        </svg>
-      )}
-
-      {itemId === 'effect-thunder-kami-storm' && (
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 300 200" preserveAspectRatio="none" fill="none">
-          <g style={{ animation: 'koban-lightning-flicker 1.6s steps(2, start) infinite' }}>
-            <polyline points="45,0 32,48 56,54 28,118" stroke="#FEF08A" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-            <polyline points="248,0 226,56 252,64 214,138" stroke="#38BDF8" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
-            <polyline points="155,15 142,60 164,66 146,110" stroke="#F59E0B" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-          </g>
-          <circle cx="245" cy="42" r="22" stroke="#F59E0B" strokeWidth="1.8" strokeDasharray="5 4" opacity="0.65" />
-        </svg>
-      )}
-
-      {itemId === 'effect-spirit-fox-fire' && (
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 300 200" fill="none">
-          <g style={{ animation: 'koban-pulse-glow 2.5s ease-in-out infinite' }}>
-            <circle cx="48" cy="145" r="12" fill="#38BDF8" opacity="0.35" />
-            <circle cx="48" cy="145" r="5.5" fill="#E0F2FE" />
-            <path d="M48 139 C44 125 52 115 48 104" stroke="#38BDF8" strokeWidth="2.5" strokeLinecap="round" />
-
-            <circle cx="152" cy="52" r="13" fill="#A855F7" opacity="0.35" />
-            <circle cx="152" cy="52" r="6" fill="#F3E8FF" />
-            <path d="M152 46 C148 32 156 22 152 12" stroke="#C084FC" strokeWidth="2.5" strokeLinecap="round" />
-
-            <circle cx="248" cy="128" r="12" fill="#38BDF8" opacity="0.35" />
-            <circle cx="248" cy="128" r="5.5" fill="#E0F2FE" />
-            <path d="M248 122 C244 108 252 98 248 86" stroke="#38BDF8" strokeWidth="2.5" strokeLinecap="round" />
-          </g>
-        </svg>
-      )}
-
-      {itemId === 'effect-cherry-blossom-gale' && (
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 300 200" fill="none">
-          <path d="M-10 155 C75 105 165 135 310 55" stroke="#F472B6" strokeWidth="2" strokeDasharray="10 6" opacity="0.55" />
-          <path d="M-10 95 C90 55 185 85 310 25" stroke="#FBCFE8" strokeWidth="1.5" strokeDasharray="8 6" opacity="0.45" />
-          <g style={{ animation: 'koban-petal-fall 3.2s ease-in-out infinite' }}>
-            <ellipse cx="55" cy="65" rx="7" ry="3.5" transform="rotate(-25 55 65)" fill="#F472B6" />
-            <ellipse cx="125" cy="95" rx="6" ry="3" transform="rotate(15 125 95)" fill="#FBCFE8" />
-            <ellipse cx="195" cy="52" rx="7.5" ry="3.5" transform="rotate(-30 195 52)" fill="#FB7185" />
-            <ellipse cx="245" cy="118" rx="6.5" ry="3.2" transform="rotate(20 245 118)" fill="#F472B6" />
-          </g>
-        </svg>
-      )}
-
-      {itemId === 'effect-falling-stars' && (
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 300 200" fill="none">
-          <g style={{ animation: 'koban-pulse-glow 2.2s ease-in-out infinite' }}>
-            <line x1="255" y1="18" x2="175" y2="82" stroke="#818CF8" strokeWidth="2.5" strokeLinecap="round" />
-            <circle cx="175" cy="82" r="4" fill="#FEF08A" />
-            <line x1="145" y1="28" x2="72" y2="86" stroke="#38BDF8" strokeWidth="2" strokeLinecap="round" />
-            <circle cx="72" cy="86" r="3.5" fill="#E0F2FE" />
-            <line x1="275" y1="88" x2="198" y2="148" stroke="#C084FC" strokeWidth="2.2" strokeLinecap="round" />
-            <circle cx="198" cy="148" r="3.5" fill="#FEF08A" />
-          </g>
-        </svg>
-      )}
     </div>
-   );
+  );
 };
 
 /**
@@ -884,3 +1133,4 @@ export const ProfileEffectCardPreview: React.FC<{
     </div>
   );
 };
+

@@ -1,4 +1,12 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { StoreFxCanvas } from '../fx/StoreFxCanvas';
+import {
+  COLOR_RAMPS,
+  ParticleShape,
+  storeFxScheduler,
+  type EmitterConfig,
+  type LightningConfig,
+} from '../fx/storeFxEngine';
 
 interface FrameProps {
   itemId: string;
@@ -6,6 +14,57 @@ interface FrameProps {
   canAnimate?: boolean;
   children?: React.ReactNode;
   className?: string;
+}
+
+/**
+ * Shared single-rAF controller hook for the 5 new premium frames:
+ * drives outer ring rotation, inner counter-rotation, stroke-dashoffset energy flow, and glow pulse.
+ */
+function useFrameMotionRefs(
+  canAnimate: boolean,
+  cwSpeed = 24,
+  ccwSpeed = 18,
+  dashSpeed = 32
+) {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const cwGroupRef = useRef<SVGGElement>(null);
+  const ccwGroupRef = useRef<SVGGElement>(null);
+  const energyPathRef = useRef<SVGGeometryElement>(null);
+  const pulseGroupRef = useRef<SVGGElement>(null);
+
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+
+    const apply = (elapsed: number) => {
+      const cw = (elapsed * cwSpeed) % 360;
+      const ccw = -(elapsed * ccwSpeed) % 360;
+      const dash = -(elapsed * dashSpeed);
+      const pulse = 0.68 + 0.32 * (0.5 + 0.5 * Math.sin(elapsed * 3.1));
+
+      if (cwGroupRef.current) {
+        cwGroupRef.current.setAttribute('transform', `rotate(${cw.toFixed(2)} 50 50)`);
+      }
+      if (ccwGroupRef.current) {
+        ccwGroupRef.current.setAttribute('transform', `rotate(${ccw.toFixed(2)} 50 50)`);
+      }
+      if (energyPathRef.current) {
+        energyPathRef.current.style.strokeDashoffset = `${dash.toFixed(2)}`;
+      }
+      if (pulseGroupRef.current) {
+        pulseGroupRef.current.style.opacity = pulse.toFixed(3);
+      }
+    };
+
+    return storeFxScheduler.register({
+      element: el,
+      canAnimate,
+      onFrame: (_dt, elapsed) => apply(elapsed),
+      onStaticFrame: () => apply(1.5),
+    });
+  }, [canAnimate, cwSpeed, ccwSpeed, dashSpeed]);
+
+  return { stageRef, cwGroupRef, ccwGroupRef, energyPathRef, pulseGroupRef };
 }
 
 /**
@@ -856,122 +915,40 @@ export const FrameRenderer: React.FC<FrameProps> = ({
         </div>
       );
 
-    // ─── 5 NEW PREMIUM AVATAR FRAMES ────────────────────────────────────────
+    // ─── 5 NEW PREMIUM AVATAR FRAMES (SVG + Shared FX Engine) ───────────────
     case 'frame-dragon-scale-halo':
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
-            <defs>
-              <linearGradient id="dsh_scale" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#FEF08A" />
-                <stop offset="45%" stopColor="#EF4444" />
-                <stop offset="100%" stopColor="#7F1D1D" />
-              </linearGradient>
-            </defs>
-            {/* Crimson Scale Armor Ring */}
-            <circle cx="50" cy="50" r="41" stroke="#450A0A" strokeWidth="7" />
-            <circle cx="50" cy="50" r="41" stroke="url(#dsh_scale)" strokeWidth="4.5" strokeDasharray="7 3" />
-            <circle cx="50" cy="50" r="37.5" stroke="#FEF08A" strokeWidth="1.2" opacity="0.85" />
-            {/* Crown Dragon Horns */}
-            <path d="M30 14 C22 2 14 -2 10 4 C16 12 22 18 28 22 Z" fill="#FDE047" stroke="#92400E" strokeWidth="1" />
-            <path d="M70 14 C78 2 86 -2 90 4 C84 12 78 18 72 22 Z" fill="#FDE047" stroke="#92400E" strokeWidth="1" />
-            {/* Rotating Dragonfire Halo */}
-            <g style={canAnimate ? { transformOrigin: '50px 50px', animation: 'koban-orbit-cw 7s linear infinite' } : undefined}>
-              <circle cx="50" cy="6" r="3.5" fill="#FEF08A" />
-              <circle cx="94" cy="50" r="3" fill="#F97316" />
-              <circle cx="50" cy="94" r="3.5" fill="#EF4444" />
-              <circle cx="6" cy="50" r="3" fill="#F59E0B" />
-            </g>
-          </svg>
+        <DragonScaleHaloFrame size={size} canAnimate={canAnimate} className={className}>
           {innerContent}
-        </div>
+        </DragonScaleHaloFrame>
       );
 
     case 'frame-thunder-mandala':
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
-            <circle cx="50" cy="50" r="41" stroke="#1E1B4B" strokeWidth="6.5" />
-            <circle cx="50" cy="50" r="41" stroke="#F59E0B" strokeWidth="2.5" strokeDasharray="8 6" />
-            {/* 8 Raijin Taiko Drums */}
-            <g style={canAnimate ? { transformOrigin: '50px 50px', animation: 'koban-orbit-cw 12s linear infinite' } : undefined}>
-              {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
-                <g key={deg} transform={`rotate(${deg} 50 50)`}>
-                  <circle cx="50" cy="6" r="4.5" fill="#FEF08A" stroke="#B45309" strokeWidth="1.2" />
-                  <circle cx="50" cy="6" r="1.8" fill="#78350F" />
-                </g>
-              ))}
-            </g>
-            {/* Crackling Lightning Rim */}
-            <path
-              d="M50 8 L55 12 L47 15 M92 50 L88 55 L85 47 M50 92 L45 88 L53 85 M8 50 L12 45 L15 53"
-              stroke="#38BDF8"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              style={canAnimate ? { animation: 'koban-lightning-flicker 1.8s steps(2, start) infinite' } : undefined}
-            />
-          </svg>
+        <ThunderMandalaFrame size={size} canAnimate={canAnimate} className={className}>
           {innerContent}
-        </div>
+        </ThunderMandalaFrame>
       );
 
     case 'frame-sakura-blade-ring':
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
-            <defs>
-              <linearGradient id="sbr_steel" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#F8FAFC" />
-                <stop offset="50%" stopColor="#F472B6" />
-                <stop offset="100%" stopColor="#9D174D" />
-              </linearGradient>
-            </defs>
-            {/* Curved Twin Katana Blades */}
-            <path d="M50 7 A43 43 0 0 1 93 50 A40 40 0 0 1 50 89" stroke="url(#sbr_steel)" strokeWidth="5.5" strokeLinecap="round" />
-            <path d="M50 93 A43 43 0 0 1 7 50 A40 40 0 0 1 50 11" stroke="url(#sbr_steel)" strokeWidth="5.5" strokeLinecap="round" />
-            <circle cx="50" cy="50" r="37.5" stroke="#FBCFE8" strokeWidth="1.2" />
-            {/* Floating Blossom Accents */}
-            <g style={canAnimate ? { animation: 'koban-pulse-glow 2.4s ease-in-out infinite' } : undefined}>
-              <circle cx="50" cy="7" r="4" fill="#F472B6" stroke="#FFF1F2" strokeWidth="1" />
-              <circle cx="88" cy="72" r="3.5" fill="#FB7185" stroke="#FFF1F2" strokeWidth="1" />
-              <circle cx="12" cy="28" r="3.5" fill="#F472B6" stroke="#FFF1F2" strokeWidth="1" />
-            </g>
-          </svg>
+        <SakuraBladeRingFrame size={size} canAnimate={canAnimate} className={className}>
           {innerContent}
-        </div>
+        </SakuraBladeRingFrame>
       );
 
     case 'frame-void-obsidian-ring':
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
-            <circle cx="50" cy="50" r="41" stroke="#09090B" strokeWidth="7" />
-            <circle cx="50" cy="50" r="41" stroke="#9333EA" strokeWidth="2.5" strokeDasharray="12 6" />
-            <circle cx="50" cy="50" r="37.5" stroke="#C084FC" strokeWidth="1.2" />
-            {/* 4 Obsidian Void Shards */}
-            <polygon points="50,1 55,11 50,15 45,11" fill="#A855F7" stroke="#09090B" strokeWidth="1" />
-            <polygon points="99,50 89,55 85,50 89,45" fill="#A855F7" stroke="#09090B" strokeWidth="1" />
-            <polygon points="50,99 55,89 50,85 45,89" fill="#A855F7" stroke="#09090B" strokeWidth="1" />
-            <polygon points="1,50 11,55 15,50 11,45" fill="#A855F7" stroke="#09090B" strokeWidth="1" />
-          </svg>
+        <VoidObsidianRingFrame size={size} canAnimate={canAnimate} className={className}>
           {innerContent}
-        </div>
+        </VoidObsidianRingFrame>
       );
 
     case 'frame-royal-gold-laurel-crown':
       return (
-        <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
-          <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
-            <circle cx="50" cy="50" r="41" stroke="#78350F" strokeWidth="6.5" />
-            <circle cx="50" cy="50" r="41" stroke="#FDE047" strokeWidth="3.5" strokeDasharray="5 3" />
-            <circle cx="50" cy="50" r="37.5" stroke="#F59E0B" strokeWidth="1.5" />
-            {/* Crown Keystone Ruby & Gold Spire */}
-            <polygon points="50,0 57,11 50,16 43,11" fill="#DC2626" stroke="#FEF08A" strokeWidth="1.5" />
-            <polygon points="36,6 42,13 35,15" fill="#FDE047" />
-            <polygon points="64,6 58,13 65,15" fill="#FDE047" />
-          </svg>
+        <RoyalGoldLaurelCrownFrame size={size} canAnimate={canAnimate} className={className}>
           {innerContent}
-        </div>
+        </RoyalGoldLaurelCrownFrame>
       );
 
     default:
@@ -981,4 +958,458 @@ export const FrameRenderer: React.FC<FrameProps> = ({
         </div>
       );
   }
+};
+
+interface SubFrameProps {
+  size: number;
+  canAnimate: boolean;
+  className: string;
+  children: React.ReactNode;
+}
+
+const DragonScaleHaloFrame: React.FC<SubFrameProps> = ({ size, canAnimate, className, children }) => {
+  const { stageRef, cwGroupRef, ccwGroupRef, energyPathRef, pulseGroupRef } = useFrameMotionRefs(
+    canAnimate,
+    22,
+    16,
+    28
+  );
+  const emitters = useMemo<EmitterConfig[]>(
+    () => [
+      {
+        rate: 22,
+        shape: ParticleShape.Spark,
+        additive: true,
+        ramp: COLOR_RAMPS.dragonFire,
+        xMin: 0,
+        xMax: 1,
+        yMin: 0,
+        yMax: 1,
+        ringRadius: 0.36,
+        ringCenterX: 0.5,
+        ringCenterY: 0.5,
+        tangentialSpeed: 0.35,
+        vxMin: -0.05,
+        vxMax: 0.05,
+        vyMin: -0.14,
+        vyMax: 0.04,
+        turbulence: 0.22,
+        lifeMin: 0.7,
+        lifeMax: 1.4,
+        sizeStartMin: 2.0,
+        sizeStartMax: 3.6,
+        sizeEndMin: 0.6,
+        sizeEndMax: 1.2,
+        alphaPeak: 0.95,
+      },
+    ],
+    []
+  );
+
+  return (
+    <div
+      ref={stageRef}
+      className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`}
+      style={{ width: size, height: size, contain: 'paint' }}
+    >
+      <StoreFxCanvas
+        emitters={emitters}
+        maxParticles={40}
+        seed={701}
+        canAnimate={canAnimate}
+        className="absolute inset-0 w-full h-full z-30"
+      />
+      <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
+        <defs>
+          <linearGradient id="dsh_scale" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#FEF08A" />
+            <stop offset="45%" stopColor="#EF4444" />
+            <stop offset="100%" stopColor="#7F1D1D" />
+          </linearGradient>
+        </defs>
+        <circle cx="50" cy="50" r="41.5" stroke="#2A0408" strokeWidth="7.5" />
+        {/* Counter-Rotating Inner Scale Ring */}
+        <g ref={ccwGroupRef}>
+          <circle cx="50" cy="50" r="37.2" stroke="#F59E0B" strokeWidth="1.6" strokeDasharray="5 4" opacity="0.85" />
+        </g>
+        {/* Flowing Molten Energy Conduit (stroke-dashoffset) */}
+        <circle
+          ref={energyPathRef as React.RefObject<SVGCircleElement>}
+          cx="50"
+          cy="50"
+          r="41.5"
+          stroke="url(#dsh_scale)"
+          strokeWidth="4.8"
+          strokeDasharray="10 6"
+          strokeLinecap="round"
+        />
+        {/* Rotating Outer Dragonfire Spines */}
+        <g ref={cwGroupRef}>
+          {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
+            <polygon
+              key={deg}
+              points="50,2 53,8 47,8"
+              fill="#FEF08A"
+              transform={`rotate(${deg} 50 50)`}
+            />
+          ))}
+        </g>
+        {/* Pulsing Crown Dragon Horns & Crest */}
+        <g ref={pulseGroupRef}>
+          <path d="M29 13 C20 1 12 -3 8 4 C15 12 21 18 27 22 Z" fill="#FDE047" stroke="#92400E" strokeWidth="1.2" />
+          <path d="M71 13 C80 1 88 -3 92 4 C85 12 79 18 73 22 Z" fill="#FDE047" stroke="#92400E" strokeWidth="1.2" />
+          <polygon points="50,1 55,9 50,14 45,9" fill="#EF4444" stroke="#FEF08A" strokeWidth="1.2" />
+        </g>
+      </svg>
+      {children}
+    </div>
+  );
+};
+
+const ThunderMandalaFrame: React.FC<SubFrameProps> = ({ size, canAnimate, className, children }) => {
+  const { stageRef, cwGroupRef, ccwGroupRef, energyPathRef } = useFrameMotionRefs(
+    canAnimate,
+    28,
+    20,
+    38
+  );
+  const emitters = useMemo<EmitterConfig[]>(
+    () => [
+      {
+        rate: 18,
+        shape: ParticleShape.Spark,
+        additive: true,
+        ramp: COLOR_RAMPS.thunderGold,
+        xMin: 0,
+        xMax: 1,
+        yMin: 0,
+        yMax: 1,
+        ringRadius: 0.36,
+        tangentialSpeed: 0.42,
+        vxMin: -0.05,
+        vxMax: 0.05,
+        vyMin: -0.05,
+        vyMax: 0.05,
+        lifeMin: 0.5,
+        lifeMax: 1.1,
+        sizeStartMin: 1.8,
+        sizeStartMax: 3.2,
+        sizeEndMin: 0.5,
+        sizeEndMax: 1.0,
+        alphaPeak: 0.95,
+      },
+    ],
+    []
+  );
+  const lightning = useMemo<LightningConfig>(
+    () => ({
+      intervalMin: 0.45,
+      intervalMax: 1.1,
+      decayRate: 6.5,
+      glowColor: '#38BDF8',
+      coreColor: '#FEF08A',
+      ringMode: true,
+      ringRadius: 0.36,
+    }),
+    []
+  );
+
+  return (
+    <div
+      ref={stageRef}
+      className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`}
+      style={{ width: size, height: size, contain: 'paint' }}
+    >
+      <StoreFxCanvas
+        emitters={emitters}
+        lightning={lightning}
+        maxParticles={36}
+        seed={702}
+        canAnimate={canAnimate}
+        className="absolute inset-0 w-full h-full z-30"
+      />
+      <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
+        <circle cx="50" cy="50" r="41" stroke="#0F172A" strokeWidth="6.5" />
+        <circle
+          ref={energyPathRef as React.RefObject<SVGCircleElement>}
+          cx="50"
+          cy="50"
+          r="41"
+          stroke="#38BDF8"
+          strokeWidth="2.8"
+          strokeDasharray="12 8"
+        />
+        <g ref={ccwGroupRef}>
+          <circle cx="50" cy="50" r="37.2" stroke="#F59E0B" strokeWidth="1.5" strokeDasharray="4 6" />
+        </g>
+        <g ref={cwGroupRef}>
+          {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
+            <g key={deg} transform={`rotate(${deg} 50 50)`}>
+              <circle cx="50" cy="6" r="4.8" fill="#FEF08A" stroke="#B45309" strokeWidth="1.3" />
+              <circle cx="50" cy="6" r="1.9" fill="#78350F" />
+            </g>
+          ))}
+        </g>
+      </svg>
+      {children}
+    </div>
+  );
+};
+
+const SakuraBladeRingFrame: React.FC<SubFrameProps> = ({ size, canAnimate, className, children }) => {
+  const { stageRef, cwGroupRef, ccwGroupRef, energyPathRef, pulseGroupRef } = useFrameMotionRefs(
+    canAnimate,
+    18,
+    24,
+    30
+  );
+  const emitters = useMemo<EmitterConfig[]>(
+    () => [
+      {
+        rate: 16,
+        shape: ParticleShape.Petal,
+        additive: true,
+        ramp: COLOR_RAMPS.sakuraGale,
+        xMin: 0,
+        xMax: 1,
+        yMin: 0,
+        yMax: 1,
+        ringRadius: 0.36,
+        tangentialSpeed: 0.28,
+        vxMin: -0.06,
+        vxMax: 0.06,
+        vyMin: -0.04,
+        vyMax: 0.08,
+        lifeMin: 0.9,
+        lifeMax: 1.8,
+        sizeStartMin: 2.2,
+        sizeStartMax: 4.0,
+        sizeEndMin: 1.0,
+        sizeEndMax: 1.8,
+        alphaPeak: 0.92,
+      },
+    ],
+    []
+  );
+
+  return (
+    <div
+      ref={stageRef}
+      className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`}
+      style={{ width: size, height: size, contain: 'paint' }}
+    >
+      <StoreFxCanvas
+        emitters={emitters}
+        maxParticles={32}
+        seed={703}
+        canAnimate={canAnimate}
+        className="absolute inset-0 w-full h-full z-30"
+      />
+      <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
+        <defs>
+          <linearGradient id="sbr_steel" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#FFFFFF" />
+            <stop offset="50%" stopColor="#F472B6" />
+            <stop offset="100%" stopColor="#9D174D" />
+          </linearGradient>
+        </defs>
+        <g ref={cwGroupRef}>
+          <path d="M50 7 A43 43 0 0 1 93 50 A40 40 0 0 1 50 89" stroke="url(#sbr_steel)" strokeWidth="5.5" strokeLinecap="round" />
+          <path d="M50 93 A43 43 0 0 1 7 50 A40 40 0 0 1 50 11" stroke="url(#sbr_steel)" strokeWidth="5.5" strokeLinecap="round" />
+        </g>
+        <circle
+          ref={energyPathRef as React.RefObject<SVGCircleElement>}
+          cx="50"
+          cy="50"
+          r="41"
+          stroke="#FFF1F2"
+          strokeWidth="2.2"
+          strokeDasharray="18 26"
+          strokeLinecap="round"
+        />
+        <g ref={ccwGroupRef}>
+          <circle cx="50" cy="50" r="37.2" stroke="#FBCFE8" strokeWidth="1.3" strokeDasharray="6 4" />
+        </g>
+        <g ref={pulseGroupRef}>
+          <circle cx="50" cy="7" r="4.2" fill="#F472B6" stroke="#FFF1F2" strokeWidth="1.2" />
+          <circle cx="88" cy="72" r="3.6" fill="#FB7185" stroke="#FFF1F2" strokeWidth="1" />
+          <circle cx="12" cy="28" r="3.6" fill="#F472B6" stroke="#FFF1F2" strokeWidth="1" />
+        </g>
+      </svg>
+      {children}
+    </div>
+  );
+};
+
+const VoidObsidianRingFrame: React.FC<SubFrameProps> = ({ size, canAnimate, className, children }) => {
+  const { stageRef, cwGroupRef, ccwGroupRef, energyPathRef, pulseGroupRef } = useFrameMotionRefs(
+    canAnimate,
+    16,
+    26,
+    28
+  );
+  const emitters = useMemo<EmitterConfig[]>(
+    () => [
+      {
+        rate: 18,
+        shape: ParticleShape.Spark,
+        additive: true,
+        ramp: COLOR_RAMPS.voidObsidian,
+        xMin: 0,
+        xMax: 1,
+        yMin: 0,
+        yMax: 1,
+        ringRadius: 0.36,
+        tangentialSpeed: -0.32,
+        vxMin: -0.04,
+        vxMax: 0.04,
+        vyMin: -0.08,
+        vyMax: 0.04,
+        lifeMin: 0.7,
+        lifeMax: 1.5,
+        sizeStartMin: 1.8,
+        sizeStartMax: 3.4,
+        sizeEndMin: 0.5,
+        sizeEndMax: 1.2,
+        alphaPeak: 0.92,
+      },
+    ],
+    []
+  );
+  const lightning = useMemo<LightningConfig>(
+    () => ({
+      intervalMin: 0.8,
+      intervalMax: 1.7,
+      decayRate: 5.5,
+      glowColor: '#9333EA',
+      coreColor: '#F3E8FF',
+      ringMode: true,
+      ringRadius: 0.36,
+    }),
+    []
+  );
+
+  return (
+    <div
+      ref={stageRef}
+      className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`}
+      style={{ width: size, height: size, contain: 'paint' }}
+    >
+      <StoreFxCanvas
+        emitters={emitters}
+        lightning={lightning}
+        maxParticles={35}
+        seed={704}
+        canAnimate={canAnimate}
+        className="absolute inset-0 w-full h-full z-30"
+      />
+      <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
+        <circle cx="50" cy="50" r="41" stroke="#09090B" strokeWidth="7.5" />
+        <circle
+          ref={energyPathRef as React.RefObject<SVGCircleElement>}
+          cx="50"
+          cy="50"
+          r="41"
+          stroke="#A855F7"
+          strokeWidth="3.2"
+          strokeDasharray="14 8"
+          strokeLinecap="round"
+        />
+        <g ref={ccwGroupRef}>
+          <circle cx="50" cy="50" r="37.2" stroke="#E9D5FF" strokeWidth="1.4" strokeDasharray="5 5" />
+        </g>
+        <g ref={cwGroupRef}>
+          <polygon points="50,0 55,11 50,16 45,11" fill="#C084FC" stroke="#09090B" strokeWidth="1.2" />
+          <polygon points="100,50 89,55 84,50 89,45" fill="#C084FC" stroke="#09090B" strokeWidth="1.2" />
+          <polygon points="50,100 55,89 50,84 45,89" fill="#C084FC" stroke="#09090B" strokeWidth="1.2" />
+          <polygon points="0,50 11,55 16,50 11,45" fill="#C084FC" stroke="#09090B" strokeWidth="1.2" />
+        </g>
+        <g ref={pulseGroupRef}>
+          <circle cx="50" cy="50" r="43.5" stroke="#9333EA" strokeWidth="1" opacity="0.5" />
+        </g>
+      </svg>
+      {children}
+    </div>
+  );
+};
+
+const RoyalGoldLaurelCrownFrame: React.FC<SubFrameProps> = ({ size, canAnimate, className, children }) => {
+  const { stageRef, cwGroupRef, ccwGroupRef, energyPathRef, pulseGroupRef } = useFrameMotionRefs(
+    canAnimate,
+    14,
+    20,
+    26
+  );
+  const emitters = useMemo<EmitterConfig[]>(
+    () => [
+      {
+        rate: 16,
+        shape: ParticleShape.SoftGlow,
+        additive: true,
+        ramp: COLOR_RAMPS.fallingStars,
+        xMin: 0,
+        xMax: 1,
+        yMin: 0,
+        yMax: 1,
+        ringRadius: 0.36,
+        tangentialSpeed: 0.24,
+        vxMin: -0.04,
+        vxMax: 0.04,
+        vyMin: -0.1,
+        vyMax: 0.02,
+        lifeMin: 0.8,
+        lifeMax: 1.7,
+        sizeStartMin: 2.0,
+        sizeStartMax: 3.6,
+        sizeEndMin: 0.6,
+        sizeEndMax: 1.4,
+        alphaPeak: 0.9,
+      },
+    ],
+    []
+  );
+
+  return (
+    <div
+      ref={stageRef}
+      className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`}
+      style={{ width: size, height: size, contain: 'paint' }}
+    >
+      <StoreFxCanvas
+        emitters={emitters}
+        maxParticles={32}
+        seed={705}
+        canAnimate={canAnimate}
+        className="absolute inset-0 w-full h-full z-30"
+      />
+      <svg className="absolute inset-0 w-full h-full object-contain pointer-events-none z-20" viewBox="-10 -10 120 120" fill="none">
+        <circle cx="50" cy="50" r="41" stroke="#78350F" strokeWidth="7" />
+        <circle
+          ref={energyPathRef as React.RefObject<SVGCircleElement>}
+          cx="50"
+          cy="50"
+          r="41"
+          stroke="#FEF08A"
+          strokeWidth="3.8"
+          strokeDasharray="9 5"
+          strokeLinecap="round"
+        />
+        <g ref={ccwGroupRef}>
+          <circle cx="50" cy="50" r="37.2" stroke="#F59E0B" strokeWidth="1.6" strokeDasharray="6 4" />
+        </g>
+        <g ref={cwGroupRef}>
+          {[30, 90, 150, 210, 270, 330].map((deg) => (
+            <circle key={deg} cx="50" cy="8.5" r="2.2" fill="#FFFFFF" transform={`rotate(${deg} 50 50)`} />
+          ))}
+        </g>
+        {/* Pulsing Crown Keystone Ruby & Sovereign Laurel Spires */}
+        <g ref={pulseGroupRef}>
+          <polygon points="50,-1 58,11 50,17 42,11" fill="#DC2626" stroke="#FEF08A" strokeWidth="1.6" />
+          <polygon points="34,5 41,13 33,15" fill="#FDE047" />
+          <polygon points="66,5 59,13 67,15" fill="#FDE047" />
+        </g>
+      </svg>
+      {children}
+    </div>
+  );
 };

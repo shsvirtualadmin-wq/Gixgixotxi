@@ -34,7 +34,7 @@ const FLAGSHIP_BANNER_MAP: Record<string, (animated: boolean) => React.ReactNode
   ban_neon_kyoto_rain: (animated: boolean) => <NeonKyotoRainBanner canAnimate={animated} />,
   ban_blood_moon_ronin: (animated: boolean) => <BloodMoonRoninBanner canAnimate={animated} />,
   ban_celestial_koi_river: (animated: boolean) => <CelestialKoiRiverBanner canAnimate={animated} />,
-  ban_obsidian_shogun_citadel: () => <ObsidianShogunCitadelBanner />,
+  ban_obsidian_shogun_citadel: (animated: boolean) => <ObsidianShogunCitadelBanner canAnimate={animated} />,
 
   // Static 6
   ban_midnight_torii: () => <MidnightToriiBanner />,

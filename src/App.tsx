@@ -230,6 +230,9 @@ const CommonsAboutPage = lazyWithRetry(() =>
 const ZenryuDevPreviewPage = lazyWithRetry(() =>
   import('./components/dashboard/DragonCompanion').then(m => ({ default: m.ZenryuDevPreviewPage }))
 );
+const StoreItemsDevPreviewPage = lazyWithRetry(() =>
+  import('./pages/store/StoreItemsDevPreviewPage').then(m => ({ default: m.StoreItemsDevPreviewPage }))
+);
 
 import { BoardlySuspenseBoundary } from './components/ui/BoardlyLoader';
 import { AuthGateProvider } from './contexts/AuthGateContext';
@@ -246,6 +249,7 @@ function AppInner() {
         {import.meta.env.DEV && (
           <Route path="/dev/zenryu" element={<ZenryuDevPreviewPage />} />
         )}
+        <Route path="/dev/store-items" element={<StoreItemsDevPreviewPage />} />
         {/* Test Engine — full-screen distraction-free, no Navbar/Footer */}
         <Route path="/test" element={<Navigate to="/dashboard/practice" replace />} />
         <Route path="/test/:attemptId/result" element={<TestResultPage />} />

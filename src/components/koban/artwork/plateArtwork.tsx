@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useId, useRef } from 'react';
+import { storeFxScheduler } from '../fx/storeFxEngine';
 
 interface NameplateProps {
   itemId: string;
@@ -9,6 +10,385 @@ interface NameplateProps {
   className?: string;
   allowWrap?: boolean | 'full' | 'two-lines';
 }
+
+interface PremiumNameplateConfig {
+  id: string;
+  bgGradient: string;
+  shimmerGradient: string;
+  smokeColorA: string;
+  smokeColorB: string;
+  borderOuterColor: string;
+  borderFlowColor: string;
+  scanlineColor: string;
+  textColor: string;
+  textShadow: string;
+  shortIdColor: string;
+  badgeBg: string;
+  badgeText: string;
+  badgeBorder: string;
+  turbulenceFreq: string;
+  displacementScale: number;
+  ornamentPathLeft: React.ReactNode;
+  ornamentPathRight: React.ReactNode;
+  borderPathD: string;
+}
+
+const PREMIUM_NAMEPLATE_CONFIGS: Record<string, PremiumNameplateConfig> = {
+  'plate-dragon-lord': {
+    id: 'plate-dragon-lord',
+    bgGradient: 'linear-gradient(125deg, #220306 0%, #681016 38%, #991B1B 68%, #3B0609 100%)',
+    shimmerGradient: 'linear-gradient(108deg, transparent 15%, rgba(254,240,138,0.08) 38%, rgba(253,224,71,0.42) 50%, rgba(249,115,22,0.16) 62%, transparent 85%)',
+    smokeColorA: '#F97316',
+    smokeColorB: '#DC2626',
+    borderOuterColor: '#D97706',
+    borderFlowColor: '#FEF08A',
+    scanlineColor: 'rgba(254, 240, 138, 0.28)',
+    textColor: '#FEF9C3',
+    textShadow: '0 1px 2px rgba(0,0,0,0.95), 0 0 8px rgba(220,38,38,0.85)',
+    shortIdColor: '#FDE68A',
+    badgeBg: '#450A0A',
+    badgeText: '#FEF08A',
+    badgeBorder: '#F59E0B',
+    turbulenceFreq: '0.035 0.08',
+    displacementScale: 8,
+    borderPathD: 'M10,1.5 L220,1.5 L228.5,20 L220,38.5 L10,38.5 L1.5,20 Z',
+    ornamentPathLeft: (
+      <g>
+        <path d="M2 8 L8 2 L14 6 L11 14 L7 11 L3 14 Z" fill="#FDE047" stroke="#78350F" strokeWidth="0.9" />
+        <circle cx="8" cy="7.5" r="1.6" fill="#DC2626" />
+      </g>
+    ),
+    ornamentPathRight: (
+      <g>
+        <path d="M14 8 L8 2 L2 6 L5 14 L9 11 L13 14 Z" fill="#FDE047" stroke="#78350F" strokeWidth="0.9" />
+        <circle cx="8" cy="7.5" r="1.6" fill="#DC2626" />
+      </g>
+    ),
+  },
+  'plate-shinobi-shadow': {
+    id: 'plate-shinobi-shadow',
+    bgGradient: 'linear-gradient(128deg, #090414 0%, #1E0B3B 45%, #3B0764 76%, #110622 100%)',
+    shimmerGradient: 'linear-gradient(108deg, transparent 18%, rgba(168,85,247,0.10) 40%, rgba(233,213,255,0.38) 50%, rgba(192,132,252,0.14) 60%, transparent 82%)',
+    smokeColorA: '#A855F7',
+    smokeColorB: '#6366F1',
+    borderOuterColor: '#7E22CE',
+    borderFlowColor: '#E9D5FF',
+    scanlineColor: 'rgba(216, 180, 254, 0.25)',
+    textColor: '#FAF5FF',
+    textShadow: '0 1px 2px rgba(0,0,0,0.95), 0 0 9px rgba(168,85,247,0.85)',
+    shortIdColor: '#D8B4FE',
+    badgeBg: '#2E1065',
+    badgeText: '#F3E8FF',
+    badgeBorder: '#A855F7',
+    turbulenceFreq: '0.04 0.09',
+    displacementScale: 10,
+    borderPathD: 'M12,1.5 L228,1.5 L218,38.5 L2,38.5 Z',
+    ornamentPathLeft: (
+      <g>
+        <path d="M8 1 L10.2 5.8 L15 8 L10.2 10.2 L8 15 L5.8 10.2 L1 8 L5.8 5.8 Z" fill="#C084FC" stroke="#3B0764" strokeWidth="0.8" />
+        <circle cx="8" cy="8" r="2" fill="#090414" />
+      </g>
+    ),
+    ornamentPathRight: (
+      <g>
+        <path d="M8 1 L10.2 5.8 L15 8 L10.2 10.2 L8 15 L5.8 10.2 L1 8 L5.8 5.8 Z" fill="#C084FC" stroke="#3B0764" strokeWidth="0.8" />
+        <circle cx="8" cy="8" r="2" fill="#090414" />
+      </g>
+    ),
+  },
+  'plate-neon-ronin': {
+    id: 'plate-neon-ronin',
+    bgGradient: 'linear-gradient(125deg, #040814 0%, #09192F 44%, #1E1038 78%, #050B18 100%)',
+    shimmerGradient: 'linear-gradient(105deg, transparent 18%, rgba(0,240,255,0.12) 38%, rgba(255,0,122,0.42) 50%, rgba(0,240,255,0.22) 62%, transparent 82%)',
+    smokeColorA: '#00F0FF',
+    smokeColorB: '#FF007A',
+    borderOuterColor: '#0284C7',
+    borderFlowColor: '#00F0FF',
+    scanlineColor: 'rgba(0, 240, 255, 0.36)',
+    textColor: '#ECFEFF',
+    textShadow: '0 1px 2px rgba(0,0,0,0.95), 0 0 8px rgba(0,240,255,0.8)',
+    shortIdColor: '#67E8F9',
+    badgeBg: '#083344',
+    badgeText: '#67E8F9',
+    badgeBorder: '#00F0FF',
+    turbulenceFreq: '0.05 0.11',
+    displacementScale: 7,
+    borderPathD: 'M2,1.5 L218,1.5 L228.5,11 L228.5,38.5 L12,38.5 L1.5,29 Z',
+    ornamentPathLeft: (
+      <g>
+        <polygon points="8,1 15,8 8,15 1,8" fill="#FF007A" stroke="#00F0FF" strokeWidth="0.9" />
+        <circle cx="8" cy="8" r="1.8" fill="#ECFEFF" />
+      </g>
+    ),
+    ornamentPathRight: (
+      <g>
+        <polygon points="8,1 15,8 8,15 1,8" fill="#00F0FF" stroke="#FF007A" strokeWidth="0.9" />
+        <circle cx="8" cy="8" r="1.8" fill="#ECFEFF" />
+      </g>
+    ),
+  },
+  'plate-imperial-jade': {
+    id: 'plate-imperial-jade',
+    bgGradient: 'linear-gradient(130deg, #02241C 0%, #064E3B 42%, #047857 74%, #022C22 100%)',
+    shimmerGradient: 'linear-gradient(108deg, transparent 16%, rgba(110,231,183,0.12) 39%, rgba(254,240,138,0.40) 50%, rgba(52,211,153,0.16) 61%, transparent 84%)',
+    smokeColorA: '#34D399',
+    smokeColorB: '#FBBF24',
+    borderOuterColor: '#D97706',
+    borderFlowColor: '#FEF08A',
+    scanlineColor: 'rgba(167, 243, 208, 0.25)',
+    textColor: '#ECFDF5',
+    textShadow: '0 1px 2px rgba(0,0,0,0.95), 0 0 8px rgba(16,185,129,0.8)',
+    shortIdColor: '#A7F3D0',
+    badgeBg: '#022C22',
+    badgeText: '#FDE047',
+    badgeBorder: '#F59E0B',
+    turbulenceFreq: '0.03 0.07',
+    displacementScale: 7,
+    borderPathD: 'M7,1.5 L223,1.5 L228.5,7 L228.5,33 L223,38.5 L7,38.5 L1.5,33 L1.5,7 Z',
+    ornamentPathLeft: (
+      <g>
+        <rect x="2" y="2" width="12" height="12" rx="2" stroke="#FDE047" strokeWidth="1.3" fill="#047857" />
+        <circle cx="8" cy="8" r="2.5" fill="#FEF08A" />
+      </g>
+    ),
+    ornamentPathRight: (
+      <g>
+        <rect x="2" y="2" width="12" height="12" rx="2" stroke="#FDE047" strokeWidth="1.3" fill="#047857" />
+        <circle cx="8" cy="8" r="2.5" fill="#FEF08A" />
+      </g>
+    ),
+  },
+  'plate-blood-moon-scroll': {
+    id: 'plate-blood-moon-scroll',
+    bgGradient: 'linear-gradient(125deg, #16060A 0%, #3E0A14 45%, #6B1120 75%, #1F070C 100%)',
+    shimmerGradient: 'linear-gradient(108deg, transparent 16%, rgba(251,113,133,0.12) 39%, rgba(254,205,211,0.38) 50%, rgba(225,29,72,0.18) 61%, transparent 84%)',
+    smokeColorA: '#F43F5E',
+    smokeColorB: '#9F1239',
+    borderOuterColor: '#BE123C',
+    borderFlowColor: '#FDA4AF',
+    scanlineColor: 'rgba(253, 164, 175, 0.25)',
+    textColor: '#FFF1F2',
+    textShadow: '0 1px 2px rgba(0,0,0,0.95), 0 0 8px rgba(225,29,72,0.85)',
+    shortIdColor: '#FDA4AF',
+    badgeBg: '#4C0519',
+    badgeText: '#FECDD3',
+    badgeBorder: '#F43F5E',
+    turbulenceFreq: '0.036 0.085',
+    displacementScale: 8,
+    borderPathD: 'M5,1.5 L225,1.5 L225,38.5 L5,38.5 Z',
+    ornamentPathLeft: (
+      <g>
+        <rect x="3" y="1.5" width="4.5" height="13" rx="1" fill="#881337" stroke="#FDA4AF" strokeWidth="0.9" />
+        <circle cx="11.5" cy="8" r="2.8" fill="#F43F5E" />
+      </g>
+    ),
+    ornamentPathRight: (
+      <g>
+        <circle cx="4.5" cy="8" r="2.8" fill="#F43F5E" />
+        <rect x="8.5" y="1.5" width="4.5" height="13" rx="1" fill="#881337" stroke="#FDA4AF" strokeWidth="0.9" />
+      </g>
+    ),
+  },
+};
+
+const PremiumAnimatedNameplate: React.FC<{
+  config: PremiumNameplateConfig;
+  name: string;
+  shortId?: string;
+  roleBadge?: string;
+  canAnimate: boolean;
+  className: string;
+  allowWrap?: boolean | 'full' | 'two-lines';
+}> = ({ config, name, shortId, roleBadge, canAnimate, className, allowWrap }) => {
+  const rawUid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+  const taskId = `nameplate-${config.id}-${rawUid}`;
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const shimmerRef = useRef<HTMLDivElement | null>(null);
+  const smokeGroupRef = useRef<SVGGElement | null>(null);
+  const borderFlowRef = useRef<SVGPathElement | null>(null);
+  const scanlineRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const applyFrame = (elapsed: number) => {
+      if (shimmerRef.current) {
+        // Continuous smooth shimmer sweep across [-110%, 110%]
+        const cycle = (elapsed * 0.36) % 1;
+        const pct = -110 + cycle * 220;
+        shimmerRef.current.style.transform = `translate3d(${pct.toFixed(1)}%, 0, 0)`;
+      }
+      if (smokeGroupRef.current) {
+        const dx = Math.sin(elapsed * 0.75) * 14;
+        const dy = Math.cos(elapsed * 0.52) * 3.5;
+        smokeGroupRef.current.setAttribute('transform', `translate(${dx.toFixed(2)}, ${dy.toFixed(2)})`);
+      }
+      if (borderFlowRef.current) {
+        const dashOffset = -(elapsed * 48) % 280;
+        borderFlowRef.current.style.strokeDashoffset = `${dashOffset.toFixed(1)}`;
+      }
+      if (scanlineRef.current) {
+        const scanY = (Math.sin(elapsed * 1.6) * 0.5 + 0.5) * 100;
+        const scanAlpha = 0.35 + 0.35 * Math.sin(elapsed * 2.4);
+        scanlineRef.current.style.top = `${scanY.toFixed(1)}%`;
+        scanlineRef.current.style.opacity = `${scanAlpha.toFixed(2)}`;
+      }
+    };
+
+    if (!canAnimate) {
+      applyFrame(1.4);
+      return;
+    }
+
+    storeFxScheduler.register({
+      id: taskId,
+      element: el,
+      onFrame: (_dt, elapsed) => applyFrame(elapsed),
+      onStaticFrame: () => applyFrame(1.4),
+    });
+
+    return () => {
+      storeFxScheduler.unregister(taskId);
+    };
+  }, [canAnimate, taskId]);
+
+  // Full player name is ALWAYS visible (never single-line truncated on the 5 new items; wraps up to 2 lines or full wrap)
+  const textWrapClass =
+    allowWrap === 'full'
+      ? 'whitespace-normal break-words leading-snug'
+      : 'whitespace-normal break-words line-clamp-2 leading-snug';
+
+  const filterId = `np-smoke-${rawUid}`;
+
+  return (
+    <div
+      ref={containerRef}
+      className={`relative inline-flex items-center justify-center gap-2 px-3.5 py-1.5 max-w-full overflow-hidden select-none box-border rounded-md shadow-md ${className}`}
+      style={{
+        background: config.bgGradient,
+        overflow: 'hidden',
+        contain: 'paint',
+      }}
+    >
+      {/* SVG feTurbulence + feDisplacementMap Drifting Smoke & Ornate Border Path */}
+      <svg
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        viewBox="0 0 230 40"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <defs>
+          <filter id={filterId} x="-15%" y="-15%" width="130%" height="130%">
+            <feTurbulence
+              type="fractalNoise"
+              baseFrequency={config.turbulenceFreq}
+              numOctaves={2}
+              seed={17}
+              result="noise"
+            />
+            <feDisplacementMap
+              in="SourceGraphic"
+              in2="noise"
+              scale={config.displacementScale}
+              xChannelSelector="R"
+              yChannelSelector="G"
+            />
+          </filter>
+          <linearGradient id={`${filterId}-smoke`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor={config.smokeColorA} stopOpacity="0.28" />
+            <stop offset="50%" stopColor={config.smokeColorB} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={config.smokeColorA} stopOpacity="0.26" />
+          </linearGradient>
+        </defs>
+
+        <g ref={smokeGroupRef} filter={`url(#${filterId})`}>
+          <ellipse cx="65" cy="20" rx="58" ry="16" fill={`url(#${filterId}-smoke)`} />
+          <ellipse cx="165" cy="20" rx="62" ry="15" fill={`url(#${filterId}-smoke)`} />
+        </g>
+
+        {/* Ornate Base Border Path */}
+        <path
+          d={config.borderPathD}
+          fill="none"
+          stroke={config.borderOuterColor}
+          strokeWidth="1.6"
+          strokeOpacity="0.85"
+          vectorEffect="non-scaling-stroke"
+        />
+
+        {/* Flowing Energy Highlight along Ornate Border Path */}
+        <path
+          ref={borderFlowRef}
+          d={config.borderPathD}
+          fill="none"
+          stroke={config.borderFlowColor}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeDasharray="46 94"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+
+      {/* Continuous Animated Shimmer Sweep */}
+      <div
+        ref={shimmerRef}
+        className="absolute inset-0 w-full h-full pointer-events-none will-change-transform"
+        style={{ background: config.shimmerGradient }}
+      />
+
+      {/* Subtle Horizontal Scanline Pulse */}
+      <div
+        ref={scanlineRef}
+        className="absolute inset-x-0 h-[1.5px] pointer-events-none"
+        style={{ background: config.scanlineColor, top: '45%', opacity: 0.45 }}
+      />
+
+      {/* Left Crest SVG */}
+      <svg className="w-3.5 h-3.5 shrink-0 z-10" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        {config.ornamentPathLeft}
+      </svg>
+
+      {/* Player Name — Always readable, wraps up to 2 lines, never truncated */}
+      <span
+        className={`font-heading font-bold text-xs tracking-wider text-center ${textWrapClass} min-w-0 z-10`}
+        style={{
+          color: config.textColor,
+          textShadow: config.textShadow,
+        }}
+      >
+        {name}
+      </span>
+
+      {shortId && (
+        <span
+          className="font-mono text-[10px] shrink-0 z-10"
+          style={{ color: config.shortIdColor, textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}
+        >
+          #{shortId}
+        </span>
+      )}
+
+      {roleBadge && (
+        <span
+          className="text-[9px] uppercase px-1.5 py-0.5 rounded font-bold border shrink-0 z-10"
+          style={{
+            backgroundColor: config.badgeBg,
+            color: config.badgeText,
+            borderColor: config.badgeBorder,
+          }}
+        >
+          {roleBadge}
+        </span>
+      )}
+
+      {/* Right Crest SVG */}
+      <svg className="w-3.5 h-3.5 shrink-0 z-10" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        {config.ornamentPathRight}
+      </svg>
+    </div>
+  );
+};
 
 /**
  * 30 NAMEPLATES (Static & Animated + 5 New Premium)
@@ -24,6 +404,20 @@ export const NameplateRenderer: React.FC<NameplateProps> = ({
   className = '',
   allowWrap = false,
 }) => {
+  if (PREMIUM_NAMEPLATE_CONFIGS[itemId]) {
+    return (
+      <PremiumAnimatedNameplate
+        config={PREMIUM_NAMEPLATE_CONFIGS[itemId]}
+        name={name}
+        shortId={shortId}
+        roleBadge={roleBadge}
+        canAnimate={canAnimate}
+        className={className}
+        allowWrap={allowWrap}
+      />
+    );
+  }
+
   const wrapCls =
     allowWrap === 'full'
       ? 'whitespace-normal break-words leading-snug'
@@ -660,155 +1054,6 @@ export const NameplateRenderer: React.FC<NameplateProps> = ({
         </div>
       );
 
-    // ─── 5 NEW PREMIUM NAMEPLATES ───────────────────────────────────────────
-    case 'plate-dragon-lord':
-      return (
-        <div
-          className={`relative inline-flex items-center justify-center gap-2 px-4 py-1.5 max-w-full overflow-hidden select-none box-border shadow-md ${className}`}
-          style={{
-            background: 'linear-gradient(125deg, #2A0408 0%, #7F1D1D 45%, #B91C1C 75%, #450A0A 100%)',
-            border: '1.5px solid #F59E0B',
-            clipPath: 'polygon(10px 0%, calc(100% - 10px) 0%, 100% 50%, calc(100% - 10px) 100%, 10px 100%, 0% 50%)',
-            boxShadow: '0 0 12px rgba(220,38,38,0.45)',
-          }}
-        >
-          {canAnimate && (
-            <div
-              className="absolute inset-0 bg-gradient-to-r from-transparent via-[#FEF08A]/30 to-transparent pointer-events-none"
-              style={{ animation: 'koban-sweep-light 2.5s ease-in-out infinite' }}
-            />
-          )}
-          <svg className="w-3.5 h-3.5 shrink-0 z-10" viewBox="0 0 16 16" fill="none">
-            <polygon points="8,1 14,5 12,14 8,11 4,14 2,5" fill="#FDE047" stroke="#78350F" strokeWidth="1" />
-          </svg>
-          <span className={`font-heading font-bold text-xs text-[#FEF9C3] tracking-wider ${wrapCls} min-w-0 z-10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]`}>
-            {name}
-          </span>
-          {shortId && <span className="font-mono text-[10px] text-[#FDE68A] shrink-0 z-10">#{shortId}</span>}
-          {roleBadge && (
-            <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-[#450A0A] text-[#FEF08A] font-bold border border-[#F59E0B] shrink-0 z-10">
-              {roleBadge}
-            </span>
-          )}
-          <svg className="w-3.5 h-3.5 shrink-0 z-10" viewBox="0 0 16 16" fill="none">
-            <polygon points="8,1 14,5 12,14 8,11 4,14 2,5" fill="#FDE047" stroke="#78350F" strokeWidth="1" />
-          </svg>
-        </div>
-      );
-
-    case 'plate-shinobi-shadow':
-      return (
-        <div
-          className={`relative inline-flex items-center justify-center gap-2 px-4 py-1.5 max-w-full overflow-hidden select-none box-border shadow-md bg-[#0F0720] border border-[#A855F7] ${className}`}
-          style={{
-            clipPath: 'polygon(12px 0%, 100% 0%, calc(100% - 12px) 100%, 0% 100%)',
-          }}
-        >
-          {canAnimate && (
-            <div
-              className="absolute inset-0 bg-gradient-to-r from-[#581C87]/25 via-[#C084FC]/30 to-[#581C87]/25 pointer-events-none"
-              style={{ animation: 'koban-pulse-glow 2.4s ease-in-out infinite' }}
-            />
-          )}
-          <svg className="w-3.5 h-3.5 shrink-0 z-10" viewBox="0 0 16 16" fill="none">
-            <polygon points="8,1 10,6 15,8 10,10 8,15 6,10 1,8 6,6" fill="#C084FC" />
-            <circle cx="8" cy="8" r="2" fill="#0F0720" />
-          </svg>
-          <span className={`font-heading font-bold text-xs text-[#F3E8FF] tracking-wider ${wrapCls} min-w-0 z-10`}>
-            {name}
-          </span>
-          {shortId && <span className="font-mono text-[10px] text-[#D8B4FE] shrink-0 z-10">#{shortId}</span>}
-          {roleBadge && (
-            <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-[#3B0764] text-[#E9D5FF] font-bold border border-[#A855F7] shrink-0 z-10">
-              {roleBadge}
-            </span>
-          )}
-          <svg className="w-3.5 h-3.5 shrink-0 z-10" viewBox="0 0 16 16" fill="none">
-            <polygon points="8,1 10,6 15,8 10,10 8,15 6,10 1,8 6,6" fill="#C084FC" />
-            <circle cx="8" cy="8" r="2" fill="#0F0720" />
-          </svg>
-        </div>
-      );
-
-    case 'plate-neon-ronin':
-      return (
-        <div
-          className={`relative inline-flex items-center justify-center gap-2 px-4 py-1.5 max-w-full overflow-hidden select-none box-border shadow-md bg-[#060B19] border-y-2 border-[#00F0FF] ${className}`}
-          style={{
-            clipPath: 'polygon(0% 0%, calc(100% - 10px) 0%, 100% 10px, 100% 100%, 10px 100%, 0% calc(100% - 10px))',
-            boxShadow: '0 0 10px rgba(0,240,255,0.35)',
-          }}
-        >
-          {canAnimate && (
-            <div
-              className="absolute inset-0 bg-gradient-to-r from-[#00F0FF]/15 via-[#FF007A]/25 to-[#00F0FF]/15 pointer-events-none"
-              style={{ animation: 'koban-pulse-glow 2s ease-in-out infinite' }}
-            />
-          )}
-          <span className="w-2 h-2 rotate-45 bg-[#FF007A] shadow-[0_0_6px_#FF007A] shrink-0 z-10" />
-          <span className={`font-heading font-bold text-xs text-[#ECFEFF] uppercase tracking-wider ${wrapCls} min-w-0 z-10`}>
-            {name}
-          </span>
-          {shortId && <span className="font-mono text-[10px] text-[#67E8F9] shrink-0 z-10">#{shortId}</span>}
-          {roleBadge && (
-            <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-[#083344] text-[#67E8F9] font-bold border border-[#00F0FF] shrink-0 z-10">
-              {roleBadge}
-            </span>
-          )}
-          <span className="w-2 h-2 rotate-45 bg-[#00F0FF] shadow-[0_0_6px_#00F0FF] shrink-0 z-10" />
-        </div>
-      );
-
-    case 'plate-imperial-jade':
-      return (
-        <div
-          className={`relative inline-flex items-center justify-center gap-2 px-4 py-1.5 max-w-full overflow-hidden select-none box-border shadow-md ${className}`}
-          style={{
-            background: 'linear-gradient(135deg, #022C22 0%, #065F46 50%, #047857 100%)',
-            border: '1.5px solid #FDE047',
-            borderRadius: '6px',
-          }}
-        >
-          <svg className="w-3.5 h-3.5 shrink-0 z-10" viewBox="0 0 16 16" fill="none">
-            <rect x="2" y="2" width="12" height="12" rx="2" stroke="#FDE047" strokeWidth="1.5" fill="#047857" />
-            <circle cx="8" cy="8" r="2.5" fill="#FEF08A" />
-          </svg>
-          <span className={`font-heading font-bold text-xs text-[#ECFDF5] tracking-wider ${wrapCls} min-w-0 z-10`}>
-            {name}
-          </span>
-          {shortId && <span className="font-mono text-[10px] text-[#A7F3D0] shrink-0 z-10">#{shortId}</span>}
-          {roleBadge && (
-            <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-[#022C22] text-[#FDE047] font-bold border border-[#F59E0B] shrink-0 z-10">
-              {roleBadge}
-            </span>
-          )}
-          <svg className="w-3.5 h-3.5 shrink-0 z-10" viewBox="0 0 16 16" fill="none">
-            <rect x="2" y="2" width="12" height="12" rx="2" stroke="#FDE047" strokeWidth="1.5" fill="#047857" />
-            <circle cx="8" cy="8" r="2.5" fill="#FEF08A" />
-          </svg>
-        </div>
-      );
-
-    case 'plate-blood-moon-scroll':
-      return (
-        <div
-          className={`relative inline-flex items-center justify-center gap-2 px-4 py-1.5 max-w-full overflow-hidden select-none box-border shadow-md bg-[#18090D] border-y-2 border-[#DC2626] ${className}`}
-        >
-          <div className="w-2 h-5 bg-[#7F1D1D] rounded-xs border-y border-[#FCA5A5] shrink-0" />
-          <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444] shrink-0" />
-          <span className={`font-heading font-bold text-xs text-[#FFE4E6] tracking-wider ${wrapCls} min-w-0 z-10`}>
-            {name}
-          </span>
-          {shortId && <span className="font-mono text-[10px] text-[#FDA4AF] shrink-0 z-10">#{shortId}</span>}
-          {roleBadge && (
-            <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-[#450A0A] text-[#FECDD3] font-bold border border-[#EF4444] shrink-0 z-10">
-              {roleBadge}
-            </span>
-          )}
-          <div className="w-2 h-5 bg-[#7F1D1D] rounded-xs border-y border-[#FCA5A5] shrink-0" />
-        </div>
-      );
-
     default:
       return (
         <div className={`relative inline-flex items-center gap-1.5 sm:gap-2 px-2.5 py-1 rounded-md max-w-full overflow-hidden select-none box-border bg-[var(--surface-2)] border border-[var(--border)] shadow-sm ${className}`}>
@@ -819,3 +1064,4 @@ export const NameplateRenderer: React.FC<NameplateProps> = ({
       );
   }
 };
+
