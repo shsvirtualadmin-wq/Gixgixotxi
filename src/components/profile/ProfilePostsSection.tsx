@@ -24,6 +24,7 @@ import {
   toggleLikePost,
   validateAndCompressImage,
 } from '@/services/userPostService';
+import { getPostLikeSnapshot, subscribeAnyPostLike } from '@/services/commonsService';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 
 interface ProfilePostsSectionProps {
@@ -128,6 +129,37 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
       isMounted = false;
     };
   }, [targetUid, currentUserId]);
+
+  // Keep loaded profile posts synchronized with the shared post like store across views
+  useEffect(() => {
+    return subscribeAnyPostLike(({ postId, count, userId, voted }) => {
+      setPosts((prev) =>
+        prev.map((item) => {
+          if (item.id !== postId) return item;
+          const prevLikedBy = Array.isArray(item.liked_by)
+            ? [...item.liked_by]
+            : Array.isArray((item as any).likedBy)
+            ? [...(item as any).likedBy]
+            : [];
+          const nextLikedBy =
+            userId && typeof voted === 'boolean'
+              ? voted
+                ? prevLikedBy.includes(userId)
+                  ? prevLikedBy
+                  : [...prevLikedBy, userId]
+                : prevLikedBy.filter((u) => u !== userId)
+              : prevLikedBy;
+          return {
+            ...item,
+            likes_count: count,
+            likesCount: count,
+            liked_by: nextLikedBy,
+            likedBy: nextLikedBy,
+          };
+        })
+      );
+    });
+  }, []);
 
   // Load more posts
   const handleLoadMore = async () => {
@@ -294,7 +326,9 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
   const handleToggleLike = async (postId: string) => {
     if (!currentUserId) return;
 
-    // Optimistic UI update
+    const originalPost = posts.find((p) => p.id === postId);
+
+    // Optimistic UI update using shared snapshot + local state
     setPosts((prev) =>
       prev.map((p) => {
         if (p.id !== postId) return p;
@@ -303,9 +337,19 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
           : Array.isArray((p as any).likedBy)
           ? [...(p as any).likedBy]
           : [];
-        const hasLiked = likedBy.includes(currentUserId);
-        const newLikedBy = hasLiked ? likedBy.filter((u) => u !== currentUserId) : [...likedBy, currentUserId];
-        const newCount = Math.max(0, (p.likes_count ?? (p as any).likesCount ?? 0) + (hasLiked ? -1 : 1));
+        const snap = getPostLikeSnapshot(
+          p.id,
+          p.likes_count ?? (p as any).likesCount ?? 0,
+          currentUserId,
+          likedBy.includes(currentUserId)
+        );
+        const hasLiked = snap.voted;
+        const newLikedBy = hasLiked
+          ? likedBy.filter((u) => u !== currentUserId)
+          : likedBy.includes(currentUserId)
+          ? likedBy
+          : [...likedBy, currentUserId];
+        const newCount = Math.max(0, snap.count + (hasLiked ? -1 : 1));
         return {
           ...p,
           liked_by: newLikedBy,
@@ -316,9 +360,30 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
       })
     );
 
-    const originalPost = posts.find((p) => p.id === postId);
     try {
-      await toggleLikePost({ id: postId, userId: currentUserId });
+      const res = await toggleLikePost({ id: postId, userId: currentUserId });
+      setPosts((prev) =>
+        prev.map((p) => {
+          if (p.id !== postId) return p;
+          const likedBy = Array.isArray(p.liked_by)
+            ? [...p.liked_by]
+            : Array.isArray((p as any).likedBy)
+            ? [...(p as any).likedBy]
+            : [];
+          const nextLikedBy = res.upvoted
+            ? likedBy.includes(currentUserId)
+              ? likedBy
+              : [...likedBy, currentUserId]
+            : likedBy.filter((u) => u !== currentUserId);
+          return {
+            ...p,
+            liked_by: nextLikedBy,
+            likedBy: nextLikedBy,
+            likes_count: res.upvotesCount,
+            likesCount: res.upvotesCount,
+          };
+        })
+      );
     } catch (err: any) {
       console.error('[ProfilePostsSection] Like toggle exception:', err?.code, `posts/${postId}/likes/${currentUserId}`, err);
       if (originalPost) {

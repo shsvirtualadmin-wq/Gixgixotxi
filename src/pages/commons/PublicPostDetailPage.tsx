@@ -40,6 +40,8 @@ import {
   toggleSavePost,
   checkUserVoted,
   checkUserSaved,
+  getPostLikeSnapshot,
+  subscribePostLike,
 } from '@/services/commonsService';
 import { resolveCommonsAttachmentUrl } from '@/services/commonsUploadService';
 import { routes } from '@/utils/routes';
@@ -161,6 +163,22 @@ export const PublicPostDetailPage: React.FC = () => {
     void loadData();
   }, [loadData]);
 
+  // Keep post detail upvotes and voted state synchronized with the shared post like store
+  useEffect(() => {
+    if (!post?.id) return;
+    const snap = getPostLikeSnapshot(post.id, post.upvotes || 0, user?.uid);
+    setUpvotes(snap.count);
+    if (snap.hasKnownVote) {
+      setHasVoted(snap.voted);
+    }
+    return subscribePostLike(post.id, ({ count, userId, voted }) => {
+      setUpvotes(count);
+      if (user?.uid && userId === user.uid && typeof voted === 'boolean') {
+        setHasVoted(voted);
+      }
+    });
+  }, [post?.id, post?.upvotes, user?.uid]);
+
   // Scroll to and highlight #comment-:commentId or #comments when hash is present
   useEffect(() => {
     if (status !== 'ready') return;
@@ -272,14 +290,16 @@ export const PublicPostDetailPage: React.FC = () => {
       return;
     }
     const prev = hasVoted;
+    const prevCount = upvotes;
     setHasVoted(!prev);
-    setUpvotes((c) => (prev ? Math.max(0, c - 1) : c + 1));
+    setUpvotes(prev ? Math.max(0, prevCount - 1) : prevCount + 1);
     try {
       const res = await togglePostVote(post.id, user.uid);
       setHasVoted(res.voted);
       setUpvotes(res.newCount);
     } catch {
       setHasVoted(prev);
+      setUpvotes(prevCount);
     }
   };
 
@@ -833,7 +853,7 @@ export const PublicPostDetailPage: React.FC = () => {
                       {rp.subject || 'Commons'}
                     </span>
                     <span className="text-[11px] text-white/45">
-                      👍 {rp.upvotes || 0} · 💬 {rp.commentCount || 0}
+                      👍 {getPostLikeSnapshot(rp.id, rp.upvotes || 0).count} · 💬 {rp.commentCount || 0}
                     </span>
                   </div>
                   <h3 className="boardly-post-title text-sm font-bold text-white mt-1 line-clamp-2 [overflow-wrap:anywhere] [word-break:break-word]">

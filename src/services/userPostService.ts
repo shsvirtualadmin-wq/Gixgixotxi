@@ -2,6 +2,12 @@ import { auth } from '@/lib/firebase';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { getFollowerIds } from '@/services/followService';
 import { notifyFollowersOfPost } from '@/services/notificationService';
+import {
+  checkUserVoted,
+  getPostLikeSnapshot,
+  recordPostLikeSnapshot,
+  togglePostVote,
+} from '@/services/commonsService';
 
 /**
  * ============================================================================
@@ -59,6 +65,52 @@ function setLocalCachedPosts(userId: string, posts: UserPost[]) {
   }
 }
 
+export function syncCachedUserPostLike(
+  postId: string,
+  newCount: number,
+  userId?: string | null,
+  voted?: boolean
+) {
+  if (!postId) return;
+  try {
+    const cache = getLocalCachedPosts();
+    let changed = false;
+    for (const ownerUid of Object.keys(cache)) {
+      const list = cache[ownerUid];
+      if (!Array.isArray(list)) continue;
+      cache[ownerUid] = list.map((p) => {
+        if (p.id !== postId) return p;
+        changed = true;
+        const prevLikedBy = Array.isArray(p.liked_by)
+          ? [...p.liked_by]
+          : Array.isArray(p.likedBy)
+          ? [...p.likedBy]
+          : [];
+        const nextLikedBy =
+          userId && typeof voted === 'boolean'
+            ? voted
+              ? prevLikedBy.includes(userId)
+                ? prevLikedBy
+                : [...prevLikedBy, userId]
+              : prevLikedBy.filter((u) => u !== userId)
+            : prevLikedBy;
+        return {
+          ...p,
+          likes_count: newCount,
+          likesCount: newCount,
+          liked_by: nextLikedBy,
+          likedBy: nextLikedBy,
+        };
+      });
+    }
+    if (changed) {
+      localStorage.setItem(LOCAL_POSTS_CACHE_KEY, JSON.stringify(cache));
+    }
+  } catch {
+    // Ignore storage write errors
+  }
+}
+
 async function getAuthHeaders(requireAuth = false): Promise<Record<string, string>> {
   const token = await auth.currentUser?.getIdToken(false).catch(() => null);
   if (requireAuth && !token) {
@@ -70,7 +122,12 @@ async function getAuthHeaders(requireAuth = false): Promise<Record<string, strin
   };
 }
 
-function mapD1PostToUserPost(p: Record<string, any>, fallbackUserId: string): UserPost {
+function mapD1PostToUserPost(
+  p: Record<string, any>,
+  fallbackUserId: string,
+  viewerUid?: string | null
+): UserPost {
+  const id = String(p.id || '');
   const files = Array.isArray(p.files) ? p.files : [];
   const firstImage =
     p.image_url ||
@@ -78,19 +135,43 @@ function mapD1PostToUserPost(p: Record<string, any>, fallbackUserId: string): Us
     files.find((f: any) => String(f?.type || '').startsWith('image/'))?.url ||
     null;
   const bodyText = String(p.description ?? p.content ?? p.text ?? '');
-  const likes = Number(p.upvotes ?? p.likesCount ?? p.likes_count ?? 0);
+  const rawLikes = Math.max(0, Number(p.upvotes ?? p.likesCount ?? p.likes_count ?? 0));
   const comments = Number(p.commentCount ?? p.commentsCount ?? p.comments_count ?? 0);
-  const likedByList = Array.isArray(p.upvotedBy)
-    ? p.upvotedBy
+  const baseLikedBy = Array.isArray(p.upvotedBy)
+    ? [...p.upvotedBy]
     : Array.isArray(p.likedBy)
-      ? p.likedBy
+      ? [...p.likedBy]
       : Array.isArray(p.liked_by)
-        ? p.liked_by
+        ? [...p.liked_by]
         : [];
+
+  const effectiveViewerUid = viewerUid || auth.currentUser?.uid || null;
+  const votedByMe =
+    typeof p.votedByMe === 'boolean'
+      ? p.votedByMe
+      : effectiveViewerUid && baseLikedBy.includes(effectiveViewerUid)
+      ? true
+      : undefined;
+
+  if (id) {
+    recordPostLikeSnapshot(id, rawLikes, effectiveViewerUid, votedByMe, false);
+  }
+  const snap = getPostLikeSnapshot(id, rawLikes, effectiveViewerUid, votedByMe);
+  const likes = snap.count;
+
+  let likedByList = baseLikedBy;
+  if (effectiveViewerUid && snap.hasKnownVote) {
+    if (snap.voted && !likedByList.includes(effectiveViewerUid)) {
+      likedByList = [...likedByList, effectiveViewerUid];
+    } else if (!snap.voted && likedByList.includes(effectiveViewerUid)) {
+      likedByList = likedByList.filter((u) => u !== effectiveViewerUid);
+    }
+  }
+
   const isAnon = Boolean(p.isAnonymous ?? p.is_anonymous);
 
   return {
-    id: String(p.id || ''),
+    id,
     user_id: isAnon ? null : p.authorUid || fallbackUserId,
     author_name: isAnon
       ? 'Anonymous Student'
@@ -213,6 +294,9 @@ export async function fetchUserPosts(
     ? Boolean(arg1.currentUserId && arg1.currentUserId === arg1.userId)
     : includeAnonymous;
 
+  const viewerUid =
+    (isObjectCall ? arg1.currentUserId : null) || auth.currentUser?.uid || null;
+
   if (!targetUserId) {
     return isObjectCall ? { posts: [], hasMore: false } : [];
   }
@@ -223,17 +307,42 @@ export async function fetchUserPosts(
       authorUid: targetUserId,
       limit: '50',
       ...(includeAnon ? { includeOwnAnonymous: 'true' } : {}),
+      ...(viewerUid ? { currentUid: viewerUid } : {}),
     });
 
-    const resp = await fetch(`/api/posts?${params.toString()}`, { headers });
+    const resp = await fetch(`/api/posts?${params.toString()}`, {
+      headers,
+      cache: 'no-store',
+    });
     let list: UserPost[];
     if (!resp.ok) {
       list = getLocalCachedPosts()[targetUserId] || [];
     } else {
       const data = await resp.json();
       list = Array.isArray(data?.posts)
-        ? data.posts.map((p: any) => mapD1PostToUserPost(p, targetUserId))
+        ? data.posts.map((p: any) => mapD1PostToUserPost(p, targetUserId, viewerUid))
         : [];
+
+      // Ensure liked_by status is hydrated for the active viewer even if backend omits votedByMe
+      if (viewerUid && list.length > 0) {
+        await Promise.all(
+          list.map(async (item) => {
+            const snap = getPostLikeSnapshot(item.id, item.likes_count, viewerUid);
+            const voted = snap.hasKnownVote
+              ? snap.voted
+              : await checkUserVoted(item.id, viewerUid).catch(() => false);
+            const currentList = Array.isArray(item.liked_by) ? [...item.liked_by] : [];
+            const nextList = voted
+              ? currentList.includes(viewerUid)
+                ? currentList
+                : [...currentList, viewerUid]
+              : currentList.filter((u) => u !== viewerUid);
+            item.liked_by = nextList;
+            item.likedBy = nextList;
+          })
+        );
+      }
+
       setLocalCachedPosts(targetUserId, list);
     }
 
@@ -463,18 +572,13 @@ export async function deleteUserPost(
 export async function toggleLikePost(params: {
   id: string;
   userId: string;
-}): Promise<{ upvoted: boolean; upvotesCount: number }> {
-  const headers = await getAuthHeaders(true);
-  const resp = await fetch(`/api/posts/${encodeURIComponent(params.id)}/like`, {
-    method: 'POST',
-    headers,
-  });
-  const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) {
-    throw new Error(data?.error || 'Could not toggle like.');
-  }
+}): Promise<{ upvoted: boolean; upvotesCount: number; voted: boolean; newCount: number }> {
+  const res = await togglePostVote(params.id, params.userId);
+  syncCachedUserPostLike(params.id, res.newCount, params.userId, res.voted);
   return {
-    upvoted: Boolean(data.upvoted),
-    upvotesCount: Number(data.upvotesCount ?? 0),
+    upvoted: res.voted,
+    upvotesCount: res.newCount,
+    voted: res.voted,
+    newCount: res.newCount,
   };
 }

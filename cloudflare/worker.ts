@@ -1508,6 +1508,13 @@ async function executeD1BotRun(
           )
           .run();
 
+        await db
+          .prepare(
+            'INSERT OR IGNORE INTO post_likes (post_id, user_uid, created_at) VALUES (?, ?, ?)'
+          )
+          .bind(postId, botRow.uid, now)
+          .run();
+
         botPostsCreated++;
         totalPostsCreated++;
       }
@@ -5785,7 +5792,14 @@ ${urls
         if (!row) {
           return jsonResponse({ error: 'Post not found.' }, 404, cors);
         }
-        return jsonResponse({ success: true, post: rowToCommonsPost(row) }, 200, cors);
+        return jsonResponse(
+          { success: true, post: rowToCommonsPost(row) },
+          200,
+          {
+            ...cors,
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+          }
+        );
       }
 
       // GET /api/posts/:slugOrId/status
@@ -5793,14 +5807,28 @@ ${urls
         const user = await verifyFirebaseIdToken(req, env).catch(() => null);
         const targetUid = user?.uid || (url.searchParams.get('userId') || '').trim();
         if (!targetUid) {
-          return jsonResponse({ success: true, voted: false, saved: false }, 200, cors);
+          return jsonResponse(
+            { success: true, voted: false, saved: false },
+            200,
+            {
+              ...cors,
+              'Cache-Control': 'no-store, no-cache, must-revalidate',
+            }
+          );
         }
+        const postRow = await env.DB.prepare(
+          'SELECT id FROM posts WHERE id = ? OR slug = ? LIMIT 1'
+        )
+          .bind(postId, slugOrId)
+          .first<{ id: string }>();
+        const canonicalId = postRow?.id || postId;
+
         const [likeRow, saveRow] = await Promise.all([
           env.DB.prepare('SELECT 1 FROM post_likes WHERE post_id = ? AND user_uid = ?')
-            .bind(postId, targetUid)
+            .bind(canonicalId, targetUid)
             .first(),
           env.DB.prepare('SELECT 1 FROM post_saves WHERE post_id = ? AND user_uid = ?')
-            .bind(postId, targetUid)
+            .bind(canonicalId, targetUid)
             .first(),
         ]);
         return jsonResponse(
@@ -5810,7 +5838,10 @@ ${urls
             saved: Boolean(saveRow),
           },
           200,
-          cors
+          {
+            ...cors,
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+          }
         );
       }
 
@@ -5914,41 +5945,66 @@ ${urls
         const user = await verifyFirebaseIdToken(req, env);
         if (!user) return jsonResponse({ error: 'Please sign in again' }, 401, cors);
 
+        const targetPost = await env.DB.prepare(
+          'SELECT id, upvotes FROM posts WHERE id = ? OR slug = ? LIMIT 1'
+        )
+          .bind(postId, slugOrId)
+          .first<{ id: string; upvotes: number }>();
+
+        if (!targetPost) {
+          return jsonResponse({ error: 'Post not found' }, 404, cors);
+        }
+        const canonicalId = targetPost.id;
+
         const existingLike = await env.DB.prepare(
           'SELECT 1 FROM post_likes WHERE post_id = ? AND user_uid = ?'
         )
-          .bind(postId, user.uid)
+          .bind(canonicalId, user.uid)
           .first();
 
         let voted = false;
         if (existingLike) {
-          await env.DB.prepare('DELETE FROM post_likes WHERE post_id = ? AND user_uid = ?')
-            .bind(postId, user.uid)
-            .run();
-          await env.DB.prepare('UPDATE posts SET upvotes = MAX(0, upvotes - 1) WHERE id = ?')
-            .bind(postId)
-            .run();
+          await env.DB.batch([
+            env.DB.prepare('DELETE FROM post_likes WHERE post_id = ? AND user_uid = ?').bind(
+              canonicalId,
+              user.uid
+            ),
+            env.DB.prepare(
+              'UPDATE posts SET upvotes = MAX((SELECT COUNT(*) FROM post_likes WHERE post_id = ?), MAX(0, upvotes - 1)) WHERE id = ?'
+            ).bind(canonicalId, canonicalId),
+          ]);
           voted = false;
         } else {
-          await env.DB.prepare(
-            'INSERT INTO post_likes (post_id, user_uid, created_at) VALUES (?, ?, ?)'
-          )
-            .bind(postId, user.uid, Date.now())
-            .run();
-          await env.DB.prepare('UPDATE posts SET upvotes = upvotes + 1 WHERE id = ?')
-            .bind(postId)
-            .run();
+          await env.DB.batch([
+            env.DB.prepare(
+              'INSERT OR IGNORE INTO post_likes (post_id, user_uid, created_at) VALUES (?, ?, ?)'
+            ).bind(canonicalId, user.uid, Date.now()),
+            env.DB.prepare(
+              'UPDATE posts SET upvotes = MAX((SELECT COUNT(*) FROM post_likes WHERE post_id = ?), upvotes + 1) WHERE id = ?'
+            ).bind(canonicalId, canonicalId),
+          ]);
           voted = true;
         }
 
         const postRow = await env.DB.prepare('SELECT upvotes FROM posts WHERE id = ?')
-          .bind(postId)
+          .bind(canonicalId)
           .first<{ upvotes: number }>();
+        const newCount = Number(postRow?.upvotes || 0);
 
         return jsonResponse(
-          { success: true, voted, newCount: Number(postRow?.upvotes || 0) },
+          {
+            success: true,
+            voted,
+            newCount,
+            upvoted: voted,
+            upvotesCount: newCount,
+            likesCount: newCount,
+          },
           200,
-          cors
+          {
+            ...cors,
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+          }
         );
       }
 

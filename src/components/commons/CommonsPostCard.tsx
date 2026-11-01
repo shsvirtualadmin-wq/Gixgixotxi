@@ -25,6 +25,8 @@ import {
   toggleSavePost,
   checkUserVoted,
   checkUserSaved,
+  getPostLikeSnapshot,
+  subscribePostLike,
 } from '@/services/commonsService';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
@@ -60,8 +62,9 @@ export const CommonsPostCard = memo(function CommonsPostCard({
   const { openProfile } = useProfileModal();
   const { requireAuth } = useAuthGate();
   const { isDark } = useTheme();
-  const [upvotes, setUpvotes] = useState(post.upvotes || 0);
-  const [hasVoted, setHasVoted] = useState(false);
+  const initialSnap = getPostLikeSnapshot(post.id, post.upvotes || 0, currentUserId);
+  const [upvotes, setUpvotes] = useState(initialSnap.count);
+  const [hasVoted, setHasVoted] = useState(initialSnap.voted);
   const [isSaved, setIsSaved] = useState(false);
   const [copied, setCopied] = useState(false);
   const [voting, setVoting] = useState(false);
@@ -71,6 +74,24 @@ export const CommonsPostCard = memo(function CommonsPostCard({
   const [localShares, setLocalShares] = useState(post.sharesCount || 0);
   const [viewerImage, setViewerImage] = useState<{ url: string; name?: string } | null>(null);
   const cardRef = useRef<HTMLElement | null>(null);
+
+  // Sync with shared post like store and prop updates
+  useEffect(() => {
+    const snap = getPostLikeSnapshot(post.id, post.upvotes || 0, currentUserId);
+    setUpvotes(snap.count);
+    if (snap.hasKnownVote) {
+      setHasVoted(snap.voted);
+    }
+    return subscribePostLike(post.id, ({ count, userId, voted }) => {
+      setUpvotes(count);
+      if (currentUserId && userId === currentUserId && typeof voted === 'boolean') {
+        setHasVoted(voted);
+        const cacheKey = `${currentUserId}:${post.id}`;
+        const existing = voteSaveCache.get(cacheKey);
+        voteSaveCache.set(cacheKey, { voted, saved: existing?.saved ?? false });
+      }
+    });
+  }, [post.id, post.upvotes, currentUserId]);
 
   // Sync vote & save state when card approaches viewport (with in-memory cache)
   useEffect(() => {

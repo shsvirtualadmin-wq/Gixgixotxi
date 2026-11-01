@@ -13,7 +13,11 @@ import { LineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { followUser, unfollowUser, isFollowing, getFollowCounts } from '@/services/followService';
-import { fetchUserCommonsPosts } from '@/services/commonsService';
+import {
+  fetchUserCommonsPosts,
+  getPostLikeSnapshot,
+  subscribeAnyPostLike,
+} from '@/services/commonsService';
 import { syncPublicProfile } from '@/services/publicProfileService';
 import { sanitizeStudentDisplayName, maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
 import type { CommonsPost } from '@/types/commons';
@@ -148,6 +152,15 @@ export const PublicUserProfilePage: React.FC = () => {
       mounted = false;
     };
   }, [username, user?.uid]);
+
+  // Keep userPosts like counts synchronized with the shared post like store
+  useEffect(() => {
+    return subscribeAnyPostLike(({ postId, count }) => {
+      setUserPosts((prev) =>
+        prev.map((item) => (item.id === postId ? { ...item, upvotes: count } : item))
+      );
+    });
+  }, []);
 
   if (loading) {
     return (
@@ -410,7 +423,7 @@ export const PublicUserProfilePage: React.FC = () => {
                       {post.subject || 'Commons'}
                     </span>
                     <span className="text-[11px] text-white/45">
-                      👍 {post.upvotes || 0} · 💬 {post.commentCount || 0}
+                      👍 {getPostLikeSnapshot(post.id, post.upvotes || 0).count} · 💬 {post.commentCount || 0}
                     </span>
                   </div>
                   <h3 className="text-sm font-bold text-white mb-1">{post.title}</h3>

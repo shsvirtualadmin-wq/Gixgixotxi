@@ -475,14 +475,66 @@ export async function onRequest(context: {
 
   if (action === 'status' && request.method === 'GET') {
     const userId = (url.searchParams.get('userId') || '').trim();
+    const row = memoryStore.posts.find((p) => p.id === postId || p.slug === slugOrId);
+    const canonicalId = row?.id || postId;
     const voted = Boolean(
-      userId && memoryStore.likes.some((l) => l.post_id === postId && l.user_uid === userId)
+      userId && memoryStore.likes.some((l) => l.post_id === canonicalId && l.user_uid === userId)
     );
     const saved = Boolean(
-      userId && memoryStore.saves.some((s) => s.post_id === postId && s.user_uid === userId)
+      userId && memoryStore.saves.some((s) => s.post_id === canonicalId && s.user_uid === userId)
     );
     return new Response(
       JSON.stringify({ success: true, voted, saved }),
+      { status: 200, headers: jsonHeaders }
+    );
+  }
+
+  if (action === 'like' && request.method === 'POST') {
+    const user = await verifyFirebaseIdToken(request, env || {});
+    if (!user) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Please sign in again' }),
+        { status: 401, headers: jsonHeaders }
+      );
+    }
+    const row = memoryStore.posts.find((p) => p.id === postId || p.slug === slugOrId);
+    if (!row) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Post not found.' }),
+        { status: 404, headers: jsonHeaders }
+      );
+    }
+    const existingLikes = memoryStore.likes.filter(
+      (l) => l.post_id === row.id && l.user_uid === user.uid
+    );
+    let voted = false;
+    if (existingLikes.length > 0) {
+      memoryStore.likes = memoryStore.likes.filter(
+        (l) => !(l.post_id === row.id && l.user_uid === user.uid)
+      );
+      const remaining = memoryStore.likes.filter((l) => l.post_id === row.id).length;
+      row.upvotes = Math.max(remaining, Math.max(0, Number(row.upvotes || 0) - 1));
+      voted = false;
+    } else {
+      memoryStore.likes.push({
+        post_id: row.id,
+        user_uid: user.uid,
+        created_at: Date.now(),
+      });
+      const total = memoryStore.likes.filter((l) => l.post_id === row.id).length;
+      row.upvotes = Math.max(total, Number(row.upvotes || 0) + 1);
+      voted = true;
+    }
+    const newCount = Number(row.upvotes || 0);
+    return new Response(
+      JSON.stringify({
+        success: true,
+        voted,
+        newCount,
+        upvoted: voted,
+        upvotesCount: newCount,
+        likesCount: newCount,
+      }),
       { status: 200, headers: jsonHeaders }
     );
   }

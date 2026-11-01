@@ -3,7 +3,11 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { Search, BookOpen, FolderOpen, MessageSquare, ArrowRight } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
-import { fetchCommonsPosts } from '@/services/commonsService';
+import {
+  fetchCommonsPosts,
+  getPostLikeSnapshot,
+  subscribeAnyPostLike,
+} from '@/services/commonsService';
 import { SYLLABUS_MAP } from '@/constants/syllabusMap';
 import { slugify } from '@/constants/taxonomy';
 import { maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
@@ -39,6 +43,14 @@ export const SearchPage: React.FC = () => {
     return () => {
       mounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    return subscribeAnyPostLike(({ postId, count }) => {
+      setPosts((prev) =>
+        prev.map((item) => (item.id === postId ? { ...item, upvotes: count } : item))
+      );
+    });
   }, []);
 
   const allChapters = useMemo(() => {
@@ -264,7 +276,7 @@ export const SearchPage: React.FC = () => {
                         {post.subject || 'General'} · {hasFile ? 'Study Material' : 'Commons Post'}
                       </span>
                       <span className="text-[11px] text-[var(--muted)] shrink-0">
-                        👍 {post.upvotes || 0}
+                        👍 {getPostLikeSnapshot(post.id, post.upvotes || 0).count}
                       </span>
                     </div>
                     <h3 className="boardly-post-title text-sm font-bold text-[var(--text)] mb-1 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">{post.title}</h3>

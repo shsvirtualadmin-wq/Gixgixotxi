@@ -472,6 +472,40 @@ function ensureStoreDefaults(store: D1StoreData): boolean {
     }
   }
 
+  // Deduplicate store.likes by (post_id, user_uid) so one user can never like the same post twice
+  if (Array.isArray(store.likes) && store.likes.length > 0) {
+    const seenLikes = new Set<string>();
+    const dedupedLikes = store.likes.filter((l) => {
+      const pid = String(l?.post_id || '').trim();
+      const uid = String(l?.user_uid || '').trim();
+      if (!pid || !uid) return false;
+      const key = `${pid}:${uid}`;
+      if (seenLikes.has(key)) return false;
+      seenLikes.add(key);
+      return true;
+    });
+    if (dedupedLikes.length !== store.likes.length) {
+      store.likes = dedupedLikes;
+      mutated = true;
+    }
+  }
+
+  // Safe recount: ensure every post's upvotes is at least the distinct like rows in store.likes
+  if (Array.isArray(store.posts)) {
+    const likeCountsByPost = new Map<string, number>();
+    for (const l of store.likes || []) {
+      likeCountsByPost.set(l.post_id, (likeCountsByPost.get(l.post_id) || 0) + 1);
+    }
+    for (const p of store.posts) {
+      const actualLikes = likeCountsByPost.get(p.id) || 0;
+      const storedUpvotes = Math.max(0, Number(p.upvotes || 0));
+      if (storedUpvotes < actualLikes) {
+        p.upvotes = actualLikes;
+        mutated = true;
+      }
+    }
+  }
+
   return mutated;
 }
 
@@ -690,6 +724,13 @@ export function rowToCommonsPost(
     upvotes: Number(row.upvotes || 0),
     downvotes: Number(row.downvotes || 0),
     likesCount: Number(row.upvotes || 0),
+    votedByMe: currentUid
+      ? Boolean(d1Cache?.likes?.some((l) => l.post_id === row.id && l.user_uid === currentUid))
+      : undefined,
+    upvotedBy:
+      currentUid && d1Cache?.likes?.some((l) => l.post_id === row.id && l.user_uid === currentUid)
+        ? [currentUid]
+        : [],
     views: Number(row.views || 0),
     viewsCount: Number(row.views || 0),
     commentCount: Number(row.comment_count || 0),
@@ -1688,6 +1729,7 @@ ${allUrls
       saveD1Store(store);
     }
 
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     return res.status(200).json({
       success: true,
       post: rowToCommonsPost(row, user?.uid),
@@ -1821,13 +1863,18 @@ ${allUrls
     const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
     const uid = user?.uid || String(req.query.userId || '').trim();
 
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     if (!uid) {
       return res.status(200).json({ success: true, voted: false, saved: false });
     }
 
     const store = loadD1Store();
-    const voted = store.likes.some((l) => l.post_id === postId && l.user_uid === uid);
-    const saved = store.saves.some((s) => s.post_id === postId && s.user_uid === uid);
+    const post = store.posts.find(
+      (p) => p.id === postId || p.slug === slugOrId || p.id === slugOrId
+    );
+    const canonicalPostId = post?.id || postId;
+    const voted = store.likes.some((l) => l.post_id === canonicalPostId && l.user_uid === uid);
+    const saved = store.saves.some((s) => s.post_id === canonicalPostId && s.user_uid === uid);
 
     return res.status(200).json({ success: true, voted, saved });
   });
@@ -1851,14 +1898,17 @@ ${allUrls
         return res.status(404).json({ success: false, error: 'Post not found.' });
       }
 
-      const existingIdx = store.likes.findIndex(
+      const existingLikesForUser = store.likes.filter(
         (l) => l.post_id === post.id && l.user_uid === user.uid
       );
 
       let voted = false;
-      if (existingIdx !== -1) {
-        store.likes.splice(existingIdx, 1);
-        post.upvotes = Math.max(0, (post.upvotes || 0) - 1);
+      if (existingLikesForUser.length > 0) {
+        store.likes = store.likes.filter(
+          (l) => !(l.post_id === post.id && l.user_uid === user.uid)
+        );
+        const remainingLikesCount = store.likes.filter((l) => l.post_id === post.id).length;
+        post.upvotes = Math.max(remainingLikesCount, Math.max(0, (post.upvotes || 0) - 1));
         voted = false;
         // Clean up like notification if unliked
         const likeNotifId = `like_${post.id}_${user.uid}`;
@@ -1870,7 +1920,8 @@ ${allUrls
           user_uid: user.uid,
           created_at: likeNow,
         });
-        post.upvotes = (post.upvotes || 0) + 1;
+        const totalLikesCount = store.likes.filter((l) => l.post_id === post.id).length;
+        post.upvotes = Math.max(totalLikesCount, (post.upvotes || 0) + 1);
         voted = true;
 
         // Notify post author if not liking own post
@@ -1906,6 +1957,9 @@ ${allUrls
         success: true,
         voted,
         newCount: post.upvotes,
+        upvoted: voted,
+        upvotesCount: post.upvotes,
+        likesCount: post.upvotes,
       });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || 'Failed to toggle like' });
@@ -4055,6 +4109,13 @@ ${allUrls
           created_at: now,
           updated_at: now,
         });
+        if (!store.likes.some((l) => l.post_id === postId && l.user_uid === botRow.uid)) {
+          store.likes.push({
+            post_id: postId,
+            user_uid: botRow.uid,
+            created_at: now,
+          });
+        }
         postsCreated++;
         totalPostsCreated++;
       }

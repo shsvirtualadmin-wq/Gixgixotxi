@@ -87,6 +87,179 @@ async function getRequiredAuthHeader(): Promise<Record<string, string>> {
 }
 
 /**
+ * ============================================================================
+ * SHARED POST LIKE SOURCE OF TRUTH (USED BY ALL PROFILE & COMMONS SURFACES)
+ * ============================================================================
+ * Keeps post like counts and per-user liked status synchronized across:
+ * - Dashboard Profile (`/dashboard/profile` -> `ProfilePostsSection`)
+ * - Commons Public Profile (`/u/:username` -> `PublicUserProfilePage`)
+ * - Commons Feed Cards (`/commons`, `/dashboard/commons` -> `CommonsPostCard`)
+ * - Post Detail Page (`/commons/post/:idSlug` -> `PublicPostDetailPage`)
+ * - Search Results (`/search` -> `SearchPage`)
+ */
+interface PostLikeEntry {
+  count: number;
+  votedByUid: Record<string, boolean>;
+  updatedAt: number;
+  localMutationAt: number;
+}
+
+type PostLikeListener = (payload: {
+  postId: string;
+  count: number;
+  userId?: string | null;
+  voted?: boolean;
+}) => void;
+
+const postLikeStore = new Map<string, PostLikeEntry>();
+const postLikeListeners = new Map<string, Set<PostLikeListener>>();
+const globalPostLikeListeners = new Set<PostLikeListener>();
+
+export function getCanonicalPostLikeCount(raw: Record<string, any> | null | undefined): number {
+  if (!raw) return 0;
+  const rawCount = Number(raw.upvotes ?? raw.likesCount ?? raw.likes_count ?? 0);
+  const safeRawCount = Number.isFinite(rawCount) ? Math.max(0, rawCount) : 0;
+  const id = String(raw.id || '').trim();
+  if (!id) return safeRawCount;
+  const existing = postLikeStore.get(id);
+  // If the user just toggled a like locally within the last 10s, prefer the live mutated count
+  if (existing && Date.now() - existing.localMutationAt < 10_000) {
+    return existing.count;
+  }
+  return safeRawCount;
+}
+
+export function recordPostLikeSnapshot(
+  postId: string,
+  count: number | null | undefined,
+  userId?: string | null,
+  voted?: boolean,
+  isLocalMutation = false
+): { count: number; voted?: boolean } {
+  const cleanId = String(postId || '').trim();
+  if (!cleanId) {
+    return { count: Math.max(0, Number(count || 0)), voted };
+  }
+
+  const existing = postLikeStore.get(cleanId);
+  const now = Date.now();
+  const PreserveLocalCount =
+    !isLocalMutation && existing && now - existing.localMutationAt < 10_000;
+
+  const nextCount = PreserveLocalCount
+    ? existing.count
+    : count !== undefined && count !== null && Number.isFinite(Number(count))
+    ? Math.max(0, Number(count))
+    : existing?.count ?? 0;
+
+  const votedByUid: Record<string, boolean> = { ...(existing?.votedByUid || {}) };
+  if (userId && typeof voted === 'boolean') {
+    votedByUid[userId] = voted;
+  }
+
+  const prevCount = existing?.count;
+  const prevVoted = userId ? existing?.votedByUid?.[userId] : undefined;
+
+  const entry: PostLikeEntry = {
+    count: nextCount,
+    votedByUid,
+    updatedAt: now,
+    localMutationAt: isLocalMutation ? now : existing?.localMutationAt || 0,
+  };
+  postLikeStore.set(cleanId, entry);
+
+  if (prevCount !== nextCount || (userId && prevVoted !== voted) || isLocalMutation) {
+    const payload = { postId: cleanId, count: nextCount, userId, voted };
+    const listeners = postLikeListeners.get(cleanId);
+    if (listeners && listeners.size > 0) {
+      listeners.forEach((fn) => {
+        try {
+          fn(payload);
+        } catch {
+          // Ignore listener error
+        }
+      });
+    }
+    if (globalPostLikeListeners.size > 0) {
+      globalPostLikeListeners.forEach((fn) => {
+        try {
+          fn(payload);
+        } catch {
+          // Ignore listener error
+        }
+      });
+    }
+  }
+
+  return {
+    count: nextCount,
+    voted: userId ? votedByUid[userId] : voted,
+  };
+}
+
+export function getPostLikeSnapshot(
+  postId: string,
+  fallbackCount = 0,
+  userId?: string | null,
+  fallbackVoted?: boolean
+): { count: number; voted: boolean; hasKnownVote: boolean } {
+  const cleanId = String(postId || '').trim();
+  const safeFallback = Number.isFinite(Number(fallbackCount))
+    ? Math.max(0, Number(fallbackCount))
+    : 0;
+  if (!cleanId) {
+    return {
+      count: safeFallback,
+      voted: Boolean(fallbackVoted),
+      hasKnownVote: typeof fallbackVoted === 'boolean',
+    };
+  }
+  const existing = postLikeStore.get(cleanId);
+  if (!existing) {
+    return {
+      count: safeFallback,
+      voted: Boolean(fallbackVoted),
+      hasKnownVote: typeof fallbackVoted === 'boolean',
+    };
+  }
+  const hasKnownVote = Boolean(
+    userId && Object.prototype.hasOwnProperty.call(existing.votedByUid, userId)
+  );
+  return {
+    count: existing.count,
+    voted: hasKnownVote && userId ? existing.votedByUid[userId] : Boolean(fallbackVoted),
+    hasKnownVote: hasKnownVote || typeof fallbackVoted === 'boolean',
+  };
+}
+
+export function subscribePostLike(postId: string, listener: PostLikeListener): () => void {
+  const cleanId = String(postId || '').trim();
+  if (!cleanId) return () => {};
+  let set = postLikeListeners.get(cleanId);
+  if (!set) {
+    set = new Set();
+    postLikeListeners.set(cleanId, set);
+  }
+  set.add(listener);
+  return () => {
+    const currentSet = postLikeListeners.get(cleanId);
+    if (currentSet) {
+      currentSet.delete(listener);
+      if (currentSet.size === 0) {
+        postLikeListeners.delete(cleanId);
+      }
+    }
+  };
+}
+
+export function subscribeAnyPostLike(listener: PostLikeListener): () => void {
+  globalPostLikeListeners.add(listener);
+  return () => {
+    globalPostLikeListeners.delete(listener);
+  };
+}
+
+/**
  * Normalizes a post object returned from `/api/posts` so `createdAt` supports
  * both `.toDate()` (for legacy UI components) and ISO string / Date parsing.
  */
@@ -106,9 +279,17 @@ export function normalizeCloudflarePost(raw: Record<string, any>): CommonsPost {
     toMillis: () => createdMs,
   };
 
+  const id = String(raw.id || '');
+  const rawLikes = Math.max(0, Number(raw.upvotes ?? raw.likesCount ?? raw.likes_count ?? 0));
+  const currentUid = auth.currentUser?.uid || null;
+  const votedByMe = typeof raw.votedByMe === 'boolean' ? raw.votedByMe : undefined;
+  const snapshot = id
+    ? recordPostLikeSnapshot(id, rawLikes, currentUid, votedByMe, false)
+    : { count: rawLikes };
+
   return {
     ...(raw as any),
-    id: String(raw.id || ''),
+    id,
     slug: String(raw.slug || raw.id || ''),
     type: (raw.type || 'notes') as CommonsPostType,
     title: String(raw.title || ''),
@@ -136,7 +317,7 @@ export function normalizeCloudflarePost(raw: Record<string, any>): CommonsPost {
       ? 'bot'
       : raw.authorRole || 'student',
     authorCustomRole: raw.isAnonymous ? null : raw.authorCustomRole || null,
-    upvotes: Number(raw.upvotes ?? 0),
+    upvotes: snapshot.count,
     downvotes: Number(raw.downvotes ?? 0),
     views: Number(raw.views ?? 0),
     commentCount: Number(raw.commentCount ?? 0),
@@ -424,6 +605,7 @@ export async function fetchCommonsPostById(postIdOrSlug: string): Promise<Common
     const headers = await getOptionalAuthHeader();
     const resp = await fetch(`/api/posts/${encodeURIComponent(postIdOrSlug)}?view=1`, {
       headers,
+      cache: 'no-store',
     });
     if (!resp.ok) return null;
     const data = await resp.json();
@@ -436,20 +618,31 @@ export async function fetchCommonsPostById(postIdOrSlug: string): Promise<Common
 
 export async function togglePostVote(
   postId: string,
-  _userId: string
+  userId: string
 ): Promise<{ voted: boolean; newCount: number }> {
+  const effectiveUserId = userId || auth.currentUser?.uid || '';
   const headers = await getRequiredAuthHeader();
   const resp = await fetch(`/api/posts/${encodeURIComponent(postId)}/like`, {
     method: 'POST',
     headers,
+    cache: 'no-store',
   });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok || !data?.success) {
     throw new Error(data?.error || 'Could not update like.');
   }
+  const voted = Boolean(data.voted ?? data.upvoted);
+  const newCount = Math.max(
+    0,
+    Number(data.newCount ?? data.upvotesCount ?? data.likesCount ?? 0)
+  );
+  if (effectiveUserId) {
+    statusRequestCache.delete(`${effectiveUserId}:${postId}`);
+  }
+  recordPostLikeSnapshot(postId, newCount, effectiveUserId || null, voted, true);
   return {
-    voted: Boolean(data.voted),
-    newCount: Number(data.newCount || 0),
+    voted,
+    newCount,
   };
 }
 
@@ -472,13 +665,16 @@ async function fetchUserPostStatus(
       const headers = await getOptionalAuthHeader();
       const resp = await fetch(
         `/api/posts/${encodeURIComponent(postId)}/status?userId=${encodeURIComponent(userId)}`,
-        { headers }
+        { headers, cache: 'no-store' }
       );
       if (!resp.ok) return { voted: false, saved: false };
       const data = await resp.json();
+      const voted = Boolean(data?.voted);
+      const saved = Boolean(data?.saved);
+      recordPostLikeSnapshot(postId, undefined, userId, voted, false);
       return {
-        voted: Boolean(data?.voted),
-        saved: Boolean(data?.saved),
+        voted,
+        saved,
       };
     } catch {
       return { voted: false, saved: false };
@@ -492,6 +688,11 @@ async function fetchUserPostStatus(
 }
 
 export async function checkUserVoted(postId: string, userId: string): Promise<boolean> {
+  if (!postId || !userId) return false;
+  const snap = getPostLikeSnapshot(postId, 0, userId);
+  if (snap.hasKnownVote) {
+    return snap.voted;
+  }
   const st = await fetchUserPostStatus(postId, userId);
   return st.voted;
 }
@@ -652,7 +853,10 @@ export async function fetchUserCommonsPosts(
       limit: '50',
       ...(includeOwnAnonymous ? { includeOwnAnonymous: 'true' } : {}),
     });
-    const resp = await fetch(`/api/posts?${params.toString()}`, { headers });
+    const resp = await fetch(`/api/posts?${params.toString()}`, {
+      headers,
+      cache: 'no-store',
+    });
     if (!resp.ok) return [];
     const data = await resp.json();
     return Array.isArray(data?.posts)
@@ -669,7 +873,7 @@ export async function fetchUserSavedPosts(uid: string): Promise<CommonsPost[]> {
     const headers = await getOptionalAuthHeader();
     const resp = await fetch(
       `/api/posts?savedBy=${encodeURIComponent(uid)}&limit=50`,
-      { headers }
+      { headers, cache: 'no-store' }
     );
     if (!resp.ok) return [];
     const data = await resp.json();
