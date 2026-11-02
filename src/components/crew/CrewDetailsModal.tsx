@@ -234,6 +234,7 @@ export const CrewDetailsModal: React.FC<CrewDetailsModalProps> = ({
                             name={sanitizeStudentDisplayName(m.displayName, m.uid)}
                             shortId={m.uid.slice(0, 5)}
                             roleBadge={m.role === 'leader' ? 'LEADER' : undefined}
+                            forceStatic={true}
                           />
                         ) : (
                           <>

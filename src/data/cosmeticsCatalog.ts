@@ -1666,6 +1666,25 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
     posterUrl: '/assets/store/frame-pixel-pop-arcade/poster.png',
     webmUrl: '/assets/store/frame-pixel-pop-arcade/frame.webp',
   },
+  // ─── 3D ANIMATED NAMEPLATE: PIXEL POP MARQUEE (Item 158) ──────────────────
+  {
+    id: 'plate-pixel-pop-arcade',
+    name: 'Pixel Pop Marquee',
+    type: 'nameplate',
+    priceKobans: 450,
+    rarity: 'common',
+    description: 'Candy-bright arcade marquee nameplate with chasing glossy neon bulbs, pixel-art end caps, and a calm dark navy-violet center.',
+    animated: true,
+    isAnimated: true,
+    isNew: true,
+    isActive: true,
+    featuredOrder: -5,
+    createdAt: '2026-11-02T01:35:00.000Z',
+    previewColor: '#FF5FA2',
+    posterUrl: '/assets/store/plate-pixel-pop-arcade/poster.webp',
+    webmUrl: '/assets/store/plate-pixel-pop-arcade/plate.webm',
+    mp4Url: '/assets/store/plate-pixel-pop-arcade/plate.mp4',
+  },
 ];
 
 /**

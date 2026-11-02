@@ -1,6 +1,6 @@
-import React, { useEffect, useId, useRef } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { storeFxScheduler } from '../fx/storeFxEngine';
-import { StoreLoopVideo } from '../fx/StoreLoopVideo';
+import { StoreLoopVideo, storeVideoGovernor } from '../fx/StoreLoopVideo';
 
 interface NameplateProps {
   itemId: string;
@@ -717,6 +717,266 @@ const PremiumAnimatedNameplate: React.FC<{
  * High-contrast legible text (contrast >= 4.5:1) with textured motifs.
  * Supports wrapping (up to 2 lines in store previews, or full wrap in loadout card) when allowWrap is set.
  */
+let nextPixelPopPlateUid = 1;
+
+/**
+ * Pixel Pop Marquee (id: plate-pixel-pop-arcade) — Common Animated 3D Nameplate
+ * - Wide strip 960x160 px (6:1), 240 frames @ 24 fps (10.000s seamless loop).
+ * - Absolute asset paths:
+ *   - /assets/store/plate-pixel-pop-arcade/poster.webp
+ *   - /assets/store/plate-pixel-pop-arcade/plate.webm
+ *   - /assets/store/plate-pixel-pop-arcade/plate.mp4
+ * - Center 60% stays calm & dark (#1B1B3A to #2A1F5C) with > 14:1 contrast against #FFFFFF text.
+ * - Uses poster-only in dense lists, respects prefers-reduced-motion and max-8-playing governor,
+ *   and falls back cleanly to poster.webp if video fails to load.
+ */
+const PixelPopMarqueeNameplate: React.FC<NameplateProps> = ({
+  name,
+  shortId,
+  roleBadge,
+  canAnimate = true,
+  className = '',
+  allowWrap = false,
+}) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const instanceIdRef = useRef<string>(`plate-pixel-pop-arcade-${nextPixelPopPlateUid++}`);
+
+  const [isVisible, setIsVisible] = useState(true);
+  const [isDenseListDom, setIsDenseListDom] = useState(false);
+  const [isGovernorActive, setIsGovernorActive] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(() =>
+    storeVideoGovernor.isReducedMotion()
+  );
+  const [posterFailed, setPosterFailed] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+
+  const posterUrl = '/assets/store/plate-pixel-pop-arcade/poster.webp';
+  const webmUrl = '/assets/store/plate-pixel-pop-arcade/plate.webm';
+  const mp4Url = '/assets/store/plate-pixel-pop-arcade/plate.mp4';
+
+  const effectiveAnimate = Boolean(
+    canAnimate && !isDenseListDom && !reducedMotion && !videoFailed
+  );
+
+  const handleVideoRef = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    if (node) {
+      node.muted = true;
+      node.defaultMuted = true;
+      node.playsInline = true;
+    }
+    storeVideoGovernor.setVideoEl(instanceIdRef.current, node);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+      setReducedMotion(mql.matches || storeVideoGovernor.isReducedMotion());
+      const onChange = (e: MediaQueryListEvent) =>
+        setReducedMotion(e.matches || storeVideoGovernor.isReducedMotion());
+      mql.addEventListener('change', onChange);
+      return () => mql.removeEventListener('change', onChange);
+    } catch {
+      return;
+    }
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    // Detect if mounted inside a dense list (leaderboard rows, member lists, table rows, compact nav)
+    const inDense = Boolean(
+      el.closest('tr, tbody, [data-dense-list="true"], .dense-list-item')
+    );
+    setIsDenseListDom(inDense);
+
+    if (typeof IntersectionObserver === 'undefined') {
+      setIsVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        setIsVisible(Boolean(entry?.isIntersecting));
+      },
+      { threshold: 0.05, rootMargin: '80px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!effectiveAnimate) {
+      setIsGovernorActive(false);
+      return;
+    }
+    const id = instanceIdRef.current;
+    return storeVideoGovernor.register({
+      id,
+      videoEl: videoRef.current,
+      getVideoEl: () => videoRef.current,
+      isVisible,
+      canAnimate: effectiveAnimate,
+      priority: 6,
+      setActiveState: setIsGovernorActive,
+      onPlayError: () => setAutoplayBlocked(true),
+    });
+  }, [effectiveAnimate, isVisible]);
+
+  useEffect(() => {
+    storeVideoGovernor.update(instanceIdRef.current, {
+      videoEl: videoRef.current,
+      getVideoEl: () => videoRef.current,
+      isVisible,
+      canAnimate: effectiveAnimate,
+      priority: 6,
+    });
+  }, [isVisible, effectiveAnimate]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+    if (effectiveAnimate && isVisible && isGovernorActive && !autoplayBlocked) {
+      const p = video.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch((err: unknown) => {
+          const errName = err instanceof Error ? err.name : '';
+          if (errName === 'AbortError') return;
+          setAutoplayBlocked(true);
+        });
+      }
+    } else if (!video.paused) {
+      video.pause();
+    }
+  }, [effectiveAnimate, isVisible, isGovernorActive, autoplayBlocked]);
+
+  const handleVideoReady = () => {
+    setAutoplayBlocked(false);
+    const video = videoRef.current;
+    if (effectiveAnimate && isVisible && isGovernorActive && video && video.paused) {
+      video.muted = true;
+      video.defaultMuted = true;
+      video.playsInline = true;
+      const p = video.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch((err: unknown) => {
+          const errName = err instanceof Error ? err.name : '';
+          if (errName === 'AbortError') return;
+          setAutoplayBlocked(true);
+        });
+      }
+    }
+  };
+
+  const textWrapClass =
+    allowWrap === 'full'
+      ? 'whitespace-normal break-words leading-tight'
+      : 'whitespace-normal break-words line-clamp-2 leading-tight';
+
+  const showVideo = Boolean(
+    effectiveAnimate && isVisible && isGovernorActive && !videoFailed && !autoplayBlocked
+  );
+
+  return (
+    <div
+      ref={containerRef}
+      data-nameplate-id="plate-pixel-pop-arcade"
+      data-testid="plate-pixel-pop-arcade"
+      className={`plate-pixel-pop-arcade relative inline-flex items-center justify-center max-w-full overflow-hidden select-none box-border rounded-lg shadow-md ${className}`}
+      style={{
+        minWidth: '216px',
+        minHeight: '38px',
+        paddingLeft: '21%',
+        paddingRight: '21%',
+        paddingTop: '7px',
+        paddingBottom: '7px',
+        background: 'linear-gradient(135deg, #1B1B3A 0%, #2A1F5C 100%)',
+        border: '1px solid #121028',
+        contain: 'paint',
+      }}
+    >
+      {!posterFailed && (
+        <img
+          src={posterUrl}
+          alt=""
+          aria-hidden="true"
+          loading="eager"
+          decoding="async"
+          onError={() => setPosterFailed(true)}
+          className="plate-pixel-pop-arcade-poster absolute inset-0 w-full h-full object-fill pointer-events-none"
+        />
+      )}
+
+      {effectiveAnimate && (
+        <video
+          ref={handleVideoRef}
+          data-testid="plate-pixel-pop-arcade-video"
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="auto"
+          poster={posterFailed ? undefined : posterUrl}
+          onLoadedMetadata={handleVideoReady}
+          onLoadedData={handleVideoReady}
+          onCanPlay={handleVideoReady}
+          onPlaying={() => setAutoplayBlocked(false)}
+          onError={() => setVideoFailed(true)}
+          className={`plate-pixel-pop-arcade-video absolute inset-0 w-full h-full object-fill pointer-events-none transition-opacity duration-200 ${
+            showVideo ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          <source src={webmUrl} type="video/webm" />
+          <source src={mp4Url} type="video/mp4" onError={() => setVideoFailed(true)} />
+        </video>
+      )}
+
+      <div className="relative z-10 inline-flex items-center justify-center gap-1.5 min-w-0 max-w-full text-center">
+        <span
+          className={`font-heading font-bold text-xs tracking-wide text-center ${textWrapClass} min-w-0`}
+          style={{
+            color: '#FFFFFF',
+            textShadow: '0 1px 2px rgba(10, 8, 22, 0.96)',
+          }}
+        >
+          {name}
+        </span>
+
+        {shortId && (
+          <span
+            className="font-mono text-[10px] font-bold shrink-0"
+            style={{
+              color: '#FFE45E',
+              textShadow: '0 1px 2px rgba(10, 8, 22, 0.96)',
+            }}
+          >
+            #{shortId}
+          </span>
+        )}
+
+        {roleBadge && (
+          <span
+            className="text-[9px] uppercase px-1.5 py-0.5 rounded font-bold border shrink-0"
+            style={{
+              backgroundColor: '#1B1B3A',
+              color: '#00E0C6',
+              borderColor: '#7C4DFF',
+            }}
+          >
+            {roleBadge}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const NameplateRenderer: React.FC<NameplateProps> = ({
   itemId,
   name,
@@ -726,6 +986,20 @@ export const NameplateRenderer: React.FC<NameplateProps> = ({
   className = '',
   allowWrap = false,
 }) => {
+  if (itemId === 'plate-pixel-pop-arcade') {
+    return (
+      <PixelPopMarqueeNameplate
+        itemId={itemId}
+        name={name}
+        shortId={shortId}
+        roleBadge={roleBadge}
+        canAnimate={canAnimate}
+        className={className}
+        allowWrap={allowWrap}
+      />
+    );
+  }
+
   if (PREMIUM_NAMEPLATE_CONFIGS[itemId]) {
     return (
       <PremiumAnimatedNameplate

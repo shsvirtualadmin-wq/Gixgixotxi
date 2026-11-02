@@ -8,6 +8,7 @@ import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
+import { Nameplate } from '@/components/koban/CosmeticRenderers';
 import { ContentUnavailableScreen } from '@/components/ui/ContentUnavailableScreen';
 import { LineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
@@ -244,6 +245,11 @@ export const PublicUserProfilePage: React.FC = () => {
       ? profileData.avatar
       : undefined);
   const frameId = profileData.equipped?.frame || profileData.frame;
+  const nameplateId =
+    profileData.equipped?.nameplate ||
+    profileData.nameplate ||
+    profileData.equippedNameplate ||
+    undefined;
   const role = profileData.role || 'student';
   const followersCount = Number(profileData.followersCount || 0);
   const followingCount = Number(profileData.followingCount || 0);
@@ -377,9 +383,18 @@ export const PublicUserProfilePage: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2.5 flex-wrap mb-2">
-              <h1 className="font-dot text-2xl sm:text-3xl font-bold text-white">
-                {safeName}
-              </h1>
+              {nameplateId ? (
+                <Nameplate
+                  itemId={nameplateId}
+                  name={safeName}
+                  shortId={profileData.studentId || profileData.shortId || targetUid.slice(0, 5)}
+                  allowWrap="two-lines"
+                />
+              ) : (
+                <h1 className="font-dot text-2xl sm:text-3xl font-bold text-[var(--text)]">
+                  {safeName}
+                </h1>
+              )}
               <RoleBadge role={role} size="sm" />
             </div>
 

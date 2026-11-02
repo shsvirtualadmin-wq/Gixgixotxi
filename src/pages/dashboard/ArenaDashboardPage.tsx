@@ -275,6 +275,7 @@ export function ArenaDashboardPage() {
                               itemId={(isCurrentUser ? myEquipped?.nameplate : item.equipped?.nameplate)!}
                               name={item.displayName}
                               shortId={item.uid.slice(0, 5)}
+                              forceStatic={true}
                             />
                           ) : (
                             <span
