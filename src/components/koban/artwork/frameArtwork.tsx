@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StoreFxCanvas } from '../fx/StoreFxCanvas';
+import { storeVideoGovernor } from '../fx/StoreLoopVideo';
 import {
   COLOR_RAMPS,
   ParticleShape,
@@ -951,6 +952,21 @@ export const FrameRenderer: React.FC<FrameProps> = ({
         </RoyalGoldLaurelCrownFrame>
       );
 
+    case 'frame-pixel-pop-arcade': {
+      // Geometry contract: 480x480 canvas (120% of avatar) with centered 400px (83.333%) transparent hole
+      const pixelPopInnerSize = Math.max(16, Math.round((size * 400) / 480));
+      return (
+        <PixelPopRingFrame size={size} canAnimate={canAnimate} className={className}>
+          <div
+            className="rounded-full overflow-hidden flex items-center justify-center relative z-10 shrink-0 [&>*]:!w-full [&>*]:!h-full [&>*]:!max-w-full [&>*]:!max-h-full [&>*]:!rounded-full"
+            style={{ width: pixelPopInnerSize, height: pixelPopInnerSize }}
+          >
+            {children}
+          </div>
+        </PixelPopRingFrame>
+      );
+    }
+
     default:
       return (
         <div className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`} style={{ width: size, height: size }}>
@@ -1413,3 +1429,125 @@ const RoyalGoldLaurelCrownFrame: React.FC<SubFrameProps> = ({ size, canAnimate, 
     </div>
   );
 };
+
+let nextPixelPopRingUid = 1;
+
+/**
+ * Pixel Pop Ring (id: frame-pixel-pop-arcade) — Rare Animated 3D Avatar Frame
+ * - 480x480 canvas (120% of avatar) with a centered 400px diameter (83.333%) transparent hole.
+ * - Uses absolute asset paths:
+ *   - /assets/store/frame-pixel-pop-arcade/frame.webp (200 frames, 20 fps, 10.000s loop)
+ *   - /assets/store/frame-pixel-pop-arcade/poster.png (frame 0 static fallback)
+ * - Uses poster.png in dense lists (size < 56), respects prefers-reduced-motion and the max-8-playing governor,
+ *   and falls back cleanly to poster.png if frame.webp fails to load.
+ */
+const PixelPopRingFrame: React.FC<SubFrameProps> = ({ size, canAnimate, className, children }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const instanceIdRef = useRef<string>(`frame-pixel-pop-arcade-${nextPixelPopRingUid++}`);
+  const [isVisible, setIsVisible] = useState(true);
+  const [isGovernorActive, setIsGovernorActive] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(() => storeVideoGovernor.isReducedMotion());
+  const [webpFailed, setWebpFailed] = useState(false);
+  const [posterFailed, setPosterFailed] = useState(false);
+
+  const posterUrl = '/assets/store/frame-pixel-pop-arcade/poster.png';
+  const webpUrl = '/assets/store/frame-pixel-pop-arcade/frame.webp';
+
+  // Poster-only in dense lists (e.g. 40x40 comments, member lists, leaderboards)
+  const isDenseList = size < 56;
+  const effectiveAnimate = Boolean(canAnimate && !isDenseList && !reducedMotion && !webpFailed);
+  const priority = size >= 72 ? 10 : 4;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+      setReducedMotion(mql.matches || storeVideoGovernor.isReducedMotion());
+      const onChange = (e: MediaQueryListEvent) =>
+        setReducedMotion(e.matches || storeVideoGovernor.isReducedMotion());
+      mql.addEventListener('change', onChange);
+      return () => mql.removeEventListener('change', onChange);
+    } catch {
+      return;
+    }
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setIsVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        setIsVisible(Boolean(entry?.isIntersecting));
+      },
+      { threshold: 0.05, rootMargin: '80px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!effectiveAnimate) {
+      setIsGovernorActive(false);
+      return;
+    }
+    const id = instanceIdRef.current;
+    return storeVideoGovernor.register({
+      id,
+      isVisible,
+      canAnimate: effectiveAnimate,
+      priority,
+      setActiveState: setIsGovernorActive,
+    });
+  }, [effectiveAnimate, isVisible, priority]);
+
+  useEffect(() => {
+    storeVideoGovernor.update(instanceIdRef.current, {
+      isVisible,
+      canAnimate: effectiveAnimate,
+      priority,
+    });
+  }, [isVisible, effectiveAnimate, priority]);
+
+  const showAnimatedWebp = Boolean(effectiveAnimate && isVisible && isGovernorActive && !webpFailed);
+
+  return (
+    <div
+      ref={containerRef}
+      data-frame-id="frame-pixel-pop-arcade"
+      data-testid="frame-pixel-pop-arcade"
+      className={`relative inline-flex items-center justify-center shrink-0 overflow-hidden select-none ${className}`}
+      style={{ width: size, height: size, contain: 'paint' }}
+    >
+      {children}
+      {!posterFailed && (
+        <img
+          src={posterUrl}
+          alt=""
+          aria-hidden="true"
+          loading="eager"
+          decoding="async"
+          onError={() => setPosterFailed(true)}
+          className={`frame-pixel-pop-arcade-poster absolute inset-0 w-full h-full object-contain pointer-events-none z-20 ${
+            showAnimatedWebp ? 'opacity-0' : 'opacity-100'
+          }`}
+        />
+      )}
+      {showAnimatedWebp && (
+        <img
+          src={webpUrl}
+          alt=""
+          aria-hidden="true"
+          loading="eager"
+          decoding="async"
+          onError={() => setWebpFailed(true)}
+          className="frame-pixel-pop-arcade-webp absolute inset-0 w-full h-full object-contain pointer-events-none z-20"
+        />
+      )}
+    </div>
+  );
+};
+

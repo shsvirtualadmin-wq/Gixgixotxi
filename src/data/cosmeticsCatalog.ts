@@ -1648,6 +1648,24 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
     webmUrl: '/assets/store/pfp_pixel_pop_arcade/pfp.webm',
     mp4Url: '/assets/store/pfp_pixel_pop_arcade/pfp.mp4',
   },
+  // ─── 3D ANIMATED AVATAR FRAME: PIXEL POP RING (Item 157) ──────────────────
+  {
+    id: 'frame-pixel-pop-arcade',
+    name: 'Pixel Pop Ring',
+    type: 'frame',
+    priceKobans: 600,
+    rarity: 'rare',
+    description: 'A candy-bright ring of 16 glossy rounded arcade cubes and twinkling pixel hearts and stars with a traveling chase light.',
+    animated: true,
+    isAnimated: true,
+    isNew: true,
+    isActive: true,
+    featuredOrder: -6,
+    createdAt: '2026-11-01T21:20:00.000Z',
+    previewColor: '#FF5FA2',
+    posterUrl: '/assets/store/frame-pixel-pop-arcade/poster.png',
+    webmUrl: '/assets/store/frame-pixel-pop-arcade/frame.webp',
+  },
 ];
 
 /**
