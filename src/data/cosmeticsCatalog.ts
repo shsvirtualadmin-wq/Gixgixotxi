@@ -1722,6 +1722,24 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
     webmUrl: '/assets/store/pfp_topper_burst/pfp.webm',
     mp4Url: '/assets/store/pfp_topper_burst/pfp.mp4',
   },
+  // ─── 3D ANIMATED AVATAR FRAME: TOPPER STAR RING (Item 161) ────────────────
+  {
+    id: 'frame-topper-burst',
+    name: 'Topper Star Ring',
+    type: 'frame',
+    priceKobans: 600,
+    rarity: 'rare',
+    description: 'A glossy gold celebration ring encircled by 20 colorful 3D topper stars and twinkling sparkle crosses with a traveling gold glint.',
+    animated: true,
+    isAnimated: true,
+    isNew: true,
+    isActive: true,
+    featuredOrder: -10,
+    createdAt: '2026-11-02T16:15:00.000Z',
+    previewColor: '#FFC93C',
+    posterUrl: '/assets/store/frame-topper-burst/poster.png',
+    webmUrl: '/assets/store/frame-topper-burst/frame.webp',
+  },
 ];
 
 /**
