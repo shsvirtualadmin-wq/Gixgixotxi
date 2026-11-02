@@ -296,7 +296,7 @@ function aiTutorPlugin() {
               const chapter = body.chapter || 'General';
               const track = body.track || 'Entrance Exam';
 
-              const apiKey = process.env.GEMINI_API_KEY;
+              const apiKey = process.env.GEMINI_API_KEY || (process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',')[0].trim() : '');
 
               const SYSTEM_PROMPT = `You are Boardy, a tutor for Pakistani university entrance tests (MDCAT, NUST NET, FAST-NUCES, GIKI, ECAT, etc.). You get one MCQ, its options, the correct answer, and the student's chosen answer. Rules:
 1. Treat the provided correct answer as the truth. Explain WHY it is correct, step by step.
@@ -466,7 +466,7 @@ Provide the step-by-step solution following your exact output format.`;
           req.on('end', async () => {
             try {
               const body = JSON.parse(rawBody || '{}');
-              const apiKey = process.env.GEMINI_API_KEY;
+              const apiKey = process.env.GEMINI_API_KEY || (process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',')[0].trim() : '');
 
               if (!apiKey) {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
