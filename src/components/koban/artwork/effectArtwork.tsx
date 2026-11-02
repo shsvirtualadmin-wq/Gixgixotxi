@@ -171,6 +171,146 @@ const BlackSunEmberStormOverlay: React.FC<{
   );
 };
 
+let nextPixelPopEffectInstanceUid = 1;
+
+/**
+ * 3D Blender Transparent Profile Effect Renderer for "Pixel Pop Sparkle Shower" (id: effect-pixel-pop-arcade)
+ * - Uses absolute paths:
+ *   - /assets/store/effect-pixel-pop-arcade/effect.webp (800x450, 150 frames @ 15 fps = 10.000s loop, alpha)
+ *   - /assets/store/effect-pixel-pop-arcade/poster.png (800x450 frame 0 with alpha)
+ * - Center 60% of the overlay is transparent so name, stats, and buttons stay 100% clear
+ * - Respects prefers-reduced-motion: reduce, document visibility, IntersectionObserver, and storeVideoGovernor (max 8 playing)
+ * - Falls back cleanly to poster.png if effect.webp fails to load
+ * - pointer-events: none so it never blocks clicks
+ */
+const PixelPopSparkleShowerOverlay: React.FC<{
+  canAnimate?: boolean;
+  mode?: 'card' | 'avatar';
+  forcePosterOnly?: boolean;
+}> = ({ canAnimate = true, mode = 'card', forcePosterOnly = false }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const instanceIdRef = useRef<string>(
+    `effect-pixel-pop-arcade-${mode}-${nextPixelPopEffectInstanceUid++}`
+  );
+  const [isVisible, setIsVisible] = useState(true);
+  const [isGovernorActive, setIsGovernorActive] = useState(false);
+  const [webpFailed, setWebpFailed] = useState(false);
+  const [posterFailed, setPosterFailed] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(() => storeVideoGovernor.isReducedMotion());
+  const [tabVisible, setTabVisible] = useState(() =>
+    typeof document !== 'undefined' ? document.visibilityState === 'visible' : true
+  );
+
+  const posterUrl = '/assets/store/effect-pixel-pop-arcade/poster.png';
+  const webpUrl = '/assets/store/effect-pixel-pop-arcade/effect.webp';
+
+  const effectiveAnimate = Boolean(
+    canAnimate && !forcePosterOnly && !reducedMotion && tabVisible && !webpFailed
+  );
+  const priority = mode === 'card' ? 8 : 4;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+      setReducedMotion(mql.matches || storeVideoGovernor.isReducedMotion());
+      const handler = (e: MediaQueryListEvent) =>
+        setReducedMotion(e.matches || storeVideoGovernor.isReducedMotion());
+      mql.addEventListener('change', handler);
+      return () => mql.removeEventListener('change', handler);
+    } catch {
+      return;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onVisChange = () => {
+      setTabVisible(document.visibilityState === 'visible');
+    };
+    document.addEventListener('visibilitychange', onVisChange);
+    return () => document.removeEventListener('visibilitychange', onVisChange);
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setIsVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        setIsVisible(Boolean(entry?.isIntersecting));
+      },
+      { threshold: 0.05, rootMargin: '80px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!effectiveAnimate) {
+      setIsGovernorActive(false);
+      return;
+    }
+    const id = instanceIdRef.current;
+    return storeVideoGovernor.register({
+      id,
+      isVisible,
+      canAnimate: effectiveAnimate,
+      priority,
+      setActiveState: setIsGovernorActive,
+    });
+  }, [effectiveAnimate, isVisible, priority]);
+
+  useEffect(() => {
+    storeVideoGovernor.update(instanceIdRef.current, {
+      isVisible,
+      canAnimate: effectiveAnimate,
+      priority,
+    });
+  }, [isVisible, effectiveAnimate, priority]);
+
+  const showAnimatedWebp = Boolean(effectiveAnimate && isVisible && isGovernorActive && !webpFailed);
+
+  return (
+    <div
+      ref={containerRef}
+      data-effect-id="effect-pixel-pop-arcade"
+      data-effect-mode={mode}
+      className="relative w-full h-full overflow-hidden pointer-events-none select-none"
+      style={{ pointerEvents: 'none', contain: 'paint' }}
+      aria-hidden="true"
+    >
+      {!posterFailed && (
+        <img
+          src={posterUrl}
+          alt=""
+          aria-hidden="true"
+          loading="eager"
+          decoding="async"
+          onError={() => setPosterFailed(true)}
+          className={`effect-pixel-pop-arcade-poster absolute inset-0 w-full h-full object-cover pointer-events-none select-none transition-opacity duration-150 ${
+            showAnimatedWebp ? 'opacity-0' : 'opacity-100'
+          }`}
+        />
+      )}
+      {showAnimatedWebp && (
+        <img
+          src={webpUrl}
+          alt=""
+          aria-hidden="true"
+          loading="eager"
+          decoding="async"
+          onError={() => setWebpFailed(true)}
+          className="effect-pixel-pop-arcade-webp absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
+        />
+      )}
+    </div>
+  );
+};
+
 /**
  * 25 BESPOKE AVATAR-SIZED EFFECT WRAPPERS (<EffectAvatarRenderer />)
  * Renders atmospheric vector/canvas auras around the student's avatar/frame.
@@ -204,6 +344,28 @@ export const EffectAvatarRenderer: React.FC<EffectProps> = ({
           style={{ overflow: 'hidden', contain: 'paint', pointerEvents: 'none' }}
         >
           <BlackSunEmberStormOverlay canAnimate={canAnimate} mode="avatar" />
+        </div>
+        <div className="relative z-10">{children}</div>
+      </div>
+    );
+  }
+
+  if (itemId === 'effect-pixel-pop-arcade') {
+    const isDenseList = size < 56;
+    return (
+      <div
+        className={`relative inline-flex items-center justify-center shrink-0 ${className}`}
+        style={{ width: size, height: size }}
+      >
+        <div
+          className="absolute -inset-2.5 rounded-full pointer-events-none z-20 overflow-hidden"
+          style={{ overflow: 'hidden', contain: 'paint', pointerEvents: 'none' }}
+        >
+          <PixelPopSparkleShowerOverlay
+            canAnimate={canAnimate && !isDenseList}
+            mode="avatar"
+            forcePosterOnly={isDenseList}
+          />
         </div>
         <div className="relative z-10">{children}</div>
       </div>
@@ -369,8 +531,8 @@ export const ProfileCardEffect: React.FC<ProfileCardEffectProps> = ({
       return;
     }
     setVisible(true);
-    // Flagship 3D seamless loop ('black-sun-ember-storm') loops continuously while visible on-screen
-    if (!previewMode && itemId !== 'black-sun-ember-storm') {
+    // Flagship 3D seamless loops ('black-sun-ember-storm', 'effect-pixel-pop-arcade') loop continuously while visible on-screen
+    if (!previewMode && itemId !== 'black-sun-ember-storm' && itemId !== 'effect-pixel-pop-arcade') {
       const timer = setTimeout(() => {
         setVisible(false);
       }, 3600); // 3.6s duration
@@ -391,6 +553,11 @@ export const ProfileCardEffect: React.FC<ProfileCardEffectProps> = ({
       {/* ─── FLAGSHIP 3D BLENDER PROFILE EFFECT: BLACK SUN EMBER STORM ────────── */}
       {itemId === 'black-sun-ember-storm' && (
         <BlackSunEmberStormOverlay canAnimate={visible && !forceStatic} mode="card" />
+      )}
+
+      {/* ─── 3D BLENDER PROFILE EFFECT: PIXEL POP SPARKLE SHOWER ─────────────── */}
+      {itemId === 'effect-pixel-pop-arcade' && (
+        <PixelPopSparkleShowerOverlay canAnimate={visible && !forceStatic} mode="card" />
       )}
 
       {/* ─── STATIC & LEGACY FULL-CARD EFFECTS ───────────────────────── */}
@@ -502,12 +669,27 @@ export const ProfileCardEffect: React.FC<ProfileCardEffectProps> = ({
  * No overlapping "PROFILE EFFECT" label inside the mock card, and no gray bars sticking out.
  */
 export const ProfileEffectCardPreview: React.FC<{
-  itemId: string;
+  itemId?: string;
+  effectId?: string;
   className?: string;
   compact?: boolean;
   userName?: string;
+  displayName?: string;
   forceStatic?: boolean;
-}> = ({ itemId, className = '', userName = 'Boardly Scholar', forceStatic = false }) => {
+  animated?: boolean;
+}> = ({
+  itemId,
+  effectId,
+  className = '',
+  userName,
+  displayName,
+  forceStatic = false,
+  animated = true,
+}) => {
+  const resolvedId = itemId || effectId || '';
+  const resolvedName = userName || displayName || 'Boardly Scholar';
+  const resolvedForceStatic = Boolean(forceStatic || !animated);
+
   return (
     <div
       className={`relative w-full h-full rounded-xl overflow-hidden bg-gradient-to-br from-[#141418] via-[#0E0E12] to-[#08080B] border border-white/10 p-3 flex flex-col justify-center items-center shadow-inner select-none ${className}`}
@@ -526,12 +708,12 @@ export const ProfileEffectCardPreview: React.FC<{
           </div>
         </div>
         <span className="text-[11px] font-heading font-semibold text-white/90 leading-tight line-clamp-1 max-w-full px-2 py-0.5 rounded-md bg-black/45 border border-white/10">
-          {userName}
+          {resolvedName}
         </span>
       </div>
 
       {/* Looping Full-Card Effect Clipped Inside */}
-      <ProfileCardEffect itemId={itemId} previewMode={true} forceStatic={forceStatic} />
+      <ProfileCardEffect itemId={resolvedId} previewMode={true} forceStatic={resolvedForceStatic} />
     </div>
   );
 };

@@ -1685,6 +1685,43 @@ export const COSMETICS_CATALOG: CosmeticItem[] = [
     webmUrl: '/assets/store/plate-pixel-pop-arcade/plate.webm',
     mp4Url: '/assets/store/plate-pixel-pop-arcade/plate.mp4',
   },
+  // ─── 3D ANIMATED PROFILE EFFECT: PIXEL POP SPARKLE SHOWER (Item 159) ──────
+  {
+    id: 'effect-pixel-pop-arcade',
+    name: 'Pixel Pop Sparkle Shower',
+    type: 'effect',
+    priceKobans: 700,
+    rarity: 'rare',
+    description: 'Candy-bright pixel hearts, pixel stars, and tiny glossy cubes drifting upward around the outer frame of your profile card with twinkling arcade sparkles.',
+    animated: true,
+    isAnimated: true,
+    isNew: true,
+    isActive: true,
+    featuredOrder: -4,
+    createdAt: '2026-11-02T14:45:00.000Z',
+    previewColor: '#FF5FA2',
+    posterUrl: '/assets/store/effect-pixel-pop-arcade/poster.png',
+    webmUrl: '/assets/store/effect-pixel-pop-arcade/effect.webp',
+  },
+  // ─── 3D ANIMATED AVATAR: TOPPER STAR MEDAL (Item 160) ─────────────────────
+  {
+    id: 'pfp_topper_burst',
+    name: 'Topper Star Medal',
+    type: 'avatar',
+    priceKobans: 350,
+    rarity: 'common',
+    description: 'A glossy gold-yellow 5-point star medal with a coral inner ring, orbiting confetti dots, and twinkling stars over a teal-to-blue celebration disc.',
+    animated: true,
+    isAnimated: true,
+    isNew: true,
+    isActive: true,
+    featuredOrder: -9,
+    createdAt: '2026-11-02T15:30:00.000Z',
+    previewColor: '#FFC93C',
+    posterUrl: '/assets/store/pfp_topper_burst/poster.webp',
+    webmUrl: '/assets/store/pfp_topper_burst/pfp.webm',
+    mp4Url: '/assets/store/pfp_topper_burst/pfp.mp4',
+  },
 ];
 
 /**

@@ -8,7 +8,7 @@ import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
-import { Nameplate } from '@/components/koban/CosmeticRenderers';
+import { Nameplate, ProfileCardEffect } from '@/components/koban/CosmeticRenderers';
 import { ContentUnavailableScreen } from '@/components/ui/ContentUnavailableScreen';
 import { LineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
@@ -250,6 +250,12 @@ export const PublicUserProfilePage: React.FC = () => {
     profileData.nameplate ||
     profileData.equippedNameplate ||
     undefined;
+  const effectId =
+    profileData.equipped?.effect ||
+    profileData.effect ||
+    profileData.effectId ||
+    profileData.equippedEffect ||
+    undefined;
   const role = profileData.role || 'student';
   const followersCount = Number(profileData.followersCount || 0);
   const followingCount = Number(profileData.followingCount || 0);
@@ -323,7 +329,10 @@ export const PublicUserProfilePage: React.FC = () => {
         />
 
         {/* Profile Card */}
-        <section className="glass-panel overflow-hidden mb-8">
+        <section className="glass-panel overflow-hidden mb-8 relative">
+          {effectId && (
+            <ProfileCardEffect itemId={effectId} />
+          )}
           {/* Banner */}
           <div className="h-28 sm:h-36 w-full bg-white/[0.03] relative overflow-hidden border-b border-white/10">
             <BannerRenderer bannerId={bannerId} accentColor={profileData.accent || '#D71921'} animated showReadabilityOverlay={true} />

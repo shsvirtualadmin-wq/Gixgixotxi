@@ -194,6 +194,185 @@ const PixelPopCubeAvatar: React.FC<PfpSvgProps> = ({
   );
 };
 
+let nextTopperBurstPfpUid = 1;
+
+const TopperStarMedalAvatar: React.FC<PfpSvgProps> = ({
+  className = '',
+  canAnimate = true,
+  priority = 2,
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const instanceIdRef = useRef<string>(`pfp-topper-burst-${nextTopperBurstPfpUid++}`);
+  const [isVisible, setIsVisible] = useState(true);
+  const [isGovernorActive, setIsGovernorActive] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(() =>
+    storeVideoGovernor.isReducedMotion()
+  );
+
+  const posterUrl = '/assets/store/pfp_topper_burst/poster.webp';
+  const webmUrl = '/assets/store/pfp_topper_burst/pfp.webm';
+  const mp4Url = '/assets/store/pfp_topper_burst/pfp.mp4';
+
+  const effectiveAnimate = Boolean(canAnimate && !reducedMotion && !videoFailed);
+
+  const handleVideoRef = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    if (node) {
+      node.muted = true;
+      node.defaultMuted = true;
+      node.playsInline = true;
+    }
+    storeVideoGovernor.setVideoEl(instanceIdRef.current, node);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+      setReducedMotion(mql.matches || storeVideoGovernor.isReducedMotion());
+      const onChange = (e: MediaQueryListEvent) =>
+        setReducedMotion(e.matches || storeVideoGovernor.isReducedMotion());
+      mql.addEventListener('change', onChange);
+      return () => mql.removeEventListener('change', onChange);
+    } catch {
+      return;
+    }
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setIsVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        setIsVisible(Boolean(entry?.isIntersecting));
+      },
+      { threshold: 0.05, rootMargin: '80px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!effectiveAnimate) {
+      setIsGovernorActive(false);
+      return;
+    }
+    const id = instanceIdRef.current;
+    return storeVideoGovernor.register({
+      id,
+      videoEl: videoRef.current,
+      getVideoEl: () => videoRef.current,
+      isVisible,
+      canAnimate: effectiveAnimate,
+      priority,
+      setActiveState: setIsGovernorActive,
+      onPlayError: () => setAutoplayBlocked(true),
+    });
+  }, [effectiveAnimate, isVisible, priority]);
+
+  useEffect(() => {
+    storeVideoGovernor.update(instanceIdRef.current, {
+      videoEl: videoRef.current,
+      getVideoEl: () => videoRef.current,
+      isVisible,
+      canAnimate: effectiveAnimate,
+      priority,
+    });
+  }, [isVisible, effectiveAnimate, priority]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+    if (effectiveAnimate && isVisible && isGovernorActive && !autoplayBlocked) {
+      const p = video.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch((err: unknown) => {
+          const name = err instanceof Error ? err.name : '';
+          if (name === 'AbortError') return;
+          setAutoplayBlocked(true);
+        });
+      }
+    } else if (!video.paused) {
+      video.pause();
+    }
+  }, [effectiveAnimate, isVisible, isGovernorActive, autoplayBlocked]);
+
+  const handleVideoReady = () => {
+    setAutoplayBlocked(false);
+    const video = videoRef.current;
+    if (effectiveAnimate && isVisible && isGovernorActive && video && video.paused) {
+      video.muted = true;
+      video.defaultMuted = true;
+      video.playsInline = true;
+      const p = video.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch((err: unknown) => {
+          const name = err instanceof Error ? err.name : '';
+          if (name === 'AbortError') return;
+          setAutoplayBlocked(true);
+        });
+      }
+    }
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      className={`pfp-topper-burst relative w-full h-full overflow-hidden select-none aspect-square rounded-full ${className}`}
+      style={{
+        background: 'linear-gradient(180deg, #4D96FF 0%, #00C2A8 100%)',
+        contain: 'paint',
+      }}
+      data-avatar-id="pfp_topper_burst"
+      data-testid="pfp-topper-burst"
+    >
+      <img
+        src={posterUrl}
+        alt=""
+        aria-hidden="true"
+        loading="eager"
+        decoding="async"
+        className="pfp-topper-burst-poster absolute inset-0 w-full h-full object-cover rounded-full pointer-events-none"
+      />
+      {effectiveAnimate && (
+        <video
+          ref={handleVideoRef}
+          data-testid="pfp-topper-burst-video"
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="auto"
+          poster={posterUrl}
+          onLoadedMetadata={handleVideoReady}
+          onLoadedData={handleVideoReady}
+          onCanPlay={handleVideoReady}
+          onPlaying={() => setAutoplayBlocked(false)}
+          onError={() => setVideoFailed(true)}
+          className={`pfp-topper-burst-video absolute inset-0 w-full h-full object-cover rounded-full pointer-events-none transition-opacity duration-200 ${
+            isVisible && isGovernorActive && !videoFailed && !autoplayBlocked
+              ? 'opacity-100'
+              : 'opacity-0'
+          }`}
+        >
+          <source src={webmUrl} type="video/webm" />
+          <source src={mp4Url} type="video/mp4" onError={() => setVideoFailed(true)} />
+        </video>
+      )}
+    </div>
+  );
+};
+
 interface BaseCosmeticProps {
   itemId: string;
   size?: number;
@@ -327,6 +506,7 @@ const VIDEO_LOOP_AVATAR_IDS = new Set([
   'eclipse-wyrm',
   'pfp_eclipse_wyrm',
   'pfp_pixel_pop_arcade',
+  'pfp_topper_burst',
   'pfp_phoenix_ascendant',
   'pfp_ryujin_sea_dragon',
   'pfp_shadow_ninja_mask',
@@ -359,9 +539,11 @@ const AvatarPictureInner: React.FC<AvatarPictureProps> = ({
   const PfpComp =
     avatarId === 'pfp_pixel_pop_arcade'
       ? PixelPopCubeAvatar
-      : avatarId
-        ? PFP_ARTWORK_MAP[avatarId]
-        : undefined;
+      : avatarId === 'pfp_topper_burst'
+        ? TopperStarMedalAvatar
+        : avatarId
+          ? PFP_ARTWORK_MAP[avatarId]
+          : undefined;
   const isPfp = Boolean(pfpItem && pfpItem.type === 'avatar' && PfpComp);
   const { containerRef, canAnimate } = useCosmeticAnimation(avatarId || '', false, effectiveForceStatic);
 
