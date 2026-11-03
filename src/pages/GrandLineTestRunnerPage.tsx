@@ -28,7 +28,6 @@ import {
 } from '@/services/ambassadorTestService';
 import { MathText } from '@/components/ui/MathText';
 import { NotFoundPage } from '@/pages/NotFoundPage';
-import { exportDrillResultToPdf } from '@/utils/testPdfExporter';
 import { extractIdFromSlug } from '@/utils/privacy';
 import { routes } from '@/utils/routes';
 import { showApiToast } from '@/lib/api';
@@ -36,7 +35,7 @@ import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
 import { BubbleLoader } from '@/components/ui/BubbleLoader';
 
 const DEFAULT_ALREADY_ATTEMPTED_MSG =
-  'You have already taken this drill. Only one verified attempt per student is permitted for each drill.';
+  'Each Grand Line test can only be attempted once.';
 
 export function GrandLineTestRunnerPage() {
   const { testId: rawTestId } = useParams<{ testId: string }>();
@@ -48,7 +47,7 @@ export function GrandLineTestRunnerPage() {
     searchParams.get('view') === 'result' ||
     location.pathname.endsWith('/result');
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
 
   const [test, setTest] = useState<AmbassadorCustomTest | null>(null);
   const [otherTests, setOtherTests] = useState<AmbassadorTestDoc[]>([]);
@@ -162,6 +161,10 @@ export function GrandLineTestRunnerPage() {
       setLoading(false);
       return;
     }
+    if (authLoading) {
+      setLoading(true);
+      return;
+    }
     let active = true;
     // Reset ALL test states so switching from Test A to Test B never retains stale answers/results
     setLoading(true);
@@ -229,9 +232,9 @@ export function GrandLineTestRunnerPage() {
       })
       .catch((err: any) => {
         if (!active) return;
-        if (err?.status === 409 || err?.code === 'ALREADY_ATTEMPTED') {
+        if (err?.status === 409 || err?.code === 'ALREADY_ATTEMPTED' || err?.data?.state === 'already_attempted') {
           setAlreadyAttemptedInfo({
-            message: err?.rawMessage || err?.data?.message || DEFAULT_ALREADY_ATTEMPTED_MSG,
+            message: DEFAULT_ALREADY_ATTEMPTED_MSG,
             attemptId: err?.attemptId || err?.data?.attemptId,
             attempt: err?.attempt || err?.data?.attempt,
           });
@@ -248,7 +251,7 @@ export function GrandLineTestRunnerPage() {
     return () => {
       active = false;
     };
-  }, [testId, isResultMode, resolveStudentProfileName, retryCount]);
+  }, [testId, isResultMode, authLoading, user?.uid, resolveStudentProfileName, retryCount]);
 
   const handleFinish = useCallback(async () => {
     if (!test || submitted || submitting || submittingRef.current) return;
@@ -372,13 +375,13 @@ export function GrandLineTestRunnerPage() {
 
           <div className="space-y-2">
             <span className="inline-block text-[11px] font-mono uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-              Attempt Verified
+              Attempted
             </span>
             <h1 className="text-lg sm:text-xl font-bold text-[var(--text)]">
               {prevAttempt?.testTitle || 'Drill Already Completed'}
             </h1>
             <p className="text-xs sm:text-sm text-[var(--muted)] leading-relaxed">
-              {alreadyAttemptedInfo.message}
+              Each Grand Line test can only be attempted once.
             </p>
           </div>
 
@@ -414,15 +417,36 @@ export function GrandLineTestRunnerPage() {
                 />
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={handleViewMyExistingResult}
-                disabled={loadingMyResult}
-                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[var(--accent)] text-white text-xs sm:text-sm font-bold hover:opacity-95 disabled:opacity-50 inline-flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Eye size={15} />
-                <span>View my result</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleViewMyExistingResult}
+                  disabled={loadingMyResult}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[var(--accent)] text-white text-xs sm:text-sm font-bold hover:opacity-95 disabled:opacity-50 inline-flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Eye size={15} />
+                  <span>View Result</span>
+                </button>
+
+                <PdfDownloadButton
+                  variant="secondary"
+                  label="Download PDF"
+                  className="w-full sm:w-auto px-5 py-2.5 text-xs sm:text-sm font-semibold"
+                  onDownload={async (onProgress, signal) => {
+                    const { downloadDrillResultPdfByTestId } = await import(
+                      '@/utils/testPdfExporter'
+                    );
+                    await downloadDrillResultPdfByTestId(
+                      testId,
+                      prevAttempt as AmbassadorTestAttempt | undefined,
+                      resolveStudentProfileName(),
+                      onProgress,
+                      signal
+                    );
+                    showApiToast('Result PDF downloaded successfully!', 'success');
+                  }}
+                />
+              </>
             )}
 
             {otherTests.length > 0 && (
@@ -468,12 +492,18 @@ export function GrandLineTestRunnerPage() {
         <div className="max-w-3xl mx-auto space-y-6">
           {/* Score Summary Card */}
           <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-6 sm:p-8 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center mx-auto mb-4">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center mx-auto mb-3">
               <Trophy size={28} />
             </div>
-            <span className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-              {crewName} • {subject}
-            </span>
+            <div className="flex items-center justify-center gap-2 flex-wrap mb-1">
+              <span className="inline-flex items-center gap-1 text-[11px] font-mono uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                <CheckCircle2 size={12} />
+                Attempted
+              </span>
+              <span className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
+                {crewName} • {subject}
+              </span>
+            </div>
             <h1 className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-1">{testTitle}</h1>
             <p className="text-3xl sm:text-4xl font-extrabold text-[var(--accent)] mt-4 tabular-nums">
               {score} / {totalQuestions}{' '}
@@ -483,12 +513,16 @@ export function GrandLineTestRunnerPage() {
               Created by Captain {captainName} • Time taken:{' '}
               {takenMins > 0 ? `${takenMins}m ${takenSecs}s` : `${takenSecs}s`}
             </p>
+            <p className="text-[11px] text-[var(--muted)] mt-1">
+              Each Grand Line test can only be attempted once.
+            </p>
 
             <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
               <PdfDownloadButton
-                label="Download Verified Report"
+                label="Download PDF"
                 onDownload={async (onProgress, signal) => {
                   if (!scoreResult) return;
+                  const { exportDrillResultToPdf } = await import('@/utils/testPdfExporter');
                   await exportDrillResultToPdf({
                     testId: testId || test?.id,
                     testTitle: scoreResult.testTitle,

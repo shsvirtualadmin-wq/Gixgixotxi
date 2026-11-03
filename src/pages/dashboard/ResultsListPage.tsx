@@ -11,7 +11,6 @@ import { BookOpen, CheckCircle, Clock, ArrowRight, RefreshCw, BarChart2, Trophy 
 import { useNavigate } from 'react-router-dom';
 import type { AttemptDoc } from '@/types/index';
 import { getMyTestAttempts, type AmbassadorTestAttempt } from '@/services/ambassadorTestService';
-import { downloadDrillResultPdfByTestId } from '@/utils/testPdfExporter';
 import { showApiToast } from '@/lib/api';
 import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
 
@@ -324,6 +323,9 @@ export function ResultsListPage() {
                         className="text-xs py-1.5 px-3 h-8 font-semibold"
                         onDownload={async (onProgress, signal) => {
                           if (!glAtt.testId) return;
+                          const { downloadDrillResultPdfByTestId } = await import(
+                            '@/utils/testPdfExporter'
+                          );
                           await downloadDrillResultPdfByTestId(
                             glAtt.testId,
                             glAtt,

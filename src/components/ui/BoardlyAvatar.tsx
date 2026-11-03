@@ -1,6 +1,27 @@
-import React, { useState } from 'react';
-import { AvatarPicture, AvatarFrame } from '@/components/koban/CosmeticRenderers';
-import { getCosmeticById } from '@/data/cosmeticsCatalog';
+import React, { useState, lazy, Suspense } from 'react';
+
+const LazyAvatarPicture = lazy(() =>
+  import('@/components/koban/CosmeticRenderers').then((m) => ({ default: m.AvatarPicture }))
+);
+const LazyAvatarFrame = lazy(() =>
+  import('@/components/koban/CosmeticRenderers').then((m) => ({ default: m.AvatarFrame }))
+);
+
+function isLikelyCosmeticId(val?: string | null): val is string {
+  if (!val) return false;
+  const trimmed = val.trim();
+  if (!trimmed || trimmed === 'none') return false;
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('/') ||
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('blob:')
+  ) {
+    return false;
+  }
+  return true;
+}
 
 export interface BoardlyAvatarProps {
   equippedAvatar?: string | null;
@@ -35,8 +56,6 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
   name = 'Student',
   size = 36,
   className = '',
-  avatarKey,
-  avatarVariant,
   forceStatic = false,
   isSuperAdmin = false,
   priority,
@@ -45,21 +64,25 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
 
   // 1. Check for Boardly equipped avatar (e.g. pfp_, eclipse-wyrm, or catalog cosmetic)
   const rawUrl = avatarUrl || photoURL;
-  const resolvedCosmeticAvatar =
-    equippedAvatar &&
-    equippedAvatar !== 'none' &&
-    equippedAvatar !== '' &&
-    (equippedAvatar.startsWith('pfp_') || equippedAvatar === 'eclipse-wyrm' || getCosmeticById(equippedAvatar))
-      ? equippedAvatar
-      : rawUrl &&
-          (rawUrl.startsWith('pfp_') || rawUrl === 'eclipse-wyrm' || getCosmeticById(rawUrl))
-        ? rawUrl
-        : null;
+  const resolvedCosmeticAvatar = isLikelyCosmeticId(equippedAvatar)
+    ? equippedAvatar.trim()
+    : isLikelyCosmeticId(rawUrl)
+      ? rawUrl.trim()
+      : null;
   const hasEquipped = Boolean(resolvedCosmeticAvatar);
 
   const cleanAvatarUrl =
     !hasEquipped && !imageError && rawUrl && rawUrl.trim() !== '' ? rawUrl.trim() : null;
   const initial = (name && name.trim().length > 0 ? name.trim().charAt(0) : 'S').toUpperCase();
+
+  const initialFallback = (
+    <div
+      className="w-full h-full rounded-full bg-surface-muted border border-border flex items-center justify-center font-bold text-primary select-none font-sans"
+      style={{ fontSize: Math.max(10, Math.floor(size * 0.42)) }}
+    >
+      {initial}
+    </div>
+  );
 
   // Avatar inner content based on priority
   let innerAvatar: React.ReactNode;
@@ -67,13 +90,15 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
   if (hasEquipped && resolvedCosmeticAvatar) {
     // Priority 1: Boardly chosen cosmetic avatar
     innerAvatar = (
-      <AvatarPicture
-        avatarId={resolvedCosmeticAvatar}
-        size={size}
-        forceStatic={forceStatic}
-        priority={priority ?? (size >= 56 ? 10 : 1)}
-        className="w-full h-full object-cover rounded-full"
-      />
+      <Suspense fallback={initialFallback}>
+        <LazyAvatarPicture
+          avatarId={resolvedCosmeticAvatar}
+          size={size}
+          forceStatic={forceStatic}
+          priority={priority ?? (size >= 56 ? 10 : 1)}
+          className="w-full h-full object-cover rounded-full"
+        />
+      </Suspense>
     );
   } else if (cleanAvatarUrl) {
     // Priority 2: Custom chosen avatar image with safe error fallback
@@ -108,32 +133,33 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
     );
   } else {
     // Priority 4: User's initials on a neutral circle
-    innerAvatar = (
-      <div
-        className="w-full h-full rounded-full bg-surface-muted border border-border flex items-center justify-center font-bold text-primary select-none font-sans"
-        style={{ fontSize: Math.max(10, Math.floor(size * 0.42)) }}
-      >
-        {initial}
-      </div>
-    );
+    innerAvatar = initialFallback;
   }
 
   // If frame is equipped, calculate outer frame size and wrap
-  const hasFrame = Boolean(frame && frame !== 'none' && frame !== '' && getCosmeticById(frame));
+  const hasFrame = isLikelyCosmeticId(frame);
 
-  if (hasFrame) {
+  if (hasFrame && frame) {
     return (
       <div
         className={`inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`}
         style={{ width: size, height: size }}
       >
-        <AvatarFrame itemId={frame!} size={size} forceStatic={forceStatic}>
-          <div
-            className="w-full h-full rounded-full overflow-hidden flex items-center justify-center"
-          >
-            {innerAvatar}
-          </div>
-        </AvatarFrame>
+        <Suspense
+          fallback={
+            <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">
+              {innerAvatar}
+            </div>
+          }
+        >
+          <LazyAvatarFrame itemId={frame} size={size} forceStatic={forceStatic}>
+            <div
+              className="w-full h-full rounded-full overflow-hidden flex items-center justify-center"
+            >
+              {innerAvatar}
+            </div>
+          </LazyAvatarFrame>
+        </Suspense>
       </div>
     );
   }

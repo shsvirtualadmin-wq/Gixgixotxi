@@ -1,4 +1,5 @@
 import { api } from '../lib/api';
+import { auth } from '../lib/firebase';
 
 export interface AmbassadorTestQuestion {
   id: string;
@@ -362,6 +363,39 @@ function formatQuestionPayload(q: AmbassadorTestQuestion, defaultTopic = 'Genera
   };
 }
 
+const CACHE_TTL_MS = 30_000;
+const responseCache = new Map<string, { expiresAt: number; data: any }>();
+const inFlightRequests = new Map<string, Promise<any>>();
+
+export function invalidateAmbassadorTestCache(): void {
+  responseCache.clear();
+  inFlightRequests.clear();
+}
+
+function cachedFetch<T>(key: string, fetcher: () => Promise<T>, ttlMs = CACHE_TTL_MS): Promise<T> {
+  const now = Date.now();
+  const cached = responseCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return Promise.resolve(cached.data as T);
+  }
+  const existing = inFlightRequests.get(key);
+  if (existing) {
+    return existing as Promise<T>;
+  }
+  const p = fetcher()
+    .then((res) => {
+      responseCache.set(key, { expiresAt: Date.now() + ttlMs, data: res });
+      inFlightRequests.delete(key);
+      return res;
+    })
+    .catch((err) => {
+      inFlightRequests.delete(key);
+      throw err;
+    });
+  inFlightRequests.set(key, p);
+  return p;
+}
+
 export async function createAmbassadorTest(params: {
   title: string;
   description?: string;
@@ -398,6 +432,7 @@ export async function createAmbassadorTest(params: {
     { requireAuth: true }
   );
 
+  invalidateAmbassadorTestCache();
   return res.id;
 }
 
@@ -433,13 +468,14 @@ export async function updateAmbassadorTest(
     },
     { requireAuth: true }
   );
+  invalidateAmbassadorTestCache();
 }
 
 export async function togglePublishAmbassadorTest(
   testId: string,
   options?: { status?: 'published' | 'unpublished'; visibility?: 'public' | 'private' }
 ): Promise<{ status: string; visibility: string }> {
-  return api.post(
+  const res = await api.post<{ status: string; visibility: string }>(
     `/api/tests/${encodeURIComponent(testId)}/publish`,
     {
       status: options?.status || 'published',
@@ -447,6 +483,8 @@ export async function togglePublishAmbassadorTest(
     },
     { requireAuth: true }
   );
+  invalidateAmbassadorTestCache();
+  return res;
 }
 
 export async function bulkInsertTestQuestions(
@@ -454,7 +492,7 @@ export async function bulkInsertTestQuestions(
   questions: AmbassadorTestQuestion[],
   replace = true
 ): Promise<{ inserted: number; questionCount: number }> {
-  return api.post(
+  const res = await api.post<{ inserted: number; questionCount: number }>(
     `/api/tests/${encodeURIComponent(testId)}/questions`,
     {
       questions: questions.slice(0, 200).map((q) => formatQuestionPayload(q, 'General')),
@@ -462,6 +500,8 @@ export async function bulkInsertTestQuestions(
     },
     { requireAuth: true }
   );
+  invalidateAmbassadorTestCache();
+  return res;
 }
 
 export async function getTestsByCaptain(captainUid?: string): Promise<AmbassadorCustomTest[]> {
@@ -474,34 +514,43 @@ export async function getTestsByCaptain(captainUid?: string): Promise<Ambassador
 }
 
 export async function getAllPublicAmbassadorTests(subject?: string): Promise<AmbassadorCustomTest[]> {
-  const query = subject && subject !== 'All' ? `?subject=${encodeURIComponent(subject)}` : '';
-  const data = await api.get<{ tests: any[] }>(`/api/tests/public${query}`, {
-    silentErrorToast: true,
+  const normSubj = subject && subject !== 'All' ? subject : 'All';
+  const cacheKey = `public_tests:${normSubj}`;
+  return cachedFetch(cacheKey, async () => {
+    const query = normSubj !== 'All' ? `?subject=${encodeURIComponent(normSubj)}` : '';
+    const data = await api.get<{ tests: any[] }>(`/api/tests/public${query}`, {
+      silentErrorToast: true,
+    });
+    return (data.tests || []).map(normalizeTestRow);
   });
-  return (data.tests || []).map(normalizeTestRow);
 }
 
 export async function getAmbassadorTestById(
   testId: string,
   includeAnswers = false,
   options?: { view?: 'info'; silentErrorToast?: boolean }
-): Promise<AmbassadorCustomTest | null> {
+): Promise<(AmbassadorCustomTest & { myAttempt?: AmbassadorTestAttempt | null }) | null> {
   try {
     const params = new URLSearchParams();
     if (includeAnswers) params.set('includeAnswers', '1');
     if (options?.view) params.set('view', options.view);
     const qs = params.toString();
     const query = qs ? `?${qs}` : '';
-    const isInfoOnly = options?.view === 'info';
-    const data = await api.get<{ test: any }>(
+    const data = await api.get<{ test: any; myAttempt?: any }>(
       `/api/tests/${encodeURIComponent(testId)}${query}`,
       {
-        requireAuth: !isInfoOnly,
+        requireAuth: false,
         silentErrorToast: options?.silentErrorToast ?? true,
       }
     );
     if (!data?.test) return null;
-    return normalizeTestRow(data.test);
+    const normalized = normalizeTestRow(data.test) as AmbassadorCustomTest & {
+      myAttempt?: AmbassadorTestAttempt | null;
+    };
+    if (data.myAttempt) {
+      normalized.myAttempt = normalizeAttemptRow(data.myAttempt);
+    }
+    return normalized;
   } catch (err: any) {
     if (err?.status === 404) return null;
     throw err;
@@ -515,7 +564,7 @@ export async function getMyTestAttemptForTest(testId: string): Promise<{
   const data = await api.get<{ attempt: any; test?: any }>(
     `/api/tests/${encodeURIComponent(testId)}/my-attempt`,
     {
-      requireAuth: true,
+      requireAuth: false,
       silentErrorToast: true,
     }
   );
@@ -527,6 +576,7 @@ export async function getMyTestAttemptForTest(testId: string): Promise<{
 
 export async function deleteAmbassadorTest(testId: string): Promise<void> {
   await api.delete(`/api/tests/${encodeURIComponent(testId)}`, { requireAuth: true });
+  invalidateAmbassadorTestCache();
 }
 
 /**
@@ -540,17 +590,23 @@ export async function submitAmbassadorTestAttempt(params: {
   userName?: string;
   userAvatar?: string | null;
 }): Promise<AmbassadorTestAttempt> {
-  const data = await api.post<{ attempt: any }>(
-    `/api/tests/${encodeURIComponent(params.testId)}/attempts`,
-    {
-      answers: params.answers,
-      timeTakenSeconds: params.timeTakenSeconds,
-      userName: params.userName,
-      userAvatar: params.userAvatar,
-    },
-    { requireAuth: true, silentErrorToast: true }
-  );
-  return normalizeAttemptRow(data.attempt);
+  try {
+    const data = await api.post<{ attempt: any }>(
+      `/api/tests/${encodeURIComponent(params.testId)}/attempts`,
+      {
+        answers: params.answers,
+        timeTakenSeconds: params.timeTakenSeconds,
+        userName: params.userName,
+        userAvatar: params.userAvatar,
+      },
+      { requireAuth: false, silentErrorToast: true }
+    );
+    invalidateAmbassadorTestCache();
+    return normalizeAttemptRow(data.attempt);
+  } catch (err) {
+    invalidateAmbassadorTestCache();
+    throw err;
+  }
 }
 
 /**
@@ -578,11 +634,15 @@ export async function recordAmbassadorTestAttempt(params: {
 }
 
 export async function getMyTestAttempts(): Promise<AmbassadorTestAttempt[]> {
-  const data = await api.get<{ attempts: any[] }>('/api/attempts/mine', {
-    requireAuth: true,
-    silentErrorToast: true,
+  const uid = auth.currentUser?.uid || 'anon';
+  const cacheKey = `my_attempts:${uid}`;
+  return cachedFetch(cacheKey, async () => {
+    const data = await api.get<{ attempts: any[] }>('/api/attempts/mine', {
+      requireAuth: false,
+      silentErrorToast: true,
+    });
+    return (data.attempts || []).map(normalizeAttemptRow);
   });
-  return (data.attempts || []).map(normalizeAttemptRow);
 }
 
 export async function getTestResultsForCaptain(testId: string): Promise<AmbassadorTestAttempt[]> {
@@ -594,46 +654,52 @@ export async function getTestResultsForCaptain(testId: string): Promise<Ambassad
 }
 
 export async function getTestLeaderboard(testId: string): Promise<AmbassadorTestAttempt[]> {
-  const data = await api.get<{ results: any[] }>(
-    `/api/tests/${encodeURIComponent(testId)}/leaderboard`,
-    { silentErrorToast: true }
-  );
-  return (data.results || []).map(normalizeAttemptRow);
+  const cacheKey = `test_lb:${testId}`;
+  return cachedFetch(cacheKey, async () => {
+    const data = await api.get<{ results: any[] }>(
+      `/api/tests/${encodeURIComponent(testId)}/leaderboard`,
+      { silentErrorToast: true }
+    );
+    return (data.results || []).map(normalizeAttemptRow);
+  });
 }
 
 export async function getGrandLineLeaderboard(maxCount = 50): Promise<GrandLineLeaderboardEntry[]> {
-  try {
-    const data = await api.get<{ leaderboard?: any[]; results?: any[] }>(
-      `/api/leaderboard/grand-line?limit=${maxCount}`,
-      { silentErrorToast: true }
-    );
-    const list = data.leaderboard || data.results || [];
-    return list.map((d: any, idx: number) => {
-      const uid = String(d.uid || d.userUid || '');
-      const displayName = String(
-        d.displayName || d.userName || d.studentName || d.name || 'Student'
-      ).trim() || 'Student';
-      return {
-        uid,
-        userUid: uid,
-        displayName,
-        userName: displayName,
-        studentName: displayName,
-        name: displayName,
-        userAvatar: d.userAvatar ?? d.user_avatar ?? null,
-        testsCompleted: Number(d.testsCompleted || 1),
-        totalScore: Number(d.totalScore ?? d.score ?? 0),
-        totalQuestions: Number(d.totalQuestions ?? 0),
-        bestPercentage: Number(d.bestPercentage ?? d.percentage ?? 0),
-        timeTakenSeconds: Number(d.timeTakenSeconds ?? d.time_taken_seconds ?? 0),
-        rank: d.rank !== undefined ? Number(d.rank) : idx + 1,
-        lastTestTitle: String(d.lastTestTitle || d.testTitle || 'Grand Line Test'),
-        updatedAt: toTimestampCompat(d.updatedAt || d.createdAt),
-      };
-    });
-  } catch {
-    return [];
-  }
+  const cacheKey = `gl_lb:${maxCount}`;
+  return cachedFetch(cacheKey, async () => {
+    try {
+      const data = await api.get<{ leaderboard?: any[]; results?: any[] }>(
+        `/api/leaderboard/grand-line?limit=${maxCount}`,
+        { silentErrorToast: true }
+      );
+      const list = data.leaderboard || data.results || [];
+      return list.map((d: any, idx: number) => {
+        const uid = String(d.uid || d.userUid || '');
+        const displayName = String(
+          d.displayName || d.userName || d.studentName || d.name || 'Student'
+        ).trim() || 'Student';
+        return {
+          uid,
+          userUid: uid,
+          displayName,
+          userName: displayName,
+          studentName: displayName,
+          name: displayName,
+          userAvatar: d.userAvatar ?? d.user_avatar ?? null,
+          testsCompleted: Number(d.testsCompleted || 1),
+          totalScore: Number(d.totalScore ?? d.score ?? 0),
+          totalQuestions: Number(d.totalQuestions ?? 0),
+          bestPercentage: Number(d.bestPercentage ?? d.percentage ?? 0),
+          timeTakenSeconds: Number(d.timeTakenSeconds ?? d.time_taken_seconds ?? 0),
+          rank: d.rank !== undefined ? Number(d.rank) : idx + 1,
+          lastTestTitle: String(d.lastTestTitle || d.testTitle || 'Grand Line Test'),
+          updatedAt: toTimestampCompat(d.updatedAt || d.createdAt),
+        };
+      });
+    } catch {
+      return [];
+    }
+  });
 }
 
 export type AmbassadorTestDoc = AmbassadorCustomTest & {

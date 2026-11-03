@@ -2424,6 +2424,14 @@
       "custom_role": null,
       "is_posting_banned": 0,
       "updated_at": 1793683067510
+    },
+    {
+      "uid": "student-nonadmin-01",
+      "email": "student.nonadmin@boardly.pk",
+      "role": "captain",
+      "custom_role": null,
+      "is_posting_banned": 0,
+      "updated_at": 1793688191377
     }
   ],
   "botAccounts": [
@@ -2716,6 +2724,13 @@
       "read_welcome": 0,
       "welcomed_at": 1793683067514,
       "read_at": null
+    },
+    {
+      "user_uid": "student-nonadmin-01",
+      "welcomed": 1,
+      "read_welcome": 0,
+      "welcomed_at": 1793688191381,
+      "read_at": null
     }
   ],
   "userReadAnnouncements": [],
@@ -2932,5 +2947,140 @@
     },
     "captainAndGrandLineUntouched": true,
     "purgedAt": "2026-10-31T10:54:04.098Z"
-  }
+  },
+  "captainTests": [
+    {
+      "id": "1553f47d-325a-47e4-ab28-fa787d6e8b56",
+      "title": "Grand Line Physics Mechanics & Waves Drill",
+      "description": "Comprehensive Grand Line assessment on kinematics, dynamics, work-energy theorem, and wave optics.",
+      "subject": "Physics",
+      "durationMinutes": 15,
+      "visibility": "public",
+      "status": "published",
+      "captainUid": "captain-demo-01",
+      "captainName": "CaptainZoro",
+      "crewId": null,
+      "crewName": "Grand Line Crew",
+      "questionCount": 3,
+      "questions": [
+        {
+          "id": "181712f6-ec46-45ad-bedd-690d61f23040",
+          "position": 0,
+          "question": "What is the SI unit of impulse in classical mechanics?",
+          "options": [
+            "Newton-second (N·s)",
+            "Joule-second (J·s)",
+            "Watt (W)",
+            "Pascal (Pa)"
+          ],
+          "correctIndex": 0,
+          "explanation": "Impulse equals force multiplied by time (J = F·Δt), so its SI unit is Newton-second (N·s), equivalent to kg·m/s.",
+          "topic": "Physics",
+          "difficulty": "medium"
+        },
+        {
+          "id": "8ce92acf-13e9-4cbf-9421-df7193edbc10",
+          "position": 1,
+          "question": "If the kinetic energy of a moving particle is quadrupled, its linear momentum changes by a factor of:",
+          "options": [
+            "4",
+            "2",
+            "1.414",
+            "8"
+          ],
+          "correctIndex": 1,
+          "explanation": "Since K = p² / (2m), p = sqrt(2mK). Quadrupling K increases momentum p by sqrt(4) = 2.",
+          "topic": "Physics",
+          "difficulty": "medium"
+        },
+        {
+          "id": "8fc3d060-6018-405d-a04a-1143d2ddd2d8",
+          "position": 2,
+          "question": "Which phenomenon conclusively demonstrates the transverse nature of light waves?",
+          "options": [
+            "Diffraction",
+            "Interference",
+            "Polarization",
+            "Refraction"
+          ],
+          "correctIndex": 2,
+          "explanation": "Only transverse waves can be polarized because their oscillations occur perpendicular to the direction of wave propagation.",
+          "topic": "Physics",
+          "difficulty": "medium"
+        }
+      ],
+      "attemptsCount": 1,
+      "avgScore": 67,
+      "createdAt": 1793720430272,
+      "updatedAt": 1793720430272
+    }
+  ],
+  "crews": [],
+  "testAttempts": [
+    {
+      "id": "f70f7f33-b38c-48cd-97cc-8b8e02aa186c",
+      "testId": "1553f47d-325a-47e4-ab28-fa787d6e8b56",
+      "testTitle": "Grand Line Physics Mechanics & Waves Drill",
+      "subject": "Physics",
+      "captainUid": "captain-demo-01",
+      "captainName": "CaptainZoro",
+      "userUid": "student-nonadmin-01",
+      "userName": "Bilal Ahmed",
+      "studentName": "Bilal Ahmed",
+      "name": "Bilal Ahmed",
+      "userAvatar": null,
+      "score": 2,
+      "totalQuestions": 3,
+      "percentage": 67,
+      "timeTakenSeconds": 142,
+      "createdAt": 1793720430280,
+      "gradedQuestions": [
+        {
+          "id": "181712f6-ec46-45ad-bedd-690d61f23040",
+          "position": 0,
+          "question": "What is the SI unit of impulse in classical mechanics?",
+          "options": [
+            "Newton-second (N·s)",
+            "Joule-second (J·s)",
+            "Watt (W)",
+            "Pascal (Pa)"
+          ],
+          "selectedIndex": 0,
+          "correctIndex": 0,
+          "isCorrect": true,
+          "explanation": "Impulse equals force multiplied by time (J = F·Δt), so its SI unit is Newton-second (N·s), equivalent to kg·m/s."
+        },
+        {
+          "id": "8ce92acf-13e9-4cbf-9421-df7193edbc10",
+          "position": 1,
+          "question": "If the kinetic energy of a moving particle is quadrupled, its linear momentum changes by a factor of:",
+          "options": [
+            "4",
+            "2",
+            "1.414",
+            "8"
+          ],
+          "selectedIndex": 1,
+          "correctIndex": 1,
+          "isCorrect": true,
+          "explanation": "Since K = p² / (2m), p = sqrt(2mK). Quadrupling K increases momentum p by sqrt(4) = 2."
+        },
+        {
+          "id": "8fc3d060-6018-405d-a04a-1143d2ddd2d8",
+          "position": 2,
+          "question": "Which phenomenon conclusively demonstrates the transverse nature of light waves?",
+          "options": [
+            "Diffraction",
+            "Interference",
+            "Polarization",
+            "Refraction"
+          ],
+          "selectedIndex": 1,
+          "correctIndex": 2,
+          "isCorrect": false,
+          "explanation": "Only transverse waves can be polarized because their oscillations occur perpendicular to the direction of wave propagation."
+        }
+      ]
+    }
+  ]
 }

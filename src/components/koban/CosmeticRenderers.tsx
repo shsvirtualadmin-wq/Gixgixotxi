@@ -173,7 +173,7 @@ const PixelPopCubeAvatar: React.FC<PfpSvgProps> = ({
           loop
           muted
           playsInline
-          preload="auto"
+          preload="metadata"
           poster={posterUrl}
           onLoadedMetadata={handleVideoReady}
           onLoadedData={handleVideoReady}
@@ -352,7 +352,7 @@ const TopperStarMedalAvatar: React.FC<PfpSvgProps> = ({
           loop
           muted
           playsInline
-          preload="auto"
+          preload="metadata"
           poster={posterUrl}
           onLoadedMetadata={handleVideoReady}
           onLoadedData={handleVideoReady}

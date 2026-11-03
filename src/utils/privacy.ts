@@ -152,8 +152,20 @@ export function buildEntitySlug(id: string, title?: string | null): string {
 export function extractIdFromSlug(idSlug?: string | null): string {
   if (!idSlug) return '';
   const trimmed = decodeURIComponent(idSlug).trim();
+  if (!trimmed) return '';
+  const uuidMatch = trimmed.match(
+    /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-|$)/i
+  );
+  if (uuidMatch) return uuidMatch[1];
+  const postGenMatch = trimmed.match(/^(post_gen_\d+)(?:-|$)/);
+  if (postGenMatch) return postGenMatch[1];
+  const postMatch = trimmed.match(/^(post_\d+_[a-zA-Z0-9]+)(?:-|$)/);
+  if (postMatch) return postMatch[1];
+  const glMatch = trimmed.match(/^(gl-[a-z0-9]+-\d+)(?:-|$)/i);
+  if (glMatch) return glMatch[1];
   const dashIndex = trimmed.indexOf('-');
   if (dashIndex === -1) return trimmed;
   return trimmed.slice(0, dashIndex);
 }
+
 

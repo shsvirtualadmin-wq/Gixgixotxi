@@ -517,8 +517,9 @@ export function loadD1Store(): D1StoreData {
         return d1Cache;
       }
       const raw = fs.readFileSync(D1_STORE_PATH, 'utf8');
-      const parsed = JSON.parse(raw) as D1StoreData;
+      const parsed = JSON.parse(raw) as D1StoreData & Record<string, any>;
       d1Cache = {
+        ...parsed,
         version: parsed.version || 1,
         migratedAt: parsed.migratedAt || new Date().toISOString(),
         r2PublicBaseUrl: parsed.r2PublicBaseUrl || R2_PUBLIC_BASE_URL,
@@ -546,7 +547,12 @@ export function loadD1Store(): D1StoreData {
         imports: Array.isArray(parsed.imports) ? parsed.imports : [],
         legacyAdminBankPurgedAt: parsed.legacyAdminBankPurgedAt,
         legacyAdminBankBackupSummary: parsed.legacyAdminBankBackupSummary,
-      };
+        captainTests: Array.isArray(parsed.captainTests) ? parsed.captainTests : [],
+        testAttempts: Array.isArray(parsed.testAttempts) ? parsed.testAttempts : [],
+        crews: Array.isArray(parsed.crews) ? parsed.crews : [],
+        crewMembers: Array.isArray(parsed.crewMembers) ? parsed.crewMembers : [],
+        crewJoinRequests: Array.isArray(parsed.crewJoinRequests) ? parsed.crewJoinRequests : [],
+      } as D1StoreData;
       if (ensureStoreDefaults(d1Cache)) {
         saveD1Store(d1Cache);
       } else {
@@ -612,6 +618,10 @@ export function buildSlug(id: string, title: string): string {
 export function extractIdFromSlugOrId(slugOrId: string): string {
   const trimmed = String(slugOrId || '').trim();
   if (!trimmed) return '';
+  const uuidMatch = trimmed.match(
+    /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-|$)/i
+  );
+  if (uuidMatch) return uuidMatch[1];
   if (trimmed.startsWith('post_gen_')) {
     const m = trimmed.match(/^(post_gen_\d+)/);
     if (m) return m[1];
@@ -620,6 +630,8 @@ export function extractIdFromSlugOrId(slugOrId: string): string {
     const m = trimmed.match(/^(post_\d+_[a-zA-Z0-9]+)/);
     if (m) return m[1];
   }
+  const glMatch = trimmed.match(/^(gl-[a-z0-9]+-\d+)(?:-|$)/i);
+  if (glMatch) return glMatch[1];
   const dashIdx = trimmed.indexOf('-');
   if (dashIdx >= 15) {
     return trimmed.slice(0, dashIdx);
@@ -6600,6 +6612,7 @@ ${allUrls
         name: resolvedName,
         gradedQuestions,
       },
+      gradedQuestions,
       test: test
         ? {
             id: test.id,
@@ -6621,8 +6634,9 @@ ${allUrls
     const store = loadD1Store() as any;
     if (!Array.isArray(store.captainTests)) store.captainTests = [];
     if (!Array.isArray(store.testAttempts)) store.testAttempts = [];
-    const testId = decodeURIComponent(String(req.params.id || ''));
-    const test = store.captainTests.find((t: any) => t.id === testId);
+    const rawId = decodeURIComponent(String(req.params.id || ''));
+    const testId = extractIdFromSlugOrId(rawId);
+    const test = store.captainTests.find((t: any) => t.id === testId || t.id === rawId);
     if (!test) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
 
     const isInfoOnly = req.query.view === 'info';
@@ -6635,12 +6649,21 @@ ${allUrls
         const isOwnerOrAdmin = test.captainUid === user.uid || ['admin', 'superadmin'].includes(roleRow.role);
         if (!isOwnerOrAdmin) return res.status(403).json({ error: 'This test is private.', code: 'FORBIDDEN' });
       }
+      const existingAttempt = user
+        ? store.testAttempts.find(
+            (a: any) =>
+              String(a.testId || a.test_id || '') === test.id &&
+              String(a.userUid || a.user_uid || '') === user.uid
+          )
+        : null;
       return res.status(200).json({
         test: {
           ...test,
           questionCount: Number(test.questionCount ?? (test.questions?.length || 0)),
           questions: [],
         },
+        alreadyAttempted: Boolean(existingAttempt),
+        myAttempt: existingAttempt || null,
       });
     }
 
@@ -6659,14 +6682,16 @@ ${allUrls
     if (!includeAnswers) {
       const existingAttempt = store.testAttempts.find(
         (a: any) =>
-          String(a.testId || a.test_id || '') === testId &&
+          String(a.testId || a.test_id || '') === test.id &&
           String(a.userUid || a.user_uid || '') === user.uid
       );
       if (existingAttempt) {
         const resolvedName = resolveLeaderboardDisplayName(existingAttempt, store);
+        const gradedQuestions = buildGradedQuestionsForAttempt(existingAttempt, test);
         return res.status(409).json({
           error: ALREADY_ATTEMPTED_MESSAGE,
           message: ALREADY_ATTEMPTED_MESSAGE,
+          state: 'already_attempted',
           code: 'ALREADY_ATTEMPTED',
           attemptId: existingAttempt.id,
           attempt: {
@@ -6684,6 +6709,7 @@ ${allUrls
             percentage: Number(existingAttempt.percentage || 0),
             timeTakenSeconds: Number(existingAttempt.timeTakenSeconds || 0),
             createdAt: existingAttempt.createdAt,
+            gradedQuestions,
           },
         });
       }
@@ -6884,9 +6910,11 @@ ${allUrls
       );
       if (existingAttempt) {
         const resolvedName = resolveLeaderboardDisplayName(existingAttempt, store);
+        const gradedQuestions = buildGradedQuestionsForAttempt(existingAttempt, test);
         return res.status(409).json({
           error: ALREADY_ATTEMPTED_MESSAGE,
           message: ALREADY_ATTEMPTED_MESSAGE,
+          state: 'already_attempted',
           code: 'ALREADY_ATTEMPTED',
           attemptId: existingAttempt.id,
           attempt: {
@@ -6894,6 +6922,7 @@ ${allUrls
             userName: resolvedName,
             studentName: resolvedName,
             name: resolvedName,
+            gradedQuestions,
           },
         });
       }

@@ -3,10 +3,7 @@ import { lazy, Suspense } from 'react';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProfileModalProvider, ProfileModalHost } from './contexts/ProfileModalContext';
 import { useReferralCapture } from './hooks/useReferral';
-import { AdminGuard } from './components/admin/AdminGuard';
-import { AdminLayout } from './components/admin/AdminLayout';
 import { PublicLayout } from './components/layout/PublicLayout';
-import { DashboardShell } from './components/dashboard/DashboardShell';
 import { DashboardErrorBoundary } from './components/dashboard/DashboardErrorBoundary';
 
 const LazyDebugPanel = lazy(() =>
@@ -67,6 +64,16 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
 import { ScrollToTop } from './components/ui/ScrollToTop';
 import { WallpaperBackground } from './components/WallpaperBackground';
 
+const AdminGuard = lazyWithRetry(() =>
+  import('./components/admin/AdminGuard').then((m) => ({ default: m.AdminGuard }))
+);
+const AdminLayout = lazyWithRetry(() =>
+  import('./components/admin/AdminLayout').then((m) => ({ default: m.AdminLayout }))
+);
+const DashboardShell = lazyWithRetry(() =>
+  import('./components/dashboard/DashboardShell').then((m) => ({ default: m.DashboardShell }))
+);
+
 // Public Marketing, Knowledge & Community routes
 const LandingPage = lazyWithRetry(() => import('./pages/LandingPage'));
 const AboutPage = lazyWithRetry(() => import('./pages/AboutPage'));
@@ -111,8 +118,10 @@ const ForgotPasswordPage = lazyWithRetry(() => import('./pages/ForgotPasswordPag
 const VerifyEmailPage = lazyWithRetry(() => import('./pages/VerifyEmailPage'));
 const OnboardingPage = lazyWithRetry(() => import('./pages/OnboardingPage'));
 
-// Dashboard (Student Portal) — DashboardShell and OverviewPage (Cockpit home) are NON-LAZY to prevent unmounting or sequential chunk waterfalls on reload
-import { OverviewPage } from './pages/dashboard/OverviewPage';
+// Dashboard (Student Portal) — route-level code-split so public & non-overview routes don't pull OverviewPage / Three.js
+const OverviewPage = lazyWithRetry(() =>
+  import('./pages/dashboard/OverviewPage').then((m) => ({ default: m.OverviewPage }))
+);
 const PracticePage = lazyWithRetry(() =>
   import('./pages/dashboard/PracticePage').then(m => ({ default: m.PracticePage }))
 );
@@ -256,8 +265,16 @@ function AppInner() {
         <Route path="/results/:attemptId" element={<TestResultPage />} />
         <Route path="/grand-line/test/:testId/run" element={<GrandLineTestRunnerPage />} />
         <Route path="/grand-line/test/:testId/result" element={<GrandLineTestRunnerPage />} />
+        <Route path="/grand-line/test/:testId/redo" element={<GrandLineTestRunnerPage />} />
+        <Route path="/grand-line/test/:testId/retake" element={<GrandLineTestRunnerPage />} />
         <Route path="/grand-line/tests/:testId/run" element={<GrandLineTestRunnerPage />} />
         <Route path="/grand-line/tests/:testId/result" element={<GrandLineTestRunnerPage />} />
+        <Route path="/grand-line/tests/:testId/redo" element={<GrandLineTestRunnerPage />} />
+        <Route path="/grand-line/tests/:testId/retake" element={<GrandLineTestRunnerPage />} />
+        <Route path="/tests/:testId/run" element={<GrandLineTestRunnerPage />} />
+        <Route path="/tests/:testId/result" element={<GrandLineTestRunnerPage />} />
+        <Route path="/tests/:testId/redo" element={<GrandLineTestRunnerPage />} />
+        <Route path="/tests/:testId/retake" element={<GrandLineTestRunnerPage />} />
 
         {/* Super-Admin Portal — strictly guarded for admin, no public Navbar/Footer */}
         <Route

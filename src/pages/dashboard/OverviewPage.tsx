@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import { useState, useEffect, useMemo, useCallback, memo, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { WeakChapters } from '@/components/dashboard/WeakChapters';
@@ -37,7 +37,10 @@ import {
 } from '@/constants/d1Universities';
 import { MathText } from '@/components/ui/MathText';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
-import { DragonCompanion } from '@/components/dashboard/DragonCompanion';
+
+const LazyDragonCompanion = lazy(() =>
+  import('@/components/dashboard/DragonCompanion').then((m) => ({ default: m.DragonCompanion }))
+);
 
 function getUniversityInitials(name: string): string {
   const cleaned = (name || '').replace(/\(.*?\)/g, '').trim();
@@ -410,11 +413,13 @@ export function OverviewPage() {
       </section>
 
       {/* 2b. Dedicated Dragon Stage (Between Greeting & Choose Your University; collapses with zero gap when hidden/off) */}
-      <DragonCompanion
-        weakChapters={d1Stats.weakChapters}
-        currentMcq={testStage === 'running' ? testMcqs[currentIndex] ?? null : null}
-        isTestModalOpen={Boolean(activeUni)}
-      />
+      <Suspense fallback={null}>
+        <LazyDragonCompanion
+          weakChapters={d1Stats.weakChapters}
+          currentMcq={testStage === 'running' ? testMcqs[currentIndex] ?? null : null}
+          isTestModalOpen={Boolean(activeUni)}
+        />
+      </Suspense>
 
       {/* 3. "Choose your university" glass bubble grid — the ONLY test entry */}
       <section

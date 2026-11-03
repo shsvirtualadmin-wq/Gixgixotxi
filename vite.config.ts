@@ -2,12 +2,143 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs';
+import zlib from 'zlib';
 import { defineConfig } from 'vite';
 
 function aiTutorPlugin() {
   return {
     name: 'ai-tutor-api',
     configureServer(server: any) {
+      // ─── HTTP GZIP COMPRESSION FOR TEXT / JS / CSS / JSON / SVG ───────────
+      server.middlewares.use((req: any, res: any, next: () => void) => {
+        const acceptEncoding = String(req.headers?.['accept-encoding'] || '');
+        const rawUrl = String(req.url || '').split('?')[0].toLowerCase();
+        if (
+          !acceptEncoding.includes('gzip') ||
+          (req.method !== 'GET' && req.method !== 'POST') ||
+          rawUrl.startsWith('/api/commons/') ||
+          /\.(png|jpe?g|webp|gif|mp4|webm|pdf|woff2?|ttf|eot|ico)$/i.test(rawUrl)
+        ) {
+          return next();
+        }
+
+        const origWrite = res.write.bind(res);
+        const origEnd = res.end.bind(res);
+        const origWriteHead = res.writeHead.bind(res);
+
+        let streamingPassthrough = false;
+        const chunks: Buffer[] = [];
+
+        const isCompressibleType = (ct: string): boolean => {
+          const lower = ct.toLowerCase();
+          return (
+            lower.includes('javascript') ||
+            lower.includes('ecmascript') ||
+            lower.includes('text/css') ||
+            lower.includes('text/html') ||
+            lower.includes('application/json') ||
+            lower.includes('image/svg+xml') ||
+            lower.includes('text/plain') ||
+            lower.includes('text/xml') ||
+            lower.includes('application/xml')
+          );
+        };
+
+        res.writeHead = function (statusCode: number, statusMessage?: any, headersArg?: any) {
+          res.statusCode = statusCode;
+          let headersObj = headersArg;
+          if (typeof statusMessage === 'string') {
+            res.statusMessage = statusMessage;
+          } else if (statusMessage && typeof statusMessage === 'object') {
+            headersObj = statusMessage;
+          }
+          if (headersObj && typeof headersObj === 'object' && !Array.isArray(headersObj)) {
+            for (const [k, v] of Object.entries(headersObj)) {
+              if (v !== undefined) {
+                try {
+                  res.setHeader(k, v as any);
+                } catch {}
+              }
+            }
+          }
+          return res;
+        };
+
+        res.write = function (chunk: any, encoding?: any, cb?: any) {
+          if (streamingPassthrough) {
+            return origWrite(chunk, encoding, cb);
+          }
+          const ct = String(res.getHeader?.('Content-Type') || res.getHeader?.('content-type') || '');
+          if (ct && !isCompressibleType(ct)) {
+            streamingPassthrough = true;
+            res.writeHead = origWriteHead;
+            return origWrite(chunk, encoding, cb);
+          }
+          if (chunk) {
+            chunks.push(
+              Buffer.isBuffer(chunk)
+                ? chunk
+                : Buffer.from(String(chunk), typeof encoding === 'string' ? (encoding as BufferEncoding) : 'utf-8')
+            );
+          }
+          if (typeof encoding === 'function') encoding();
+          else if (typeof cb === 'function') cb();
+          return true;
+        };
+
+        res.end = function (chunk?: any, encoding?: any, cb?: any) {
+          res.writeHead = origWriteHead;
+          const doneCb = typeof chunk === 'function' ? chunk : typeof encoding === 'function' ? encoding : cb;
+          if (streamingPassthrough) {
+            return origEnd(chunk, encoding, cb);
+          }
+
+          if (res.statusCode === 204 || res.statusCode === 304 || req.method === 'HEAD') {
+            try {
+              res.removeHeader('Content-Length');
+              res.removeHeader('content-length');
+              res.removeHeader('Content-Encoding');
+              res.removeHeader('content-encoding');
+            } catch {}
+            return origEnd(doneCb);
+          }
+
+          if (chunk && typeof chunk !== 'function') {
+            chunks.push(
+              Buffer.isBuffer(chunk)
+                ? chunk
+                : Buffer.from(String(chunk), typeof encoding === 'string' ? (encoding as BufferEncoding) : 'utf-8')
+            );
+          }
+
+          const fullBuf = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks);
+          const alreadyEncoded = Boolean(
+            res.getHeader?.('Content-Encoding') || res.getHeader?.('content-encoding')
+          );
+          const ct = String(res.getHeader?.('Content-Type') || res.getHeader?.('content-type') || '');
+
+          if (!alreadyEncoded && isCompressibleType(ct) && fullBuf.length >= 512) {
+            try {
+              const compressed = zlib.gzipSync(fullBuf, { level: 6 });
+              res.setHeader('Content-Encoding', 'gzip');
+              res.setHeader('Vary', 'Accept-Encoding');
+              res.setHeader('Content-Length', compressed.length);
+              return origEnd(compressed, doneCb);
+            } catch {
+              // Fallback to uncompressed
+            }
+          }
+
+          if (fullBuf.length > 0) {
+            res.setHeader('Content-Length', fullBuf.length);
+            return origEnd(fullBuf, doneCb);
+          }
+          return origEnd(doneCb);
+        };
+
+        next();
+      });
+
       // ─── TEST GENERATION API ──────────────────────────────────────────────
       server.middlewares.use('/api/tests/generate', async (req: any, res: any) => {
         if (req.method === 'OPTIONS') {
@@ -1260,6 +1391,8 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
+            if (id.includes('three')) return 'vendor-three';
+            if (id.includes('jspdf')) return 'vendor-pdf';
             if (id.includes('katex')) return 'vendor-math';
             if (id.includes('lucide-react')) return 'vendor-icons';
             if (id.includes('framer-motion')) return 'vendor-motion';

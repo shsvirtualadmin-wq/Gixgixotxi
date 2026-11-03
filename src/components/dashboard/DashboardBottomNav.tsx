@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, memo } from 'react';
+import { useState, useEffect, useMemo, memo, lazy, Suspense } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -14,8 +14,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { PillNav, type PillNavItem } from '@/components/ui/PillNav';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
-import { HamburgerMenuSheet } from './HamburgerMenuSheet';
 import { getHomeUrl, isUserAuthenticated } from '@/utils/homeUrl';
+
+const LazyHamburgerMenuSheet = lazy(() =>
+  import('./HamburgerMenuSheet').then((m) => ({ default: m.HamburgerMenuSheet }))
+);
 
 function DashboardBottomNavComponent() {
   const { user, profile } = useUserProfile();
@@ -24,6 +27,7 @@ function DashboardBottomNavComponent() {
   const unreadCount = useUnreadNotificationsCount();
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [hasOpenedMenu, setHasOpenedMenu] = useState(false);
 
   const isAuthenticated = isUserAuthenticated(user, profileLoading);
   const homeUrl = getHomeUrl(user, profileLoading);
@@ -102,7 +106,10 @@ function DashboardBottomNavComponent() {
         id: 'menu',
         label: 'Menu',
         icon: <Menu size={18} />,
-        onClick: () => setIsMenuOpen(true),
+        onClick: () => {
+          setHasOpenedMenu(true);
+          setIsMenuOpen(true);
+        },
       },
     ],
     [isAuthenticated, homeUrl, commonsLink, unreadCount, crewLink, isApprovedCaptain, requireAuth]
@@ -132,10 +139,14 @@ function DashboardBottomNavComponent() {
       </div>
 
       {/* ─── REDESIGNED BOARDLY HAMBURGER MENU BOTTOM SHEET ───────────────── */}
-      <HamburgerMenuSheet
-        isOpen={isMenuOpen}
-        onClose={() => setIsMenuOpen(false)}
-      />
+      {(hasOpenedMenu || isMenuOpen) && (
+        <Suspense fallback={null}>
+          <LazyHamburgerMenuSheet
+            isOpen={isMenuOpen}
+            onClose={() => setIsMenuOpen(false)}
+          />
+        </Suspense>
+      )}
     </>
   );
 }

@@ -30,7 +30,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { sanitizeStudentDisplayName, extractIdFromSlug, buildEntitySlug } from '@/utils/privacy';
 import { routes } from '@/utils/routes';
-import { downloadDrillResultPdfByTestId } from '@/utils/testPdfExporter';
 import { showApiToast } from '@/lib/api';
 import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
 import { BubbleLoader } from '@/components/ui/BubbleLoader';
@@ -76,12 +75,10 @@ export const GrandLineTestInfoPage: React.FC = () => {
         if (!mounted) return;
         setTest(docData);
         setLeaderboard(lb);
-        if (user && Array.isArray(attempts)) {
-          const found = attempts.find((a) => a.testId === testId) || null;
-          setMyAttempt(found);
-        } else {
-          setMyAttempt(null);
-        }
+        const fromInfo = docData?.myAttempt || null;
+        const fromList =
+          Array.isArray(attempts) ? attempts.find((a) => a.testId === testId) || null : null;
+        setMyAttempt(fromInfo || fromList);
       })
       .catch((err: any) => {
         if (!mounted) return;
@@ -272,17 +269,20 @@ export const GrandLineTestInfoPage: React.FC = () => {
               <>
                 <button
                   type="button"
-                  onClick={() => navigate(`/grand-line/test/${test.id}/run?mode=result`)}
+                  onClick={() => navigate(routes.grandLineTestRun(test.id, 'result'))}
                   className="btn-primary px-6 py-3 text-xs sm:text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
                 >
                   <CheckCircle2 size={15} />
-                  <span>View my result</span>
+                  <span>View Result</span>
                 </button>
                 <PdfDownloadButton
-                  label="Download PDF Report"
+                  label="Download PDF"
                   variant="secondary"
                   className="px-5 py-3 text-xs sm:text-sm font-semibold"
                   onDownload={async (onProgress, signal) => {
+                    const { downloadDrillResultPdfByTestId } = await import(
+                      '@/utils/testPdfExporter'
+                    );
                     await downloadDrillResultPdfByTestId(
                       test.id,
                       myAttempt,
@@ -312,6 +312,11 @@ export const GrandLineTestInfoPage: React.FC = () => {
               Global Standings
             </Link>
           </div>
+          {myAttempt && (
+            <p className="text-xs text-white/60 mt-3">
+              Each Grand Line test can only be attempted once.
+            </p>
+          )}
         </section>
 
         {/* Top Scorers Panel */}

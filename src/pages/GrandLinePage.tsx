@@ -25,7 +25,6 @@ import {
   type AmbassadorTestDoc,
   type PublicLeaderboardEntry,
 } from '@/services/ambassadorTestService';
-import { downloadDrillResultPdfByTestId } from '@/utils/testPdfExporter';
 import { showApiToast } from '@/lib/api';
 import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
 import { useAuthGate } from '@/contexts/AuthGateContext';
@@ -384,13 +383,16 @@ export function GrandLinePage() {
 
                           <PdfDownloadButton
                             variant="outline"
-                            label="PDF"
+                            label="Download PDF"
                             className="text-xs py-1 px-2.5 h-8 font-semibold"
                             onDownload={async (onProgress, signal) => {
+                              const { downloadDrillResultPdfByTestId } = await import(
+                                '@/utils/testPdfExporter'
+                              );
                               await downloadDrillResultPdfByTestId(
                                 test.id,
                                 myAttempt,
-                                user?.displayName || 'Student',
+                                profile?.displayName || user?.displayName || 'Student',
                                 onProgress,
                                 signal
                               );

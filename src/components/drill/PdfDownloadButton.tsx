@@ -24,9 +24,12 @@ export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const inFlightRef = useRef(false);
 
-  const startDownloadFlow = async () => {
-    if (disabled || isExporting) return;
+  const startDownloadFlow = async (e?: React.MouseEvent<HTMLButtonElement>) => {
+    e?.stopPropagation();
+    if (disabled || isExporting || inFlightRef.current) return;
+    inFlightRef.current = true;
     setIsExporting(true);
     setErrorMsg(null);
     const controller = new AbortController();
@@ -38,6 +41,7 @@ export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
       console.error('[PdfDownloadButton] Error exporting PDF:', err);
       setErrorMsg('Download failed');
     } finally {
+      inFlightRef.current = false;
       setIsExporting(false);
       abortRef.current = null;
     }

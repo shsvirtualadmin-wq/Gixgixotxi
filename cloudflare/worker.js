@@ -833,6 +833,7 @@ export default {
             createdAt: attemptRow.createdAt,
             gradedQuestions,
           },
+          gradedQuestions,
           test: testRow || null,
         });
       }
@@ -903,6 +904,7 @@ export default {
                 {
                   error: ALREADY_ATTEMPTED_MESSAGE,
                   message: ALREADY_ATTEMPTED_MESSAGE,
+                  state: 'already_attempted',
                   code: 'ALREADY_ATTEMPTED',
                   attemptId: existingAttempt.id,
                   attempt: {

@@ -75,7 +75,11 @@ function resolveApiPath(path: string): string {
 
 export async function getBearerToken(forceRefresh = false): Promise<string | null> {
   try {
-    const user = auth.currentUser;
+    let user = auth.currentUser;
+    if (!user && typeof (auth as any).authStateReady === 'function') {
+      await (auth as any).authStateReady();
+      user = auth.currentUser;
+    }
     if (user) {
       return await user.getIdToken(forceRefresh);
     }

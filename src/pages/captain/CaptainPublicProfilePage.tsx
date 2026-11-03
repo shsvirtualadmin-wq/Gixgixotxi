@@ -1,24 +1,56 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { Award, Trophy, BookOpen, ArrowRight } from 'lucide-react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { Award, Trophy, BookOpen, ArrowRight, CheckCircle2, Eye } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { useAuth } from '@/contexts/AuthContext';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { LineLoader } from '@/components/ui/LineLoader';
+import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
 import {
   getAmbassadorTestsForCreator,
+  getMyTestAttempts,
+  type AmbassadorTestAttempt,
   type AmbassadorTestDoc,
 } from '@/services/ambassadorTestService';
 import { sanitizeStudentDisplayName, buildEntitySlug } from '@/utils/privacy';
+import { routes } from '@/utils/routes';
+import { showApiToast } from '@/lib/api';
 
 export const CaptainPublicProfilePage: React.FC = () => {
   const { username = '' } = useParams<{ username: string }>();
+  const navigate = useNavigate();
+  const { user, profile } = useAuth();
   const [captainProfile, setCaptainProfile] = useState<Record<string, any> | null>(null);
   const [tests, setTests] = useState<AmbassadorTestDoc[]>([]);
+  const [myAttemptsMap, setMyAttemptsMap] = useState<Record<string, AmbassadorTestAttempt>>({});
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    if (!user) {
+      setMyAttemptsMap({});
+      return;
+    }
+    getMyTestAttempts()
+      .then((attempts) => {
+        if (!active) return;
+        const map: Record<string, AmbassadorTestAttempt> = {};
+        for (const att of attempts) {
+          if (att.testId && !map[att.testId]) {
+            map[att.testId] = att;
+          }
+        }
+        setMyAttemptsMap(map);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [user]);
 
   useEffect(() => {
     let mounted = true;
@@ -143,29 +175,79 @@ export const CaptainPublicProfilePage: React.FC = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {tests.map((test) => (
-                <Link
-                  key={test.id}
-                  to={`/grand-line/test/${buildEntitySlug(test.id, test.title)}`}
-                  className="glass-card-interactive p-5 flex flex-col justify-between"
-                >
-                  <div>
-                    <span className="text-[11px] font-semibold uppercase text-[#D71921]">
-                      {test.subject}
-                    </span>
-                    <h3 className="font-dot text-lg font-bold text-white mt-1 mb-2">
-                      {test.title}
-                    </h3>
+              {tests.map((test) => {
+                const myAttempt = myAttemptsMap[test.id];
+                const isAttempted = Boolean(myAttempt);
+                return (
+                  <div
+                    key={test.id}
+                    className="glass-card-interactive p-5 flex flex-col justify-between gap-3"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-[11px] font-semibold uppercase text-[#D71921]">
+                          {test.subject}
+                        </span>
+                        {isAttempted && myAttempt && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/35 text-emerald-400">
+                            <CheckCircle2 size={11} />
+                            <span>
+                              Attempted · {myAttempt.score}/{myAttempt.totalQuestions} ({myAttempt.percentage}%)
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                      <Link
+                        to={`/grand-line/test/${buildEntitySlug(test.id, test.title)}`}
+                        className="font-dot text-lg font-bold text-white hover:text-[#D71921] transition-colors mt-1 mb-2 block"
+                      >
+                        {test.title}
+                      </Link>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 flex-wrap text-xs text-white/60 pt-3 border-t border-white/[0.08]">
+                      <span>{test.questionCount || test.questions?.length || 0} MCQs</span>
+                      {isAttempted ? (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => navigate(routes.grandLineTestRun(test.id, 'result'))}
+                            className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <Eye size={12} />
+                            <span>View Result</span>
+                          </button>
+                          <PdfDownloadButton
+                            variant="outline"
+                            label="Download PDF"
+                            className="text-xs py-1 px-2.5 h-7 font-semibold"
+                            onDownload={async (onProgress, signal) => {
+                              const { downloadDrillResultPdfByTestId } = await import(
+                                '@/utils/testPdfExporter'
+                              );
+                              await downloadDrillResultPdfByTestId(
+                                test.id,
+                                myAttempt,
+                                profile?.displayName || user?.displayName || 'Student',
+                                onProgress,
+                                signal
+                              );
+                              showApiToast('Result PDF downloaded successfully!', 'success');
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <Link
+                          to={`/grand-line/test/${buildEntitySlug(test.id, test.title)}`}
+                          className="text-[#D71921] font-semibold inline-flex items-center gap-1"
+                        >
+                          <span>View Test</span>
+                          <ArrowRight size={12} />
+                        </Link>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-xs text-white/60 pt-3 border-t border-white/[0.08]">
-                    <span>{test.questionCount || test.questions?.length || 0} MCQs</span>
-                    <span className="text-[#D71921] font-semibold inline-flex items-center gap-1">
-                      <span>View Test</span>
-                      <ArrowRight size={12} />
-                    </span>
-                  </div>
-                </Link>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
