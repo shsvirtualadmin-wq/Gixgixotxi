@@ -551,6 +551,32 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
                 Leaderboard
               </span>
             </button>
+
+            {/* Tile 5: Boardly Rewards (Daily Check-In, Milestones & Referrals) */}
+            <button
+              type="button"
+              onClick={() => handleNav('/rewards')}
+              className={`more-glass-tile col-span-2 ${
+                pathname.startsWith('/rewards') || pathname.startsWith('/dashboard/rewards')
+                  ? 'more-glass-tile--active'
+                  : ''
+              }`}
+            >
+              <span className="more-icon-circle more-icon-circle--accent">
+                <Sparkles size={17} strokeWidth={1.8} />
+              </span>
+              <div className="min-w-0 flex flex-1 items-center justify-between gap-2">
+                <span className="text-[13px] font-semibold leading-tight truncate">
+                  Rewards
+                </span>
+                <span
+                  className="text-[10px] font-semibold leading-tight px-2 py-0.5 rounded-md"
+                  style={{ color: '#D71921', backgroundColor: 'rgba(215, 25, 33, 0.12)' }}
+                >
+                  Daily Check-in &amp; Referrals
+                </span>
+              </div>
+            </button>
           </div>
 
           {/* 4. Account Group: Settings (+ Upgrade only if not on Unlimited) */}

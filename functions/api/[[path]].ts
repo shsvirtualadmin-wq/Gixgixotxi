@@ -1,9 +1,10 @@
 import d1Worker from '../../cloudflare/worker.js';
 import mainWorker, { Env } from '../../cloudflare/worker';
+import { handleRewardsApiRequest } from './rewards/[[path]]';
 
 /**
  * Catch-all Cloudflare Pages Function for `/api/*` routes on the same site
- * (`/api/tests`, `/api/tests/:id/publish`, `/api/tests/:id/questions`,
+ * (`/api/rewards/*`, `/api/tests`, `/api/tests/:id/publish`, `/api/tests/:id/questions`,
  * `/api/crews`, `/api/me/role`, `/api/attempts/mine`, `/api/leaderboard/grand-line`,
  * `/api/notifications`, `/api/admin/roles`, `/api/mcq-bank`, etc.).
  */
@@ -15,6 +16,14 @@ export async function onRequest(context: {
   const { request, env } = context;
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
+
+  // Delegate Boardly Rewards endpoints to server-side transactional rewards handler
+  if (path === '/api/rewards' || path.startsWith('/api/rewards/')) {
+    return handleRewardsApiRequest({
+      request,
+      env: (env || {}) as any,
+    });
+  }
 
   // Delegate Nakama Captain tests, crews, roles, attempts, leaderboards, and mcq-bank to worker.js
   if (
@@ -31,3 +40,4 @@ export async function onRequest(context: {
 
   return mainWorker.fetch(request, env || ({} as Env), context as any);
 }
+

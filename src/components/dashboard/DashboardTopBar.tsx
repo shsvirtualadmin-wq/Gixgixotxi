@@ -234,6 +234,20 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
                 </div>
                 <KobanChip balance={kobanBalance} />
               </Link>
+              <Link
+                to="/rewards"
+                onClick={() => setMenuOpen(false)}
+                className="flex items-center justify-between px-3 py-2.5 rounded-xl text-xs sm:text-sm text-[#D71921] font-semibold hover:bg-[var(--card-2)] transition-colors"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Award size={16} className="text-[#D71921]" />
+                  <span>Rewards</span>
+                </div>
+                <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#D71921]/15 text-[#D71921]">
+                  Daily
+                </span>
+              </Link>
               {profile?.profileCompleted || profile?.onboardingCompleted ? (
                 <Link
                   to="/dashboard/profile"

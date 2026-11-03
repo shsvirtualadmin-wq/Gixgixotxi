@@ -27,17 +27,33 @@ export function JoinCrewPage() {
   const cleanCode = (code || '').trim().toUpperCase();
   const joinUrl = `https://boardly.cfd/join/${cleanCode}`;
 
-  // If signed out, remember join code in sessionStorage so user joins right after login
+  // Save referral / join code in localStorage + 30-day cookie and redirect Boardly Referral codes (BLD-XXXXXX)
   useEffect(() => {
-    if (cleanCode) {
-      sessionStorage.setItem('pending_join_crew_code', cleanCode);
+    if (!cleanCode) return;
+    sessionStorage.setItem('pending_join_crew_code', cleanCode);
+    try {
+      localStorage.setItem('boardly_ref_code', cleanCode);
+      document.cookie = `boardly_ref_code=${encodeURIComponent(
+        cleanCode
+      )}; Path=/; Max-Age=2592000; SameSite=Lax`;
+    } catch {
+      // Ignore storage errors
     }
-  }, [cleanCode]);
+
+    if (cleanCode.startsWith('BLD-')) {
+      navigate(user ? `/rewards?ref=${encodeURIComponent(cleanCode)}` : `/signup?ref=${encodeURIComponent(cleanCode)}`, {
+        replace: true,
+      });
+    }
+  }, [cleanCode, user, navigate]);
 
   useEffect(() => {
     if (!cleanCode) {
       setError('No crew invite code specified.');
       setLoading(false);
+      return;
+    }
+    if (cleanCode.startsWith('BLD-')) {
       return;
     }
 
@@ -49,8 +65,14 @@ export function JoinCrewPage() {
         const snap = await getDocs(q);
 
         if (snap.empty) {
-          setError(`No study crew found with code "${cleanCode}".`);
-          setCrewPreview(null);
+          // If not a study crew code, treat as a student referral invite code and redirect to signup/rewards
+          navigate(
+            user
+              ? `/rewards?ref=${encodeURIComponent(cleanCode)}`
+              : `/signup?ref=${encodeURIComponent(cleanCode)}`,
+            { replace: true }
+          );
+          return;
         } else {
           const docSnap = snap.docs[0];
           setCrewPreview({ id: docSnap.id, ...docSnap.data() } as CrewDoc);
@@ -64,7 +86,7 @@ export function JoinCrewPage() {
     }
 
     fetchCrewInfo();
-  }, [cleanCode]);
+  }, [cleanCode, user, navigate]);
 
   const handleJoin = async () => {
     if (!user) {

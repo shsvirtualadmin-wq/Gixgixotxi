@@ -35,6 +35,8 @@
 /store /index.html 200
 /store/* /index.html 200
 /kobans /index.html 200
+/rewards /index.html 200
+/join/* /index.html 200
 /search /index.html 200
 /login /index.html 200
 /signup /index.html 200

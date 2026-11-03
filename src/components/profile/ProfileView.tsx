@@ -1027,6 +1027,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <button
                   onClick={() => {
                     if (onClose) onClose(true);
+                    navigate('/rewards');
+                  }}
+                  className="h-11 px-4 rounded-lg border border-[#D71921]/35 bg-[#D71921]/10 hover:bg-[#D71921]/20 text-[#D71921] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                >
+                  <Sparkles size={14} className="text-[#D71921]" />
+                  <span>Rewards</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (onClose) onClose(true);
                     navigate('/settings');
                   }}
                   className="h-11 px-3.5 rounded-lg border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"

@@ -33,6 +33,7 @@ Allow: /crew/
 Allow: /store
 Allow: /store/
 Allow: /kobans
+Allow: /rewards
 
 # Private, authenticated, and noindex routes
 Disallow: /dashboard

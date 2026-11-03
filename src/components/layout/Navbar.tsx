@@ -7,6 +7,7 @@ import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
 import { useHomeUrl } from '@/utils/homeUrl';
 
 const NAV_LINKS = [
+  { to: '/rewards', label: 'Rewards', highlight: true },
   { to: '/grand-line', label: GRAND_LINE_NAME, highlight: true },
   { to: '/mcqs', label: 'Subject MCQs', shortLabel: 'MCQs' },
   { to: '/commons', label: 'Boardly Commons', shortLabel: 'Commons' },
@@ -79,7 +80,7 @@ export function Navbar() {
         <div className="w-full max-w-7xl mx-auto pt-3.5 sm:pt-4 md:pt-5 px-3 sm:px-4 md:px-6">
           <nav
             aria-label="Main Navigation"
-            className={`pointer-events-auto w-full h-[64px] sm:h-[70px] px-3.5 sm:px-6 rounded-full flex items-center justify-between gap-3 transition-all duration-300 border allow-backdrop-blur text-[var(--text)] ${
+            className={`pointer-events-auto w-full h-[64px] sm:h-[70px] px-3.5 sm:px-6 rounded-full flex items-center justify-between gap-2 sm:gap-3 transition-all duration-300 border allow-backdrop-blur text-[var(--text)] ${
               isDark
                 ? 'border-white/10 shadow-[0_16px_40px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.14)]'
                 : 'border-black/[0.08] shadow-[0_14px_32px_rgba(15,23,42,0.08),inset_0_1px_1px_rgba(255,255,255,0.92)]'
@@ -88,16 +89,18 @@ export function Navbar() {
               backgroundColor: isDark ? 'rgba(10, 10, 14, 0.85)' : 'rgba(255, 255, 255, 0.82)',
             }}
           >
-            {/* Left side: Noticeably bigger and prominent Boardly logo/wordmark */}
+            {/* Left side: Prominent Boardly logo/wordmark in brand red */}
             <Link
               to={homeUrl}
               onClick={handleClose}
-              className="flex items-center shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] rounded-full text-[var(--text)] group transition-transform hover:scale-[1.02] active:scale-[0.98]"
+              className="flex items-center shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] rounded-full text-[#D71921] group transition-transform hover:scale-[1.02] active:scale-[0.98]"
+              style={{ color: '#D71921' }}
               aria-label="Boardly Home"
             >
               <Logo
                 size="navbar"
-                className="h-[40px] sm:h-[46px] md:h-[48px] w-auto text-[var(--text)]"
+                className="h-[36px] sm:h-[46px] md:h-[48px] w-auto text-[#D71921]"
+                style={{ color: '#D71921' }}
                 alt="Boardly"
               />
             </Link>
@@ -112,7 +115,7 @@ export function Navbar() {
                       key={link.to}
                       to={link.to}
                       onClick={handleClose}
-                      className={`px-3.5 py-1.5 rounded-full text-xs font-heading font-bold transition-all border whitespace-nowrap shadow-sm hover:-translate-y-0.5 active:scale-95 ${
+                      className={`px-3 py-1.5 rounded-full text-xs font-heading font-bold transition-all border whitespace-nowrap shadow-sm hover:-translate-y-0.5 active:scale-95 ${
                         active
                           ? 'bg-[#D71921] text-white border-[#D71921] shadow-[0_4px_14px_rgba(215,25,33,0.45)]'
                           : 'bg-[#D71921]/15 text-[#D71921] border-[#D71921]/40 hover:bg-[#D71921] hover:text-white hover:shadow-[0_4px_16px_rgba(215,25,33,0.4)]'
@@ -127,7 +130,7 @@ export function Navbar() {
                     key={link.to}
                     to={link.to}
                     onClick={handleClose}
-                    className={`px-2.5 py-1.5 rounded-full text-[13px] font-heading font-medium transition-all whitespace-nowrap ${
+                    className={`px-2 py-1.5 rounded-full text-[13px] font-heading font-medium transition-all whitespace-nowrap ${
                       active
                         ? isDark
                           ? 'text-white font-semibold bg-white/[0.12] shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]'
@@ -165,12 +168,19 @@ export function Navbar() {
               </Link>
             </div>
 
-            {/* Right side on Mobile & Mid-size screens (<1160px): Quick Grand Line pill + Hamburger */}
-            <div className="flex xl:hidden items-center gap-2">
+            {/* Right side on Mobile & Mid-size screens (<1280px): Visible-by-default brand red Rewards link + Quick Grand Line pill + Hamburger */}
+            <div className="flex xl:hidden items-center gap-1.5 sm:gap-2">
+              <Link
+                to="/rewards"
+                onClick={handleClose}
+                className="px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-heading font-bold bg-[#D71921]/15 text-[#D71921] border border-[#D71921]/40 hover:bg-[#D71921] hover:text-white transition-all shadow-sm whitespace-nowrap"
+              >
+                Rewards
+              </Link>
               <Link
                 to="/grand-line"
                 onClick={handleClose}
-                className="px-3 py-1.5 rounded-full text-xs font-heading font-bold bg-[#D71921]/15 text-[#D71921] border border-[#D71921]/40 hover:bg-[#D71921] hover:text-white transition-all shadow-sm"
+                className="hidden min-[420px]:inline-flex px-3 py-1.5 rounded-full text-xs font-heading font-bold bg-[#D71921]/15 text-[#D71921] border border-[#D71921]/40 hover:bg-[#D71921] hover:text-white transition-all shadow-sm whitespace-nowrap"
               >
                 {GRAND_LINE_NAME}
               </Link>

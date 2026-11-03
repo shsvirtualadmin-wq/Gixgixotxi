@@ -379,6 +379,8 @@ export const routes = {
 
   leaderboard: () => '/leaderboard',
 
+  rewards: () => '/rewards',
+
   store: (subpath?: 'get-kobans'): string => {
     return subpath ? `/store/${subpath}` : '/store';
   },

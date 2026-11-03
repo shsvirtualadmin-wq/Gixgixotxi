@@ -90,6 +90,7 @@ const ContactPage = lazyWithRetry(() => import('./pages/ContactPage'));
 const StorePage = lazyWithRetry(() => import('./pages/store/StorePage'));
 const StoreItemDetailPage = lazyWithRetry(() => import('./pages/store/StoreItemDetailPage'));
 const KobansPage = lazyWithRetry(() => import('./pages/KobansPage'));
+const RewardsPage = lazyWithRetry(() => import('./pages/RewardsPage'));
 const McqsHubPage = lazyWithRetry(() => import('./pages/mcqs/McqsHubPage'));
 const McqSubjectPage = lazyWithRetry(() => import('./pages/mcqs/McqSubjectPage'));
 const McqChapterPage = lazyWithRetry(() => import('./pages/mcqs/McqChapterPage'));
@@ -300,6 +301,7 @@ function AppInner() {
           <Route path="results" element={<ResultsListPage />} />
           <Route path="results/:attemptId" element={<TestResultPage />} />
           <Route path="store" element={<StorePage />} />
+          <Route path="rewards" element={<RewardsPage />} />
           <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />
           <Route path="arena" element={<ArenaDashboardPage />} />
           <Route path="ai-tutor" element={<AiTutorPage />} />
@@ -446,7 +448,8 @@ function AppInner() {
           {/* Public Study Crew Detail Page */}
           <Route path="/crew/:idSlug" element={<CrewPublicDetailPage />} />
 
-          {/* Public Store & Cosmetic Item Detail Pages */}
+          {/* Public Store, Rewards & Cosmetic Item Detail Pages */}
+          <Route path="/rewards" element={<RewardsPage />} />
           <Route path="/store" element={<StorePage />} />
           <Route path="/store/get-kobans" element={<StorePage />} />
           <Route path="/store/:item" element={<StoreItemDetailPage />} />

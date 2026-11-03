@@ -86,6 +86,17 @@ export async function onRequest(context: any): Promise<Response> {
   headers.set('Content-Type', 'text/html; charset=utf-8');
   headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
 
+  // If visiting /join/:code or ?ref=CODE, set a 30-day referral cookie
+  const joinMatch = pathname.match(/^\/join\/([A-Za-z0-9-]+)\/?$/);
+  const queryRef = url.searchParams.get('ref');
+  const rawRefCode = (joinMatch ? joinMatch[1] : queryRef || '').trim().toUpperCase();
+  if (rawRefCode && /^[A-Z0-9-]{4,16}$/.test(rawRefCode)) {
+    headers.append(
+      'Set-Cookie',
+      `boardly_ref_code=${encodeURIComponent(rawRefCode)}; Path=/; Max-Age=2592000; SameSite=Lax`
+    );
+  }
+
   return new Response(enrichedHtml, {
     status: 200,
     headers,

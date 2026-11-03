@@ -460,6 +460,11 @@ export function resolveStaticOrPatternRouteMeta(
       description:
         'Earn Kobans by practicing MCQs, maintaining study streaks, and contributing notes on Boardly.',
     },
+    '/rewards': {
+      title: 'Boardly Rewards',
+      description:
+        'Earn up to 7,550 Kobans every 30 days with the Boardly daily check-in, unlock MCQ practice milestones, and invite classmates for +5,000 Kobans.',
+    },
     '/captains': {
       title: 'Nakama Captains Program — Lead Your Campus Crew | Boardly',
       description:

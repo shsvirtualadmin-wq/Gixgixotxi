@@ -171,6 +171,11 @@ export function Footer() {
                 </Link>
               </li>
               <li>
+                <Link to="/rewards" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words font-semibold">
+                  Rewards
+                </Link>
+              </li>
+              <li>
                 <Link to="/kobans" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
                   About Kobans
                 </Link>
