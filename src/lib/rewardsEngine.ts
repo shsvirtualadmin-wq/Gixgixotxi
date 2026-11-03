@@ -196,7 +196,11 @@ export interface MilestoneItemState {
   progress: number;
 }
 
+export type RewardsSystemState = 'ready' | 'server_not_ready' | 'disabled';
+
 export interface RewardsStateResponse {
+  state?: RewardsSystemState;
+  statusMessage?: string;
   serverConfigured: boolean;
   mode: RewardsMode;
   canClaim: boolean;

@@ -40,6 +40,7 @@ export interface UserProfileHookResult {
   track: string;
   subjects: string[];
   daysLeft: number | null;
+  streak: number;
   profileCompleted: boolean;
   updateProfileData: (updates: {
     displayName?: string;
@@ -350,6 +351,11 @@ export function useUserProfile(): UserProfileHookResult {
     [user?.uid, profile]
   );
 
+  const streak = Math.max(
+    0,
+    Math.floor(Number((profile as { streak?: unknown } | null)?.streak ?? 0) || 0)
+  );
+
   return {
     user,
     profile,
@@ -365,6 +371,7 @@ export function useUserProfile(): UserProfileHookResult {
     track: '',
     subjects,
     daysLeft: null,
+    streak,
     profileCompleted,
     updateProfileData,
     retryFetch,

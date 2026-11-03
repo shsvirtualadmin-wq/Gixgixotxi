@@ -32,7 +32,7 @@ export function DashboardShell() {
   }, [user?.uid]);
 
   useEffect(() => {
-    if (!profileLoading && !user) {
+    if (!isAuthenticated && !profileLoading && !user) {
       const target = `${location.pathname}${location.search}${location.hash}`;
       try {
         sessionStorage.setItem('boardly_post_login_redirect', target);
@@ -41,9 +41,9 @@ export function DashboardShell() {
       }
       navigate(`/login?redirect=${encodeURIComponent(target)}`, { replace: true });
     }
-  }, [user, profileLoading, navigate, location.pathname, location.search, location.hash]);
+  }, [isAuthenticated, user, profileLoading, navigate, location.pathname, location.search, location.hash]);
 
-  if (profileLoading && !user) {
+  if (profileLoading && !user && !isAuthenticated) {
     return <LineLoader context="dashboard" variant="page" />;
   }
 

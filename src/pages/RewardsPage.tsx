@@ -193,6 +193,22 @@ export function RewardsPage() {
     text: string;
   } | null>(null);
 
+  const triggerServerNotReadyFailSafe = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      state: 'server_not_ready',
+      statusMessage: 'Rewards are being set up',
+      serverConfigured: false,
+      canClaim: false,
+      enabled: false,
+      comingSoon: true,
+    }));
+    setBannerNotice({
+      type: 'info',
+      text: 'Rewards are being set up',
+    });
+  }, []);
+
   const loadState = useCallback(async () => {
     setLoading(true);
     try {
@@ -200,6 +216,12 @@ export function RewardsPage() {
       setState(fetched);
       if (fetched.daily?.secondsUntilNextPktMidnight) {
         setCountdownSec(fetched.daily.secondsUntilNextPktMidnight);
+      }
+      if (fetched.state === 'server_not_ready' || !fetched.serverConfigured) {
+        setBannerNotice({
+          type: 'info',
+          text: fetched.statusMessage || 'Rewards are being set up',
+        });
       }
     } finally {
       setLoading(false);
@@ -218,7 +240,10 @@ export function RewardsPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const isComingSoon = Boolean(!state.canClaim || state.comingSoon || !state.serverConfigured);
+  const isServerNotReady = Boolean(
+    state.state === 'server_not_ready' || !state.serverConfigured
+  );
+  const isComingSoon = Boolean(isServerNotReady || !state.canClaim || state.comingSoon);
   const isMilestoneAdminExcluded = Boolean(isAdmin && state.mode !== 'admin_only');
   const displayBalance = user ? Math.max(walletBalance, state.balance) : 0;
 
@@ -239,10 +264,16 @@ export function RewardsPage() {
           text: `Claimed Day ${res.dayNumber} reward: +${(res.rewardAmount || 0).toLocaleString()} Kobans!`,
         });
         await Promise.all([loadState(), refreshWallet()]);
+      } else if (
+        res.state === 'server_not_ready' ||
+        res.code === 'SERVER_NOT_READY' ||
+        res.comingSoon
+      ) {
+        triggerServerNotReadyFailSafe();
       } else {
         setBannerNotice({
           type: 'error',
-          text: res.error || 'Unable to claim daily reward right now.',
+          text: res.error || 'Rewards are being set up',
         });
       }
     } finally {
@@ -267,10 +298,16 @@ export function RewardsPage() {
           text: `Milestone unlocked! +${(res.rewardAmount || 0).toLocaleString()} Kobans credited to your wallet.`,
         });
         await Promise.all([loadState(), refreshWallet()]);
+      } else if (
+        res.state === 'server_not_ready' ||
+        res.code === 'SERVER_NOT_READY' ||
+        res.comingSoon
+      ) {
+        triggerServerNotReadyFailSafe();
       } else {
         setBannerNotice({
           type: 'error',
-          text: res.error || 'Unable to claim milestone reward.',
+          text: res.error || 'Rewards are being set up',
         });
       }
     } finally {
@@ -298,6 +335,12 @@ export function RewardsPage() {
         });
         setManualCodeInput('');
         await loadState();
+      } else if (
+        res.state === 'server_not_ready' ||
+        res.code === 'SERVER_NOT_READY' ||
+        res.comingSoon
+      ) {
+        triggerServerNotReadyFailSafe();
       } else {
         setBannerNotice({
           type: 'error',
@@ -334,6 +377,12 @@ export function RewardsPage() {
               : 'Friend code confirmed! Rewards will unlock automatically once they complete 20 MCQs.'),
         });
         await Promise.all([loadState(), refreshWallet()]);
+      } else if (
+        res.state === 'server_not_ready' ||
+        res.code === 'SERVER_NOT_READY' ||
+        res.comingSoon
+      ) {
+        triggerServerNotReadyFailSafe();
       } else {
         setBannerNotice({
           type: 'error',

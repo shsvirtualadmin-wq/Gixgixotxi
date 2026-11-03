@@ -26,7 +26,12 @@ import {
   type AdminStats,
   CORE_SUBJECTS,
 } from '@/services/adminService';
-import { fetchRewardsState, setRewardsAdminMode } from '@/services/rewardsService';
+import {
+  fetchRewardsHealth,
+  fetchRewardsState,
+  setRewardsAdminMode,
+  type RewardsHealthResponse,
+} from '@/services/rewardsService';
 import type { RewardsMode } from '@/lib/rewardsEngine';
 import type { AuditLog } from '@/types';
 
@@ -56,26 +61,42 @@ export function AdminOverviewPage() {
   const [seedSuccess, setSeedSuccess] = useState<string | null>(null);
   const [seedError, setSeedError] = useState<string | null>(null);
 
-  // Super Admin Rewards 3-way Mode Switch state
+  // Super Admin Rewards 3-way Mode Switch + Health Check state
   const [rewardsMode, setRewardsMode] = useState<RewardsMode>('off');
   const [pendingRewardsMode, setPendingRewardsMode] = useState<RewardsMode | null>(null);
   const [updatingRewardsMode, setUpdatingRewardsMode] = useState(false);
   const [rewardsModeSuccess, setRewardsModeSuccess] = useState<string | null>(null);
   const [rewardsModeError, setRewardsModeError] = useState<string | null>(null);
+  const [rewardsHealth, setRewardsHealth] = useState<RewardsHealthResponse | null>(null);
+  const [checkingRewardsHealth, setCheckingRewardsHealth] = useState(false);
+
+  const handleRunRewardsHealthCheck = useCallback(async () => {
+    setCheckingRewardsHealth(true);
+    try {
+      const h = await fetchRewardsHealth();
+      setRewardsHealth(h);
+    } finally {
+      setCheckingRewardsHealth(false);
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [s, logs, rState] = await Promise.all([
+      const [s, logs, rState, rHealth] = await Promise.all([
         fetchAdminStats(),
         fetchAuditLogs(5),
         fetchRewardsState(user?.uid),
+        fetchRewardsHealth(),
       ]);
       setStats(s);
       setRecentLogs(logs);
       if (rState?.mode) {
         setRewardsMode(rState.mode);
+      }
+      if (rHealth) {
+        setRewardsHealth(rHealth);
       }
     } catch (err: unknown) {
       console.warn('Failed to load admin stats (using fallback stats):', err);
@@ -505,6 +526,63 @@ export function AdminOverviewPage() {
                 );
               })}
             </div>
+          </div>
+
+          {/* Live Firestore + D1 Health Check Panel (Part A5) */}
+          <div
+            data-testid="admin-rewards-health-panel"
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)]"
+          >
+            <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+              {rewardsHealth?.ok ? (
+                <CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5 sm:mt-0" />
+              ) : (
+                <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5 sm:mt-0" />
+              )}
+              <div className="min-w-0 text-[12px]">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-heading font-semibold text-[var(--text)]">
+                    Firestore Credit Health:
+                  </span>
+                  <span
+                    data-testid="admin-rewards-health-status"
+                    className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                      rewardsHealth?.ok
+                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                        : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                    }`}
+                  >
+                    {checkingRewardsHealth
+                      ? 'checking...'
+                      : rewardsHealth
+                      ? rewardsHealth.ok
+                        ? 'ok'
+                        : rewardsHealth.reason
+                      : 'not_checked'}
+                  </span>
+                </div>
+                {rewardsHealth && (
+                  <p className="text-[11px] text-[var(--muted)] mt-0.5 truncate">
+                    Target: <code className="font-mono">{rewardsHealth.targetProjectId || 'gen-lang-client-0365509316'}</code> · DB:{' '}
+                    <code className="font-mono">{rewardsHealth.targetDatabaseId || 'named-db'}</code>
+                    {rewardsHealth.serviceAccountClientEmail
+                      ? ` · SA: ${rewardsHealth.serviceAccountClientEmail}`
+                      : ' · SA: not configured'}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              data-testid="admin-rewards-health-btn"
+              disabled={checkingRewardsHealth}
+              onClick={handleRunRewardsHealthCheck}
+              className="px-3 py-1.5 rounded-[10px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[11px] font-heading font-bold text-[var(--text)] flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={checkingRewardsHealth ? 'animate-spin' : ''} />
+              <span>{checkingRewardsHealth ? 'Checking...' : 'Check Health'}</span>
+            </button>
           </div>
 
           {rewardsModeSuccess && (

@@ -27,12 +27,18 @@ export interface ZenryuEngineOptions {
   reserveBottomPx?: number;
   onPoseChange?: (pose: ZenryuPose) => void;
   onRoarComplete?: () => void;
+  onContextLost?: () => void;
 }
 
-// ── Software WebGL Detection & Fallback Chain Probe ─────────────────────────
+// ── Software WebGL Detection & Fallback Chain Probe (Cached Once Per Session) ──
+let cachedWebGLProbe: { supported: boolean; isSoftwareGl: boolean } | null = null;
+
 export function detectSoftwareWebGL(): { supported: boolean; isSoftwareGl: boolean } {
   if (typeof document === 'undefined') {
     return { supported: false, isSoftwareGl: true };
+  }
+  if (cachedWebGLProbe) {
+    return cachedWebGLProbe;
   }
   try {
     const probeCanvas = document.createElement('canvas');
@@ -57,7 +63,8 @@ export function detectSoftwareWebGL(): { supported: boolean; isSoftwareGl: boole
     const gpu = String(gl.getParameter(param) || '');
     gl.getExtension('WEBGL_lose_context')?.loseContext();
     const isSoftwareGl = /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
-    return { supported: true, isSoftwareGl };
+    cachedWebGLProbe = { supported: true, isSoftwareGl };
+    return cachedWebGLProbe;
   } catch {
     return { supported: false, isSoftwareGl: true };
   }
@@ -626,6 +633,7 @@ export function createZenryu3DEngine(
     reserveBottomPx = 44,
     onPoseChange,
     onRoarComplete,
+    onContextLost,
   } = options;
 
   const { isSoftwareGl } = detectSoftwareWebGL();
@@ -652,6 +660,12 @@ export function createZenryu3DEngine(
   renderer.domElement.style.width = '100%';
   renderer.domElement.style.height = '100%';
   renderer.domElement.style.display = 'block';
+
+  const handleWebGLContextLost = (e: Event) => {
+    e.preventDefault();
+    onContextLost?.();
+  };
+  renderer.domElement.addEventListener('webglcontextlost', handleWebGLContextLost, false);
 
   container.innerHTML = '';
   container.appendChild(renderer.domElement);
@@ -2499,6 +2513,7 @@ export function createZenryu3DEngine(
       resizeObserver?.disconnect();
       window.cancelAnimationFrame(frameId);
       window.clearTimeout(frameId);
+      renderer.domElement.removeEventListener('webglcontextlost', handleWebGLContextLost, false);
       for (const item of disposables) {
         try {
           item.dispose();

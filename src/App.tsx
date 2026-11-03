@@ -111,10 +111,8 @@ const ForgotPasswordPage = lazyWithRetry(() => import('./pages/ForgotPasswordPag
 const VerifyEmailPage = lazyWithRetry(() => import('./pages/VerifyEmailPage'));
 const OnboardingPage = lazyWithRetry(() => import('./pages/OnboardingPage'));
 
-// Dashboard (Student Portal) — DashboardShell is NON-LAZY to prevent unmounting between tabs
-const OverviewPage = lazyWithRetry(() =>
-  import('./pages/dashboard/OverviewPage').then(m => ({ default: m.OverviewPage }))
-);
+// Dashboard (Student Portal) — DashboardShell and OverviewPage (Cockpit home) are NON-LAZY to prevent unmounting or sequential chunk waterfalls on reload
+import { OverviewPage } from './pages/dashboard/OverviewPage';
 const PracticePage = lazyWithRetry(() =>
   import('./pages/dashboard/PracticePage').then(m => ({ default: m.PracticePage }))
 );

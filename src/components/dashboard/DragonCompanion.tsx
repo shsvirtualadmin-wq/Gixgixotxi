@@ -138,65 +138,184 @@ export function useDragonHiddenPreference() {
   return { hideDragon, setHideDragon };
 }
 
-// ── Server-Side Verified Role Cache (Never Trust Client Input) ──────────────
+// ── Server-Side Verified Role Cache & Synchronous Hydration Helpers ─────────
 type VerifiedServerRole = 'admin' | 'superadmin' | 'student' | 'captain' | null;
 const verifiedRoleMemoryCache = new Map<string, VerifiedServerRole>();
+const LAST_KNOWN_UID_KEY = 'boardly_zenryu_last_uid_v1';
+const VERIFIED_ROLE_STORAGE_PREFIX = 'boardly_zenryu_verified_role_v1_';
+const KNOWN_UNLOCKED_STORAGE_PREFIX = 'boardly_zenryu_known_unlocked_v1_';
+
+function resolveEffectiveUid(explicitUid?: string | null): string | null {
+  if (explicitUid && explicitUid.trim().length > 0) {
+    try {
+      window.localStorage.setItem(LAST_KNOWN_UID_KEY, explicitUid);
+    } catch {
+      // Ignore storage errors
+    }
+    return explicitUid;
+  }
+  if (auth?.currentUser?.uid) {
+    return auth.currentUser.uid;
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      const lastUid = window.localStorage.getItem(LAST_KNOWN_UID_KEY);
+      if (lastUid && lastUid.trim().length > 0) {
+        return lastUid.trim();
+      }
+      // Scan existing cached_profile_{uid} or boardly_d1_cockpit_attempts_v2_{uid} keys if auth is still hydrating
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (!key) continue;
+        if (key.startsWith('cached_profile_')) {
+          const candidate = key.slice('cached_profile_'.length).trim();
+          if (candidate && candidate !== 'guest') return candidate;
+        }
+        if (key.startsWith('boardly_d1_cockpit_attempts_v2_')) {
+          const candidate = key.slice('boardly_d1_cockpit_attempts_v2_'.length).trim();
+          if (candidate && candidate !== 'guest') return candidate;
+        }
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }
+  return null;
+}
+
+function readCachedVerifiedRole(uid?: string | null): VerifiedServerRole {
+  const effectiveUid = resolveEffectiveUid(uid);
+  if (!effectiveUid) return null;
+  if (verifiedRoleMemoryCache.has(effectiveUid)) {
+    return verifiedRoleMemoryCache.get(effectiveUid) ?? null;
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = window.localStorage.getItem(`${VERIFIED_ROLE_STORAGE_PREFIX}${effectiveUid}`);
+      if (
+        stored === 'superadmin' ||
+        stored === 'admin' ||
+        stored === 'captain' ||
+        stored === 'student'
+      ) {
+        verifiedRoleMemoryCache.set(effectiveUid, stored);
+        return stored;
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }
+  return null;
+}
+
+function readKnownUnlockedState(uid?: string | null): boolean {
+  const effectiveUid = resolveEffectiveUid(uid);
+  if (!effectiveUid || typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(`${KNOWN_UNLOCKED_STORAGE_PREFIX}${effectiveUid}`) === 'true';
+  } catch {
+    return false;
+  }
+}
 
 async function fetchVerifiedServerRole(uid: string): Promise<VerifiedServerRole> {
   if (!uid) return null;
   if (verifiedRoleMemoryCache.has(uid)) {
     return verifiedRoleMemoryCache.get(uid) ?? null;
   }
-  try {
-    const currentUser = auth.currentUser;
-    if (!currentUser || currentUser.uid !== uid) return null;
-    const idToken = await currentUser.getIdToken();
-    if (!idToken) return null;
+  const cachedRole = readCachedVerifiedRole(uid);
+  const backoffDelays = [0, 400, 900, 1800];
 
-    const res = await fetch('/api/me/role', {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${idToken}`,
-        Accept: 'application/json',
-      },
-    });
-    if (!res.ok) {
-      return null;
+  for (let attempt = 0; attempt < backoffDelays.length; attempt++) {
+    if (backoffDelays[attempt] > 0) {
+      await new Promise((r) => window.setTimeout(r, backoffDelays[attempt]));
     }
-    const data = (await res.json()) as { role?: string | null };
-    const rawRole = typeof data?.role === 'string' ? data.role.trim().toLowerCase() : '';
-    const role: VerifiedServerRole =
-      rawRole === 'superadmin'
-        ? 'superadmin'
-        : rawRole === 'admin'
-        ? 'admin'
-        : rawRole === 'captain'
-        ? 'captain'
-        : rawRole === 'student'
-        ? 'student'
-        : null;
-    verifiedRoleMemoryCache.set(uid, role);
-    return role;
-  } catch {
-    return null;
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser || currentUser.uid !== uid) {
+        continue;
+      }
+      const idToken = await currentUser.getIdToken();
+      if (!idToken) continue;
+
+      const res = await fetch('/api/me/role', {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          Accept: 'application/json',
+        },
+      });
+      if (!res.ok) {
+        continue;
+      }
+      const data = (await res.json()) as { role?: string | null };
+      const rawRole = typeof data?.role === 'string' ? data.role.trim().toLowerCase() : '';
+      const role: VerifiedServerRole =
+        rawRole === 'superadmin'
+          ? 'superadmin'
+          : rawRole === 'admin'
+          ? 'admin'
+          : rawRole === 'captain'
+          ? 'captain'
+          : rawRole === 'student'
+          ? 'student'
+          : null;
+      if (role) {
+        verifiedRoleMemoryCache.set(uid, role);
+        try {
+          window.localStorage.setItem(`${VERIFIED_ROLE_STORAGE_PREFIX}${uid}`, role);
+        } catch {
+          // Ignore storage errors
+        }
+        return role;
+      }
+    } catch {
+      // Transient error: continue backoff loop
+    }
   }
+  return cachedRole;
 }
 
 /**
  * Read-only calculation of lifetime correct MCQ answers from existing D1 attempt records.
+ * Uses resolveEffectiveUid so a transient undefined uid during initial auth hydration never reads "guest" (0).
  */
 function computeLifetimeCorrectMcqs(uid?: string | null): number {
   try {
-    const attempts = loadD1UniversityAttempts(uid);
-    if (!Array.isArray(attempts) || attempts.length === 0) return 0;
-    let totalCorrect = 0;
-    for (const att of attempts) {
-      const c = Number(att?.correctCount || 0);
-      if (Number.isFinite(c) && c > 0) {
-        totalCorrect += Math.floor(c);
+    const effectiveUid = resolveEffectiveUid(uid);
+    const sumAttempts = (targetUid?: string | null) => {
+      const attempts = loadD1UniversityAttempts(targetUid);
+      if (!Array.isArray(attempts) || attempts.length === 0) return 0;
+      let totalCorrect = 0;
+      for (const att of attempts) {
+        const c = Number(att?.correctCount || 0);
+        if (Number.isFinite(c) && c > 0) {
+          totalCorrect += Math.floor(c);
+        }
       }
+      return totalCorrect;
+    };
+
+    const primaryCount = sumAttempts(effectiveUid);
+    if (primaryCount > 0) {
+      return primaryCount;
     }
-    return totalCorrect;
+
+    // Fallback scan if primary key is empty (e.g. attempts recorded before uid resolved)
+    if (typeof window !== 'undefined') {
+      let bestCount = sumAttempts(undefined);
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (key && key.startsWith('boardly_d1_cockpit_attempts_v2_')) {
+          const candidateUid = key.slice('boardly_d1_cockpit_attempts_v2_'.length);
+          if (candidateUid) {
+            bestCount = Math.max(bestCount, sumAttempts(candidateUid));
+          }
+        }
+      }
+      return bestCount;
+    }
+    return 0;
   } catch {
     return 0;
   }
@@ -448,30 +567,38 @@ function DragonCompanionInner({
     };
   }, []);
 
-  // 1. Server-verified role check + AuthContext admin check
-  const [verifiedRole, setVerifiedRole] = useState<VerifiedServerRole>(null);
+  // 1. Server-verified role check + AuthContext admin check (seeded synchronously from cache)
+  const effectiveUid = resolveEffectiveUid(user?.uid);
+  const [verifiedRole, setVerifiedRole] = useState<VerifiedServerRole>(() =>
+    readCachedVerifiedRole(user?.uid)
+  );
   useEffect(() => {
     let active = true;
-    if (!user?.uid) {
-      setVerifiedRole(null);
+    const targetUid = resolveEffectiveUid(user?.uid);
+    if (!targetUid) {
       return;
     }
-    void fetchVerifiedServerRole(user.uid).then((r) => {
-      if (active) setVerifiedRole(r);
+    const cached = readCachedVerifiedRole(targetUid);
+    if (cached) {
+      setVerifiedRole(cached);
+    }
+    void fetchVerifiedServerRole(targetUid).then((r) => {
+      if (active && r) setVerifiedRole(r);
     });
     return () => {
       active = false;
     };
   }, [user?.uid]);
 
-  // 2. Read-only lifetime correct MCQs count
-  const [correctCount, setCorrectCount] = useState<number>(() =>
+  // 2. Read-only lifetime correct MCQs count (computed synchronously on render so uid hydration never lags)
+  const [correctCountState, setCorrectCountState] = useState<number>(() =>
     computeLifetimeCorrectMcqs(user?.uid)
   );
 
   useEffect(() => {
     const refreshCount = () => {
-      setCorrectCount(computeLifetimeCorrectMcqs(user?.uid));
+      const next = computeLifetimeCorrectMcqs(user?.uid);
+      setCorrectCountState((prev) => (next > 0 ? next : prev));
     };
     refreshCount();
     window.addEventListener('boardly-d1-attempts-updated', refreshCount);
@@ -482,10 +609,37 @@ function DragonCompanionInner({
     };
   }, [user?.uid]);
 
+  const correctCount = useMemo(
+    () => Math.max(correctCountState, computeLifetimeCorrectMcqs(user?.uid)),
+    [correctCountState, user?.uid]
+  );
+
+  const [knownUnlocked, setKnownUnlocked] = useState<boolean>(() =>
+    readKnownUnlockedState(user?.uid)
+  );
+
   const isAdminBypass =
     Boolean(isAdmin) || verifiedRole === 'admin' || verifiedRole === 'superadmin';
   const isUnlockedByCount = correctCount >= DRAGON_UNLOCK_THRESHOLD;
-  const isUnlocked = isAdminBypass || isUnlockedByCount;
+  const isUnlocked =
+    isAdminBypass ||
+    isUnlockedByCount ||
+    knownUnlocked ||
+    readKnownUnlockedState(user?.uid);
+
+  useEffect(() => {
+    const targetUid = resolveEffectiveUid(user?.uid);
+    if (!targetUid) return;
+    if (isAdminBypass || isUnlockedByCount) {
+      setKnownUnlocked(true);
+      try {
+        window.localStorage.setItem(`${KNOWN_UNLOCKED_STORAGE_PREFIX}${targetUid}`, 'true');
+        window.localStorage.setItem(`${KNOWN_UNLOCKED_STORAGE_PREFIX}last`, 'true');
+      } catch {
+        // Ignore storage errors
+      }
+    }
+  }, [user?.uid, isAdminBypass, isUnlockedByCount]);
 
   // 3. One-time unlock celebration state (for students hitting 1,000 correct answers)
   const [showAwakeningCelebration, setShowAwakeningCelebration] = useState(false);
@@ -530,6 +684,7 @@ function DragonCompanionInner({
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [engineReady, setEngineReady] = useState(false);
   const [webglFailed, setWebglFailed] = useState(false);
+  const [engineRetryAttempt, setEngineRetryAttempt] = useState(0);
   const [isTabHidden, setIsTabHidden] = useState<boolean>(() =>
     typeof document !== 'undefined' ? document.hidden : false
   );
@@ -579,7 +734,7 @@ function DragonCompanionInner({
     }
   }, []);
 
-  // Dynamic import of Three.js & zenryuEngine3D ONLY after first paint and ONLY when unlocked
+  // Dynamic import of Three.js & zenryuEngine3D ONLY after first paint and ONLY when unlocked, with backoff retry on transient errors
   useEffect(() => {
     if (
       !postPaintReady ||
@@ -596,15 +751,31 @@ function DragonCompanionInner({
     if (!mountNode) return;
 
     let cancelled = false;
+    let retryTimer = 0;
     let instance: ZenryuEngineController | null = null;
     let resizeObs: ResizeObserver | null = null;
+
+    const scheduleEngineRetry = () => {
+      if (cancelled) return;
+      setEngineReady(false);
+      if (engineRetryAttempt < 3) {
+        const delayMs = 500 * Math.pow(2, engineRetryAttempt);
+        retryTimer = window.setTimeout(() => {
+          if (!cancelled) {
+            setEngineRetryAttempt((n) => n + 1);
+          }
+        }, delayMs);
+      } else {
+        setWebglFailed(true);
+      }
+    };
 
     void import('./zenryuEngine3D')
       .then((mod) => {
         if (cancelled || !canvasMountRef.current) return;
         const probe = mod.detectSoftwareWebGL();
         if (!probe.supported) {
-          setWebglFailed(true);
+          scheduleEngineRetry();
           return;
         }
         instance = mod.createZenryu3DEngine({
@@ -618,6 +789,11 @@ function DragonCompanionInner({
               if (nextPose !== 'sleep') {
                 lastInteractionRef.current = Date.now();
               }
+            }
+          },
+          onContextLost: () => {
+            if (!cancelled) {
+              scheduleEngineRetry();
             }
           },
         });
@@ -646,9 +822,7 @@ function DragonCompanionInner({
         }
       })
       .catch(() => {
-        if (!cancelled) {
-          setWebglFailed(true);
-        }
+        scheduleEngineRetry();
       });
 
     // ResizeObserver on the stage itself (not only window) so any stage/layout change refits Box3 camera
@@ -667,6 +841,7 @@ function DragonCompanionInner({
 
     return () => {
       cancelled = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
       window.removeEventListener('resize', onWindowResize);
       resizeObs?.disconnect();
       if (typeof window !== 'undefined') {
@@ -682,7 +857,7 @@ function DragonCompanionInner({
       engineRef.current = null;
       setEngineReady(false);
     };
-  }, [postPaintReady, isUnlocked, hideDragon, shouldUseStaticPose, webglFailed]);
+  }, [postPaintReady, isUnlocked, hideDragon, shouldUseStaticPose, webglFailed, engineRetryAttempt]);
 
   // Pause 3D render loop when tab is hidden, stage is off-screen, or modal/sheet is open
   useEffect(() => {
@@ -1141,16 +1316,17 @@ function DragonCompanionInner({
             </div>
           )}
 
-          {/* Soft Red Glow Placeholder While Building 3D Scene */}
+          {/* Soft Red Glow + Instant Dragon Poster While 3D Scene Initializes, or Fallback When Static/WebGL Unavailable */}
           {!engineReady && !shouldUseStaticPose && !webglFailed && (
             <div className="zenryu-stage-loading-glow" aria-hidden="true" />
           )}
 
-          {/* Static Soft-Glow Pose Fallback (Reduced Motion, Truly Low-End Device, or WebGL Unavailable) */}
-          {shouldUseStaticPose || webglFailed ? (
+          {(!engineReady || shouldUseStaticPose || webglFailed) && (
             <StaticDragonFallback onSummon={triggerRoarAndOpenSheet} />
-          ) : (
-            /* 3D WebGL Canvas Mount (Pointer Events support Mouse, Touch & Pen) */
+          )}
+
+          {/* 3D WebGL Canvas Mount (Pointer Events support Mouse, Touch & Pen) */}
+          {!shouldUseStaticPose && !webglFailed && (
             <div
               ref={canvasMountRef}
               onPointerDown={handleCanvasPointerDown}
@@ -1695,31 +1871,68 @@ export function ZenryuDevPreviewPage() {
   );
 }
 
-// ── Self-Contained Error Boundary (Fails Silently & Never Breaks Cockpit) ────
+// ── Self-Contained Error Boundary (Never Unmounts Stage; Retries With Backoff) ──
 interface ErrorBoundaryState {
   hasError: boolean;
+  retryCount: number;
 }
 
 class DragonErrorBoundary extends Component<
   { children: React.ReactNode },
   ErrorBoundaryState
 > {
+  private retryTimer: number | null = null;
+
   constructor(props: { children: React.ReactNode }) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, retryCount: 0 };
   }
 
-  static getDerivedStateFromError(): ErrorBoundaryState {
+  static getDerivedStateFromError(): Partial<ErrorBoundaryState> {
     return { hasError: true };
   }
 
   componentDidCatch(): void {
-    // Fail silently per hard rules so the Cockpit is never disrupted
+    // Schedule automatic backoff retry so transient errors never unmount the companion
+    if (this.state.retryCount < 4 && typeof window !== 'undefined') {
+      if (this.retryTimer) window.clearTimeout(this.retryTimer);
+      const delayMs = 450 * Math.pow(2, this.state.retryCount);
+      this.retryTimer = window.setTimeout(() => {
+        this.setState((prev) => ({
+          hasError: false,
+          retryCount: prev.retryCount + 1,
+        }));
+      }, delayMs);
+    }
+  }
+
+  componentWillUnmount(): void {
+    if (this.retryTimer && typeof window !== 'undefined') {
+      window.clearTimeout(this.retryTimer);
+    }
   }
 
   render() {
     if (this.state.hasError) {
-      return null;
+      if (!isDragonCompanionEnabled() || getHideDragonPreference()) {
+        return null;
+      }
+      return (
+        <section
+          className="zenryu-stage zenryu-stage--active dark-surface-preserve"
+          aria-label={`${DRAGON_COMPANION_NAME} Dragon Companion Stage`}
+        >
+          <div className="zenryu-stage-decor" aria-hidden="true" />
+          <div className="zenryu-stage-vignette" aria-hidden="true" />
+          <StaticDragonFallback />
+          <div className="zenryu-stage-corner-label">
+            <span className="zenryu-status-dot" aria-hidden="true" />
+            <span className="zenryu-stage-corner-name">
+              {DRAGON_COMPANION_NAME} · Tap to summon
+            </span>
+          </div>
+        </section>
+      );
     }
     return this.props.children;
   }

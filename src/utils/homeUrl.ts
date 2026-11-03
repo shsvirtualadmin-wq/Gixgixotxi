@@ -19,13 +19,7 @@ export function isUserAuthenticated(
     return true;
   }
 
-  // If auth state has finished loading and user is explicitly null, user is logged out
-  if (user === null && profileLoading === false) {
-    return false;
-  }
-
-  // While auth state is still loading (or outside React context), check synchronous
-  // Firebase auth state and the existing localStorage session flag set by AuthContext
+  // Check synchronous Firebase auth state and the localStorage session flag set by AuthContext (cleared on signOutUser)
   if (auth?.currentUser) {
     return true;
   }
@@ -38,6 +32,11 @@ export function isUserAuthenticated(
     } catch {
       // Ignore storage access errors
     }
+  }
+
+  // If auth state has finished loading and user is explicitly null, user is logged out
+  if (user === null && profileLoading === false) {
+    return false;
   }
 
   return false;

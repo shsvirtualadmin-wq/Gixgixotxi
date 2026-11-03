@@ -353,6 +353,22 @@ export function parseServiceAccountFromEnv(env?: RewardsEnv): ServiceAccountCred
 
 let cachedAccessToken: { token: string; clientEmail: string; expiresAt: number } | null = null;
 
+export const FIRESTORE_OAUTH_SCOPE = 'https://www.googleapis.com/auth/datastore';
+export const FIRESTORE_TOKEN_AUDIENCE = 'https://oauth2.googleapis.com/token';
+
+export function resolveTargetFirestoreProjectId(rawProjectId?: string | null): string {
+  const trimmed = (rawProjectId || '').trim();
+  return trimmed || DEFAULT_FIREBASE_PROJECT_ID;
+}
+
+export function resolveTargetFirestoreDatabaseId(rawDatabaseId?: string | null): string {
+  const trimmed = (rawDatabaseId || '').trim();
+  if (!trimmed || trimmed === '(default)' || trimmed === 'default') {
+    return DEFAULT_FIRESTORE_DATABASE_ID;
+  }
+  return trimmed;
+}
+
 export async function getServiceAccountAccessToken(
   sa: ServiceAccountCredentials
 ): Promise<string> {
@@ -366,12 +382,12 @@ export async function getServiceAccountAccessToken(
   }
 
   const nowSec = Math.floor(nowMs / 1000);
-  const tokenUri = sa.token_uri || 'https://oauth2.googleapis.com/token';
+  const tokenUri = sa.token_uri || FIRESTORE_TOKEN_AUDIENCE;
   const header = { alg: 'RS256', typ: 'JWT' };
   const claimSet = {
     iss: sa.client_email,
     sub: sa.client_email,
-    scope: 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/cloud-platform',
+    scope: FIRESTORE_OAUTH_SCOPE,
     aud: tokenUri,
     iat: nowSec,
     exp: nowSec + 3600,
@@ -408,7 +424,14 @@ export async function getServiceAccountAccessToken(
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Service account OAuth2 token error (${res.status}): ${errText.slice(0, 240)}`);
+    console.error(`[Rewards Firestore OAuth2 Error] HTTP ${res.status}:`, errText.slice(0, 500));
+    const err = new Error(`OAUTH_TOKEN_EXCHANGE_FAILED_${res.status}`) as Error & {
+      status?: number;
+      sanitizedReason?: string;
+    };
+    err.status = res.status;
+    err.sanitizedReason = `oauth_token_exchange_failed_${res.status}`;
+    throw err;
   }
 
   const data = (await res.json()) as { access_token: string; expires_in?: number };
@@ -533,6 +556,20 @@ export interface FirestoreTransactionContext {
   setDoc(path: string, data: Record<string, unknown>, merge?: boolean): void;
 }
 
+export interface FirestoreHealthCheckResult {
+  ok: boolean;
+  reason: string;
+  httpStatus?: number;
+  targetProjectId: string;
+  targetDatabaseId: string;
+  serviceAccountProjectId: string | null;
+  serviceAccountClientEmail: string | null;
+  projectMismatch: boolean;
+  restUrlPattern: string;
+  oauthScope: string;
+  tokenAudience: string;
+}
+
 export interface FirestoreStoreAdapter {
   getDoc(path: string): Promise<Record<string, any> | null>;
   setDoc(path: string, data: Record<string, unknown>, merge?: boolean): Promise<void>;
@@ -544,6 +581,7 @@ export interface FirestoreStoreAdapter {
     limit?: number
   ): Promise<Array<Record<string, any>>>;
   runTransaction<T>(fn: (tx: FirestoreTransactionContext) => Promise<T>): Promise<T>;
+  checkHealth?(timeoutMs?: number): Promise<FirestoreHealthCheckResult>;
 }
 
 // ─── Production Firestore REST API Adapter ────────────────────────────────────
@@ -559,8 +597,8 @@ export class FirestoreRestAdapter implements FirestoreStoreAdapter {
     databaseId: string = DEFAULT_FIRESTORE_DATABASE_ID
   ) {
     this.sa = sa;
-    this.projectId = projectId || sa.project_id || DEFAULT_FIREBASE_PROJECT_ID;
-    this.databaseId = databaseId || DEFAULT_FIRESTORE_DATABASE_ID;
+    this.projectId = resolveTargetFirestoreProjectId(projectId);
+    this.databaseId = resolveTargetFirestoreDatabaseId(databaseId);
   }
 
   private get baseDocsUrl(): string {
@@ -586,6 +624,85 @@ export class FirestoreRestAdapter implements FirestoreStoreAdapter {
     };
   }
 
+  async checkHealth(timeoutMs = 4000): Promise<FirestoreHealthCheckResult> {
+    const baseInfo = {
+      targetProjectId: this.projectId,
+      targetDatabaseId: this.databaseId,
+      serviceAccountProjectId: this.sa.project_id || null,
+      serviceAccountClientEmail: this.sa.client_email || null,
+      projectMismatch: Boolean(this.sa.project_id && this.sa.project_id !== this.projectId),
+      restUrlPattern: `${this.baseDocsUrl}:beginTransaction`,
+      oauthScope: FIRESTORE_OAUTH_SCOPE,
+      tokenAudience: this.sa.token_uri || FIRESTORE_TOKEN_AUDIENCE,
+    };
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const hdrs = await this.headers();
+
+      const beginRes = await fetch(`${this.baseDocsUrl}:beginTransaction`, {
+        method: 'POST',
+        headers: hdrs,
+        body: JSON.stringify({ options: { readOnly: {} } }),
+        signal: controller.signal,
+      });
+
+      if (!beginRes.ok) {
+        const rawErr = await beginRes.text();
+        console.error(
+          `[Rewards Firestore Health Check Failed] POST ${this.baseDocsUrl}:beginTransaction HTTP ${beginRes.status}:`,
+          rawErr.slice(0, 600)
+        );
+        const reason =
+          beginRes.status === 403
+            ? baseInfo.projectMismatch
+              ? 'permission_denied_project_mismatch'
+              : 'permission_denied_missing_datastore_user_role'
+            : beginRes.status === 404
+            ? 'named_database_not_found'
+            : `firestore_http_${beginRes.status}`;
+        return {
+          ...baseInfo,
+          ok: false,
+          reason,
+          httpStatus: beginRes.status,
+        };
+      }
+
+      const txData = (await beginRes.json()) as { transaction?: string };
+      if (txData?.transaction) {
+        await fetch(`${this.baseDocsUrl}:rollback`, {
+          method: 'POST',
+          headers: hdrs,
+          body: JSON.stringify({ transaction: txData.transaction }),
+          signal: controller.signal,
+        }).catch(() => {});
+      }
+
+      return {
+        ...baseInfo,
+        ok: true,
+        reason: 'ok',
+        httpStatus: 200,
+      };
+    } catch (err: any) {
+      const isTimeout = err?.name === 'AbortError';
+      console.error('[Rewards Firestore Health Check Exception]:', err?.message || err);
+      return {
+        ...baseInfo,
+        ok: false,
+        reason: isTimeout
+          ? 'firestore_timeout'
+          : err?.sanitizedReason || 'firestore_connection_failed',
+        httpStatus: err?.status || 503,
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async getDoc(path: string): Promise<Record<string, any> | null> {
     const clean = path.replace(/^\/+/, '');
     const res = await fetch(`${this.baseDocsUrl}/${clean}`, {
@@ -595,7 +712,13 @@ export class FirestoreRestAdapter implements FirestoreStoreAdapter {
     if (res.status === 404) return null;
     if (!res.ok) {
       const errText = await res.text();
-      throw new Error(`Firestore getDoc(${clean}) failed (${res.status}): ${errText.slice(0, 200)}`);
+      console.error(
+        `[Rewards Firestore getDoc(${clean}) Failed] HTTP ${res.status}:`,
+        errText.slice(0, 600)
+      );
+      const err = new Error(`FIRESTORE_GETDOC_FAILED_${res.status}`) as Error & { status?: number };
+      err.status = res.status;
+      throw err;
     }
     const json = await res.json();
     return fromFirestoreDocument(json);
@@ -618,7 +741,13 @@ export class FirestoreRestAdapter implements FirestoreStoreAdapter {
     });
     if (!res.ok) {
       const errText = await res.text();
-      throw new Error(`Firestore setDoc(${clean}) failed (${res.status}): ${errText.slice(0, 200)}`);
+      console.error(
+        `[Rewards Firestore setDoc(${clean}) Failed] HTTP ${res.status}:`,
+        errText.slice(0, 600)
+      );
+      const err = new Error(`FIRESTORE_SETDOC_FAILED_${res.status}`) as Error & { status?: number };
+      err.status = res.status;
+      throw err;
     }
   }
 
@@ -634,7 +763,15 @@ export class FirestoreRestAdapter implements FirestoreStoreAdapter {
       });
       if (!beginRes.ok) {
         const errText = await beginRes.text();
-        throw new Error(`Firestore beginTransaction failed (${beginRes.status}): ${errText.slice(0, 200)}`);
+        console.error(
+          `[Rewards Firestore beginTransaction Failed] POST ${this.baseDocsUrl}:beginTransaction HTTP ${beginRes.status}:`,
+          errText.slice(0, 600)
+        );
+        const err = new Error(`FIRESTORE_BEGIN_TRANSACTION_FAILED_${beginRes.status}`) as Error & {
+          status?: number;
+        };
+        err.status = beginRes.status;
+        throw err;
       }
       const { transaction } = (await beginRes.json()) as { transaction: string };
 
@@ -652,9 +789,15 @@ export class FirestoreRestAdapter implements FirestoreStoreAdapter {
           });
           if (!batchRes.ok) {
             const errText = await batchRes.text();
-            throw new Error(
-              `Firestore tx.getDoc(${clean}) failed (${batchRes.status}): ${errText.slice(0, 200)}`
+            console.error(
+              `[Rewards Firestore tx.getDoc(${clean}) Failed] HTTP ${batchRes.status}:`,
+              errText.slice(0, 600)
             );
+            const err = new Error(`FIRESTORE_TX_GETDOC_FAILED_${batchRes.status}`) as Error & {
+              status?: number;
+            };
+            err.status = batchRes.status;
+            throw err;
           }
           const items = (await batchRes.json()) as Array<{ found?: any; missing?: string }>;
           const first = Array.isArray(items) ? items[0] : null;
@@ -718,14 +861,18 @@ export class FirestoreRestAdapter implements FirestoreStoreAdapter {
         continue;
       }
 
-      const err = new Error(
-        `Firestore commit failed (${commitStatus}): ${errText.slice(0, 240)}`
-      ) as Error & { status?: number };
+      console.error(
+        `[Rewards Firestore commit Failed] POST ${this.baseDocsUrl}:commit HTTP ${commitStatus}:`,
+        errText.slice(0, 600)
+      );
+      const err = new Error(`FIRESTORE_COMMIT_FAILED_${commitStatus}`) as Error & {
+        status?: number;
+      };
       err.status = commitStatus;
       throw err;
     }
 
-    throw new Error('Firestore transaction exceeded maximum retry attempts.');
+    throw new Error('FIRESTORE_TRANSACTION_MAX_RETRIES');
   }
 }
 

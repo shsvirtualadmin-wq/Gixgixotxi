@@ -2352,6 +2352,78 @@
       "custom_role": "Computer Science Bot",
       "is_posting_banned": 0,
       "updated_at": 1743465600000
+    },
+    {
+      "uid": "EeCxBEqLazgbr4RNXCW5eKD8IyI3",
+      "email": "repro_1793680638416@boardly-test.pk",
+      "role": "captain",
+      "custom_role": null,
+      "is_posting_banned": 0,
+      "updated_at": 1793680711184
+    },
+    {
+      "uid": "B1fQyZC8HEd8zkDS09yKOnRLz4f1",
+      "email": "spa_1793680928558@boardly-test.pk",
+      "role": "captain",
+      "custom_role": null,
+      "is_posting_banned": 0,
+      "updated_at": 1793680932325
+    },
+    {
+      "uid": "KPmwXHHAxmePZZobZrdUi3YkvKF2",
+      "email": "spa_1793680978035@boardly-test.pk",
+      "role": "captain",
+      "custom_role": null,
+      "is_posting_banned": 0,
+      "updated_at": 1793680981472
+    },
+    {
+      "uid": "kxlrPZtBwkV3W3MMviazZyRsFFV2",
+      "email": "diag_1793681009892@boardly-test.pk",
+      "role": "captain",
+      "custom_role": null,
+      "is_posting_banned": 0,
+      "updated_at": 1793681013764
+    },
+    {
+      "uid": "POi8i7CCs4foONhZvUCCpj0tYS03",
+      "email": "spa2_1793681042077@boardly-test.pk",
+      "role": "captain",
+      "custom_role": null,
+      "is_posting_banned": 0,
+      "updated_at": 1793681046164
+    },
+    {
+      "uid": "kR3T6D0XlaTebedkwxcplUxguYG3",
+      "email": "verify_b4_1793682331787@student.edu.pk",
+      "role": "captain",
+      "custom_role": null,
+      "is_posting_banned": 0,
+      "updated_at": 1793682344278
+    },
+    {
+      "uid": "5vZQdvcEJoQwE4oQlIR8HQOamfk2",
+      "email": "verify_b4_1793682500085@student.edu.pk",
+      "role": "captain",
+      "custom_role": null,
+      "is_posting_banned": 0,
+      "updated_at": 1793682504757
+    },
+    {
+      "uid": "MaE2yWynMBUyT2Qc168E5tMZngn2",
+      "email": "verify_30_1793682785763@student.edu.pk",
+      "role": "captain",
+      "custom_role": null,
+      "is_posting_banned": 0,
+      "updated_at": 1793682790449
+    },
+    {
+      "uid": "VvkGae2P2cPgTN76cjWMVgfeF4u2",
+      "email": "verify_real30_1793683060868@student.edu.pk",
+      "role": "captain",
+      "custom_role": null,
+      "is_posting_banned": 0,
+      "updated_at": 1793683067510
     }
   ],
   "botAccounts": [
@@ -2580,6 +2652,69 @@
       "welcomed": 1,
       "read_welcome": 0,
       "welcomed_at": 1793476419291,
+      "read_at": null
+    },
+    {
+      "user_uid": "EeCxBEqLazgbr4RNXCW5eKD8IyI3",
+      "welcomed": 1,
+      "read_welcome": 0,
+      "welcomed_at": 1793680646462,
+      "read_at": null
+    },
+    {
+      "user_uid": "B1fQyZC8HEd8zkDS09yKOnRLz4f1",
+      "welcomed": 1,
+      "read_welcome": 0,
+      "welcomed_at": 1793680932150,
+      "read_at": null
+    },
+    {
+      "user_uid": "KPmwXHHAxmePZZobZrdUi3YkvKF2",
+      "welcomed": 1,
+      "read_welcome": 0,
+      "welcomed_at": 1793680981339,
+      "read_at": null
+    },
+    {
+      "user_uid": "kxlrPZtBwkV3W3MMviazZyRsFFV2",
+      "welcomed": 1,
+      "read_welcome": 0,
+      "welcomed_at": 1793681013654,
+      "read_at": null
+    },
+    {
+      "user_uid": "POi8i7CCs4foONhZvUCCpj0tYS03",
+      "welcomed": 1,
+      "read_welcome": 0,
+      "welcomed_at": 1793681045961,
+      "read_at": null
+    },
+    {
+      "user_uid": "kR3T6D0XlaTebedkwxcplUxguYG3",
+      "welcomed": 1,
+      "read_welcome": 0,
+      "welcomed_at": 1793682344283,
+      "read_at": null
+    },
+    {
+      "user_uid": "5vZQdvcEJoQwE4oQlIR8HQOamfk2",
+      "welcomed": 1,
+      "read_welcome": 0,
+      "welcomed_at": 1793682504754,
+      "read_at": null
+    },
+    {
+      "user_uid": "MaE2yWynMBUyT2Qc168E5tMZngn2",
+      "welcomed": 1,
+      "read_welcome": 0,
+      "welcomed_at": 1793682790452,
+      "read_at": null
+    },
+    {
+      "user_uid": "VvkGae2P2cPgTN76cjWMVgfeF4u2",
+      "welcomed": 1,
+      "read_welcome": 0,
+      "welcomed_at": 1793683067514,
       "read_at": null
     }
   ],

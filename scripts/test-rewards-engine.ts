@@ -723,6 +723,90 @@ async function runAllTests() {
   assert.equal(cap11Accept.json.paid, false);
   console.log('   ✓ Passed full two-way Referral flow, monthly cap (10/month), expiry, and anti-abuse tests.\n');
 
+  // ─── 7. Part A4 Fail-Safe, Part A5 Health Check & Part A6 Non-Admin Day 1 Proof ─
+  console.log('7. Testing Part A4 fail-safe, Part A5 GET /api/rewards/health, and Part A6 non-admin Day 1 claim...');
+
+  // A5: Non-admin calling GET /api/rewards/health must receive 403
+  const healthNonAdmin = await callApi({
+    db,
+    store,
+    path: '/api/rewards/health',
+    token: 'token_bob',
+    nowMs: nextDayMs,
+  });
+  assert.equal(healthNonAdmin.status, 403, 'Non-admin must get 403 on GET /api/rewards/health');
+
+  // A5: Super Admin calling GET /api/rewards/health receives 200 ok
+  const healthSuperAdmin = await callApi({
+    db,
+    store,
+    path: '/api/rewards/health',
+    token: 'token_superadmin',
+    nowMs: nextDayMs,
+  });
+  assert.equal(healthSuperAdmin.status, 200);
+  assert.equal(healthSuperAdmin.json.ok, true);
+  assert.equal(healthSuperAdmin.json.reason, 'ok');
+  assert.equal(healthSuperAdmin.json.targetProjectId, 'gen-lang-client-0365509316');
+  assert.equal(
+    healthSuperAdmin.json.targetDatabaseId,
+    'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712'
+  );
+
+  // A4: When Firestore fails with 403 PERMISSION_DENIED on claim, server returns sanitized error + state='server_not_ready'
+  await store.setDoc('users/uid_charlie', { displayName: 'Charlie Raza', kobans: 0 });
+  await store.setDoc('wallets/uid_charlie', { balance: 0, owned: [] });
+  store.failNextTransactions = 1;
+
+  const charlieFailSafeClaim = await callApi({
+    db,
+    store,
+    path: '/api/rewards/daily/claim',
+    method: 'POST',
+    token: 'token_charlie',
+    nowMs: nextDayMs,
+  });
+  assert.equal(charlieFailSafeClaim.status, 502);
+  assert.equal(charlieFailSafeClaim.json.state, 'server_not_ready');
+  assert.equal(charlieFailSafeClaim.json.comingSoon, true);
+  assert.equal(charlieFailSafeClaim.json.canClaim, false);
+  assert.equal(charlieFailSafeClaim.json.error, 'Rewards are being set up');
+  assert.equal(
+    JSON.stringify(charlieFailSafeClaim.json).includes('SIMULATED_FIRESTORE'),
+    false,
+    'Raw server/Firestore error must never be sent to the browser'
+  );
+
+  // A6: Non-admin (Charlie) retries Day 1 claim after server recovery (>= 1500ms later):
+  // credits +50 once (0 -> 50) and updates balance; a second claim on the same day is rejected with 409!
+  const charlieDay1Success = await callApi({
+    db,
+    store,
+    path: '/api/rewards/daily/claim',
+    method: 'POST',
+    token: 'token_charlie',
+    nowMs: nextDayMs + 2500,
+  });
+  assert.equal(charlieDay1Success.status, 200, 'Non-admin Day 1 claim must succeed once Firestore recovers');
+  assert.equal(charlieDay1Success.json.dayNumber, 1);
+  assert.equal(charlieDay1Success.json.rewardAmount, 50);
+  assert.equal(charlieDay1Success.json.newBalance, 50, 'Day 1 claim must credit +50 once (0 -> 50)');
+  assert.equal((await store.getDoc('wallets/uid_charlie'))?.balance, 50);
+  assert.equal((await store.getDoc('users/uid_charlie'))?.kobans, 50);
+
+  const charlieDay1Duplicate = await callApi({
+    db,
+    store,
+    path: '/api/rewards/daily/claim',
+    method: 'POST',
+    token: 'token_charlie',
+    nowMs: nextDayMs + 3500,
+  });
+  assert.equal(charlieDay1Duplicate.status, 409, 'Second Day 1 claim on the same day must be rejected with 409');
+  assert.equal(charlieDay1Duplicate.json.code, 'ALREADY_CLAIMED_TODAY');
+  assert.equal((await store.getDoc('wallets/uid_charlie'))?.balance, 50, 'Balance must remain 50 after rejected second claim');
+  console.log('   ✓ Passed Part A4 fail-safe, Part A5 /api/rewards/health, and Part A6 non-admin Day 1 (+50 once, second claim 409).\n');
+
   // Reset mode back to 'off' in D1 as default
   await callApi({
     db,

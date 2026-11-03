@@ -142,7 +142,10 @@ export function OverviewPage() {
     profile?.shortId || user?.uid
   );
   const firstName = cleanFullName.split(' ')[0] || 'Student';
-  const filledBars = Math.min(7, Math.max(0, streak));
+  const safeStreak = Number.isFinite(Number(streak))
+    ? Math.max(0, Math.floor(Number(streak)))
+    : 0;
+  const filledBars = Math.min(7, safeStreak);
 
   // ── Active University Test Flow State (Opened ONLY via a LIVE University Bubble or Live Weak Chapter Drill) ──
   const [activeUni, setActiveUni] = useState<D1UniversityRow | null>(null);
@@ -614,7 +617,7 @@ export function OverviewPage() {
               className="text-xl sm:text-2xl font-bold text-[var(--text)] tabular-nums leading-none"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
-              {streak} {streak === 1 ? 'Day' : 'Days'}
+              {safeStreak} {safeStreak === 1 ? 'Day' : 'Days'}
             </div>
             <div className="flex items-center gap-1" aria-hidden="true">
               {Array.from({ length: 7 }).map((_, i) => (

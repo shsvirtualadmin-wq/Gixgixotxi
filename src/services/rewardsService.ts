@@ -121,6 +121,8 @@ export function buildFallbackClientState(uid?: string | null): RewardsStateRespo
   });
 
   return {
+    state: 'server_not_ready',
+    statusMessage: 'Rewards are being set up',
     serverConfigured: false,
     mode: 'off',
     canClaim: false,
@@ -150,6 +152,42 @@ export function buildFallbackClientState(uid?: string | null): RewardsStateRespo
   };
 }
 
+function sanitizeClientRewardsError(
+  status: number,
+  data: Record<string, any> | null | undefined
+): {
+  error: string;
+  code: string;
+  state?: 'server_not_ready' | 'disabled';
+  comingSoon: boolean;
+} {
+  const rawCode = String(data?.code || '');
+  const rawError = String(data?.error || '');
+  const isServerNotReady =
+    status >= 500 ||
+    data?.state === 'server_not_ready' ||
+    rawCode === 'SERVER_NOT_READY' ||
+    rawCode === 'SERVER_NOT_CONFIGURED' ||
+    rawCode === 'CREDIT_PENDING_RETRY' ||
+    /firestore|beginTransaction|PERMISSION_DENIED|service account/i.test(rawError);
+
+  if (isServerNotReady) {
+    return {
+      error: 'Rewards are being set up',
+      code: 'SERVER_NOT_READY',
+      state: 'server_not_ready',
+      comingSoon: true,
+    };
+  }
+
+  return {
+    error: rawError || 'Rewards are being set up',
+    code: rawCode || `HTTP_${status}`,
+    state: data?.state === 'disabled' ? 'disabled' : undefined,
+    comingSoon: status === 503 || Boolean(data?.comingSoon),
+  };
+}
+
 export async function fetchRewardsState(uid?: string | null): Promise<RewardsStateResponse> {
   try {
     const headers = await getAuthHeaders();
@@ -167,6 +205,13 @@ export async function fetchRewardsState(uid?: string | null): Promise<RewardsSta
           shareUrl: `https://boardly.cfd/join/${deterministic}`,
         };
       }
+      if (data.state === 'server_not_ready' || !data.serverConfigured) {
+        data.state = 'server_not_ready';
+        data.statusMessage = 'Rewards are being set up';
+        data.canClaim = false;
+        data.enabled = false;
+        data.comingSoon = true;
+      }
       return data as RewardsStateResponse;
     }
     return buildFallbackClientState(uid);
@@ -182,24 +227,34 @@ export async function claimDailyReward(): Promise<{
   newBalance?: number;
   error?: string;
   code?: string;
+  state?: 'server_not_ready' | 'disabled';
   comingSoon?: boolean;
 }> {
-  const headers = await getAuthHeaders();
-  const res = await fetch('/api/rewards/daily/claim', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({}),
-  });
-  const data = await res.json().catch(() => ({ ok: false, error: 'Network error' }));
-  if (!res.ok) {
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/rewards/daily/claim', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({}),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.ok) {
+      const safe = sanitizeClientRewardsError(res.status, data);
+      return {
+        ok: false,
+        ...safe,
+      };
+    }
+    return data;
+  } catch {
     return {
       ok: false,
-      error: data?.error || `Request failed (${res.status})`,
-      code: data?.code,
-      comingSoon: res.status === 503 || Boolean(data?.comingSoon),
+      error: 'Rewards are being set up',
+      code: 'SERVER_NOT_READY',
+      state: 'server_not_ready',
+      comingSoon: true,
     };
   }
-  return data;
 }
 
 export async function claimMilestoneReward(milestoneId: string): Promise<{
@@ -209,24 +264,34 @@ export async function claimMilestoneReward(milestoneId: string): Promise<{
   newBalance?: number;
   error?: string;
   code?: string;
+  state?: 'server_not_ready' | 'disabled';
   comingSoon?: boolean;
 }> {
-  const headers = await getAuthHeaders();
-  const res = await fetch('/api/rewards/milestone/claim', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ id: milestoneId }),
-  });
-  const data = await res.json().catch(() => ({ ok: false, error: 'Network error' }));
-  if (!res.ok) {
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/rewards/milestone/claim', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ id: milestoneId }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.ok) {
+      const safe = sanitizeClientRewardsError(res.status, data);
+      return {
+        ok: false,
+        ...safe,
+      };
+    }
+    return data;
+  } catch {
     return {
       ok: false,
-      error: data?.error || `Request failed (${res.status})`,
-      code: data?.code,
-      comingSoon: res.status === 503 || Boolean(data?.comingSoon),
+      error: 'Rewards are being set up',
+      code: 'SERVER_NOT_READY',
+      state: 'server_not_ready',
+      comingSoon: true,
     };
   }
-  return data;
 }
 
 export async function attachReferralCode(code: string): Promise<{
@@ -236,24 +301,34 @@ export async function attachReferralCode(code: string): Promise<{
   inviterDisplayName?: string;
   error?: string;
   code?: string;
+  state?: 'server_not_ready' | 'disabled';
   comingSoon?: boolean;
 }> {
-  const headers = await getAuthHeaders();
-  const res = await fetch('/api/rewards/referral/attach', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ code: normalizeReferralCode(code) }),
-  });
-  const data = await res.json().catch(() => ({ ok: false, error: 'Network error' }));
-  if (!res.ok) {
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/rewards/referral/attach', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ code: normalizeReferralCode(code) }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.ok) {
+      const safe = sanitizeClientRewardsError(res.status, data);
+      return {
+        ok: false,
+        ...safe,
+      };
+    }
+    return data;
+  } catch {
     return {
       ok: false,
-      error: data?.error || `Request failed (${res.status})`,
-      code: data?.code,
-      comingSoon: res.status === 503 || Boolean(data?.comingSoon),
+      error: 'Rewards are being set up',
+      code: 'SERVER_NOT_READY',
+      state: 'server_not_ready',
+      comingSoon: true,
     };
   }
-  return data;
 }
 
 export async function acceptPendingReferral(
@@ -271,27 +346,37 @@ export async function acceptPendingReferral(
   message?: string;
   error?: string;
   code?: string;
+  state?: 'server_not_ready' | 'disabled';
   comingSoon?: boolean;
 }> {
-  const headers = await getAuthHeaders();
-  const res = await fetch('/api/rewards/referral/accept', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      referralId,
-      enteredCode: normalizeReferralCode(enteredCode),
-    }),
-  });
-  const data = await res.json().catch(() => ({ ok: false, error: 'Network error' }));
-  if (!res.ok) {
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/rewards/referral/accept', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        referralId,
+        enteredCode: normalizeReferralCode(enteredCode),
+      }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.ok) {
+      const safe = sanitizeClientRewardsError(res.status, data);
+      return {
+        ok: false,
+        ...safe,
+      };
+    }
+    return data;
+  } catch {
     return {
       ok: false,
-      error: data?.error || `Request failed (${res.status})`,
-      code: data?.code,
-      comingSoon: res.status === 503 || Boolean(data?.comingSoon),
+      error: 'Rewards are being set up',
+      code: 'SERVER_NOT_READY',
+      state: 'server_not_ready',
+      comingSoon: true,
     };
   }
-  return data;
 }
 
 /**
@@ -320,3 +405,46 @@ export async function setRewardsAdminMode(mode: RewardsMode): Promise<{
   }
   return data;
 }
+
+export interface RewardsHealthResponse {
+  ok: boolean;
+  reason: string;
+  httpStatus?: number;
+  targetProjectId?: string;
+  targetDatabaseId?: string;
+  serviceAccountProjectId?: string | null;
+  serviceAccountClientEmail?: string | null;
+  projectMismatch?: boolean;
+  restUrlPattern?: string;
+  oauthScope?: string;
+  tokenAudience?: string;
+  mode?: RewardsMode;
+}
+
+/**
+ * Super Admin endpoint to check Firestore + D1 Rewards health (`GET /api/rewards/health`).
+ */
+export async function fetchRewardsHealth(): Promise<RewardsHealthResponse> {
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/rewards/health', {
+      method: 'GET',
+      headers,
+    });
+    const data = await res.json().catch(() => null);
+    if (data && typeof data === 'object' && typeof data.reason === 'string') {
+      return data as RewardsHealthResponse;
+    }
+    return {
+      ok: false,
+      reason: `http_${res.status}`,
+      httpStatus: res.status,
+    };
+  } catch {
+    return {
+      ok: false,
+      reason: 'network_error',
+    };
+  }
+}
+

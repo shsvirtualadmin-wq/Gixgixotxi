@@ -45,13 +45,18 @@ import {
 import {
   DEFAULT_FIREBASE_PROJECT_ID,
   DEFAULT_FIRESTORE_DATABASE_ID,
+  FIRESTORE_OAUTH_SCOPE,
+  FIRESTORE_TOKEN_AUDIENCE,
   FirestoreRestAdapter,
   SERVER_TIMESTAMP_SENTINEL,
   authenticateD1RewardsUser,
   creditKobansIdempotentInFirestore,
   getSharedLocalD1Database,
   parseServiceAccountFromEnv,
+  resolveTargetFirestoreDatabaseId,
+  resolveTargetFirestoreProjectId,
   type AuthenticatedD1User,
+  type FirestoreHealthCheckResult,
   type FirestoreStoreAdapter,
   type RewardsD1Database,
   type RewardsEnv,
@@ -418,7 +423,7 @@ export async function computeD1DailyProgressForUser(
       created_at: number;
     }>();
 
-  const rows = results || [];
+  const rows = (results || []).filter((r) => r.credit_status === 'credited');
   const totalClaims = rows.length;
   const lastClaimPktDate = rows[0]?.pkt_date || null;
 
@@ -566,56 +571,71 @@ async function tryProcessConfirmedReferralPayout(params: {
   let inviterStatus = String(refRow.inviter_credit_status || 'pending');
   let inviteeStatus = String(refRow.invitee_credit_status || 'pending');
 
-  if (inviterStatus !== 'credited') {
-    const inviterRes = await creditKobansIdempotentInFirestore({
-      store,
-      uid: inviterUid,
-      ledgerId: `reward_ref_inviter_${referralId}`,
-      type: 'reward_referral_inviter',
-      amount: inviterReward,
-      reason: `Referral Reward — Friend ${refRow.invitee_code} completed ${config.referral.minInviteeMcqs} MCQs`,
-      extraLedgerFields: { referralId },
-      notification: {
-        id: `ref_paid_inviter_${referralId}`,
-        title: `Referral Complete! +${inviterReward.toLocaleString()} Kobans`,
-        message: `Your referred classmate completed ${config.referral.minInviteeMcqs} MCQs. +${inviterReward.toLocaleString()} Kobans have been credited to your wallet!`,
-        link: '/rewards',
-      },
-    });
-    if (inviterRes.credited) {
-      await db
-        .prepare('UPDATE referrals SET inviter_credit_status = ?1 WHERE id = ?2')
-        .bind('credited', referralId)
-        .run();
-      inviterStatus = 'credited';
-      inviterCreditedNow = !inviterRes.alreadyCredited;
+  try {
+    if (inviterStatus !== 'credited') {
+      const inviterRes = await creditKobansIdempotentInFirestore({
+        store,
+        uid: inviterUid,
+        ledgerId: `reward_ref_inviter_${referralId}`,
+        type: 'reward_referral_inviter',
+        amount: inviterReward,
+        reason: `Referral Reward — Friend ${refRow.invitee_code} completed ${config.referral.minInviteeMcqs} MCQs`,
+        extraLedgerFields: { referralId },
+        notification: {
+          id: `ref_paid_inviter_${referralId}`,
+          title: `Referral Complete! +${inviterReward.toLocaleString()} Kobans`,
+          message: `Your referred classmate completed ${config.referral.minInviteeMcqs} MCQs. +${inviterReward.toLocaleString()} Kobans have been credited to your wallet!`,
+          link: '/rewards',
+        },
+      });
+      if (inviterRes.credited) {
+        await db
+          .prepare('UPDATE referrals SET inviter_credit_status = ?1 WHERE id = ?2')
+          .bind('credited', referralId)
+          .run();
+        inviterStatus = 'credited';
+        inviterCreditedNow = !inviterRes.alreadyCredited;
+      }
     }
-  }
 
-  if (inviteeStatus !== 'credited') {
-    const inviteeRes = await creditKobansIdempotentInFirestore({
-      store,
-      uid: inviteeUid,
-      ledgerId: `reward_ref_invitee_${referralId}`,
-      type: 'reward_referral_invitee',
-      amount: inviteeReward,
-      reason: `Referral Bonus — Joined with code ${refRow.inviter_code}`,
-      extraLedgerFields: { referralId },
-      notification: {
-        id: `ref_paid_invitee_${referralId}`,
-        title: `Referral Bonus! +${inviteeReward.toLocaleString()} Kobans`,
-        message: `You completed ${config.referral.minInviteeMcqs} MCQs and unlocked your +${inviteeReward.toLocaleString()} Kobans referral bonus!`,
-        link: '/rewards',
-      },
-    });
-    if (inviteeRes.credited) {
-      await db
-        .prepare('UPDATE referrals SET invitee_credit_status = ?1 WHERE id = ?2')
-        .bind('credited', referralId)
-        .run();
-      inviteeStatus = 'credited';
-      inviteeCreditedNow = !inviteeRes.alreadyCredited;
+    if (inviteeStatus !== 'credited') {
+      const inviteeRes = await creditKobansIdempotentInFirestore({
+        store,
+        uid: inviteeUid,
+        ledgerId: `reward_ref_invitee_${referralId}`,
+        type: 'reward_referral_invitee',
+        amount: inviteeReward,
+        reason: `Referral Bonus — Joined with code ${refRow.inviter_code}`,
+        extraLedgerFields: { referralId },
+        notification: {
+          id: `ref_paid_invitee_${referralId}`,
+          title: `Referral Bonus! +${inviteeReward.toLocaleString()} Kobans`,
+          message: `You completed ${config.referral.minInviteeMcqs} MCQs and unlocked your +${inviteeReward.toLocaleString()} Kobans referral bonus!`,
+          link: '/rewards',
+        },
+      });
+      if (inviteeRes.credited) {
+        await db
+          .prepare('UPDATE referrals SET invitee_credit_status = ?1 WHERE id = ?2')
+          .bind('credited', referralId)
+          .run();
+        inviteeStatus = 'credited';
+        inviteeCreditedNow = !inviteeRes.alreadyCredited;
+      }
     }
+  } catch (creditErr: any) {
+    console.error(
+      `[Rewards Referral Payout Firestore Error] referralId=${referralId}:`,
+      creditErr?.message || creditErr
+    );
+    return {
+      status: 'confirmed',
+      paidNow: false,
+      inviterCreditedNow,
+      inviteeCreditedNow,
+      errorCode: 'SERVER_NOT_READY',
+      errorMessage: 'Rewards are being set up',
+    };
   }
 
   if (inviterStatus === 'credited' && inviteeStatus === 'credited') {
@@ -648,8 +668,9 @@ export async function retryPendingFirestoreCredits(params: {
   db: RewardsD1Database;
   store: FirestoreStoreAdapter | null;
   uid: string;
+  onFirestoreError?: (err: unknown) => void;
 }): Promise<number> {
-  const { db, store, uid } = params;
+  const { db, store, uid, onFirestoreError } = params;
   if (!store) return 0;
 
   let newlyCreditedAmount = 0;
@@ -694,8 +715,12 @@ export async function retryPendingFirestoreCredits(params: {
           newlyCreditedAmount += row.amount;
         }
       }
-    } catch {
-      // Leave 'pending' for next retry
+    } catch (err: any) {
+      console.error(
+        `[Rewards Retry Daily Credit Error] uid=${uid} pkt_date=${row.pkt_date}:`,
+        err?.message || err
+      );
+      onFirestoreError?.(err);
     }
   }
 
@@ -740,8 +765,12 @@ export async function retryPendingFirestoreCredits(params: {
           newlyCreditedAmount += row.amount;
         }
       }
-    } catch {
-      // Leave 'pending' for next retry
+    } catch (err: any) {
+      console.error(
+        `[Rewards Retry Milestone Credit Error] uid=${uid} milestone=${row.milestone_id}:`,
+        err?.message || err
+      );
+      onFirestoreError?.(err);
     }
   }
 
@@ -800,23 +829,21 @@ export async function handleRewardsApiRequest(
   await ensureRewardsD1Schema(db);
 
   // 2. Resolve Firestore Store for Koban Wallet/Ledger Credits (only needed for crediting Kobans)
+  const parsedSa = parseServiceAccountFromEnv(env);
+  const targetProjectId = resolveTargetFirestoreProjectId(
+    env?.FIREBASE_PROJECT_ID || env?.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID
+  );
+  const targetDatabaseId = resolveTargetFirestoreDatabaseId(
+    env?.FIREBASE_DATABASE_ID ||
+      env?.VITE_FIREBASE_DATABASE_ID ||
+      env?.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
+      DEFAULT_FIRESTORE_DATABASE_ID
+  );
+
   let store: FirestoreStoreAdapter | null =
     opts.storeOverride !== undefined ? opts.storeOverride : null;
-  if (opts.storeOverride === undefined) {
-    const sa = parseServiceAccountFromEnv(env);
-    if (sa) {
-      const projectId =
-        env?.FIREBASE_PROJECT_ID ||
-        env?.VITE_FIREBASE_PROJECT_ID ||
-        sa.project_id ||
-        DEFAULT_FIREBASE_PROJECT_ID;
-      const databaseId =
-        env?.FIREBASE_DATABASE_ID ||
-        env?.VITE_FIREBASE_DATABASE_ID ||
-        env?.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
-        DEFAULT_FIRESTORE_DATABASE_ID;
-      store = new FirestoreRestAdapter(sa, projectId, databaseId);
-    }
+  if (opts.storeOverride === undefined && parsedSa) {
+    store = new FirestoreRestAdapter(parsedSa, targetProjectId, targetDatabaseId);
   }
   const serverConfigured = Boolean(store);
 
@@ -846,10 +873,12 @@ export async function handleRewardsApiRequest(
       config,
     });
     const stateResp: RewardsStateResponse = {
+      state: !serverConfigured ? 'server_not_ready' : mode === 'everyone' ? 'ready' : 'disabled',
+      statusMessage: !serverConfigured ? 'Rewards are being set up' : undefined,
       serverConfigured,
       mode,
       canClaim: false,
-      enabled: mode === 'everyone',
+      enabled: mode === 'everyone' && serverConfigured,
       comingSoon: mode !== 'everyone' || !serverConfigured,
       timezone: config.timezone,
       balance: 0,
@@ -885,6 +914,90 @@ export async function handleRewardsApiRequest(
 
   const uid = d1User.uid;
 
+  // ─── ENDPOINT 7: GET /api/rewards/health (Super Admin Only, Part A5) ───────
+  if (subPath === 'health' && request.method === 'GET') {
+    if (!d1User.isSuperAdmin) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'Forbidden: Only Super Admins can view Rewards health.',
+          code: 'FORBIDDEN',
+        },
+        403
+      );
+    }
+
+    const restUrlPattern = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(
+      targetProjectId
+    )}/databases/${encodeURIComponent(targetDatabaseId)}/documents:beginTransaction`;
+
+    if (!store) {
+      const missingRes: FirestoreHealthCheckResult & { mode: RewardsMode } = {
+        ok: false,
+        reason: 'missing_firebase_service_account',
+        httpStatus: 503,
+        targetProjectId,
+        targetDatabaseId,
+        serviceAccountProjectId: null,
+        serviceAccountClientEmail: null,
+        projectMismatch: false,
+        restUrlPattern,
+        oauthScope: FIRESTORE_OAUTH_SCOPE,
+        tokenAudience: FIRESTORE_TOKEN_AUDIENCE,
+        mode,
+      };
+      return jsonResponse(missingRes, 200);
+    }
+
+    if (typeof store.checkHealth === 'function') {
+      const health = await store.checkHealth(4000);
+      return jsonResponse({ ...health, mode }, 200);
+    }
+
+    // Fallback health probe for in-memory/mock store adapters
+    try {
+      await store.runTransaction(async (tx) => {
+        await tx.getDoc('settings/rewards');
+      });
+      return jsonResponse(
+        {
+          ok: true,
+          reason: 'ok',
+          httpStatus: 200,
+          targetProjectId,
+          targetDatabaseId,
+          serviceAccountProjectId: parsedSa?.project_id || targetProjectId,
+          serviceAccountClientEmail: parsedSa?.client_email || 'mock-service-account@local',
+          projectMismatch: false,
+          restUrlPattern,
+          oauthScope: FIRESTORE_OAUTH_SCOPE,
+          tokenAudience: FIRESTORE_TOKEN_AUDIENCE,
+          mode,
+        },
+        200
+      );
+    } catch (err: any) {
+      console.error('[Rewards Health Probe Error]:', err?.message || err);
+      return jsonResponse(
+        {
+          ok: false,
+          reason: 'permission_denied_or_transaction_failed',
+          httpStatus: err?.status || 503,
+          targetProjectId,
+          targetDatabaseId,
+          serviceAccountProjectId: parsedSa?.project_id || targetProjectId,
+          serviceAccountClientEmail: parsedSa?.client_email || null,
+          projectMismatch: Boolean(parsedSa?.project_id && parsedSa.project_id !== targetProjectId),
+          restUrlPattern,
+          oauthScope: FIRESTORE_OAUTH_SCOPE,
+          tokenAudience: FIRESTORE_TOKEN_AUDIENCE,
+          mode,
+        },
+        200
+      );
+    }
+  }
+
   // 5. Per-user rate limiting (~1 request/sec)
   if (!opts.bypassRateLimit) {
     const rateBucket = request.method === 'GET' ? `get:${subPath}` : `post:${subPath}`;
@@ -901,7 +1014,17 @@ export async function handleRewardsApiRequest(
   }
 
   // 6. Reject suspended users (checked in D1 `user_roles.is_posting_banned` and Firestore `users/{uid}`)
-  const userDoc = store ? await store.getDoc(`users/${uid}`).catch(() => null) : null;
+  let firestoreErrorOccurred = false;
+  let userDoc: Record<string, any> | null = null;
+  if (store) {
+    try {
+      userDoc = await store.getDoc(`users/${uid}`);
+    } catch (err: any) {
+      console.error(`[Rewards Firestore userDoc Error] uid=${uid}:`, err?.message || err);
+      firestoreErrorOccurred = true;
+    }
+  }
+
   if (d1User.isPostingBanned || isFirestoreUserSuspended(userDoc)) {
     return jsonResponse(
       {
@@ -995,12 +1118,17 @@ export async function handleRewardsApiRequest(
     );
   }
 
-  const canClaim = canUserClaimRewards({ serverConfigured, mode, user: d1User });
-
   // ─── ENDPOINT 1: GET /api/rewards/state ────────────────────────────────────
   if (subPath === 'state' && request.method === 'GET') {
     // Phase 3: Retry any pending Firestore credits for this user first
-    await retryPendingFirestoreCredits({ db, store, uid });
+    await retryPendingFirestoreCredits({
+      db,
+      store,
+      uid,
+      onFirestoreError: () => {
+        firestoreErrorOccurred = true;
+      },
+    });
 
     const [myCode, daily, mcqsAnswered, milestoneRowsRes, referralRowsRes, walletDoc] =
       await Promise.all([
@@ -1024,16 +1152,24 @@ export async function handleRewardsApiRequest(
           )
           .bind(uid)
           .all<Record<string, any>>(),
-        store ? store.getDoc(`wallets/${uid}`).catch(() => null) : Promise.resolve(null),
+        store
+          ? store.getDoc(`wallets/${uid}`).catch((err: any) => {
+              console.error(`[Rewards Firestore walletDoc Error] uid=${uid}:`, err?.message || err);
+              firestoreErrorOccurred = true;
+              return null;
+            })
+          : Promise.resolve(null),
       ]);
 
     const claimedIds: Record<string, number> = {};
     const milestoneCreditStatus: Record<string, 'pending' | 'credited'> = {};
     for (const mc of milestoneRowsRes.results || []) {
       if (mc.milestone_id) {
-        claimedIds[String(mc.milestone_id)] = Number(mc.created_at || nowMs);
-        milestoneCreditStatus[String(mc.milestone_id)] =
-          mc.credit_status === 'credited' ? 'credited' : 'pending';
+        const isCredited = mc.credit_status === 'credited';
+        if (isCredited) {
+          claimedIds[String(mc.milestone_id)] = Number(mc.created_at || nowMs);
+        }
+        milestoneCreditStatus[String(mc.milestone_id)] = isCredited ? 'credited' : 'pending';
       }
     }
 
@@ -1109,8 +1245,13 @@ export async function handleRewardsApiRequest(
       );
 
       // If status is 'confirmed' (or partially credited) and claims are allowed, try payout
+      const allowReferralPayout = canUserClaimRewards({
+        serverConfigured: serverConfigured && !firestoreErrorOccurred,
+        mode,
+        user: d1User,
+      });
       if (
-        canClaim &&
+        allowReferralPayout &&
         (rawStatus === 'confirmed' ||
           rawStatus === 'confirmed_waiting_mcqs' ||
           ((rawStatus === 'paid' || rawStatus === 'completed') &&
@@ -1125,6 +1266,9 @@ export async function handleRewardsApiRequest(
           config,
           nowMs,
         });
+        if (payoutRes.errorCode === 'SERVER_NOT_READY') {
+          firestoreErrorOccurred = true;
+        }
         rawStatus = payoutRes.status;
         if (payoutRes.paidNow) {
           if (isInviter && payoutRes.inviterCreditedNow) {
@@ -1141,8 +1285,12 @@ export async function handleRewardsApiRequest(
 
       // Resolve counterpart display name safely (never exposing email)
       let counterpartName = `Student (${counterpartCode})`;
-      if (store) {
-        const cpDoc = await store.getDoc(`users/${counterpartUid}`).catch(() => null);
+      if (store && !firestoreErrorOccurred) {
+        const cpDoc = await store.getDoc(`users/${counterpartUid}`).catch((err: any) => {
+          console.error(`[Rewards Firestore cpDoc Error]:`, err?.message || err);
+          firestoreErrorOccurred = true;
+          return null;
+        });
         if (cpDoc) {
           counterpartName = sanitizeDisplayName(cpDoc, null);
         }
@@ -1167,6 +1315,13 @@ export async function handleRewardsApiRequest(
       });
     }
 
+    const effectiveServerReady = serverConfigured && !firestoreErrorOccurred;
+    const effectiveCanClaim = canUserClaimRewards({
+      serverConfigured: effectiveServerReady,
+      mode,
+      user: d1User,
+    });
+
     const accountCreatedAtMs =
       (d1User.d1CreatedAtMs > 0 ? d1User.d1CreatedAtMs : null) ??
       parseTimestampMs(userDoc?.createdAt) ??
@@ -1174,7 +1329,7 @@ export async function handleRewardsApiRequest(
     const withinManualWindow =
       nowMs - accountCreatedAtMs <=
       config.referral.manualCodeWindowDays * 24 * 60 * 60 * 1000;
-    const canAttachManualCode = !alreadyAttachedInviter && withinManualWindow;
+    const canAttachManualCode = effectiveCanClaim && !alreadyAttachedInviter && withinManualWindow;
 
     const currentBalance =
       Math.max(
@@ -1183,11 +1338,17 @@ export async function handleRewardsApiRequest(
       ) + newlyPaidReferralDelta;
 
     const responsePayload: RewardsStateResponse = {
-      serverConfigured,
+      state: !effectiveServerReady
+        ? 'server_not_ready'
+        : effectiveCanClaim
+        ? 'ready'
+        : 'disabled',
+      statusMessage: !effectiveServerReady ? 'Rewards are being set up' : undefined,
+      serverConfigured: effectiveServerReady,
       mode,
-      canClaim,
-      enabled: canClaim,
-      comingSoon: !canClaim,
+      canClaim: effectiveCanClaim,
+      enabled: effectiveCanClaim,
+      comingSoon: !effectiveCanClaim,
       timezone: config.timezone,
       balance: currentBalance,
       daily,
@@ -1226,24 +1387,28 @@ export async function handleRewardsApiRequest(
     );
   }
 
-  if (!serverConfigured || !store) {
+  if (!serverConfigured || !store || firestoreErrorOccurred) {
     return jsonResponse(
       {
         ok: false,
+        state: 'server_not_ready',
         comingSoon: true,
         mode,
         canClaim: false,
-        error: 'Rewards service is coming soon (FIREBASE_SERVICE_ACCOUNT not configured).',
-        code: 'SERVER_NOT_CONFIGURED',
+        error: 'Rewards are being set up',
+        code: 'SERVER_NOT_READY',
       },
       503
     );
   }
 
+  const canClaim = canUserClaimRewards({ serverConfigured, mode, user: d1User });
+
   if (!canClaim) {
     return jsonResponse(
       {
         ok: false,
+        state: 'disabled',
         comingSoon: true,
         mode,
         canClaim: false,
@@ -1284,8 +1449,8 @@ export async function handleRewardsApiRequest(
       );
     }
 
-    const dayNumber = dailyState.nextDayNumber;
-    const rewardAmount = dailyState.nextRewardAmount;
+    let dayNumber = dailyState.nextDayNumber;
+    let rewardAmount = dailyState.nextRewardAmount;
 
     // Step 1 (Claim-First in D1): Insert into `reward_daily_claims` with `credit_status = 'pending'`.
     // PRIMARY KEY (uid, pkt_date) guarantees that concurrent requests for the same day fail with UNIQUE error!
@@ -1300,16 +1465,36 @@ export async function handleRewardsApiRequest(
     } catch (insertErr: any) {
       const msg = String(insertErr?.message || '');
       if (msg.includes('UNIQUE') || msg.includes('PRIMARY KEY') || msg.includes('constraint')) {
-        return jsonResponse(
-          {
-            ok: false,
-            error: 'You have already claimed your daily reward today.',
-            code: 'ALREADY_CLAIMED_TODAY',
-          },
-          409
-        );
+        const existingRow = await db
+          .prepare(
+            'SELECT day_number, amount, credit_status, created_at FROM reward_daily_claims WHERE uid = ?1 AND pkt_date = ?2 LIMIT 1'
+          )
+          .bind(uid, pktDate)
+          .first<{
+            day_number: number;
+            amount: number;
+            credit_status: string;
+            created_at: number;
+          }>();
+        if (
+          !existingRow ||
+          existingRow.credit_status === 'credited' ||
+          Math.abs(nowMs - Number(existingRow.created_at || 0)) < 1500
+        ) {
+          return jsonResponse(
+            {
+              ok: false,
+              error: 'You have already claimed your daily reward today.',
+              code: 'ALREADY_CLAIMED_TODAY',
+            },
+            409
+          );
+        }
+        dayNumber = Number(existingRow.day_number || dayNumber);
+        rewardAmount = Number(existingRow.amount || rewardAmount);
+      } else {
+        throw insertErr;
       }
-      throw insertErr;
     }
 
     // Step 2 (Credit-Second in Firestore): Credit Kobans with deterministic ledger ID
@@ -1354,19 +1539,25 @@ export async function handleRewardsApiRequest(
         200
       );
     } catch (creditErr: any) {
-      // Leave D1 row in `credit_status = 'pending'` so next `/api/rewards/state` retries it safely!
+      // Log raw Google/Firestore error ONLY on the server; never send raw JSON/error details to browser!
+      console.error(
+        `[Rewards Daily Claim Firestore Error] uid=${uid} pktDate=${pktDate}:`,
+        creditErr?.message || creditErr
+      );
       return jsonResponse(
         {
           ok: false,
+          state: 'server_not_ready',
+          canClaim: false,
+          comingSoon: true,
           pendingRetry: true,
           dayNumber,
           rewardAmount,
           pktDate,
           creditStatus: 'pending',
-          error:
-            creditErr?.message ||
-            'Claim recorded in D1; Kobans credit is pending automatic retry.',
+          error: 'Rewards are being set up',
           code: 'CREDIT_PENDING_RETRY',
+          failSafeCode: 'SERVER_NOT_READY',
         },
         502
       );
@@ -1432,16 +1623,29 @@ export async function handleRewardsApiRequest(
     } catch (insertErr: any) {
       const msg = String(insertErr?.message || '');
       if (msg.includes('UNIQUE') || msg.includes('PRIMARY KEY') || msg.includes('constraint')) {
-        return jsonResponse(
-          {
-            ok: false,
-            error: 'This milestone reward has already been claimed.',
-            code: 'ALREADY_CLAIMED_MILESTONE',
-          },
-          409
-        );
+        const existingMilestone = await db
+          .prepare(
+            'SELECT amount, credit_status, created_at FROM reward_milestone_claims WHERE uid = ?1 AND milestone_id = ?2 LIMIT 1'
+          )
+          .bind(uid, milestoneId)
+          .first<{ amount: number; credit_status: string; created_at: number }>();
+        if (
+          !existingMilestone ||
+          existingMilestone.credit_status === 'credited' ||
+          Math.abs(nowMs - Number(existingMilestone.created_at || 0)) < 1500
+        ) {
+          return jsonResponse(
+            {
+              ok: false,
+              error: 'This milestone reward has already been claimed.',
+              code: 'ALREADY_CLAIMED_MILESTONE',
+            },
+            409
+          );
+        }
+      } else {
+        throw insertErr;
       }
-      throw insertErr;
     }
 
     // Step 2 (Credit-Second in Firestore): Credit Kobans with deterministic ledger ID
@@ -1486,17 +1690,23 @@ export async function handleRewardsApiRequest(
         200
       );
     } catch (creditErr: any) {
+      console.error(
+        `[Rewards Milestone Claim Firestore Error] uid=${uid} milestoneId=${milestoneId}:`,
+        creditErr?.message || creditErr
+      );
       return jsonResponse(
         {
           ok: false,
+          state: 'server_not_ready',
+          canClaim: false,
+          comingSoon: true,
           pendingRetry: true,
           milestoneId,
           rewardAmount,
           creditStatus: 'pending',
-          error:
-            creditErr?.message ||
-            'Milestone claim recorded in D1; Kobans credit is pending automatic retry.',
+          error: 'Rewards are being set up',
           code: 'CREDIT_PENDING_RETRY',
+          failSafeCode: 'SERVER_NOT_READY',
         },
         502
       );
