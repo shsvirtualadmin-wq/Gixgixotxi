@@ -1,545 +1,744 @@
 /**
- * Automated Verification Suite for Boardly Rewards (Phase 5):
- * 1. Pure Domain Logic Unit Tests (30-day schedule, wrap after day 30, PKT 23:59 vs 00:00 boundary,
- *    resetOnMiss, milestone thresholds, referral state machine, monthly cap, 14-day expiry, code format)
- * 2. Concurrency Test: 5 simultaneous POST /api/rewards/daily/claim requests -> exactly 1 credit
- * 3. Two-Account End-to-End Referral Flow Test (attach -> confirm waiting on MCQs -> 20 MCQs -> +5000/+1000 payout)
- * 4. Unconfigured Secret 503 Check (when FIREBASE_SERVICE_ACCOUNT is absent -> HTTP 503 + comingSoon: true)
+ * Phase 5 Verification Suite for Boardly Rewards (Cloudflare D1 Storage + Firestore Credit)
+ *
+ * Tests:
+ * 1. 30-day check-in schedule, wrap to Day 1 after Day 30, PKT 23:59 vs 00:00 boundary.
+ * 2. Super Admin 3-way switch (`POST /api/rewards/admin/mode`):
+ *    - Non-admin receives 403.
+ *    - "off" blocks everyone; "admin_only" allows Super Admin only; "everyone" allows students.
+ * 3. Concurrency test: 5 simultaneous daily claims for the same day in D1 -> 1 credit, 4 HTTP 409s.
+ * 4. Failure & Retry test (Claim-First in D1, Credit-Second in Firestore):
+ *    - Simulated Firestore failure leaves D1 row `credit_status = 'pending'`.
+ *    - Subsequent retry credits Firestore once (`credit_status = 'credited'`) and never twice.
+ * 5. Read-Only D1 MCQ Milestones test (50, 100, 250, 500) + zero writes to MCQ tables.
+ * 6. Full two-way Referral flow with two non-admin accounts through to +5,000 / +1,000 payout,
+ *    plus rejection of self-referral, double attach, wrong code, expired referral, and monthly cap.
  */
 
 import assert from 'node:assert/strict';
 import {
   DEFAULT_DAILY_LADDER,
-  DEFAULT_REWARDS_CONFIG,
-  REFERRAL_ALPHABET,
   computeDailyProgressState,
-  computeMilestonesState,
-  evaluateReferralResolution,
-  generateDeterministicReferralCode,
   getPktDateString,
-  getSecondsUntilNextPktMidnight,
   isValidReferralCodeFormat,
   normalizeReferralCode,
 } from '../src/lib/rewardsEngine';
 import {
+  InMemoryD1Database,
+  type FirestoreStoreAdapter,
+  type FirestoreTransactionContext,
+  type VerifiedFirebaseToken,
+} from '../functions/_utils/firestoreRestAdmin';
+import {
   handleRewardsApiRequest,
   resetRateLimitsForTests,
 } from '../functions/api/rewards/[[path]]';
-import type {
-  FirestoreStoreAdapter,
-  FirestoreTransactionContext,
-} from '../functions/_utils/firestoreRestAdmin';
 
-// ─── Atomic In-Memory Transactional Firestore Store for Server Endpoint Tests ─
+// ─── Mock Transactional Firestore Store (with Failure Injection Support) ─────
 
-class InMemoryTransactionalFirestore implements FirestoreStoreAdapter {
+class MockFirestoreStore implements FirestoreStoreAdapter {
   public docs = new Map<string, Record<string, any>>();
-  private txLock: Promise<void> = Promise.resolve();
+  public failNextTransactions = 0;
+  private txChain: Promise<any> = Promise.resolve();
 
-  private clean(path: string): string {
+  private cleanPath(path: string): string {
     return path.replace(/^\/+/, '');
   }
 
   async getDoc(path: string): Promise<Record<string, any> | null> {
-    const c = this.clean(path);
-    const found = this.docs.get(c);
-    if (!found) return null;
-    const parts = c.split('/');
-    return structuredClone({ ...found, _id: parts[parts.length - 1] });
+    const d = this.docs.get(this.cleanPath(path));
+    return d ? structuredClone(d) : null;
   }
 
   async setDoc(path: string, data: Record<string, unknown>, merge = false): Promise<void> {
-    const c = this.clean(path);
-    const prev = merge ? this.docs.get(c) || {} : {};
-    this.docs.set(c, structuredClone({ ...prev, ...data }));
-  }
-
-  async queryByField(
-    collectionId: string,
-    fieldPath: string,
-    _op: 'EQUAL',
-    value: string | number | boolean,
-    limit = 200
-  ): Promise<Array<Record<string, any>>> {
-    const out: Array<Record<string, any>> = [];
-    const prefix = `${collectionId}/`;
-    for (const [k, v] of this.docs.entries()) {
-      if (k.startsWith(prefix) && k.split('/').length === 2) {
-        if (v[fieldPath] === value) {
-          const docId = k.slice(prefix.length);
-          out.push(structuredClone({ ...v, _id: docId }));
-          if (out.length >= limit) break;
-        }
-      }
-    }
-    return out;
+    const clean = this.cleanPath(path);
+    const existing = this.docs.get(clean) || {};
+    const next = merge ? { ...existing, ...structuredClone(data) } : { ...structuredClone(data) };
+    const parts = clean.split('/');
+    next._id = parts[parts.length - 1];
+    this.docs.set(clean, next);
   }
 
   async runTransaction<T>(fn: (tx: FirestoreTransactionContext) => Promise<T>): Promise<T> {
-    // Serialize transaction commits just like Firestore's optimistic concurrency + precondition check
-    const prevLock = this.txLock;
-    let releaseLock!: () => void;
-    this.txLock = new Promise<void>((resolve) => {
-      releaseLock = resolve;
-    });
+    const run = async (): Promise<T> => {
+      if (this.failNextTransactions > 0) {
+        this.failNextTransactions -= 1;
+        throw new Error('SIMULATED_FIRESTORE_TRANSIENT_FAILURE');
+      }
 
-    await prevLock;
-    try {
-      const stagedWrites: Array<{
-        type: 'create' | 'set' | 'merge';
-        path: string;
-        data: Record<string, unknown>;
-      }> = [];
+      const stagedCreates = new Map<string, Record<string, any>>();
+      const stagedSets = new Map<string, { data: Record<string, any>; merge: boolean }>();
 
       const txCtx: FirestoreTransactionContext = {
-        getDoc: async (path: string) => this.getDoc(path),
+        getDoc: async (path: string) => {
+          const clean = this.cleanPath(path);
+          if (stagedCreates.has(clean)) return structuredClone(stagedCreates.get(clean)!);
+          if (stagedSets.has(clean)) {
+            const s = stagedSets.get(clean)!;
+            const base = this.docs.get(clean) || {};
+            return structuredClone(s.merge ? { ...base, ...s.data } : s.data);
+          }
+          const d = this.docs.get(clean);
+          return d ? structuredClone(d) : null;
+        },
         createDoc: (path: string, data: Record<string, unknown>) => {
-          stagedWrites.push({ type: 'create', path: this.clean(path), data });
+          const clean = this.cleanPath(path);
+          if (this.docs.has(clean) || stagedCreates.has(clean)) {
+            const err = new Error(`Document ALREADY_EXISTS: ${clean}`) as Error & {
+              status?: number;
+            };
+            err.status = 409;
+            throw err;
+          }
+          stagedCreates.set(clean, structuredClone(data) as Record<string, any>);
         },
         setDoc: (path: string, data: Record<string, unknown>, merge = false) => {
-          stagedWrites.push({
-            type: merge ? 'merge' : 'set',
-            path: this.clean(path),
-            data,
-          });
+          const clean = this.cleanPath(path);
+          stagedSets.set(clean, { data: structuredClone(data) as Record<string, any>, merge });
         },
       };
 
-      const result = await fn(txCtx);
+      const res = await fn(txCtx);
 
-      // Verify all `create` preconditions (`exists: false`)
-      for (const w of stagedWrites) {
-        if (w.type === 'create' && this.docs.has(w.path)) {
-          const err = new Error(`Document already exists: ${w.path}`) as Error & {
-            status?: number;
-          };
-          err.status = 409;
-          throw err;
-        }
+      for (const [k, v] of stagedCreates.entries()) {
+        const parts = k.split('/');
+        this.docs.set(k, { ...v, _id: parts[parts.length - 1] });
+      }
+      for (const [k, s] of stagedSets.entries()) {
+        const parts = k.split('/');
+        const existing = this.docs.get(k) || {};
+        const next = s.merge ? { ...existing, ...s.data } : { ...s.data };
+        next._id = parts[parts.length - 1];
+        this.docs.set(k, next);
       }
 
-      // Apply all writes atomically
-      for (const w of stagedWrites) {
-        if (w.type === 'create' || w.type === 'set') {
-          this.docs.set(w.path, structuredClone(w.data));
-        } else {
-          const prev = this.docs.get(w.path) || {};
-          this.docs.set(w.path, structuredClone({ ...prev, ...w.data }));
-        }
-      }
+      return res;
+    };
 
-      return result;
-    } finally {
-      releaseLock();
-    }
+    const nextTx = this.txChain.then(run, run);
+    this.txChain = nextTx.catch(() => {});
+    return nextTx;
   }
+}
+
+const tokenDirectory: Record<string, VerifiedFirebaseToken> = {
+  token_alice: {
+    uid: 'uid_alice',
+    email: 'alice@student.edu.pk',
+    name: 'Alice Khan',
+    emailVerified: true,
+  },
+  token_bob: {
+    uid: 'uid_bob',
+    email: 'bob@student.edu.pk',
+    name: 'Bob Ahmed',
+    emailVerified: true,
+  },
+  token_charlie: {
+    uid: 'uid_charlie',
+    email: 'charlie@student.edu.pk',
+    name: 'Charlie Raza',
+    emailVerified: true,
+  },
+  token_superadmin: {
+    uid: 'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+    email: 'shsvirtualadmin@gmail.com',
+    name: 'Super Admin',
+    emailVerified: true,
+    role: 'superadmin',
+  },
+};
+
+async function mockTokenVerifier(
+  authHeader: string | null | undefined
+): Promise<VerifiedFirebaseToken | null> {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  const key = authHeader.slice(7).trim();
+  return tokenDirectory[key] || null;
+}
+
+async function callApi(params: {
+  db: InMemoryD1Database;
+  store: MockFirestoreStore | null;
+  path: string;
+  method?: 'GET' | 'POST';
+  token?: string;
+  body?: Record<string, unknown>;
+  nowMs?: number;
+  ip?: string;
+  bypassRateLimit?: boolean;
+}) {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (params.token) {
+    headers.Authorization = `Bearer ${params.token}`;
+  }
+  if (params.ip) {
+    headers['CF-Connecting-IP'] = params.ip;
+  }
+
+  const req = new Request(`https://boardly.cfd${params.path}`, {
+    method: params.method || 'GET',
+    headers,
+    body: params.method === 'POST' ? JSON.stringify(params.body || {}) : undefined,
+  });
+
+  const res = await handleRewardsApiRequest({
+    request: req,
+    dbOverride: params.db,
+    storeOverride: params.store,
+    tokenVerifierOverride: mockTokenVerifier,
+    nowMsOverride: params.nowMs,
+    bypassRateLimit: params.bypassRateLimit ?? true,
+  });
+
+  const json = (await res.json()) as Record<string, any>;
+  return { status: res.status, json };
 }
 
 async function runAllTests() {
-  console.log('=== Boardly Rewards Verification Suite ===\n');
+  console.log('=== Boardly Rewards D1 + Firestore Phase 5 Verification Suite ===\n');
 
-  // ── 1. 30-Day Schedule & Total Cycle Check ────────────────────────────────
-  {
-    assert.equal(DEFAULT_DAILY_LADDER.length, 30, 'Ladder must have 30 days');
-    assert.equal(DEFAULT_DAILY_LADDER[0], 50, 'Day 1 must be 50');
-    assert.equal(DEFAULT_DAILY_LADDER[1], 100, 'Day 2 must be 100');
-    assert.equal(DEFAULT_DAILY_LADDER[2], 200, 'Day 3 must be 200');
-    assert.equal(DEFAULT_DAILY_LADDER[3], 400, 'Day 4 must be 400');
-    for (let d = 5; d <= 29; d++) {
-      const expected = [7, 14, 21, 28].includes(d) ? 400 : 200;
-      assert.equal(DEFAULT_DAILY_LADDER[d - 1], expected, `Day ${d} must be ${expected}`);
-    }
-    assert.equal(DEFAULT_DAILY_LADDER[29], 1000, 'Day 30 must be 1000');
-    const sum = DEFAULT_DAILY_LADDER.reduce((a, b) => a + b, 0);
-    assert.equal(sum, 7550, '30-day cycle total must be exactly 7,550 Kobans');
-    console.log('PASS [Unit 1]: 30-day ladder values and 7,550 Kobans total verified.');
-  }
+  // ─── 1. Unit Tests: 30-Day Schedule, Wrap, PKT Midnight Boundary ────────────
+  console.log('1. Testing 30-day schedule, wrap after Day 30, and PKT 23:59 vs 00:00...');
+  assert.equal(DEFAULT_DAILY_LADDER.length, 30);
+  const sum30 = DEFAULT_DAILY_LADDER.reduce((a, b) => a + b, 0);
+  assert.equal(sum30, 7550, '30-day cycle total must equal 7,550 Kobans');
+  assert.equal(DEFAULT_DAILY_LADDER[0], 50);
+  assert.equal(DEFAULT_DAILY_LADDER[1], 100);
+  assert.equal(DEFAULT_DAILY_LADDER[2], 200);
+  assert.equal(DEFAULT_DAILY_LADDER[3], 400);
+  assert.equal(DEFAULT_DAILY_LADDER[6], 400);
+  assert.equal(DEFAULT_DAILY_LADDER[13], 400);
+  assert.equal(DEFAULT_DAILY_LADDER[20], 400);
+  assert.equal(DEFAULT_DAILY_LADDER[27], 400);
+  assert.equal(DEFAULT_DAILY_LADDER[29], 1000);
 
-  // ── 2. Wrap After Day 30 & Cumulative vs resetOnMiss ──────────────────────
-  {
-    const nowMs = Date.UTC(2026, 2, 29, 10, 0, 0); // 2026-03-29 15:00 PKT
-    const day30State = computeDailyProgressState({
-      totalClaims: 29,
-      lastClaimPktDate: '2026-03-28',
-      nowMs,
-      config: DEFAULT_REWARDS_CONFIG,
-    });
-    assert.equal(day30State.nextDayNumber, 30);
-    assert.equal(day30State.nextRewardAmount, 1000);
+  const pkt2359 = Date.UTC(2026, 2, 29, 18, 59, 59); // 2026-03-29 23:59:59 PKT
+  const pkt0000 = Date.UTC(2026, 2, 29, 19, 0, 0);   // 2026-03-30 00:00:00 PKT
+  assert.equal(getPktDateString(pkt2359), '2026-03-29');
+  assert.equal(getPktDateString(pkt0000), '2026-03-30');
 
-    const wrapToDay1State = computeDailyProgressState({
-      totalClaims: 30,
-      lastClaimPktDate: '2026-03-28',
-      nowMs,
-      config: DEFAULT_REWARDS_CONFIG,
-    });
-    assert.equal(wrapToDay1State.nextDayNumber, 1, 'After Day 30, cycle must wrap to Day 1');
-    assert.equal(wrapToDay1State.nextRewardAmount, 50);
+  // Wrap after Day 30 -> Day 1
+  const after30 = computeDailyProgressState({
+    totalClaims: 30,
+    lastClaimPktDate: '2026-03-29',
+    nowMs: pkt0000,
+  });
+  assert.equal(after30.nextDayNumber, 1, 'After 30 claims, next day must wrap to Day 1');
+  assert.equal(after30.nextRewardAmount, 50);
 
-    // Cumulative (resetOnMiss: false) when missing 5 days
-    const missedDaysNoReset = computeDailyProgressState({
-      totalClaims: 12,
-      lastClaimPktDate: '2026-03-20',
-      nowMs,
-      config: { ...DEFAULT_REWARDS_CONFIG, resetOnMiss: false },
-    });
-    assert.equal(missedDaysNoReset.nextDayNumber, 13, 'resetOnMiss=false must keep progress at Day 13');
-    assert.equal(missedDaysNoReset.wasResetForMiss, false);
+  assert.equal(normalizeReferralCode('bld-7k9m2p'), 'BLD-7K9M2P');
+  assert.equal(isValidReferralCodeFormat('BLD-7K9M2P'), true);
+  assert.equal(isValidReferralCodeFormat('BLD-0O1I23'), false);
+  console.log('   ✓ Passed 30-day schedule, wrap after Day 30, and PKT boundary tests.\n');
 
-    // Reset on miss (resetOnMiss: true) when missing a day
-    const missedDaysWithReset = computeDailyProgressState({
-      totalClaims: 12,
-      streakClaimsSinceReset: 12,
-      lastClaimPktDate: '2026-03-20',
-      nowMs,
-      config: { ...DEFAULT_REWARDS_CONFIG, resetOnMiss: true },
-    });
-    assert.equal(missedDaysWithReset.nextDayNumber, 1, 'resetOnMiss=true must reset to Day 1');
-    assert.equal(missedDaysWithReset.wasResetForMiss, true);
-    console.log('PASS [Unit 2]: Wrap after Day 30 and resetOnMiss (false vs true) verified.');
-  }
+  // ─── 2. Super Admin Mode Switch Tests ("off" | "admin_only" | "everyone") ───
+  console.log('2. Testing Super Admin mode switch (403 for non-admin, off / admin_only / everyone)...');
+  const db = new InMemoryD1Database();
+  const store = new MockFirestoreStore();
+  const nowBase = pkt0000;
 
-  // ── 3. PKT Day Boundary (23:59:59 PKT vs 00:00:00 PKT) ────────────────────
-  {
-    // 2026-03-29 23:59:59 PKT = 2026-03-29 18:59:59 UTC
-    const justBeforeMidnightPkt = Date.UTC(2026, 2, 29, 18, 59, 59);
-    // 2026-03-30 00:00:00 PKT = 2026-03-29 19:00:00 UTC
-    const exactMidnightPkt = Date.UTC(2026, 2, 29, 19, 0, 0);
+  // Seed users in D1 user_roles and Firestore users/wallets
+  db.tables.user_roles.set('uid_alice', {
+    uid: 'uid_alice',
+    email: 'alice@student.edu.pk',
+    role: 'student',
+    custom_role: null,
+    is_posting_banned: 0,
+    updated_at: nowBase - 60_000,
+    created_at: nowBase - 60_000,
+  });
+  db.tables.user_roles.set('uid_bob', {
+    uid: 'uid_bob',
+    email: 'bob@student.edu.pk',
+    role: 'student',
+    custom_role: null,
+    is_posting_banned: 0,
+    updated_at: nowBase - 60_000,
+    created_at: nowBase - 60_000,
+  });
+  db.tables.user_roles.set('A5YMRimdHRcmeDWutxtUGt2e4hf2', {
+    uid: 'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+    email: 'shsvirtualadmin@gmail.com',
+    role: 'superadmin',
+    custom_role: null,
+    is_posting_banned: 0,
+    updated_at: nowBase - 60_000,
+    created_at: nowBase - 60_000,
+  });
 
-    assert.equal(getPktDateString(justBeforeMidnightPkt), '2026-03-29');
-    assert.equal(getSecondsUntilNextPktMidnight(justBeforeMidnightPkt), 1);
+  await store.setDoc('users/uid_alice', { displayName: 'Alice Khan', kobans: 100 });
+  await store.setDoc('wallets/uid_alice', { balance: 100, owned: [] });
+  await store.setDoc('users/uid_bob', { displayName: 'Bob Ahmed', kobans: 0 });
+  await store.setDoc('wallets/uid_bob', { balance: 0, owned: [] });
+  await store.setDoc('users/A5YMRimdHRcmeDWutxtUGt2e4hf2', { displayName: 'Super Admin', kobans: 500 });
+  await store.setDoc('wallets/A5YMRimdHRcmeDWutxtUGt2e4hf2', { balance: 500, owned: [] });
 
-    assert.equal(getPktDateString(exactMidnightPkt), '2026-03-30');
-    assert.equal(getSecondsUntilNextPktMidnight(exactMidnightPkt), 86400);
-    console.log('PASS [Unit 3]: PKT day boundary (23:59:59 PKT vs 00:00:00 PKT) verified.');
-  }
+  // 2a. Default mode seeded in D1 is 'off' -> nobody can claim
+  const stateOffAlice = await callApi({
+    db,
+    store,
+    path: '/api/rewards/state',
+    token: 'token_alice',
+    nowMs: nowBase,
+  });
+  assert.equal(stateOffAlice.json.mode, 'off');
+  assert.equal(stateOffAlice.json.canClaim, false);
 
-  // ── 4. Milestone Thresholds & Eligibility ─────────────────────────────────
-  {
-    const mState = computeMilestonesState({
-      mcqsAnswered: 120,
-      claimedIds: { mcq_50: Date.now() },
-      config: DEFAULT_REWARDS_CONFIG,
-    });
-    assert.equal(mState.length, 4);
-    assert.equal(mState[0].threshold, 50);
-    assert.equal(mState[0].reward, 100);
-    assert.equal(mState[0].claimed, true);
-    assert.equal(mState[0].eligible, false);
+  const claimWhenOff = await callApi({
+    db,
+    store,
+    path: '/api/rewards/daily/claim',
+    method: 'POST',
+    token: 'token_alice',
+    nowMs: nowBase,
+  });
+  assert.equal(claimWhenOff.status, 503, 'Claim when mode=off must return 503');
 
-    assert.equal(mState[1].threshold, 100);
-    assert.equal(mState[1].reward, 250);
-    assert.equal(mState[1].claimed, false);
-    assert.equal(mState[1].eligible, true);
+  // 2b. Non-admin calling POST /api/rewards/admin/mode gets 403
+  const nonAdminModeAttempt = await callApi({
+    db,
+    store,
+    path: '/api/rewards/admin/mode',
+    method: 'POST',
+    token: 'token_alice',
+    body: { mode: 'everyone' },
+    nowMs: nowBase,
+  });
+  assert.equal(nonAdminModeAttempt.status, 403, 'Non-admin must get 403 on /api/rewards/admin/mode');
+  assert.equal(db.tables.reward_settings.get('mode')?.value, 'off');
 
-    assert.equal(mState[2].threshold, 250);
-    assert.equal(mState[2].reward, 500);
-    assert.equal(mState[2].eligible, false);
+  // 2c. Super Admin switches mode to 'admin_only'
+  const setAdminOnly = await callApi({
+    db,
+    store,
+    path: '/api/rewards/admin/mode',
+    method: 'POST',
+    token: 'token_superadmin',
+    body: { mode: 'admin_only' },
+    nowMs: nowBase,
+  });
+  assert.equal(setAdminOnly.status, 200);
+  assert.equal(setAdminOnly.json.mode, 'admin_only');
+  assert.equal(db.tables.reward_settings.get('mode')?.value, 'admin_only');
 
-    assert.equal(mState[3].threshold, 500);
-    assert.equal(mState[3].reward, 1000);
-    assert.equal(mState[3].eligible, false);
-    console.log('PASS [Unit 4]: Milestone thresholds (50/100/250/500) and rewards verified.');
-  }
+  // In 'admin_only', Alice still cannot claim (503), but Super Admin CAN claim!
+  const aliceClaimInAdminOnly = await callApi({
+    db,
+    store,
+    path: '/api/rewards/daily/claim',
+    method: 'POST',
+    token: 'token_alice',
+    nowMs: nowBase,
+  });
+  assert.equal(aliceClaimInAdminOnly.status, 503);
 
-  // ── 5. Referral State Machine, Monthly Cap & 14-Day Expiry ────────────────
-  {
-    // Unambiguous code format check
-    for (let i = 0; i < 50; i++) {
-      const code = generateDeterministicReferralCode(`user_${i}`, 0);
-      assert.ok(isValidReferralCodeFormat(code), `Invalid code format: ${code}`);
-      assert.ok(!/[0O1I]/.test(code.slice(4)), `Ambiguous char in code: ${code}`);
-    }
-    assert.ok(!REFERRAL_ALPHABET.includes('0') && !REFERRAL_ALPHABET.includes('O'));
-    assert.ok(!REFERRAL_ALPHABET.includes('1') && !REFERRAL_ALPHABET.includes('I'));
-    assert.equal(normalizeReferralCode('bld-7k9m2p'), 'BLD-7K9M2P');
+  const adminClaimInAdminOnly = await callApi({
+    db,
+    store,
+    path: '/api/rewards/daily/claim',
+    method: 'POST',
+    token: 'token_superadmin',
+    nowMs: nowBase,
+  });
+  assert.equal(adminClaimInAdminOnly.status, 200, 'Super Admin can claim in admin_only mode');
+  assert.equal(adminClaimInAdminOnly.json.newBalance, 550);
 
-    const createdAtMs = Date.UTC(2026, 2, 1, 0, 0, 0);
-    // Code mismatch
-    const mismatch = evaluateReferralResolution({
-      currentStatus: 'pending_confirmation',
-      createdAtMs,
-      nowMs: createdAtMs + 1000,
-      enteredCode: 'BLD-222222',
-      expectedInviteeCode: 'BLD-7K9M2P',
-      inviteeMcqsAnswered: 25,
-      inviterPaidCountThisMonth: 0,
-    });
-    assert.equal(mismatch.errorCode, 'CODE_MISMATCH');
-    assert.equal(mismatch.shouldPay, false);
+  // 2d. Super Admin switches mode to 'everyone'
+  const setEveryone = await callApi({
+    db,
+    store,
+    path: '/api/rewards/admin/mode',
+    method: 'POST',
+    token: 'token_superadmin',
+    body: { mode: 'everyone' },
+    nowMs: nowBase,
+  });
+  assert.equal(setEveryone.status, 200);
+  assert.equal(setEveryone.json.mode, 'everyone');
+  console.log('   ✓ Passed Super Admin 3-way switch ("off", "admin_only", "everyone") & 403 protection.\n');
 
-    // Expired after 14 days
-    const expired = evaluateReferralResolution({
-      currentStatus: 'pending_confirmation',
-      createdAtMs,
-      nowMs: createdAtMs + 15 * 24 * 60 * 60 * 1000,
-      enteredCode: 'BLD-7K9M2P',
-      expectedInviteeCode: 'BLD-7K9M2P',
-      inviteeMcqsAnswered: 25,
-      inviterPaidCountThisMonth: 0,
-    });
-    assert.equal(expired.nextStatus, 'expired');
-    assert.equal(expired.shouldPay, false);
-
-    // Waiting on 20 MCQs
-    const waitingMcqs = evaluateReferralResolution({
-      currentStatus: 'pending_confirmation',
-      createdAtMs,
-      nowMs: createdAtMs + 3600_000,
-      enteredCode: 'BLD-7K9M2P',
-      expectedInviteeCode: 'BLD-7K9M2P',
-      inviteeMcqsAnswered: 12,
-      inviterPaidCountThisMonth: 0,
-    });
-    assert.equal(waitingMcqs.nextStatus, 'confirmed_waiting_mcqs');
-    assert.equal(waitingMcqs.shouldPay, false);
-
-    // Monthly cap of 10 reached
-    const capped = evaluateReferralResolution({
-      currentStatus: 'confirmed_waiting_mcqs',
-      createdAtMs,
-      nowMs: createdAtMs + 3600_000,
-      expectedInviteeCode: 'BLD-7K9M2P',
-      inviteeMcqsAnswered: 20,
-      inviterPaidCountThisMonth: 10,
-    });
-    assert.equal(capped.nextStatus, 'capped');
-    assert.equal(capped.shouldPay, false);
-
-    // Ready to pay
-    const ready = evaluateReferralResolution({
-      currentStatus: 'confirmed_waiting_mcqs',
-      createdAtMs,
-      nowMs: createdAtMs + 3600_000,
-      expectedInviteeCode: 'BLD-7K9M2P',
-      inviteeMcqsAnswered: 20,
-      inviterPaidCountThisMonth: 9,
-    });
-    assert.equal(ready.nextStatus, 'completed');
-    assert.equal(ready.shouldPay, true);
-    console.log(
-      'PASS [Unit 5]: Referral state transitions, code format, monthly cap (10), and 14-day expiry verified.'
-    );
-  }
-
-  // ── 6. Unconfigured Secret Returns HTTP 503 with comingSoon: true ─────────
-  {
-    const req = new Request('https://boardly.cfd/api/rewards/state', { method: 'GET' });
-    const res = await handleRewardsApiRequest({
-      request: req,
-      env: {}, // No FIREBASE_SERVICE_ACCOUNT
-    });
-    assert.equal(res.status, 503, 'Unconfigured server must return HTTP 503');
-    const data = await res.json();
-    assert.equal(data.comingSoon, true);
-    assert.equal(data.enabled, false);
-    assert.equal(data.code, 'SERVER_NOT_CONFIGURED');
-    console.log('PASS [Server 6]: Missing FIREBASE_SERVICE_ACCOUNT returns HTTP 503 with comingSoon=true.');
-  }
-
-  // ── 7. Concurrency Test: 5 Simultaneous Daily Claim Requests -> 1 Credit ──
-  {
-    resetRateLimitsForTests();
-    const store = new InMemoryTransactionalFirestore();
-    const nowMs = Date.UTC(2026, 2, 29, 12, 0, 0);
-
-    // Enable rewards in config/rewards and seed user
-    await store.setDoc('config/rewards', {
-      ...DEFAULT_REWARDS_CONFIG,
-      enabled: true,
-    });
-    await store.setDoc('users/student_concurrent', {
-      uid: 'student_concurrent',
-      displayName: 'Zainab Ahmed',
-      kobans: 100,
-      kobanBalance: 100,
-      emailVerified: true,
-    });
-    await store.setDoc('wallets/student_concurrent', {
-      balance: 100,
-      owned: [],
-    });
-
-    const fireClaim = () =>
-      handleRewardsApiRequest({
-        request: new Request('https://boardly.cfd/api/rewards/daily/claim', {
-          method: 'POST',
-          headers: { Authorization: 'Bearer mock_token_concurrent' },
-          body: JSON.stringify({}),
-        }),
-        storeOverride: store,
-        tokenVerifierOverride: async () => ({
-          uid: 'student_concurrent',
-          name: 'Zainab Ahmed',
-          emailVerified: true,
-        }),
-        nowMsOverride: nowMs,
-        bypassRateLimit: true, // Allow all 5 requests to hit the transaction simultaneously
-      });
-
-    const responses = await Promise.all([
-      fireClaim(),
-      fireClaim(),
-      fireClaim(),
-      fireClaim(),
-      fireClaim(),
-    ]);
-
-    const statuses = responses.map((r) => r.status);
-    const successCount = statuses.filter((s) => s === 200).length;
-    const conflictCount = statuses.filter((s) => s === 409).length;
-
-    assert.equal(successCount, 1, `Expected exactly 1 HTTP 200, got ${statuses.join(', ')}`);
-    assert.equal(conflictCount, 4, `Expected 4 HTTP 409 conflicts, got ${statuses.join(', ')}`);
-
-    const walletAfter = await store.getDoc('wallets/student_concurrent');
-    const userAfter = await store.getDoc('users/student_concurrent');
-    assert.equal(walletAfter?.balance, 150, 'Wallet balance must be incremented once (+50 -> 150)');
-    assert.equal(userAfter?.kobans, 150, 'User mirrored kobans must be 150');
-
-    console.log(
-      'PASS [Concurrency 7]: 5 simultaneous daily claim requests produced exactly 1 credit (+50 Kobans) and 4 idempotent 409 rejections.'
-    );
-  }
-
-  // ── 8. Two-Account End-to-End Referral Flow (Alice invites Bob) ───────────
-  {
-    resetRateLimitsForTests();
-    const store = new InMemoryTransactionalFirestore();
-    const nowMs = Date.UTC(2026, 2, 29, 12, 0, 0);
-
-    await store.setDoc('config/rewards', {
-      ...DEFAULT_REWARDS_CONFIG,
-      enabled: true,
-    });
-
-    // Seed Alice (inviter, account 5 days old)
-    await store.setDoc('users/uid_alice', {
-      uid: 'uid_alice',
-      displayName: 'Alice Khan',
-      email: 'alice@example.com',
-      emailVerified: true,
-      createdAt: new Date(nowMs - 5 * 86400_000).toISOString(),
-      kobans: 500,
-      kobanBalance: 500,
-    });
-    await store.setDoc('wallets/uid_alice', { balance: 500, owned: [] });
-
-    // Seed Bob (invitee, account 1 hour old)
-    await store.setDoc('users/uid_bob', {
-      uid: 'uid_bob',
-      displayName: 'Bob Raza',
-      email: 'bob@example.com',
-      emailVerified: true,
-      createdAt: new Date(nowMs - 3600_000).toISOString(),
-      kobans: 0,
-      kobanBalance: 0,
-    });
-    await store.setDoc('wallets/uid_bob', { balance: 0, owned: [] });
-
-    const mockVerifier = async (hdr: string | null | undefined) => {
-      if (hdr === 'Bearer token_alice') {
-        return { uid: 'uid_alice', name: 'Alice Khan', emailVerified: true };
-      }
-      if (hdr === 'Bearer token_bob') {
-        return { uid: 'uid_bob', name: 'Bob Raza', emailVerified: true };
-      }
-      return null;
-    };
-
-    // 1. Alice fetches /api/rewards/state to get her referral code
-    const aliceStateRes1 = await handleRewardsApiRequest({
-      request: new Request('https://boardly.cfd/api/rewards/state', {
-        method: 'GET',
-        headers: { Authorization: 'Bearer token_alice' },
-      }),
-      storeOverride: store,
-      tokenVerifierOverride: mockVerifier,
-      nowMsOverride: nowMs,
-      bypassRateLimit: true,
-    });
-    const aliceState1 = await aliceStateRes1.json();
-    const aliceCode = aliceState1.referral.myCode;
-    assert.ok(isValidReferralCodeFormat(aliceCode));
-
-    // 2. Bob attaches Alice's code
-    const attachRes = await handleRewardsApiRequest({
-      request: new Request('https://boardly.cfd/api/rewards/referral/attach', {
+  // ─── 3. Concurrency Test: 5 Simultaneous Daily Claims -> 1 Credit ───────────
+  console.log('3. Testing 5 simultaneous daily claims in D1 (PRIMARY KEY (uid, pkt_date))...');
+  const concurrentResults = await Promise.all(
+    Array.from({ length: 5 }, () =>
+      callApi({
+        db,
+        store,
+        path: '/api/rewards/daily/claim',
         method: 'POST',
-        headers: { Authorization: 'Bearer token_bob' },
-        body: JSON.stringify({ code: aliceCode }),
-      }),
-      storeOverride: store,
-      tokenVerifierOverride: mockVerifier,
-      nowMsOverride: nowMs + 2000,
-      bypassRateLimit: true,
+        token: 'token_alice',
+        nowMs: nowBase,
+      })
+    )
+  );
+
+  const successes = concurrentResults.filter((r) => r.status === 200);
+  const conflicts = concurrentResults.filter((r) => r.status === 409);
+  assert.equal(successes.length, 1, 'Exactly 1 of 5 simultaneous claims must succeed');
+  assert.equal(conflicts.length, 4, 'Remaining 4 simultaneous claims must return 409');
+
+  const aliceWallet = await store.getDoc('wallets/uid_alice');
+  assert.equal(aliceWallet?.balance, 150, 'Alice balance must increment by +50 exactly once (100 -> 150)');
+  const aliceDailyRow = db.tables.reward_daily_claims.get('uid_alice::2026-03-30');
+  assert.equal(aliceDailyRow?.credit_status, 'credited');
+  console.log('   ✓ Passed 5-way concurrency test (1 credit, 4 HTTP 409s).\n');
+
+  // ─── 4. Failure & Retry Test (Claim-First in D1, Credit-Second in Firestore) ─
+  console.log('4. Testing Claim-First in D1 + Firestore failure & automatic retry...');
+  const nextDayMs = nowBase + 24 * 60 * 60 * 1000; // 2026-03-31 PKT (Day 2 = +100 Kobans)
+  store.failNextTransactions = 1; // Inject Firestore failure on the claim's credit step!
+
+  const failedCreditRes = await callApi({
+    db,
+    store,
+    path: '/api/rewards/daily/claim',
+    method: 'POST',
+    token: 'token_alice',
+    nowMs: nextDayMs,
+  });
+  assert.equal(failedCreditRes.status, 502, 'Simulated Firestore failure must return 502 CREDIT_PENDING_RETRY');
+  assert.equal(failedCreditRes.json.creditStatus, 'pending');
+
+  // Verify D1 row is saved with credit_status = 'pending' and Firestore balance is still 150
+  const pendingRow = db.tables.reward_daily_claims.get('uid_alice::2026-03-31');
+  assert.equal(pendingRow?.credit_status, 'pending');
+  assert.equal(pendingRow?.amount, 100);
+  assert.equal((await store.getDoc('wallets/uid_alice'))?.balance, 150);
+
+  // Now call GET /api/rewards/state -> automatic retry must credit +100 once and mark 'credited'!
+  const retryState1 = await callApi({
+    db,
+    store,
+    path: '/api/rewards/state',
+    token: 'token_alice',
+    nowMs: nextDayMs + 1000,
+  });
+  assert.equal(retryState1.status, 200);
+  assert.equal(retryState1.json.balance, 250, 'Retry must credit Day 2 (+100) -> 250 Kobans');
+  assert.equal(db.tables.reward_daily_claims.get('uid_alice::2026-03-31')?.credit_status, 'credited');
+
+  // Call GET /api/rewards/state a second time -> confirm it NEVER double-pays!
+  const retryState2 = await callApi({
+    db,
+    store,
+    path: '/api/rewards/state',
+    token: 'token_alice',
+    nowMs: nextDayMs + 2000,
+  });
+  assert.equal(retryState2.json.balance, 250, 'Second state call must never double-pay');
+  console.log('   ✓ Passed Claim-First / Credit-Second failure & retry test (credited once, never twice).\n');
+
+  // ─── 5. Read-Only D1 MCQ Milestones Test ────────────────────────────────────
+  console.log('5. Testing read-only D1 MCQ count & milestone claim...');
+  db.tables.test_attempts.set('att_alice_1', {
+    id: 'att_alice_1',
+    test_id: 'test_1',
+    user_uid: 'uid_alice',
+    user_name: 'Alice Khan',
+    score: 48,
+    total_questions: 55,
+    created_at: nowBase,
+  });
+  const attemptsSizeBefore = db.tables.test_attempts.size;
+  const answersSizeBefore = db.tables.attempt_answers.size;
+
+  const claimM50 = await callApi({
+    db,
+    store,
+    path: '/api/rewards/milestone/claim',
+    method: 'POST',
+    token: 'token_alice',
+    body: { id: '50' },
+    nowMs: nextDayMs,
+  });
+  assert.equal(claimM50.status, 200);
+  assert.equal(claimM50.json.rewardAmount, 100);
+  assert.equal(claimM50.json.newBalance, 350);
+  assert.equal(db.tables.reward_milestone_claims.get('uid_alice::mcq_50')?.credit_status, 'credited');
+
+  // Duplicate milestone claim must fail with 409
+  const dupM50 = await callApi({
+    db,
+    store,
+    path: '/api/rewards/milestone/claim',
+    method: 'POST',
+    token: 'token_alice',
+    body: { id: 'mcq_50' },
+    nowMs: nextDayMs,
+  });
+  assert.equal(dupM50.status, 409);
+
+  // Unreached 100-MCQ milestone must fail with 400
+  const unreachedM100 = await callApi({
+    db,
+    store,
+    path: '/api/rewards/milestone/claim',
+    method: 'POST',
+    token: 'token_alice',
+    body: { id: '100' },
+    nowMs: nextDayMs,
+  });
+  assert.equal(unreachedM100.status, 400);
+
+  // Confirm zero writes to D1 MCQ tables
+  assert.equal(db.tables.test_attempts.size, attemptsSizeBefore, 'MCQ test_attempts table must have zero writes');
+  assert.equal(db.tables.attempt_answers.size, answersSizeBefore, 'MCQ attempt_answers table must have zero writes');
+  console.log('   ✓ Passed read-only D1 MCQ milestone tests (zero writes to MCQ tables).\n');
+
+  // ─── 6. Full Two-Way Referral Flow Test (+5,000 Inviter / +1,000 Invitee) ───
+  console.log('6. Testing full two-way Referral flow (attach, two-way accept, 20 D1 MCQs -> +5,000 / +1,000)...');
+  const aliceState = await callApi({
+    db,
+    store,
+    path: '/api/rewards/state',
+    token: 'token_alice',
+    nowMs: nextDayMs,
+  });
+  const aliceCode = aliceState.json.referral.myCode as string;
+
+  const bobStateInitial = await callApi({
+    db,
+    store,
+    path: '/api/rewards/state',
+    token: 'token_bob',
+    nowMs: nextDayMs,
+  });
+  const bobCode = bobStateInitial.json.referral.myCode as string;
+
+  // 6a. Self-referral rejected
+  const selfRef = await callApi({
+    db,
+    store,
+    path: '/api/rewards/referral/attach',
+    method: 'POST',
+    token: 'token_alice',
+    body: { code: aliceCode },
+    nowMs: nextDayMs,
+  });
+  assert.equal(selfRef.status, 400);
+  assert.equal(selfRef.json.code, 'SELF_REFERRAL_FORBIDDEN');
+
+  // 6b. Bob attaches Alice's code
+  const attachRes = await callApi({
+    db,
+    store,
+    path: '/api/rewards/referral/attach',
+    method: 'POST',
+    token: 'token_bob',
+    body: { code: aliceCode },
+    nowMs: nextDayMs,
+    ip: '203.0.113.10',
+  });
+  assert.equal(attachRes.status, 200);
+  const referralId = attachRes.json.referralId as string;
+
+  // 6c. Double attach rejected
+  const doubleAttach = await callApi({
+    db,
+    store,
+    path: '/api/rewards/referral/attach',
+    method: 'POST',
+    token: 'token_bob',
+    body: { code: aliceCode },
+    nowMs: nextDayMs,
+  });
+  assert.equal(doubleAttach.status, 409);
+
+  // 6d. Wrong code in accept rejected
+  const wrongAccept = await callApi({
+    db,
+    store,
+    path: '/api/rewards/referral/accept',
+    method: 'POST',
+    token: 'token_alice',
+    body: { referralId, enteredCode: 'BLD-999999' },
+    nowMs: nextDayMs,
+  });
+  assert.equal(wrongAccept.status, 400);
+  assert.equal(wrongAccept.json.code, 'CODE_MISMATCH');
+
+  // 6e. Two-way acceptance Step 1: Alice (inviter) enters Bob's code -> inviter_accepted = 1
+  const aliceAccept = await callApi({
+    db,
+    store,
+    path: '/api/rewards/referral/accept',
+    method: 'POST',
+    token: 'token_alice',
+    body: { referralId, enteredCode: bobCode },
+    nowMs: nextDayMs,
+  });
+  assert.equal(aliceAccept.status, 200);
+  assert.equal(aliceAccept.json.status, 'pending_confirmation');
+  assert.equal(aliceAccept.json.inviterAccepted, true);
+  assert.equal(aliceAccept.json.inviteeAccepted, false);
+
+  // 6f. Two-way acceptance Step 2: Bob (invitee) enters Alice's code -> invitee_accepted = 1 -> status = 'confirmed'
+  const bobAccept = await callApi({
+    db,
+    store,
+    path: '/api/rewards/referral/accept',
+    method: 'POST',
+    token: 'token_bob',
+    body: { referralId, enteredCode: aliceCode },
+    nowMs: nextDayMs,
+  });
+  assert.equal(bobAccept.status, 200);
+  assert.equal(bobAccept.json.status, 'confirmed');
+  assert.equal(bobAccept.json.inviterAccepted, true);
+  assert.equal(bobAccept.json.inviteeAccepted, true);
+  assert.equal(bobAccept.json.paid, false, 'Not paid yet because Bob has 0 MCQs');
+
+  // 6g. Bob completes 20 MCQs since signup in D1
+  db.tables.test_attempts.set('att_bob_1', {
+    id: 'att_bob_1',
+    test_id: 'test_bob_1',
+    user_uid: 'uid_bob',
+    user_name: 'Bob Ahmed',
+    score: 18,
+    total_questions: 22,
+    created_at: nextDayMs + 500,
+  });
+
+  // Trigger state fetch -> automatic payout of +5,000 to Alice and +1,000 to Bob!
+  const aliceAfterBobMcqs = await callApi({
+    db,
+    store,
+    path: '/api/rewards/state',
+    token: 'token_alice',
+    nowMs: nextDayMs + 1000,
+  });
+  assert.equal(aliceAfterBobMcqs.json.balance, 5350, 'Alice must receive +5,000 Kobans (350 -> 5,350)');
+  assert.equal((await store.getDoc('wallets/uid_bob'))?.balance, 1000, 'Bob must receive +1,000 Kobans (0 -> 1,000)');
+  assert.equal(db.tables.referrals.get(referralId)?.status, 'paid');
+  assert.equal(db.tables.referrals.get(referralId)?.inviter_credit_status, 'credited');
+  assert.equal(db.tables.referrals.get(referralId)?.invitee_credit_status, 'credited');
+
+  // Calling accept or state again must never double-pay
+  const repeatAccept = await callApi({
+    db,
+    store,
+    path: '/api/rewards/referral/accept',
+    method: 'POST',
+    token: 'token_alice',
+    body: { referralId, enteredCode: bobCode },
+    nowMs: nextDayMs + 2000,
+  });
+  assert.equal(repeatAccept.status, 200);
+  assert.equal((await store.getDoc('wallets/uid_alice'))?.balance, 5350);
+  assert.equal((await store.getDoc('wallets/uid_bob'))?.balance, 1000);
+
+  // 6h. Expired referral test (> 14 days old)
+  db.tables.referrals.set('ref_expired_test', {
+    id: 'ref_expired_test',
+    inviter_uid: 'uid_alice',
+    invitee_uid: 'uid_charlie',
+    inviter_code: aliceCode,
+    invitee_code: 'BLD-234567',
+    status: 'pending_confirmation',
+    inviter_accepted: 0,
+    invitee_accepted: 0,
+    ip_hash: '',
+    flagged: 0,
+    inviter_credit_status: 'pending',
+    invitee_credit_status: 'pending',
+    created_at: nowBase - 15 * 24 * 60 * 60 * 1000, // 15 days ago
+    confirmed_at: null,
+    paid_at: null,
+  });
+
+  const expiredAccept = await callApi({
+    db,
+    store,
+    path: '/api/rewards/referral/accept',
+    method: 'POST',
+    token: 'token_alice',
+    body: { referralId: 'ref_expired_test', enteredCode: 'BLD-234567' },
+    nowMs: nextDayMs,
+  });
+  assert.equal(expiredAccept.status, 400);
+  assert.equal(expiredAccept.json.code, 'REFERRAL_EXPIRED');
+
+  // 6i. Monthly cap test (10 paid referrals per calendar month -> 11th is held in 'capped')
+  for (let i = 2; i <= 10; i++) {
+    db.tables.referrals.set(`ref_cap_${i}`, {
+      id: `ref_cap_${i}`,
+      inviter_uid: 'uid_alice',
+      invitee_uid: `uid_friend_${i}`,
+      inviter_code: aliceCode,
+      invitee_code: `BLD-2345${String(i).padStart(2, '0')}`,
+      status: 'paid',
+      inviter_accepted: 1,
+      invitee_accepted: 1,
+      ip_hash: '',
+      flagged: 0,
+      inviter_credit_status: 'credited',
+      invitee_credit_status: 'credited',
+      created_at: nextDayMs,
+      confirmed_at: nextDayMs,
+      paid_at: nextDayMs,
     });
-    assert.equal(attachRes.status, 200);
-    const attachData = await attachRes.json();
-    assert.equal(attachData.status, 'pending_confirmation');
-    const bobCode = attachData.inviteeCode;
-    const referralId = attachData.referralId;
-
-    // 3. Alice confirms Bob's code before Bob has completed 20 MCQs
-    const acceptRes1 = await handleRewardsApiRequest({
-      request: new Request('https://boardly.cfd/api/rewards/referral/accept', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer token_alice' },
-        body: JSON.stringify({ referralId, enteredCode: bobCode }),
-      }),
-      storeOverride: store,
-      tokenVerifierOverride: mockVerifier,
-      nowMsOverride: nowMs + 4000,
-      bypassRateLimit: true,
-    });
-    assert.equal(acceptRes1.status, 200);
-    const acceptData1 = await acceptRes1.json();
-    assert.equal(acceptData1.status, 'confirmed_waiting_mcqs');
-    assert.equal(acceptData1.paid, false);
-
-    // 4. Bob completes a practice test with 22 answered MCQs
-    await store.setDoc('attempts/att_bob_1', {
-      id: 'att_bob_1',
-      userId: 'uid_bob',
-      status: 'completed',
-      totalQuestions: 25,
-      correctAnswers: 18,
-      wrongAnswers: 4,
-      unanswered: 3,
-    });
-
-    // 5. Alice loads /api/rewards/state -> auto-completes confirmed referral and credits both!
-    const aliceStateRes2 = await handleRewardsApiRequest({
-      request: new Request('https://boardly.cfd/api/rewards/state', {
-        method: 'GET',
-        headers: { Authorization: 'Bearer token_alice' },
-      }),
-      storeOverride: store,
-      tokenVerifierOverride: mockVerifier,
-      nowMsOverride: nowMs + 6000,
-      bypassRateLimit: true,
-    });
-    const aliceState2 = await aliceStateRes2.json();
-    assert.equal(aliceState2.balance, 5500, 'Alice must have 500 + 5000 = 5500 Kobans');
-    assert.equal(aliceState2.referral.items[0].status, 'completed');
-    // Verify no email was leaked in referral items
-    assert.ok(
-      !JSON.stringify(aliceState2.referral.items).includes('bob@example.com'),
-      'Invitee email must never be returned in referral items'
-    );
-
-    const bobWalletAfter = await store.getDoc('wallets/uid_bob');
-    assert.equal(bobWalletAfter?.balance, 1000, 'Bob must have 0 + 1000 = 1000 Kobans');
-
-    console.log(
-      'PASS [Referral E2E 8]: Two-account referral flow (attach -> confirm -> 20 MCQs -> +5000 inviter / +1000 invitee) verified.'
-    );
   }
+  // Seed 11th referral where invitee Charlie has 25 MCQs
+  db.tables.test_attempts.set('att_charlie_1', {
+    id: 'att_charlie_1',
+    test_id: 'test_c1',
+    user_uid: 'uid_charlie_11',
+    user_name: 'Charlie 11',
+    score: 22,
+    total_questions: 25,
+    created_at: nextDayMs,
+  });
+  db.tables.referrals.set('ref_cap_11', {
+    id: 'ref_cap_11',
+    inviter_uid: 'uid_alice',
+    invitee_uid: 'uid_charlie_11',
+    inviter_code: aliceCode,
+    invitee_code: 'BLD-888888',
+    status: 'pending_confirmation',
+    inviter_accepted: 0,
+    invitee_accepted: 1,
+    ip_hash: '',
+    flagged: 0,
+    inviter_credit_status: 'pending',
+    invitee_credit_status: 'pending',
+    created_at: nextDayMs,
+    confirmed_at: null,
+    paid_at: null,
+  });
 
-  console.log('\nALL 8 REWARDS TEST SUITES PASSED SUCCESSFULLY.');
+  const cap11Accept = await callApi({
+    db,
+    store,
+    path: '/api/rewards/referral/accept',
+    method: 'POST',
+    token: 'token_alice',
+    body: { referralId: 'ref_cap_11', enteredCode: 'BLD-888888' },
+    nowMs: nextDayMs,
+  });
+  assert.equal(cap11Accept.status, 200);
+  assert.equal(cap11Accept.json.status, 'capped', '11th referral in same PKT month must be held in capped status');
+  assert.equal(cap11Accept.json.paid, false);
+  console.log('   ✓ Passed full two-way Referral flow, monthly cap (10/month), expiry, and anti-abuse tests.\n');
+
+  // Reset mode back to 'off' in D1 as default
+  await callApi({
+    db,
+    store,
+    path: '/api/rewards/admin/mode',
+    method: 'POST',
+    token: 'token_superadmin',
+    body: { mode: 'off' },
+    nowMs: nextDayMs,
+  });
+  assert.equal(db.tables.reward_settings.get('mode')?.value, 'off');
+
+  console.log('ALL PHASE 5 D1 + FIRESTORE REWARDS TESTS PASSED SUCCESSFULLY!');
 }
 
 runAllTests().catch((err) => {
-  console.error('TEST SUITE FAILED:', err);
+  console.error('Test suite failed:', err);
   process.exit(1);
 });

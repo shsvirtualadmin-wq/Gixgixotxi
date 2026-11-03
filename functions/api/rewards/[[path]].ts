@@ -1,5 +1,5 @@
 /**
- * Boardly Rewards Server Endpoints (/api/rewards/*)
+ * Boardly Rewards Server Endpoints (/api/rewards/*) — Cloudflare D1 Storage + Firestore Credit
  *
  * Implements:
  * - GET  /api/rewards/state
@@ -7,36 +7,39 @@
  * - POST /api/rewards/milestone/claim
  * - POST /api/rewards/referral/attach
  * - POST /api/rewards/referral/accept
+ * - POST /api/rewards/admin/mode
  *
- * Security invariants:
- * - Verifies Firebase ID token on every authenticated call.
- * - Rejects suspended users.
- * - Rate-limits each user (~1 request/sec).
- * - Reads `config/rewards` from Firestore on the server; never trusts client amounts/days/counts.
- * - All Kobans credits happen server-side only inside a Firestore transaction, writing to
- *   `wallets/{uid}.balance` (and mirroring `users/{uid}.kobans` / `kobanBalance`) and
- *   `wallets/{uid}/ledger/{entryId}` with types:
- *     `reward_daily`, `reward_milestone`, `reward_referral_inviter`, `reward_referral_invitee`.
- * - Until `FIREBASE_SERVICE_ACCOUNT` is configured, endpoints return HTTP 503 and UI shows "Coming soon".
+ * Architecture & Security Invariants:
+ * - All Rewards state, settings, mode ("off" | "admin_only" | "everyone"), daily claims,
+ *   milestone claims, referral codes, and referrals live in Cloudflare D1 (`env.DB`).
+ * - Reuses the exact D1 user verification helper (`authenticateD1RewardsUser`) and Super Admin
+ *   check used by the existing MCQ / D1 endpoints.
+ * - MCQ counts are READ-ONLY (`SELECT` queries only on D1 `test_attempts` & `attempt_answers`).
+ *   Zero writes are ever made to MCQ tables.
+ * - Claim-First in D1, Credit-Second in Firestore:
+ *   1. Insert/update D1 claim row with `credit_status = 'pending'` (enforcing UNIQUE / PRIMARY KEY).
+ *   2. Credit Firestore (`wallets/{uid}`, `users/{uid}`, `wallets/{uid}/ledger/{deterministicId}`)
+ *      in an idempotent transaction that does nothing if the ledger entry already exists.
+ *   3. Update D1 `credit_status = 'credited'`.
+ *   4. Any row left `'pending'` is automatically retried on `/api/rewards/state` or subsequent calls.
  */
 
 import {
   DEFAULT_DAILY_LADDER,
   DEFAULT_MILESTONES,
   DEFAULT_REWARDS_CONFIG,
-  buildDailyClaimDocId,
-  buildMilestoneClaimDocId,
   computeDailyProgressState,
   computeMilestonesState,
-  evaluateReferralResolution,
   generateDeterministicReferralCode,
   getPktDateString,
-  getPktMonthString,
+  getPktMonthRangeMs,
+  getPreviousPktDateString,
   isValidReferralCodeFormat,
   normalizeReferralCode,
   type ReferralRecordPublic,
   type ReferralStatus,
   type RewardsConfig,
+  type RewardsMode,
   type RewardsStateResponse,
 } from '../../../src/lib/rewardsEngine';
 import {
@@ -44,9 +47,13 @@ import {
   DEFAULT_FIRESTORE_DATABASE_ID,
   FirestoreRestAdapter,
   SERVER_TIMESTAMP_SENTINEL,
+  authenticateD1RewardsUser,
+  creditKobansIdempotentInFirestore,
+  getSharedLocalD1Database,
   parseServiceAccountFromEnv,
-  verifyFirebaseIdToken,
+  type AuthenticatedD1User,
   type FirestoreStoreAdapter,
+  type RewardsD1Database,
   type RewardsEnv,
   type VerifiedFirebaseToken,
 } from '../../_utils/firestoreRestAdmin';
@@ -87,14 +94,15 @@ function parseTimestampMs(val: unknown): number | null {
     return Number.isNaN(parsed) ? null : parsed;
   }
   if (typeof val === 'object' && val !== null) {
-    const maybeSec = (val as { seconds?: number; _seconds?: number }).seconds ??
+    const maybeSec =
+      (val as { seconds?: number; _seconds?: number }).seconds ??
       (val as { _seconds?: number })._seconds;
     if (typeof maybeSec === 'number') return maybeSec * 1000;
   }
   return null;
 }
 
-function isUserSuspended(userDoc: Record<string, any> | null): boolean {
+function isFirestoreUserSuspended(userDoc: Record<string, any> | null): boolean {
   if (!userDoc) return false;
   return (
     userDoc.isBanned === true ||
@@ -104,105 +112,163 @@ function isUserSuspended(userDoc: Record<string, any> | null): boolean {
   );
 }
 
-function sanitizeDisplayName(userDoc: Record<string, any> | null, token?: VerifiedFirebaseToken | null): string {
+function sanitizeDisplayName(
+  userDoc: Record<string, any> | null,
+  d1User?: Partial<AuthenticatedD1User> | null
+): string {
   const raw =
     userDoc?.displayName ||
     userDoc?.name ||
     userDoc?.username ||
-    token?.name ||
+    d1User?.name ||
     'Boardly Student';
   const str = String(raw).trim();
-  // Never expose an email address as a display name
   if (str.includes('@')) {
     return str.split('@')[0] || 'Boardly Student';
   }
   return str.slice(0, 48) || 'Boardly Student';
 }
 
-function buildDefaultUnconfiguredState(nowMs = Date.now()): RewardsStateResponse {
-  const daily = computeDailyProgressState({
-    totalClaims: 0,
-    lastClaimPktDate: null,
-    nowMs,
-    config: DEFAULT_REWARDS_CONFIG,
-  });
-  const milestones = computeMilestonesState({
-    mcqsAnswered: 0,
-    claimedIds: {},
-    config: DEFAULT_REWARDS_CONFIG,
-  });
-  return {
-    serverConfigured: false,
-    enabled: false,
-    comingSoon: true,
-    timezone: DEFAULT_REWARDS_CONFIG.timezone,
-    balance: 0,
-    daily,
-    dailyLadder: [...DEFAULT_DAILY_LADDER],
-    mcqsAnswered: 0,
-    milestones,
-    dragonMilestone: {
-      threshold: 1000,
-      unlocked: false,
-      progress: 0,
-    },
-    referral: {
-      myCode: 'BLD-7K9M2P',
-      shareUrl: 'https://boardly.cfd/join/BLD-7K9M2P',
-      canAttachManualCode: false,
-      alreadyAttachedInviter: false,
-      paidCountThisMonth: 0,
-      maxPaidPerMonth: DEFAULT_REWARDS_CONFIG.referral.maxPaidPerInviterPerMonth,
-      config: DEFAULT_REWARDS_CONFIG.referral,
-      items: [],
-    },
-  };
+const DEFAULT_CONFIG_JSON = JSON.stringify({
+  timezone: DEFAULT_REWARDS_CONFIG.timezone,
+  resetOnMiss: DEFAULT_REWARDS_CONFIG.resetOnMiss,
+  dailyLadder: DEFAULT_REWARDS_CONFIG.dailyLadder,
+  milestones: DEFAULT_REWARDS_CONFIG.milestones,
+  referral: DEFAULT_REWARDS_CONFIG.referral,
+});
+
+/**
+ * Ensures all 5 D1 Rewards tables exist and seeds default `mode = 'off'` and `config` JSON
+ * using `INSERT OR IGNORE` so existing Super Admin choices are never overwritten.
+ */
+export async function ensureRewardsD1Schema(db: RewardsD1Database): Promise<void> {
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS reward_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS reward_daily_claims (
+      uid TEXT NOT NULL,
+      pkt_date TEXT NOT NULL,
+      day_number INTEGER NOT NULL,
+      amount INTEGER NOT NULL,
+      credit_status TEXT NOT NULL DEFAULT 'pending',
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (uid, pkt_date)
+    )`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_reward_daily_claims_uid_created
+      ON reward_daily_claims(uid, created_at DESC)`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS reward_milestone_claims (
+      uid TEXT NOT NULL,
+      milestone_id TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      credit_status TEXT NOT NULL DEFAULT 'pending',
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (uid, milestone_id)
+    )`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_reward_milestone_claims_uid
+      ON reward_milestone_claims(uid)`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS referral_codes (
+      uid TEXT PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE
+    )`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_referral_codes_code
+      ON referral_codes(code)`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS referrals (
+      id TEXT PRIMARY KEY,
+      inviter_uid TEXT NOT NULL,
+      invitee_uid TEXT NOT NULL UNIQUE,
+      inviter_code TEXT NOT NULL,
+      invitee_code TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending_confirmation',
+      inviter_accepted INTEGER NOT NULL DEFAULT 0,
+      invitee_accepted INTEGER NOT NULL DEFAULT 0,
+      ip_hash TEXT NOT NULL DEFAULT '',
+      flagged INTEGER NOT NULL DEFAULT 0,
+      inviter_credit_status TEXT NOT NULL DEFAULT 'pending',
+      invitee_credit_status TEXT NOT NULL DEFAULT 'pending',
+      created_at INTEGER NOT NULL,
+      confirmed_at INTEGER,
+      paid_at INTEGER
+    )`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_referrals_inviter_uid
+      ON referrals(inviter_uid, created_at DESC)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_referrals_ip_hash_created
+      ON referrals(ip_hash, created_at DESC)`),
+    db
+      .prepare(`INSERT OR IGNORE INTO reward_settings (key, value) VALUES (?1, ?2)`)
+      .bind('mode', 'off'),
+    db
+      .prepare(`INSERT OR IGNORE INTO reward_settings (key, value) VALUES (?1, ?2)`)
+      .bind('config', DEFAULT_CONFIG_JSON),
+  ]);
 }
 
 /**
- * Loads `config/rewards` from Firestore, seeding it with `DEFAULT_REWARDS_CONFIG`
- * if it does not exist yet.
+ * Reads `mode` and `config` from D1 `reward_settings`.
  */
-export async function loadOrSeedRewardsConfig(
-  store: FirestoreStoreAdapter
-): Promise<RewardsConfig> {
-  const existing = await store.getDoc('config/rewards');
-  if (!existing) {
-    try {
-      await store.setDoc('config/rewards', {
-        ...DEFAULT_REWARDS_CONFIG,
-        updatedAt: SERVER_TIMESTAMP_SENTINEL,
-      });
-    } catch {
-      // Non-fatal if concurrent seed
+export async function loadD1RewardsSettings(
+  db: RewardsD1Database
+): Promise<{ mode: RewardsMode; config: RewardsConfig }> {
+  const { results } = await db
+    .prepare('SELECT key, value FROM reward_settings')
+    .all<{ key: string; value: string }>();
+
+  let rawMode = 'off';
+  let rawConfigObj: Record<string, any> = {};
+
+  for (const row of results || []) {
+    if (row.key === 'mode') {
+      rawMode = String(row.value || 'off').trim();
+    } else if (row.key === 'config') {
+      try {
+        rawConfigObj = JSON.parse(row.value || '{}');
+      } catch {
+        rawConfigObj = {};
+      }
     }
-    return { ...DEFAULT_REWARDS_CONFIG };
   }
 
+  const mode: RewardsMode =
+    rawMode === 'everyone' || rawMode === 'admin_only' || rawMode === 'off' ? rawMode : 'off';
+
   const ladder =
-    Array.isArray(existing.dailyLadder) && existing.dailyLadder.length === 30
-      ? existing.dailyLadder.map((n: unknown) => Math.max(0, Math.floor(Number(n) || 0)))
+    Array.isArray(rawConfigObj.dailyLadder) && rawConfigObj.dailyLadder.length === 30
+      ? rawConfigObj.dailyLadder.map((n: unknown) => Math.max(0, Math.floor(Number(n) || 0)))
       : [...DEFAULT_DAILY_LADDER];
 
   const milestonesMap: Record<string, number> = {
     ...DEFAULT_REWARDS_CONFIG.milestones,
-    ...(existing.milestones && typeof existing.milestones === 'object' ? existing.milestones : {}),
+    ...(rawConfigObj.milestones && typeof rawConfigObj.milestones === 'object'
+      ? rawConfigObj.milestones
+      : {}),
   };
 
-  const refRaw = existing.referral && typeof existing.referral === 'object' ? existing.referral : {};
+  const refRaw =
+    rawConfigObj.referral && typeof rawConfigObj.referral === 'object'
+      ? rawConfigObj.referral
+      : {};
 
-  return {
-    enabled: existing.enabled === true,
-    timezone: String(existing.timezone || DEFAULT_REWARDS_CONFIG.timezone),
+  const config: RewardsConfig = {
+    enabled: mode !== 'off',
+    mode,
+    timezone: String(rawConfigObj.timezone || DEFAULT_REWARDS_CONFIG.timezone),
     dailyLadder: ladder,
-    resetOnMiss: existing.resetOnMiss === true,
+    resetOnMiss: rawConfigObj.resetOnMiss === true,
     milestones: milestonesMap,
     referral: {
-      inviterReward: Number(refRaw.inviterReward ?? DEFAULT_REWARDS_CONFIG.referral.inviterReward),
-      inviteeReward: Number(refRaw.inviteeReward ?? DEFAULT_REWARDS_CONFIG.referral.inviteeReward),
-      minInviteeMcqs: Number(refRaw.minInviteeMcqs ?? DEFAULT_REWARDS_CONFIG.referral.minInviteeMcqs),
+      inviterReward: Number(
+        refRaw.inviterReward ?? DEFAULT_REWARDS_CONFIG.referral.inviterReward
+      ),
+      inviteeReward: Number(
+        refRaw.inviteeReward ?? DEFAULT_REWARDS_CONFIG.referral.inviteeReward
+      ),
+      minInviteeMcqs: Number(
+        refRaw.minInviteeMcqs ?? DEFAULT_REWARDS_CONFIG.referral.minInviteeMcqs
+      ),
       maxPaidPerInviterPerMonth: Number(
-        refRaw.maxPaidPerInviterPerMonth ?? DEFAULT_REWARDS_CONFIG.referral.maxPaidPerInviterPerMonth
+        refRaw.maxPaidPerInviterPerMonth ??
+          DEFAULT_REWARDS_CONFIG.referral.maxPaidPerInviterPerMonth
       ),
       pendingExpiryDays: Number(
         refRaw.pendingExpiryDays ?? DEFAULT_REWARDS_CONFIG.referral.pendingExpiryDays
@@ -212,334 +278,486 @@ export async function loadOrSeedRewardsConfig(
       ),
     },
   };
+
+  return { mode, config };
 }
 
 /**
- * Computes the authoritative MCQs answered count for `uid` from completed `attempts` documents.
+ * Determines whether the current user is allowed to claim rewards under `mode` and `serverConfigured`.
  */
-export async function computeAuthoritativeMcqsAnswered(
-  store: FirestoreStoreAdapter,
-  uid: string
-): Promise<number> {
-  const attempts = await store.queryByField('attempts', 'userId', 'EQUAL', uid, 500);
-  let totalAnswered = 0;
-  const seenIds = new Set<string>();
-
-  for (const att of attempts) {
-    const docId = String(att._id || att.id || '');
-    if (docId) {
-      if (seenIds.has(docId)) continue;
-      seenIds.add(docId);
-    }
-    if (att.status && att.status !== 'completed') continue;
-
-    const correct = Math.max(0, Math.floor(Number(att.correctAnswers ?? 0)));
-    const wrong = Math.max(0, Math.floor(Number(att.wrongAnswers ?? 0)));
-    const totalQ = Math.max(0, Math.floor(Number(att.totalQuestions ?? 0)));
-    const unanswered = Math.max(0, Math.floor(Number(att.unanswered ?? 0)));
-
-    let answered = correct + wrong;
-    if (answered === 0 && totalQ > 0 && totalQ >= unanswered) {
-      answered = totalQ - unanswered;
-    }
-    if (totalQ > 0 && answered > totalQ) {
-      answered = totalQ;
-    }
-    answered = Math.min(answered, MAX_COUNTED_MCQS_PER_ATTEMPT);
-    totalAnswered += answered;
-  }
-
-  return totalAnswered;
+export function canUserClaimRewards(params: {
+  serverConfigured: boolean;
+  mode: RewardsMode;
+  user: AuthenticatedD1User | null;
+}): boolean {
+  if (!params.serverConfigured || !params.user) return false;
+  if (params.mode === 'off') return false;
+  if (params.mode === 'admin_only') return params.user.isSuperAdmin;
+  if (params.mode === 'everyone') return true;
+  return false;
 }
 
 /**
- * Ensures the user has a unique permanent `BLD-XXXXXX` referral code stored in
- * `reward_user_state/{uid}` and indexed in `reward_referral_codes/{code}`.
+ * READ-ONLY D1 MCQ Count Query (`SELECT` only from `test_attempts` and `attempt_answers`).
+ * Never writes to any MCQ table.
  */
-export async function ensureUserReferralCode(
-  store: FirestoreStoreAdapter,
+export async function computeAuthoritativeMcqsFromD1(
+  db: RewardsD1Database,
   uid: string,
-  displayName: string
-): Promise<string> {
-  const userState = await store.getDoc(`reward_user_state/${uid}`);
-  if (userState?.referralCode && isValidReferralCodeFormat(String(userState.referralCode))) {
-    const existingCode = String(userState.referralCode);
-    const codeDoc = await store.getDoc(`reward_referral_codes/${existingCode}`);
-    if (!codeDoc) {
-      await store.setDoc(`reward_referral_codes/${existingCode}`, {
-        code: existingCode,
-        uid,
-        displayName,
-        createdAt: SERVER_TIMESTAMP_SENTINEL,
-      });
+  sinceMs = 0
+): Promise<number> {
+  try {
+    const { results } = await db
+      .prepare(
+        `SELECT
+           ta.id AS attempt_id,
+           ta.total_questions AS total_questions,
+           ta.created_at AS created_at,
+           COUNT(CASE WHEN aa.selected_index >= 0 THEN 1 END) AS answered_rows,
+           COUNT(aa.id) AS total_answer_rows
+         FROM test_attempts ta
+         LEFT JOIN attempt_answers aa ON aa.attempt_id = ta.id
+         WHERE ta.user_uid = ?1 AND ta.created_at >= ?2
+         GROUP BY ta.id`
+      )
+      .bind(uid, sinceMs)
+      .all<{
+        attempt_id: string;
+        total_questions: number;
+        created_at: number;
+        answered_rows: number;
+        total_answer_rows: number;
+      }>();
+
+    let total = 0;
+    for (const row of results || []) {
+      const totalQ = Math.max(0, Math.floor(Number(row.total_questions || 0)));
+      const totalAnsRows = Math.max(0, Math.floor(Number(row.total_answer_rows || 0)));
+      const answeredRows = Math.max(0, Math.floor(Number(row.answered_rows || 0)));
+
+      let countForAttempt = totalAnsRows > 0 ? answeredRows : totalQ;
+      if (totalQ > 0 && countForAttempt > totalQ) {
+        countForAttempt = totalQ;
+      }
+      countForAttempt = Math.min(countForAttempt, MAX_COUNTED_MCQS_PER_ATTEMPT);
+      total += countForAttempt;
     }
-    return existingCode;
+    return total;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Ensures the user has a permanent unique `BLD-XXXXXX` code in D1 `referral_codes`.
+ */
+export async function ensureD1UserReferralCode(
+  db: RewardsD1Database,
+  uid: string
+): Promise<string> {
+  const existing = await db
+    .prepare('SELECT uid, code FROM referral_codes WHERE uid = ?1 LIMIT 1')
+    .bind(uid)
+    .first<{ uid: string; code: string }>();
+
+  if (existing?.code && isValidReferralCodeFormat(existing.code)) {
+    return existing.code;
   }
 
-  for (let attempt = 0; attempt < 10; attempt++) {
+  for (let attempt = 0; attempt < 15; attempt++) {
     const candidate = generateDeterministicReferralCode(uid, attempt);
-    const existingOwner = await store.getDoc(`reward_referral_codes/${candidate}`);
-    if (!existingOwner || existingOwner.uid === uid) {
-      await store.setDoc(`reward_referral_codes/${candidate}`, {
-        code: candidate,
-        uid,
-        displayName,
-        createdAt: SERVER_TIMESTAMP_SENTINEL,
-      });
-      await store.setDoc(
-        `reward_user_state/${uid}`,
-        {
-          uid,
-          referralCode: candidate,
-          updatedAt: SERVER_TIMESTAMP_SENTINEL,
-        },
-        true
-      );
-      return candidate;
+    try {
+      await db
+        .prepare('INSERT OR IGNORE INTO referral_codes (uid, code) VALUES (?1, ?2)')
+        .bind(uid, candidate)
+        .run();
+
+      const verifyRow = await db
+        .prepare('SELECT uid, code FROM referral_codes WHERE uid = ?1 LIMIT 1')
+        .bind(uid)
+        .first<{ uid: string; code: string }>();
+      if (verifyRow?.code) {
+        return verifyRow.code;
+      }
+    } catch {
+      // Collision on code; try next salt
     }
   }
 
   const fallback = generateDeterministicReferralCode(`${uid}_${Date.now()}`, 0);
-  await store.setDoc(`reward_referral_codes/${fallback}`, {
-    code: fallback,
-    uid,
-    displayName,
-    createdAt: SERVER_TIMESTAMP_SENTINEL,
-  });
-  await store.setDoc(
-    `reward_user_state/${uid}`,
-    {
-      uid,
-      referralCode: fallback,
-      updatedAt: SERVER_TIMESTAMP_SENTINEL,
-    },
-    true
-  );
-  return fallback;
+  await db
+    .prepare('INSERT OR IGNORE INTO referral_codes (uid, code) VALUES (?1, ?2)')
+    .bind(uid, fallback)
+    .run();
+  const finalRow = await db
+    .prepare('SELECT uid, code FROM referral_codes WHERE uid = ?1 LIMIT 1')
+    .bind(uid)
+    .first<{ uid: string; code: string }>();
+  return finalRow?.code || fallback;
 }
 
 /**
- * Executes an atomic referral payout inside a Firestore transaction when a confirmed
- * referral's invitee has answered >= minInviteeMcqs.
+ * Computes the user's 30-day check-in progress from D1 `reward_daily_claims`.
  */
-async function tryCompleteConfirmedReferralInTx(params: {
-  store: FirestoreStoreAdapter;
-  referralId: string;
-  config: RewardsConfig;
-  nowMs: number;
-}): Promise<{ completed: boolean; status: ReferralStatus; errorCode?: string; errorMessage?: string }> {
-  const { store, referralId, config, nowMs } = params;
-  const pktMonth = getPktMonthString(nowMs);
+export async function computeD1DailyProgressForUser(
+  db: RewardsD1Database,
+  uid: string,
+  config: RewardsConfig,
+  nowMs: number
+) {
+  const { results } = await db
+    .prepare(
+      'SELECT pkt_date, day_number, amount, credit_status, created_at FROM reward_daily_claims WHERE uid = ?1 ORDER BY pkt_date DESC'
+    )
+    .bind(uid)
+    .all<{
+      pkt_date: string;
+      day_number: number;
+      amount: number;
+      credit_status: string;
+      created_at: number;
+    }>();
 
-  return store.runTransaction(async (tx) => {
-    const refDoc = await tx.getDoc(`reward_referrals/${referralId}`);
-    if (!refDoc) {
-      return {
-        completed: false,
-        status: 'expired' as ReferralStatus,
-        errorCode: 'REFERRAL_NOT_FOUND',
-        errorMessage: 'Referral record not found.',
-      };
+  const rows = results || [];
+  const totalClaims = rows.length;
+  const lastClaimPktDate = rows[0]?.pkt_date || null;
+
+  let streakClaimsSinceReset = totalClaims;
+  if (config.resetOnMiss && rows.length > 0) {
+    let consecutive = 1;
+    let cursorDate = rows[0].pkt_date;
+    for (let i = 1; i < rows.length; i++) {
+      const expectedPrev = getPreviousPktDateString(cursorDate);
+      if (rows[i].pkt_date === expectedPrev) {
+        consecutive++;
+        cursorDate = rows[i].pkt_date;
+      } else {
+        break;
+      }
     }
+    streakClaimsSinceReset = consecutive;
+  }
 
-    if (refDoc.payoutCompleted === true || refDoc.status === 'completed') {
-      return { completed: true, status: 'completed' as ReferralStatus };
-    }
-
-    if (refDoc.isFlagged === true || refDoc.status === 'flagged') {
-      return {
-        completed: false,
-        status: 'flagged' as ReferralStatus,
-        errorCode: 'REFERRAL_FLAGGED',
-        errorMessage: 'Referral is flagged for review.',
-      };
-    }
-
-    const inviterUid = String(refDoc.inviterUid);
-    const inviteeUid = String(refDoc.inviteeUid);
-    const monthDocPath = `reward_inviter_months/${inviterUid}_${pktMonth}`;
-    const monthDoc = await tx.getDoc(monthDocPath);
-    const paidCountThisMonth = Math.max(0, Math.floor(Number(monthDoc?.paidCount ?? 0)));
-
-    if (paidCountThisMonth >= config.referral.maxPaidPerInviterPerMonth) {
-      tx.setDoc(
-        `reward_referrals/${referralId}`,
-        {
-          status: 'capped',
-          updatedAtMs: nowMs,
-          updatedAt: SERVER_TIMESTAMP_SENTINEL,
-        },
-        true
-      );
-      return {
-        completed: false,
-        status: 'capped' as ReferralStatus,
-        errorCode: 'MONTHLY_CAP_REACHED',
-        errorMessage: `Monthly cap of ${config.referral.maxPaidPerInviterPerMonth} paid referrals reached.`,
-      };
-    }
-
-    // Read inviter & invitee wallets and profiles inside the transaction
-    const [inviterWallet, inviterUser, inviteeWallet, inviteeUser] = await Promise.all([
-      tx.getDoc(`wallets/${inviterUid}`),
-      tx.getDoc(`users/${inviterUid}`),
-      tx.getDoc(`wallets/${inviteeUid}`),
-      tx.getDoc(`users/${inviteeUid}`),
-    ]);
-
-    const inviterReward = Math.max(0, Math.floor(Number(config.referral.inviterReward) || 5000));
-    const inviteeReward = Math.max(0, Math.floor(Number(config.referral.inviteeReward) || 1000));
-
-    const inviterCurrentBalance = Math.max(
-      0,
-      Math.floor(
-        Number(inviterWallet?.balance ?? inviterUser?.kobans ?? inviterUser?.kobanBalance ?? 0)
-      )
-    );
-    const inviteeCurrentBalance = Math.max(
-      0,
-      Math.floor(
-        Number(inviteeWallet?.balance ?? inviteeUser?.kobans ?? inviteeUser?.kobanBalance ?? 0)
-      )
-    );
-
-    const inviterNewBalance = inviterCurrentBalance + inviterReward;
-    const inviteeNewBalance = inviteeCurrentBalance + inviteeReward;
-
-    const inviterLedgerId = `reward_ref_inviter_${referralId}`;
-    const inviteeLedgerId = `reward_ref_invitee_${referralId}`;
-
-    // Deterministic ledger create (fails transaction if already credited)
-    tx.createDoc(`wallets/${inviterUid}/ledger/${inviterLedgerId}`, {
-      id: inviterLedgerId,
-      type: 'reward_referral_inviter',
-      amount: inviterReward,
-      balanceAfter: inviterNewBalance,
-      reason: `Referral Reward — Invited ${String(refDoc.inviteeDisplayName || 'Friend')}`,
-      referralId,
-      timestamp: SERVER_TIMESTAMP_SENTINEL,
-    });
-
-    tx.createDoc(`wallets/${inviteeUid}/ledger/${inviteeLedgerId}`, {
-      id: inviteeLedgerId,
-      type: 'reward_referral_invitee',
-      amount: inviteeReward,
-      balanceAfter: inviteeNewBalance,
-      reason: `Referral Bonus — Joined via ${String(refDoc.inviterDisplayName || 'Friend')}`,
-      referralId,
-      timestamp: SERVER_TIMESTAMP_SENTINEL,
-    });
-
-    // Credit inviter wallet + user profile
-    tx.setDoc(
-      `wallets/${inviterUid}`,
-      {
-        balance: inviterNewBalance,
-        owned: Array.isArray(inviterWallet?.owned) ? inviterWallet.owned : [],
-        equipped: inviterWallet?.equipped || {
-          effect: null,
-          frame: null,
-          nameplate: null,
-          avatar: null,
-          banner: null,
-        },
-        updatedAt: SERVER_TIMESTAMP_SENTINEL,
-      },
-      true
-    );
-    tx.setDoc(
-      `users/${inviterUid}`,
-      {
-        kobans: inviterNewBalance,
-        kobanBalance: inviterNewBalance,
-        updatedAt: SERVER_TIMESTAMP_SENTINEL,
-      },
-      true
-    );
-
-    // Credit invitee wallet + user profile
-    tx.setDoc(
-      `wallets/${inviteeUid}`,
-      {
-        balance: inviteeNewBalance,
-        owned: Array.isArray(inviteeWallet?.owned) ? inviteeWallet.owned : [],
-        equipped: inviteeWallet?.equipped || {
-          effect: null,
-          frame: null,
-          nameplate: null,
-          avatar: null,
-          banner: null,
-        },
-        updatedAt: SERVER_TIMESTAMP_SENTINEL,
-      },
-      true
-    );
-    tx.setDoc(
-      `users/${inviteeUid}`,
-      {
-        kobans: inviteeNewBalance,
-        kobanBalance: inviteeNewBalance,
-        updatedAt: SERVER_TIMESTAMP_SENTINEL,
-      },
-      true
-    );
-
-    // Mark referral completed & increment monthly counter
-    tx.setDoc(
-      `reward_referrals/${referralId}`,
-      {
-        status: 'completed',
-        payoutCompleted: true,
-        completedAtMs: nowMs,
-        updatedAtMs: nowMs,
-        updatedAt: SERVER_TIMESTAMP_SENTINEL,
-      },
-      true
-    );
-
-    tx.setDoc(
-      monthDocPath,
-      {
-        inviterUid,
-        pktMonth,
-        paidCount: paidCountThisMonth + 1,
-        updatedAt: SERVER_TIMESTAMP_SENTINEL,
-      },
-      true
-    );
-
-    // Create in-app notifications for both users
-    tx.setDoc(`notifications/ref_paid_inviter_${referralId}`, {
-      userId: inviterUid,
-      type: 'system',
-      title: `Referral Complete! +${inviterReward.toLocaleString()} Kobans`,
-      message: `${String(refDoc.inviteeDisplayName || 'Your friend')} completed ${config.referral.minInviteeMcqs} MCQs. +${inviterReward.toLocaleString()} Kobans have been added to your wallet!`,
-      link: '/rewards',
-      read: false,
-      createdAt: SERVER_TIMESTAMP_SENTINEL,
-    });
-
-    tx.setDoc(`notifications/ref_paid_invitee_${referralId}`, {
-      userId: inviteeUid,
-      type: 'system',
-      title: `Referral Bonus! +${inviteeReward.toLocaleString()} Kobans`,
-      message: `You completed ${config.referral.minInviteeMcqs} MCQs and unlocked your +${inviteeReward.toLocaleString()} Kobans referral bonus!`,
-      link: '/rewards',
-      read: false,
-      createdAt: SERVER_TIMESTAMP_SENTINEL,
-    });
-
-    return { completed: true, status: 'completed' as ReferralStatus };
+  return computeDailyProgressState({
+    totalClaims,
+    streakClaimsSinceReset,
+    lastClaimPktDate,
+    nowMs,
+    config,
   });
 }
 
-// ─── Core Request Router (Injectable Store & Token Verifier for Testing) ─────
+/**
+ * PHASE 3: Attempts to pay out a confirmed referral (`status = 'confirmed'`) using
+ * claim-first in D1 (`inviter_credit_status` / `invitee_credit_status = 'pending'`)
+ * and credit-second in Firestore (`wallets/{uid}/ledger/reward_ref_*_${referralId}`).
+ */
+async function tryProcessConfirmedReferralPayout(params: {
+  db: RewardsD1Database;
+  store: FirestoreStoreAdapter | null;
+  refRow: Record<string, any>;
+  config: RewardsConfig;
+  nowMs: number;
+}): Promise<{
+  status: ReferralStatus;
+  paidNow: boolean;
+  inviterCreditedNow: boolean;
+  inviteeCreditedNow: boolean;
+  errorCode?: string;
+  errorMessage?: string;
+}> {
+  const { db, store, refRow, config, nowMs } = params;
+  const referralId = String(refRow.id);
+  const inviterUid = String(refRow.inviter_uid);
+  const inviteeUid = String(refRow.invitee_uid);
+  const flagged = Number(refRow.flagged || 0) === 1;
+
+  if (flagged || refRow.status === 'flagged') {
+    return {
+      status: 'flagged',
+      paidNow: false,
+      inviterCreditedNow: false,
+      inviteeCreditedNow: false,
+      errorCode: 'REFERRAL_FLAGGED',
+      errorMessage: 'Referral is flagged for review and payout is held.',
+    };
+  }
+
+  if (
+    (refRow.status === 'paid' || refRow.status === 'completed') &&
+    refRow.inviter_credit_status === 'credited' &&
+    refRow.invitee_credit_status === 'credited'
+  ) {
+    return {
+      status: 'completed',
+      paidNow: false,
+      inviterCreditedNow: false,
+      inviteeCreditedNow: false,
+    };
+  }
+
+  // Check invitee's D1 MCQ count since signup (or referral creation)
+  let inviteeSignupMs = 0;
+  try {
+    const inviteeRoleRow = await db
+      .prepare('SELECT created_at FROM user_roles WHERE uid = ?1 LIMIT 1')
+      .bind(inviteeUid)
+      .first<{ created_at?: number }>();
+    inviteeSignupMs = Number(inviteeRoleRow?.created_at || 0);
+  } catch {
+    inviteeSignupMs = 0;
+  }
+
+  const inviteeMcqs = await computeAuthoritativeMcqsFromD1(db, inviteeUid, inviteeSignupMs);
+  if (inviteeMcqs < config.referral.minInviteeMcqs) {
+    return {
+      status: 'confirmed',
+      paidNow: false,
+      inviterCreditedNow: false,
+      inviteeCreditedNow: false,
+    };
+  }
+
+  // Check monthly paid cap for inviter in current PKT calendar month
+  const { startMs, endMs } = getPktMonthRangeMs(nowMs);
+  const paidCountRow = await db
+    .prepare(
+      `SELECT COUNT(*) AS cnt FROM referrals
+       WHERE inviter_uid = ?1 AND status IN ('paid', 'completed') AND paid_at >= ?2 AND paid_at < ?3`
+    )
+    .bind(inviterUid, startMs, endMs)
+    .first<{ cnt: number }>();
+
+  const paidThisMonth = Number(paidCountRow?.cnt || 0);
+  const alreadyPartiallyCredited =
+    refRow.inviter_credit_status === 'credited' ||
+    refRow.invitee_credit_status === 'credited' ||
+    refRow.status === 'paid' ||
+    refRow.status === 'completed';
+
+  if (!alreadyPartiallyCredited && paidThisMonth >= config.referral.maxPaidPerInviterPerMonth) {
+    // Excess referrals stay 'confirmed' and wait until next calendar month
+    return {
+      status: 'capped',
+      paidNow: false,
+      inviterCreditedNow: false,
+      inviteeCreditedNow: false,
+      errorCode: 'MONTHLY_CAP_REACHED',
+      errorMessage: `Monthly cap of ${config.referral.maxPaidPerInviterPerMonth} paid referrals reached. This referral will pay out next month.`,
+    };
+  }
+
+  if (!store) {
+    return {
+      status: 'confirmed',
+      paidNow: false,
+      inviterCreditedNow: false,
+      inviteeCreditedNow: false,
+      errorCode: 'SERVER_NOT_CONFIGURED',
+      errorMessage: 'Firestore service account is not configured.',
+    };
+  }
+
+  const inviterReward = Math.max(0, Math.floor(Number(config.referral.inviterReward) || 5000));
+  const inviteeReward = Math.max(0, Math.floor(Number(config.referral.inviteeReward) || 1000));
+
+  let inviterCreditedNow = false;
+  let inviteeCreditedNow = false;
+  let inviterStatus = String(refRow.inviter_credit_status || 'pending');
+  let inviteeStatus = String(refRow.invitee_credit_status || 'pending');
+
+  if (inviterStatus !== 'credited') {
+    const inviterRes = await creditKobansIdempotentInFirestore({
+      store,
+      uid: inviterUid,
+      ledgerId: `reward_ref_inviter_${referralId}`,
+      type: 'reward_referral_inviter',
+      amount: inviterReward,
+      reason: `Referral Reward — Friend ${refRow.invitee_code} completed ${config.referral.minInviteeMcqs} MCQs`,
+      extraLedgerFields: { referralId },
+      notification: {
+        id: `ref_paid_inviter_${referralId}`,
+        title: `Referral Complete! +${inviterReward.toLocaleString()} Kobans`,
+        message: `Your referred classmate completed ${config.referral.minInviteeMcqs} MCQs. +${inviterReward.toLocaleString()} Kobans have been credited to your wallet!`,
+        link: '/rewards',
+      },
+    });
+    if (inviterRes.credited) {
+      await db
+        .prepare('UPDATE referrals SET inviter_credit_status = ?1 WHERE id = ?2')
+        .bind('credited', referralId)
+        .run();
+      inviterStatus = 'credited';
+      inviterCreditedNow = !inviterRes.alreadyCredited;
+    }
+  }
+
+  if (inviteeStatus !== 'credited') {
+    const inviteeRes = await creditKobansIdempotentInFirestore({
+      store,
+      uid: inviteeUid,
+      ledgerId: `reward_ref_invitee_${referralId}`,
+      type: 'reward_referral_invitee',
+      amount: inviteeReward,
+      reason: `Referral Bonus — Joined with code ${refRow.inviter_code}`,
+      extraLedgerFields: { referralId },
+      notification: {
+        id: `ref_paid_invitee_${referralId}`,
+        title: `Referral Bonus! +${inviteeReward.toLocaleString()} Kobans`,
+        message: `You completed ${config.referral.minInviteeMcqs} MCQs and unlocked your +${inviteeReward.toLocaleString()} Kobans referral bonus!`,
+        link: '/rewards',
+      },
+    });
+    if (inviteeRes.credited) {
+      await db
+        .prepare('UPDATE referrals SET invitee_credit_status = ?1 WHERE id = ?2')
+        .bind('credited', referralId)
+        .run();
+      inviteeStatus = 'credited';
+      inviteeCreditedNow = !inviteeRes.alreadyCredited;
+    }
+  }
+
+  if (inviterStatus === 'credited' && inviteeStatus === 'credited') {
+    const paidAt = Number(refRow.paid_at || nowMs);
+    await db
+      .prepare('UPDATE referrals SET status = ?1, paid_at = ?2 WHERE id = ?3')
+      .bind('paid', paidAt, referralId)
+      .run();
+    return {
+      status: 'completed',
+      paidNow: inviterCreditedNow || inviteeCreditedNow,
+      inviterCreditedNow,
+      inviteeCreditedNow,
+    };
+  }
+
+  return {
+    status: 'confirmed',
+    paidNow: false,
+    inviterCreditedNow,
+    inviteeCreditedNow,
+  };
+}
+
+/**
+ * PHASE 3: Automatically retries any D1 claim rows for `uid` where `credit_status = 'pending'`.
+ * Guarantees that a transient Firestore failure can never lose a reward or double-pay.
+ */
+export async function retryPendingFirestoreCredits(params: {
+  db: RewardsD1Database;
+  store: FirestoreStoreAdapter | null;
+  uid: string;
+}): Promise<number> {
+  const { db, store, uid } = params;
+  if (!store) return 0;
+
+  let newlyCreditedAmount = 0;
+
+  // 1. Retry pending daily claims
+  const { results: pendingDaily } = await db
+    .prepare(
+      "SELECT pkt_date, day_number, amount, credit_status FROM reward_daily_claims WHERE uid = ?1 AND credit_status = 'pending'"
+    )
+    .bind(uid)
+    .all<{ pkt_date: string; day_number: number; amount: number; credit_status: string }>();
+
+  for (const row of pendingDaily || []) {
+    try {
+      const ledgerId = `reward_daily_${uid}_${row.pkt_date}`;
+      const res = await creditKobansIdempotentInFirestore({
+        store,
+        uid,
+        ledgerId,
+        type: 'reward_daily',
+        amount: row.amount,
+        reason: `Daily Check-in — Day ${row.day_number} (${row.pkt_date})`,
+        extraLedgerFields: {
+          dayNumber: row.day_number,
+          pktDate: row.pkt_date,
+        },
+        notification: {
+          id: `daily_${uid}_${row.pkt_date}`,
+          title: `Day ${row.day_number} Check-in Reward Claimed!`,
+          message: `+${row.amount.toLocaleString()} Kobans added to your wallet for your Day ${row.day_number} check-in.`,
+          link: '/rewards',
+        },
+      });
+      if (res.credited) {
+        await db
+          .prepare(
+            'UPDATE reward_daily_claims SET credit_status = ?1 WHERE uid = ?2 AND pkt_date = ?3'
+          )
+          .bind('credited', uid, row.pkt_date)
+          .run();
+        if (!res.alreadyCredited) {
+          newlyCreditedAmount += row.amount;
+        }
+      }
+    } catch {
+      // Leave 'pending' for next retry
+    }
+  }
+
+  // 2. Retry pending milestone claims
+  const { results: pendingMilestones } = await db
+    .prepare(
+      "SELECT milestone_id, amount, credit_status FROM reward_milestone_claims WHERE uid = ?1 AND credit_status = 'pending'"
+    )
+    .bind(uid)
+    .all<{ milestone_id: string; amount: number; credit_status: string }>();
+
+  for (const row of pendingMilestones || []) {
+    try {
+      const ledgerId = `reward_milestone_${uid}_${row.milestone_id}`;
+      const def = DEFAULT_MILESTONES.find((m) => m.id === row.milestone_id);
+      const res = await creditKobansIdempotentInFirestore({
+        store,
+        uid,
+        ledgerId,
+        type: 'reward_milestone',
+        amount: row.amount,
+        reason: `MCQ Milestone Reward — ${def?.title || row.milestone_id}`,
+        extraLedgerFields: {
+          milestoneId: row.milestone_id,
+          threshold: def?.threshold ?? 0,
+        },
+        notification: {
+          id: `milestone_${uid}_${row.milestone_id}`,
+          title: `${def?.title || 'Milestone'} Unlocked!`,
+          message: `+${row.amount.toLocaleString()} Kobans added to your wallet!`,
+          link: '/rewards',
+        },
+      });
+      if (res.credited) {
+        await db
+          .prepare(
+            'UPDATE reward_milestone_claims SET credit_status = ?1 WHERE uid = ?2 AND milestone_id = ?3'
+          )
+          .bind('credited', uid, row.milestone_id)
+          .run();
+        if (!res.alreadyCredited) {
+          newlyCreditedAmount += row.amount;
+        }
+      }
+    } catch {
+      // Leave 'pending' for next retry
+    }
+  }
+
+  return newlyCreditedAmount;
+}
+
+// ─── Core Request Router ──────────────────────────────────────────────────────
 
 export interface HandleRewardsRequestOptions {
   request: Request;
   env?: RewardsEnv;
-  storeOverride?: FirestoreStoreAdapter;
-  tokenVerifierOverride?: (authHeader: string | null | undefined) => Promise<VerifiedFirebaseToken | null>;
+  dbOverride?: RewardsD1Database;
+  storeOverride?: FirestoreStoreAdapter | null;
+  tokenVerifierOverride?: (
+    authHeader: string | null | undefined
+  ) => Promise<VerifiedFirebaseToken | null>;
   nowMsOverride?: number;
   bypassRateLimit?: boolean;
 }
@@ -577,47 +795,45 @@ export async function handleRewardsApiRequest(
   const url = new URL(request.url);
   const subPath = url.pathname.replace(/^\/api\/rewards\/?/, '').replace(/\/+$/, '');
 
-  // 1. Resolve Firestore store (or return 503 if FIREBASE_SERVICE_ACCOUNT is not configured)
-  let store: FirestoreStoreAdapter | null = opts.storeOverride || null;
-  if (!store) {
+  // 1. Resolve D1 Database (Cloudflare env.DB in production, or shared local D1 adapter in Vite dev)
+  const db: RewardsD1Database = opts.dbOverride || env?.DB || getSharedLocalD1Database();
+  await ensureRewardsD1Schema(db);
+
+  // 2. Resolve Firestore Store for Koban Wallet/Ledger Credits (only needed for crediting Kobans)
+  let store: FirestoreStoreAdapter | null =
+    opts.storeOverride !== undefined ? opts.storeOverride : null;
+  if (opts.storeOverride === undefined) {
     const sa = parseServiceAccountFromEnv(env);
-    if (!sa) {
-      const defaultState = buildDefaultUnconfiguredState(nowMs);
-      return jsonResponse(
-        {
-          ...defaultState,
-          ok: false,
-          error: 'Rewards service is coming soon (FIREBASE_SERVICE_ACCOUNT not configured).',
-          code: 'SERVER_NOT_CONFIGURED',
-        },
-        503
-      );
+    if (sa) {
+      const projectId =
+        env?.FIREBASE_PROJECT_ID ||
+        env?.VITE_FIREBASE_PROJECT_ID ||
+        sa.project_id ||
+        DEFAULT_FIREBASE_PROJECT_ID;
+      const databaseId =
+        env?.FIREBASE_DATABASE_ID ||
+        env?.VITE_FIREBASE_DATABASE_ID ||
+        env?.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
+        DEFAULT_FIRESTORE_DATABASE_ID;
+      store = new FirestoreRestAdapter(sa, projectId, databaseId);
     }
-    const projectId =
-      env?.FIREBASE_PROJECT_ID ||
-      env?.VITE_FIREBASE_PROJECT_ID ||
-      sa.project_id ||
-      DEFAULT_FIREBASE_PROJECT_ID;
-    const databaseId =
-      env?.FIREBASE_DATABASE_ID ||
-      env?.VITE_FIREBASE_DATABASE_ID ||
-      env?.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
-      DEFAULT_FIRESTORE_DATABASE_ID;
-    store = new FirestoreRestAdapter(sa, projectId, databaseId);
   }
+  const serverConfigured = Boolean(store);
 
-  // 2. Verify Firebase ID Token
+  // 3. Load D1 `reward_settings` (`mode` and `config`)
+  const { mode, config } = await loadD1RewardsSettings(db);
+
+  // 4. Verify Signed-In User using the D1 Auth + `user_roles` helper
   const authHeader = request.headers.get('Authorization');
-  const projectId =
-    env?.FIREBASE_PROJECT_ID || env?.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID;
-  const verifyFn =
-    opts.tokenVerifierOverride || ((hdr) => verifyFirebaseIdToken(hdr, projectId));
+  const d1User = await authenticateD1RewardsUser({
+    request,
+    env,
+    db,
+    tokenVerifierOverride: opts.tokenVerifierOverride,
+  });
 
-  const verifiedToken = await verifyFn(authHeader);
-
-  // For GET /api/rewards/state without an Authorization header, return public schedule/config
+  // Public unauthenticated `GET /api/rewards/state` returns schedule + current mode
   if (subPath === 'state' && request.method === 'GET' && !authHeader) {
-    const config = await loadOrSeedRewardsConfig(store);
     const daily = computeDailyProgressState({
       totalClaims: 0,
       lastClaimPktDate: null,
@@ -630,9 +846,11 @@ export async function handleRewardsApiRequest(
       config,
     });
     const stateResp: RewardsStateResponse = {
-      serverConfigured: true,
-      enabled: config.enabled,
-      comingSoon: !config.enabled,
+      serverConfigured,
+      mode,
+      canClaim: false,
+      enabled: mode === 'everyone',
+      comingSoon: mode !== 'everyone' || !serverConfigured,
       timezone: config.timezone,
       balance: 0,
       daily,
@@ -658,16 +876,16 @@ export async function handleRewardsApiRequest(
     return jsonResponse(stateResp, 200);
   }
 
-  if (!verifiedToken || !verifiedToken.uid) {
+  if (!d1User) {
     return jsonResponse(
       { ok: false, error: 'Authentication required. Please sign in.', code: 'UNAUTHENTICATED' },
       401
     );
   }
 
-  const uid = verifiedToken.uid;
+  const uid = d1User.uid;
 
-  // 3. Per-user rate limiting (~1 request/sec)
+  // 5. Per-user rate limiting (~1 request/sec)
   if (!opts.bypassRateLimit) {
     const rateBucket = request.method === 'GET' ? `get:${subPath}` : `post:${subPath}`;
     if (!checkRateLimit(uid, rateBucket, nowMs)) {
@@ -682,13 +900,9 @@ export async function handleRewardsApiRequest(
     }
   }
 
-  // 4. Load user profile & reject suspended users
-  const [userDoc, config] = await Promise.all([
-    store.getDoc(`users/${uid}`),
-    loadOrSeedRewardsConfig(store),
-  ]);
-
-  if (isUserSuspended(userDoc)) {
+  // 6. Reject suspended users (checked in D1 `user_roles.is_posting_banned` and Firestore `users/{uid}`)
+  const userDoc = store ? await store.getDoc(`users/${uid}`).catch(() => null) : null;
+  if (d1User.isPostingBanned || isFirestoreUserSuspended(userDoc)) {
     return jsonResponse(
       {
         ok: false,
@@ -699,134 +913,281 @@ export async function handleRewardsApiRequest(
     );
   }
 
-  const displayName = sanitizeDisplayName(userDoc, verifiedToken);
+  // ─── ENDPOINT 6: POST /api/rewards/admin/mode (Super Admin Only) ───────────
+  if (subPath === 'admin/mode' && request.method === 'POST') {
+    if (!d1User.isSuperAdmin) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'Forbidden: Only Super Admins can change the Rewards mode.',
+          code: 'FORBIDDEN',
+        },
+        403
+      );
+    }
+
+    let adminBody: Record<string, any> = {};
+    try {
+      const rawText = await request.text();
+      adminBody = rawText ? JSON.parse(rawText) : {};
+    } catch {
+      return jsonResponse(
+        { ok: false, error: 'Invalid JSON request body.', code: 'INVALID_JSON' },
+        400
+      );
+    }
+
+    const nextMode = String(adminBody.mode || '').trim() as RewardsMode;
+    if (nextMode !== 'off' && nextMode !== 'admin_only' && nextMode !== 'everyone') {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'Invalid mode. Must be "off", "admin_only", or "everyone".',
+          code: 'INVALID_MODE',
+        },
+        400
+      );
+    }
+
+    // Write `mode` to D1 `reward_settings`
+    await db
+      .prepare('UPDATE reward_settings SET value = ?1 WHERE key = ?2')
+      .bind(nextMode, 'mode')
+      .run();
+
+    // Record audit entry in D1 `reward_settings` and in Firestore `admin_audit_logs` if available
+    const auditEntry = {
+      action: 'REWARDS_MODE_CHANGE',
+      previousMode: mode,
+      newMode: nextMode,
+      adminUid: uid,
+      adminEmail: d1User.email || 'superadmin',
+      timestampMs: nowMs,
+    };
+    await db
+      .prepare('INSERT INTO reward_settings (key, value) VALUES (?1, ?2)')
+      .bind('last_mode_audit', JSON.stringify(auditEntry))
+      .run();
+
+    if (store) {
+      await store
+        .setDoc(`admin_audit_logs/rewards_mode_${nowMs}_${uid.slice(0, 8)}`, {
+          id: `rewards_mode_${nowMs}_${uid.slice(0, 8)}`,
+          action: 'REWARDS_MODE_CHANGE',
+          adminUid: uid,
+          adminEmail: d1User.email || 'superadmin',
+          targetUid: 'reward_settings:mode',
+          targetEmail: `${mode} -> ${nextMode}`,
+          details: `Changed Boardly Rewards mode from "${mode}" to "${nextMode}"`,
+          timestamp: SERVER_TIMESTAMP_SENTINEL,
+        })
+        .catch(() => null);
+    }
+
+    return jsonResponse(
+      {
+        ok: true,
+        previousMode: mode,
+        mode: nextMode,
+        audit: auditEntry,
+      },
+      200
+    );
+  }
+
+  const canClaim = canUserClaimRewards({ serverConfigured, mode, user: d1User });
 
   // ─── ENDPOINT 1: GET /api/rewards/state ────────────────────────────────────
   if (subPath === 'state' && request.method === 'GET') {
-    const [walletDoc, userStateDoc, mcqsAnswered, milestoneClaimsDocs, asInviterDocs, asInviteeDocs] =
+    // Phase 3: Retry any pending Firestore credits for this user first
+    await retryPendingFirestoreCredits({ db, store, uid });
+
+    const [myCode, daily, mcqsAnswered, milestoneRowsRes, referralRowsRes, walletDoc] =
       await Promise.all([
-        store.getDoc(`wallets/${uid}`),
-        store.getDoc(`reward_user_state/${uid}`),
-        computeAuthoritativeMcqsAnswered(store, uid),
-        store.queryByField('reward_milestone_claims', 'uid', 'EQUAL', uid, 20),
-        store.queryByField('reward_referrals', 'inviterUid', 'EQUAL', uid, 50),
-        store.queryByField('reward_referrals', 'inviteeUid', 'EQUAL', uid, 10),
+        ensureD1UserReferralCode(db, uid),
+        computeD1DailyProgressForUser(db, uid, config, nowMs),
+        computeAuthoritativeMcqsFromD1(db, uid, 0),
+        db
+          .prepare(
+            'SELECT milestone_id, amount, credit_status, created_at FROM reward_milestone_claims WHERE uid = ?1'
+          )
+          .bind(uid)
+          .all<{
+            milestone_id: string;
+            amount: number;
+            credit_status: string;
+            created_at: number;
+          }>(),
+        db
+          .prepare(
+            'SELECT * FROM referrals WHERE inviter_uid = ?1 OR invitee_uid = ?1 ORDER BY created_at DESC'
+          )
+          .bind(uid)
+          .all<Record<string, any>>(),
+        store ? store.getDoc(`wallets/${uid}`).catch(() => null) : Promise.resolve(null),
       ]);
 
-    const myCode = await ensureUserReferralCode(store, uid, displayName);
-    const pktMonth = getPktMonthString(nowMs);
-    const monthDoc = await store.getDoc(`reward_inviter_months/${uid}_${pktMonth}`);
-    let paidCountThisMonth = Math.max(0, Math.floor(Number(monthDoc?.paidCount ?? 0)));
-
     const claimedIds: Record<string, number> = {};
-    for (const mc of milestoneClaimsDocs) {
-      if (mc.milestoneId) {
-        claimedIds[String(mc.milestoneId)] = Number(mc.claimedAtMs || nowMs);
+    const milestoneCreditStatus: Record<string, 'pending' | 'credited'> = {};
+    for (const mc of milestoneRowsRes.results || []) {
+      if (mc.milestone_id) {
+        claimedIds[String(mc.milestone_id)] = Number(mc.created_at || nowMs);
+        milestoneCreditStatus[String(mc.milestone_id)] =
+          mc.credit_status === 'credited' ? 'credited' : 'pending';
       }
     }
-
-    const daily = computeDailyProgressState({
-      totalClaims: Number(userStateDoc?.totalClaims ?? 0),
-      streakClaimsSinceReset: Number(
-        userStateDoc?.streakClaimsSinceReset ?? userStateDoc?.totalClaims ?? 0
-      ),
-      lastClaimPktDate: userStateDoc?.lastClaimPktDate || null,
-      nowMs,
-      config,
-    });
 
     const milestones = computeMilestonesState({
       mcqsAnswered,
       claimedIds,
       config,
-    });
+    }).map((m) => ({
+      ...m,
+      creditStatus: milestoneCreditStatus[m.id] ?? null,
+    }));
 
-    // Build sanitized referral items (never expose other users' emails!)
+    // Count inviter's paid referrals in current PKT calendar month
+    const { startMs, endMs } = getPktMonthRangeMs(nowMs);
+    const paidCountRow = await db
+      .prepare(
+        `SELECT COUNT(*) AS cnt FROM referrals
+         WHERE inviter_uid = ?1 AND status IN ('paid', 'completed') AND paid_at >= ?2 AND paid_at < ?3`
+      )
+      .bind(uid, startMs, endMs)
+      .first<{ cnt: number }>();
+    let paidCountThisMonth = Number(paidCountRow?.cnt || 0);
+
+    // Build referral items (display name and code only, NEVER emails!)
     const referralItems: ReferralRecordPublic[] = [];
-    const allRefs = [...asInviterDocs, ...asInviteeDocs];
-    const seenRefIds = new Set<string>();
-    let autoCompletedBalanceDelta = 0;
+    let alreadyAttachedInviter = false;
+    let newlyPaidReferralDelta = 0;
 
-    for (const refDoc of allRefs) {
-      const refId = String(refDoc._id || refDoc.id || '');
-      if (!refId || seenRefIds.has(refId)) continue;
-      seenRefIds.add(refId);
-
-      const isInviter = refDoc.inviterUid === uid;
-      let status = (refDoc.status || 'pending_confirmation') as ReferralStatus;
-      const createdAtMs = Number(refDoc.createdAtMs || nowMs);
-      const expiresAtMs =
-        Number(refDoc.expiresAtMs) ||
-        createdAtMs + config.referral.pendingExpiryDays * 24 * 60 * 60 * 1000;
-
-      if (status === 'pending_confirmation' && nowMs > expiresAtMs) {
-        status = 'expired';
+    for (const refRow of referralRowsRes.results || []) {
+      const refId = String(refRow.id);
+      const isInviter = refRow.inviter_uid === uid;
+      if (!isInviter) {
+        alreadyAttachedInviter = true;
       }
 
-      const inviteeMcqs = isInviter
-        ? await computeAuthoritativeMcqsAnswered(store, String(refDoc.inviteeUid))
-        : mcqsAnswered;
+      const counterpartUid = isInviter
+        ? String(refRow.invitee_uid)
+        : String(refRow.inviter_uid);
+      const counterpartCode = isInviter
+        ? String(refRow.invitee_code || '')
+        : String(refRow.inviter_code || '');
 
-      // Auto-complete if confirmed_waiting_mcqs and invitee now has >= minInviteeMcqs
+      let rawStatus = String(refRow.status || 'pending_confirmation') as ReferralStatus;
+      const createdAtMs = Number(refRow.created_at || nowMs);
+      const expiresAtMs =
+        createdAtMs + config.referral.pendingExpiryDays * 24 * 60 * 60 * 1000;
+
+      // Expire pending referrals after 14 days
+      if (rawStatus === 'pending_confirmation' && nowMs > expiresAtMs) {
+        rawStatus = 'expired';
+        await db
+          .prepare('UPDATE referrals SET status = ?1 WHERE id = ?2')
+          .bind('expired', refId)
+          .run();
+      }
+
+      // Compute invitee's D1 MCQ count since signup
+      let inviteeSignupMs = 0;
+      try {
+        const inviteeRoleRow = await db
+          .prepare('SELECT created_at FROM user_roles WHERE uid = ?1 LIMIT 1')
+          .bind(String(refRow.invitee_uid))
+          .first<{ created_at?: number }>();
+        inviteeSignupMs = Number(inviteeRoleRow?.created_at || 0);
+      } catch {
+        inviteeSignupMs = 0;
+      }
+
+      const inviteeMcqs = await computeAuthoritativeMcqsFromD1(
+        db,
+        String(refRow.invitee_uid),
+        inviteeSignupMs
+      );
+
+      // If status is 'confirmed' (or partially credited) and claims are allowed, try payout
       if (
-        config.enabled &&
-        status === 'confirmed_waiting_mcqs' &&
+        canClaim &&
+        (rawStatus === 'confirmed' ||
+          rawStatus === 'confirmed_waiting_mcqs' ||
+          ((rawStatus === 'paid' || rawStatus === 'completed') &&
+            (refRow.inviter_credit_status !== 'credited' ||
+              refRow.invitee_credit_status !== 'credited'))) &&
         inviteeMcqs >= config.referral.minInviteeMcqs
       ) {
-        const res = await tryCompleteConfirmedReferralInTx({
+        const payoutRes = await tryProcessConfirmedReferralPayout({
+          db,
           store,
-          referralId: refId,
+          refRow: { ...refRow, status: rawStatus },
           config,
           nowMs,
         });
-        status = res.status;
-        if (res.completed) {
-          if (isInviter) {
+        rawStatus = payoutRes.status;
+        if (payoutRes.paidNow) {
+          if (isInviter && payoutRes.inviterCreditedNow) {
             paidCountThisMonth += 1;
-            autoCompletedBalanceDelta += config.referral.inviterReward;
-          } else {
-            autoCompletedBalanceDelta += config.referral.inviteeReward;
+            newlyPaidReferralDelta += config.referral.inviterReward;
+          } else if (!isInviter && payoutRes.inviteeCreditedNow) {
+            newlyPaidReferralDelta += config.referral.inviteeReward;
           }
+        }
+      }
+
+      const displayStatus: ReferralStatus =
+        rawStatus === 'paid' ? 'completed' : rawStatus;
+
+      // Resolve counterpart display name safely (never exposing email)
+      let counterpartName = `Student (${counterpartCode})`;
+      if (store) {
+        const cpDoc = await store.getDoc(`users/${counterpartUid}`).catch(() => null);
+        if (cpDoc) {
+          counterpartName = sanitizeDisplayName(cpDoc, null);
         }
       }
 
       referralItems.push({
         id: refId,
         role: isInviter ? 'inviter' : 'invitee',
-        counterpartDisplayName: isInviter
-          ? sanitizeDisplayName({ displayName: refDoc.inviteeDisplayName })
-          : sanitizeDisplayName({ displayName: refDoc.inviterDisplayName }),
-        status,
+        counterpartDisplayName: counterpartName,
+        counterpartCode,
+        status: displayStatus,
+        inviterAccepted: Number(refRow.inviter_accepted || 0) === 1,
+        inviteeAccepted: Number(refRow.invitee_accepted || 0) === 1,
         inviteeMcqsAnswered: Math.min(inviteeMcqs, config.referral.minInviteeMcqs),
         minInviteeMcqs: config.referral.minInviteeMcqs,
         inviterReward: config.referral.inviterReward,
         inviteeReward: config.referral.inviteeReward,
         createdAtMs,
         expiresAtMs,
-        confirmedAtMs: refDoc.confirmedAtMs ? Number(refDoc.confirmedAtMs) : null,
-        completedAtMs: refDoc.completedAtMs ? Number(refDoc.completedAtMs) : null,
+        confirmedAtMs: refRow.confirmed_at ? Number(refRow.confirmed_at) : null,
+        completedAtMs: refRow.paid_at ? Number(refRow.paid_at) : null,
       });
     }
 
-    referralItems.sort((a, b) => b.createdAtMs - a.createdAtMs);
-
-    const alreadyAttachedInviter =
-      Boolean(userStateDoc?.attachedReferralId) || asInviteeDocs.length > 0;
-    const createdAtMs = parseTimestampMs(userDoc?.createdAt) ?? nowMs;
+    const accountCreatedAtMs =
+      (d1User.d1CreatedAtMs > 0 ? d1User.d1CreatedAtMs : null) ??
+      parseTimestampMs(userDoc?.createdAt) ??
+      nowMs;
     const withinManualWindow =
-      nowMs - createdAtMs <= config.referral.manualCodeWindowDays * 24 * 60 * 60 * 1000;
+      nowMs - accountCreatedAtMs <=
+      config.referral.manualCodeWindowDays * 24 * 60 * 60 * 1000;
     const canAttachManualCode = !alreadyAttachedInviter && withinManualWindow;
 
     const currentBalance =
       Math.max(
         0,
         Math.floor(Number(walletDoc?.balance ?? userDoc?.kobans ?? userDoc?.kobanBalance ?? 0))
-      ) + autoCompletedBalanceDelta;
+      ) + newlyPaidReferralDelta;
 
     const responsePayload: RewardsStateResponse = {
-      serverConfigured: true,
-      enabled: config.enabled,
-      comingSoon: !config.enabled,
+      serverConfigured,
+      mode,
+      canClaim,
+      enabled: canClaim,
+      comingSoon: !canClaim,
       timezone: config.timezone,
       balance: currentBalance,
       daily,
@@ -857,18 +1218,39 @@ export async function handleRewardsApiRequest(
     return jsonResponse(responsePayload, 200);
   }
 
-  // All mutating POST endpoints require `config.enabled === true`
+  // All remaining endpoints are POST claim/referral endpoints
   if (request.method !== 'POST') {
-    return jsonResponse({ ok: false, error: 'Method not allowed.', code: 'METHOD_NOT_ALLOWED' }, 405);
+    return jsonResponse(
+      { ok: false, error: 'Method not allowed.', code: 'METHOD_NOT_ALLOWED' },
+      405
+    );
   }
 
-  if (!config.enabled) {
+  if (!serverConfigured || !store) {
     return jsonResponse(
       {
         ok: false,
         comingSoon: true,
-        enabled: false,
-        error: 'Boardly Rewards is coming soon. Claims are not enabled yet.',
+        mode,
+        canClaim: false,
+        error: 'Rewards service is coming soon (FIREBASE_SERVICE_ACCOUNT not configured).',
+        code: 'SERVER_NOT_CONFIGURED',
+      },
+      503
+    );
+  }
+
+  if (!canClaim) {
+    return jsonResponse(
+      {
+        ok: false,
+        comingSoon: true,
+        mode,
+        canClaim: false,
+        error:
+          mode === 'admin_only'
+            ? 'Boardly Rewards is currently in Super Admin testing mode. Coming soon for all students!'
+            : 'Boardly Rewards is coming soon. Claims are not enabled yet.',
         code: 'REWARDS_DISABLED',
       },
       503
@@ -880,180 +1262,136 @@ export async function handleRewardsApiRequest(
     const rawText = await request.text();
     body = rawText ? JSON.parse(rawText) : {};
   } catch {
-    return jsonResponse({ ok: false, error: 'Invalid JSON request body.', code: 'INVALID_JSON' }, 400);
+    return jsonResponse(
+      { ok: false, error: 'Invalid JSON request body.', code: 'INVALID_JSON' },
+      400
+    );
   }
 
   // ─── ENDPOINT 2: POST /api/rewards/daily/claim ─────────────────────────────
   if (subPath === 'daily/claim') {
     const pktDate = getPktDateString(nowMs);
-    const claimDocId = buildDailyClaimDocId(uid, pktDate);
+    const dailyState = await computeD1DailyProgressForUser(db, uid, config, nowMs);
 
+    if (dailyState.claimedToday) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'You have already claimed your daily reward today.',
+          code: 'ALREADY_CLAIMED_TODAY',
+        },
+        409
+      );
+    }
+
+    const dayNumber = dailyState.nextDayNumber;
+    const rewardAmount = dailyState.nextRewardAmount;
+
+    // Step 1 (Claim-First in D1): Insert into `reward_daily_claims` with `credit_status = 'pending'`.
+    // PRIMARY KEY (uid, pkt_date) guarantees that concurrent requests for the same day fail with UNIQUE error!
     try {
-      const txResult = await store.runTransaction(async (tx) => {
-        const existingClaim = await tx.getDoc(`reward_daily_claims/${claimDocId}`);
-        if (existingClaim) {
-          const err = new Error('You have already claimed your daily reward today.') as Error & {
-            code?: string;
-            status?: number;
-          };
-          err.code = 'ALREADY_CLAIMED_TODAY';
-          err.status = 409;
-          throw err;
-        }
-
-        const [userStateDoc, walletDoc, txUserDoc] = await Promise.all([
-          tx.getDoc(`reward_user_state/${uid}`),
-          tx.getDoc(`wallets/${uid}`),
-          tx.getDoc(`users/${uid}`),
-        ]);
-
-        const dailyState = computeDailyProgressState({
-          totalClaims: Number(userStateDoc?.totalClaims ?? 0),
-          streakClaimsSinceReset: Number(
-            userStateDoc?.streakClaimsSinceReset ?? userStateDoc?.totalClaims ?? 0
-          ),
-          lastClaimPktDate: userStateDoc?.lastClaimPktDate || null,
-          nowMs,
-          config,
-        });
-
-        if (dailyState.claimedToday) {
-          const err = new Error('You have already claimed your daily reward today.') as Error & {
-            code?: string;
-            status?: number;
-          };
-          err.code = 'ALREADY_CLAIMED_TODAY';
-          err.status = 409;
-          throw err;
-        }
-
-        const dayNumber = dailyState.nextDayNumber;
-        const rewardAmount = dailyState.nextRewardAmount;
-
-        const currentBalance = Math.max(
-          0,
-          Math.floor(
-            Number(walletDoc?.balance ?? txUserDoc?.kobans ?? txUserDoc?.kobanBalance ?? 0)
-          )
+      await db
+        .prepare(
+          `INSERT INTO reward_daily_claims (uid, pkt_date, day_number, amount, credit_status, created_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
+        )
+        .bind(uid, pktDate, dayNumber, rewardAmount, 'pending', nowMs)
+        .run();
+    } catch (insertErr: any) {
+      const msg = String(insertErr?.message || '');
+      if (msg.includes('UNIQUE') || msg.includes('PRIMARY KEY') || msg.includes('constraint')) {
+        return jsonResponse(
+          {
+            ok: false,
+            error: 'You have already claimed your daily reward today.',
+            code: 'ALREADY_CLAIMED_TODAY',
+          },
+          409
         );
-        const newBalance = currentBalance + rewardAmount;
-        const ledgerId = `reward_daily_${claimDocId}`;
+      }
+      throw insertErr;
+    }
 
-        // 1. Deterministic daily claim doc with `exists: false` precondition
-        tx.createDoc(`reward_daily_claims/${claimDocId}`, {
-          id: claimDocId,
-          uid,
-          pktDate,
-          dayNumber,
-          amount: rewardAmount,
-          balanceAfter: newBalance,
-          claimedAtMs: nowMs,
-          timestamp: SERVER_TIMESTAMP_SENTINEL,
-        });
-
-        // 2. Ledger entry using exact app ledger shape
-        tx.createDoc(`wallets/${uid}/ledger/${ledgerId}`, {
-          id: ledgerId,
-          type: 'reward_daily',
-          amount: rewardAmount,
-          balanceAfter: newBalance,
-          reason: `Daily Check-in — Day ${dayNumber} (${pktDate})`,
+    // Step 2 (Credit-Second in Firestore): Credit Kobans with deterministic ledger ID
+    const ledgerId = `reward_daily_${uid}_${pktDate}`;
+    try {
+      const creditRes = await creditKobansIdempotentInFirestore({
+        store,
+        uid,
+        ledgerId,
+        type: 'reward_daily',
+        amount: rewardAmount,
+        reason: `Daily Check-in — Day ${dayNumber} (${pktDate})`,
+        extraLedgerFields: {
           dayNumber,
           pktDate,
-          timestamp: SERVER_TIMESTAMP_SENTINEL,
-        });
-
-        // 3. Increment balance in wallets/{uid} + mirror to users/{uid}
-        tx.setDoc(
-          `wallets/${uid}`,
-          {
-            balance: newBalance,
-            owned: Array.isArray(walletDoc?.owned) ? walletDoc.owned : [],
-            equipped: walletDoc?.equipped || {
-              effect: null,
-              frame: null,
-              nameplate: null,
-              avatar: null,
-              banner: null,
-            },
-            updatedAt: SERVER_TIMESTAMP_SENTINEL,
-          },
-          true
-        );
-
-        tx.setDoc(
-          `users/${uid}`,
-          {
-            kobans: newBalance,
-            kobanBalance: newBalance,
-            updatedAt: SERVER_TIMESTAMP_SENTINEL,
-          },
-          true
-        );
-
-        // 4. Update user check-in progress state
-        const newTotalClaims = dailyState.totalClaims + 1;
-        const newStreakClaims = dailyState.effectiveCycleClaims + 1;
-        tx.setDoc(
-          `reward_user_state/${uid}`,
-          {
-            uid,
-            totalClaims: newTotalClaims,
-            streakClaimsSinceReset: newStreakClaims,
-            lastClaimPktDate: pktDate,
-            updatedAt: SERVER_TIMESTAMP_SENTINEL,
-          },
-          true
-        );
-
-        const updatedDaily = computeDailyProgressState({
-          totalClaims: newTotalClaims,
-          streakClaimsSinceReset: newStreakClaims,
-          lastClaimPktDate: pktDate,
-          nowMs,
-          config,
-        });
-
-        return {
-          dayNumber,
-          rewardAmount,
-          newBalance,
-          pktDate,
-          daily: updatedDaily,
-        };
+        },
+        notification: {
+          id: `daily_${uid}_${pktDate}`,
+          title: `Day ${dayNumber} Check-in Reward Claimed!`,
+          message: `+${rewardAmount.toLocaleString()} Kobans added to your wallet for your Day ${dayNumber} check-in.`,
+          link: '/rewards',
+        },
       });
+
+      // Step 3: Mark D1 row `credit_status = 'credited'`
+      await db
+        .prepare(
+          'UPDATE reward_daily_claims SET credit_status = ?1 WHERE uid = ?2 AND pkt_date = ?3'
+        )
+        .bind('credited', uid, pktDate)
+        .run();
 
       return jsonResponse(
         {
           ok: true,
-          ...txResult,
+          dayNumber,
+          rewardAmount,
+          newBalance: creditRes.balanceAfter,
+          pktDate,
+          creditStatus: 'credited',
         },
         200
       );
-    } catch (err: any) {
-      const status =
-        err?.code === 'ALREADY_CLAIMED_TODAY' || err?.status === 409 || err?.status === 400
-          ? 409
-          : 500;
+    } catch (creditErr: any) {
+      // Leave D1 row in `credit_status = 'pending'` so next `/api/rewards/state` retries it safely!
       return jsonResponse(
         {
           ok: false,
+          pendingRetry: true,
+          dayNumber,
+          rewardAmount,
+          pktDate,
+          creditStatus: 'pending',
           error:
-            status === 409
-              ? 'Already claimed for today (PKT).'
-              : err?.message || 'Failed to claim daily reward.',
-          code: status === 409 ? 'ALREADY_CLAIMED_TODAY' : 'CLAIM_FAILED',
+            creditErr?.message ||
+            'Claim recorded in D1; Kobans credit is pending automatic retry.',
+          code: 'CREDIT_PENDING_RETRY',
         },
-        status
+        502
       );
     }
   }
 
   // ─── ENDPOINT 3: POST /api/rewards/milestone/claim ─────────────────────────
   if (subPath === 'milestone/claim') {
-    const requestedId = String(body.id || '').trim();
+    // Super Admins are excluded from claiming student MCQ milestones in 'everyone' mode,
+    // EXCEPT when testing in 'admin_only' mode.
+    if (d1User.isSuperAdmin && mode !== 'admin_only') {
+      return jsonResponse(
+        {
+          ok: false,
+          error:
+            'Super Admin accounts have all items unlocked and are excluded from claiming student MCQ milestones.',
+          code: 'SUPER_ADMIN_EXCLUDED',
+        },
+        403
+      );
+    }
+
+    const rawId = String(body.id || body.milestoneId || '').trim();
     const def = DEFAULT_MILESTONES.find(
-      (m) => m.id === requestedId || String(m.threshold) === requestedId
+      (m) => m.id === rawId || String(m.threshold) === rawId.replace(/^mcq_/, '')
     );
     if (!def) {
       return jsonResponse(
@@ -1062,147 +1400,124 @@ export async function handleRewardsApiRequest(
       );
     }
 
-    const mcqsAnswered = await computeAuthoritativeMcqsAnswered(store, uid);
+    const milestoneId = def.id;
+    const rewardAmount = Math.max(
+      0,
+      Math.floor(Number(config.milestones[String(def.threshold)] ?? def.reward))
+    );
+
+    const mcqsAnswered = await computeAuthoritativeMcqsFromD1(db, uid, 0);
     if (mcqsAnswered < def.threshold) {
       return jsonResponse(
         {
           ok: false,
-          error: `You need ${def.threshold} completed MCQs to claim this milestone (currently ${mcqsAnswered}).`,
+          error: `You need ${def.threshold} completed MCQs to claim this reward (currently ${mcqsAnswered}).`,
           code: 'MILESTONE_NOT_REACHED',
           mcqsAnswered,
-          threshold: def.threshold,
+          required: def.threshold,
         },
         400
       );
     }
 
-    const customReward = Number(config.milestones[String(def.threshold)] ?? def.reward);
-    const rewardAmount =
-      Number.isFinite(customReward) && customReward > 0 ? Math.floor(customReward) : def.reward;
-    const claimDocId = buildMilestoneClaimDocId(uid, def.id);
-
+    // Step 1 (Claim-First in D1): Insert into `reward_milestone_claims` with `credit_status = 'pending'`
     try {
-      const txResult = await store.runTransaction(async (tx) => {
-        const existingClaim = await tx.getDoc(`reward_milestone_claims/${claimDocId}`);
-        if (existingClaim) {
-          const err = new Error('Milestone already claimed.') as Error & {
-            code?: string;
-            status?: number;
-          };
-          err.code = 'ALREADY_CLAIMED_MILESTONE';
-          err.status = 409;
-          throw err;
-        }
-
-        const [walletDoc, txUserDoc] = await Promise.all([
-          tx.getDoc(`wallets/${uid}`),
-          tx.getDoc(`users/${uid}`),
-        ]);
-
-        const currentBalance = Math.max(
-          0,
-          Math.floor(
-            Number(walletDoc?.balance ?? txUserDoc?.kobans ?? txUserDoc?.kobanBalance ?? 0)
-          )
-        );
-        const newBalance = currentBalance + rewardAmount;
-        const ledgerId = `reward_milestone_${claimDocId}`;
-
-        tx.createDoc(`reward_milestone_claims/${claimDocId}`, {
-          id: claimDocId,
-          uid,
-          milestoneId: def.id,
-          threshold: def.threshold,
-          amount: rewardAmount,
-          balanceAfter: newBalance,
-          mcqsAnsweredAtClaim: mcqsAnswered,
-          claimedAtMs: nowMs,
-          timestamp: SERVER_TIMESTAMP_SENTINEL,
-        });
-
-        tx.createDoc(`wallets/${uid}/ledger/${ledgerId}`, {
-          id: ledgerId,
-          type: 'reward_milestone',
-          amount: rewardAmount,
-          balanceAfter: newBalance,
-          reason: `MCQ Milestone — ${def.threshold} MCQs Answered`,
-          milestoneId: def.id,
-          threshold: def.threshold,
-          timestamp: SERVER_TIMESTAMP_SENTINEL,
-        });
-
-        tx.setDoc(
-          `wallets/${uid}`,
+      await db
+        .prepare(
+          `INSERT INTO reward_milestone_claims (uid, milestone_id, amount, credit_status, created_at)
+           VALUES (?1, ?2, ?3, ?4, ?5)`
+        )
+        .bind(uid, milestoneId, rewardAmount, 'pending', nowMs)
+        .run();
+    } catch (insertErr: any) {
+      const msg = String(insertErr?.message || '');
+      if (msg.includes('UNIQUE') || msg.includes('PRIMARY KEY') || msg.includes('constraint')) {
+        return jsonResponse(
           {
-            balance: newBalance,
-            owned: Array.isArray(walletDoc?.owned) ? walletDoc.owned : [],
-            equipped: walletDoc?.equipped || {
-              effect: null,
-              frame: null,
-              nameplate: null,
-              avatar: null,
-              banner: null,
-            },
-            updatedAt: SERVER_TIMESTAMP_SENTINEL,
+            ok: false,
+            error: 'This milestone reward has already been claimed.',
+            code: 'ALREADY_CLAIMED_MILESTONE',
           },
-          true
+          409
         );
+      }
+      throw insertErr;
+    }
 
-        tx.setDoc(
-          `users/${uid}`,
-          {
-            kobans: newBalance,
-            kobanBalance: newBalance,
-            updatedAt: SERVER_TIMESTAMP_SENTINEL,
-          },
-          true
-        );
-
-        return {
-          milestoneId: def.id,
+    // Step 2 (Credit-Second in Firestore): Credit Kobans with deterministic ledger ID
+    const ledgerId = `reward_milestone_${uid}_${milestoneId}`;
+    try {
+      const creditRes = await creditKobansIdempotentInFirestore({
+        store,
+        uid,
+        ledgerId,
+        type: 'reward_milestone',
+        amount: rewardAmount,
+        reason: `MCQ Milestone Reward — ${def.title} (${def.threshold} MCQs)`,
+        extraLedgerFields: {
+          milestoneId,
           threshold: def.threshold,
-          rewardAmount,
-          newBalance,
-        };
+        },
+        notification: {
+          id: `milestone_${uid}_${milestoneId}`,
+          title: `${def.title} Unlocked!`,
+          message: `+${rewardAmount.toLocaleString()} Kobans added to your wallet for answering ${def.threshold} MCQs!`,
+          link: '/rewards',
+        },
       });
 
-      return jsonResponse({ ok: true, ...txResult }, 200);
-    } catch (err: any) {
-      const status =
-        err?.code === 'ALREADY_CLAIMED_MILESTONE' || err?.status === 409 ? 409 : 500;
+      // Step 3: Mark D1 row `credit_status = 'credited'`
+      await db
+        .prepare(
+          'UPDATE reward_milestone_claims SET credit_status = ?1 WHERE uid = ?2 AND milestone_id = ?3'
+        )
+        .bind('credited', uid, milestoneId)
+        .run();
+
+      return jsonResponse(
+        {
+          ok: true,
+          milestoneId,
+          threshold: def.threshold,
+          rewardAmount,
+          newBalance: creditRes.balanceAfter,
+          creditStatus: 'credited',
+        },
+        200
+      );
+    } catch (creditErr: any) {
       return jsonResponse(
         {
           ok: false,
+          pendingRetry: true,
+          milestoneId,
+          rewardAmount,
+          creditStatus: 'pending',
           error:
-            status === 409
-              ? 'This milestone has already been claimed.'
-              : err?.message || 'Failed to claim milestone reward.',
-          code: status === 409 ? 'ALREADY_CLAIMED_MILESTONE' : 'CLAIM_FAILED',
+            creditErr?.message ||
+            'Milestone claim recorded in D1; Kobans credit is pending automatic retry.',
+          code: 'CREDIT_PENDING_RETRY',
         },
-        status
+        502
       );
     }
   }
 
   // ─── ENDPOINT 4: POST /api/rewards/referral/attach ─────────────────────────
   if (subPath === 'referral/attach') {
-    const normalizedCode = normalizeReferralCode(body.code);
-    if (!isValidReferralCodeFormat(normalizedCode)) {
+    const enteredCode = normalizeReferralCode(body.code);
+    if (!isValidReferralCodeFormat(enteredCode)) {
       return jsonResponse(
         {
           ok: false,
           error: 'Please enter a valid referral code in the format BLD-XXXXXX.',
-          code: 'INVALID_CODE_FORMAT',
+          code: 'INVALID_REFERRAL_CODE',
         },
         400
       );
     }
 
-    // Invitee must have a verified email
-    const emailVerified =
-      verifiedToken.emailVerified === true ||
-      userDoc?.emailVerified === true ||
-      userDoc?.verified === true;
+    const emailVerified = d1User.emailVerified || userDoc?.emailVerified === true;
     if (!emailVerified) {
       return jsonResponse(
         {
@@ -1210,40 +1525,44 @@ export async function handleRewardsApiRequest(
           error: 'Please verify your email address before attaching a referral code.',
           code: 'EMAIL_NOT_VERIFIED',
         },
-        400
+        403
       );
     }
 
-    // Check 7-day manual attach window from account creation
-    const inviteeCreatedAtMs = parseTimestampMs(userDoc?.createdAt);
-    if (
-      inviteeCreatedAtMs &&
-      nowMs - inviteeCreatedAtMs > config.referral.manualCodeWindowDays * 24 * 60 * 60 * 1000
-    ) {
+    const accountCreatedAtMs =
+      (d1User.d1CreatedAtMs > 0 ? d1User.d1CreatedAtMs : null) ??
+      parseTimestampMs(userDoc?.createdAt) ??
+      nowMs;
+    const maxWindowMs = config.referral.manualCodeWindowDays * 24 * 60 * 60 * 1000;
+    if (nowMs - accountCreatedAtMs > maxWindowMs) {
       return jsonResponse(
         {
           ok: false,
-          error: `Referral codes can only be attached within ${config.referral.manualCodeWindowDays} days of signup.`,
-          code: 'ATTACH_WINDOW_EXPIRED',
+          error: `Referral codes can only be attached within ${config.referral.manualCodeWindowDays} days of account creation.`,
+          code: 'MANUAL_WINDOW_EXPIRED',
         },
         400
       );
     }
 
-    // Look up inviter by code
-    const codeDoc = await store.getDoc(`reward_referral_codes/${normalizedCode}`);
-    if (!codeDoc || !codeDoc.uid) {
+    // Look up inviter by code in D1 `referral_codes`
+    const codeRow = await db
+      .prepare('SELECT uid, code FROM referral_codes WHERE code = ?1 LIMIT 1')
+      .bind(enteredCode)
+      .first<{ uid: string; code: string }>();
+
+    if (!codeRow || !codeRow.uid) {
       return jsonResponse(
         {
           ok: false,
-          error: 'No student account found with that referral code.',
-          code: 'CODE_NOT_FOUND',
+          error: 'Referral code not found. Please check the code and try again.',
+          code: 'REFERRAL_CODE_NOT_FOUND',
         },
         404
       );
     }
 
-    const inviterUid = String(codeDoc.uid);
+    const inviterUid = String(codeRow.uid);
     if (inviterUid === uid) {
       return jsonResponse(
         {
@@ -1255,8 +1574,32 @@ export async function handleRewardsApiRequest(
       );
     }
 
-    // Check mutual referral (if invitee previously invited inviter)
-    const reverseRef = await store.getDoc(`reward_referrals/${uid}_${inviterUid}`);
+    // Check if inviter is suspended in D1 or Firestore
+    const inviterRoleRow = await db
+      .prepare('SELECT is_posting_banned FROM user_roles WHERE uid = ?1 LIMIT 1')
+      .bind(inviterUid)
+      .first<{ is_posting_banned?: number }>();
+    const inviterUserDoc = await store.getDoc(`users/${inviterUid}`).catch(() => null);
+
+    if (Boolean(inviterRoleRow?.is_posting_banned) || isFirestoreUserSuspended(inviterUserDoc)) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'This referral code belongs to an inactive or suspended account.',
+          code: 'INVITER_SUSPENDED',
+        },
+        400
+      );
+    }
+
+    // Prevent mutual A <-> B referral loop
+    const reverseRef = await db
+      .prepare(
+        'SELECT id FROM referrals WHERE invitee_uid = ?1 AND inviter_uid = ?2 LIMIT 1'
+      )
+      .bind(inviterUid, uid)
+      .first<{ id: string }>();
+
     if (reverseRef) {
       return jsonResponse(
         {
@@ -1268,259 +1611,270 @@ export async function handleRewardsApiRequest(
       );
     }
 
-    // Inviter account must be at least 24 hours old
-    const inviterUserDoc = await store.getDoc(`users/${inviterUid}`);
-    if (isUserSuspended(inviterUserDoc)) {
-      return jsonResponse(
-        {
-          ok: false,
-          error: 'That inviter account is not eligible for referrals.',
-          code: 'INVITER_INELIGIBLE',
-        },
-        400
-      );
-    }
+    const inviteeCode = await ensureD1UserReferralCode(db, uid);
 
-    const inviterCreatedAtMs = parseTimestampMs(inviterUserDoc?.createdAt);
-    if (inviterCreatedAtMs && nowMs - inviterCreatedAtMs < 24 * 60 * 60 * 1000) {
-      return jsonResponse(
-        {
-          ok: false,
-          error: 'Inviter accounts must be at least 24 hours old before referring friends.',
-          code: 'INVITER_TOO_NEW',
-        },
-        400
-      );
-    }
-
-    // Ensure invitee has their own permanent code so the inviter can confirm it in Step 2
-    const inviteeOwnCode = await ensureUserReferralCode(store, uid, displayName);
-    const inviterDisplayName = sanitizeDisplayName(inviterUserDoc);
-
-    // Check IP velocity (> 2 referral attaches from same IP hash in 24h -> flag)
+    // Check IP hash (> 2 attaches from one ip_hash in 24h -> flagged = 1 and hold payout)
     const rawIp =
       request.headers.get('CF-Connecting-IP') ||
       request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
       'unknown-ip';
-    const ipHash = await sha256Hex(`boardly_ref_ip:${rawIp}`);
-    const pktDate = getPktDateString(nowMs);
-    const ipKey = `${ipHash}_${pktDate}`;
+    const ipHash = await sha256Hex(`boardly_ip_salt:${rawIp}`);
+    const since24hMs = nowMs - 24 * 60 * 60 * 1000;
 
-    const referralId = `${inviterUid}_${uid}`;
-    const expiresAtMs = nowMs + config.referral.pendingExpiryDays * 24 * 60 * 60 * 1000;
+    const ipCountRow = await db
+      .prepare('SELECT COUNT(*) AS cnt FROM referrals WHERE ip_hash = ?1 AND created_at >= ?2')
+      .bind(ipHash, since24hMs)
+      .first<{ cnt: number }>();
+
+    const recentIpAttaches = Number(ipCountRow?.cnt || 0);
+    const isFlagged = recentIpAttaches >= 2 ? 1 : 0;
+
+    const referralId = `ref_${uid}`;
+    const initialStatus: ReferralStatus = isFlagged ? 'flagged' : 'pending_confirmation';
 
     try {
-      const attachResult = await store.runTransaction(async (tx) => {
-        const inviteeState = await tx.getDoc(`reward_user_state/${uid}`);
-        if (inviteeState?.attachedReferralId) {
-          const err = new Error('You have already attached a referral code.') as Error & {
-            code?: string;
-            status?: number;
-          };
-          err.code = 'ALREADY_ATTACHED';
-          err.status = 409;
-          throw err;
-        }
-
-        const existingRef = await tx.getDoc(`reward_referrals/${referralId}`);
-        if (existingRef) {
-          const err = new Error('This referral is already attached.') as Error & {
-            code?: string;
-            status?: number;
-          };
-          err.code = 'ALREADY_ATTACHED';
-          err.status = 409;
-          throw err;
-        }
-
-        const ipDoc = await tx.getDoc(`reward_ip_attaches/${ipKey}`);
-        const prevIpCount = Math.max(0, Math.floor(Number(ipDoc?.count ?? 0)));
-        const newIpCount = prevIpCount + 1;
-        const isFlagged = newIpCount > 2;
-        const initialStatus: ReferralStatus = isFlagged ? 'flagged' : 'pending_confirmation';
-
-        tx.createDoc(`reward_referrals/${referralId}`, {
-          id: referralId,
-          inviterUid,
-          inviteeUid: uid,
-          inviterDisplayName,
-          inviteeDisplayName: displayName,
-          inviterCode: normalizedCode,
-          inviteeCode: inviteeOwnCode,
-          status: initialStatus,
-          isFlagged,
-          payoutCompleted: false,
-          createdAtMs: nowMs,
-          expiresAtMs,
-          updatedAtMs: nowMs,
-          createdAt: SERVER_TIMESTAMP_SENTINEL,
-        });
-
-        tx.setDoc(
-          `reward_user_state/${uid}`,
-          {
-            uid,
-            attachedReferralId: referralId,
-            attachedInviterCode: normalizedCode,
-            updatedAt: SERVER_TIMESTAMP_SENTINEL,
-          },
-          true
-        );
-
-        tx.setDoc(
-          `reward_ip_attaches/${ipKey}`,
-          {
-            ipHash,
-            pktDate,
-            count: newIpCount,
-            updatedAt: SERVER_TIMESTAMP_SENTINEL,
-          },
-          true
-        );
-
-        // Send in-app notification to inviter
-        tx.setDoc(`notifications/ref_attach_${referralId}`, {
-          userId: inviterUid,
-          type: 'system',
-          title: 'New Referral Pending Confirmation!',
-          message: `${displayName} attached your referral code (${normalizedCode}). Ask them for their code and confirm it on the Boardly Rewards page!`,
-          link: '/rewards',
-          read: false,
-          createdAt: SERVER_TIMESTAMP_SENTINEL,
-        });
-
-        return {
+      await db
+        .prepare(
+          `INSERT INTO referrals (
+             id, inviter_uid, invitee_uid, inviter_code, invitee_code,
+             status, inviter_accepted, invitee_accepted, ip_hash, flagged,
+             inviter_credit_status, invitee_credit_status, created_at, confirmed_at, paid_at
+           ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)`
+        )
+        .bind(
           referralId,
-          status: initialStatus,
-          inviterDisplayName,
-          inviteeCode: inviteeOwnCode,
-        };
-      });
-
-      return jsonResponse({ ok: true, ...attachResult }, 200);
-    } catch (err: any) {
-      const status = err?.code === 'ALREADY_ATTACHED' || err?.status === 409 ? 409 : 500;
-      return jsonResponse(
-        {
-          ok: false,
-          error:
-            status === 409
-              ? 'You have already attached an inviter referral code.'
-              : err?.message || 'Failed to attach referral code.',
-          code: status === 409 ? 'ALREADY_ATTACHED' : 'ATTACH_FAILED',
-        },
-        status
-      );
+          inviterUid,
+          uid,
+          enteredCode,
+          inviteeCode,
+          initialStatus,
+          0,
+          0,
+          ipHash,
+          isFlagged,
+          'pending',
+          'pending',
+          nowMs,
+          null,
+          null
+        )
+        .run();
+    } catch (insertErr: any) {
+      const msg = String(insertErr?.message || '');
+      if (msg.includes('UNIQUE') || msg.includes('PRIMARY KEY') || msg.includes('constraint')) {
+        return jsonResponse(
+          {
+            ok: false,
+            error: 'You have already attached an inviter referral code.',
+            code: 'ALREADY_ATTACHED_REFERRAL',
+          },
+          409
+        );
+      }
+      throw insertErr;
     }
+
+    const inviterDisplayName = sanitizeDisplayName(inviterUserDoc, null);
+
+    return jsonResponse(
+      {
+        ok: true,
+        referralId,
+        status: initialStatus,
+        inviterDisplayName,
+        inviterCode: enteredCode,
+        myCode: inviteeCode,
+      },
+      200
+    );
   }
 
   // ─── ENDPOINT 5: POST /api/rewards/referral/accept ─────────────────────────
   if (subPath === 'referral/accept') {
     const referralId = String(body.referralId || '').trim();
-    const enteredCode = normalizeReferralCode(body.enteredCode);
+    const enteredCode = normalizeReferralCode(body.enteredCode || body.code || '');
 
-    if (!referralId) {
+    if (!referralId || !enteredCode) {
       return jsonResponse(
-        { ok: false, error: 'Missing referralId.', code: 'MISSING_REFERRAL_ID' },
+        {
+          ok: false,
+          error: "Both referralId and your friend's code are required.",
+          code: 'MISSING_FIELDS',
+        },
         400
       );
     }
 
-    const refDoc = await store.getDoc(`reward_referrals/${referralId}`);
-    if (!refDoc || refDoc.inviterUid !== uid) {
+    const refRow = await db
+      .prepare('SELECT * FROM referrals WHERE id = ?1 LIMIT 1')
+      .bind(referralId)
+      .first<Record<string, any>>();
+
+    if (!refRow) {
       return jsonResponse(
         { ok: false, error: 'Referral not found.', code: 'REFERRAL_NOT_FOUND' },
         404
       );
     }
 
-    const inviteeUid = String(refDoc.inviteeUid);
-    const pktMonth = getPktMonthString(nowMs);
-    const [inviteeMcqsAnswered, monthDoc] = await Promise.all([
-      computeAuthoritativeMcqsAnswered(store, inviteeUid),
-      store.getDoc(`reward_inviter_months/${uid}_${pktMonth}`),
-    ]);
+    const isInviter = String(refRow.inviter_uid) === uid;
+    const isInvitee = String(refRow.invitee_uid) === uid;
 
-    const inviterPaidCountThisMonth = Math.max(0, Math.floor(Number(monthDoc?.paidCount ?? 0)));
-
-    const resolution = evaluateReferralResolution({
-      currentStatus: (refDoc.status || 'pending_confirmation') as ReferralStatus,
-      createdAtMs: Number(refDoc.createdAtMs || nowMs),
-      nowMs,
-      enteredCode,
-      expectedInviteeCode: String(refDoc.inviteeCode || ''),
-      inviteeMcqsAnswered,
-      inviterPaidCountThisMonth,
-      isFlagged: refDoc.isFlagged === true,
-      config: config.referral,
-    });
-
-    if (resolution.errorCode) {
-      if (resolution.nextStatus !== refDoc.status) {
-        await store.setDoc(
-          `reward_referrals/${referralId}`,
-          {
-            status: resolution.nextStatus,
-            updatedAtMs: nowMs,
-            updatedAt: SERVER_TIMESTAMP_SENTINEL,
-          },
-          true
-        );
-      }
+    if (!isInviter && !isInvitee) {
       return jsonResponse(
         {
           ok: false,
-          error: resolution.errorMessage || 'Unable to confirm referral.',
-          code: resolution.errorCode,
-          status: resolution.nextStatus,
+          error: 'You are not a participant in this referral.',
+          code: 'FORBIDDEN_REFERRAL',
+        },
+        403
+      );
+    }
+
+    if (Number(refRow.flagged || 0) === 1 || refRow.status === 'flagged') {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'This referral has been flagged for manual review and payout is held.',
+          code: 'REFERRAL_FLAGGED',
         },
         400
       );
     }
 
-    // If invitee hasn't completed 20 MCQs yet, transition to confirmed_waiting_mcqs
-    if (resolution.nextStatus === 'confirmed_waiting_mcqs') {
-      await store.setDoc(
-        `reward_referrals/${referralId}`,
+    const createdAtMs = Number(refRow.created_at || nowMs);
+    const expiresAtMs =
+      createdAtMs + config.referral.pendingExpiryDays * 24 * 60 * 60 * 1000;
+
+    if (refRow.status === 'pending_confirmation' && nowMs > expiresAtMs) {
+      await db
+        .prepare('UPDATE referrals SET status = ?1 WHERE id = ?2')
+        .bind('expired', referralId)
+        .run();
+      return jsonResponse(
         {
-          status: 'confirmed_waiting_mcqs',
-          confirmedAtMs: nowMs,
-          updatedAtMs: nowMs,
-          updatedAt: SERVER_TIMESTAMP_SENTINEL,
+          ok: false,
+          error: `This referral expired after ${config.referral.pendingExpiryDays} days without confirmation.`,
+          code: 'REFERRAL_EXPIRED',
         },
-        true
+        400
       );
+    }
+
+    if (refRow.status === 'expired') {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'This referral has expired.',
+          code: 'REFERRAL_EXPIRED',
+        },
+        400
+      );
+    }
+
+    // Two-way acceptance:
+    // - Inviter must enter `invitee_code` -> `inviter_accepted = 1`
+    // - Invitee must enter `inviter_code` -> `invitee_accepted = 1`
+    const expectedCode = isInviter
+      ? normalizeReferralCode(String(refRow.invitee_code || ''))
+      : normalizeReferralCode(String(refRow.inviter_code || ''));
+
+    if (!enteredCode || enteredCode !== expectedCode) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: "The code entered does not match your friend's referral code.",
+          code: 'CODE_MISMATCH',
+        },
+        400
+      );
+    }
+
+    const nextInviterAccepted = isInviter ? 1 : Number(refRow.inviter_accepted || 0);
+    const nextInviteeAccepted = isInvitee ? 1 : Number(refRow.invitee_accepted || 0);
+    const bothAccepted = nextInviterAccepted === 1 && nextInviteeAccepted === 1;
+
+    let nextStatus = String(refRow.status || 'pending_confirmation');
+    let confirmedAt = refRow.confirmed_at ? Number(refRow.confirmed_at) : null;
+
+    if (bothAccepted && nextStatus === 'pending_confirmation') {
+      nextStatus = 'confirmed';
+      confirmedAt = nowMs;
+    }
+
+    await db
+      .prepare(
+        `UPDATE referrals
+         SET inviter_accepted = ?1, invitee_accepted = ?2, status = ?3, confirmed_at = ?4
+         WHERE id = ?5`
+      )
+      .bind(nextInviterAccepted, nextInviteeAccepted, nextStatus, confirmedAt, referralId)
+      .run();
+
+    // If only one side has accepted so far, return pending_confirmation waiting for the other side
+    if (!bothAccepted) {
       return jsonResponse(
         {
           ok: true,
           referralId,
-          status: 'confirmed_waiting_mcqs',
+          status: 'pending_confirmation',
+          inviterAccepted: nextInviterAccepted === 1,
+          inviteeAccepted: nextInviteeAccepted === 1,
           paid: false,
-          inviteeMcqsAnswered,
-          minInviteeMcqs: config.referral.minInviteeMcqs,
-          message: `Code confirmed! Rewards will be credited automatically once your friend completes ${config.referral.minInviteeMcqs} MCQs (currently ${inviteeMcqsAnswered}/${config.referral.minInviteeMcqs}).`,
+          message:
+            "Your acceptance is recorded! Once your friend also enters your code and taps Accept, the referral will be confirmed.",
         },
         200
       );
     }
 
-    // Both confirmed and >= 20 MCQs -> execute atomic payout transaction!
-    const payoutRes = await tryCompleteConfirmedReferralInTx({
+    // Both accepted -> status is 'confirmed'. Check if payout can trigger immediately!
+    const updatedRow = {
+      ...refRow,
+      inviter_accepted: nextInviterAccepted,
+      invitee_accepted: nextInviteeAccepted,
+      status: nextStatus,
+      confirmed_at: confirmedAt,
+    };
+
+    const payoutRes = await tryProcessConfirmedReferralPayout({
+      db,
       store,
-      referralId,
+      refRow: updatedRow,
       config,
       nowMs,
     });
 
-    if (!payoutRes.completed) {
+    if (payoutRes.errorCode === 'MONTHLY_CAP_REACHED') {
       return jsonResponse(
         {
-          ok: false,
-          error: payoutRes.errorMessage || 'Could not complete referral payout.',
-          code: payoutRes.errorCode || 'PAYOUT_FAILED',
-          status: payoutRes.status,
+          ok: true,
+          referralId,
+          status: 'capped',
+          inviterAccepted: true,
+          inviteeAccepted: true,
+          paid: false,
+          message: payoutRes.errorMessage,
         },
-        400
+        200
+      );
+    }
+
+    if (payoutRes.status === 'completed') {
+      return jsonResponse(
+        {
+          ok: true,
+          referralId,
+          status: 'completed',
+          inviterAccepted: true,
+          inviteeAccepted: true,
+          paid: true,
+          inviterReward: config.referral.inviterReward,
+          inviteeReward: config.referral.inviteeReward,
+          message:
+            'Both codes confirmed and 20+ MCQs completed! Referral rewards have been credited.',
+        },
+        200
       );
     }
 
@@ -1528,25 +1882,29 @@ export async function handleRewardsApiRequest(
       {
         ok: true,
         referralId,
-        status: 'completed',
-        paid: true,
-        inviterReward: config.referral.inviterReward,
-        inviteeReward: config.referral.inviteeReward,
+        status: 'confirmed',
+        inviterAccepted: true,
+        inviteeAccepted: true,
+        paid: false,
+        message: `Both codes confirmed! Rewards will unlock automatically once the invitee completes ${config.referral.minInviteeMcqs} MCQs.`,
       },
       200
     );
   }
 
-  return jsonResponse({ ok: false, error: 'Unknown rewards endpoint.', code: 'NOT_FOUND' }, 404);
+  return jsonResponse(
+    { ok: false, error: `Unknown rewards endpoint: /api/rewards/${subPath}`, code: 'NOT_FOUND' },
+    404
+  );
 }
 
-// Cloudflare Pages Function entrypoint for `/functions/api/rewards/[[path]].ts`
-export async function onRequest(context: {
+// Cloudflare Pages Function Entrypoint
+export const onRequest = async (context: {
   request: Request;
-  env?: RewardsEnv;
-}): Promise<Response> {
+  env: RewardsEnv;
+}): Promise<Response> => {
   return handleRewardsApiRequest({
     request: context.request,
     env: context.env,
   });
-}
+};

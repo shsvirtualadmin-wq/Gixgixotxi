@@ -2,11 +2,11 @@
  * Boardly Rewards — Client API Service & Referral Code Cookie/Storage Helpers.
  *
  * HARD RULE: Never credit Kobans or write balances from the browser.
- * Every claim or referral action goes strictly through `/api/rewards/*`.
+ * Every claim, referral action, or Super Admin mode toggle goes strictly through `/api/rewards/*`
+ * backed by Cloudflare D1.
  */
 
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
 import {
   DEFAULT_DAILY_LADDER,
   DEFAULT_REWARDS_CONFIG,
@@ -15,7 +15,7 @@ import {
   generateDeterministicReferralCode,
   isValidReferralCodeFormat,
   normalizeReferralCode,
-  type RewardsConfig,
+  type RewardsMode,
   type RewardsStateResponse,
 } from '@/lib/rewardsEngine';
 
@@ -122,6 +122,8 @@ export function buildFallbackClientState(uid?: string | null): RewardsStateRespo
 
   return {
     serverConfigured: false,
+    mode: 'off',
+    canClaim: false,
     enabled: false,
     comingSoon: true,
     timezone: DEFAULT_REWARDS_CONFIG.timezone,
@@ -261,6 +263,8 @@ export async function acceptPendingReferral(
   ok: boolean;
   referralId?: string;
   status?: string;
+  inviterAccepted?: boolean;
+  inviteeAccepted?: boolean;
   paid?: boolean;
   inviterReward?: number;
   inviteeReward?: number;
@@ -291,24 +295,28 @@ export async function acceptPendingReferral(
 }
 
 /**
- * Super Admin helper to read or seed `config/rewards` using the existing
- * Firestore `/config/{docId}` admin-config pattern (`allow read: if true; allow write: if isAdmin()`).
+ * Super Admin endpoint to update the D1 Rewards mode ("off" | "admin_only" | "everyone").
  */
-export async function ensureFirestoreRewardsConfigSeeded(isAdmin: boolean): Promise<RewardsConfig> {
-  try {
-    const configRef = doc(db, 'config', 'rewards');
-    const snap = await getDoc(configRef);
-    if (snap.exists()) {
-      return snap.data() as RewardsConfig;
-    }
-    if (isAdmin) {
-      await setDoc(configRef, {
-        ...DEFAULT_REWARDS_CONFIG,
-        updatedAt: serverTimestamp(),
-      });
-    }
-  } catch {
-    // Non-fatal
+export async function setRewardsAdminMode(mode: RewardsMode): Promise<{
+  ok: boolean;
+  previousMode?: RewardsMode;
+  mode?: RewardsMode;
+  error?: string;
+  code?: string;
+}> {
+  const headers = await getAuthHeaders();
+  const res = await fetch('/api/rewards/admin/mode', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ mode }),
+  });
+  const data = await res.json().catch(() => ({ ok: false, error: 'Network error' }));
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: data?.error || `Request failed (${res.status})`,
+      code: data?.code,
+    };
   }
-  return DEFAULT_REWARDS_CONFIG;
+  return data;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Users,
@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Coins,
   Megaphone,
+  Gift,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
@@ -25,6 +26,8 @@ import {
   type AdminStats,
   CORE_SUBJECTS,
 } from '@/services/adminService';
+import { fetchRewardsState, setRewardsAdminMode } from '@/services/rewardsService';
+import type { RewardsMode } from '@/lib/rewardsEngine';
 import type { AuditLog } from '@/types';
 
 const SUBJECT_TARGET_PILLS = [
@@ -40,7 +43,7 @@ const SUBJECT_TARGET_PILLS = [
 ];
 
 export function AdminOverviewPage() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [stats, setStats] = useState<AdminStats | null>(() => getCachedAdminStats());
   const [loading, setLoading] = useState(() => !getCachedAdminStats());
   const [error, setError] = useState<AdminDiagnosticError | null>(null);
@@ -53,16 +56,27 @@ export function AdminOverviewPage() {
   const [seedSuccess, setSeedSuccess] = useState<string | null>(null);
   const [seedError, setSeedError] = useState<string | null>(null);
 
-  const loadData = async () => {
+  // Super Admin Rewards 3-way Mode Switch state
+  const [rewardsMode, setRewardsMode] = useState<RewardsMode>('off');
+  const [pendingRewardsMode, setPendingRewardsMode] = useState<RewardsMode | null>(null);
+  const [updatingRewardsMode, setUpdatingRewardsMode] = useState(false);
+  const [rewardsModeSuccess, setRewardsModeSuccess] = useState<string | null>(null);
+  const [rewardsModeError, setRewardsModeError] = useState<string | null>(null);
+
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [s, logs] = await Promise.all([
+      const [s, logs, rState] = await Promise.all([
         fetchAdminStats(),
         fetchAuditLogs(5),
+        fetchRewardsState(user?.uid),
       ]);
       setStats(s);
       setRecentLogs(logs);
+      if (rState?.mode) {
+        setRewardsMode(rState.mode);
+      }
     } catch (err: unknown) {
       console.warn('Failed to load admin stats (using fallback stats):', err);
       const e = err as Partial<AdminDiagnosticError>;
@@ -88,13 +102,13 @@ export function AdminOverviewPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.uid]);
 
   useEffect(() => {
     if (user) {
       loadData();
     }
-  }, [user]);
+  }, [user, loadData]);
 
   const handleConfirmSeed = async () => {
     setIsConfirmSeedOpen(false);
@@ -134,6 +148,43 @@ export function AdminOverviewPage() {
       // ignore
     }
     return 'Recently';
+  };
+
+  const handleSelectRewardsMode = (nextMode: RewardsMode) => {
+    if (nextMode === rewardsMode || updatingRewardsMode) return;
+    setRewardsModeSuccess(null);
+    setRewardsModeError(null);
+    setPendingRewardsMode(nextMode);
+  };
+
+  const handleConfirmRewardsModeChange = async () => {
+    if (!pendingRewardsMode || updatingRewardsMode) return;
+    const targetMode = pendingRewardsMode;
+    setPendingRewardsMode(null);
+    setUpdatingRewardsMode(true);
+    setRewardsModeSuccess(null);
+    setRewardsModeError(null);
+
+    try {
+      const res = await setRewardsAdminMode(targetMode);
+      if (res.ok && res.mode) {
+        setRewardsMode(res.mode);
+        const label =
+          res.mode === 'everyone'
+            ? 'Everyone (Live)'
+            : res.mode === 'admin_only'
+            ? 'Admin only (testing)'
+            : 'Off';
+        setRewardsModeSuccess(`Boardly Rewards mode updated to "${label}" in Cloudflare D1.`);
+        await loadData();
+      } else {
+        setRewardsModeError(res.error || 'Failed to update Rewards mode.');
+      }
+    } catch (err: any) {
+      setRewardsModeError(err?.message || 'Network error while updating Rewards mode.');
+    } finally {
+      setUpdatingRewardsMode(false);
+    }
   };
 
   return (
@@ -393,6 +444,91 @@ export function AdminOverviewPage() {
         </Link>
       </div>
 
+      {/* ─── BOARDLY REWARDS D1 MODE SWITCH (SUPER ADMIN ONLY) ────────────── */}
+      {isAdmin && (
+        <div
+          data-testid="admin-rewards-mode-card"
+          className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4"
+        >
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
+                <Gift size={20} />
+              </div>
+              <div>
+                <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-2">
+                  <span>Rewards</span>
+                  <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
+                    Super Admin · Cloudflare D1
+                  </span>
+                </h2>
+                <p className="text-[12px] text-[var(--muted)] mt-0.5">
+                  Control who can claim daily check-ins, MCQ milestones, and referral bonuses on{' '}
+                  <Link to="/rewards" className="text-[var(--text)] underline">
+                    /rewards
+                  </Link>
+                  . Stored in D1 <code className="font-mono">reward_settings</code>.
+                </p>
+              </div>
+            </div>
+
+            {/* 3-Way Segmented Control */}
+            <div
+              role="group"
+              aria-label="Rewards mode switch"
+              data-testid="rewards-mode-segmented-control"
+              className="inline-flex flex-wrap sm:flex-nowrap items-center gap-1 p-1 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)] shrink-0"
+            >
+              {(
+                [
+                  { id: 'off', label: 'Off' },
+                  { id: 'admin_only', label: 'Admin only (testing)' },
+                  { id: 'everyone', label: 'Everyone' },
+                ] as const
+              ).map((opt) => {
+                const active = rewardsMode === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    data-testid={`rewards-mode-btn-${opt.id}`}
+                    disabled={updatingRewardsMode}
+                    onClick={() => handleSelectRewardsMode(opt.id)}
+                    className={`px-3.5 py-2 rounded-[10px] text-[12px] font-heading font-bold transition-all cursor-pointer ${
+                      active
+                        ? 'bg-[#D71921] text-white shadow-sm'
+                        : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {rewardsModeSuccess && (
+            <div
+              data-testid="rewards-mode-success"
+              className="flex items-center gap-2 p-3 rounded-[12px] border border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 text-[13px] font-heading"
+            >
+              <CheckCircle2 size={16} className="shrink-0" />
+              <span>{rewardsModeSuccess}</span>
+            </div>
+          )}
+
+          {rewardsModeError && (
+            <div
+              data-testid="rewards-mode-error"
+              className="flex items-center gap-2 p-3 rounded-[12px] border border-red-500/40 bg-red-500/10 text-red-500 text-[13px] font-heading"
+            >
+              <AlertTriangle size={16} className="shrink-0" />
+              <span>{rewardsModeError}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ─── SEED BALANCED QUESTION POOL TOOL ────────────────────────────────── */}
       <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4">
         <div className="flex items-start justify-between flex-wrap gap-4">
@@ -534,6 +670,49 @@ export function AdminOverviewPage() {
                 className="px-4 py-2 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[13px] font-heading font-semibold hover:opacity-90"
               >
                 Confirm and seed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── CONFIRMATION DIALOG FOR REWARDS MODE CHANGE ─────────────────────── */}
+      {pendingRewardsMode && (
+        <div
+          data-testid="rewards-mode-confirm-dialog"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        >
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setPendingRewardsMode(null)}
+          />
+          <div className="relative w-full max-w-[420px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-none">
+            <h3 className="font-heading font-bold text-[17px] text-[var(--text)]">
+              Change Boardly Rewards mode?
+            </h3>
+            <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed">
+              {pendingRewardsMode === 'off'
+                ? 'Setting Rewards to "Off" disables all Claim buttons for everyone and shows "Coming soon" on /rewards.'
+                : pendingRewardsMode === 'admin_only'
+                ? 'Setting Rewards to "Admin only (testing)" allows only Super Admins to claim rewards while students see "Coming soon".'
+                : 'Setting Rewards to "Everyone" enables live daily check-ins, MCQ milestones, and referral payouts for all signed-in students.'}
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                data-testid="rewards-mode-confirm-cancel"
+                onClick={() => setPendingRewardsMode(null)}
+                className="px-4 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                data-testid="rewards-mode-confirm-submit"
+                onClick={handleConfirmRewardsModeChange}
+                className="px-4 py-2 rounded-[12px] bg-[#D71921] text-white text-[13px] font-heading font-bold hover:opacity-90"
+              >
+                Confirm Mode Change
               </button>
             </div>
           </div>

@@ -34,7 +34,6 @@ import {
   buildFallbackClientState,
   claimDailyReward,
   claimMilestoneReward,
-  ensureFirestoreRewardsConfigSeeded,
   fetchRewardsState,
   getPendingReferralCode,
 } from '@/services/rewardsService';
@@ -197,9 +196,6 @@ export function RewardsPage() {
   const loadState = useCallback(async () => {
     setLoading(true);
     try {
-      if (isAdmin) {
-        await ensureFirestoreRewardsConfigSeeded(true);
-      }
       const fetched = await fetchRewardsState(user?.uid);
       setState(fetched);
       if (fetched.daily?.secondsUntilNextPktMidnight) {
@@ -208,7 +204,7 @@ export function RewardsPage() {
     } finally {
       setLoading(false);
     }
-  }, [user?.uid, isAdmin]);
+  }, [user?.uid]);
 
   useEffect(() => {
     loadState();
@@ -222,7 +218,8 @@ export function RewardsPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const isComingSoon = Boolean(state.comingSoon || !state.enabled || !state.serverConfigured);
+  const isComingSoon = Boolean(!state.canClaim || state.comingSoon || !state.serverConfigured);
+  const isMilestoneAdminExcluded = Boolean(isAdmin && state.mode !== 'admin_only');
   const displayBalance = user ? Math.max(walletBalance, state.balance) : 0;
 
   const handleClaimDaily = async () => {
@@ -258,7 +255,7 @@ export function RewardsPage() {
       navigate('/signup');
       return;
     }
-    if (isComingSoon || isAdmin || claimingMilestoneId) return;
+    if (isComingSoon || isMilestoneAdminExcluded || claimingMilestoneId) return;
 
     setClaimingMilestoneId(milestoneId);
     setBannerNotice(null);
@@ -490,6 +487,35 @@ export function RewardsPage() {
       </div>
 
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 space-y-8">
+        {/* ─── SUPER ADMIN RED BANNER WHEN MODE IS NOT "EVERYONE" ──────────── */}
+        {isAdmin && state.mode !== 'everyone' && (
+          <div
+            data-testid="super-admin-rewards-mode-banner"
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-[#D71921] bg-[#D71921] px-5 py-4 text-white shadow-lg"
+          >
+            <div className="flex items-start sm:items-center gap-3">
+              <ShieldCheck size={20} className="shrink-0 mt-0.5 sm:mt-0" />
+              <div className="text-xs sm:text-sm">
+                <p className="font-extrabold uppercase tracking-wider">
+                  Super Admin Notice · Rewards Mode: {state.mode === 'admin_only' ? 'ADMIN ONLY (TESTING)' : 'OFF'}
+                </p>
+                <p className="opacity-95 mt-0.5">
+                  {state.mode === 'admin_only'
+                    ? 'Only Super Admins can test claiming right now. Regular students see "Coming soon".'
+                    : 'Rewards claiming is currently turned OFF for everyone. All Claim buttons show "Coming soon".'}
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/admin"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-white px-4 py-2 text-xs font-extrabold text-[#D71921] hover:bg-neutral-100 transition-colors shrink-0"
+            >
+              <span>Manage in Admin</span>
+              <ArrowRight size={14} />
+            </Link>
+          </div>
+        )}
+
         {/* ─── SECTION 1: HERO ────────────────────────────────────────────── */}
         <section
           aria-labelledby="rewards-hero-heading"
@@ -812,7 +838,8 @@ export function RewardsPage() {
             {state.milestones.map((m) => {
               const pct = Math.min(100, Math.round((m.progress / m.threshold) * 100));
               const isClaimingThis = claimingMilestoneId === m.id;
-              const btnDisabled = isComingSoon || isAdmin || m.claimed || !m.eligible || isClaimingThis;
+              const btnDisabled =
+                isComingSoon || isMilestoneAdminExcluded || m.claimed || !m.eligible || isClaimingThis;
 
               return (
                 <div
@@ -877,7 +904,7 @@ export function RewardsPage() {
                           <CheckCircle2 size={14} />
                           <span>Claimed</span>
                         </>
-                      ) : isAdmin ? (
+                      ) : isMilestoneAdminExcluded ? (
                         <span>Admin Excluded</span>
                       ) : isClaimingThis ? (
                         <span>Claiming...</span>
@@ -1145,8 +1172,12 @@ export function RewardsPage() {
             ) : (
               <div className="space-y-3">
                 {state.referral.items.map((item) => {
-                  const isPendingConfirm =
-                    item.role === 'inviter' && item.status === 'pending_confirmation';
+                  const mySideAccepted =
+                    item.role === 'inviter' ? item.inviterAccepted : item.inviteeAccepted;
+                  const needsMyAcceptance =
+                    item.status === 'pending_confirmation' && !mySideAccepted;
+                  const waitingForCounterpart =
+                    item.status === 'pending_confirmation' && mySideAccepted;
                   const pct = Math.min(
                     100,
                     Math.round((item.inviteeMcqsAnswered / item.minInviteeMcqs) * 100)
@@ -1168,9 +1199,9 @@ export function RewardsPage() {
                           </span>
                           <span
                             className={`rounded-md px-2 py-0.5 text-[10px] font-extrabold uppercase ${
-                              item.status === 'completed'
+                              item.status === 'completed' || item.status === 'paid'
                                 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300'
-                                : item.status === 'confirmed_waiting_mcqs'
+                                : item.status === 'confirmed' || item.status === 'confirmed_waiting_mcqs'
                                 ? 'bg-sky-500/15 text-sky-600 dark:text-sky-300'
                                 : item.status === 'pending_confirmation'
                                 ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
@@ -1179,6 +1210,11 @@ export function RewardsPage() {
                           >
                             {item.status.replace(/_/g, ' ')}
                           </span>
+                          {waitingForCounterpart && (
+                            <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-300">
+                              You Accepted · Waiting for Friend
+                            </span>
+                          )}
                         </div>
 
                         <p className="text-xs text-[var(--muted)]">
@@ -1193,7 +1229,7 @@ export function RewardsPage() {
                         </p>
                       </div>
 
-                      {isPendingConfirm && (
+                      {needsMyAcceptance && (
                         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
                           <input
                             type="text"
@@ -1217,8 +1253,8 @@ export function RewardsPage() {
                             {isComingSoon
                               ? 'Coming soon'
                               : confirmingRefId === item.id
-                              ? 'Confirming...'
-                              : 'Confirm Code'}
+                              ? 'Accepting...'
+                              : 'Accept'}
                           </button>
                         </div>
                       )}

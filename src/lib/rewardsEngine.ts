@@ -101,8 +101,11 @@ export interface ReferralConfig {
   manualCodeWindowDays: number;
 }
 
+export type RewardsMode = 'off' | 'admin_only' | 'everyone';
+
 export interface RewardsConfig {
   enabled: boolean;
+  mode?: RewardsMode;
   timezone: string;
   dailyLadder: number[];
   resetOnMiss: boolean;
@@ -112,6 +115,7 @@ export interface RewardsConfig {
 
 export const DEFAULT_REWARDS_CONFIG: RewardsConfig = {
   enabled: false,
+  mode: 'off',
   timezone: REWARDS_TIMEZONE,
   dailyLadder: [...DEFAULT_DAILY_LADDER],
   resetOnMiss: false,
@@ -139,7 +143,9 @@ export type RewardLedgerEntryType =
 
 export type ReferralStatus =
   | 'pending_confirmation'
+  | 'confirmed'
   | 'confirmed_waiting_mcqs'
+  | 'paid'
   | 'completed'
   | 'expired'
   | 'capped'
@@ -151,6 +157,8 @@ export interface ReferralRecordPublic {
   counterpartDisplayName: string;
   counterpartCode?: string;
   status: ReferralStatus;
+  inviterAccepted: boolean;
+  inviteeAccepted: boolean;
   inviteeMcqsAnswered: number;
   minInviteeMcqs: number;
   inviterReward: number;
@@ -182,6 +190,7 @@ export interface MilestoneItemState {
   title: string;
   subtitle: string;
   claimed: boolean;
+  creditStatus?: 'pending' | 'credited' | null;
   claimedAtMs?: number | null;
   eligible: boolean;
   progress: number;
@@ -189,6 +198,8 @@ export interface MilestoneItemState {
 
 export interface RewardsStateResponse {
   serverConfigured: boolean;
+  mode: RewardsMode;
+  canClaim: boolean;
   enabled: boolean;
   comingSoon: boolean;
   timezone: string;
@@ -231,6 +242,19 @@ export function getPktDateString(nowMs: number = Date.now()): string {
  */
 export function getPktMonthString(nowMs: number = Date.now()): string {
   return getPktDateString(nowMs).slice(0, 7);
+}
+
+/**
+ * Returns { startMs, endMs } in UTC epoch milliseconds for the PKT calendar month containing `nowMs`.
+ */
+export function getPktMonthRangeMs(nowMs: number = Date.now()): { startMs: number; endMs: number } {
+  const pktMs = nowMs + PKT_OFFSET_MS;
+  const d = new Date(pktMs);
+  const year = d.getUTCFullYear();
+  const month = d.getUTCMonth();
+  const startMs = Date.UTC(year, month, 1, 0, 0, 0, 0) - PKT_OFFSET_MS;
+  const endMs = Date.UTC(year, month + 1, 1, 0, 0, 0, 0) - PKT_OFFSET_MS;
+  return { startMs, endMs };
 }
 
 /**

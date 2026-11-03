@@ -1,20 +1,50 @@
 /**
- * Cloudflare Pages / Edge-compatible Firebase ID Token Verifier &
- * Firestore REST API Transactional Client (WebCrypto RS256 Service Account JWT).
+ * Boardly Rewards — D1 User Verification Helper, Idempotent Firestore Koban Credit Client,
+ * and Local D1 Database Adapter (for local Vite dev & automated tests when env.DB is unbound).
  *
- * Reads credentials from encrypted environment secret `FIREBASE_SERVICE_ACCOUNT`
- * (or fallback `GOOGLE_SERVICE_ACCOUNT_KEY`). Never commits secrets.
+ * Security invariants:
+ * - Reuses the exact Firebase ID token verification (Google SecureToken JWK RS256) +
+ *   D1 `user_roles` query and Super Admin check used by the existing MCQ / D1 endpoints.
+ * - `FIREBASE_SERVICE_ACCOUNT` is used ONLY for the server-side Firestore Kobans credit
+ *   (`wallets/{uid}`, `users/{uid}`, `wallets/{uid}/ledger/{deterministicId}`).
+ * - Never commits secrets.
  */
+
+import type { RewardLedgerEntryType } from '../../src/lib/rewardsEngine';
 
 export const DEFAULT_FIREBASE_PROJECT_ID = 'gen-lang-client-0365509316';
 export const DEFAULT_FIRESTORE_DATABASE_ID =
   'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
 
+export const DEFAULT_SUPERADMIN_UIDS = ['A5YMRimdHRcmeDWutxtUGt2e4hf2'];
+export const DEFAULT_SUPERADMIN_EMAILS = [
+  'shsvirtualadmin@gmail.com',
+  'support@boardly.cfd',
+  'support@scholario.me',
+];
+
 export interface VerifiedFirebaseToken {
   uid: string;
   email?: string;
   name?: string;
+  picture?: string;
   emailVerified?: boolean;
+  role?: string;
+  admin?: boolean;
+}
+
+export interface AuthenticatedD1User {
+  uid: string;
+  email: string;
+  name: string;
+  picture: string | null;
+  role: 'student' | 'captain' | 'admin' | 'superadmin';
+  customRole: string | null;
+  isPostingBanned: boolean;
+  isSuperAdmin: boolean;
+  isAdminOrAbove: boolean;
+  emailVerified: boolean;
+  d1CreatedAtMs: number;
 }
 
 export interface ServiceAccountCredentials {
@@ -24,7 +54,20 @@ export interface ServiceAccountCredentials {
   token_uri?: string;
 }
 
+export interface RewardsD1PreparedStatement {
+  bind(...values: any[]): RewardsD1PreparedStatement;
+  first<T = Record<string, any>>(colName?: string): Promise<T | null>;
+  all<T = Record<string, any>>(): Promise<{ results: T[] }>;
+  run(): Promise<{ success: boolean; meta?: { changes?: number } }>;
+}
+
+export interface RewardsD1Database {
+  prepare(query: string): RewardsD1PreparedStatement;
+  batch(statements: RewardsD1PreparedStatement[]): Promise<any[]>;
+}
+
 export interface RewardsEnv {
+  DB?: RewardsD1Database;
   FIREBASE_SERVICE_ACCOUNT?: string;
   GOOGLE_SERVICE_ACCOUNT_KEY?: string;
   FIREBASE_PROJECT_ID?: string;
@@ -32,6 +75,8 @@ export interface RewardsEnv {
   FIREBASE_DATABASE_ID?: string;
   VITE_FIREBASE_DATABASE_ID?: string;
   VITE_FIREBASE_FIRESTORE_DATABASE_ID?: string;
+  SUPERADMIN_UIDS?: string;
+  SUPERADMIN_EMAILS?: string;
 }
 
 // ─── Base64URL & PEM Helpers ──────────────────────────────────────────────────
@@ -121,7 +166,10 @@ export async function verifyFirebaseIdToken(
       sub?: string;
       email?: string;
       name?: string;
+      picture?: string;
       email_verified?: boolean;
+      role?: string;
+      admin?: boolean;
     };
 
     if (header.alg !== 'RS256' || !header.kid) return null;
@@ -160,11 +208,117 @@ export async function verifyFirebaseIdToken(
       uid: payload.sub,
       email: payload.email,
       name: payload.name,
+      picture: payload.picture,
       emailVerified: Boolean(payload.email_verified),
+      role: payload.role,
+      admin: Boolean(payload.admin),
     };
   } catch {
     return null;
   }
+}
+
+/**
+ * Exact D1 user verification + Super Admin check helper reused across MCQ and Rewards endpoints.
+ * Verifies the Bearer Firebase ID token and queries `user_roles` in D1 (`env.DB`).
+ */
+export async function authenticateD1RewardsUser(params: {
+  request: Request;
+  env?: RewardsEnv;
+  db: RewardsD1Database;
+  tokenVerifierOverride?: (authHeader: string | null | undefined) => Promise<VerifiedFirebaseToken | null>;
+}): Promise<AuthenticatedD1User | null> {
+  const { request, env, db, tokenVerifierOverride } = params;
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+
+  const projectId =
+    env?.FIREBASE_PROJECT_ID || env?.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID;
+  const verifyFn = tokenVerifierOverride || ((hdr) => verifyFirebaseIdToken(hdr, projectId));
+  const verified = await verifyFn(authHeader);
+  if (!verified || !verified.uid) {
+    return null;
+  }
+
+  const uid = verified.uid;
+  const email = String(verified.email || '').trim().toLowerCase();
+
+  const superUids = new Set(
+    (env?.SUPERADMIN_UIDS || DEFAULT_SUPERADMIN_UIDS.join(','))
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  );
+  const superEmails = new Set(
+    (env?.SUPERADMIN_EMAILS || DEFAULT_SUPERADMIN_EMAILS.join(','))
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean)
+  );
+
+  let roleRow: {
+    uid?: string;
+    email?: string;
+    role?: string;
+    custom_role?: string | null;
+    is_posting_banned?: number;
+    updated_at?: number;
+    created_at?: number;
+  } | null = null;
+
+  try {
+    roleRow = await db
+      .prepare(
+        'SELECT uid, email, role, custom_role, is_posting_banned, updated_at, created_at FROM user_roles WHERE uid = ?1 LIMIT 1'
+      )
+      .bind(uid)
+      .first();
+  } catch {
+    roleRow = null;
+  }
+
+  const isHardcodedSuperAdmin =
+    superUids.has(uid) ||
+    (email.length > 0 && superEmails.has(email)) ||
+    verified.role === 'superadmin' ||
+    verified.admin === true;
+
+  let role: 'student' | 'captain' | 'admin' | 'superadmin' = 'student';
+  if (isHardcodedSuperAdmin || roleRow?.role === 'superadmin') {
+    role = 'superadmin';
+  } else if (roleRow?.role === 'admin' || verified.role === 'admin') {
+    role = 'admin';
+  } else if (roleRow?.role === 'captain' || verified.role === 'captain') {
+    role = 'captain';
+  }
+
+  const isSuperAdmin = role === 'superadmin';
+  const isAdminOrAbove = role === 'superadmin' || role === 'admin';
+  const isPostingBanned = Boolean(roleRow?.is_posting_banned);
+
+  const rawName = String(verified.name || '').trim();
+  const safeName =
+    rawName && !rawName.includes('@')
+      ? rawName
+      : email
+      ? email.split('@')[0] || 'Student'
+      : 'Student';
+
+  return {
+    uid,
+    email,
+    name: safeName,
+    picture: verified.picture || null,
+    role,
+    customRole: roleRow?.custom_role || null,
+    isPostingBanned,
+    isSuperAdmin,
+    isAdminOrAbove,
+    emailVerified: Boolean(verified.emailVerified),
+    d1CreatedAtMs: Number(roleRow?.created_at || 0),
+  };
 }
 
 // ─── Service Account Parsing & OAuth2 Token Exchange ──────────────────────────
@@ -345,12 +499,14 @@ export function toFirestoreFields(obj: Record<string, unknown>): Record<string, 
   return fields;
 }
 
-export function fromFirestoreDocument(docObj: {
-  name?: string;
-  fields?: Record<string, any>;
-  createTime?: string;
-  updateTime?: string;
-} | null): Record<string, any> | null {
+export function fromFirestoreDocument(
+  docObj: {
+    name?: string;
+    fields?: Record<string, any>;
+    createTime?: string;
+    updateTime?: string;
+  } | null
+): Record<string, any> | null {
   if (!docObj || !docObj.fields) return null;
   const out: Record<string, any> = {};
   for (const [k, v] of Object.entries(docObj.fields)) {
@@ -363,11 +519,11 @@ export function fromFirestoreDocument(docObj: {
   return out;
 }
 
-// ─── Transactional Adapter Interface ──────────────────────────────────────────
+// ─── Transactional Adapter Interface (Firestore Wallet & Ledger Credit) ───────
 
 export interface TxWriteOperation {
   type: 'create' | 'set' | 'merge';
-  path: string; // e.g. "wallets/uid123" or "reward_daily_claims/uid123_2026-03-29"
+  path: string;
   data: Record<string, unknown>;
 }
 
@@ -380,7 +536,7 @@ export interface FirestoreTransactionContext {
 export interface FirestoreStoreAdapter {
   getDoc(path: string): Promise<Record<string, any> | null>;
   setDoc(path: string, data: Record<string, unknown>, merge?: boolean): Promise<void>;
-  queryByField(
+  queryByField?(
     collectionId: string,
     fieldPath: string,
     op: 'EQUAL',
@@ -466,54 +622,11 @@ export class FirestoreRestAdapter implements FirestoreStoreAdapter {
     }
   }
 
-  async queryByField(
-    collectionId: string,
-    fieldPath: string,
-    op: 'EQUAL',
-    value: string | number | boolean,
-    limit = 200
-  ): Promise<Array<Record<string, any>>> {
-    const res = await fetch(`${this.baseDocsUrl}:runQuery`, {
-      method: 'POST',
-      headers: await this.headers(),
-      body: JSON.stringify({
-        structuredQuery: {
-          from: [{ collectionId }],
-          where: {
-            fieldFilter: {
-              field: { fieldPath },
-              op,
-              value: toFirestoreValue(value),
-            },
-          },
-          limit,
-        },
-      }),
-    });
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(
-        `Firestore runQuery(${collectionId}.${fieldPath}) failed (${res.status}): ${errText.slice(0, 200)}`
-      );
-    }
-    const rows = (await res.json()) as Array<{ document?: any }>;
-    if (!Array.isArray(rows)) return [];
-    const out: Array<Record<string, any>> = [];
-    for (const r of rows) {
-      if (r?.document) {
-        const parsed = fromFirestoreDocument(r.document);
-        if (parsed) out.push(parsed);
-      }
-    }
-    return out;
-  }
-
   async runTransaction<T>(fn: (tx: FirestoreTransactionContext) => Promise<T>): Promise<T> {
     const hdrs = await this.headers();
     const maxAttempts = 4;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      // 1. Begin readWrite transaction
       const beginRes = await fetch(`${this.baseDocsUrl}:beginTransaction`, {
         method: 'POST',
         headers: hdrs,
@@ -558,7 +671,10 @@ export class FirestoreRestAdapter implements FirestoreStoreAdapter {
 
       const result = await fn(txCtx);
 
-      // 2. Build REST commit writes
+      if (writes.length === 0) {
+        return result;
+      }
+
       const restWrites = writes.map((w) => {
         const docName = this.fullDocName(w.path);
         const fields = toFirestoreFields(w.data);
@@ -597,7 +713,6 @@ export class FirestoreRestAdapter implements FirestoreStoreAdapter {
       const commitStatus = commitRes.status;
       const errText = await commitRes.text();
 
-      // Retry on contention (409 ABORTED) if attempts remain
       if (commitStatus === 409 && attempt < maxAttempts) {
         await new Promise((r) => setTimeout(r, 40 * attempt));
         continue;
@@ -612,4 +727,651 @@ export class FirestoreRestAdapter implements FirestoreStoreAdapter {
 
     throw new Error('Firestore transaction exceeded maximum retry attempts.');
   }
+}
+
+/**
+ * PHASE 3: Claim-First in D1, Credit-Second in Firestore.
+ * Credits Kobans to `wallets/{uid}` + `users/{uid}` and writes a deterministic ledger entry
+ * `wallets/{uid}/ledger/{ledgerId}` inside an idempotent Firestore transaction.
+ * If the deterministic ledger entry already exists, this transaction does nothing and succeeds
+ * (`alreadyCredited: true`), guaranteeing that retries can NEVER double-pay!
+ */
+export async function creditKobansIdempotentInFirestore(params: {
+  store: FirestoreStoreAdapter;
+  uid: string;
+  ledgerId: string;
+  type: RewardLedgerEntryType;
+  amount: number;
+  reason: string;
+  extraLedgerFields?: Record<string, unknown>;
+  notification?: {
+    id: string;
+    title: string;
+    message: string;
+    link?: string;
+  };
+}): Promise<{ credited: boolean; alreadyCredited: boolean; balanceAfter: number }> {
+  const { store, uid, ledgerId, type, amount, reason, extraLedgerFields, notification } = params;
+  const safeAmount = Math.max(0, Math.floor(Number(amount) || 0));
+  const ledgerPath = `wallets/${uid}/ledger/${ledgerId}`;
+
+  return store.runTransaction(async (tx) => {
+    const existingLedger = await tx.getDoc(ledgerPath);
+    if (existingLedger) {
+      const walletDoc = await tx.getDoc(`wallets/${uid}`);
+      const currentBal = Math.max(
+        0,
+        Math.floor(Number(walletDoc?.balance ?? existingLedger.balanceAfter ?? 0))
+      );
+      return {
+        credited: true,
+        alreadyCredited: true,
+        balanceAfter: currentBal,
+      };
+    }
+
+    const [walletDoc, userDoc] = await Promise.all([
+      tx.getDoc(`wallets/${uid}`),
+      tx.getDoc(`users/${uid}`),
+    ]);
+
+    const currentBalance = Math.max(
+      0,
+      Math.floor(Number(walletDoc?.balance ?? userDoc?.kobans ?? userDoc?.kobanBalance ?? 0))
+    );
+    const newBalance = currentBalance + safeAmount;
+
+    // 1. Deterministic ledger document creation
+    tx.createDoc(ledgerPath, {
+      id: ledgerId,
+      type,
+      amount: safeAmount,
+      balanceAfter: newBalance,
+      reason,
+      ...(extraLedgerFields || {}),
+      timestamp: SERVER_TIMESTAMP_SENTINEL,
+    });
+
+    // 2. Update wallets/{uid}.balance
+    tx.setDoc(
+      `wallets/${uid}`,
+      {
+        balance: newBalance,
+        owned: Array.isArray(walletDoc?.owned) ? walletDoc.owned : [],
+        equipped: walletDoc?.equipped || {
+          effect: null,
+          frame: null,
+          nameplate: null,
+          avatar: null,
+          banner: null,
+        },
+        updatedAt: SERVER_TIMESTAMP_SENTINEL,
+      },
+      true
+    );
+
+    // 3. Mirror balance to users/{uid}.kobans and users/{uid}.kobanBalance
+    tx.setDoc(
+      `users/${uid}`,
+      {
+        kobans: newBalance,
+        kobanBalance: newBalance,
+        updatedAt: SERVER_TIMESTAMP_SENTINEL,
+      },
+      true
+    );
+
+    // 4. Optional notification document
+    if (notification) {
+      tx.setDoc(`notifications/${notification.id}`, {
+        userId: uid,
+        type: 'system',
+        title: notification.title,
+        message: notification.message,
+        link: notification.link || '/rewards',
+        read: false,
+        createdAt: SERVER_TIMESTAMP_SENTINEL,
+      });
+    }
+
+    return {
+      credited: true,
+      alreadyCredited: false,
+      balanceAfter: newBalance,
+    };
+  });
+}
+
+// ─── Relational D1 Simulator for Local Vite Dev & Automated Tests ─────────────
+// Implements the exact Cloudflare D1Database `.prepare(sql).bind(...).first()/.all()/.run()`
+// and `.batch()` contract with strict PRIMARY KEY and UNIQUE constraints.
+
+export interface InMemoryD1Tables {
+  reward_settings: Map<string, { key: string; value: string }>;
+  reward_daily_claims: Map<
+    string,
+    {
+      uid: string;
+      pkt_date: string;
+      day_number: number;
+      amount: number;
+      credit_status: string;
+      created_at: number;
+    }
+  >;
+  reward_milestone_claims: Map<
+    string,
+    {
+      uid: string;
+      milestone_id: string;
+      amount: number;
+      credit_status: string;
+      created_at: number;
+    }
+  >;
+  referral_codes: Map<string, { uid: string; code: string }>;
+  referrals: Map<
+    string,
+    {
+      id: string;
+      inviter_uid: string;
+      invitee_uid: string;
+      inviter_code: string;
+      invitee_code: string;
+      status: string;
+      inviter_accepted: number;
+      invitee_accepted: number;
+      ip_hash: string;
+      flagged: number;
+      inviter_credit_status: string;
+      invitee_credit_status: string;
+      created_at: number;
+      confirmed_at: number | null;
+      paid_at: number | null;
+    }
+  >;
+  user_roles: Map<
+    string,
+    {
+      uid: string;
+      email: string;
+      role: string;
+      custom_role: string | null;
+      is_posting_banned: number;
+      updated_at: number;
+      created_at: number;
+    }
+  >;
+  test_attempts: Map<
+    string,
+    {
+      id: string;
+      test_id: string;
+      user_uid: string;
+      user_name: string;
+      score: number;
+      total_questions: number;
+      created_at: number;
+    }
+  >;
+  attempt_answers: Map<
+    string,
+    {
+      id: string;
+      attempt_id: string;
+      test_id: string;
+      question_id: string;
+      selected_index: number;
+      correct_index: number;
+      is_correct: number;
+      created_at: number;
+    }
+  >;
+}
+
+export class InMemoryD1Database implements RewardsD1Database {
+  public tables: InMemoryD1Tables = {
+    reward_settings: new Map(),
+    reward_daily_claims: new Map(),
+    reward_milestone_claims: new Map(),
+    referral_codes: new Map(),
+    referrals: new Map(),
+    user_roles: new Map(),
+    test_attempts: new Map(),
+    attempt_answers: new Map(),
+  };
+
+  prepare(query: string): RewardsD1PreparedStatement {
+    const db = this;
+    const normalized = query.replace(/\s+/g, ' ').trim();
+    let boundArgs: any[] = [];
+
+    const stmt: RewardsD1PreparedStatement = {
+      bind(...values: any[]) {
+        boundArgs = values;
+        return stmt;
+      },
+      async first<T = Record<string, any>>(colName?: string): Promise<T | null> {
+        const { results } = await stmt.all<any>();
+        const row = results[0] ?? null;
+        if (!row) return null;
+        if (colName) return (row[colName] ?? null) as T;
+        return row as T;
+      },
+      async all<T = Record<string, any>>(): Promise<{ results: T[] }> {
+        const rows = db.executeQuery(normalized, boundArgs);
+        return { results: rows as T[] };
+      },
+      async run(): Promise<{ success: boolean; meta?: { changes?: number } }> {
+        const changes = db.executeMutation(normalized, boundArgs);
+        return { success: true, meta: { changes } };
+      },
+    };
+    return stmt;
+  }
+
+  async batch(statements: RewardsD1PreparedStatement[]): Promise<any[]> {
+    const out: any[] = [];
+    for (const s of statements) {
+      out.push(await s.run());
+    }
+    return out;
+  }
+
+  private executeQuery(sql: string, args: any[]): any[] {
+    const upper = sql.toUpperCase();
+
+    // 1. SELECT 1 AS ok
+    if (upper.startsWith('SELECT 1')) {
+      return [{ ok: 1 }];
+    }
+
+    // 2. reward_settings
+    if (upper.includes('FROM REWARD_SETTINGS')) {
+      if (upper.includes('WHERE KEY =')) {
+        const key = String(args[0] ?? '');
+        const row = this.tables.reward_settings.get(key);
+        return row ? [{ ...row }] : [];
+      }
+      return Array.from(this.tables.reward_settings.values()).map((r) => ({ ...r }));
+    }
+
+    // 3. user_roles
+    if (upper.includes('FROM USER_ROLES')) {
+      if (upper.includes('WHERE UID =')) {
+        const uid = String(args[0] ?? '');
+        const row = this.tables.user_roles.get(uid);
+        return row ? [{ ...row }] : [];
+      }
+      return Array.from(this.tables.user_roles.values()).map((r) => ({ ...r }));
+    }
+
+    // 4. reward_daily_claims
+    if (upper.includes('FROM REWARD_DAILY_CLAIMS')) {
+      const uid = String(args[0] ?? '');
+      let rows = Array.from(this.tables.reward_daily_claims.values()).filter((r) => r.uid === uid);
+      if (upper.includes('AND PKT_DATE =')) {
+        const pktDate = String(args[1] ?? '');
+        rows = rows.filter((r) => r.pkt_date === pktDate);
+      }
+      if (upper.includes("AND CREDIT_STATUS = 'PENDING'")) {
+        rows = rows.filter((r) => r.credit_status === 'pending');
+      }
+      rows.sort((a, b) => b.pkt_date.localeCompare(a.pkt_date));
+      return rows.map((r) => ({ ...r }));
+    }
+
+    // 5. reward_milestone_claims
+    if (upper.includes('FROM REWARD_MILESTONE_CLAIMS')) {
+      const uid = String(args[0] ?? '');
+      let rows = Array.from(this.tables.reward_milestone_claims.values()).filter(
+        (r) => r.uid === uid
+      );
+      if (upper.includes('AND MILESTONE_ID =')) {
+        const mId = String(args[1] ?? '');
+        rows = rows.filter((r) => r.milestone_id === mId);
+      }
+      if (upper.includes("AND CREDIT_STATUS = 'PENDING'")) {
+        rows = rows.filter((r) => r.credit_status === 'pending');
+      }
+      return rows.map((r) => ({ ...r }));
+    }
+
+    // 6. referral_codes
+    if (upper.includes('FROM REFERRAL_CODES')) {
+      if (upper.includes('WHERE UID =')) {
+        const uid = String(args[0] ?? '');
+        const row = this.tables.referral_codes.get(uid);
+        return row ? [{ ...row }] : [];
+      }
+      if (upper.includes('WHERE CODE =')) {
+        const code = String(args[0] ?? '');
+        const found = Array.from(this.tables.referral_codes.values()).find((r) => r.code === code);
+        return found ? [{ ...found }] : [];
+      }
+      return Array.from(this.tables.referral_codes.values()).map((r) => ({ ...r }));
+    }
+
+    // 7. referrals
+    if (upper.includes('FROM REFERRALS')) {
+      const all = Array.from(this.tables.referrals.values());
+      if (upper.includes('COUNT(*)') && upper.includes('WHERE IP_HASH =')) {
+        const ipHash = String(args[0] ?? '');
+        const sinceMs = Number(args[1] ?? 0);
+        const cnt = all.filter((r) => r.ip_hash === ipHash && r.created_at >= sinceMs).length;
+        return [{ cnt }];
+      }
+      if (upper.includes('COUNT(*)') && upper.includes("STATUS IN ('PAID', 'COMPLETED')")) {
+        const inviterUid = String(args[0] ?? '');
+        const startMs = Number(args[1] ?? 0);
+        const endMs = Number(args[2] ?? Number.MAX_SAFE_INTEGER);
+        const cnt = all.filter(
+          (r) =>
+            r.inviter_uid === inviterUid &&
+            (r.status === 'paid' || r.status === 'completed') &&
+            r.paid_at !== null &&
+            r.paid_at >= startMs &&
+            r.paid_at < endMs
+        ).length;
+        return [{ cnt }];
+      }
+      if (upper.includes('WHERE ID =')) {
+        const id = String(args[0] ?? '');
+        const row = this.tables.referrals.get(id);
+        return row ? [{ ...row }] : [];
+      }
+      if (upper.includes('WHERE INVITEE_UID =') && upper.includes('AND INVITER_UID =')) {
+        const inviteeUid = String(args[0] ?? '');
+        const inviterUid = String(args[1] ?? '');
+        return all
+          .filter((r) => r.invitee_uid === inviteeUid && r.inviter_uid === inviterUid)
+          .map((r) => ({ ...r }));
+      }
+      if (upper.includes('WHERE INVITEE_UID =')) {
+        const inviteeUid = String(args[0] ?? '');
+        return all.filter((r) => r.invitee_uid === inviteeUid).map((r) => ({ ...r }));
+      }
+      if (upper.includes('WHERE INVITER_UID = OR INVITEE_UID =') || upper.includes('WHERE INVITER_UID = ?1 OR INVITEE_UID = ?1')) {
+        const uid = String(args[0] ?? '');
+        return all
+          .filter((r) => r.inviter_uid === uid || r.invitee_uid === uid)
+          .sort((a, b) => b.created_at - a.created_at)
+          .map((r) => ({ ...r }));
+      }
+      if (upper.includes('WHERE INVITER_UID =')) {
+        const inviterUid = String(args[0] ?? '');
+        return all
+          .filter((r) => r.inviter_uid === inviterUid)
+          .sort((a, b) => b.created_at - a.created_at)
+          .map((r) => ({ ...r }));
+      }
+      return all.map((r) => ({ ...r }));
+    }
+
+    // 8. READ-ONLY MCQ count query on test_attempts + attempt_answers
+    if (upper.includes('FROM TEST_ATTEMPTS')) {
+      const uid = String(args[0] ?? '');
+      const sinceMs = args.length > 1 ? Number(args[1] ?? 0) : 0;
+      const attempts = Array.from(this.tables.test_attempts.values()).filter(
+        (ta) => ta.user_uid === uid && ta.created_at >= sinceMs
+      );
+      const allAnswers = Array.from(this.tables.attempt_answers.values());
+
+      return attempts.map((ta) => {
+        const ansForAttempt = allAnswers.filter((aa) => aa.attempt_id === ta.id);
+        const answeredRows = ansForAttempt.filter((aa) => aa.selected_index >= 0).length;
+        return {
+          attempt_id: ta.id,
+          total_questions: ta.total_questions,
+          created_at: ta.created_at,
+          answered_rows: answeredRows,
+          total_answer_rows: ansForAttempt.length,
+        };
+      });
+    }
+
+    return [];
+  }
+
+  private executeMutation(sql: string, args: any[]): number {
+    const upper = sql.toUpperCase();
+
+    if (upper.startsWith('CREATE TABLE') || upper.startsWith('CREATE INDEX')) {
+      return 0;
+    }
+
+    // 1. reward_settings
+    if (upper.includes('INTO REWARD_SETTINGS')) {
+      const isIgnore = upper.includes('OR IGNORE');
+      let key: string;
+      let val: string;
+      if (args.length >= 2) {
+        key = String(args[0]);
+        val = String(args[1]);
+      } else if (args.length === 1) {
+        key = 'mode';
+        val = String(args[0]);
+      } else {
+        // Parse literal seed from SQL if no bind args
+        if (sql.includes("'mode'")) {
+          key = 'mode';
+          val = 'off';
+        } else {
+          return 0;
+        }
+      }
+      if (isIgnore && this.tables.reward_settings.has(key)) {
+        return 0;
+      }
+      this.tables.reward_settings.set(key, { key, value: val });
+      return 1;
+    }
+
+    if (upper.startsWith('UPDATE REWARD_SETTINGS')) {
+      const val = String(args[0]);
+      const key = String(args[1] ?? 'mode');
+      this.tables.reward_settings.set(key, { key, value: val });
+      return 1;
+    }
+
+    // 2. reward_daily_claims (PRIMARY KEY (uid, pkt_date))
+    if (upper.startsWith('INSERT INTO REWARD_DAILY_CLAIMS')) {
+      const uid = String(args[0]);
+      const pkt_date = String(args[1]);
+      const day_number = Number(args[2]);
+      const amount = Number(args[3]);
+      const credit_status = String(args[4] ?? 'pending');
+      const created_at = Number(args[5] ?? Date.now());
+      const pk = `${uid}::${pkt_date}`;
+      if (this.tables.reward_daily_claims.has(pk)) {
+        throw new Error('UNIQUE constraint failed: reward_daily_claims.uid, reward_daily_claims.pkt_date');
+      }
+      this.tables.reward_daily_claims.set(pk, {
+        uid,
+        pkt_date,
+        day_number,
+        amount,
+        credit_status,
+        created_at,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('UPDATE REWARD_DAILY_CLAIMS')) {
+      const credit_status = String(args[0]);
+      const uid = String(args[1]);
+      const pkt_date = String(args[2]);
+      const pk = `${uid}::${pkt_date}`;
+      const existing = this.tables.reward_daily_claims.get(pk);
+      if (!existing) return 0;
+      existing.credit_status = credit_status;
+      return 1;
+    }
+
+    // 3. reward_milestone_claims (PRIMARY KEY (uid, milestone_id))
+    if (upper.startsWith('INSERT INTO REWARD_MILESTONE_CLAIMS')) {
+      const uid = String(args[0]);
+      const milestone_id = String(args[1]);
+      const amount = Number(args[2]);
+      const credit_status = String(args[3] ?? 'pending');
+      const created_at = Number(args[4] ?? Date.now());
+      const pk = `${uid}::${milestone_id}`;
+      if (this.tables.reward_milestone_claims.has(pk)) {
+        throw new Error(
+          'UNIQUE constraint failed: reward_milestone_claims.uid, reward_milestone_claims.milestone_id'
+        );
+      }
+      this.tables.reward_milestone_claims.set(pk, {
+        uid,
+        milestone_id,
+        amount,
+        credit_status,
+        created_at,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('UPDATE REWARD_MILESTONE_CLAIMS')) {
+      const credit_status = String(args[0]);
+      const uid = String(args[1]);
+      const milestone_id = String(args[2]);
+      const pk = `${uid}::${milestone_id}`;
+      const existing = this.tables.reward_milestone_claims.get(pk);
+      if (!existing) return 0;
+      existing.credit_status = credit_status;
+      return 1;
+    }
+
+    // 4. referral_codes (uid PRIMARY KEY, code UNIQUE)
+    if (upper.includes('INTO REFERRAL_CODES')) {
+      const isIgnore = upper.includes('OR IGNORE');
+      const uid = String(args[0]);
+      const code = String(args[1]);
+      if (this.tables.referral_codes.has(uid)) {
+        if (isIgnore) return 0;
+        throw new Error('UNIQUE constraint failed: referral_codes.uid');
+      }
+      const codeOwner = Array.from(this.tables.referral_codes.values()).find(
+        (r) => r.code === code
+      );
+      if (codeOwner && codeOwner.uid !== uid) {
+        if (isIgnore) return 0;
+        throw new Error('UNIQUE constraint failed: referral_codes.code');
+      }
+      this.tables.referral_codes.set(uid, { uid, code });
+      return 1;
+    }
+
+    // 5. referrals (id PRIMARY KEY, invitee_uid UNIQUE)
+    if (upper.startsWith('INSERT INTO REFERRALS')) {
+      const id = String(args[0]);
+      const inviter_uid = String(args[1]);
+      const invitee_uid = String(args[2]);
+      const inviter_code = String(args[3]);
+      const invitee_code = String(args[4]);
+      const status = String(args[5] ?? 'pending_confirmation');
+      const inviter_accepted = Number(args[6] ?? 0);
+      const invitee_accepted = Number(args[7] ?? 0);
+      const ip_hash = String(args[8] ?? '');
+      const flagged = Number(args[9] ?? 0);
+      const inviter_credit_status = String(args[10] ?? 'pending');
+      const invitee_credit_status = String(args[11] ?? 'pending');
+      const created_at = Number(args[12] ?? Date.now());
+      const confirmed_at = args[13] != null ? Number(args[13]) : null;
+      const paid_at = args[14] != null ? Number(args[14]) : null;
+
+      if (this.tables.referrals.has(id)) {
+        throw new Error('UNIQUE constraint failed: referrals.id');
+      }
+      const existingInvitee = Array.from(this.tables.referrals.values()).find(
+        (r) => r.invitee_uid === invitee_uid
+      );
+      if (existingInvitee) {
+        throw new Error('UNIQUE constraint failed: referrals.invitee_uid');
+      }
+
+      this.tables.referrals.set(id, {
+        id,
+        inviter_uid,
+        invitee_uid,
+        inviter_code,
+        invitee_code,
+        status,
+        inviter_accepted,
+        invitee_accepted,
+        ip_hash,
+        flagged,
+        inviter_credit_status,
+        invitee_credit_status,
+        created_at,
+        confirmed_at,
+        paid_at,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('UPDATE REFERRALS')) {
+      // Distinguish the specific UPDATE REFERRALS queries by their SET clauses
+      if (upper.includes('SET INVITER_ACCEPTED =') && upper.includes('INVITEE_ACCEPTED =')) {
+        const inviter_accepted = Number(args[0]);
+        const invitee_accepted = Number(args[1]);
+        const status = String(args[2]);
+        const confirmed_at = args[3] != null ? Number(args[3]) : null;
+        const id = String(args[4]);
+        const row = this.tables.referrals.get(id);
+        if (!row) return 0;
+        row.inviter_accepted = inviter_accepted;
+        row.invitee_accepted = invitee_accepted;
+        row.status = status;
+        row.confirmed_at = confirmed_at;
+        return 1;
+      }
+      if (upper.includes('SET INVITER_CREDIT_STATUS =') && !upper.includes('INVITEE_CREDIT_STATUS =')) {
+        const st = String(args[0]);
+        const id = String(args[1]);
+        const row = this.tables.referrals.get(id);
+        if (!row) return 0;
+        row.inviter_credit_status = st;
+        return 1;
+      }
+      if (upper.includes('SET INVITEE_CREDIT_STATUS =') && !upper.includes('INVITER_CREDIT_STATUS =')) {
+        const st = String(args[0]);
+        const id = String(args[1]);
+        const row = this.tables.referrals.get(id);
+        if (!row) return 0;
+        row.invitee_credit_status = st;
+        return 1;
+      }
+      if (upper.includes('SET STATUS =') && upper.includes('PAID_AT =')) {
+        const status = String(args[0]);
+        const paid_at = args[1] != null ? Number(args[1]) : null;
+        const id = String(args[2]);
+        const row = this.tables.referrals.get(id);
+        if (!row) return 0;
+        row.status = status;
+        row.paid_at = paid_at;
+        return 1;
+      }
+      if (upper.includes('SET STATUS =')) {
+        const status = String(args[0]);
+        const id = String(args[1]);
+        const row = this.tables.referrals.get(id);
+        if (!row) return 0;
+        row.status = status;
+        return 1;
+      }
+    }
+
+    return 0;
+  }
+}
+
+// Singleton local D1 instance for Vite dev when Cloudflare env.DB is not provided
+let sharedLocalD1: InMemoryD1Database | null = null;
+
+export function getSharedLocalD1Database(): InMemoryD1Database {
+  if (!sharedLocalD1) {
+    sharedLocalD1 = new InMemoryD1Database();
+  }
+  return sharedLocalD1;
 }
