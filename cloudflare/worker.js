@@ -757,6 +757,50 @@ export default {
           if (!testRow) {
             return errorResponse(request, env, 'Test not found.', 'NOT_FOUND', 404);
           }
+
+          // Admin bypass: Admins can view/download official Answer Key without taking the test
+          if (user.isAdminOrAbove) {
+            const { results: qRows } = await db
+              .prepare(
+                `SELECT id, position, question_text, options_json, correct_index, explanation, topic, difficulty
+                 FROM test_questions WHERE test_id = ?1 ORDER BY position ASC`
+              )
+              .bind(testId)
+              .all();
+
+            const adminAnswerKeyQuestions = (qRows || []).map((q, idx) => {
+              let options = [];
+              try {
+                options = JSON.parse(q.options_json || '[]');
+              } catch {
+                options = [];
+              }
+              return {
+                id: q.id || `q_${idx}`,
+                position: typeof q.position === 'number' ? q.position : idx,
+                question: q.question_text || '',
+                options: Array.isArray(options) ? options : ['A', 'B', 'C', 'D'],
+                selectedIndex: -1,
+                correctIndex: typeof q.correct_index === 'number' ? q.correct_index : 0,
+                isCorrect: true,
+                explanation: q.explanation || '',
+                topic: q.topic || 'General',
+                difficulty: q.difficulty || 'medium',
+              };
+            });
+
+            return jsonResponse(request, env, {
+              attempt: null,
+              gradedQuestions: adminAnswerKeyQuestions,
+              isAdminAnswerKey: true,
+              isAdmin: true,
+              test: {
+                ...testRow,
+                adminName: user.name || (user.email ? user.email.split('@')[0] : 'Admin'),
+              },
+            });
+          }
+
           return errorResponse(
             request,
             env,

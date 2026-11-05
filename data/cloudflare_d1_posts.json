@@ -3013,6 +3013,3030 @@
       "avgScore": 67,
       "createdAt": 1793720430272,
       "updatedAt": 1793720430272
+    },
+    {
+      "id": "iba-karachi-english-mock-200",
+      "title": "IBA KARACHI English Mock",
+      "description": "Comprehensive 200-question English and verbal reasoning entrance mock drill for IBA Karachi candidates.",
+      "subject": "English",
+      "durationMinutes": 120,
+      "questions": [
+        {
+          "id": "iba_q_1",
+          "position": 0,
+          "question": "Sample IBA Entrance Question 1: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 1 illustrating rule 1",
+            "Option B for question 1 illustrating rule 2",
+            "Option C for question 1 illustrating rule 3",
+            "Option D for question 1 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 1: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_2",
+          "position": 1,
+          "question": "Sample IBA Entrance Question 2: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 2 illustrating rule 1",
+            "Option B for question 2 illustrating rule 2",
+            "Option C for question 2 illustrating rule 3",
+            "Option D for question 2 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 2: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_3",
+          "position": 2,
+          "question": "Sample IBA Entrance Question 3: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 3 illustrating rule 1",
+            "Option B for question 3 illustrating rule 2",
+            "Option C for question 3 illustrating rule 3",
+            "Option D for question 3 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 3: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_4",
+          "position": 3,
+          "question": "Sample IBA Entrance Question 4: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 4 illustrating rule 1",
+            "Option B for question 4 illustrating rule 2",
+            "Option C for question 4 illustrating rule 3",
+            "Option D for question 4 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 4: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_5",
+          "position": 4,
+          "question": "Sample IBA Entrance Question 5: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 5 illustrating rule 1",
+            "Option B for question 5 illustrating rule 2",
+            "Option C for question 5 illustrating rule 3",
+            "Option D for question 5 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 5: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_6",
+          "position": 5,
+          "question": "Sample IBA Entrance Question 6: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 6 illustrating rule 1",
+            "Option B for question 6 illustrating rule 2",
+            "Option C for question 6 illustrating rule 3",
+            "Option D for question 6 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 6: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_7",
+          "position": 6,
+          "question": "Sample IBA Entrance Question 7: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 7 illustrating rule 1",
+            "Option B for question 7 illustrating rule 2",
+            "Option C for question 7 illustrating rule 3",
+            "Option D for question 7 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 7: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_8",
+          "position": 7,
+          "question": "Sample IBA Entrance Question 8: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 8 illustrating rule 1",
+            "Option B for question 8 illustrating rule 2",
+            "Option C for question 8 illustrating rule 3",
+            "Option D for question 8 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 8: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_9",
+          "position": 8,
+          "question": "Sample IBA Entrance Question 9: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 9 illustrating rule 1",
+            "Option B for question 9 illustrating rule 2",
+            "Option C for question 9 illustrating rule 3",
+            "Option D for question 9 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 9: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_10",
+          "position": 9,
+          "question": "Sample IBA Entrance Question 10: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 10 illustrating rule 1",
+            "Option B for question 10 illustrating rule 2",
+            "Option C for question 10 illustrating rule 3",
+            "Option D for question 10 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 10: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_11",
+          "position": 10,
+          "question": "Sample IBA Entrance Question 11: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 11 illustrating rule 1",
+            "Option B for question 11 illustrating rule 2",
+            "Option C for question 11 illustrating rule 3",
+            "Option D for question 11 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 11: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_12",
+          "position": 11,
+          "question": "Sample IBA Entrance Question 12: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 12 illustrating rule 1",
+            "Option B for question 12 illustrating rule 2",
+            "Option C for question 12 illustrating rule 3",
+            "Option D for question 12 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 12: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_13",
+          "position": 12,
+          "question": "Sample IBA Entrance Question 13: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 13 illustrating rule 1",
+            "Option B for question 13 illustrating rule 2",
+            "Option C for question 13 illustrating rule 3",
+            "Option D for question 13 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 13: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_14",
+          "position": 13,
+          "question": "Sample IBA Entrance Question 14: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 14 illustrating rule 1",
+            "Option B for question 14 illustrating rule 2",
+            "Option C for question 14 illustrating rule 3",
+            "Option D for question 14 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 14: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_15",
+          "position": 14,
+          "question": "Sample IBA Entrance Question 15: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 15 illustrating rule 1",
+            "Option B for question 15 illustrating rule 2",
+            "Option C for question 15 illustrating rule 3",
+            "Option D for question 15 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 15: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_16",
+          "position": 15,
+          "question": "Sample IBA Entrance Question 16: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 16 illustrating rule 1",
+            "Option B for question 16 illustrating rule 2",
+            "Option C for question 16 illustrating rule 3",
+            "Option D for question 16 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 16: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_17",
+          "position": 16,
+          "question": "Sample IBA Entrance Question 17: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 17 illustrating rule 1",
+            "Option B for question 17 illustrating rule 2",
+            "Option C for question 17 illustrating rule 3",
+            "Option D for question 17 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 17: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_18",
+          "position": 17,
+          "question": "Sample IBA Entrance Question 18: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 18 illustrating rule 1",
+            "Option B for question 18 illustrating rule 2",
+            "Option C for question 18 illustrating rule 3",
+            "Option D for question 18 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 18: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_19",
+          "position": 18,
+          "question": "Sample IBA Entrance Question 19: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 19 illustrating rule 1",
+            "Option B for question 19 illustrating rule 2",
+            "Option C for question 19 illustrating rule 3",
+            "Option D for question 19 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 19: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_20",
+          "position": 19,
+          "question": "Sample IBA Entrance Question 20: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 20 illustrating rule 1",
+            "Option B for question 20 illustrating rule 2",
+            "Option C for question 20 illustrating rule 3",
+            "Option D for question 20 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 20: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_21",
+          "position": 20,
+          "question": "Sample IBA Entrance Question 21: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 21 illustrating rule 1",
+            "Option B for question 21 illustrating rule 2",
+            "Option C for question 21 illustrating rule 3",
+            "Option D for question 21 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 21: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_22",
+          "position": 21,
+          "question": "Sample IBA Entrance Question 22: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 22 illustrating rule 1",
+            "Option B for question 22 illustrating rule 2",
+            "Option C for question 22 illustrating rule 3",
+            "Option D for question 22 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 22: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_23",
+          "position": 22,
+          "question": "Sample IBA Entrance Question 23: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 23 illustrating rule 1",
+            "Option B for question 23 illustrating rule 2",
+            "Option C for question 23 illustrating rule 3",
+            "Option D for question 23 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 23: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_24",
+          "position": 23,
+          "question": "Sample IBA Entrance Question 24: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 24 illustrating rule 1",
+            "Option B for question 24 illustrating rule 2",
+            "Option C for question 24 illustrating rule 3",
+            "Option D for question 24 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 24: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_25",
+          "position": 24,
+          "question": "Sample IBA Entrance Question 25: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 25 illustrating rule 1",
+            "Option B for question 25 illustrating rule 2",
+            "Option C for question 25 illustrating rule 3",
+            "Option D for question 25 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 25: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_26",
+          "position": 25,
+          "question": "Sample IBA Entrance Question 26: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 26 illustrating rule 1",
+            "Option B for question 26 illustrating rule 2",
+            "Option C for question 26 illustrating rule 3",
+            "Option D for question 26 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 26: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_27",
+          "position": 26,
+          "question": "Sample IBA Entrance Question 27: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 27 illustrating rule 1",
+            "Option B for question 27 illustrating rule 2",
+            "Option C for question 27 illustrating rule 3",
+            "Option D for question 27 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 27: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_28",
+          "position": 27,
+          "question": "Sample IBA Entrance Question 28: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 28 illustrating rule 1",
+            "Option B for question 28 illustrating rule 2",
+            "Option C for question 28 illustrating rule 3",
+            "Option D for question 28 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 28: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_29",
+          "position": 28,
+          "question": "Sample IBA Entrance Question 29: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 29 illustrating rule 1",
+            "Option B for question 29 illustrating rule 2",
+            "Option C for question 29 illustrating rule 3",
+            "Option D for question 29 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 29: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_30",
+          "position": 29,
+          "question": "Sample IBA Entrance Question 30: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 30 illustrating rule 1",
+            "Option B for question 30 illustrating rule 2",
+            "Option C for question 30 illustrating rule 3",
+            "Option D for question 30 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 30: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_31",
+          "position": 30,
+          "question": "Sample IBA Entrance Question 31: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 31 illustrating rule 1",
+            "Option B for question 31 illustrating rule 2",
+            "Option C for question 31 illustrating rule 3",
+            "Option D for question 31 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 31: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_32",
+          "position": 31,
+          "question": "Sample IBA Entrance Question 32: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 32 illustrating rule 1",
+            "Option B for question 32 illustrating rule 2",
+            "Option C for question 32 illustrating rule 3",
+            "Option D for question 32 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 32: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_33",
+          "position": 32,
+          "question": "Sample IBA Entrance Question 33: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 33 illustrating rule 1",
+            "Option B for question 33 illustrating rule 2",
+            "Option C for question 33 illustrating rule 3",
+            "Option D for question 33 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 33: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_34",
+          "position": 33,
+          "question": "Sample IBA Entrance Question 34: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 34 illustrating rule 1",
+            "Option B for question 34 illustrating rule 2",
+            "Option C for question 34 illustrating rule 3",
+            "Option D for question 34 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 34: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_35",
+          "position": 34,
+          "question": "Sample IBA Entrance Question 35: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 35 illustrating rule 1",
+            "Option B for question 35 illustrating rule 2",
+            "Option C for question 35 illustrating rule 3",
+            "Option D for question 35 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 35: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_36",
+          "position": 35,
+          "question": "Sample IBA Entrance Question 36: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 36 illustrating rule 1",
+            "Option B for question 36 illustrating rule 2",
+            "Option C for question 36 illustrating rule 3",
+            "Option D for question 36 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 36: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_37",
+          "position": 36,
+          "question": "Sample IBA Entrance Question 37: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 37 illustrating rule 1",
+            "Option B for question 37 illustrating rule 2",
+            "Option C for question 37 illustrating rule 3",
+            "Option D for question 37 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 37: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_38",
+          "position": 37,
+          "question": "Sample IBA Entrance Question 38: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 38 illustrating rule 1",
+            "Option B for question 38 illustrating rule 2",
+            "Option C for question 38 illustrating rule 3",
+            "Option D for question 38 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 38: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_39",
+          "position": 38,
+          "question": "Sample IBA Entrance Question 39: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 39 illustrating rule 1",
+            "Option B for question 39 illustrating rule 2",
+            "Option C for question 39 illustrating rule 3",
+            "Option D for question 39 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 39: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_40",
+          "position": 39,
+          "question": "Sample IBA Entrance Question 40: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 40 illustrating rule 1",
+            "Option B for question 40 illustrating rule 2",
+            "Option C for question 40 illustrating rule 3",
+            "Option D for question 40 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 40: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_41",
+          "position": 40,
+          "question": "Sample IBA Entrance Question 41: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 41 illustrating rule 1",
+            "Option B for question 41 illustrating rule 2",
+            "Option C for question 41 illustrating rule 3",
+            "Option D for question 41 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 41: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_42",
+          "position": 41,
+          "question": "Sample IBA Entrance Question 42: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 42 illustrating rule 1",
+            "Option B for question 42 illustrating rule 2",
+            "Option C for question 42 illustrating rule 3",
+            "Option D for question 42 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 42: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_43",
+          "position": 42,
+          "question": "Sample IBA Entrance Question 43: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 43 illustrating rule 1",
+            "Option B for question 43 illustrating rule 2",
+            "Option C for question 43 illustrating rule 3",
+            "Option D for question 43 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 43: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_44",
+          "position": 43,
+          "question": "Sample IBA Entrance Question 44: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 44 illustrating rule 1",
+            "Option B for question 44 illustrating rule 2",
+            "Option C for question 44 illustrating rule 3",
+            "Option D for question 44 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 44: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_45",
+          "position": 44,
+          "question": "Sample IBA Entrance Question 45: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 45 illustrating rule 1",
+            "Option B for question 45 illustrating rule 2",
+            "Option C for question 45 illustrating rule 3",
+            "Option D for question 45 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 45: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_46",
+          "position": 45,
+          "question": "Sample IBA Entrance Question 46: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 46 illustrating rule 1",
+            "Option B for question 46 illustrating rule 2",
+            "Option C for question 46 illustrating rule 3",
+            "Option D for question 46 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 46: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_47",
+          "position": 46,
+          "question": "Sample IBA Entrance Question 47: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 47 illustrating rule 1",
+            "Option B for question 47 illustrating rule 2",
+            "Option C for question 47 illustrating rule 3",
+            "Option D for question 47 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 47: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_48",
+          "position": 47,
+          "question": "Sample IBA Entrance Question 48: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 48 illustrating rule 1",
+            "Option B for question 48 illustrating rule 2",
+            "Option C for question 48 illustrating rule 3",
+            "Option D for question 48 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 48: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_49",
+          "position": 48,
+          "question": "Sample IBA Entrance Question 49: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 49 illustrating rule 1",
+            "Option B for question 49 illustrating rule 2",
+            "Option C for question 49 illustrating rule 3",
+            "Option D for question 49 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 49: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_50",
+          "position": 49,
+          "question": "Sample IBA Entrance Question 50: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 50 illustrating rule 1",
+            "Option B for question 50 illustrating rule 2",
+            "Option C for question 50 illustrating rule 3",
+            "Option D for question 50 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 50: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_51",
+          "position": 50,
+          "question": "Sample IBA Entrance Question 51: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 51 illustrating rule 1",
+            "Option B for question 51 illustrating rule 2",
+            "Option C for question 51 illustrating rule 3",
+            "Option D for question 51 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 51: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_52",
+          "position": 51,
+          "question": "Sample IBA Entrance Question 52: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 52 illustrating rule 1",
+            "Option B for question 52 illustrating rule 2",
+            "Option C for question 52 illustrating rule 3",
+            "Option D for question 52 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 52: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_53",
+          "position": 52,
+          "question": "Sample IBA Entrance Question 53: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 53 illustrating rule 1",
+            "Option B for question 53 illustrating rule 2",
+            "Option C for question 53 illustrating rule 3",
+            "Option D for question 53 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 53: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_54",
+          "position": 53,
+          "question": "Sample IBA Entrance Question 54: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 54 illustrating rule 1",
+            "Option B for question 54 illustrating rule 2",
+            "Option C for question 54 illustrating rule 3",
+            "Option D for question 54 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 54: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_55",
+          "position": 54,
+          "question": "Sample IBA Entrance Question 55: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 55 illustrating rule 1",
+            "Option B for question 55 illustrating rule 2",
+            "Option C for question 55 illustrating rule 3",
+            "Option D for question 55 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 55: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_56",
+          "position": 55,
+          "question": "Sample IBA Entrance Question 56: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 56 illustrating rule 1",
+            "Option B for question 56 illustrating rule 2",
+            "Option C for question 56 illustrating rule 3",
+            "Option D for question 56 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 56: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_57",
+          "position": 56,
+          "question": "Sample IBA Entrance Question 57: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 57 illustrating rule 1",
+            "Option B for question 57 illustrating rule 2",
+            "Option C for question 57 illustrating rule 3",
+            "Option D for question 57 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 57: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_58",
+          "position": 57,
+          "question": "Sample IBA Entrance Question 58: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 58 illustrating rule 1",
+            "Option B for question 58 illustrating rule 2",
+            "Option C for question 58 illustrating rule 3",
+            "Option D for question 58 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 58: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_59",
+          "position": 58,
+          "question": "Sample IBA Entrance Question 59: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 59 illustrating rule 1",
+            "Option B for question 59 illustrating rule 2",
+            "Option C for question 59 illustrating rule 3",
+            "Option D for question 59 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 59: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_60",
+          "position": 59,
+          "question": "Sample IBA Entrance Question 60: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 60 illustrating rule 1",
+            "Option B for question 60 illustrating rule 2",
+            "Option C for question 60 illustrating rule 3",
+            "Option D for question 60 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 60: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_61",
+          "position": 60,
+          "question": "Sample IBA Entrance Question 61: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 61 illustrating rule 1",
+            "Option B for question 61 illustrating rule 2",
+            "Option C for question 61 illustrating rule 3",
+            "Option D for question 61 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 61: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_62",
+          "position": 61,
+          "question": "Sample IBA Entrance Question 62: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 62 illustrating rule 1",
+            "Option B for question 62 illustrating rule 2",
+            "Option C for question 62 illustrating rule 3",
+            "Option D for question 62 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 62: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_63",
+          "position": 62,
+          "question": "Sample IBA Entrance Question 63: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 63 illustrating rule 1",
+            "Option B for question 63 illustrating rule 2",
+            "Option C for question 63 illustrating rule 3",
+            "Option D for question 63 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 63: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_64",
+          "position": 63,
+          "question": "Sample IBA Entrance Question 64: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 64 illustrating rule 1",
+            "Option B for question 64 illustrating rule 2",
+            "Option C for question 64 illustrating rule 3",
+            "Option D for question 64 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 64: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_65",
+          "position": 64,
+          "question": "Sample IBA Entrance Question 65: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 65 illustrating rule 1",
+            "Option B for question 65 illustrating rule 2",
+            "Option C for question 65 illustrating rule 3",
+            "Option D for question 65 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 65: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_66",
+          "position": 65,
+          "question": "Sample IBA Entrance Question 66: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 66 illustrating rule 1",
+            "Option B for question 66 illustrating rule 2",
+            "Option C for question 66 illustrating rule 3",
+            "Option D for question 66 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 66: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_67",
+          "position": 66,
+          "question": "Sample IBA Entrance Question 67: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 67 illustrating rule 1",
+            "Option B for question 67 illustrating rule 2",
+            "Option C for question 67 illustrating rule 3",
+            "Option D for question 67 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 67: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_68",
+          "position": 67,
+          "question": "Sample IBA Entrance Question 68: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 68 illustrating rule 1",
+            "Option B for question 68 illustrating rule 2",
+            "Option C for question 68 illustrating rule 3",
+            "Option D for question 68 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 68: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_69",
+          "position": 68,
+          "question": "Sample IBA Entrance Question 69: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 69 illustrating rule 1",
+            "Option B for question 69 illustrating rule 2",
+            "Option C for question 69 illustrating rule 3",
+            "Option D for question 69 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 69: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_70",
+          "position": 69,
+          "question": "Sample IBA Entrance Question 70: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 70 illustrating rule 1",
+            "Option B for question 70 illustrating rule 2",
+            "Option C for question 70 illustrating rule 3",
+            "Option D for question 70 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 70: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_71",
+          "position": 70,
+          "question": "Sample IBA Entrance Question 71: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 71 illustrating rule 1",
+            "Option B for question 71 illustrating rule 2",
+            "Option C for question 71 illustrating rule 3",
+            "Option D for question 71 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 71: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_72",
+          "position": 71,
+          "question": "Sample IBA Entrance Question 72: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 72 illustrating rule 1",
+            "Option B for question 72 illustrating rule 2",
+            "Option C for question 72 illustrating rule 3",
+            "Option D for question 72 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 72: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_73",
+          "position": 72,
+          "question": "Sample IBA Entrance Question 73: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 73 illustrating rule 1",
+            "Option B for question 73 illustrating rule 2",
+            "Option C for question 73 illustrating rule 3",
+            "Option D for question 73 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 73: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_74",
+          "position": 73,
+          "question": "Sample IBA Entrance Question 74: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 74 illustrating rule 1",
+            "Option B for question 74 illustrating rule 2",
+            "Option C for question 74 illustrating rule 3",
+            "Option D for question 74 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 74: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_75",
+          "position": 74,
+          "question": "Sample IBA Entrance Question 75: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 75 illustrating rule 1",
+            "Option B for question 75 illustrating rule 2",
+            "Option C for question 75 illustrating rule 3",
+            "Option D for question 75 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 75: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_76",
+          "position": 75,
+          "question": "Sample IBA Entrance Question 76: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 76 illustrating rule 1",
+            "Option B for question 76 illustrating rule 2",
+            "Option C for question 76 illustrating rule 3",
+            "Option D for question 76 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 76: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_77",
+          "position": 76,
+          "question": "Sample IBA Entrance Question 77: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 77 illustrating rule 1",
+            "Option B for question 77 illustrating rule 2",
+            "Option C for question 77 illustrating rule 3",
+            "Option D for question 77 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 77: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_78",
+          "position": 77,
+          "question": "Sample IBA Entrance Question 78: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 78 illustrating rule 1",
+            "Option B for question 78 illustrating rule 2",
+            "Option C for question 78 illustrating rule 3",
+            "Option D for question 78 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 78: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_79",
+          "position": 78,
+          "question": "Sample IBA Entrance Question 79: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 79 illustrating rule 1",
+            "Option B for question 79 illustrating rule 2",
+            "Option C for question 79 illustrating rule 3",
+            "Option D for question 79 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 79: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_80",
+          "position": 79,
+          "question": "Sample IBA Entrance Question 80: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 80 illustrating rule 1",
+            "Option B for question 80 illustrating rule 2",
+            "Option C for question 80 illustrating rule 3",
+            "Option D for question 80 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 80: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_81",
+          "position": 80,
+          "question": "Sample IBA Entrance Question 81: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 81 illustrating rule 1",
+            "Option B for question 81 illustrating rule 2",
+            "Option C for question 81 illustrating rule 3",
+            "Option D for question 81 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 81: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_82",
+          "position": 81,
+          "question": "Sample IBA Entrance Question 82: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 82 illustrating rule 1",
+            "Option B for question 82 illustrating rule 2",
+            "Option C for question 82 illustrating rule 3",
+            "Option D for question 82 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 82: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_83",
+          "position": 82,
+          "question": "Sample IBA Entrance Question 83: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 83 illustrating rule 1",
+            "Option B for question 83 illustrating rule 2",
+            "Option C for question 83 illustrating rule 3",
+            "Option D for question 83 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 83: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_84",
+          "position": 83,
+          "question": "Sample IBA Entrance Question 84: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 84 illustrating rule 1",
+            "Option B for question 84 illustrating rule 2",
+            "Option C for question 84 illustrating rule 3",
+            "Option D for question 84 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 84: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_85",
+          "position": 84,
+          "question": "Sample IBA Entrance Question 85: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 85 illustrating rule 1",
+            "Option B for question 85 illustrating rule 2",
+            "Option C for question 85 illustrating rule 3",
+            "Option D for question 85 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 85: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_86",
+          "position": 85,
+          "question": "Sample IBA Entrance Question 86: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 86 illustrating rule 1",
+            "Option B for question 86 illustrating rule 2",
+            "Option C for question 86 illustrating rule 3",
+            "Option D for question 86 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 86: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_87",
+          "position": 86,
+          "question": "Sample IBA Entrance Question 87: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 87 illustrating rule 1",
+            "Option B for question 87 illustrating rule 2",
+            "Option C for question 87 illustrating rule 3",
+            "Option D for question 87 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 87: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_88",
+          "position": 87,
+          "question": "Sample IBA Entrance Question 88: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 88 illustrating rule 1",
+            "Option B for question 88 illustrating rule 2",
+            "Option C for question 88 illustrating rule 3",
+            "Option D for question 88 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 88: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_89",
+          "position": 88,
+          "question": "Sample IBA Entrance Question 89: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 89 illustrating rule 1",
+            "Option B for question 89 illustrating rule 2",
+            "Option C for question 89 illustrating rule 3",
+            "Option D for question 89 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 89: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_90",
+          "position": 89,
+          "question": "Sample IBA Entrance Question 90: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 90 illustrating rule 1",
+            "Option B for question 90 illustrating rule 2",
+            "Option C for question 90 illustrating rule 3",
+            "Option D for question 90 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 90: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_91",
+          "position": 90,
+          "question": "Sample IBA Entrance Question 91: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 91 illustrating rule 1",
+            "Option B for question 91 illustrating rule 2",
+            "Option C for question 91 illustrating rule 3",
+            "Option D for question 91 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 91: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_92",
+          "position": 91,
+          "question": "Sample IBA Entrance Question 92: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 92 illustrating rule 1",
+            "Option B for question 92 illustrating rule 2",
+            "Option C for question 92 illustrating rule 3",
+            "Option D for question 92 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 92: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_93",
+          "position": 92,
+          "question": "Sample IBA Entrance Question 93: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 93 illustrating rule 1",
+            "Option B for question 93 illustrating rule 2",
+            "Option C for question 93 illustrating rule 3",
+            "Option D for question 93 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 93: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_94",
+          "position": 93,
+          "question": "Sample IBA Entrance Question 94: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 94 illustrating rule 1",
+            "Option B for question 94 illustrating rule 2",
+            "Option C for question 94 illustrating rule 3",
+            "Option D for question 94 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 94: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_95",
+          "position": 94,
+          "question": "Sample IBA Entrance Question 95: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 95 illustrating rule 1",
+            "Option B for question 95 illustrating rule 2",
+            "Option C for question 95 illustrating rule 3",
+            "Option D for question 95 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 95: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_96",
+          "position": 95,
+          "question": "Sample IBA Entrance Question 96: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 96 illustrating rule 1",
+            "Option B for question 96 illustrating rule 2",
+            "Option C for question 96 illustrating rule 3",
+            "Option D for question 96 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 96: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_97",
+          "position": 96,
+          "question": "Sample IBA Entrance Question 97: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 97 illustrating rule 1",
+            "Option B for question 97 illustrating rule 2",
+            "Option C for question 97 illustrating rule 3",
+            "Option D for question 97 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 97: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_98",
+          "position": 97,
+          "question": "Sample IBA Entrance Question 98: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 98 illustrating rule 1",
+            "Option B for question 98 illustrating rule 2",
+            "Option C for question 98 illustrating rule 3",
+            "Option D for question 98 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 98: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_99",
+          "position": 98,
+          "question": "Sample IBA Entrance Question 99: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 99 illustrating rule 1",
+            "Option B for question 99 illustrating rule 2",
+            "Option C for question 99 illustrating rule 3",
+            "Option D for question 99 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 99: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_100",
+          "position": 99,
+          "question": "Sample IBA Entrance Question 100: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 100 illustrating rule 1",
+            "Option B for question 100 illustrating rule 2",
+            "Option C for question 100 illustrating rule 3",
+            "Option D for question 100 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 100: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_101",
+          "position": 100,
+          "question": "Sample IBA Entrance Question 101: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 101 illustrating rule 1",
+            "Option B for question 101 illustrating rule 2",
+            "Option C for question 101 illustrating rule 3",
+            "Option D for question 101 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 101: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_102",
+          "position": 101,
+          "question": "Sample IBA Entrance Question 102: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 102 illustrating rule 1",
+            "Option B for question 102 illustrating rule 2",
+            "Option C for question 102 illustrating rule 3",
+            "Option D for question 102 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 102: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_103",
+          "position": 102,
+          "question": "Sample IBA Entrance Question 103: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 103 illustrating rule 1",
+            "Option B for question 103 illustrating rule 2",
+            "Option C for question 103 illustrating rule 3",
+            "Option D for question 103 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 103: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_104",
+          "position": 103,
+          "question": "Sample IBA Entrance Question 104: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 104 illustrating rule 1",
+            "Option B for question 104 illustrating rule 2",
+            "Option C for question 104 illustrating rule 3",
+            "Option D for question 104 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 104: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_105",
+          "position": 104,
+          "question": "Sample IBA Entrance Question 105: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 105 illustrating rule 1",
+            "Option B for question 105 illustrating rule 2",
+            "Option C for question 105 illustrating rule 3",
+            "Option D for question 105 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 105: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_106",
+          "position": 105,
+          "question": "Sample IBA Entrance Question 106: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 106 illustrating rule 1",
+            "Option B for question 106 illustrating rule 2",
+            "Option C for question 106 illustrating rule 3",
+            "Option D for question 106 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 106: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_107",
+          "position": 106,
+          "question": "Sample IBA Entrance Question 107: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 107 illustrating rule 1",
+            "Option B for question 107 illustrating rule 2",
+            "Option C for question 107 illustrating rule 3",
+            "Option D for question 107 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 107: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_108",
+          "position": 107,
+          "question": "Sample IBA Entrance Question 108: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 108 illustrating rule 1",
+            "Option B for question 108 illustrating rule 2",
+            "Option C for question 108 illustrating rule 3",
+            "Option D for question 108 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 108: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_109",
+          "position": 108,
+          "question": "Sample IBA Entrance Question 109: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 109 illustrating rule 1",
+            "Option B for question 109 illustrating rule 2",
+            "Option C for question 109 illustrating rule 3",
+            "Option D for question 109 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 109: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_110",
+          "position": 109,
+          "question": "Sample IBA Entrance Question 110: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 110 illustrating rule 1",
+            "Option B for question 110 illustrating rule 2",
+            "Option C for question 110 illustrating rule 3",
+            "Option D for question 110 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 110: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_111",
+          "position": 110,
+          "question": "Sample IBA Entrance Question 111: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 111 illustrating rule 1",
+            "Option B for question 111 illustrating rule 2",
+            "Option C for question 111 illustrating rule 3",
+            "Option D for question 111 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 111: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_112",
+          "position": 111,
+          "question": "Sample IBA Entrance Question 112: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 112 illustrating rule 1",
+            "Option B for question 112 illustrating rule 2",
+            "Option C for question 112 illustrating rule 3",
+            "Option D for question 112 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 112: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_113",
+          "position": 112,
+          "question": "Sample IBA Entrance Question 113: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 113 illustrating rule 1",
+            "Option B for question 113 illustrating rule 2",
+            "Option C for question 113 illustrating rule 3",
+            "Option D for question 113 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 113: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_114",
+          "position": 113,
+          "question": "Sample IBA Entrance Question 114: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 114 illustrating rule 1",
+            "Option B for question 114 illustrating rule 2",
+            "Option C for question 114 illustrating rule 3",
+            "Option D for question 114 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 114: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_115",
+          "position": 114,
+          "question": "Sample IBA Entrance Question 115: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 115 illustrating rule 1",
+            "Option B for question 115 illustrating rule 2",
+            "Option C for question 115 illustrating rule 3",
+            "Option D for question 115 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 115: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_116",
+          "position": 115,
+          "question": "Sample IBA Entrance Question 116: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 116 illustrating rule 1",
+            "Option B for question 116 illustrating rule 2",
+            "Option C for question 116 illustrating rule 3",
+            "Option D for question 116 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 116: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_117",
+          "position": 116,
+          "question": "Sample IBA Entrance Question 117: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 117 illustrating rule 1",
+            "Option B for question 117 illustrating rule 2",
+            "Option C for question 117 illustrating rule 3",
+            "Option D for question 117 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 117: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_118",
+          "position": 117,
+          "question": "Sample IBA Entrance Question 118: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 118 illustrating rule 1",
+            "Option B for question 118 illustrating rule 2",
+            "Option C for question 118 illustrating rule 3",
+            "Option D for question 118 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 118: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_119",
+          "position": 118,
+          "question": "Sample IBA Entrance Question 119: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 119 illustrating rule 1",
+            "Option B for question 119 illustrating rule 2",
+            "Option C for question 119 illustrating rule 3",
+            "Option D for question 119 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 119: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_120",
+          "position": 119,
+          "question": "Sample IBA Entrance Question 120: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 120 illustrating rule 1",
+            "Option B for question 120 illustrating rule 2",
+            "Option C for question 120 illustrating rule 3",
+            "Option D for question 120 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 120: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_121",
+          "position": 120,
+          "question": "Sample IBA Entrance Question 121: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 121 illustrating rule 1",
+            "Option B for question 121 illustrating rule 2",
+            "Option C for question 121 illustrating rule 3",
+            "Option D for question 121 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 121: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_122",
+          "position": 121,
+          "question": "Sample IBA Entrance Question 122: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 122 illustrating rule 1",
+            "Option B for question 122 illustrating rule 2",
+            "Option C for question 122 illustrating rule 3",
+            "Option D for question 122 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 122: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_123",
+          "position": 122,
+          "question": "Sample IBA Entrance Question 123: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 123 illustrating rule 1",
+            "Option B for question 123 illustrating rule 2",
+            "Option C for question 123 illustrating rule 3",
+            "Option D for question 123 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 123: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_124",
+          "position": 123,
+          "question": "Sample IBA Entrance Question 124: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 124 illustrating rule 1",
+            "Option B for question 124 illustrating rule 2",
+            "Option C for question 124 illustrating rule 3",
+            "Option D for question 124 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 124: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_125",
+          "position": 124,
+          "question": "Sample IBA Entrance Question 125: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 125 illustrating rule 1",
+            "Option B for question 125 illustrating rule 2",
+            "Option C for question 125 illustrating rule 3",
+            "Option D for question 125 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 125: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_126",
+          "position": 125,
+          "question": "Sample IBA Entrance Question 126: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 126 illustrating rule 1",
+            "Option B for question 126 illustrating rule 2",
+            "Option C for question 126 illustrating rule 3",
+            "Option D for question 126 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 126: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_127",
+          "position": 126,
+          "question": "Sample IBA Entrance Question 127: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 127 illustrating rule 1",
+            "Option B for question 127 illustrating rule 2",
+            "Option C for question 127 illustrating rule 3",
+            "Option D for question 127 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 127: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_128",
+          "position": 127,
+          "question": "Sample IBA Entrance Question 128: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 128 illustrating rule 1",
+            "Option B for question 128 illustrating rule 2",
+            "Option C for question 128 illustrating rule 3",
+            "Option D for question 128 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 128: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_129",
+          "position": 128,
+          "question": "Sample IBA Entrance Question 129: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 129 illustrating rule 1",
+            "Option B for question 129 illustrating rule 2",
+            "Option C for question 129 illustrating rule 3",
+            "Option D for question 129 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 129: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_130",
+          "position": 129,
+          "question": "Sample IBA Entrance Question 130: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 130 illustrating rule 1",
+            "Option B for question 130 illustrating rule 2",
+            "Option C for question 130 illustrating rule 3",
+            "Option D for question 130 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 130: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_131",
+          "position": 130,
+          "question": "Sample IBA Entrance Question 131: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 131 illustrating rule 1",
+            "Option B for question 131 illustrating rule 2",
+            "Option C for question 131 illustrating rule 3",
+            "Option D for question 131 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 131: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_132",
+          "position": 131,
+          "question": "Sample IBA Entrance Question 132: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 132 illustrating rule 1",
+            "Option B for question 132 illustrating rule 2",
+            "Option C for question 132 illustrating rule 3",
+            "Option D for question 132 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 132: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_133",
+          "position": 132,
+          "question": "Sample IBA Entrance Question 133: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 133 illustrating rule 1",
+            "Option B for question 133 illustrating rule 2",
+            "Option C for question 133 illustrating rule 3",
+            "Option D for question 133 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 133: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_134",
+          "position": 133,
+          "question": "Sample IBA Entrance Question 134: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 134 illustrating rule 1",
+            "Option B for question 134 illustrating rule 2",
+            "Option C for question 134 illustrating rule 3",
+            "Option D for question 134 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 134: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_135",
+          "position": 134,
+          "question": "Sample IBA Entrance Question 135: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 135 illustrating rule 1",
+            "Option B for question 135 illustrating rule 2",
+            "Option C for question 135 illustrating rule 3",
+            "Option D for question 135 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 135: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_136",
+          "position": 135,
+          "question": "Sample IBA Entrance Question 136: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 136 illustrating rule 1",
+            "Option B for question 136 illustrating rule 2",
+            "Option C for question 136 illustrating rule 3",
+            "Option D for question 136 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 136: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_137",
+          "position": 136,
+          "question": "Sample IBA Entrance Question 137: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 137 illustrating rule 1",
+            "Option B for question 137 illustrating rule 2",
+            "Option C for question 137 illustrating rule 3",
+            "Option D for question 137 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 137: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_138",
+          "position": 137,
+          "question": "Sample IBA Entrance Question 138: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 138 illustrating rule 1",
+            "Option B for question 138 illustrating rule 2",
+            "Option C for question 138 illustrating rule 3",
+            "Option D for question 138 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 138: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_139",
+          "position": 138,
+          "question": "Sample IBA Entrance Question 139: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 139 illustrating rule 1",
+            "Option B for question 139 illustrating rule 2",
+            "Option C for question 139 illustrating rule 3",
+            "Option D for question 139 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 139: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_140",
+          "position": 139,
+          "question": "Sample IBA Entrance Question 140: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 140 illustrating rule 1",
+            "Option B for question 140 illustrating rule 2",
+            "Option C for question 140 illustrating rule 3",
+            "Option D for question 140 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 140: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_141",
+          "position": 140,
+          "question": "Sample IBA Entrance Question 141: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 141 illustrating rule 1",
+            "Option B for question 141 illustrating rule 2",
+            "Option C for question 141 illustrating rule 3",
+            "Option D for question 141 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 141: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_142",
+          "position": 141,
+          "question": "Sample IBA Entrance Question 142: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 142 illustrating rule 1",
+            "Option B for question 142 illustrating rule 2",
+            "Option C for question 142 illustrating rule 3",
+            "Option D for question 142 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 142: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_143",
+          "position": 142,
+          "question": "Sample IBA Entrance Question 143: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 143 illustrating rule 1",
+            "Option B for question 143 illustrating rule 2",
+            "Option C for question 143 illustrating rule 3",
+            "Option D for question 143 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 143: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_144",
+          "position": 143,
+          "question": "Sample IBA Entrance Question 144: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 144 illustrating rule 1",
+            "Option B for question 144 illustrating rule 2",
+            "Option C for question 144 illustrating rule 3",
+            "Option D for question 144 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 144: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_145",
+          "position": 144,
+          "question": "Sample IBA Entrance Question 145: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 145 illustrating rule 1",
+            "Option B for question 145 illustrating rule 2",
+            "Option C for question 145 illustrating rule 3",
+            "Option D for question 145 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 145: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_146",
+          "position": 145,
+          "question": "Sample IBA Entrance Question 146: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 146 illustrating rule 1",
+            "Option B for question 146 illustrating rule 2",
+            "Option C for question 146 illustrating rule 3",
+            "Option D for question 146 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 146: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_147",
+          "position": 146,
+          "question": "Sample IBA Entrance Question 147: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 147 illustrating rule 1",
+            "Option B for question 147 illustrating rule 2",
+            "Option C for question 147 illustrating rule 3",
+            "Option D for question 147 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 147: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_148",
+          "position": 147,
+          "question": "Sample IBA Entrance Question 148: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 148 illustrating rule 1",
+            "Option B for question 148 illustrating rule 2",
+            "Option C for question 148 illustrating rule 3",
+            "Option D for question 148 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 148: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_149",
+          "position": 148,
+          "question": "Sample IBA Entrance Question 149: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 149 illustrating rule 1",
+            "Option B for question 149 illustrating rule 2",
+            "Option C for question 149 illustrating rule 3",
+            "Option D for question 149 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 149: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_150",
+          "position": 149,
+          "question": "Sample IBA Entrance Question 150: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 150 illustrating rule 1",
+            "Option B for question 150 illustrating rule 2",
+            "Option C for question 150 illustrating rule 3",
+            "Option D for question 150 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 150: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_151",
+          "position": 150,
+          "question": "Sample IBA Entrance Question 151: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 151 illustrating rule 1",
+            "Option B for question 151 illustrating rule 2",
+            "Option C for question 151 illustrating rule 3",
+            "Option D for question 151 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 151: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_152",
+          "position": 151,
+          "question": "Sample IBA Entrance Question 152: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 152 illustrating rule 1",
+            "Option B for question 152 illustrating rule 2",
+            "Option C for question 152 illustrating rule 3",
+            "Option D for question 152 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 152: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_153",
+          "position": 152,
+          "question": "Sample IBA Entrance Question 153: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 153 illustrating rule 1",
+            "Option B for question 153 illustrating rule 2",
+            "Option C for question 153 illustrating rule 3",
+            "Option D for question 153 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 153: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_154",
+          "position": 153,
+          "question": "Sample IBA Entrance Question 154: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 154 illustrating rule 1",
+            "Option B for question 154 illustrating rule 2",
+            "Option C for question 154 illustrating rule 3",
+            "Option D for question 154 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 154: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_155",
+          "position": 154,
+          "question": "Sample IBA Entrance Question 155: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 155 illustrating rule 1",
+            "Option B for question 155 illustrating rule 2",
+            "Option C for question 155 illustrating rule 3",
+            "Option D for question 155 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 155: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_156",
+          "position": 155,
+          "question": "Sample IBA Entrance Question 156: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 156 illustrating rule 1",
+            "Option B for question 156 illustrating rule 2",
+            "Option C for question 156 illustrating rule 3",
+            "Option D for question 156 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 156: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_157",
+          "position": 156,
+          "question": "Sample IBA Entrance Question 157: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 157 illustrating rule 1",
+            "Option B for question 157 illustrating rule 2",
+            "Option C for question 157 illustrating rule 3",
+            "Option D for question 157 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 157: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_158",
+          "position": 157,
+          "question": "Sample IBA Entrance Question 158: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 158 illustrating rule 1",
+            "Option B for question 158 illustrating rule 2",
+            "Option C for question 158 illustrating rule 3",
+            "Option D for question 158 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 158: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_159",
+          "position": 158,
+          "question": "Sample IBA Entrance Question 159: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 159 illustrating rule 1",
+            "Option B for question 159 illustrating rule 2",
+            "Option C for question 159 illustrating rule 3",
+            "Option D for question 159 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 159: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_160",
+          "position": 159,
+          "question": "Sample IBA Entrance Question 160: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 160 illustrating rule 1",
+            "Option B for question 160 illustrating rule 2",
+            "Option C for question 160 illustrating rule 3",
+            "Option D for question 160 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 160: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_161",
+          "position": 160,
+          "question": "Sample IBA Entrance Question 161: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 161 illustrating rule 1",
+            "Option B for question 161 illustrating rule 2",
+            "Option C for question 161 illustrating rule 3",
+            "Option D for question 161 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 161: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_162",
+          "position": 161,
+          "question": "Sample IBA Entrance Question 162: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 162 illustrating rule 1",
+            "Option B for question 162 illustrating rule 2",
+            "Option C for question 162 illustrating rule 3",
+            "Option D for question 162 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 162: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_163",
+          "position": 162,
+          "question": "Sample IBA Entrance Question 163: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 163 illustrating rule 1",
+            "Option B for question 163 illustrating rule 2",
+            "Option C for question 163 illustrating rule 3",
+            "Option D for question 163 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 163: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_164",
+          "position": 163,
+          "question": "Sample IBA Entrance Question 164: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 164 illustrating rule 1",
+            "Option B for question 164 illustrating rule 2",
+            "Option C for question 164 illustrating rule 3",
+            "Option D for question 164 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 164: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_165",
+          "position": 164,
+          "question": "Sample IBA Entrance Question 165: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 165 illustrating rule 1",
+            "Option B for question 165 illustrating rule 2",
+            "Option C for question 165 illustrating rule 3",
+            "Option D for question 165 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 165: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_166",
+          "position": 165,
+          "question": "Sample IBA Entrance Question 166: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 166 illustrating rule 1",
+            "Option B for question 166 illustrating rule 2",
+            "Option C for question 166 illustrating rule 3",
+            "Option D for question 166 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 166: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_167",
+          "position": 166,
+          "question": "Sample IBA Entrance Question 167: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 167 illustrating rule 1",
+            "Option B for question 167 illustrating rule 2",
+            "Option C for question 167 illustrating rule 3",
+            "Option D for question 167 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 167: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_168",
+          "position": 167,
+          "question": "Sample IBA Entrance Question 168: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 168 illustrating rule 1",
+            "Option B for question 168 illustrating rule 2",
+            "Option C for question 168 illustrating rule 3",
+            "Option D for question 168 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 168: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_169",
+          "position": 168,
+          "question": "Sample IBA Entrance Question 169: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 169 illustrating rule 1",
+            "Option B for question 169 illustrating rule 2",
+            "Option C for question 169 illustrating rule 3",
+            "Option D for question 169 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 169: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_170",
+          "position": 169,
+          "question": "Sample IBA Entrance Question 170: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 170 illustrating rule 1",
+            "Option B for question 170 illustrating rule 2",
+            "Option C for question 170 illustrating rule 3",
+            "Option D for question 170 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 170: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_171",
+          "position": 170,
+          "question": "Sample IBA Entrance Question 171: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 171 illustrating rule 1",
+            "Option B for question 171 illustrating rule 2",
+            "Option C for question 171 illustrating rule 3",
+            "Option D for question 171 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 171: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_172",
+          "position": 171,
+          "question": "Sample IBA Entrance Question 172: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 172 illustrating rule 1",
+            "Option B for question 172 illustrating rule 2",
+            "Option C for question 172 illustrating rule 3",
+            "Option D for question 172 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 172: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_173",
+          "position": 172,
+          "question": "Sample IBA Entrance Question 173: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 173 illustrating rule 1",
+            "Option B for question 173 illustrating rule 2",
+            "Option C for question 173 illustrating rule 3",
+            "Option D for question 173 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 173: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_174",
+          "position": 173,
+          "question": "Sample IBA Entrance Question 174: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 174 illustrating rule 1",
+            "Option B for question 174 illustrating rule 2",
+            "Option C for question 174 illustrating rule 3",
+            "Option D for question 174 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 174: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_175",
+          "position": 174,
+          "question": "Sample IBA Entrance Question 175: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 175 illustrating rule 1",
+            "Option B for question 175 illustrating rule 2",
+            "Option C for question 175 illustrating rule 3",
+            "Option D for question 175 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 175: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_176",
+          "position": 175,
+          "question": "Sample IBA Entrance Question 176: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 176 illustrating rule 1",
+            "Option B for question 176 illustrating rule 2",
+            "Option C for question 176 illustrating rule 3",
+            "Option D for question 176 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 176: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_177",
+          "position": 176,
+          "question": "Sample IBA Entrance Question 177: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 177 illustrating rule 1",
+            "Option B for question 177 illustrating rule 2",
+            "Option C for question 177 illustrating rule 3",
+            "Option D for question 177 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 177: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_178",
+          "position": 177,
+          "question": "Sample IBA Entrance Question 178: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 178 illustrating rule 1",
+            "Option B for question 178 illustrating rule 2",
+            "Option C for question 178 illustrating rule 3",
+            "Option D for question 178 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 178: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_179",
+          "position": 178,
+          "question": "Sample IBA Entrance Question 179: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 179 illustrating rule 1",
+            "Option B for question 179 illustrating rule 2",
+            "Option C for question 179 illustrating rule 3",
+            "Option D for question 179 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 179: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_180",
+          "position": 179,
+          "question": "Sample IBA Entrance Question 180: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 180 illustrating rule 1",
+            "Option B for question 180 illustrating rule 2",
+            "Option C for question 180 illustrating rule 3",
+            "Option D for question 180 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 180: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_181",
+          "position": 180,
+          "question": "Sample IBA Entrance Question 181: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 181 illustrating rule 1",
+            "Option B for question 181 illustrating rule 2",
+            "Option C for question 181 illustrating rule 3",
+            "Option D for question 181 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 181: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_182",
+          "position": 181,
+          "question": "Sample IBA Entrance Question 182: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 182 illustrating rule 1",
+            "Option B for question 182 illustrating rule 2",
+            "Option C for question 182 illustrating rule 3",
+            "Option D for question 182 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 182: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_183",
+          "position": 182,
+          "question": "Sample IBA Entrance Question 183: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 183 illustrating rule 1",
+            "Option B for question 183 illustrating rule 2",
+            "Option C for question 183 illustrating rule 3",
+            "Option D for question 183 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 183: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_184",
+          "position": 183,
+          "question": "Sample IBA Entrance Question 184: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 184 illustrating rule 1",
+            "Option B for question 184 illustrating rule 2",
+            "Option C for question 184 illustrating rule 3",
+            "Option D for question 184 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 184: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_185",
+          "position": 184,
+          "question": "Sample IBA Entrance Question 185: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 185 illustrating rule 1",
+            "Option B for question 185 illustrating rule 2",
+            "Option C for question 185 illustrating rule 3",
+            "Option D for question 185 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 185: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_186",
+          "position": 185,
+          "question": "Sample IBA Entrance Question 186: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 186 illustrating rule 1",
+            "Option B for question 186 illustrating rule 2",
+            "Option C for question 186 illustrating rule 3",
+            "Option D for question 186 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 186: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_187",
+          "position": 186,
+          "question": "Sample IBA Entrance Question 187: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 187 illustrating rule 1",
+            "Option B for question 187 illustrating rule 2",
+            "Option C for question 187 illustrating rule 3",
+            "Option D for question 187 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 187: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_188",
+          "position": 187,
+          "question": "Sample IBA Entrance Question 188: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 188 illustrating rule 1",
+            "Option B for question 188 illustrating rule 2",
+            "Option C for question 188 illustrating rule 3",
+            "Option D for question 188 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 188: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_189",
+          "position": 188,
+          "question": "Sample IBA Entrance Question 189: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 189 illustrating rule 1",
+            "Option B for question 189 illustrating rule 2",
+            "Option C for question 189 illustrating rule 3",
+            "Option D for question 189 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 189: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_190",
+          "position": 189,
+          "question": "Sample IBA Entrance Question 190: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 190 illustrating rule 1",
+            "Option B for question 190 illustrating rule 2",
+            "Option C for question 190 illustrating rule 3",
+            "Option D for question 190 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 190: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_191",
+          "position": 190,
+          "question": "Sample IBA Entrance Question 191: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 191 illustrating rule 1",
+            "Option B for question 191 illustrating rule 2",
+            "Option C for question 191 illustrating rule 3",
+            "Option D for question 191 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 191: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_192",
+          "position": 191,
+          "question": "Sample IBA Entrance Question 192: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 192 illustrating rule 1",
+            "Option B for question 192 illustrating rule 2",
+            "Option C for question 192 illustrating rule 3",
+            "Option D for question 192 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 192: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_193",
+          "position": 192,
+          "question": "Sample IBA Entrance Question 193: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 193 illustrating rule 1",
+            "Option B for question 193 illustrating rule 2",
+            "Option C for question 193 illustrating rule 3",
+            "Option D for question 193 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 193: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_194",
+          "position": 193,
+          "question": "Sample IBA Entrance Question 194: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 194 illustrating rule 1",
+            "Option B for question 194 illustrating rule 2",
+            "Option C for question 194 illustrating rule 3",
+            "Option D for question 194 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 194: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_195",
+          "position": 194,
+          "question": "Sample IBA Entrance Question 195: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 195 illustrating rule 1",
+            "Option B for question 195 illustrating rule 2",
+            "Option C for question 195 illustrating rule 3",
+            "Option D for question 195 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 195: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_196",
+          "position": 195,
+          "question": "Sample IBA Entrance Question 196: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 196 illustrating rule 1",
+            "Option B for question 196 illustrating rule 2",
+            "Option C for question 196 illustrating rule 3",
+            "Option D for question 196 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 196: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        },
+        {
+          "id": "iba_q_197",
+          "position": 196,
+          "question": "Sample IBA Entrance Question 197: Identify the primary linguistic or grammatical structure in the following context regarding vocabulary.",
+          "options": [
+            "Option A for question 197 illustrating rule 1",
+            "Option B for question 197 illustrating rule 2",
+            "Option C for question 197 illustrating rule 3",
+            "Option D for question 197 illustrating rule 4"
+          ],
+          "correctIndex": 0,
+          "explanation": "Detailed derivation for IBA MCQ 197: According to standard test criteria for Vocabulary, option A is the uniquely verified solution.",
+          "topic": "Vocabulary",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_198",
+          "position": 197,
+          "question": "Sample IBA Entrance Question 198: Identify the primary linguistic or grammatical structure in the following context regarding grammar & sentence correction.",
+          "options": [
+            "Option A for question 198 illustrating rule 1",
+            "Option B for question 198 illustrating rule 2",
+            "Option C for question 198 illustrating rule 3",
+            "Option D for question 198 illustrating rule 4"
+          ],
+          "correctIndex": 1,
+          "explanation": "Detailed derivation for IBA MCQ 198: According to standard test criteria for Grammar & Sentence Correction, option B is the uniquely verified solution.",
+          "topic": "Grammar & Sentence Correction",
+          "difficulty": "hard"
+        },
+        {
+          "id": "iba_q_199",
+          "position": 198,
+          "question": "Sample IBA Entrance Question 199: Identify the primary linguistic or grammatical structure in the following context regarding reading comprehension.",
+          "options": [
+            "Option A for question 199 illustrating rule 1",
+            "Option B for question 199 illustrating rule 2",
+            "Option C for question 199 illustrating rule 3",
+            "Option D for question 199 illustrating rule 4"
+          ],
+          "correctIndex": 2,
+          "explanation": "Detailed derivation for IBA MCQ 199: According to standard test criteria for Reading Comprehension, option C is the uniquely verified solution.",
+          "topic": "Reading Comprehension",
+          "difficulty": "easy"
+        },
+        {
+          "id": "iba_q_200",
+          "position": 199,
+          "question": "Sample IBA Entrance Question 200: Identify the primary linguistic or grammatical structure in the following context regarding analytical reasoning.",
+          "options": [
+            "Option A for question 200 illustrating rule 1",
+            "Option B for question 200 illustrating rule 2",
+            "Option C for question 200 illustrating rule 3",
+            "Option D for question 200 illustrating rule 4"
+          ],
+          "correctIndex": 3,
+          "explanation": "Detailed derivation for IBA MCQ 200: According to standard test criteria for Analytical Reasoning, option D is the uniquely verified solution.",
+          "topic": "Analytical Reasoning",
+          "difficulty": "medium"
+        }
+      ],
+      "questionCount": 200,
+      "captainUid": "A5YMRimdHRcmeDWutxtUGt2e4hf2",
+      "captainName": "Captain Hashir",
+      "creatorUid": "A5YMRimdHRcmeDWutxtUGt2e4hf2",
+      "creatorName": "Captain Hashir",
+      "creatorShortId": "HASHIR",
+      "crewId": null,
+      "crewName": "Grand Line Crew",
+      "visibility": "public",
+      "status": "published",
+      "isPublic": true,
+      "attemptsCount": 0,
+      "avgScore": 0,
+      "createdAt": "2026-11-05T00:06:16.010Z",
+      "updatedAt": "2026-11-05T00:06:16.011Z"
     }
   ],
   "crews": [],

@@ -47,7 +47,7 @@ export function GrandLineTestRunnerPage() {
     searchParams.get('view') === 'result' ||
     location.pathname.endsWith('/result');
   const navigate = useNavigate();
-  const { user, profile, loading: authLoading } = useAuth();
+  const { user, profile, isAdmin, loading: authLoading } = useAuth();
 
   const [test, setTest] = useState<AmbassadorCustomTest | null>(null);
   const [otherTests, setOtherTests] = useState<AmbassadorTestDoc[]>([]);
@@ -430,7 +430,7 @@ export function GrandLineTestRunnerPage() {
 
                 <PdfDownloadButton
                   variant="secondary"
-                  label="Download PDF"
+                  label={isAdmin ? 'Download Report' : 'Download PDF'}
                   className="w-full sm:w-auto px-5 py-2.5 text-xs sm:text-sm font-semibold"
                   onDownload={async (onProgress, signal) => {
                     const { downloadDrillResultPdfByTestId } = await import(
@@ -441,11 +441,34 @@ export function GrandLineTestRunnerPage() {
                       prevAttempt as AmbassadorTestAttempt | undefined,
                       resolveStudentProfileName(),
                       onProgress,
-                      signal
+                      signal,
+                      false
                     );
                     showApiToast('Result PDF downloaded successfully!', 'success');
                   }}
                 />
+
+                {isAdmin && (
+                  <PdfDownloadButton
+                    variant="outline"
+                    label="Download Answer Key"
+                    className="w-full sm:w-auto px-5 py-2.5 text-xs sm:text-sm font-semibold border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10"
+                    onDownload={async (onProgress, signal) => {
+                      const { downloadDrillResultPdfByTestId } = await import(
+                        '@/utils/testPdfExporter'
+                      );
+                      await downloadDrillResultPdfByTestId(
+                        testId,
+                        prevAttempt as AmbassadorTestAttempt | undefined,
+                        resolveStudentProfileName(),
+                        onProgress,
+                        signal,
+                        true
+                      );
+                      showApiToast('Answer Key PDF downloaded successfully!', 'success');
+                    }}
+                  />
+                )}
               </>
             )}
 
@@ -519,7 +542,7 @@ export function GrandLineTestRunnerPage() {
 
             <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
               <PdfDownloadButton
-                label="Download PDF"
+                label={isAdmin ? 'Download My Report' : 'Download PDF'}
                 onDownload={async (onProgress, signal) => {
                   if (!scoreResult) return;
                   const { exportDrillResultToPdf } = await import('@/utils/testPdfExporter');
@@ -536,10 +559,40 @@ export function GrandLineTestRunnerPage() {
                     gradedQuestions: scoreResult.gradedQuestions,
                     signal,
                     onProgress,
+                    isAdminAnswerKey: false,
                   });
                   showApiToast('Result PDF downloaded successfully!', 'success');
                 }}
               />
+
+              {isAdmin && (
+                <PdfDownloadButton
+                  variant="outline"
+                  label="Download Answer Key"
+                  className="border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10"
+                  onDownload={async (onProgress, signal) => {
+                    if (!scoreResult) return;
+                    const { exportDrillResultToPdf } = await import('@/utils/testPdfExporter');
+                    await exportDrillResultToPdf({
+                      testId: testId || test?.id,
+                      testTitle: scoreResult.testTitle,
+                      subject: scoreResult.subject,
+                      studentName: scoreResult.studentName || resolveStudentProfileName(),
+                      adminName: resolveStudentProfileName(),
+                      date: scoreResult.date,
+                      score: scoreResult.score,
+                      totalQuestions: scoreResult.totalQuestions,
+                      percentage: scoreResult.percentage,
+                      timeTakenSeconds: scoreResult.timeTakenSeconds,
+                      gradedQuestions: scoreResult.gradedQuestions,
+                      signal,
+                      onProgress,
+                      isAdminAnswerKey: true,
+                    });
+                    showApiToast('Answer Key PDF downloaded successfully!', 'success');
+                  }}
+                />
+              )}
 
               <Link
                 to="/grand-line/leaderboard"

@@ -45,7 +45,7 @@ export const GrandLineTestInfoPage: React.FC = () => {
   const { idSlug } = useParams<{ idSlug: string }>();
   const testId = extractIdFromSlug(idSlug);
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, isAdmin } = useAuth();
   const { requireAuth } = useAuthGate();
 
   const [test, setTest] = useState<AmbassadorTestDoc | null>(null);
@@ -276,7 +276,7 @@ export const GrandLineTestInfoPage: React.FC = () => {
                   <span>View Result</span>
                 </button>
                 <PdfDownloadButton
-                  label="Download PDF"
+                  label={isAdmin ? 'Download Report' : 'Download PDF'}
                   variant="secondary"
                   className="px-5 py-3 text-xs sm:text-sm font-semibold"
                   onDownload={async (onProgress, signal) => {
@@ -288,21 +288,66 @@ export const GrandLineTestInfoPage: React.FC = () => {
                       myAttempt,
                       studentFallbackName,
                       onProgress,
-                      signal
+                      signal,
+                      false
                     );
                     showApiToast('Result PDF downloaded successfully!', 'success');
                   }}
                 />
+                {isAdmin && (
+                  <PdfDownloadButton
+                    label="Download Answer Key"
+                    variant="outline"
+                    className="px-5 py-3 text-xs sm:text-sm font-semibold border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10"
+                    onDownload={async (onProgress, signal) => {
+                      const { downloadDrillResultPdfByTestId } = await import(
+                        '@/utils/testPdfExporter'
+                      );
+                      await downloadDrillResultPdfByTestId(
+                        test.id,
+                        myAttempt,
+                        studentFallbackName,
+                        onProgress,
+                        signal,
+                        true
+                      );
+                      showApiToast('Answer Key PDF downloaded successfully!', 'success');
+                    }}
+                  />
+                )}
               </>
             ) : (
-              <button
-                type="button"
-                onClick={handleStartTest}
-                className="btn-primary px-6 py-3 text-xs sm:text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
-              >
-                {user ? <Play size={15} /> : <Lock size={15} />}
-                <span>{user ? 'Start Timed Test Now' : 'Sign in to Take Test'}</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleStartTest}
+                  className="btn-primary px-6 py-3 text-xs sm:text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
+                >
+                  {user ? <Play size={15} /> : <Lock size={15} />}
+                  <span>{user ? 'Start Timed Test Now' : 'Sign in to Take Test'}</span>
+                </button>
+                {isAdmin && (
+                  <PdfDownloadButton
+                    label="Download Answer Key"
+                    variant="secondary"
+                    className="px-5 py-3 text-xs sm:text-sm font-semibold border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10"
+                    onDownload={async (onProgress, signal) => {
+                      const { downloadDrillResultPdfByTestId } = await import(
+                        '@/utils/testPdfExporter'
+                      );
+                      await downloadDrillResultPdfByTestId(
+                        test.id,
+                        undefined,
+                        studentFallbackName,
+                        onProgress,
+                        signal,
+                        true
+                      );
+                      showApiToast('Admin Answer Key PDF downloaded!', 'success');
+                    }}
+                  />
+                )}
+              </>
             )}
 
             <Link

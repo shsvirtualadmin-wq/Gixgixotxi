@@ -23,7 +23,7 @@ import { showApiToast } from '@/lib/api';
 export const CaptainPublicProfilePage: React.FC = () => {
   const { username = '' } = useParams<{ username: string }>();
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, isAdmin } = useAuth();
   const [captainProfile, setCaptainProfile] = useState<Record<string, any> | null>(null);
   const [tests, setTests] = useState<AmbassadorTestDoc[]>([]);
   const [myAttemptsMap, setMyAttemptsMap] = useState<Record<string, AmbassadorTestAttempt>>({});
@@ -236,13 +236,37 @@ export const CaptainPublicProfilePage: React.FC = () => {
                           />
                         </div>
                       ) : (
-                        <Link
-                          to={`/grand-line/test/${buildEntitySlug(test.id, test.title)}`}
-                          className="text-[#D71921] font-semibold inline-flex items-center gap-1"
-                        >
-                          <span>View Test</span>
-                          <ArrowRight size={12} />
-                        </Link>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Link
+                            to={`/grand-line/test/${buildEntitySlug(test.id, test.title)}`}
+                            className="text-[#D71921] font-semibold inline-flex items-center gap-1"
+                          >
+                            <span>View Test</span>
+                            <ArrowRight size={12} />
+                          </Link>
+
+                          {isAdmin && (
+                            <PdfDownloadButton
+                              variant="outline"
+                              label="Answer Key"
+                              className="text-xs py-1 px-2.5 h-7 font-semibold border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10"
+                              onDownload={async (onProgress, signal) => {
+                                const { downloadDrillResultPdfByTestId } = await import(
+                                  '@/utils/testPdfExporter'
+                                );
+                                await downloadDrillResultPdfByTestId(
+                                  test.id,
+                                  undefined,
+                                  profile?.displayName || user?.displayName || 'Administrator',
+                                  onProgress,
+                                  signal,
+                                  true
+                                );
+                                showApiToast('Admin Answer Key PDF downloaded!', 'success');
+                              }}
+                            />
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>

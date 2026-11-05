@@ -41,7 +41,7 @@ function formatTimeTaken(seconds?: number): string {
 }
 
 export function GrandLinePage() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { profile } = useUserProfile();
   const { requireAuth } = useAuthGate();
   const navigate = useNavigate();
@@ -383,7 +383,7 @@ export function GrandLinePage() {
 
                           <PdfDownloadButton
                             variant="outline"
-                            label="Download PDF"
+                            label={isAdmin ? 'Download Report' : 'Download PDF'}
                             className="text-xs py-1 px-2.5 h-8 font-semibold"
                             onDownload={async (onProgress, signal) => {
                               const { downloadDrillResultPdfByTestId } = await import(
@@ -394,21 +394,68 @@ export function GrandLinePage() {
                                 myAttempt,
                                 profile?.displayName || user?.displayName || 'Student',
                                 onProgress,
-                                signal
+                                signal,
+                                false
                               );
                               showApiToast('Result PDF downloaded successfully!', 'success');
                             }}
                           />
+
+                          {isAdmin && (
+                            <PdfDownloadButton
+                              variant="outline"
+                              label="Answer Key"
+                              className="text-xs py-1 px-2.5 h-8 font-semibold border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10"
+                              onDownload={async (onProgress, signal) => {
+                                const { downloadDrillResultPdfByTestId } = await import(
+                                  '@/utils/testPdfExporter'
+                                );
+                                await downloadDrillResultPdfByTestId(
+                                  test.id,
+                                  myAttempt,
+                                  profile?.displayName || user?.displayName || 'Administrator',
+                                  onProgress,
+                                  signal,
+                                  true
+                                );
+                                showApiToast('Answer Key PDF downloaded successfully!', 'success');
+                              }}
+                            />
+                          )}
                         </>
                       ) : (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => handleStartTestClick(test)}
-                        >
-                          <Play size={13} />
-                          <span>Take Test</span>
-                        </Button>
+                        <>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => handleStartTestClick(test)}
+                          >
+                            <Play size={13} />
+                            <span>Take Test</span>
+                          </Button>
+
+                          {isAdmin && (
+                            <PdfDownloadButton
+                              variant="outline"
+                              label="Download PDF (Key)"
+                              className="text-xs py-1 px-2.5 h-8 font-semibold border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10"
+                              onDownload={async (onProgress, signal) => {
+                                const { downloadDrillResultPdfByTestId } = await import(
+                                  '@/utils/testPdfExporter'
+                                );
+                                await downloadDrillResultPdfByTestId(
+                                  test.id,
+                                  undefined,
+                                  profile?.displayName || user?.displayName || 'Administrator',
+                                  onProgress,
+                                  signal,
+                                  true
+                                );
+                                showApiToast('Admin Answer Key PDF downloaded!', 'success');
+                              }}
+                            />
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

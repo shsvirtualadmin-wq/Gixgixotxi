@@ -558,19 +558,26 @@ export async function getAmbassadorTestById(
 }
 
 export async function getMyTestAttemptForTest(testId: string): Promise<{
-  attempt: AmbassadorTestAttempt;
-  test: AmbassadorCustomTest | null;
+  attempt: AmbassadorTestAttempt | null;
+  test: (AmbassadorCustomTest & { adminName?: string }) | null;
+  gradedQuestions?: GradedAttemptQuestion[];
+  isAdminAnswerKey?: boolean;
 }> {
-  const data = await api.get<{ attempt: any; test?: any }>(
-    `/api/tests/${encodeURIComponent(testId)}/my-attempt`,
-    {
-      requireAuth: false,
-      silentErrorToast: true,
-    }
-  );
+  const data = await api.get<{
+    attempt?: any;
+    test?: any;
+    gradedQuestions?: GradedAttemptQuestion[];
+    isAdminAnswerKey?: boolean;
+  }>(`/api/tests/${encodeURIComponent(testId)}/my-attempt`, {
+    requireAuth: false,
+    silentErrorToast: true,
+  });
+
   return {
-    attempt: normalizeAttemptRow(data.attempt),
-    test: data.test ? normalizeTestRow(data.test) : null,
+    attempt: data.attempt ? normalizeAttemptRow(data.attempt) : null,
+    test: data.test ? (normalizeTestRow(data.test) as any) : null,
+    gradedQuestions: data.gradedQuestions || data.attempt?.gradedQuestions,
+    isAdminAnswerKey: Boolean(data.isAdminAnswerKey),
   };
 }
 

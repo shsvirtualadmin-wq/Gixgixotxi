@@ -6579,6 +6579,9 @@ ${allUrls
 
     const testId = decodeURIComponent(String(req.params.id || ''));
     const test = store.captainTests.find((t: any) => t.id === testId);
+    const roleRow = resolveD1Role(store, user);
+    const isAdmin = ['admin', 'superadmin'].includes(roleRow.role);
+
     const existingAttempt = store.testAttempts.find(
       (a: any) =>
         String(a.testId || a.test_id || '') === testId &&
@@ -6589,6 +6592,45 @@ ${allUrls
       if (!test) {
         return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
       }
+
+      // Admin bypass: Admins can view/download official Answer Key without taking the test
+      if (isAdmin) {
+        const adminName = user.name || (user.email ? user.email.split('@')[0] : 'Admin');
+        const adminAnswerKeyQuestions = (test.questions || []).map((q: any, idx: number) => ({
+          id: q.id || `q_${idx}`,
+          position: typeof q.position === 'number' ? q.position : idx,
+          question: q.question,
+          options: Array.isArray(q.options) ? q.options : ['A', 'B', 'C', 'D'],
+          selectedIndex: -1,
+          correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : 0,
+          isCorrect: true,
+          explanation: q.explanation || '',
+          topic: q.topic,
+          difficulty: q.difficulty,
+        }));
+
+        return res.status(200).json({
+          attempt: null,
+          gradedQuestions: adminAnswerKeyQuestions,
+          isAdminAnswerKey: true,
+          isAdmin: true,
+          test: {
+            id: test.id,
+            title: test.title,
+            description: test.description || '',
+            subject: test.subject,
+            durationMinutes: Number(test.durationMinutes || 20),
+            questionCount: Number(test.questionCount ?? (test.questions?.length || 0)),
+            captainUid: test.captainUid,
+            captainName: test.captainName,
+            creatorShortId: test.creatorShortId || 'CAPT',
+            crewId: test.crewId || null,
+            crewName: test.crewName || 'Grand Line Crew',
+            adminName,
+          },
+        });
+      }
+
       return res.status(403).json({
         error: 'You must attempt this drill before viewing or downloading its answer key and result PDF.',
         code: 'ATTEMPT_REQUIRED',
@@ -6613,6 +6655,7 @@ ${allUrls
         gradedQuestions,
       },
       gradedQuestions,
+      isAdmin,
       test: test
         ? {
             id: test.id,

@@ -33,6 +33,8 @@ export interface ExportDrillResultPdfOptions {
   testTitle: string;
   subject: string;
   studentName: string;
+  adminName?: string;
+  isAdminAnswerKey?: boolean;
   date?: string;
   score: number;
   totalQuestions: number;
@@ -222,6 +224,8 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     testTitle,
     subject,
     studentName,
+    adminName,
+    isAdminAnswerKey = false,
     date,
     score,
     totalQuestions,
@@ -327,7 +331,7 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
 
     const isFullMock =
       /mock|mdcat|nums|etea|ecat/i.test(testTitle) || totalQuestions >= 60;
-    const modePillText = isFullMock ? 'FULL MOCK' : 'CHAPTER DRILL';
+    const modePillText = isAdminAnswerKey ? 'OFFICIAL KEY' : isFullMock ? 'FULL MOCK' : 'CHAPTER DRILL';
 
     // Initialize A4 PDF document
     const doc = new jsPDF({
@@ -338,10 +342,14 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     });
 
     doc.setDocumentProperties({
-      title: `Grand Line Verified Drill Report - ${testTitle}`,
-      subject: `Verified Drill Report for ${studentName}`,
+      title: isAdminAnswerKey
+        ? `Grand Line Official Answer Key - ${testTitle}`
+        : `Grand Line Verified Drill Report - ${testTitle}`,
+      subject: isAdminAnswerKey
+        ? `Official Answer Key for ${testTitle} (Admin: ${adminName || studentName})`
+        : `Verified Drill Report for ${studentName}`,
       author: 'Boardly by SHS Virtual Academy',
-      keywords: 'Boardly, Grand Line, FSC, MDCAT, MCQs, Verified Drill Report',
+      keywords: 'Boardly, Grand Line, FSC, MDCAT, MCQs, Verified Drill Report, Answer Key',
       creator: 'Boardly (boardly.cfd)',
     });
 
@@ -381,7 +389,11 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.2);
     doc.setTextColor(203, 213, 225);
-    doc.text('GRAND LINE VERIFIED DRILL REPORT', 46, currentY + 6.4);
+    doc.text(
+      isAdminAnswerKey ? 'ADMIN ANSWER KEY · BOARDLY GRAND LINE' : 'GRAND LINE VERIFIED DRILL REPORT',
+      46,
+      currentY + 6.4
+    );
 
     doc.setFontSize(10.5);
     doc.setTextColor(255, 255, 255);
@@ -404,75 +416,103 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     currentY += bannerH + 2.2;
 
     // ==========================================
-    // Page 1 Summary Strip + Accuracy Bar (Single-line Student Name, No Wrapping)
+    // Page 1 Summary Strip (Admin Answer Key vs Student Report)
     // ==========================================
-    const summaryH = 13.5;
+    const summaryH = isAdminAnswerKey ? 10.5 : 13.5;
     doc.setDrawColor(203, 213, 225);
     doc.setLineWidth(0.25);
     doc.roundedRect(12, currentY, contentWidth, summaryH, 1.8, 1.8, 'S');
 
-    // Row 1: Student Name (given plenty of width so "SHS Virtual Academy" never wraps), Score, Correct, Wrong, Skipped
-    const row1Baseline = currentY + 4.8;
-    doc.setFontSize(6.6);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(100, 116, 139);
-    doc.text('Student:', 15, row1Baseline);
-    doc.setTextColor(15, 23, 42);
-    // Keep student name on one single line (up to 56mm width)
-    const cleanStudent = String(studentName || 'Student').replace(/\s+/g, ' ').trim();
-    const singleLineStudent = doc.splitTextToSize(cleanStudent, 56)[0] || cleanStudent;
-    doc.text(singleLineStudent, 25.5, row1Baseline);
+    if (isAdminAnswerKey) {
+      // Admin Answer Key Strip: Admin Name, Total MCQs, Date, Subject Area
+      const adminNameStr = String(adminName || studentName || 'Administrator').replace(/\s+/g, ' ').trim();
+      const row1Baseline = currentY + 6.6;
+      doc.setFontSize(6.6);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(100, 116, 139);
+      doc.text('Admin:', 15, row1Baseline);
+      doc.setTextColor(15, 23, 42);
+      const singleLineAdmin = doc.splitTextToSize(adminNameStr, 50)[0] || adminNameStr;
+      doc.text(singleLineAdmin, 26, row1Baseline);
 
-    doc.setTextColor(100, 116, 139);
-    doc.text('Score:', 84, row1Baseline);
-    doc.setTextColor(15, 23, 42);
-    doc.text(`${score} / ${totalQuestions} (${percentage}%)`, 92.5, row1Baseline);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Total MCQs:', 80, row1Baseline);
+      doc.setTextColor(15, 23, 42);
+      doc.text(String(totalQuestions), 98, row1Baseline);
 
-    doc.setTextColor(100, 116, 139);
-    doc.text('Correct:', 126, row1Baseline);
-    doc.setTextColor(21, 128, 61);
-    doc.text(String(correctCount), 136, row1Baseline);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Subject:', 115, row1Baseline);
+      doc.setTextColor(15, 23, 42);
+      const subFormatted = formatSubjectName(subject || 'General');
+      doc.text(subFormatted, 128, row1Baseline);
 
-    doc.setTextColor(100, 116, 139);
-    doc.text('Wrong:', 147, row1Baseline);
-    doc.setTextColor(220, 38, 38);
-    doc.text(String(wrongCount), 156, row1Baseline);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Date:', 160, row1Baseline);
+      doc.setTextColor(15, 23, 42);
+      doc.text(formattedDate, 170, row1Baseline);
+    } else {
+      // Row 1: Student Name, Score, Correct, Wrong, Skipped
+      const row1Baseline = currentY + 4.8;
+      doc.setFontSize(6.6);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(100, 116, 139);
+      doc.text('Student:', 15, row1Baseline);
+      doc.setTextColor(15, 23, 42);
+      const cleanStudent = String(studentName || 'Student').replace(/\s+/g, ' ').trim();
+      const singleLineStudent = doc.splitTextToSize(cleanStudent, 56)[0] || cleanStudent;
+      doc.text(singleLineStudent, 25.5, row1Baseline);
 
-    doc.setTextColor(100, 116, 139);
-    doc.text('Skipped:', 167, row1Baseline);
-    doc.setTextColor(71, 85, 105);
-    doc.text(String(skippedCount), 178, row1Baseline);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Score:', 84, row1Baseline);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${score} / ${totalQuestions} (${percentage}%)`, 92.5, row1Baseline);
 
-    // Row 2: Time & Date + Segmented Accuracy Bar
-    const row2Baseline = currentY + 10.2;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.2);
-    doc.setTextColor(100, 116, 139);
-    doc.text(`Time: ${formattedTime}   |   Date: ${formattedDate}`, 15, row2Baseline);
+      doc.setTextColor(100, 116, 139);
+      doc.text('Correct:', 126, row1Baseline);
+      doc.setTextColor(21, 128, 61);
+      doc.text(String(correctCount), 136, row1Baseline);
 
-    const barX = 115;
-    const barY = currentY + 8.1;
-    const barW = 78;
-    const barH = 2.5;
+      doc.setTextColor(100, 116, 139);
+      doc.text('Wrong:', 147, row1Baseline);
+      doc.setTextColor(220, 38, 38);
+      doc.text(String(wrongCount), 156, row1Baseline);
 
-    doc.setFillColor(226, 232, 240);
-    doc.roundedRect(barX, barY, barW, barH, 1, 1, 'F');
+      doc.setTextColor(100, 116, 139);
+      doc.text('Skipped:', 167, row1Baseline);
+      doc.setTextColor(71, 85, 105);
+      doc.text(String(skippedCount), 178, row1Baseline);
 
-    const cW = (correctPct / 100) * barW;
-    const wW = (wrongPct / 100) * barW;
-    const sW = (skippedPct / 100) * barW;
+      // Row 2: Time & Date + Segmented Accuracy Bar
+      const row2Baseline = currentY + 10.2;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.2);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Time: ${formattedTime}   |   Date: ${formattedDate}`, 15, row2Baseline);
 
-    if (cW > 0) {
-      doc.setFillColor(21, 128, 61);
-      doc.rect(barX, barY, cW, barH, 'F');
-    }
-    if (wW > 0) {
-      doc.setFillColor(220, 38, 38);
-      doc.rect(barX + cW, barY, wW, barH, 'F');
-    }
-    if (sW > 0) {
-      doc.setFillColor(148, 163, 184);
-      doc.rect(barX + cW + wW, barY, sW, barH, 'F');
+      const barX = 115;
+      const barY = currentY + 8.1;
+      const barW = 78;
+      const barH = 2.5;
+
+      doc.setFillColor(226, 232, 240);
+      doc.roundedRect(barX, barY, barW, barH, 1, 1, 'F');
+
+      const cW = (correctPct / 100) * barW;
+      const wW = (wrongPct / 100) * barW;
+      const sW = (skippedPct / 100) * barW;
+
+      if (cW > 0) {
+        doc.setFillColor(21, 128, 61);
+        doc.rect(barX, barY, cW, barH, 'F');
+      }
+      if (wW > 0) {
+        doc.setFillColor(220, 38, 38);
+        doc.rect(barX + cW, barY, wW, barH, 'F');
+      }
+      if (sW > 0) {
+        doc.setFillColor(148, 163, 184);
+        doc.rect(barX + cW + wW, barY, sW, barH, 'F');
+      }
     }
 
     currentY += summaryH + 2.0;
@@ -489,18 +529,24 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     doc.setFontSize(6);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(71, 85, 105);
-    doc.text('SUBJECT AREA', 15, thBaseline);
-    doc.text('TOTAL MCQS', 75, thBaseline, { align: 'center' });
-    doc.text('CORRECT', 105, thBaseline, { align: 'center' });
-    doc.text('WRONG', 130, thBaseline, { align: 'center' });
-    doc.text('SKIPPED', 155, thBaseline, { align: 'center' });
-    doc.text('ACCURACY', 193, thBaseline, { align: 'right' });
+
+    if (isAdminAnswerKey) {
+      // Simplified table for Admin Answer Key: Subject Area and Total MCQs
+      doc.text('SUBJECT AREA', 15, thBaseline);
+      doc.text('TOTAL MCQS', 193, thBaseline, { align: 'right' });
+    } else {
+      doc.text('SUBJECT AREA', 15, thBaseline);
+      doc.text('TOTAL MCQS', 75, thBaseline, { align: 'center' });
+      doc.text('CORRECT', 105, thBaseline, { align: 'center' });
+      doc.text('WRONG', 130, thBaseline, { align: 'center' });
+      doc.text('SKIPPED', 155, thBaseline, { align: 'center' });
+      doc.text('ACCURACY', 193, thBaseline, { align: 'right' });
+    }
 
     currentY += thH;
 
     const rowH = 4.0;
     for (const [subName, stats] of Object.entries(subjectGroups)) {
-      const subAcc = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
       doc.setDrawColor(226, 232, 240);
       doc.line(12, currentY + rowH, 198, currentY + rowH);
 
@@ -510,22 +556,29 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       doc.setTextColor(30, 41, 59);
       doc.text(subName, 15, trBaseline);
 
-      doc.text(String(stats.total), 75, trBaseline, { align: 'center' });
+      if (isAdminAnswerKey) {
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(15, 23, 42);
+        doc.text(`${stats.total} MCQs`, 193, trBaseline, { align: 'right' });
+      } else {
+        const subAcc = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
+        doc.text(String(stats.total), 75, trBaseline, { align: 'center' });
 
-      doc.setTextColor(21, 128, 61);
-      doc.setFont('helvetica', 'bold');
-      doc.text(String(stats.correct), 105, trBaseline, { align: 'center' });
+        doc.setTextColor(21, 128, 61);
+        doc.setFont('helvetica', 'bold');
+        doc.text(String(stats.correct), 105, trBaseline, { align: 'center' });
 
-      doc.setTextColor(220, 38, 38);
-      doc.text(String(stats.wrong), 130, trBaseline, { align: 'center' });
+        doc.setTextColor(220, 38, 38);
+        doc.text(String(stats.wrong), 130, trBaseline, { align: 'center' });
 
-      doc.setTextColor(100, 116, 139);
-      doc.setFont('helvetica', 'normal');
-      doc.text(String(stats.skipped), 155, trBaseline, { align: 'center' });
+        doc.setTextColor(100, 116, 139);
+        doc.setFont('helvetica', 'normal');
+        doc.text(String(stats.skipped), 155, trBaseline, { align: 'center' });
 
-      doc.setTextColor(15, 23, 42);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`${subAcc}%`, 193, trBaseline, { align: 'right' });
+        doc.setTextColor(15, 23, 42);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${subAcc}%`, 193, trBaseline, { align: 'right' });
+      }
 
       currentY += rowH;
     }
@@ -545,7 +598,9 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
         onProgress?.({
           current: i + 1,
           totalPages: totalQCount,
-          message: `Formatting verified question ${i + 1} of ${totalQCount}...`,
+          message: isAdminAnswerKey
+            ? `Formatting answer key question ${i + 1} of ${totalQCount}...`
+            : `Formatting verified question ${i + 1} of ${totalQCount}...`,
         });
       }
 
@@ -554,9 +609,14 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       const correctIdx = typeof q.correctIndex === 'number' ? q.correctIndex : 0;
       const isCorrect = q.isCorrect ?? (selectedIdx === correctIdx);
 
-      const statusLabel = selectedIdx < 0 ? 'UNANSWERED' : isCorrect ? 'CORRECT' : 'WRONG';
-      const statusColor: [number, number, number] =
-        selectedIdx < 0 ? [71, 85, 105] : isCorrect ? [21, 128, 61] : [220, 38, 38];
+      const statusLabel = isAdminAnswerKey ? 'ANSWER KEY' : selectedIdx < 0 ? 'UNANSWERED' : isCorrect ? 'CORRECT' : 'WRONG';
+      const statusColor: [number, number, number] = isAdminAnswerKey
+        ? [16, 185, 129] // Emerald for answer key
+        : selectedIdx < 0
+        ? [71, 85, 105]
+        : isCorrect
+        ? [21, 128, 61]
+        : [220, 38, 38];
 
       const cleanStem = cleanMathForPdf(q.question || 'Question content');
       doc.setFont('helvetica', 'normal');
@@ -594,7 +654,7 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       const expLines = doc.splitTextToSize(cleanExp, 162).slice(0, 2);
       const expBoxH = Math.max(1, expLines.length) * expLineH + 1.7;
 
-      // Total height of question card (~25.5mm so 8 questions fit on Page 1 and 9-10 fit on Pages 2+)
+      // Total height of question card
       const headerRowH = 4.9;
       const answerStripH = 3.4;
       const cardHeight = headerRowH + stemH + 0.8 + optionsTotalH + answerStripH + expBoxH + 1.2;
@@ -606,15 +666,15 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
         currentY = 14.0; // Starts right below the single slim running header on Page 2+
       }
 
-      // 1. Draw Card Outer Border (stroke only so the black dotted background logo shows through)
+      // 1. Draw Card Outer Border
       doc.setDrawColor(203, 213, 225);
       doc.setLineWidth(0.25);
       doc.roundedRect(12, currentY, contentWidth, cardHeight, 1.4, 1.4, 'S');
 
-      // 2. Question Number & Status Badge (centered baseline inside badge)
-      const badgeW = 22.0;
+      // 2. Question Number & Status Badge
+      const badgeW = isAdminAnswerKey ? 24.0 : 22.0;
       const badgeH = 4.0;
-      const badgeX = 173.0;
+      const badgeX = isAdminAnswerKey ? 171.0 : 173.0;
       const badgeY = currentY + 0.85;
 
       doc.setFont('helvetica', 'bold');
@@ -627,7 +687,6 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(5.6);
       doc.setTextColor(255, 255, 255);
-      // Exact vertical center for 5.6pt uppercase text inside badgeH
       doc.text(statusLabel, badgeX + badgeW / 2, badgeY + badgeH / 2 + 0.68, {
         align: 'center',
       });
@@ -639,7 +698,7 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       doc.setTextColor(15, 23, 42);
       doc.text(stemLines, 15, stemTopY + 2.0, { lineHeightFactor: 1.15 });
 
-      // 4. 2x2 Options Grid (vertically centered text baselines, never touching borders)
+      // 4. 2x2 Options Grid
       const optY = stemTopY + stemH + 0.8;
       const col1X = 15;
       const col2X = 106;
@@ -654,7 +713,7 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       ) => {
         const letter = OPT_LABELS[optIdx] || String(optIdx + 1);
         const isOptCorrect = optIdx === correctIdx;
-        const isOptSelected = optIdx === selectedIdx;
+        const isOptSelected = !isAdminAnswerKey && optIdx === selectedIdx;
 
         doc.setLineWidth(0.22);
 
@@ -669,13 +728,11 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
           doc.roundedRect(x, y, optColW, h, 1.0, 1.0, 'FD');
           doc.setTextColor(153, 27, 27);
         } else {
-          // Stroke-only box so the background dotted Boardly logo remains visible behind options
           doc.setDrawColor(203, 213, 225);
           doc.roundedRect(x, y, optColW, h, 1.0, 1.0, 'S');
           doc.setTextColor(30, 41, 59);
         }
 
-        // Compute centered first-line baseline so single-line or multi-line options sit cleanly inside [y, y+h]
         const nLines = Math.max(1, lines.length);
         const blockH = (nLines - 1) * optLineH;
         const firstLineBaseline = y + (h - blockH) / 2 + 0.68;
@@ -693,35 +750,51 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       drawOptionBox(2, col1X, optY + row1H + 0.9, row2H, opt2Lines);
       drawOptionBox(3, col2X, optY + row1H + 0.9, row2H, opt3Lines);
 
-      // 5. "Your Answer | Correct Answer" Strip (well-spaced baseline)
+      // 5. Answer Strip
       const ansRowTop = optY + optionsTotalH;
       const ansBaseline = ansRowTop + 2.4;
       doc.setFontSize(6.0);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(71, 85, 105);
-      doc.text('Your Answer:', 15, ansBaseline);
 
-      if (selectedIdx < 0) {
+      if (isAdminAnswerKey) {
+        // Answer Key Mode: No "Your Answer" or "UNANSWERED" label
+        doc.setFont('helvetica', 'bold');
         doc.setTextColor(71, 85, 105);
-      } else if (isCorrect) {
+        doc.text('Correct Answer:', 15, ansBaseline);
+
         doc.setTextColor(21, 128, 61);
+        doc.text(`[ ${correctLetter} ]`, 32.5, ansBaseline);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 116, 139);
+        doc.text(`(Option ${correctLetter} is the verified key)`, 40.5, ansBaseline);
       } else {
-        doc.setTextColor(220, 38, 38);
+        // Student Mode: "Your Answer [ X ] | Correct Answer [ Y ]"
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(71, 85, 105);
+        doc.text('Your Answer:', 15, ansBaseline);
+
+        if (selectedIdx < 0) {
+          doc.setTextColor(71, 85, 105);
+        } else if (isCorrect) {
+          doc.setTextColor(21, 128, 61);
+        } else {
+          doc.setTextColor(220, 38, 38);
+        }
+        doc.text(`[ ${selectedLetter} ]`, 30.0, ansBaseline);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(148, 163, 184);
+        doc.text('|', 44.5, ansBaseline);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(71, 85, 105);
+        doc.text('Correct Answer:', 48.0, ansBaseline);
+
+        doc.setTextColor(21, 128, 61);
+        doc.text(`[ ${correctLetter} ]`, 65.5, ansBaseline);
       }
-      doc.text(`[ ${selectedLetter} ]`, 30.0, ansBaseline);
 
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(148, 163, 184);
-      doc.text('|', 44.5, ansBaseline);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(71, 85, 105);
-      doc.text('Correct Answer:', 48.0, ansBaseline);
-
-      doc.setTextColor(21, 128, 61);
-      doc.text(`[ ${correctLetter} ]`, 65.5, ansBaseline);
-
-      // 6. Short Explanation Box (stroke-only with left accent bar and centered text baseline)
+      // 6. Short Explanation Box
       const expY = ansRowTop + answerStripH;
       doc.setDrawColor(203, 213, 225);
       doc.setLineWidth(0.2);
@@ -762,13 +835,20 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.2);
     doc.setTextColor(15, 23, 42);
-    doc.text('OFFICIAL VERIFIED DRILL REPORT · BOARDLY GRAND LINE', 15, currentY + 3.8);
+    doc.text(
+      isAdminAnswerKey
+        ? 'OFFICIAL VERIFIED ANSWER KEY · BOARDLY GRAND LINE'
+        : 'OFFICIAL VERIFIED DRILL REPORT · BOARDLY GRAND LINE',
+      15,
+      currentY + 3.8
+    );
 
+    const recipientLabel = isAdminAnswerKey ? (adminName || 'Authorized Administrator') : studentName;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(5.5);
     doc.setTextColor(100, 116, 139);
     doc.text(
-      `© ${new Date().getFullYear()} Boardly by SHS Virtual Academy (boardly.cfd). All rights reserved. Generated exclusively for ${studentName} on ${formattedDate}.`,
+      `© ${new Date().getFullYear()} Boardly by SHS Virtual Academy (boardly.cfd). All rights reserved. Generated exclusively for ${recipientLabel} on ${formattedDate}.`,
       15,
       currentY + 7.1
     );
@@ -782,6 +862,9 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     // Stamp Single Slim Running Header (Pages 2+) & Running Footer on ALL Pages
     // ==========================================
     const totalPages = doc.getNumberOfPages();
+    const footerUserLabel = isAdminAnswerKey
+      ? `Admin: ${adminName || 'Administrator'}`
+      : `Student: ${studentName}`;
 
     for (let p = 0; p < totalPages; p++) {
       doc.setPage(p + 1);
@@ -791,7 +874,10 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(6.8);
         doc.setTextColor(71, 85, 105);
-        doc.text(`Boardly Grand Line · ${testTitle}`, 12, 9.5);
+        const headerTitle = isAdminAnswerKey
+          ? `Boardly Grand Line (Answer Key) · ${testTitle}`
+          : `Boardly Grand Line · ${testTitle}`;
+        doc.text(headerTitle, 12, 9.5);
 
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(100, 116, 139);
@@ -804,7 +890,7 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
         doc.line(12, 11.5, 198, 11.5);
       }
 
-      // Running Footer on EVERY page
+      // EXACTLY ONE clean Running Footer line on EVERY page (no duplicated lines)
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.25);
       doc.line(12, 285, 198, 285);
@@ -813,7 +899,7 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       doc.setFontSize(6.6);
       doc.setTextColor(100, 116, 139);
       doc.text(
-        `Boardly Grand Line · ${testTitle} · Page ${p + 1} of ${totalPages} · Student: ${studentName} · ${formattedDate}`,
+        `Boardly Grand Line · ${testTitle} · Page ${p + 1} of ${totalPages} · ${footerUserLabel} · ${formattedDate}`,
         12,
         288.8
       );
@@ -834,7 +920,9 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
     });
 
     const safeTitle = testTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const filename = `${safeTitle}_Verified_Report_Boardly.pdf`;
+    const filename = isAdminAnswerKey
+      ? `Boardly_${safeTitle}_AnswerKey.pdf`
+      : `Boardly_${safeTitle}_Report.pdf`;
     doc.save(filename);
   } finally {
     clearTimeout(timeoutId);
@@ -847,54 +935,89 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
 
 /**
  * Downloads a Grand Line test result PDF by its test ID.
+ * Supports downloading student attempt reports or official admin answer keys.
  */
 export async function downloadDrillResultPdfByTestId(
   testId: string,
   fallbackAttempt?: AmbassadorTestAttempt,
   studentFallbackName?: string,
   onProgress?: (progress: PdfExportProgress) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  preferAnswerKey?: boolean
 ): Promise<void> {
-  let attemptResult: { attempt: AmbassadorTestAttempt; test: any } | null = null;
+  let attemptResult: {
+    attempt: AmbassadorTestAttempt | null;
+    test: any;
+    gradedQuestions?: GradedAttemptQuestion[];
+    isAdminAnswerKey?: boolean;
+    isAdmin?: boolean;
+  } | null = null;
+
   try {
     attemptResult = await getMyTestAttemptForTest(testId);
   } catch (err) {
     console.warn('[testPdfExporter] getMyTestAttemptForTest note:', err);
   }
 
+  const isAnswerKey =
+    preferAnswerKey ||
+    Boolean(attemptResult?.isAdminAnswerKey) ||
+    (!attemptResult?.attempt && !fallbackAttempt && Boolean(attemptResult?.test));
+
   const resolvedAttempt = attemptResult?.attempt || fallbackAttempt;
-  if (!resolvedAttempt) {
+
+  if (!resolvedAttempt && !isAnswerKey) {
     throw new Error('No verified attempt found for this drill. Please take the drill first.');
   }
 
   const resolvedQuestions: GradedAttemptQuestion[] =
-    Array.isArray(resolvedAttempt.gradedQuestions) && resolvedAttempt.gradedQuestions.length > 0
+    Array.isArray(attemptResult?.gradedQuestions) && attemptResult.gradedQuestions.length > 0
+      ? attemptResult.gradedQuestions
+      : Array.isArray(resolvedAttempt?.gradedQuestions) && resolvedAttempt.gradedQuestions.length > 0
       ? resolvedAttempt.gradedQuestions
       : (attemptResult?.test?.questions || []).map((q: any, idx: number) => ({
           id: q.id || `q_${idx}`,
           position: typeof q.position === 'number' ? q.position : idx,
           question: q.question,
           options: q.options,
-          selectedIndex: -1,
+          selectedIndex: isAnswerKey ? -1 : -1,
           correctIndex: q.correctIndex ?? 0,
-          isCorrect: false,
+          isCorrect: isAnswerKey ? true : false,
           explanation: q.explanation,
         }));
 
+  const testTitle =
+    resolvedAttempt?.testTitle ||
+    attemptResult?.test?.title ||
+    'Grand Line Drill';
+  const subject =
+    resolvedAttempt?.subject ||
+    attemptResult?.test?.subject ||
+    'General';
+
+  const userDisplayName =
+    resolvedAttempt?.userName ||
+    resolvedAttempt?.studentName ||
+    studentFallbackName ||
+    'Student';
+
+  const adminName =
+    attemptResult?.test?.adminName ||
+    studentFallbackName ||
+    'Administrator';
+
   await exportDrillResultToPdf({
     testId,
-    testTitle: resolvedAttempt.testTitle || attemptResult?.test?.title || 'Grand Line Drill',
-    subject: resolvedAttempt.subject || attemptResult?.test?.subject || 'General',
-    studentName:
-      resolvedAttempt.userName ||
-      resolvedAttempt.studentName ||
-      studentFallbackName ||
-      'Student',
-    date: resolvedAttempt.date,
-    score: resolvedAttempt.score ?? 0,
-    totalQuestions: resolvedAttempt.totalQuestions || resolvedQuestions.length,
-    percentage: resolvedAttempt.percentage ?? 0,
-    timeTakenSeconds: resolvedAttempt.timeTakenSeconds ?? 0,
+    testTitle,
+    subject,
+    studentName: userDisplayName,
+    adminName,
+    isAdminAnswerKey: isAnswerKey,
+    date: resolvedAttempt?.date,
+    score: resolvedAttempt?.score ?? 0,
+    totalQuestions: resolvedAttempt?.totalQuestions || resolvedQuestions.length,
+    percentage: resolvedAttempt?.percentage ?? 0,
+    timeTakenSeconds: resolvedAttempt?.timeTakenSeconds ?? 0,
     gradedQuestions: resolvedQuestions,
     signal,
     onProgress,

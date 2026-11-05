@@ -51,7 +51,7 @@ function formatDurationLabel(seconds: number): string {
 }
 
 export function ResultsListPage() {
-  const { user, profile } = useAuth();
+  const { user, profile, isAdmin } = useAuth();
   const navigate = useNavigate();
 
   const [attempts, setAttempts] = useState<AttemptDoc[]>([]);
@@ -319,7 +319,7 @@ export function ResultsListPage() {
 
                       <PdfDownloadButton
                         variant="secondary"
-                        label="Download PDF"
+                        label={isAdmin ? 'My Report' : 'Download PDF'}
                         className="text-xs py-1.5 px-3 h-8 font-semibold"
                         onDownload={async (onProgress, signal) => {
                           if (!glAtt.testId) return;
@@ -331,11 +331,35 @@ export function ResultsListPage() {
                             glAtt,
                             studentFallbackName,
                             onProgress,
-                            signal
+                            signal,
+                            false
                           );
                           showApiToast('Result PDF downloaded successfully!', 'success');
                         }}
                       />
+
+                      {isAdmin && (
+                        <PdfDownloadButton
+                          variant="outline"
+                          label="Answer Key"
+                          className="text-xs py-1.5 px-3 h-8 font-semibold border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10"
+                          onDownload={async (onProgress, signal) => {
+                            if (!glAtt.testId) return;
+                            const { downloadDrillResultPdfByTestId } = await import(
+                              '@/utils/testPdfExporter'
+                            );
+                            await downloadDrillResultPdfByTestId(
+                              glAtt.testId,
+                              glAtt,
+                              studentFallbackName,
+                              onProgress,
+                              signal,
+                              true
+                            );
+                            showApiToast('Answer Key PDF downloaded successfully!', 'success');
+                          }}
+                        />
+                      )}
 
                       <Button
                         variant="primary"
