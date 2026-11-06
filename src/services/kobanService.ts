@@ -365,15 +365,21 @@ export async function approveKobanRequest(
     });
   });
 
-  // Create notification for student
+  // Create notification for student (deterministic ID prevents duplicates)
   try {
-    await addDoc(collection(db, 'notifications'), {
-      userId: targetUserId,
-      title: 'Kobans Credited! 🪙',
-      message: `Your payment was verified! +${amount.toLocaleString()} Kobans have been added to your balance. Head over to the Boardly Store to unlock custom frames, nameplates, and aura effects!`,
-      read: false,
-      createdAt: serverTimestamp(),
-    });
+    await setDoc(
+      doc(db, 'notifications', `koban_approve_${requestId}`),
+      {
+        userId: targetUserId,
+        type: 'reward',
+        title: 'Kobans Credited!',
+        message: `Your payment was verified! +${amount.toLocaleString()} Kobans have been added to your balance. Head over to the Boardly Store to unlock custom frames, nameplates, and aura effects!`,
+        link: '/dashboard/rewards',
+        read: false,
+        createdAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
   } catch (nErr) {
     console.warn('[kobanService] Notification error:', nErr);
   }
@@ -403,15 +409,21 @@ export async function rejectKobanRequest(
     rejectedBy: superadminEmail,
   });
 
-  // Notify student
+  // Notify student (deterministic ID prevents duplicates)
   try {
-    await addDoc(collection(db, 'notifications'), {
-      userId: targetUserId,
-      title: 'Koban Request Update',
-      message: `Your Kobans request could not be approved: ${reason}`,
-      read: false,
-      createdAt: serverTimestamp(),
-    });
+    await setDoc(
+      doc(db, 'notifications', `koban_reject_${requestId}`),
+      {
+        userId: targetUserId,
+        type: 'system',
+        title: 'Koban Request Update',
+        message: `Your Kobans request could not be approved: ${reason || 'Transaction could not be verified.'}`,
+        link: '/dashboard/rewards',
+        read: false,
+        createdAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
   } catch (nErr) {
     console.warn('[kobanService] Notification error:', nErr);
   }
@@ -679,15 +691,21 @@ export async function grantCaptainMonthlyAllotment(
     return finalBalance;
   });
 
-  // Notify captain
+  // Notify captain (deterministic ID per captain + monthKey prevents duplicate allotments)
   try {
-    await addDoc(collection(db, 'notifications'), {
-      userId: captainUid,
-      title: 'Nakama Captain Monthly Allotment! ⚓',
-      message: `Your monthly leadership allowance of 5,000 Kobans for ${monthLabel} has been granted! Thank you for leading your campus crew.`,
-      read: false,
-      createdAt: serverTimestamp(),
-    });
+    await setDoc(
+      doc(db, 'notifications', `captain_allotment_${captainUid}_${monthKey}`),
+      {
+        userId: captainUid,
+        type: 'reward',
+        title: 'Nakama Captain Monthly Allotment!',
+        message: `Your monthly leadership allowance of 5,000 Kobans for ${monthLabel} has been granted! Thank you for leading your campus crew.`,
+        link: '/dashboard/rewards',
+        read: false,
+        createdAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
   } catch (nErr) {
     console.warn('[kobanService] Captain notification error:', nErr);
   }

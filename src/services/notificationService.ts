@@ -33,6 +33,8 @@ export type NotificationType =
   | 'like'
   | 'post_like'
   | 'announcement'
+  | 'reward'
+  | 'crew'
   | 'system';
 
 export const WELCOME_ANNOUNCEMENT_ID = DEFAULT_WELCOME_ANNOUNCEMENT.id;
@@ -42,7 +44,7 @@ export interface AppNotification {
   type: NotificationType;
   title: string;
   message: string;
-  createdAt: Timestamp | Date | number | null;
+  createdAt: Timestamp | Date | number | string | null;
   read: boolean;
   isPinned?: boolean;
   link?: string | null;
@@ -113,122 +115,410 @@ let syncInFlightPromise: Promise<void> | null = null;
 
 const storeSubscribers = new Set<(snapshot: NotificationStoreSnapshot) => void>();
 const unreadRefreshSubscribers = new Set<() => void>();
+const cleanedDuplicateIds = new Set<string>();
+const dedupIdAliases = new Map<string, Set<string>>();
 
-export function toMillis(val: Timestamp | Date | number | null | undefined): number {
-  if (!val) return 0;
-  if (typeof val === 'number') return val;
-  if (val instanceof Date) return val.getTime();
-  if (typeof (val as Timestamp).toMillis === 'function') {
-    return (val as Timestamp).toMillis();
+function getLocalReadIdsKey(userId: string): string {
+  return `boardly_read_notifs_v2_${userId}`;
+}
+
+function loadLocalReadIds(userId: string): Set<string> {
+  if (!userId || typeof window === 'undefined') return new Set();
+  try {
+    const raw = window.localStorage.getItem(getLocalReadIdsKey(userId));
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return new Set(parsed.map(String).filter(Boolean));
+    }
+  } catch {
+    // Ignore storage error
   }
-  if (typeof (val as any).seconds === 'number') {
-    return (val as any).seconds * 1000;
+  return new Set();
+}
+
+function saveLocalReadIds(userId: string, ids: Iterable<string>): void {
+  if (!userId || typeof window === 'undefined') return;
+  try {
+    const arr = Array.from(new Set(ids)).slice(-500);
+    window.localStorage.setItem(getLocalReadIdsKey(userId), JSON.stringify(arr));
+  } catch {
+    // Ignore storage error
+  }
+}
+
+export function toMillis(
+  val:
+    | Timestamp
+    | Date
+    | number
+    | string
+    | { seconds?: number; nanoseconds?: number; _seconds?: number }
+    | null
+    | undefined
+): number {
+  if (val === null || val === undefined) return 0;
+  if (typeof val === 'number') {
+    if (!Number.isFinite(val) || val <= 0) return 0;
+    return val < 1e11 ? Math.floor(val * 1000) : val;
+  }
+  if (val instanceof Date) {
+    const ms = val.getTime();
+    return Number.isFinite(ms) && ms > 0 ? ms : 0;
+  }
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed) return 0;
+    if (/^\d+(\.\d+)?$/.test(trimmed)) {
+      const n = Number(trimmed);
+      if (!Number.isFinite(n) || n <= 0) return 0;
+      return n < 1e11 ? Math.floor(n * 1000) : n;
+    }
+    const parsed = Date.parse(trimmed);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }
+  if (typeof (val as Timestamp).toMillis === 'function') {
+    try {
+      const ms = (val as Timestamp).toMillis();
+      return Number.isFinite(ms) && ms > 0 ? ms : 0;
+    } catch {
+      return 0;
+    }
+  }
+  if (typeof (val as any).seconds === 'number' && Number.isFinite((val as any).seconds)) {
+    return Math.floor((val as any).seconds * 1000);
+  }
+  if (typeof (val as any)._seconds === 'number' && Number.isFinite((val as any)._seconds)) {
+    return Math.floor((val as any)._seconds * 1000);
   }
   return 0;
 }
 
-function normalizeNotificationType(rawType?: string, isAnnouncement?: boolean): NotificationType {
-  if (isAnnouncement || rawType === 'announcement') return 'announcement';
-  if (rawType === 'new_follower' || rawType === 'follow' || rawType === 'follower') return 'new_follower';
-  if (rawType === 'new_message' || rawType === 'message') return 'new_message';
-  if (rawType === 'following_post' || rawType === 'new_post' || rawType === 'following') return 'following_post';
-  if (rawType === 'comment' || rawType === 'reply') return 'comment';
-  if (rawType === 'like' || rawType === 'post_like') return 'like';
-  if (rawType === 'system') return 'system';
-  return 'following_post';
+/**
+ * Cleans up "Congratulations undefined!", null, or [object Object] template bugs in stored notifications.
+ */
+export function sanitizeNotificationText(rawText: unknown, fallbackName?: string | null): string {
+  if (rawText === null || rawText === undefined) return '';
+  let text = String(rawText).trim();
+  if (!text) return '';
+
+  const cleanFallback =
+    fallbackName &&
+    String(fallbackName).trim() &&
+    !/^(undefined|null|\[object Object\])$/i.test(String(fallbackName).trim())
+      ? String(fallbackName).trim()
+      : '';
+
+  text = text.replace(
+    /Congratulations\s+(?:undefined|null|\[object Object\])\s*!/gi,
+    cleanFallback ? `Congratulations ${cleanFallback}!` : 'Congratulations!'
+  );
+  text = text.replace(
+    /Congratulations\s+(?:undefined|null|\[object Object\])\b/gi,
+    cleanFallback ? `Congratulations ${cleanFallback}` : 'Congratulations'
+  );
+  text = text.replace(
+    /^(?:undefined|null|\[object Object\])\s+started following you/i,
+    `${cleanFallback || 'A student'} started following you`
+  );
+  text = text.replace(
+    /^(?:undefined|null|\[object Object\])\s+posted:/i,
+    cleanFallback ? `${cleanFallback} posted:` : 'New post:'
+  );
+  text = text.replace(
+    /represent\s+(?:undefined|null|\[object Object\])/gi,
+    'represent your institution'
+  );
+  text = text.replace(/\(\s*#(?:undefined|null|\[object Object\])\s*\)/gi, '');
+  text = text.replace(/\s+\[object Object\]/g, '');
+  return text.trim();
+}
+
+export function normalizeNotificationType(
+  rawType?: unknown,
+  isAnnouncement?: boolean,
+  title?: unknown,
+  message?: unknown,
+  link?: unknown,
+  postId?: unknown
+): NotificationType {
+  const rt = String(rawType || '').trim().toLowerCase();
+  if (isAnnouncement || rt === 'announcement') return 'announcement';
+  if (rt === 'new_follower' || rt === 'follow' || rt === 'follower') return 'new_follower';
+  if (rt === 'reward' || rt === 'koban' || rt === 'allotment') return 'reward';
+  if (rt === 'crew' || rt === 'captain') return 'crew';
+
+  const t = String(title || '').toLowerCase();
+  const m = String(message || '').toLowerCase();
+  const l = String(link || '').toLowerCase();
+  const combined = `${t} ${m} ${l}`;
+
+  // Detect follow notifications by text/id patterns
+  if (
+    t.includes('started following you') ||
+    t.includes('new follower') ||
+    t.includes('followed you')
+  ) {
+    return 'new_follower';
+  }
+
+  // Detect Reward notifications (Kobans, monthly captain allotments, referral bonus weeks)
+  if (
+    combined.includes('monthly allotment') ||
+    combined.includes('leadership allowance') ||
+    combined.includes('kobans credited') ||
+    combined.includes('koban credited') ||
+    /\+\d[\d,]*\s*kobans/.test(combined) ||
+    combined.includes('5,000 kobans') ||
+    combined.includes('bonus week of boardly pro') ||
+    combined.includes('signed up using your link') ||
+    combined.includes('referral bonus')
+  ) {
+    return 'reward';
+  }
+
+  // Detect Crew / Nakama Captain notifications
+  if (
+    combined.includes('welcome to boardly crew') ||
+    combined.includes('boardly crew ambassador') ||
+    combined.includes('campus captain approved') ||
+    combined.includes('nakama captain') ||
+    combined.includes('squad upgraded to large crew') ||
+    combined.includes('large crew status') ||
+    combined.includes('referral code is crew-') ||
+    combined.includes('your code is cap-') ||
+    l.includes('/crew') ||
+    l.includes('/captain')
+  ) {
+    return 'crew';
+  }
+
+  // Detect System notifications
+  if (
+    rt === 'system' ||
+    combined.includes('boardly pro activated') ||
+    combined.includes('koban request update') ||
+    combined.includes('could not be approved')
+  ) {
+    return 'system';
+  }
+
+  if (rt === 'comment' || rt === 'reply' || t.includes('commented on') || t.includes('replied to')) {
+    return 'comment';
+  }
+  if (rt === 'like' || rt === 'post_like' || t.includes('liked your') || t.includes('upvoted your')) {
+    return 'like';
+  }
+  if (
+    rt === 'new_message' ||
+    rt === 'message' ||
+    rt === 'chat_request' ||
+    rt === 'chat_request_accepted' ||
+    t.includes('message request') ||
+    t.includes('new message from')
+  ) {
+    return 'new_message';
+  }
+
+  // Post notifications
+  if (
+    Boolean(postId) ||
+    t.includes('posted:') ||
+    m.includes('published a new') ||
+    l.includes('/commons/post/') ||
+    rt === 'following_post' ||
+    rt === 'new_post' ||
+    rt === 'following'
+  ) {
+    return 'following_post';
+  }
+
+  return 'system';
+}
+
+function normalizeDedupToken(str: string): string {
+  return String(str || '')
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/**
+ * Generates a semantic deduplication key so duplicate notifications (e.g. same post published
+ * or fanned out twice, or duplicate Crew/Captain/Reward notifications) collapse into one card.
+ */
+function getSemanticDedupKey(n: AppNotification): string {
+  if (n.isAnnouncement || n.type === 'announcement') {
+    return `ann_${n.announcementId || n.id}`;
+  }
+
+  if (n.type === 'new_follower') {
+    let actor = n.authorId || n.followerId || n.actorId || '';
+    if (!actor && n.id.startsWith('follow_')) {
+      const parts = n.id.split('_');
+      if (parts.length >= 3) actor = parts[1];
+    }
+    if (!actor) actor = normalizeDedupToken(n.title);
+    return `follow_${actor}`;
+  }
+
+  if (n.type === 'following_post') {
+    const cleanTitle = normalizeDedupToken(
+      n.title.includes('posted:') ? n.title.split('posted:').slice(1).join(' ') : n.title
+    );
+    const cleanMsgPrefix = normalizeDedupToken(n.message).slice(0, 60);
+    const authorKey = normalizeDedupToken(n.authorId || n.authorName || '');
+    // If title is generic like "important", combine with message prefix so distinct posts aren't merged,
+    // while identical posts ("IMPORTANT Russian Open Doors Scholarship" or "Harvard courses") merge cleanly.
+    const contentSig =
+      cleanTitle.length >= 12 ? cleanTitle : `${cleanTitle}_${cleanMsgPrefix}`;
+    if (contentSig) {
+      return `post_sig_${authorKey}_${contentSig}`;
+    }
+    if (n.postId) {
+      return `post_id_${n.postId}`;
+    }
+  }
+
+  return `${n.type}_${normalizeDedupToken(n.title)}_${normalizeDedupToken(n.message).slice(0, 80)}`;
 }
 
 function buildSnapshot(state: InternalStoreState): NotificationStoreSnapshot {
-  const mergedUserNotifsMap = new Map<string, AppNotification>();
+  const rawList: AppNotification[] = [];
 
-  // Merge D1 notifications first
   state.d1Notifications.forEach((n, id) => {
     const isRead = Boolean(n.read) || state.optimisticReadIds.has(id);
-    mergedUserNotifsMap.set(id, { ...n, read: isRead });
+    rawList.push({ ...n, id, read: isRead });
   });
 
-  // Merge Firestore notifications (deduplicating by id or postId+authorId)
   state.firestoreNotifications.forEach((n, id) => {
-    const existing = mergedUserNotifsMap.get(id);
-    const isRead =
-      Boolean(n.read) ||
-      Boolean(existing?.read) ||
-      state.optimisticReadIds.has(id);
-
-    // Also check if there is already a deterministic D1 notification for the same post & user
-    if (!existing && n.postId && state.userId) {
-      const deterministicId = `post_${n.postId}_follower_${state.userId}`;
-      const detExisting = mergedUserNotifsMap.get(deterministicId);
-      if (detExisting) {
-        const combinedRead =
-          Boolean(detExisting.read) ||
-          isRead ||
-          state.optimisticReadIds.has(deterministicId);
-        mergedUserNotifsMap.set(deterministicId, {
-          ...detExisting,
-          read: combinedRead,
-          authorAvatar: detExisting.authorAvatar || n.authorAvatar || null,
-          authorFrame: detExisting.authorFrame || n.authorFrame || null,
-        });
-        return;
-      }
-    }
-
-    if (!existing && n.type === 'new_follower' && n.authorId && state.userId) {
-      const detFollowId = `follow_${n.authorId}_${state.userId}`;
-      const detExisting = mergedUserNotifsMap.get(detFollowId);
-      if (detExisting) {
-        const combinedRead =
-          Boolean(detExisting.read) ||
-          isRead ||
-          state.optimisticReadIds.has(detFollowId);
-        mergedUserNotifsMap.set(detFollowId, {
-          ...detExisting,
-          read: combinedRead,
-          authorAvatar: detExisting.authorAvatar || n.authorAvatar || null,
-        });
-        return;
-      }
-    }
-
-    mergedUserNotifsMap.set(id, {
-      ...(existing || {}),
-      ...n,
-      read: isRead,
-      authorAvatar: n.authorAvatar || existing?.authorAvatar || null,
-      authorFrame: n.authorFrame || existing?.authorFrame || null,
-    });
+    const isRead = Boolean(n.read) || state.optimisticReadIds.has(id);
+    rawList.push({ ...n, id, read: isRead });
   });
 
-  const userNotifications = Array.from(mergedUserNotifsMap.values()).sort(
+  const semanticMap = new Map<string, AppNotification>();
+  const postIdToKey = new Map<string, string>();
+  dedupIdAliases.clear();
+
+  for (const raw of rawList) {
+    const sanitizedTitle = sanitizeNotificationText(raw.title, raw.authorName);
+    const sanitizedMessage = sanitizeNotificationText(raw.message, raw.authorName);
+    const resolvedType = normalizeNotificationType(
+      raw.type,
+      raw.isAnnouncement,
+      sanitizedTitle,
+      sanitizedMessage,
+      raw.link,
+      raw.postId
+    );
+
+    const n: AppNotification = {
+      ...raw,
+      type: resolvedType,
+      title: sanitizedTitle,
+      message: sanitizedMessage,
+    };
+
+    let semKey = getSemanticDedupKey(n);
+    if (n.postId && postIdToKey.has(n.postId)) {
+      semKey = postIdToKey.get(n.postId)!;
+    } else if (n.postId) {
+      postIdToKey.set(n.postId, semKey);
+    }
+
+    const existing = semanticMap.get(semKey);
+    if (!existing) {
+      const aliasSet = new Set<string>([n.id]);
+      if (n.postId && state.userId) {
+        aliasSet.add(`post_${n.postId}_follower_${state.userId}`);
+      }
+      const isRead =
+        Boolean(n.read) ||
+        Array.from(aliasSet).some((aid) => state.optimisticReadIds.has(aid));
+      semanticMap.set(semKey, { ...n, read: isRead });
+      dedupIdAliases.set(n.id, aliasSet);
+    } else {
+      const aliasSet = dedupIdAliases.get(existing.id) || new Set<string>([existing.id]);
+      aliasSet.add(n.id);
+      if (n.postId && state.userId) {
+        aliasSet.add(`post_${n.postId}_follower_${state.userId}`);
+      }
+      const combinedRead =
+        Boolean(existing.read) ||
+        Boolean(n.read) ||
+        Array.from(aliasSet).some((aid) => state.optimisticReadIds.has(aid));
+
+      const existingMs = toMillis(existing.createdAt);
+      const incomingMs = toMillis(n.createdAt);
+      const bestCreatedAt =
+        existingMs >= incomingMs && existingMs > 0
+          ? existing.createdAt
+          : incomingMs > 0
+          ? n.createdAt
+          : existing.createdAt || n.createdAt;
+
+      // Prefer deterministic ID as the primary ID when available
+      const preferIncomingId =
+        !existing.id.startsWith('post_') &&
+        !existing.id.startsWith('follow_') &&
+        (n.id.startsWith('post_') || n.id.startsWith('follow_'));
+      const primaryId = preferIncomingId ? n.id : existing.id;
+
+      const merged: AppNotification = {
+        ...existing,
+        ...n,
+        id: primaryId,
+        type: existing.type !== 'system' ? existing.type : n.type,
+        title: existing.title.length >= n.title.length ? existing.title : n.title,
+        message: existing.message.length >= n.message.length ? existing.message : n.message,
+        createdAt: bestCreatedAt,
+        read: combinedRead,
+        authorId: existing.authorId || n.authorId,
+        authorName: existing.authorName || n.authorName,
+        authorAvatar: existing.authorAvatar || n.authorAvatar || null,
+        authorFrame: existing.authorFrame || n.authorFrame || null,
+        postId: existing.postId || n.postId,
+        postSlug: existing.postSlug || n.postSlug,
+        postType: existing.postType || n.postType,
+      };
+      semanticMap.set(semKey, merged);
+      dedupIdAliases.set(primaryId, aliasSet);
+    }
+  }
+
+  // Sort user notifications strictly by real createdAt timestamp (newest first)
+  const userNotifications = Array.from(semanticMap.values()).sort(
     (a, b) => toMillis(b.createdAt) - toMillis(a.createdAt)
   );
 
-  const announcementNotifications: AppNotification[] = state.announcements.map((a) => {
+  // Deduplicate announcements by ID and sanitize text
+  const seenAnnIds = new Set<string>();
+  const announcementNotifications: AppNotification[] = [];
+  for (const a of state.announcements) {
+    if (!a.id || seenAnnIds.has(a.id)) continue;
+    seenAnnIds.add(a.id);
     const isPinnedWelcome = a.id === WELCOME_ANNOUNCEMENT_ID || Boolean(a.isPinned);
     const isRead =
       state.readAnnouncementIds.has(a.id) || state.optimisticReadIds.has(a.id);
-    return {
+    announcementNotifications.push({
       id: a.id,
       type: 'announcement',
-      title: a.title,
-      message: a.message,
+      title: sanitizeNotificationText(a.title),
+      message: sanitizeNotificationText(a.message),
       createdAt: a.createdAt,
       read: isRead,
       isPinned: isPinnedWelcome,
       isAnnouncement: true,
       announcementId: a.id,
       publishedBy: a.authorName || 'Superadmin',
-    };
-  });
+    });
+  }
 
-  const combined = [...announcementNotifications, ...userNotifications].sort((a, b) => {
-    const aPinned = a.id === WELCOME_ANNOUNCEMENT_ID || Boolean(a.isPinned);
-    const bPinned = b.id === WELCOME_ANNOUNCEMENT_ID || Boolean(b.isPinned);
-    if (aPinned && !bPinned) return -1;
-    if (!aPinned && bPinned) return 1;
-    return toMillis(b.createdAt) - toMillis(a.createdAt);
-  });
+  // Sort all notifications strictly by their real createdAt timestamp (newest first)
+  const combined = [...announcementNotifications, ...userNotifications].sort(
+    (a, b) => toMillis(b.createdAt) - toMillis(a.createdAt)
+  );
 
   // SINGLE SOURCE OF TRUTH: unreadCount is strictly the number of notifications where read === false
   const unreadCount = combined.filter((n) => !n.read).length;
@@ -958,22 +1248,32 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
           if (isRead) {
             activeStore.optimisticReadIds.add(id);
           }
+          const rawCreated = item.createdAtMs ?? item.createdAt ?? null;
+          const parsedMs = toMillis(rawCreated);
+          const cleanTitle = sanitizeNotificationText(item.title, item.authorName);
+          const cleanMsg = sanitizeNotificationText(item.message, item.authorName);
           nextD1Map.set(id, {
             id,
-            type: normalizeNotificationType(item.type),
-            title: String(item.title || ''),
-            message: String(item.message || ''),
-            createdAt: Number(item.createdAtMs || item.createdAt || Date.now()),
+            type: normalizeNotificationType(
+              item.type,
+              false,
+              cleanTitle,
+              cleanMsg,
+              item.link,
+              item.postId
+            ),
+            title: cleanTitle,
+            message: cleanMsg,
+            createdAt: parsedMs > 0 ? parsedMs : rawCreated,
             read: isRead,
             isPinned: Boolean(item.isPinned),
-            link:
-              item.link ||
-              (item.postId ? `/commons/post/${item.postId}` : '/dashboard/commons'),
+            link: item.link || null,
             authorId: item.authorId,
             authorName: item.authorName,
             authorAvatar: item.authorAvatar || null,
             authorFrame: item.authorFrame || null,
             postId: item.postId,
+            postSlug: item.postSlug,
             postType: item.postType,
           });
         }
@@ -983,6 +1283,9 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
       // Update Firestore notifications map if snapshot was fetched
       if (fsNotifSnap) {
         const nextFsMap = new Map<string, AppNotification>();
+        const seenSemKeys = new Map<string, string>();
+        const dupIdsToDelete: string[] = [];
+
         fsNotifSnap.docs.forEach((d) => {
           const data = d.data();
           if (data?.announcementId === WELCOME_ANNOUNCEMENT_ID) return;
@@ -990,28 +1293,58 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
           if (isRead) {
             activeStore.optimisticReadIds.add(d.id);
           }
-          nextFsMap.set(d.id, {
+          const cleanTitle = sanitizeNotificationText(data.title, data.authorName);
+          const cleanMsg = sanitizeNotificationText(data.message, data.authorName);
+          const notifItem: AppNotification = {
             id: d.id,
-            type: normalizeNotificationType(data.type),
-            title: data.title || '',
-            message: data.message || '',
-            createdAt: data.createdAt || null,
+            type: normalizeNotificationType(
+              data.type,
+              false,
+              cleanTitle,
+              cleanMsg,
+              data.link,
+              data.postId
+            ),
+            title: cleanTitle,
+            message: cleanMsg,
+            createdAt: data.createdAt || data.createdAtMs || null,
             read: isRead,
             isPinned: Boolean(data.isPinned),
-            link:
-              data.link ||
-              (data.postId ? `/commons/post/${data.postId}` : '/dashboard/commons'),
+            link: data.link || null,
             authorId: data.authorId,
             authorName: data.authorName,
             authorAvatar: data.authorAvatar || null,
             authorFrame: data.authorFrame || null,
             postId: data.postId,
+            postSlug: data.postSlug,
             postType: data.postType,
-          });
+          };
+          const semKey = getSemanticDedupKey(notifItem);
+          if (seenSemKeys.has(semKey)) {
+            if (!cleanedDuplicateIds.has(d.id)) {
+              cleanedDuplicateIds.add(d.id);
+              dupIdsToDelete.push(d.id);
+            }
+          } else {
+            seenSemKeys.set(semKey, d.id);
+          }
+          nextFsMap.set(d.id, notifItem);
         });
         activeStore.firestoreNotifications = nextFsMap;
+
+        if (dupIdsToDelete.length > 0) {
+          void Promise.all(
+            dupIdsToDelete.slice(0, 25).map((dupId) =>
+              deleteDoc(doc(db, 'notifications', dupId)).catch(() => {})
+            )
+          );
+        }
       }
 
+      saveLocalReadIds(userId, [
+        ...activeStore.optimisticReadIds,
+        ...activeStore.readAnnouncementIds,
+      ]);
       activeStore.announcements = announcements;
       activeStore.loading = false;
       activeStore.initialized = true;
@@ -1067,13 +1400,14 @@ function attachUserRealtimeStore(userId: string): void {
     activePollTimer = null;
   }
 
+  const cachedReadIds = loadLocalReadIds(userId);
   activeStore = {
     userId,
     d1Notifications: new Map(),
     firestoreNotifications: new Map(),
-    optimisticReadIds: new Set(),
+    optimisticReadIds: new Set(cachedReadIds),
     announcements: [],
-    readAnnouncementIds: new Set(),
+    readAnnouncementIds: new Set(cachedReadIds),
     loading: true,
     initialized: false,
   };
@@ -1091,6 +1425,9 @@ function attachUserRealtimeStore(userId: string): void {
       (snap) => {
         if (activeStore.userId !== userId) return;
         const nextFsMap = new Map<string, AppNotification>();
+        const seenSemKeys = new Map<string, string>();
+        const dupIdsToDelete: string[] = [];
+
         snap.docs.forEach((d) => {
           const data = d.data();
           if (data?.announcementId === WELCOME_ANNOUNCEMENT_ID) return;
@@ -1098,27 +1435,53 @@ function attachUserRealtimeStore(userId: string): void {
           if (isRead) {
             activeStore.optimisticReadIds.add(d.id);
           }
-          nextFsMap.set(d.id, {
+          const cleanTitle = sanitizeNotificationText(data.title, data.authorName);
+          const cleanMsg = sanitizeNotificationText(data.message, data.authorName);
+          const notifItem: AppNotification = {
             id: d.id,
-            type: normalizeNotificationType(data.type),
-            title: data.title || '',
-            message: data.message || '',
-            createdAt: data.createdAt || null,
+            type: normalizeNotificationType(
+              data.type,
+              false,
+              cleanTitle,
+              cleanMsg,
+              data.link,
+              data.postId
+            ),
+            title: cleanTitle,
+            message: cleanMsg,
+            createdAt: data.createdAt || data.createdAtMs || null,
             read: isRead,
             isPinned: Boolean(data.isPinned),
-            link:
-              data.link ||
-              (data.postId ? `/commons/post/${data.postId}` : '/dashboard/commons'),
+            link: data.link || null,
             authorId: data.authorId,
             authorName: data.authorName,
             authorAvatar: data.authorAvatar || null,
             authorFrame: data.authorFrame || null,
             postId: data.postId,
+            postSlug: data.postSlug,
             postType: data.postType,
-          });
+          };
+          const semKey = getSemanticDedupKey(notifItem);
+          if (seenSemKeys.has(semKey)) {
+            if (!cleanedDuplicateIds.has(d.id)) {
+              cleanedDuplicateIds.add(d.id);
+              dupIdsToDelete.push(d.id);
+            }
+          } else {
+            seenSemKeys.set(semKey, d.id);
+          }
+          nextFsMap.set(d.id, notifItem);
         });
         activeStore.firestoreNotifications = nextFsMap;
         emitStoreChange();
+
+        if (dupIdsToDelete.length > 0) {
+          void Promise.all(
+            dupIdsToDelete.slice(0, 25).map((dupId) =>
+              deleteDoc(doc(db, 'notifications', dupId)).catch(() => {})
+            )
+          );
+        }
       },
       () => {
         // Ignore Firestore listener permission/network error; D1 sync still runs
@@ -1171,7 +1534,7 @@ export function subscribeToNotificationStore(
 }
 
 /**
- * Mark a single user notification as read with immediate optimistic update and rollback on failure.
+ * Mark a single user notification as read with immediate optimistic update and persistence across all alias IDs.
  */
 export async function markNotificationAsRead(
   notificationId: string,
@@ -1185,105 +1548,67 @@ export async function markNotificationAsRead(
     return;
   }
 
-  // Snapshot previous state for rollback if persistence fails
-  const prevOptimisticHad = activeStore.optimisticReadIds.has(notificationId);
   const prevD1Entry = activeStore.d1Notifications.get(notificationId);
   const prevFsEntry = activeStore.firestoreNotifications.get(notificationId);
-  const prevAnnHad = activeStore.readAnnouncementIds.has(notificationId);
-
-  // Also check if there is a deterministic counterpart for the same postId
   const targetPostId = prevD1Entry?.postId || prevFsEntry?.postId;
   const deterministicPostId =
     targetPostId && userId ? `post_${targetPostId}_follower_${userId}` : null;
 
+  const allTargetIds = new Set<string>([notificationId]);
+  if (deterministicPostId) allTargetIds.add(deterministicPostId);
+  const aliases = dedupIdAliases.get(notificationId);
+  if (aliases) {
+    aliases.forEach((aid) => allTargetIds.add(aid));
+  }
+
   // 1. Optimistic update immediately
-  activeStore.optimisticReadIds.add(notificationId);
-  if (deterministicPostId) {
-    activeStore.optimisticReadIds.add(deterministicPostId);
-  }
-  if (prevD1Entry) {
-    activeStore.d1Notifications.set(notificationId, { ...prevD1Entry, read: true });
-  }
-  if (deterministicPostId && activeStore.d1Notifications.has(deterministicPostId)) {
-    const det = activeStore.d1Notifications.get(deterministicPostId)!;
-    activeStore.d1Notifications.set(deterministicPostId, { ...det, read: true });
-  }
-  if (prevFsEntry) {
-    activeStore.firestoreNotifications.set(notificationId, { ...prevFsEntry, read: true });
-  }
+  allTargetIds.forEach((id) => {
+    activeStore.optimisticReadIds.add(id);
+    const d1Item = activeStore.d1Notifications.get(id);
+    if (d1Item) {
+      activeStore.d1Notifications.set(id, { ...d1Item, read: true });
+    }
+    const fsItem = activeStore.firestoreNotifications.get(id);
+    if (fsItem) {
+      activeStore.firestoreNotifications.set(id, { ...fsItem, read: true });
+    }
+  });
+  saveLocalReadIds(userId, [
+    ...activeStore.optimisticReadIds,
+    ...activeStore.readAnnouncementIds,
+  ]);
   emitStoreChange();
 
-  // 2. Update database (D1 + Firestore)
-  let d1Succeeded = false;
-  let fsSucceeded = false;
-
+  // 2. Update database (D1 + Firestore) across all alias IDs
   const headers = await getOptionalBearerHeader();
-  const d1Promise = userId
-    ? fetch('/api/notifications/read', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...headers,
-        },
-        body: JSON.stringify({
-          userId,
-          notificationId,
-        }),
-      })
-        .then(async (r) => {
-          if (r.ok) d1Succeeded = true;
-          if (deterministicPostId && deterministicPostId !== notificationId) {
-            await fetch('/api/notifications/read', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...headers,
-              },
-              body: JSON.stringify({
-                userId,
-                notificationId: deterministicPostId,
-              }),
-            }).catch(() => {});
-          }
-        })
-        .catch(() => {})
-    : Promise.resolve();
+  const d1Promises = userId
+    ? Array.from(allTargetIds).map((id) =>
+        fetch('/api/notifications/read', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...headers,
+          },
+          body: JSON.stringify({
+            userId,
+            notificationId: id,
+          }),
+        }).catch(() => {})
+      )
+    : [];
 
-  const fsPromise = updateDoc(doc(db, 'notifications', notificationId), {
-    read: true,
-    readAt: serverTimestamp(),
-  })
-    .then(() => {
-      fsSucceeded = true;
-    })
-    .catch(() => {});
+  const fsPromises = Array.from(allTargetIds).map((id) =>
+    updateDoc(doc(db, 'notifications', id), {
+      read: true,
+      readAt: serverTimestamp(),
+    }).catch(() => {})
+  );
 
-  await Promise.all([d1Promise, fsPromise]);
-
-  // 3. Rollback if both persistence backends failed
-  if (!d1Succeeded && !fsSucceeded) {
-    if (!prevOptimisticHad) {
-      activeStore.optimisticReadIds.delete(notificationId);
-    }
-    if (deterministicPostId) {
-      activeStore.optimisticReadIds.delete(deterministicPostId);
-    }
-    if (prevD1Entry) {
-      activeStore.d1Notifications.set(notificationId, prevD1Entry);
-    }
-    if (prevFsEntry) {
-      activeStore.firestoreNotifications.set(notificationId, prevFsEntry);
-    }
-    if (!prevAnnHad) {
-      activeStore.readAnnouncementIds.delete(notificationId);
-    }
-    emitStoreChange();
-    throw new Error('Failed to mark notification as read.');
-  }
+  await Promise.all([...d1Promises, ...fsPromises]);
 }
 
 /**
- * Mark a global announcement as read for a specific user with immediate optimistic update and rollback on failure.
+ * Mark a global announcement as read for a specific user with immediate optimistic update.
  */
 export async function markAnnouncementAsRead(
   userId: string,
@@ -1292,20 +1617,19 @@ export async function markAnnouncementAsRead(
   const effectiveUserId = userId || activeStore.userId || auth.currentUser?.uid || '';
   if (!effectiveUserId || !announcementId) return;
 
-  const prevHadRead = activeStore.readAnnouncementIds.has(announcementId);
-  const prevOptimisticHad = activeStore.optimisticReadIds.has(announcementId);
-
   // 1. Optimistic update immediately
   activeStore.readAnnouncementIds.add(announcementId);
   activeStore.optimisticReadIds.add(announcementId);
+  saveLocalReadIds(effectiveUserId, [
+    ...activeStore.optimisticReadIds,
+    ...activeStore.readAnnouncementIds,
+  ]);
   emitStoreChange();
 
   // 2. Persist to D1 and Firestore
-  let d1Succeeded = false;
-  let fsSucceeded = false;
   const headers = await getOptionalBearerHeader();
 
-  const d1Calls: Promise<void>[] = [
+  const d1Calls: Promise<unknown>[] = [
     fetch('/api/notifications/read', {
       method: 'POST',
       headers: {
@@ -1317,11 +1641,7 @@ export async function markAnnouncementAsRead(
         notificationId: announcementId,
         isAnnouncement: true,
       }),
-    })
-      .then((r) => {
-        if (r.ok) d1Succeeded = true;
-      })
-      .catch(() => {}),
+    }).catch(() => {}),
   ];
 
   if (announcementId === WELCOME_ANNOUNCEMENT_ID) {
@@ -1333,11 +1653,7 @@ export async function markAnnouncementAsRead(
           ...headers,
         },
         body: JSON.stringify({ userId: effectiveUserId }),
-      })
-        .then((r) => {
-          if (r.ok) d1Succeeded = true;
-        })
-        .catch(() => {})
+      }).catch(() => {})
     );
   }
 
@@ -1347,29 +1663,13 @@ export async function markAnnouncementAsRead(
       readAt: serverTimestamp(),
     },
     { merge: true }
-  )
-    .then(() => {
-      fsSucceeded = true;
-    })
-    .catch(() => {});
+  ).catch(() => {});
 
   await Promise.all([...d1Calls, fsCall]);
-
-  // 3. Rollback if both failed
-  if (!d1Succeeded && !fsSucceeded) {
-    if (!prevHadRead) {
-      activeStore.readAnnouncementIds.delete(announcementId);
-    }
-    if (!prevOptimisticHad) {
-      activeStore.optimisticReadIds.delete(announcementId);
-    }
-    emitStoreChange();
-    throw new Error('Failed to mark announcement as read.');
-  }
 }
 
 /**
- * Mark all user notifications and all announcements as read with immediate optimistic update and rollback on failure.
+ * Mark all user notifications and all announcements as read with immediate optimistic update.
  */
 export async function markAllNotificationsAsRead(
   userId: string,
@@ -1379,16 +1679,11 @@ export async function markAllNotificationsAsRead(
   const effectiveUserId = userId || activeStore.userId || auth.currentUser?.uid || '';
   if (!effectiveUserId) return;
 
-  // Snapshot previous state for rollback if persistence fails
-  const prevOptimisticReadIds = new Set(activeStore.optimisticReadIds);
-  const prevReadAnnouncementIds = new Set(activeStore.readAnnouncementIds);
-  const prevD1Notifications = new Map(activeStore.d1Notifications);
-  const prevFsNotifications = new Map(activeStore.firestoreNotifications);
-
+  const snapNow = buildSnapshot(activeStore);
   const targetUserNotifs =
     userNotifications && userNotifications.length > 0
       ? userNotifications
-      : buildSnapshot(activeStore).userNotifications;
+      : snapNow.userNotifications;
   const targetAnnouncements =
     announcements && announcements.length > 0 ? announcements : activeStore.announcements;
 
@@ -1399,6 +1694,13 @@ export async function markAllNotificationsAsRead(
   for (const a of targetAnnouncements) {
     activeStore.readAnnouncementIds.add(a.id);
     activeStore.optimisticReadIds.add(a.id);
+  }
+
+  for (const n of snapNow.notifications) {
+    activeStore.optimisticReadIds.add(n.id);
+    if (n.isAnnouncement || n.announcementId) {
+      activeStore.readAnnouncementIds.add(n.announcementId || n.id);
+    }
   }
 
   for (const n of targetUserNotifs) {
@@ -1415,15 +1717,21 @@ export async function markAllNotificationsAsRead(
     activeStore.optimisticReadIds.add(id);
   });
 
+  saveLocalReadIds(effectiveUserId, [
+    ...activeStore.optimisticReadIds,
+    ...activeStore.readAnnouncementIds,
+  ]);
   emitStoreChange();
 
-  // 2. Persist to D1 (awaited!) and Firestore
-  let d1Succeeded = false;
-  let fsSucceeded = false;
+  // 2. Persist to D1 and Firestore
   const headers = await getOptionalBearerHeader();
 
   const announcementIds = Array.from(
-    new Set([WELCOME_ANNOUNCEMENT_ID, ...targetAnnouncements.map((a) => a.id)])
+    new Set([
+      WELCOME_ANNOUNCEMENT_ID,
+      ...targetAnnouncements.map((a) => a.id),
+      ...Array.from(activeStore.readAnnouncementIds),
+    ])
   );
 
   const d1ReadAllPromise = Promise.all([
@@ -1437,9 +1745,7 @@ export async function markAllNotificationsAsRead(
         userId: effectiveUserId,
         announcementIds,
       }),
-    }).then((r) => {
-      if (r.ok) d1Succeeded = true;
-    }),
+    }).catch(() => {}),
     fetch('/api/announcements/welcome/read', {
       method: 'POST',
       headers: {
@@ -1447,9 +1753,7 @@ export async function markAllNotificationsAsRead(
         ...headers,
       },
       body: JSON.stringify({ userId: effectiveUserId }),
-    }).then((r) => {
-      if (r.ok) d1Succeeded = true;
-    }),
+    }).catch(() => {}),
   ]).catch(() => {});
 
   const fsBatchPromise = (async () => {
@@ -1457,19 +1761,18 @@ export async function markAllNotificationsAsRead(
       const batch = writeBatch(db);
       let ops = 0;
 
-      // Mark all unread user notifications (regardless of type!) as read in Firestore
       const unreadFsIds = new Set<string>();
       targetUserNotifs
         .filter((n) => !n.isAnnouncement && n.id !== WELCOME_ANNOUNCEMENT_ID)
         .forEach((n) => unreadFsIds.add(n.id));
-      prevFsNotifications.forEach((n, id) => {
-        if (!n.read) unreadFsIds.add(id);
+      activeStore.firestoreNotifications.forEach((_n, id) => {
+        unreadFsIds.add(id);
       });
 
       Array.from(unreadFsIds)
         .slice(0, 200)
         .forEach((id) => {
-          if (prevFsNotifications.has(id)) {
+          if (activeStore.firestoreNotifications.has(id)) {
             batch.update(doc(db, 'notifications', id), {
               read: true,
               readAt: serverTimestamp(),
@@ -1490,23 +1793,12 @@ export async function markAllNotificationsAsRead(
       if (ops > 0) {
         await batch.commit();
       }
-      fsSucceeded = true;
     } catch {
-      // Ignore Firestore batch error if D1 succeeded
+      // Ignore Firestore batch error
     }
   })();
 
   await Promise.all([d1ReadAllPromise, fsBatchPromise]);
-
-  // 3. Rollback if both failed
-  if (!d1Succeeded && !fsSucceeded) {
-    activeStore.optimisticReadIds = prevOptimisticReadIds;
-    activeStore.readAnnouncementIds = prevReadAnnouncementIds;
-    activeStore.d1Notifications = prevD1Notifications;
-    activeStore.firestoreNotifications = prevFsNotifications;
-    emitStoreChange();
-    throw new Error('Failed to mark all notifications as read.');
-  }
 }
 
 /**
@@ -1551,22 +1843,30 @@ export async function fetchUserNotificationsPage(params: {
       .map((d) => {
         const data = d.data();
         const isRead = Boolean(data.read) || activeStore.optimisticReadIds.has(d.id);
+        const cleanTitle = sanitizeNotificationText(data.title, data.authorName);
+        const cleanMsg = sanitizeNotificationText(data.message, data.authorName);
         return {
           id: d.id,
-          type: normalizeNotificationType(data.type),
-          title: data.title || '',
-          message: data.message || '',
-          createdAt: data.createdAt || null,
+          type: normalizeNotificationType(
+            data.type,
+            false,
+            cleanTitle,
+            cleanMsg,
+            data.link,
+            data.postId
+          ),
+          title: cleanTitle,
+          message: cleanMsg,
+          createdAt: data.createdAt || data.createdAtMs || null,
           read: isRead,
           isPinned: Boolean(data.isPinned),
-          link:
-            data.link ||
-            (data.postId ? `/commons/post/${data.postId}` : '/dashboard/commons'),
+          link: data.link || null,
           authorId: data.authorId,
           authorName: data.authorName,
           authorAvatar: data.authorAvatar || null,
           authorFrame: data.authorFrame || null,
           postId: data.postId,
+          postSlug: data.postSlug,
           postType: data.postType,
         };
       });

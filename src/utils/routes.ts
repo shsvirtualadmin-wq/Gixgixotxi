@@ -398,7 +398,10 @@ export const routes = {
 };
 
 export interface NotificationRouteParams {
+  id?: string | null;
   type?: string | null;
+  title?: string | null;
+  message?: string | null;
   link?: string | null;
   authorId?: string | null;
   actorId?: string | null;
@@ -492,24 +495,30 @@ export function resolveNotificationDestination(notif: NotificationRouteParams): 
   if (!notif) return '/dashboard/commons';
 
   const type = String(notif.type || '').toLowerCase();
+  const combinedText = `${notif.title || ''} ${notif.message || ''}`.toLowerCase();
 
-  // Announcements open their modal in place; no URL navigation
+  // Announcements expand in place; no URL navigation
   if (type === 'announcement' || notif.isAnnouncement) {
     return null;
   }
 
   // 1. Follow notification: MUST open the FOLLOWER's profile page
   if (type === 'new_follower' || type === 'follow' || type === 'follower') {
-    const followerUid = notif.authorId || notif.actorId || notif.followerId;
+    let followerUid = notif.authorId || notif.actorId || notif.followerId || null;
+    if (!followerUid && notif.id && notif.id.startsWith('follow_')) {
+      const parts = notif.id.split('_');
+      if (parts.length >= 3) {
+        followerUid = parts[1];
+      }
+    }
     if (followerUid) {
       return routes.profile(followerUid);
     }
-    // If IDs missing, inspect and map legacy link
     if (notif.link) {
       const mapped = mapLegacyNotificationPath(notif.link);
-      if (mapped) return mapped;
+      if (mapped && mapped !== '/dashboard/commons') return mapped;
     }
-    return '/dashboard/commons';
+    return '/dashboard/profile';
   }
 
   // 1b. Chat request or Direct Message notification
@@ -531,8 +540,13 @@ export function resolveNotificationDestination(notif: NotificationRouteParams): 
     if (notif.postSlug) {
       return routes.commonsPost(notif.postSlug);
     }
-    if (notif.postId) {
-      return routes.commonsPost(notif.postId, notif.postTitle || undefined);
+    let postId = notif.postId || null;
+    if (!postId && notif.id && notif.id.startsWith('post_')) {
+      const m = notif.id.match(/^post_(.+)_follower_/);
+      if (m) postId = m[1];
+    }
+    if (postId) {
+      return routes.commonsPost(postId, notif.postTitle || undefined);
     }
     if (notif.link) {
       const mapped = mapLegacyNotificationPath(notif.link);
@@ -566,10 +580,44 @@ export function resolveNotificationDestination(notif: NotificationRouteParams): 
     return '/dashboard/commons';
   }
 
-  // 5. System or legacy fallback
-  if (notif.link) {
+  // 5. Reward notifications (Kobans, monthly captain allotments, referral bonus weeks)
+  if (type === 'reward' || type === 'koban' || type === 'allotment') {
+    if (notif.link && notif.link !== '/dashboard/commons') {
+      const mapped = mapLegacyNotificationPath(notif.link);
+      if (mapped) return mapped;
+    }
+    return '/dashboard/rewards';
+  }
+
+  // 6. Crew / Nakama Captain notifications
+  if (type === 'crew' || type === 'captain') {
+    if (notif.link && notif.link !== '/dashboard/commons') {
+      const mapped = mapLegacyNotificationPath(notif.link);
+      if (mapped) return mapped;
+    }
+    if (combinedText.includes('captain')) {
+      return '/dashboard/captain';
+    }
+    return '/dashboard/crew';
+  }
+
+  // 7. System or legacy fallback
+  if (notif.link && notif.link !== '/dashboard/commons') {
     const mapped = mapLegacyNotificationPath(notif.link);
     if (mapped) return mapped;
+  }
+
+  if (combinedText.includes('captain') && !combinedText.includes('allotment')) {
+    return '/dashboard/captain';
+  }
+  if (combinedText.includes('crew')) {
+    return '/dashboard/crew';
+  }
+  if (combinedText.includes('koban') || combinedText.includes('allotment') || combinedText.includes('reward')) {
+    return '/dashboard/rewards';
+  }
+  if (combinedText.includes('plan') || combinedText.includes('upgrade') || combinedText.includes('setting')) {
+    return '/dashboard/settings';
   }
 
   if (notif.postId) {
@@ -580,5 +628,5 @@ export function resolveNotificationDestination(notif: NotificationRouteParams): 
     return routes.profile(notif.authorId);
   }
 
-  return '/dashboard/commons';
+  return '/dashboard/settings';
 }

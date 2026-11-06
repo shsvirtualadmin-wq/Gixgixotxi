@@ -2168,14 +2168,31 @@ export async function approveCaptainApplication(
     { merge: true }
   );
 
+  const rawCaptainName = String(
+    app.name || (app as any).fullName || (app as any).displayName || (app as any).userName || ''
+  ).trim();
+  const safeCaptainName =
+    rawCaptainName &&
+    rawCaptainName.toLowerCase() !== 'undefined' &&
+    rawCaptainName.toLowerCase() !== 'null'
+      ? rawCaptainName
+      : '';
+  const captainGreeting = safeCaptainName
+    ? `Congratulations ${safeCaptainName}!`
+    : 'Congratulations!';
+  const safeUni =
+    app.university && String(app.university).trim().toLowerCase() !== 'undefined'
+      ? String(app.university).trim()
+      : 'your institution';
+
   // 3. Create or update captain hub record
   await setDoc(
     doc(db, 'captains', app.userId),
     {
       userId: app.userId,
-      name: app.name,
+      name: safeCaptainName || app.email?.split('@')[0] || 'Nakama Captain',
       email: app.email,
-      university: app.university,
+      university: safeUni,
       city: app.city,
       referralCode: captainCode,
       captainCode,
@@ -2187,14 +2204,20 @@ export async function approveCaptainApplication(
     { merge: true }
   );
 
-  // 4. Send notification to user
-  await addDoc(collection(db, 'notifications'), {
-    userId: app.userId,
-    title: 'Campus Captain Approved! 🏆',
-    message: `Congratulations ${app.name}! Your application to represent ${app.university} has been approved. Your code is ${captainCode}.`,
-    read: false,
-    createdAt: serverTimestamp(),
-  });
+  // 4. Send notification to user (deterministic ID prevents duplicates)
+  await setDoc(
+    doc(db, 'notifications', `captain_approve_${app.userId}`),
+    {
+      userId: app.userId,
+      type: 'crew',
+      title: 'Campus Captain Approved!',
+      message: `${captainGreeting} Your application to represent ${safeUni} has been approved. Your code is ${captainCode}.`,
+      link: '/dashboard/captain',
+      read: false,
+      createdAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 
   await logAdminAction(adminEmail, 'approve_captain_application', { appId: app.id, captainCode }, app.userId, app.email);
 }
@@ -2204,6 +2227,16 @@ export async function approveCrewApplication(
   app: CrewApplication
 ): Promise<void> {
   const crewCode = `CREW-${app.userId.slice(0, 6).toUpperCase()}`;
+  const rawCrewName = String(
+    app.name || (app as any).fullName || (app as any).displayName || (app as any).userName || ''
+  ).trim();
+  const safeCrewName =
+    rawCrewName &&
+    rawCrewName.toLowerCase() !== 'undefined' &&
+    rawCrewName.toLowerCase() !== 'null'
+      ? rawCrewName
+      : '';
+  const crewGreeting = safeCrewName ? `Congratulations ${safeCrewName}!` : 'Congratulations!';
 
   // 1. Update application doc
   await updateDoc(doc(db, 'crewApplications', app.id), {
@@ -2228,14 +2261,20 @@ export async function approveCrewApplication(
     { merge: true }
   );
 
-  // 3. Send notification to user
-  await addDoc(collection(db, 'notifications'), {
-    userId: app.userId,
-    title: 'Welcome to Boardly Crew! 🚀',
-    message: `Congratulations ${app.name}! You are now an official Boardly Crew Ambassador. Your referral code is ${crewCode}.`,
-    read: false,
-    createdAt: serverTimestamp(),
-  });
+  // 3. Send notification to user (deterministic ID prevents duplicates)
+  await setDoc(
+    doc(db, 'notifications', `crew_approve_${app.userId}`),
+    {
+      userId: app.userId,
+      type: 'crew',
+      title: 'Welcome to Boardly Crew!',
+      message: `${crewGreeting} You are now an official Boardly Crew Ambassador. Your referral code is ${crewCode}.`,
+      link: '/dashboard/crew',
+      read: false,
+      createdAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 
   await logAdminAction(adminEmail, 'approve_crew_application', { appId: app.id, crewCode }, app.userId, app.email);
 }
@@ -2302,13 +2341,19 @@ export async function approvePaymentRequest(
       transactionId: req.transactionId,
     });
 
-    await addDoc(collection(db, 'notifications'), {
-      userId: req.userId,
-      title: 'Squad Upgraded to Large Crew! 🎉',
-      message: `Your payment of PKR ${req.amount} via ${req.method} (TRX: ${req.transactionId}) was verified. Your study squad now has Large Crew status with up to 30 members and Pro sharing for all squad members!`,
-      read: false,
-      createdAt: serverTimestamp(),
-    });
+    await setDoc(
+      doc(db, 'notifications', `crew_payment_${req.id}`),
+      {
+        userId: req.userId,
+        type: 'crew',
+        title: 'Squad Upgraded to Large Crew!',
+        message: `Your payment of PKR ${req.amount} via ${req.method} (TRX: ${req.transactionId}) was verified. Your study squad now has Large Crew status with up to 30 members and Pro sharing for all squad members!`,
+        link: '/dashboard/crew',
+        read: false,
+        createdAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
 
     await logAdminAction(
       adminEmail,
@@ -2338,13 +2383,19 @@ export async function approvePaymentRequest(
   );
 
   // 3. Send notification
-  await addDoc(collection(db, 'notifications'), {
-    userId: req.userId,
-    title: 'Boardly Pro Activated! 🎉',
-    message: `Your payment of PKR ${req.amount} via ${req.method} (TRX: ${req.transactionId}) was verified. You have full access until ${expiresAt.toDate().toLocaleDateString()}.`,
-    read: false,
-    createdAt: serverTimestamp(),
-  });
+  await setDoc(
+    doc(db, 'notifications', `pro_payment_${req.id}`),
+    {
+      userId: req.userId,
+      type: 'system',
+      title: 'Boardly Pro Activated!',
+      message: `Your payment of PKR ${req.amount} via ${req.method} (TRX: ${req.transactionId}) was verified. You have full access until ${expiresAt.toDate().toLocaleDateString()}.`,
+      link: '/dashboard/settings',
+      read: false,
+      createdAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 
   await logAdminAction(
     adminEmail,

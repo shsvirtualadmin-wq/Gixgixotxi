@@ -3329,16 +3329,40 @@ ${allUrls
     if (!Array.isArray(store.userReadAnnouncements)) store.userReadAnnouncements = [];
     if (!Array.isArray(store.userWelcomeStatus)) store.userWelcomeStatus = [];
 
+    const seenKeys = new Set<string>();
     const userNotifs = store.notifications
       .filter((n) => n.user_id === userId)
       .sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0))
+      .filter((n) => {
+        const cleanTitle = String(n.title || '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, ' ')
+          .trim();
+        const cleanMsg = String(n.message || '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, ' ')
+          .slice(0, 60)
+          .trim();
+        const dedupKey = n.post_id
+          ? `post_${n.post_id}`
+          : `${n.type || 'following_post'}_${n.author_id || ''}_${cleanTitle}_${cleanMsg}`;
+        if (seenKeys.has(dedupKey)) return false;
+        seenKeys.add(dedupKey);
+        return true;
+      })
       .slice(0, 100)
       .map((n) => ({
         id: n.id,
         userId: n.user_id,
         type: n.type || 'following_post',
-        title: n.title,
-        message: n.message || '',
+        title: String(n.title || '').replace(
+          /Congratulations\s+(?:undefined|null|\[object Object\])\s*!/gi,
+          'Congratulations!'
+        ),
+        message: String(n.message || '').replace(
+          /Congratulations\s+(?:undefined|null|\[object Object\])\s*!/gi,
+          'Congratulations!'
+        ),
         link: n.link || undefined,
         read: Boolean(n.read),
         isPinned: Boolean(n.is_pinned),
@@ -3398,17 +3422,36 @@ ${allUrls
         item.id ||
           (item.postId
             ? `post_${item.postId}_follower_${targetUserId}`
+            : item.type === 'new_follower' && authorId
+            ? `follow_${authorId}_${targetUserId}`
             : `notif_${now}_${crypto.randomUUID().slice(0, 8)}`)
       ).trim();
 
       if (store.notifications.some((n) => n.id === id)) continue;
+      if (
+        item.postId &&
+        store.notifications.some(
+          (n) => n.user_id === targetUserId && n.post_id === String(item.postId)
+        )
+      ) {
+        continue;
+      }
+
+      const cleanTitle = String(item.title || 'New update').replace(
+        /Congratulations\s+(?:undefined|null|\[object Object\])\s*!/gi,
+        'Congratulations!'
+      );
+      const cleanMessage = String(item.message || '').replace(
+        /Congratulations\s+(?:undefined|null|\[object Object\])\s*!/gi,
+        'Congratulations!'
+      );
 
       store.notifications.unshift({
         id,
         user_id: targetUserId,
         type: String(item.type || 'following_post'),
-        title: String(item.title || 'New update'),
-        message: String(item.message || ''),
+        title: cleanTitle,
+        message: cleanMessage,
         link: item.link ? String(item.link) : null,
         read: item.read ? 1 : 0,
         is_pinned: item.isPinned ? 1 : 0,

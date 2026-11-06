@@ -153,14 +153,24 @@ export async function processAmbassadorReferralOnSignup(params: {
       ambassadorBonusWeeks: increment(1),
     });
 
-    // 6. Send in-app notification to ambassador
-    await setDoc(doc(collection(db, 'notifications')), {
-      userId: ambassadorUid,
-      title: 'New Student Joined via Your Link! 🎁',
-      message: `${newName} (#${newShortId}) signed up using your link! You earned 1 bonus week of Boardly Pro access.`,
-      read: false,
-      createdAt: serverTimestamp(),
-    });
+    // 6. Send in-app notification to ambassador (deterministic ID prevents duplicates)
+    const safeNewName =
+      newName && String(newName).trim().toLowerCase() !== 'undefined'
+        ? String(newName).trim()
+        : 'A student';
+    await setDoc(
+      doc(db, 'notifications', `referral_bonus_${ambassadorUid}_${newUid}`),
+      {
+        userId: ambassadorUid,
+        type: 'reward',
+        title: 'New Student Joined via Your Link!',
+        message: `${safeNewName}${newShortId ? ` (#${newShortId})` : ''} signed up using your link! You earned 1 bonus week of Boardly Pro access.`,
+        link: '/dashboard/rewards',
+        read: false,
+        createdAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
   } catch (err) {
     console.warn('[referralService] Processing referral warning:', err);
   }
