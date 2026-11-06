@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { collection, query, where, orderBy, getDocs, limit, startAfter, type DocumentSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -61,6 +61,7 @@ export function ResultsListPage() {
   const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<{ code?: string; message: string; path?: string } | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const studentFallbackName =
     profile?.displayName?.trim() ||
@@ -118,7 +119,7 @@ export function ResultsListPage() {
     }
   }, [user]);
 
-  const handleLoadMore = async () => {
+  const handleLoadMore = useCallback(async () => {
     if (!user || !lastDoc || loadingMore) return;
     setLoadingMore(true);
     try {
@@ -132,7 +133,11 @@ export function ResultsListPage() {
       const snap = await getDocs(q);
       const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as AttemptDoc));
       const filtered = docs.filter((a) => a.status === 'completed' || a.score !== undefined);
-      setAttempts((prev) => [...prev, ...filtered]);
+      setAttempts((prev) => {
+        const existingIds = new Set(prev.map((a) => a.id));
+        const nextItems = filtered.filter((a) => !existingIds.has(a.id));
+        return [...prev, ...nextItems];
+      });
       setLastDoc(snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null);
       setHasMore(snap.docs.length === 20);
     } catch (err) {
@@ -140,11 +145,27 @@ export function ResultsListPage() {
     } finally {
       setLoadingMore(false);
     }
-  };
+  }, [user, lastDoc, loadingMore]);
 
   useEffect(() => {
     loadAttempts();
   }, [loadAttempts]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !hasMore || loadingMore || loading) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasMore && !loadingMore && !loading) {
+          void handleLoadMore();
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, handleLoadMore]);
 
   const totalTests = attempts.length + grandLineAttempts.length;
   const sumPercentages =
@@ -467,17 +488,10 @@ export function ResultsListPage() {
                 );
               })}
 
-              {hasMore && (
-                <div style={{ textAlign: 'center', paddingTop: 16 }}>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleLoadMore}
-                    loading={loadingMore}
-                    loadingMessages={['Loading older test results...']}
-                  >
-                    Load older test results
-                  </Button>
+              {hasMore && <div ref={sentinelRef} style={{ height: 24, width: '100%' }} />}
+              {loadingMore && (
+                <div style={{ padding: '12px 0' }}>
+                  <LineLoader variant="inline" context="results" message="Loading older test results..." />
                 </div>
               )}
             </div>

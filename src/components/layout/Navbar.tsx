@@ -6,7 +6,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
 import { useHomeUrl } from '@/utils/homeUrl';
 
-const NAV_LINKS = [
+const ALL_NAV_LINKS = [
   { to: '/rewards', label: 'Rewards', highlight: true },
   { to: '/grand-line', label: GRAND_LINE_NAME, highlight: true },
   { to: '/mcqs', label: 'Subject MCQs', shortLabel: 'MCQs' },
@@ -19,6 +19,9 @@ const NAV_LINKS = [
   { to: '/pricing', label: 'Pricing' },
   { to: '/contact', label: 'Contact' },
 ];
+
+// Top desktop navbar excludes Grand Line button to keep it clean and focused
+const DESKTOP_NAV_LINKS = ALL_NAV_LINKS.filter((link) => link.to !== '/grand-line');
 
 export function Navbar() {
   const [isMounted, setIsMounted] = useState(false);
@@ -107,7 +110,7 @@ export function Navbar() {
 
             {/* Center Desktop Navigation with tight, elegant spacing for the bigger logo */}
             <div className="hidden xl:flex items-center gap-1 2xl:gap-1.5">
-              {NAV_LINKS.map((link) => {
+              {DESKTOP_NAV_LINKS.map((link) => {
                 const active = isLinkActive(link.to);
                 if (link.highlight) {
                   return (
@@ -168,7 +171,7 @@ export function Navbar() {
               </Link>
             </div>
 
-            {/* Right side on Mobile & Mid-size screens (<1280px): Visible-by-default brand red Rewards link + Quick Grand Line pill + Hamburger */}
+            {/* Right side on Mobile & Mid-size screens (<1280px): Brand red Rewards link + Hamburger */}
             <div className="flex xl:hidden items-center gap-1.5 sm:gap-2">
               <Link
                 to="/rewards"
@@ -176,13 +179,6 @@ export function Navbar() {
                 className="px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-heading font-bold bg-[#D71921]/15 text-[#D71921] border border-[#D71921]/40 hover:bg-[#D71921] hover:text-white transition-all shadow-sm whitespace-nowrap"
               >
                 Rewards
-              </Link>
-              <Link
-                to="/grand-line"
-                onClick={handleClose}
-                className="hidden min-[420px]:inline-flex px-3 py-1.5 rounded-full text-xs font-heading font-bold bg-[#D71921]/15 text-[#D71921] border border-[#D71921]/40 hover:bg-[#D71921] hover:text-white transition-all shadow-sm whitespace-nowrap"
-              >
-                {GRAND_LINE_NAME}
               </Link>
               <button
                 type="button"
@@ -236,10 +232,10 @@ export function Navbar() {
           >
             {/* Navigation Links in the dot font with Staggered Transition & 48px+ tap target */}
             <div className="flex flex-col gap-1.5 sm:gap-2 py-1 shrink-0">
-              {NAV_LINKS.map((link, idx) => {
+              {ALL_NAV_LINKS.map((link, idx) => {
                 const active = isLinkActive(link.to);
                 const forwardDelay = idx * 35;
-                const reverseDelay = (NAV_LINKS.length - 1 - idx) * 25;
+                const reverseDelay = (ALL_NAV_LINKS.length - 1 - idx) * 25;
                 return (
                   <Link
                     key={link.to}

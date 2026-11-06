@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, UserPlus, Check } from 'lucide-react';
 import { getFollowers, getFollowing, followUser, unfollowUser, isFollowing } from '@/services/followService';
 import { getPublicProfiles } from '@/services/publicProfileService';
 import type { PublicProfile } from '@/types';
-import { AvatarPicture } from '@/components/koban/CosmeticRenderers';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 
 interface ProfileFollowModalProps {
   isOpen: boolean;
@@ -29,6 +29,8 @@ export const ProfileFollowModal: React.FC<ProfileFollowModalProps> = ({
   const [page, setPage] = useState(1);
   const [followingStatus, setFollowingStatus] = useState<Record<string, boolean>>({});
   const [pendingUid, setPendingUid] = useState<string | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const listContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -101,9 +103,26 @@ export const ProfileFollowModal: React.FC<ProfileFollowModalProps> = ({
     };
   }, [isOpen, targetUid, activeTab, currentUserId]);
 
-  if (!isOpen) return null;
-
   const displayedProfiles = profiles.slice(0, page * 20);
+  const canLoadMore = hasMore && displayedProfiles.length < profiles.length;
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !isOpen || !canLoadMore || loading) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && canLoadMore && !loading) {
+          setPage((prev) => prev + 1);
+        }
+      },
+      { root: listContainerRef.current, rootMargin: '120px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [isOpen, canLoadMore, loading]);
+
+  if (!isOpen) return null;
 
   const handleToggleFollow = async (pUid: string) => {
     if (!currentUserId || pendingUid) return;
@@ -167,7 +186,7 @@ export const ProfileFollowModal: React.FC<ProfileFollowModalProps> = ({
         </div>
 
         {/* Content list */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        <div ref={listContainerRef} className="flex-1 overflow-y-auto p-4 space-y-2">
           {loading ? (
             <div className="space-y-3 py-2">
               {[1, 2, 3, 4, 5].map((i) => (
@@ -205,9 +224,16 @@ export const ProfileFollowModal: React.FC<ProfileFollowModalProps> = ({
                       }}
                       className="flex items-center gap-3 min-w-0 text-left cursor-pointer"
                     >
-                      <div className="w-10 h-10 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 shrink-0">
-                        <AvatarPicture itemId={p.avatar || 'none'} size={40} photoURL={p.photoURL} />
-                      </div>
+                      <BoardlyAvatar
+                        equippedAvatar={p.avatar || (p.equipped?.avatar as string)}
+                        avatarUrl={p.avatarUrl}
+                        photoURL={p.photoURL}
+                        frame={p.frame || (p.equipped?.frame as string) || 'none'}
+                        avatarKey={p.avatarKey}
+                        avatarVariant={p.avatarVariant}
+                        name={p.displayName || 'Student'}
+                        size={38}
+                      />
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-xs font-semibold text-neutral-100 truncate">
@@ -252,17 +278,7 @@ export const ProfileFollowModal: React.FC<ProfileFollowModalProps> = ({
                 );
               })}
 
-              {hasMore && displayedProfiles.length < profiles.length && (
-                <div className="pt-2 text-center">
-                  <button
-                    type="button"
-                    onClick={() => setPage((prev) => prev + 1)}
-                    className="text-xs text-neutral-400 hover:text-neutral-200 font-mono py-2 px-4 rounded-lg bg-neutral-900 border border-neutral-800 transition-colors"
-                  >
-                    Load more
-                  </button>
-                </div>
-              )}
+              {canLoadMore && <div ref={sentinelRef} className="h-4 w-full shrink-0" />}
             </>
           )}
         </div>

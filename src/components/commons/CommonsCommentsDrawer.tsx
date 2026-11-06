@@ -7,6 +7,8 @@ import { MathText } from '@/components/ui/MathText';
 import { sanitizeStudentDisplayName, maskPublicUserText } from '@/utils/privacy';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { useAuthGate } from '@/contexts/AuthGateContext';
+import { useProfileModal } from '@/contexts/ProfileModalContext';
+import { getPublicProfiles } from '@/services/publicProfileService';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 
 interface CommonsCommentsDrawerProps {
@@ -30,6 +32,7 @@ export function CommonsCommentsDrawer({
   currentUser,
 }: CommonsCommentsDrawerProps) {
   const { requireAuth } = useAuthGate();
+  const { openProfile } = useProfileModal();
   const [comments, setComments] = useState<CommonsComment[]>([]);
   const [newText, setNewText] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
@@ -41,12 +44,53 @@ export function CommonsCommentsDrawer({
 
   useEffect(() => {
     if (post && isOpen) {
+      let active = true;
       setLoading(true);
       setError(null);
       fetchPostComments(post.id)
-        .then(setComments)
-        .catch(() => setError('Failed to load comments.'))
-        .finally(() => setLoading(false));
+        .then(async (list) => {
+          if (!active) return;
+          setComments(list);
+          const uids = Array.from(
+            new Set(
+              list
+                .filter((c) => !c.isAnonymous && c.authorUid)
+                .map((c) => c.authorUid as string)
+            )
+          );
+          if (uids.length > 0) {
+            const profMap = await getPublicProfiles(uids).catch(() => new Map());
+            if (!active || profMap.size === 0) return;
+            setComments((prev) =>
+              prev.map((c) => {
+                if (c.isAnonymous || !c.authorUid) return c;
+                const p = profMap.get(c.authorUid);
+                if (!p) return c;
+                return {
+                  ...c,
+                  authorName: p.displayName || c.authorName,
+                  authorEquippedAvatar:
+                    p.equippedAvatar || p.avatar || (c as any).authorEquippedAvatar,
+                  authorAvatar:
+                    p.avatarUrl || p.equippedAvatar || p.avatar || c.authorAvatar,
+                  authorPhotoURL: p.photoURL || (c as any).authorPhotoURL,
+                  authorFrame: p.equippedFrame || p.frame || (c as any).authorFrame,
+                  authorRole: p.role || (c as any).authorRole,
+                  authorCustomRole: p.customRole || (c as any).authorCustomRole,
+                } as CommonsComment;
+              })
+            );
+          }
+        })
+        .catch(() => {
+          if (active) setError('Failed to load comments.');
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+      return () => {
+        active = false;
+      };
     }
   }, [post, isOpen]);
 
@@ -183,7 +227,17 @@ export function CommonsCommentsDrawer({
                       <EyeOff size={14} />
                     </div>
                   ) : (
-                    <div className="shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (comment.authorUid) {
+                          onClose();
+                          openProfile(comment.authorUid);
+                        }
+                      }}
+                      className="shrink-0 cursor-pointer hover:opacity-90 transition-opacity"
+                      title="View profile"
+                    >
                       <BoardlyAvatar
                         equippedAvatar={
                           (comment as any).authorEquippedAvatar ||
@@ -211,7 +265,7 @@ export function CommonsCommentsDrawer({
                         )}
                         size={32}
                       />
-                    </div>
+                    </button>
                   )}
 
                   {/* Bubble & actions */}
@@ -222,12 +276,21 @@ export function CommonsCommentsDrawer({
                           <span className="font-bold text-muted">Anonymous</span>
                         ) : (
                           <>
-                            <span className="font-bold text-primary truncate max-w-full">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (comment.authorUid) {
+                                  onClose();
+                                  openProfile(comment.authorUid);
+                                }
+                              }}
+                              className="font-bold text-primary hover:underline truncate max-w-full cursor-pointer text-left"
+                            >
                               {sanitizeStudentDisplayName(
                                 comment.authorName,
                                 comment.authorUid
                               )}
-                            </span>
+                            </button>
                             <RoleBadge
                               role={(comment as any).authorRole || 'Student'}
                               customRole={(comment as any).authorCustomRole}

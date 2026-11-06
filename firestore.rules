@@ -321,7 +321,7 @@ service cloud.firestore {
     // =========================================================================
 
     match /users/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
+      allow get: if isSignedIn();
       allow list: if isAdmin();
 
       allow create: if (
@@ -483,16 +483,16 @@ service cloud.firestore {
     }
 
     match /follows/{followId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() &&
+      allow read: if true;
+      allow create, update: if isSignedIn() &&
         request.resource.data.followerId == request.auth.uid &&
         request.resource.data.followingId is string &&
         request.resource.data.followerId != request.resource.data.followingId;
       allow delete: if isSignedIn() && (
         resource.data.followerId == request.auth.uid ||
+        resource.data.followingId == request.auth.uid ||
         isAdmin()
       );
-      allow update: if false;
     }
 
     match /usernames/{usernameLower} {
@@ -524,7 +524,8 @@ service cloud.firestore {
     // =========================================================================
 
     match /wallets/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      allow get: if isSignedIn();
+      allow list: if isOwner(userId) || isAdmin();
       allow create: if isAdmin() || (
         isOwner(userId) &&
         request.resource.data.get('balance', 0) is int &&
@@ -1074,6 +1075,39 @@ service cloud.firestore {
       allow delete: if isAdmin() || isModerator() || (
         isSignedIn() && resource.data.get('senderUid', '') == request.auth.uid
       );
+    }
+
+    match /conversations/{conversationId} {
+      allow get: if isSignedIn() && (
+        resource == null ||
+        request.auth.uid in resource.data.get('participants', []) ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        request.auth.uid in resource.data.get('participants', []) ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && (
+        request.auth.uid in request.resource.data.get('participants', []) ||
+        isAdmin()
+      );
+      allow update: if isSignedIn() && (
+        request.auth.uid in resource.data.get('participants', []) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow get, list: if isSignedIn() && (
+          exists(/databases/$(database)/documents/conversations/$(conversationId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.get('participants', [])
+        );
+        allow create: if isSignedIn() &&
+          request.resource.data.senderId == request.auth.uid &&
+          exists(/databases/$(database)/documents/conversations/$(conversationId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.get('participants', []);
+        allow update, delete: if isAdmin();
+      }
     }
 
     match /notifications/{notifId} {

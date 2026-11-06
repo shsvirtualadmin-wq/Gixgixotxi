@@ -27,6 +27,7 @@ export type NotificationType =
   | 'new_follower'
   | 'follow'
   | 'following'
+  | 'new_message'
   | 'comment'
   | 'reply'
   | 'like'
@@ -129,6 +130,7 @@ export function toMillis(val: Timestamp | Date | number | null | undefined): num
 function normalizeNotificationType(rawType?: string, isAnnouncement?: boolean): NotificationType {
   if (isAnnouncement || rawType === 'announcement') return 'announcement';
   if (rawType === 'new_follower' || rawType === 'follow' || rawType === 'follower') return 'new_follower';
+  if (rawType === 'new_message' || rawType === 'message') return 'new_message';
   if (rawType === 'following_post' || rawType === 'new_post' || rawType === 'following') return 'following_post';
   if (rawType === 'comment' || rawType === 'reply') return 'comment';
   if (rawType === 'like' || rawType === 'post_like') return 'like';
@@ -903,7 +905,9 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
 
   const doSync = async () => {
     try {
-      await ensureWelcomeNotificationForUser(userId);
+      if (!activeStore.initialized) {
+        void ensureWelcomeNotificationForUser(userId).catch(() => {});
+      }
       const headers = await getOptionalBearerHeader();
 
       const [d1Data, announcements, firestoreReadAnns, welcomeRes, fsNotifSnap] =
@@ -917,13 +921,16 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
           fetchAnnouncements(50, userId),
           getDocs(collection(db, 'users', userId, 'readAnnouncements')).catch(() => null),
           fetchWelcomeAnnouncement(userId).catch(() => null),
-          getDocs(
-            query(
-              collection(db, 'notifications'),
-              where('userId', '==', userId),
-              limit(100)
-            )
-          ).catch(() => null),
+          // Only fetch one-time Firestore notifications if real-time listener is not already active
+          activeFirestoreUnsub
+            ? Promise.resolve(null)
+            : getDocs(
+                query(
+                  collection(db, 'notifications'),
+                  where('userId', '==', userId),
+                  limit(100)
+                )
+              ).catch(() => null),
         ]);
 
       if (activeStore.userId !== userId) return;
@@ -1123,10 +1130,10 @@ function attachUserRealtimeStore(userId: string): void {
 
   void syncUserNotificationsStore(userId);
   activePollTimer = setInterval(() => {
-    if (activeStore.userId === userId) {
+    if (activeStore.userId === userId && storeSubscribers.size > 0) {
       void syncUserNotificationsStore(userId);
     }
-  }, 25000);
+  }, 60000);
 }
 
 /**
@@ -1149,6 +1156,17 @@ export function subscribeToNotificationStore(
 
   return () => {
     storeSubscribers.delete(onSnapshotChange);
+    if (storeSubscribers.size === 0) {
+      if (activeFirestoreUnsub) {
+        activeFirestoreUnsub();
+        activeFirestoreUnsub = null;
+      }
+      if (activePollTimer) {
+        clearInterval(activePollTimer);
+        activePollTimer = null;
+      }
+      activeStore.userId = '';
+    }
   };
 }
 

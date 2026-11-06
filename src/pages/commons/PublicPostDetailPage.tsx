@@ -444,11 +444,27 @@ export const PublicPostDetailPage: React.FC = () => {
                 <div className="w-11 h-11 rounded-full bg-white/[0.05] border border-white/10 flex items-center justify-center text-white/60 shrink-0">
                   <EyeOff size={18} />
                 </div>
+              ) : post.authorUid ? (
+                <Link
+                  to={`/u/${encodeURIComponent(post.authorUid)}`}
+                  className="shrink-0 hover:opacity-90 transition-opacity"
+                  title="View profile"
+                >
+                  <BoardlyAvatar
+                    equippedAvatar={(post as any).authorEquippedAvatar}
+                    avatarUrl={post.authorAvatar || undefined}
+                    photoURL={(post as any).authorPhotoURL}
+                    frame={(post as any).authorFrame}
+                    name={authorDisplay}
+                    size={44}
+                  />
+                </Link>
               ) : (
                 <div className="shrink-0">
                   <BoardlyAvatar
                     equippedAvatar={(post as any).authorEquippedAvatar}
                     avatarUrl={post.authorAvatar || undefined}
+                    photoURL={(post as any).authorPhotoURL}
                     frame={(post as any).authorFrame}
                     name={authorDisplay}
                     size={44}

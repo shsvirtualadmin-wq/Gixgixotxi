@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Image as ImageIcon,
   Send,
@@ -91,6 +91,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const editFileInputRef = useRef<HTMLInputElement | null>(null);
   const postTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // Load posts for this user
   useEffect(() => {
@@ -162,7 +163,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
   }, []);
 
   // Load more posts
-  const handleLoadMore = async () => {
+  const handleLoadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
@@ -186,7 +187,24 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
     } finally {
       setLoadingMore(false);
     }
-  };
+  }, [loadingMore, hasMore, page, targetUid, currentUserId]);
+
+  // Infinite scroll IntersectionObserver for profile posts
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !hasMore || loadingMore || loading) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasMore && !loadingMore && !loading) {
+          void handleLoadMore();
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, handleLoadMore]);
 
   // Image select & compress for new post
   const handleSelectImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -820,24 +838,15 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
             );
           })}
 
-          {/* ── LOAD MORE BUTTON ── */}
-          {hasMore && (
-            <div className="flex justify-center pt-2">
-              <button
-                type="button"
-                onClick={handleLoadMore}
-                disabled={loadingMore}
-                className="relative overflow-hidden h-10 px-5 rounded-xl border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs min-w-[160px] disabled:opacity-60"
-              >
-                {loadingMore ? (
-                  <>
-                    <span>Loading posts...</span>
-                    <ButtonLineLoader />
-                  </>
-                ) : (
-                  <span>Load more posts</span>
-                )}
-              </button>
+          {/* ── INFINITE SCROLL SENTINEL ── */}
+          {hasMore && <div ref={sentinelRef} className="h-6 w-full" />}
+          {loadingMore && (
+            <div className="py-3">
+              <LineLoader
+                variant="inline"
+                context="generic"
+                message="Loading more posts..."
+              />
             </div>
           )}
         </div>

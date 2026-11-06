@@ -1,524 +1,341 @@
 import {
+  collection,
   doc,
   getDoc,
   getDocs,
   setDoc,
-  collection,
-  writeBatch,
-  serverTimestamp,
-  documentId,
+  updateDoc,
+  deleteDoc,
   query,
   where,
+  documentId,
+  serverTimestamp,
+  limit,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { sanitizeStudentDisplayName } from '../utils/privacy';
-import { deriveFallbackShortId } from '../utils/shortId';
-import { calculateRankTitle } from '../config/rankLadder';
-import type { PublicProfile, UserProfile } from '../types';
+import { db } from '@/lib/firebase';
+import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import type { PublicProfile as BasePublicProfile } from '@/types';
 
-// In-memory cache + sessionStorage for public profiles (5 min TTL)
-const publicProfileCache = new Map<string, { profile: PublicProfile; fetchedAt: number }>();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes TTL
+export interface PublicProfile extends BasePublicProfile {
+  usernameLower?: string;
+  isVerified?: boolean;
+  isCaptain?: boolean;
+  board?: string;
+  grade?: string | number;
+  targetUniversity?: string;
+  equippedAvatar?: string | null;
+  equippedFrame?: string | null;
+  equippedNameplate?: string | null;
+  equippedBanner?: string | null;
+  equippedEffect?: string | null;
+  equippedStreakBadges?: string[];
+}
 
-function getSessionCachedProfile(uid: string): { profile: PublicProfile; fetchedAt: number } | null {
-  if (typeof window === 'undefined') return null;
+const SESSION_CACHE_PREFIX = 'boardly_pub_prof_v2_';
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// Layer 1: In-memory cache
+const memoryCache = new Map<string, { profile: PublicProfile; timestamp: number }>();
+
+// Layer 2: In-flight promise deduplication
+const inFlightRequests = new Map<string, Promise<PublicProfile | null>>();
+
+function getFromSessionCache(uid: string): PublicProfile | null {
   try {
-    const raw = sessionStorage.getItem(`boardly_pub_prof_${uid}`);
+    const raw = sessionStorage.getItem(`${SESSION_CACHE_PREFIX}${uid}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed && parsed.profile) {
-      return parsed;
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (Date.now() - (parsed.timestamp || 0) > CACHE_TTL_MS) {
+      sessionStorage.removeItem(`${SESSION_CACHE_PREFIX}${uid}`);
+      return null;
     }
-  } catch (_e) {
-    // Ignore storage access errors
+    return parsed.profile as PublicProfile;
+  } catch {
+    return null;
   }
-  return null;
 }
 
-function setSessionCachedProfile(uid: string, profile: PublicProfile) {
-  if (typeof window === 'undefined') return;
+function saveToCaches(uid: string, profile: PublicProfile): void {
+  const entry = { profile, timestamp: Date.now() };
+  memoryCache.set(uid, entry);
   try {
-    sessionStorage.setItem(
-      `boardly_pub_prof_${uid}`,
-      JSON.stringify({ profile, fetchedAt: Date.now() })
-    );
-  } catch (_e) {
-    // Ignore storage quota/security errors
+    sessionStorage.setItem(`${SESSION_CACHE_PREFIX}${uid}`, JSON.stringify(entry));
+  } catch {
+    // Ignore storage quota errors
   }
 }
 
-export function invalidatePublicProfileCache(uid: string): void {
-  if (!uid) return;
-  publicProfileCache.delete(uid);
-  if (typeof window !== 'undefined') {
-    try {
-      sessionStorage.removeItem(`boardly_pub_prof_${uid}`);
-    } catch (_e) {
-      // Ignore storage access errors
-    }
+export function invalidatePublicProfileCache(uid?: string): void {
+  if (!uid) {
+    memoryCache.clear();
+    return;
+  }
+  memoryCache.delete(uid);
+  try {
+    sessionStorage.removeItem(`${SESSION_CACHE_PREFIX}${uid}`);
+  } catch {
+    // Ignore
   }
 }
 
-/**
- * Synchronizes a user's sanitized public information into `publicProfiles/{uid}`.
- * Strictly filters out any private fields: email, phone, payments, planExpiresAt, etc.
- */
-export async function syncPublicProfile(
+export function normalizePublicProfileDoc(
   uid: string,
-  profileData: Partial<UserProfile> | Record<string, unknown>
-): Promise<PublicProfile> {
-  if (!uid) throw new Error('Cannot sync public profile: missing UID');
+  pubData?: Record<string, any> | null,
+  uData?: Record<string, any> | null,
+  walletData?: Record<string, any> | null
+): PublicProfile {
+  const p = pubData || {};
+  const u = uData || {};
+  const wEquipped = walletData?.equipped || {};
 
-  const p = profileData as Record<string, any>;
-  let existingCached = publicProfileCache.get(uid)?.profile || getSessionCachedProfile(uid)?.profile || null;
+  const shortId = u.studentId || u.shortId || p.studentId || p.shortId || uid.slice(0, 6).toUpperCase();
+  const rawName = u.displayName || p.displayName || u.name || p.name || u.username || p.username || 'Student';
+  const displayName = sanitizeStudentDisplayName(rawName, shortId);
 
-  // If cache is cold or partial data omits follow counts/displayName/equipped, read existing publicProfiles/{uid} first
-  if (
-    !existingCached ||
-    p.followersCount === undefined ||
-    p.followingCount === undefined ||
-    !p.displayName ||
-    !p.equipped
-  ) {
-    try {
-      const snap = await getDoc(doc(db, 'publicProfiles', uid));
-      if (snap.exists()) {
-        existingCached = snap.data() as PublicProfile;
-      }
-    } catch (_e) {
-      // Ignore read errors and proceed with available fields
-    }
-  }
-
-  const shortCode = (p.studentId as string) || (p.shortId as string) || existingCached?.studentId || deriveFallbackShortId(uid);
-  const cleanDisplayName = sanitizeStudentDisplayName(
-    (p.displayName as string) || (p.username as string) || (p.name as string) || existingCached?.displayName,
-    shortCode
-  );
-
-  const existingEquipped = (existingCached?.equipped as Record<string, unknown>) || {};
-  const incomingEquipped = (p.equipped as Record<string, unknown>) || {};
-  const equipped = { ...existingEquipped, ...incomingEquipped };
-
-  const frame =
-    p.frame !== undefined
-      ? (p.frame as string | null)
-      : incomingEquipped.frame !== undefined
-      ? (incomingEquipped.frame as string | null)
-      : (existingEquipped.frame as string) || existingCached?.frame || null;
-
-  const nameplate =
-    p.nameplate !== undefined
-      ? (p.nameplate as string | null)
-      : incomingEquipped.nameplate !== undefined
-      ? (incomingEquipped.nameplate as string | null)
-      : (existingEquipped.nameplate as string) || existingCached?.nameplate || null;
-
-  const effectId =
-    p.effectId !== undefined
-      ? (p.effectId as string | null)
-      : incomingEquipped.effect !== undefined
-      ? (incomingEquipped.effect as string | null)
-      : (existingEquipped.effect as string) || existingCached?.effectId || null;
-
-  const banner =
-    p.banner !== undefined
-      ? (p.banner as string | null)
-      : incomingEquipped.banner !== undefined
-      ? (incomingEquipped.banner as string | null)
-      : (existingEquipped.banner as string) || existingCached?.banner || null;
-
-  // Avatar priority: 1) equipped store avatar, 2) custom chosen avatar, 3) existing saved avatar (NEVER let Google photoURL overwrite a Boardly avatar)
-  const rawCandidateAvatar =
-    p.avatar !== undefined
-      ? (p.avatar as string | null)
-      : incomingEquipped.avatar !== undefined
-      ? (incomingEquipped.avatar as string | null)
-      : (existingEquipped.avatar as string) || existingCached?.avatar || (p.avatarKey as string) || null;
-
-  // Ensure a Google photoURL is never stored as the equipped store avatar ID
-  const avatar =
-    rawCandidateAvatar && !String(rawCandidateAvatar).includes('googleusercontent.com')
-      ? rawCandidateAvatar
-      : existingCached?.avatar && !String(existingCached.avatar).includes('googleusercontent.com')
-      ? existingCached.avatar
-      : null;
-
-  const avatarUrl =
-    (p.avatarUrl as string) ||
-    (existingCached as any)?.avatarUrl ||
+  const equippedAvatar =
+    u.equipped?.avatar ||
+    p.equippedAvatar ||
+    p.equipped?.avatar ||
+    wEquipped.avatar ||
+    u.avatar ||
+    p.avatar ||
     null;
 
-  const photoURL =
-    (p.photoURL as string) ||
-    existingCached?.photoURL ||
+  const equippedFrame =
+    u.equipped?.frame ||
+    p.equippedFrame ||
+    p.equipped?.frame ||
+    wEquipped.frame ||
+    u.frame ||
+    p.frame ||
     null;
 
-  const rawBadges = p.badges ?? p.equippedBadges ?? existingCached?.badges ?? [];
-  const badges: string[] = Array.isArray(rawBadges) ? rawBadges.map(String) : [];
+  const equippedNameplate =
+    u.equipped?.nameplate ||
+    p.equippedNameplate ||
+    p.equipped?.nameplate ||
+    wEquipped.nameplate ||
+    u.nameplate ||
+    p.nameplate ||
+    null;
 
-  const rawBio = typeof p.bio === 'string' ? p.bio.trim() : (existingCached?.bio || '');
-  const bio = rawBio.slice(0, 160);
+  const equippedBanner =
+    u.equipped?.banner ||
+    p.equippedBanner ||
+    p.equipped?.banner ||
+    wEquipped.banner ||
+    u.banner ||
+    p.banner ||
+    null;
 
-  const rawStatus = typeof p.status === 'string' ? p.status.trim() : (existingCached?.status || '');
-  const status = rawStatus.slice(0, 40);
+  const equippedEffect =
+    u.equipped?.effect ||
+    p.equippedEffect ||
+    p.equipped?.effect ||
+    wEquipped.effect ||
+    u.effectId ||
+    p.effectId ||
+    null;
 
-  const accent = (p.accent as string) || existingCached?.accent || '#E11D48';
-  const crewName = (p.crewName as string) ?? (existingCached?.crewName || null);
-  const memberSince = (p.memberSince as any) || (p.createdAt as any) || existingCached?.memberSince || serverTimestamp();
-  const lastActiveAt = (p.lastActiveAt as any) || serverTimestamp();
+  const rawBadges =
+    Array.isArray(u.badges) && u.badges.length > 0
+      ? u.badges
+      : Array.isArray(p.badges)
+      ? p.badges
+      : [];
 
-  const inputStats = (p.stats as Record<string, unknown>) || (p.publicStats as Record<string, unknown>) || existingCached?.stats || {};
-  const streak = Number(inputStats.streak ?? p.streak ?? existingCached?.stats?.streak ?? 0);
-  const longestStreak = Number(inputStats.longestStreak ?? p.longestStreak ?? existingCached?.stats?.longestStreak ?? streak);
-  const mcqs = Number(
-    inputStats.mcqs ??
-      inputStats.mcqsSolved ??
-      inputStats.totalQuestionsSolved ??
-      p.totalQuestionsSolved ??
-      existingCached?.stats?.mcqs ??
-      0
-  );
-  const accuracy = Number(inputStats.accuracy ?? p.accuracy ?? existingCached?.stats?.accuracy ?? 0);
+  const equippedStreakBadges =
+    Array.isArray(u.equippedStreakBadges) && u.equippedStreakBadges.length > 0
+      ? u.equippedStreakBadges
+      : Array.isArray(p.equippedStreakBadges) && p.equippedStreakBadges.length > 0
+      ? p.equippedStreakBadges
+      : [];
 
   const stats = {
-    streak,
-    longestStreak,
-    mcqs,
-    accuracy,
-    score: Number(inputStats.score ?? p.score ?? existingCached?.stats?.score ?? 0),
-    testsCompleted: Number(inputStats.testsCompleted ?? p.testsCompleted ?? existingCached?.stats?.testsCompleted ?? 0),
-    totalQuestionsSolved: mcqs,
-    mcqsSolved: mcqs,
+    streak: Number(u.streak ?? p.stats?.streak ?? p.publicStats?.streak ?? 0),
+    longestStreak: Number(u.longestStreak ?? p.stats?.longestStreak ?? u.streak ?? 0),
+    mcqs: Number(u.totalQuestionsSolved ?? u.mcqsSolved ?? p.stats?.mcqs ?? p.publicStats?.score ?? 0),
+    accuracy: Number(u.accuracy ?? p.stats?.accuracy ?? 0),
+    score: Number(u.score ?? p.publicStats?.score ?? 0),
+    totalQuestionsSolved: Number(u.totalQuestionsSolved ?? p.stats?.mcqs ?? 0),
   };
 
-  const followersCount = typeof p.followersCount === 'number'
-    ? p.followersCount
-    : (existingCached?.followersCount ?? 0);
-  const followingCount = typeof p.followingCount === 'number'
-    ? p.followingCount
-    : (existingCached?.followingCount ?? 0);
-
-  const rankTitle = (p.rankTitle as string) || calculateRankTitle(mcqs, streak);
-  const pinnedBadges = Array.isArray(p.pinnedBadges) ? p.pinnedBadges : (existingCached?.pinnedBadges || []);
-  const pinnedStamps = Array.isArray(p.pinnedStamps) ? p.pinnedStamps : (existingCached?.pinnedStamps || []);
-
-  // Strictly contains NO email and NO phone
-  const safePublicDoc: PublicProfile = {
+  return {
     uid,
-    displayName: cleanDisplayName,
-    studentId: shortCode,
-    avatar,
-    banner,
-    frame,
-    nameplate,
-    effectId,
-    badges,
-    bio,
-    status,
-    accent,
-    memberSince,
-    crewName,
+    displayName,
+    studentId: shortId,
+    shortId,
+    username: u.username || p.username || undefined,
+    usernameLower:
+      u.usernameLower ||
+      p.usernameLower ||
+      (u.username || p.username ? String(u.username || p.username).toLowerCase() : undefined),
+    role: u.role || p.role || 'student',
+    customRole: u.customRole || p.customRole || undefined,
+    isVerified: Boolean(u.isVerified ?? p.isVerified ?? u.verified ?? p.verified),
+    isCaptain: Boolean(u.isCaptain ?? p.isCaptain),
+    board: u.board || p.board || undefined,
+    grade: u.grade || p.grade || u.class || p.class || undefined,
+    targetUniversity: u.targetUniversity || p.targetUniversity || undefined,
+    bio: u.bio ?? p.bio ?? '',
+    status: u.status ?? p.status ?? '',
+    accent: u.accent || p.accent || '#D71921',
+    memberSince: u.createdAt || p.memberSince || null,
+    crewName: u.crewName || p.crewName || null,
+    lastActiveAt: u.lastActiveDate || p.lastActiveAt || null,
     stats,
-    followersCount,
-    followingCount,
-    lastActiveAt,
-    rankTitle,
-    pinnedBadges,
-    pinnedStamps,
-
-    // Legacy compatibility fields & identity
-    nickname: (p.nickname as string) || cleanDisplayName,
-    username: (p.username as string) || existingCached?.username || null,
-    shortId: shortCode,
-    avatarKey: (profileData.avatarKey as string) || existingCached?.avatarKey || avatar || null,
-    avatarVariant: (profileData.avatarVariant as string) || existingCached?.avatarVariant || null,
-    avatarUrl,
-    photoURL,
-    crewId: (profileData.crewId as string) || existingCached?.crewId || null,
-    role: (profileData.role as string) || existingCached?.role || 'student',
-    customRole: (profileData.customRole as string) || (existingCached as any)?.customRole || null,
-    equipped: {
-      effect: effectId,
-      frame,
-      nameplate,
-      avatar,
-      banner,
-    },
     publicStats: stats,
-    updatedAt: serverTimestamp(),
+    avatar: equippedAvatar,
+    avatarKey: u.avatarKey || p.avatarKey || null,
+    avatarVariant: u.avatarVariant || p.avatarVariant || null,
+    avatarUrl: u.avatarUrl || p.avatarUrl || null,
+    photoURL: u.photoURL || p.photoURL || null,
+    equippedAvatar,
+    equippedFrame,
+    equippedNameplate,
+    equippedBanner,
+    equippedEffect,
+    frame: equippedFrame,
+    nameplate: equippedNameplate,
+    banner: equippedBanner,
+    effectId: equippedEffect,
+    equipped: {
+      avatar: equippedAvatar,
+      frame: equippedFrame,
+      nameplate: equippedNameplate,
+      banner: equippedBanner,
+      effect: equippedEffect,
+    },
+    badges: rawBadges,
+    equippedStreakBadges,
+    followersCount:
+      typeof p.followersCount === 'number'
+        ? Math.max(0, p.followersCount)
+        : typeof u.followersCount === 'number'
+        ? Math.max(0, u.followersCount)
+        : 0,
+    followingCount:
+      typeof p.followingCount === 'number'
+        ? Math.max(0, p.followingCount)
+        : typeof u.followingCount === 'number'
+        ? Math.max(0, u.followingCount)
+        : 0,
+    updatedAt: u.updatedAt || p.updatedAt || null,
   };
+}
 
+async function fetchPublicProfileFromNetwork(uid: string): Promise<PublicProfile | null> {
   try {
-    await setDoc(doc(db, 'publicProfiles', uid), safePublicDoc, { merge: true });
-    publicProfileCache.set(uid, { profile: safePublicDoc, fetchedAt: Date.now() });
-    setSessionCachedProfile(uid, safePublicDoc);
-  } catch (err) {
-    console.warn(`[publicProfile] Failed to sync publicProfiles/${uid}:`, err);
-  }
+    const [pubSnap, userSnap, walletSnap] = await Promise.all([
+      getDoc(doc(db, 'publicProfiles', uid)).catch(() => null),
+      getDoc(doc(db, 'users', uid)).catch(() => null),
+      getDoc(doc(db, 'wallets', uid)).catch(() => null),
+    ]);
 
-  return safePublicDoc;
-}
+    const pubData = pubSnap?.exists() ? pubSnap.data() : null;
+    const uData = userSnap?.exists() ? userSnap.data() : null;
+    const walletData = walletSnap?.exists() ? walletSnap.data() : null;
 
-/**
- * Updates a user's profile atomically in BOTH users/{uid} and publicProfiles/{uid} via a Firestore batch write.
- */
-export async function updateProfileAtomic(
-  uid: string,
-  updates: {
-    displayName: string;
-    bio: string;
-    status: string;
-    accent: string;
-  }
-): Promise<PublicProfile> {
-  if (!uid) throw new Error('Missing UID for profile update');
-
-  const userRef = doc(db, 'users', uid);
-  const pubRef = doc(db, 'publicProfiles', uid);
-
-  const cleanUpdates = {
-    displayName: updates.displayName.trim().slice(0, 40),
-    bio: updates.bio.trim().slice(0, 160),
-    status: updates.status.trim().slice(0, 40),
-    accent: updates.accent || '#D71921',
-    updatedAt: serverTimestamp(),
-  };
-
-  const batch = writeBatch(db);
-  batch.update(userRef, cleanUpdates);
-  batch.set(pubRef, cleanUpdates, { merge: true });
-
-  await batch.commit();
-
-  // Invalidate cache immediately
-  publicProfileCache.delete(uid);
-  if (typeof window !== 'undefined') {
-    try {
-      sessionStorage.removeItem(`boardly_pub_prof_${uid}`);
-    } catch (_e) {
-      // Ignore storage errors on cache clear
+    if (!pubData && !uData) {
+      return null;
     }
-  }
 
-  // Sync and return fresh public profile
-  const fresh = await syncPublicProfile(uid, cleanUpdates);
-  return fresh;
+    const profile = normalizePublicProfileDoc(uid, pubData, uData, walletData);
+    saveToCaches(uid, profile);
+    return profile;
+  } catch (err) {
+    console.warn(`[publicProfileService] Failed to fetch profile for ${uid}:`, err);
+    return null;
+  }
 }
 
-/**
- * Reads a single public profile from `publicProfiles/{uid}`.
- * Cached for 5 minutes in sessionStorage with background revalidation.
- * Offline resilient: returns cached version if network fails.
- */
-export async function getPublicProfile(uid: string, forceFresh = false): Promise<PublicProfile | null> {
+export async function getPublicProfile(uid: string): Promise<PublicProfile | null> {
   if (!uid) return null;
 
-  const fallbackShortId = deriveFallbackShortId(uid || 'guest');
-  const fallbackDisplayName = sanitizeStudentDisplayName('', uid);
-  const fallback: PublicProfile = {
-    uid: uid || 'guest',
-    displayName: fallbackDisplayName,
-    studentId: fallbackShortId,
-    shortId: fallbackShortId,
-    avatar: null,
-    banner: null,
-    frame: null,
-    nameplate: null,
-    effectId: null,
-    badges: [],
-    bio: '',
-    status: '',
-    accent: '#D71921',
-    memberSince: null,
-    crewName: null,
-    stats: {
-      streak: 0,
-      longestStreak: 0,
-      mcqs: 0,
-      accuracy: 0,
-      score: 0,
-      testsCompleted: 0,
-      totalQuestionsSolved: 0,
-    },
-    publicStats: {
-      streak: 0,
-      longestStreak: 0,
-      mcqs: 0,
-      accuracy: 0,
-      score: 0,
-      testsCompleted: 0,
-      totalQuestionsSolved: 0,
-    },
-    followersCount: 0,
-    followingCount: 0,
-    lastActiveAt: null,
-    role: 'student',
-  };
-
-  // 1. Check in-memory or sessionStorage cache
-  if (!forceFresh) {
-    const memCached = publicProfileCache.get(uid);
-    const sessionCached = getSessionCachedProfile(uid);
-    const cachedItem = memCached || sessionCached;
-
-    if (cachedItem) {
-      const isFresh = Date.now() - cachedItem.fetchedAt < CACHE_TTL_MS;
-      if (isFresh) {
-        // Trigger background revalidation
-        setTimeout(() => {
-          fetchPublicProfileFromNetwork(uid, fallback).catch(() => {});
-        }, 150);
-        return cachedItem.profile;
-      }
-    }
+  const mem = memoryCache.get(uid);
+  if (mem && Date.now() - mem.timestamp < CACHE_TTL_MS) {
+    return mem.profile;
   }
 
-  // 2. Fetch fresh from network
-  try {
-    const fresh = await fetchPublicProfileFromNetwork(uid, fallback);
-    return fresh;
-  } catch (err) {
-    console.warn(`[publicProfile] Network fetch failed for ${uid}:`, err);
-    // Offline resilience: return stale cached profile if available
-    const stale = publicProfileCache.get(uid)?.profile || getSessionCachedProfile(uid)?.profile;
-    if (stale) {
-      return stale;
-    }
-    // Return null if not found
-    return null;
-  }
-}
-
-async function fetchPublicProfileFromNetwork(
-  uid: string,
-  fallback: PublicProfile
-): Promise<PublicProfile | null> {
-  const fallbackShortId = deriveFallbackShortId(uid || 'guest');
-  const snap = await getDoc(doc(db, 'publicProfiles', uid));
-
-  if (!snap.exists()) {
-    return null;
+  const sess = getFromSessionCache(uid);
+  if (sess) {
+    memoryCache.set(uid, { profile: sess, timestamp: Date.now() });
+    return sess;
   }
 
-  const data = snap.data() as Partial<PublicProfile>;
-  const studentId = data.studentId || data.shortId || fallbackShortId;
-  const cleanDisplayName = sanitizeStudentDisplayName(data.displayName || fallback.displayName, studentId);
+  const existingPromise = inFlightRequests.get(uid);
+  if (existingPromise) {
+    return existingPromise;
+  }
 
-  const resolvedStats = data.stats || {
-    streak: Number(data.publicStats?.streak || 0),
-    longestStreak: Number(data.publicStats?.longestStreak || data.publicStats?.streak || 0),
-    mcqs: Number(data.publicStats?.mcqs || data.publicStats?.totalQuestionsSolved || 0),
-    accuracy: Number(data.publicStats?.accuracy || 0),
-  };
+  const promise = fetchPublicProfileFromNetwork(uid).finally(() => {
+    inFlightRequests.delete(uid);
+  });
 
-  const resolvedProfile: PublicProfile = {
-    ...fallback,
-    ...data,
-    uid,
-    displayName: cleanDisplayName,
-    studentId,
-    avatar: data.avatar ?? (data.equipped?.avatar || data.photoURL || data.avatarKey || null),
-    banner: data.banner ?? null,
-    frame: data.frame ?? (data.equipped?.frame || null),
-    nameplate: data.nameplate ?? (data.equipped?.nameplate || null),
-    effectId: data.effectId ?? (data.equipped?.effect || null),
-    badges: Array.isArray(data.badges) ? data.badges : (Array.isArray(data.equippedBadges) ? data.equippedBadges : []),
-    bio: typeof data.bio === 'string' ? data.bio.slice(0, 160) : '',
-    status: typeof data.status === 'string' ? data.status.slice(0, 40) : '',
-    accent: data.accent || '#D71921',
-    memberSince: data.memberSince ?? null,
-    crewName: data.crewName ?? null,
-    stats: resolvedStats,
-    followersCount: Number(data.followersCount || 0),
-    followingCount: Number(data.followingCount || 0),
-    lastActiveAt: data.lastActiveAt ?? null,
-    rankTitle: (data as any)?.rankTitle || calculateRankTitle(resolvedStats.mcqs, resolvedStats.streak),
-    pinnedBadges: Array.isArray((data as any)?.pinnedBadges) ? (data as any).pinnedBadges : [],
-    pinnedStamps: Array.isArray((data as any)?.pinnedStamps) ? (data as any).pinnedStamps : [],
-  };
-
-  publicProfileCache.set(uid, { profile: resolvedProfile, fetchedAt: Date.now() });
-  setSessionCachedProfile(uid, resolvedProfile);
-  return resolvedProfile;
+  inFlightRequests.set(uid, promise);
+  return promise;
 }
 
 /**
- * Fetches multiple public profiles in batched chunks of 30 (Firestore in limit).
+ * Batch fetches multiple public profiles with caching and chunked queries.
  */
 export async function getPublicProfiles(uids: string[]): Promise<Map<string, PublicProfile>> {
   const result = new Map<string, PublicProfile>();
-  const cleanUids = Array.from(new Set(uids.filter(Boolean)));
-  if (cleanUids.length === 0) return result;
+  if (!uids || uids.length === 0) return result;
 
-  const toFetch: string[] = [];
-  const now = Date.now();
+  const uniqueUids = Array.from(new Set(uids.filter(Boolean)));
+  const missingUids: string[] = [];
 
-  for (const uid of cleanUids) {
-    const cached = publicProfileCache.get(uid);
-    if (cached && now - cached.fetchedAt < CACHE_TTL_MS) {
-      result.set(uid, cached.profile);
-    } else {
-      toFetch.push(uid);
+  for (const uid of uniqueUids) {
+    const mem = memoryCache.get(uid);
+    if (mem && Date.now() - mem.timestamp < CACHE_TTL_MS) {
+      result.set(uid, mem.profile);
+      continue;
     }
+    const sess = getFromSessionCache(uid);
+    if (sess) {
+      memoryCache.set(uid, { profile: sess, timestamp: Date.now() });
+      result.set(uid, sess);
+      continue;
+    }
+    missingUids.push(uid);
   }
 
-  if (toFetch.length === 0) return result;
+  if (missingUids.length === 0) {
+    return result;
+  }
 
-  // Chunk in batches of 30
-  const CHUNK_SIZE = 30;
-  for (let i = 0; i < toFetch.length; i += CHUNK_SIZE) {
-    const chunk = toFetch.slice(i, i + CHUNK_SIZE);
+  const CHUNK_SIZE = 10;
+  for (let i = 0; i < missingUids.length; i += CHUNK_SIZE) {
+    const chunk = missingUids.slice(i, i + CHUNK_SIZE);
     try {
       const q = query(collection(db, 'publicProfiles'), where(documentId(), 'in', chunk));
-      const snap = await getDocs(q);
-      snap.forEach((d) => {
-        const data = d.data() as PublicProfile;
-        data.displayName = sanitizeStudentDisplayName(data.displayName, data.shortId || d.id);
-        publicProfileCache.set(d.id, { profile: data, fetchedAt: now });
-        result.set(d.id, data);
+      const snap = await getDocs(q).catch(() => null);
+      const pubDocsByUid = new Map<string, Record<string, any>>();
+      snap?.docs.forEach((docSnap) => {
+        pubDocsByUid.set(docSnap.id, docSnap.data());
       });
-    } catch (err) {
-      console.warn('[publicProfile] Batched fetch error for chunk:', err);
-    }
-  }
 
-  // Any missing UIDs get a clean fallback
-  for (const uid of cleanUids) {
-    if (!result.has(uid)) {
-      const fallbackDisplayName = sanitizeStudentDisplayName('', uid);
-      const fallback: PublicProfile = {
-        uid,
-        displayName: fallbackDisplayName,
-        studentId: deriveFallbackShortId(uid),
-        shortId: deriveFallbackShortId(uid),
-        avatar: null,
-        banner: null,
-        frame: null,
-        nameplate: null,
-        effectId: null,
-        badges: [],
-        bio: '',
-        status: '',
-        accent: '#E11D48',
-        memberSince: null,
-        crewName: null,
-        stats: {
-          streak: 0,
-          longestStreak: 0,
-          mcqs: 0,
-          accuracy: 0,
-          score: 0,
-          testsCompleted: 0,
-          totalQuestionsSolved: 0,
-          mcqsSolved: 0,
-        },
-        followersCount: 0,
-        followingCount: 0,
-        lastActiveAt: null,
-        role: 'student',
-      };
-      result.set(uid, fallback);
+      await Promise.all(
+        chunk.map(async (uid) => {
+          const pubData = pubDocsByUid.get(uid) || null;
+          const [uSnap, wSnap] = await Promise.all([
+            getDoc(doc(db, 'users', uid)).catch(() => null),
+            getDoc(doc(db, 'wallets', uid)).catch(() => null),
+          ]);
+          const uData = uSnap?.exists() ? uSnap.data() : null;
+          const wData = wSnap?.exists() ? wSnap.data() : null;
+
+          if (pubData || uData) {
+            const prof = normalizePublicProfileDoc(uid, pubData, uData, wData);
+            saveToCaches(uid, prof);
+            result.set(uid, prof);
+          }
+        })
+      );
+    } catch (err) {
+      console.warn('[publicProfileService] Batch fetch chunk error:', err);
     }
   }
 
@@ -526,110 +343,163 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
 }
 
 /**
- * Backfills all existing `users` documents into `publicProfiles/{uid}`.
- * Runs with atomic batched writes of up to 400 per commit.
- * Only the superadmin can execute this.
+ * Syncs a user's private profile fields and equipped cosmetics to `publicProfiles/{uid}`.
  */
-export async function backfillAllPublicProfiles(): Promise<{ totalUsers: number; backfilled: number }> {
-  const usersSnap = await getDocs(collection(db, 'users'));
-  const allUsers = usersSnap.docs;
-  let backfilledCount = 0;
+export async function syncUserPublicProfile(
+  uid: string,
+  data?: Partial<PublicProfile> & Record<string, any>
+): Promise<void> {
+  if (!uid) return;
+  const input = data || {};
 
-  const BATCH_SIZE = 400;
-  for (let i = 0; i < allUsers.length; i += BATCH_SIZE) {
-    const chunk = allUsers.slice(i, i + BATCH_SIZE);
-    const batch = writeBatch(db);
+  try {
+    const pubRef = doc(db, 'publicProfiles', uid);
+    const existingSnap = await getDoc(pubRef).catch(() => null);
+    const existingData = existingSnap?.exists() ? existingSnap.data() : {};
 
-    for (const userDoc of chunk) {
-      const data = userDoc.data();
-      const uid = userDoc.id;
-      const shortCode = data.shortId || deriveFallbackShortId(uid);
-      const cleanDisplayName = sanitizeStudentDisplayName(
-        data.displayName || data.name,
-        shortCode
-      );
+    const cleanUsername = input.username ? String(input.username).trim() : existingData.username;
+    const cleanUsernameLower = cleanUsername ? cleanUsername.toLowerCase() : undefined;
 
-      let userEquipped: PublicProfile['equipped'] = {
-        effect: data.equipped?.effect || null,
-        frame: data.equipped?.frame || null,
-        nameplate: data.equipped?.nameplate || null,
-        avatar: data.equipped?.avatar || null,
-      };
+    const equippedAvatar =
+      input.equipped?.avatar ??
+      input.equippedAvatar ??
+      input.avatar ??
+      existingData.equippedAvatar ??
+      existingData.avatar ??
+      null;
+    const equippedFrame =
+      input.equipped?.frame ??
+      input.equippedFrame ??
+      input.frame ??
+      existingData.equippedFrame ??
+      existingData.frame ??
+      null;
+    const equippedNameplate =
+      input.equipped?.nameplate ??
+      input.equippedNameplate ??
+      input.nameplate ??
+      existingData.equippedNameplate ??
+      existingData.nameplate ??
+      null;
+    const equippedBanner =
+      input.equipped?.banner ??
+      input.equippedBanner ??
+      input.banner ??
+      existingData.equippedBanner ??
+      existingData.banner ??
+      null;
+    const equippedEffect =
+      input.equipped?.effect ??
+      input.equippedEffect ??
+      input.effectId ??
+      existingData.equippedEffect ??
+      existingData.effectId ??
+      null;
 
-      try {
-        const wSnap = await getDoc(doc(db, 'wallets', uid));
-        if (wSnap.exists()) {
-          const wData = wSnap.data();
-          if (wData.equipped) {
-            userEquipped = {
-              effect: wData.equipped.effect ?? userEquipped.effect,
-              frame: wData.equipped.frame ?? userEquipped.frame,
-              nameplate: wData.equipped.nameplate ?? userEquipped.nameplate,
-              avatar: wData.equipped.avatar ?? userEquipped.avatar,
-            };
-          }
-        }
-      } catch {
-        // Fallback to data.equipped
-      }
+    const shortId =
+      input.studentId ||
+      input.shortId ||
+      existingData.studentId ||
+      existingData.shortId ||
+      uid.slice(0, 6).toUpperCase();
 
-      const streak = Number(data.streak || 0);
-      const longestStreak = Number(data.longestStreak || streak);
-      const mcqs = Number(data.totalQuestionsSolved || data.mcqsSolved || 0);
-      const accuracy = Number(data.accuracy || 0);
+    const payload: Record<string, any> = {
+      uid,
+      displayName: sanitizeStudentDisplayName(
+        input.displayName || existingData.displayName || 'Student',
+        shortId
+      ),
+      studentId: shortId,
+      shortId,
+      board: input.board ?? existingData.board ?? null,
+      grade: input.grade ?? input.class ?? existingData.grade ?? null,
+      targetUniversity: input.targetUniversity ?? existingData.targetUniversity ?? null,
+      bio: input.bio ?? existingData.bio ?? '',
+      status: input.status ?? existingData.status ?? '',
+      accent: input.accent ?? existingData.accent ?? '#D71921',
+      avatar: equippedAvatar,
+      avatarKey: input.avatarKey ?? existingData.avatarKey ?? null,
+      avatarVariant: input.avatarVariant ?? existingData.avatarVariant ?? null,
+      avatarUrl: input.avatarUrl ?? existingData.avatarUrl ?? null,
+      photoURL: input.photoURL ?? existingData.photoURL ?? null,
+      equippedAvatar,
+      equippedFrame,
+      equippedNameplate,
+      equippedBanner,
+      equippedEffect,
+      frame: equippedFrame,
+      nameplate: equippedNameplate,
+      banner: equippedBanner,
+      effectId: equippedEffect,
+      equipped: {
+        avatar: equippedAvatar,
+        frame: equippedFrame,
+        nameplate: equippedNameplate,
+        banner: equippedBanner,
+        effect: equippedEffect,
+      },
+      equippedStreakBadges:
+        input.equippedStreakBadges ?? existingData.equippedStreakBadges ?? [],
+      updatedAt: serverTimestamp(),
+    };
 
-      const stats = {
-        streak,
-        longestStreak,
-        mcqs,
-        accuracy,
-        score: Number(data.score || 0),
-        testsCompleted: Number(data.testsCompleted || 0),
-        totalQuestionsSolved: mcqs,
-        mcqsSolved: mcqs,
-      };
-
-      const publicDocRef = doc(db, 'publicProfiles', uid);
-      const publicData: PublicProfile = {
-        uid,
-        displayName: cleanDisplayName,
-        studentId: shortCode,
-        avatar: (data.avatar as string) || userEquipped.avatar || data.photoURL || data.avatarKey || null,
-        banner: data.banner || null,
-        frame: data.frame || userEquipped.frame || null,
-        nameplate: data.nameplate || userEquipped.nameplate || null,
-        effectId: data.effectId || userEquipped.effect || null,
-        badges: Array.isArray(data.badges) ? data.badges : (Array.isArray(data.equippedBadges) ? data.equippedBadges : []),
-        bio: typeof data.bio === 'string' ? data.bio.trim().slice(0, 160) : '',
-        status: typeof data.status === 'string' ? data.status.trim().slice(0, 40) : '',
-        accent: data.accent || '#E11D48',
-        memberSince: data.memberSince || data.createdAt || serverTimestamp(),
-        crewName: data.crewName || null,
-        stats,
-        followersCount: Number(data.followersCount || 0),
-        followingCount: Number(data.followingCount || 0),
-        lastActiveAt: data.lastActiveDate || data.lastActiveAt || serverTimestamp(),
-
-        avatarKey: data.avatarKey || null,
-        avatarVariant: data.avatarVariant || null,
-        photoURL: data.photoURL || null,
-        crewId: data.crewId || null,
-        role: data.role || 'student',
-        shortId: shortCode,
-        equipped: userEquipped,
-        publicStats: stats,
-        updatedAt: serverTimestamp(),
-      };
-
-      batch.set(publicDocRef, publicData, { merge: true });
-      backfilledCount++;
+    if (cleanUsername) {
+      payload.username = cleanUsername;
+      payload.usernameLower = cleanUsernameLower;
     }
 
-    await batch.commit();
-  }
+    if (!existingSnap?.exists()) {
+      payload.role = input.role && ['student', 'Student'].includes(input.role) ? input.role : 'student';
+      payload.isVerified = false;
+      payload.followersCount = typeof input.followersCount === 'number' ? input.followersCount : 0;
+      payload.followingCount = typeof input.followingCount === 'number' ? input.followingCount : 0;
+      await setDoc(pubRef, payload);
+    } else {
+      await updateDoc(pubRef, payload);
+    }
 
-  return {
-    totalUsers: allUsers.length,
-    backfilled: backfilledCount,
-  };
+    if (cleanUsernameLower) {
+      const oldUsernameLower = existingData.usernameLower;
+      if (oldUsernameLower && oldUsernameLower !== cleanUsernameLower) {
+        const oldRef = doc(db, 'usernames', oldUsernameLower);
+        const oldSnap = await getDoc(oldRef).catch(() => null);
+        if (oldSnap?.exists() && oldSnap.data()?.uid === uid) {
+          await deleteDoc(oldRef).catch(() => {});
+        }
+      }
+      const newUsernameRef = doc(db, 'usernames', cleanUsernameLower);
+      await setDoc(
+        newUsernameRef,
+        {
+          uid,
+          username: cleanUsername,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch(() => {});
+    }
+
+    invalidatePublicProfileCache(uid);
+  } catch (err) {
+    console.warn('[publicProfileService] syncUserPublicProfile notice:', err);
+  }
+}
+
+export const syncPublicProfile = syncUserPublicProfile;
+
+export async function backfillAllPublicProfiles(): Promise<{
+  totalUsers: number;
+  backfilled: number;
+}> {
+  const snap = await getDocs(query(collection(db, 'users'), limit(500)));
+  let backfilled = 0;
+  for (const d of snap.docs) {
+    try {
+      await syncUserPublicProfile(d.id, d.data());
+      backfilled++;
+    } catch {
+      // Ignore individual user backfill error
+    }
+  }
+  return { totalUsers: snap.docs.length, backfilled };
 }

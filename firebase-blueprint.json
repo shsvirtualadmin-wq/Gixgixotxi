@@ -325,6 +325,12 @@
     },
     "/notifications/{notificationId}": {
       "description": "In-app notifications for activity from followed students."
+    },
+    "/follows/{followId}": {
+      "description": "Social graph records linking follower and following pairs."
+    },
+    "/conversations/{conversationId}": {
+      "description": "One-to-one direct message conversations between students."
     }
   }
 }

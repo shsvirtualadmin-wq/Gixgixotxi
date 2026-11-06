@@ -106,6 +106,7 @@ export function NotificationsPage() {
 
   // Touch swipe tracking for optional swipe-left to mark as read / dismiss
   const touchStartRef = useRef<{ id: string; x: number; y: number } | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // Subscribe to the single-source-of-truth notification store
   useEffect(() => {
@@ -133,40 +134,6 @@ export function NotificationsPage() {
       setRefreshing(false);
     }
   }, [user?.uid]);
-
-  // Load older paginated user notifications if any
-  const handleLoadMore = async () => {
-    if (displayedNotifications.length > visibleCount) {
-      setVisibleCount((prev) => prev + PAGE_SIZE_LIMIT);
-      if (!lastDoc || !hasMoreNotifications) return;
-    }
-
-    if (!user?.uid || loadingMore || !lastDoc) return;
-    setLoadingMore(true);
-
-    try {
-      const notifRes = await fetchUserNotificationsPage({
-        userId: user.uid,
-        pageSize: 20,
-        lastDoc,
-      });
-
-      setExtraNotifications((prev) => {
-        const seen = new Set(prev.map((p) => p.id));
-        const next = [...prev];
-        for (const item of notifRes.notifications) {
-          if (!seen.has(item.id)) next.push(item);
-        }
-        return next;
-      });
-      setLastDoc(notifRes.lastDoc);
-      setHasMoreNotifications(notifRes.hasMore);
-    } catch (err: unknown) {
-      console.warn('[NotificationsPage] Failed to load more:', err);
-    } finally {
-      setLoadingMore(false);
-    }
-  };
 
   // All notifications from the single source of truth (+ any older paginated items), sorted pinned first then newest first
   const allNotifications = useMemo<AppNotification[]>(() => {
@@ -362,6 +329,56 @@ export function NotificationsPage() {
   const canLoadMore =
     displayedNotifications.length > visibleCount ||
     (hasMoreNotifications && filter !== 'announcements');
+
+  // Load older paginated user notifications if any
+  const handleLoadMore = useCallback(async () => {
+    if (displayedNotifications.length > visibleCount) {
+      setVisibleCount((prev) => prev + PAGE_SIZE_LIMIT);
+      if (!lastDoc || !hasMoreNotifications) return;
+    }
+
+    if (!user?.uid || loadingMore || !lastDoc) return;
+    setLoadingMore(true);
+
+    try {
+      const notifRes = await fetchUserNotificationsPage({
+        userId: user.uid,
+        pageSize: 20,
+        lastDoc,
+      });
+
+      setExtraNotifications((prev) => {
+        const seen = new Set(prev.map((p) => p.id));
+        const next = [...prev];
+        for (const item of notifRes.notifications) {
+          if (!seen.has(item.id)) next.push(item);
+        }
+        return next;
+      });
+      setLastDoc(notifRes.lastDoc);
+      setHasMoreNotifications(notifRes.hasMore);
+    } catch (err: unknown) {
+      console.warn('[NotificationsPage] Failed to load more:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [displayedNotifications.length, visibleCount, lastDoc, hasMoreNotifications, user?.uid, loadingMore]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !canLoadMore || loadingMore || isInitialLoading) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && canLoadMore && !loadingMore) {
+          void handleLoadMore();
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [canLoadMore, loadingMore, isInitialLoading, handleLoadMore]);
 
   const emptyMessageForFilter = useMemo(() => {
     if (filter === 'following') {
@@ -712,18 +729,15 @@ export function NotificationsPage() {
                 </section>
               ))}
 
-              {/* Load More Button (pagination after 50 items or Firestore cursor) */}
-              {canLoadMore && (
-                <div className="pt-2 flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() => void handleLoadMore()}
-                    disabled={loadingMore}
-                    className="notif-action-pill relative overflow-hidden"
-                  >
-                    <span>{loadingMore ? 'Loading more...' : 'Load more'}</span>
-                    {loadingMore && <ButtonLineLoader />}
-                  </button>
+              {/* Infinite Scroll Sentinel */}
+              {canLoadMore && <div ref={sentinelRef} className="h-6 w-full" />}
+              {loadingMore && (
+                <div className="py-3">
+                  <LineLoader
+                    variant="inline"
+                    context="generic"
+                    message="Loading more notifications..."
+                  />
                 </div>
               )}
             </>

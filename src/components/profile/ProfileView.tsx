@@ -26,7 +26,13 @@ import {
   RotateCcw,
   Tag,
   Settings,
+  MessageSquare,
 } from 'lucide-react';
+
+import { DirectMessageModal } from '@/components/chat/DirectMessageModal';
+
+// Fast in-memory cache for instant profile reopening
+const profileMemoryCache = new Map<string, { profile: PublicProfile; timestamp: number }>();
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
@@ -154,6 +160,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   // Pinned stamps in showcase (up to 3)
   const [pinnedShowcase, setPinnedShowcase] = useState<string[]>([]);
 
+  // 1-on-1 Direct Message modal
+  const [dmModalOpen, setDmModalOpen] = useState(false);
+
   useEffect(() => {
     let isMounted = true;
     const resolvedUid = targetUid || currentUid;
@@ -161,29 +170,34 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       setLoading(false);
       return;
     }
-    setLoading(true);
+
+    // Instant cache restore: if this profile was previously viewed, display it immediately
+    const cached = profileMemoryCache.get(resolvedUid);
+    if (cached) {
+      setProfile(cached.profile);
+      setLoading(false);
+    } else {
+      setLoading(true);
+      setProfile(null);
+    }
     setFetchError(null);
-    setProfile(null);
 
     async function fetchProfileData() {
       const uid = targetUid || currentUid;
       if (!uid) return;
 
       try {
-        // 1. Read publicProfiles/{uid} for everyone; only read users/{uid} when viewing self or as admin
-        //    (reading users/{uid} for another user as a non-admin throws permission-denied and would reject Promise.all!)
+        // Read users/{uid}, publicProfiles/{uid}, and wallets/{uid} in parallel.
         const userDocRef = doc(db, 'users', uid);
-        const canReadPrivateUserDoc = uid === currentUid || isAdmin;
-
-        const [userSnap, publicSnap] = await Promise.all([
-          canReadPrivateUserDoc
-            ? getDoc(userDocRef).catch(() => null)
-            : Promise.resolve(null),
+        const [userSnap, publicSnap, walletSnap] = await Promise.all([
+          getDoc(userDocRef).catch(() => null),
           getDoc(doc(db, 'publicProfiles', uid)).catch(() => null),
+          getDoc(doc(db, 'wallets', uid)).catch(() => null),
         ]);
 
         const uData = userSnap && userSnap.exists() ? userSnap.data() : null;
         const pubData = publicSnap && publicSnap.exists() ? publicSnap.data() : null;
+        const walletData = walletSnap && walletSnap.exists() ? walletSnap.data() : null;
 
         // 2. Fallback check: Read author details from recent post if user doc lacks displayName / photo
         let postAuthorName: string | null = null;
@@ -210,7 +224,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           }
         }
 
-        const candidateName = uData?.displayName || uData?.username || uData?.name || pubData?.displayName || postAuthorName;
+        const candidateName =
+          uData?.displayName ||
+          uData?.username ||
+          uData?.name ||
+          pubData?.displayName ||
+          pubData?.username ||
+          postAuthorName;
         const candidateEmail = uData?.email || pubData?.email || (uid === currentUid ? authUser?.email : null);
 
         const isAdminAccountUser =
@@ -218,6 +238,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           uData?.role === 'admin' ||
           uData?.role === 'superadmin' ||
           pubData?.role === 'admin' ||
+          pubData?.role === 'superadmin' ||
           (candidateEmail && isAdminAccount(candidateEmail)) ||
           isAdminAccount(candidateName) ||
           (candidateName && (
@@ -236,28 +257,31 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         let cleanName = '';
         if (isAdminAccountUser) {
           cleanName = 'SHS Virtual Academy';
-          // Ensure admin user doc and public profile have the official name and role
-          if (uData && (!uData.displayName || uData.displayName !== 'SHS Virtual Academy' || uData.role !== 'admin')) {
-            setDoc(userDocRef, { displayName: 'SHS Virtual Academy', role: 'admin' }, { merge: true }).catch(() => {});
-          }
-          if (pubData && (!pubData.displayName || pubData.displayName !== 'SHS Virtual Academy' || pubData.role !== 'admin')) {
-            setDoc(doc(db, 'publicProfiles', uid), { displayName: 'SHS Virtual Academy', role: 'admin' }, { merge: true }).catch(() => {});
-          }
-          if (postAuthorPhotoURL && !uData?.photoURL) {
-            setDoc(userDocRef, { photoURL: postAuthorPhotoURL }, { merge: true }).catch(() => {});
+          if (uid === currentUid) {
+            if (uData && (!uData.displayName || uData.displayName !== 'SHS Virtual Academy' || uData.role !== 'admin')) {
+              setDoc(userDocRef, { displayName: 'SHS Virtual Academy', role: 'admin' }, { merge: true }).catch(() => {});
+            }
+            if (pubData && (!pubData.displayName || pubData.displayName !== 'SHS Virtual Academy' || pubData.role !== 'admin')) {
+              setDoc(doc(db, 'publicProfiles', uid), { displayName: 'SHS Virtual Academy', role: 'admin' }, { merge: true }).catch(() => {});
+            }
+            if (postAuthorPhotoURL && !uData?.photoURL) {
+              setDoc(userDocRef, { photoURL: postAuthorPhotoURL }, { merge: true }).catch(() => {});
+            }
           }
         } else {
-          // Priority: displayName -> username -> name -> postAuthorName -> fallback
           cleanName = sanitizeStudentDisplayName(candidateName, shortCode);
         }
 
         const mergedEquipped = {
+          ...(walletData?.equipped || {}),
           ...(pubData?.equipped || {}),
           ...(uData?.equipped || {}),
         };
         // Avatar priority: 1. equipped store avatar, 2. custom uploaded/chosen avatar, 3. Google photo only if nothing set, 4. default placeholder
         const rawEquippedAvatar =
           (mergedEquipped?.avatar as string) ||
+          (uData?.equippedAvatar as string) ||
+          (pubData?.equippedAvatar as string) ||
           (uData?.avatar as string) ||
           (pubData?.avatar as string) ||
           postAuthorEquippedAvatar ||
@@ -279,22 +303,30 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           null;
         const frame =
           (mergedEquipped?.frame as string) ||
+          (uData?.equippedFrame as string) ||
+          (pubData?.equippedFrame as string) ||
           (uData?.frame as string) ||
           (pubData?.frame as string) ||
           postAuthorFrame ||
           null;
         const nameplate =
           (mergedEquipped?.nameplate as string) ||
+          (uData?.equippedNameplate as string) ||
+          (pubData?.equippedNameplate as string) ||
           (uData?.nameplate as string) ||
           (pubData?.nameplate as string) ||
           null;
         const banner =
           (mergedEquipped?.banner as string) ||
+          (uData?.equippedBanner as string) ||
+          (pubData?.equippedBanner as string) ||
           (uData?.banner as string) ||
           (pubData?.banner as string) ||
           null;
         const effectId =
           (mergedEquipped?.effect as string) ||
+          (uData?.equippedEffect as string) ||
+          (pubData?.equippedEffect as string) ||
           (uData?.effectId as string) ||
           (pubData?.effectId as string) ||
           null;
@@ -313,7 +345,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           accuracy: Number(uData?.accuracy ?? pubData?.stats?.accuracy ?? 0),
         };
 
-        const followCounts = await getFollowCounts(uid, { uData, pubData });
+        const followCountsPromise = getFollowCounts(uid, uData, pubData);
+        const followRelationPromise =
+          currentUid && uid !== currentUid
+            ? Promise.all([isFollowing(currentUid, uid), isFollowing(uid, currentUid)])
+            : Promise.resolve([false, false] as [boolean, boolean]);
+
+        const [followCounts, [followingState, followsMeState]] = await Promise.all([
+          followCountsPromise,
+          followRelationPromise,
+        ]);
+
+        const resolvedBadges =
+          Array.isArray(uData?.badges) && uData.badges.length > 0
+            ? uData.badges
+            : Array.isArray(pubData?.badges)
+            ? pubData.badges
+            : [];
 
         const resolvedProfile: PublicProfile = {
           uid,
@@ -325,7 +373,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           frame,
           nameplate,
           effectId,
-          badges: uData?.badges || pubData?.badges || [],
+          badges: resolvedBadges,
           bio: uData?.bio || pubData?.bio || '',
           status: uData?.status || pubData?.status || '',
           accent: uData?.accent || pubData?.accent || '#D71921',
@@ -336,26 +384,37 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           followingCount: followCounts.followingCount,
           lastActiveAt: uData?.lastActiveDate || pubData?.lastActiveAt || null,
           role: isAdminAccountUser ? 'admin' : (uData?.role || pubData?.role || 'student'),
+          customRole: uData?.customRole || pubData?.customRole || undefined,
           equipped,
           avatarUrl,
           photoURL,
-          avatarKey: uData?.avatarKey || null,
-          avatarVariant: uData?.avatarVariant || null,
+          avatarKey: uData?.avatarKey || pubData?.avatarKey || null,
+          avatarVariant: uData?.avatarVariant || pubData?.avatarVariant || null,
         };
 
         if (!isMounted) return;
         setProfile(resolvedProfile);
+        profileMemoryCache.set(uid, { profile: resolvedProfile, timestamp: Date.now() });
 
         const initialPinned = (uData?.pinnedStamps as string[]) || (pubData?.pinnedStamps as string[]) || [];
         if (Array.isArray(initialPinned)) {
           setPinnedShowcase(initialPinned);
         }
 
-        // Check follow relationship directly from users/{currentUid}/following/{uid}
+        const initialStreakBadges =
+          (uData?.equippedStreakBadges as string[]) ||
+          (pubData?.equippedStreakBadges as string[]) ||
+          (uid === currentUid ? ['badge_streak_7d'] : []);
+        if (Array.isArray(initialStreakBadges)) {
+          setEquippedStreakBadges(initialStreakBadges);
+        }
+
         if (currentUid && uid !== currentUid) {
-          const followSnap = await getDoc(doc(db, 'users', currentUid, 'following', uid));
-          if (!isMounted) return;
-          setIsFollowedByMe(followSnap.exists());
+          setIsFollowedByMe(followingState);
+          setFollowsMe(followsMeState);
+        } else {
+          setIsFollowedByMe(false);
+          setFollowsMe(false);
         }
       } catch (err: any) {
         if (!isMounted) return;
@@ -373,9 +432,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     };
   }, [targetUid, currentUid, isAdmin, authUser?.email]);
 
-  // Profile and follow status are fetched via one-time getDoc in fetchProfileData above to conserve Firestore read quota.
-
-  // When viewing self in own mode, safely merge ownProfile/ownEquipped without wiping loaded cosmetics or replacing Boardly avatars with Google photoURL
+  // When viewing self in own mode, safely merge ownProfile/ownEquipped without wiping loaded cosmetics or follower counts
   useEffect(() => {
     if (isViewingSelf && ownProfile && !previewAsPublic && !walletLoading) {
       const op = ownProfile as any;
@@ -423,7 +480,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           prev?.effectId ||
           null;
 
-        return {
+        const cachedSelf = currentUid ? profileMemoryCache.get(currentUid)?.profile : null;
+        const resolvedFollowersCount =
+          prev?.followersCount ??
+          cachedSelf?.followersCount ??
+          (typeof op.followersCount === 'number' ? op.followersCount : 0);
+        const resolvedFollowingCount =
+          prev?.followingCount ??
+          cachedSelf?.followingCount ??
+          (typeof op.followingCount === 'number' ? op.followingCount : 0);
+
+        const nextProfile: PublicProfile = {
           uid: currentUid || 'guest',
           displayName: cleanName,
           studentId: shortCode,
@@ -445,10 +512,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             mcqs: Number(op.totalQuestionsSolved ?? op.mcqsSolved ?? prev?.stats?.mcqs ?? 0),
             accuracy: Number(op.accuracy ?? prev?.stats?.accuracy ?? 0),
           },
-          followersCount: prev?.followersCount ?? 0,
-          followingCount: prev?.followingCount ?? 0,
+          followersCount: resolvedFollowersCount,
+          followingCount: resolvedFollowingCount,
           lastActiveAt: op.lastActiveDate || prev?.lastActiveAt || null,
           role: isAdminAccountUser ? 'admin' : (op.role || prev?.role || 'student'),
+          customRole: op.customRole || prev?.customRole || undefined,
           equipped: {
             effect: resolvedEffectId,
             frame: resolvedFrame,
@@ -461,6 +529,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           avatarKey: op.avatarKey || prev?.avatarKey || null,
           avatarVariant: op.avatarVariant || prev?.avatarVariant || null,
         };
+
+        if (currentUid) {
+          profileMemoryCache.set(currentUid, { profile: nextProfile, timestamp: Date.now() });
+          void syncPublicProfile(currentUid, {
+            ...op,
+            displayName: cleanName,
+            shortId: shortCode,
+            avatar: resolvedAvatar,
+            banner: resolvedBanner,
+            frame: resolvedFrame,
+            nameplate: resolvedNameplate,
+            effectId: resolvedEffectId,
+            equipped: nextProfile.equipped,
+            followersCount: resolvedFollowersCount,
+            followingCount: resolvedFollowingCount,
+          }).catch(() => {});
+        }
+
+        return nextProfile;
       });
     }
   }, [isViewingSelf, ownProfile, ownEquipped, walletLoading, previewAsPublic, currentUid, authUser?.displayName, authUser?.email, isAdmin]);
@@ -492,7 +579,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       requireAuth(`follow ${profile?.displayName || 'this student'}`);
       return;
     }
-    if (!profile?.uid || followWorking) return;
+    if (!profile?.uid || followWorking || isViewingSelf || currentUid === profile.uid) return;
     const targetId = profile.uid;
 
     if (isFollowedByMe) {
@@ -506,30 +593,43 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     setProfile((prev) => (prev ? { ...prev, followersCount: (prev.followersCount || 0) + 1 } : null));
 
     try {
-      await followUser(currentUid, targetId);
+      await followUser(currentUid, targetId, {
+        followerName: ownProfile?.displayName || authUser?.displayName || 'Student',
+        followerAvatar:
+          (ownEquipped?.avatar as string) ||
+          (ownProfile?.equipped?.avatar as string) ||
+          (ownProfile as any)?.avatarUrl ||
+          ownProfile?.photoURL ||
+          authUser?.photoURL ||
+          null,
+        followerFrame:
+          (ownEquipped?.frame as string) || (ownProfile?.equipped?.frame as string) || null,
+      });
       const updatedCounts = await getFollowCounts(targetId);
-      setProfile((prev) =>
-        prev
-          ? {
-              ...prev,
-              followersCount: updatedCounts.followersCount,
-              followingCount: updatedCounts.followingCount,
-            }
-          : null
-      );
+      setProfile((prev) => {
+        if (!prev) return null;
+        const updated = {
+          ...prev,
+          followersCount: updatedCounts.followersCount,
+          followingCount: updatedCounts.followingCount,
+        };
+        profileMemoryCache.set(targetId, { profile: updated, timestamp: Date.now() });
+        return updated;
+      });
+      // Also invalidate own profile cache so our own followingCount refreshes on next view
+      profileMemoryCache.delete(currentUid);
     } catch (err: any) {
       console.error('[ProfileView] followUser failed:', err?.code || 'ERROR', `users/${currentUid}/following/${targetId}`, err);
       // Rollback
       setIsFollowedByMe(false);
       setProfile((prev) => (prev ? { ...prev, followersCount: Math.max(0, (prev.followersCount || 1) - 1) } : null));
-      alert(err?.message || 'Failed to follow user.');
     } finally {
       setFollowWorking(false);
     }
   };
 
   const confirmUnfollow = async () => {
-    if (!currentUid || !profile?.uid) return;
+    if (!currentUid || !profile?.uid || isViewingSelf || currentUid === profile.uid) return;
     const targetId = profile.uid;
     setFollowWorking(true);
 
@@ -540,22 +640,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     try {
       await unfollowUser(currentUid, targetId);
       const updatedCounts = await getFollowCounts(targetId);
-      setProfile((prev) =>
-        prev
-          ? {
-              ...prev,
-              followersCount: updatedCounts.followersCount,
-              followingCount: updatedCounts.followingCount,
-            }
-          : null
-      );
+      setProfile((prev) => {
+        if (!prev) return null;
+        const updated = {
+          ...prev,
+          followersCount: updatedCounts.followersCount,
+          followingCount: updatedCounts.followingCount,
+        };
+        profileMemoryCache.set(targetId, { profile: updated, timestamp: Date.now() });
+        return updated;
+      });
+      profileMemoryCache.delete(currentUid);
       setUnfollowModalOpen(false);
     } catch (err: any) {
       console.error('[ProfileView] unfollowUser failed:', err?.code || 'ERROR', `users/${currentUid}/following/${targetId}`, err);
       // Rollback
       setIsFollowedByMe(true);
       setProfile((prev) => (prev ? { ...prev, followersCount: (prev.followersCount || 0) + 1 } : null));
-      alert(err?.message || 'Failed to unfollow user.');
     } finally {
       setFollowWorking(false);
     }
@@ -1072,6 +1173,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         <span>Follow</span>
                       </>
                     )}
+                  </button>
+                )}
+
+                {/* Message Button (opens 1-on-1 direct message chat; hidden on own profile) */}
+                {!isViewingSelf && currentUid !== profile?.uid && (
+                  <button
+                    onClick={() => {
+                      if (!currentUid) {
+                        requireAuth(`message ${profile?.displayName || 'this student'}`);
+                        return;
+                      }
+                      setDmModalOpen(true);
+                    }}
+                    className="h-11 px-4 rounded-lg border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    title="Send a message"
+                  >
+                    <MessageSquare size={14} />
+                    <span>Message</span>
                   </button>
                 )}
 
@@ -2014,6 +2133,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         onClose={() => setWalletModalOpen(false)}
         balance={kobanBalance}
       />
+
+      {/* ── 1-on-1 Direct Message Modal ── */}
+      {profile && (
+        <DirectMessageModal
+          isOpen={dmModalOpen}
+          onClose={() => setDmModalOpen(false)}
+          targetUser={{
+            uid: profile.uid,
+            displayName: profile.displayName,
+            avatar: profile.avatar,
+            frame: profile.frame,
+            role: profile.role,
+            photoURL: profile.photoURL,
+          }}
+        />
+      )}
     </div>
   );
 };

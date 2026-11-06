@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, UserPlus, UserCheck, AlertCircle } from 'lucide-react';
 import { getFollowers, getFollowing, followUser, unfollowUser, isFollowing } from '@/services/followService';
-import { getPublicProfile, getPublicProfiles } from '@/services/publicProfileService';
-import { AvatarPicture, AvatarFrame } from '@/components/koban/CosmeticRenderers';
+import { getPublicProfiles } from '@/services/publicProfileService';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { getRankTitle } from '@/config/rankLadder';
 import type { PublicProfile } from '@/types';
-import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
+import { LineLoader } from '@/components/ui/LineLoader';
 
 interface FollowListModalProps {
   isOpen: boolean;
@@ -40,6 +40,8 @@ export const FollowListModal: React.FC<FollowListModalProps> = ({
   const [unfollowTarget, setUnfollowTarget] = useState<PublicProfile | null>(null);
   const [unfollowLoading, setUnfollowLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const listContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Synchronize initialTab when opening
   useEffect(() => {
@@ -48,6 +50,23 @@ export const FollowListModal: React.FC<FollowListModalProps> = ({
       setPage(1);
     }
   }, [isOpen, initialTab]);
+
+  // Infinite scroll IntersectionObserver
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !isOpen || !hasMore || loading) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasMore && !loading) {
+          setPage((prev) => prev + 1);
+        }
+      },
+      { root: listContainerRef.current, rootMargin: '120px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [isOpen, hasMore, loading]);
 
   const loadData = useCallback(async () => {
     if (!isOpen || !userId) return;
@@ -215,7 +234,7 @@ export const FollowListModal: React.FC<FollowListModalProps> = ({
         )}
 
         {/* List Body */}
-        <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-2.5">
+        <div ref={listContainerRef} className="p-4 overflow-y-auto flex-1 flex flex-col gap-2.5">
           {loading && profiles.length === 0 ? (
             <div className="py-8">
               <LineLoader variant="section" context="generic" />
@@ -251,14 +270,16 @@ export const FollowListModal: React.FC<FollowListModalProps> = ({
                     }}
                     className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer group"
                   >
-                    <AvatarFrame itemId={p.frame || p.equipped?.frame || 'none'} size={40}>
-                      <AvatarPicture
-                        avatarId={p.avatar}
-                        avatarKey={p.avatarKey}
-                        variant={p.avatarVariant}
-                        size={32}
-                      />
-                    </AvatarFrame>
+                    <BoardlyAvatar
+                      equippedAvatar={p.avatar || (p.equipped?.avatar as string)}
+                      avatarUrl={p.avatarUrl}
+                      photoURL={p.photoURL}
+                      frame={p.frame || (p.equipped?.frame as string) || 'none'}
+                      avatarKey={p.avatarKey}
+                      avatarVariant={p.avatarVariant}
+                      name={p.displayName || 'Student'}
+                      size={36}
+                    />
 
                     <div className="flex flex-col min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -304,14 +325,12 @@ export const FollowListModal: React.FC<FollowListModalProps> = ({
             })
           )}
 
-          {/* Load More Button */}
-          {hasMore && !loading && (
-            <button
-              onClick={() => setPage((prev) => prev + 1)}
-              className="mt-2 py-2 px-4 rounded-xl border border-[var(--border)] text-xs font-heading font-semibold text-[var(--text)] hover:bg-[var(--card-2)] transition-colors cursor-pointer text-center"
-            >
-              Load more
-            </button>
+          {/* Infinite Scroll Sentinel */}
+          {hasMore && <div ref={sentinelRef} className="h-4 w-full shrink-0" />}
+          {loading && profiles.length > 0 && (
+            <div className="py-2">
+              <LineLoader variant="inline" context="generic" message="Loading more..." />
+            </div>
           )}
         </div>
       </div>

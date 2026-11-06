@@ -267,6 +267,7 @@ export function StorePage() {
   const [sortBy, setSortBy] = useState<SortOption>('featured');
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState<boolean>(false);
   const [visibleCount, setVisibleCount] = useState<number>(24);
+  const browseSentinelRef = useRef<HTMLDivElement | null>(null);
 
   // ─── Temporary "Preview on my profile" Loadout Override ───────────────────
   const [previewOverride, setPreviewOverride] = useState<Partial<EquippedCosmetics> | null>(null);
@@ -482,6 +483,23 @@ export function StorePage() {
   useEffect(() => {
     setVisibleCount(24);
   }, [selectedCategory, animationFilter, rarityFilter, maxPriceFilter, ownershipFilter, sortBy]);
+
+  // Infinite scroll IntersectionObserver for Browse tab
+  useEffect(() => {
+    const sentinel = browseSentinelRef.current;
+    if (!sentinel || activeView !== 'browse' || visibleCount >= filteredBrowseItems.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && visibleCount < filteredBrowseItems.length) {
+          setVisibleCount((prev) => Math.min(filteredBrowseItems.length, prev + 24));
+        }
+      },
+      { rootMargin: '240px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [activeView, visibleCount, filteredBrowseItems.length]);
 
   // ─── Owned Items for My Collection Tab ────────────────────────────────────
   const ownedCatalogItems = useMemo(() => {
@@ -1699,16 +1717,12 @@ export function StorePage() {
                   {filteredBrowseItems.slice(0, visibleCount).map((item) => renderStoreCard(item))}
                 </div>
 
-                {/* 3.f) Pagination: "Load more" with Exact Remaining Count */}
+                {/* 3.f) Infinite Scroll Sentinel */}
                 {visibleCount < filteredBrowseItems.length && (
-                  <div className="pt-4 flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => setVisibleCount((prev) => prev + 24)}
-                      className="min-h-[48px] px-6 py-2.5 rounded-xl bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-xs sm:text-sm font-bold text-[var(--text)] active:scale-[0.97] transition-all"
-                    >
-                      Load more ({filteredBrowseItems.length - visibleCount} remaining)
-                    </button>
+                  <div ref={browseSentinelRef} className="pt-4 pb-2 flex justify-center items-center">
+                    <span className="text-xs font-mono text-[var(--muted)] animate-pulse">
+                      Loading more cosmetics...
+                    </span>
                   </div>
                 )}
               </>
