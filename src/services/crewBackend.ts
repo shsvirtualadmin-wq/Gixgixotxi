@@ -180,14 +180,24 @@ export function evaluateUserEligibility(
   return 'eligible';
 }
 
-export function isCrewPaidActive(crew?: {
-  tier?: string;
-  paid_until?: string | null;
-  status?: string;
-} | null): boolean {
-  if (!crew) return false;
-  if (crew.status === 'suspended') return false;
-  return crew.tier === 'paid' || true;
+export function isCrewPaidActive(
+  crewOrPaidUntil?: {
+    tier?: string;
+    paid_until?: string | null;
+    status?: string;
+  } | string | null
+): boolean {
+  if (!crewOrPaidUntil) return false;
+  if (typeof crewOrPaidUntil === 'string') {
+    const t = new Date(crewOrPaidUntil).getTime();
+    return !Number.isNaN(t) && t > Date.now();
+  }
+  if (crewOrPaidUntil.status === 'suspended') return false;
+  if (crewOrPaidUntil.paid_until) {
+    const t = new Date(crewOrPaidUntil.paid_until).getTime();
+    if (!Number.isNaN(t)) return t > Date.now();
+  }
+  return crewOrPaidUntil.tier === 'paid';
 }
 
 

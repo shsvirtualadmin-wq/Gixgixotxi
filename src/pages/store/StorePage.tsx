@@ -585,10 +585,7 @@ export function StorePage() {
   // ─── Equip / Unequip Handler ──────────────────────────────────────────────
   const handleEquipToggle = async (item: HydratedStoreItem) => {
     if (!isLoggedIn) {
-      requireAuth(() => {}, {
-        title: 'Sign in to equip cosmetics',
-        description: 'Log in to customize your Boardly profile loadout.',
-      });
+      requireAuth('Sign in to equip cosmetics');
       return;
     }
     const isCurrentlyEquipped = equipped[item.type] === item.id;
@@ -627,10 +624,7 @@ export function StorePage() {
     if (purchasing) return;
     if (!isLoggedIn) {
       setSelectedDetailItem(null);
-      requireAuth(() => {}, {
-        title: 'Sign in to unlock cosmetics',
-        description: 'Log in to spend Kobans and build your collection.',
-      });
+      requireAuth('Sign in to unlock cosmetics');
       return;
     }
 

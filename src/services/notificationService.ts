@@ -312,7 +312,7 @@ export function extractNotificationActorMeta(
       const bot = BOARDLY_BOT_ACCOUNTS.find(
         (b) =>
           b.displayName.toLowerCase() === lowerName ||
-          b.username.toLowerCase() === lowerName
+          (b.username && b.username.toLowerCase() === lowerName)
       );
       if (bot) {
         resolvedUid = bot.uid;

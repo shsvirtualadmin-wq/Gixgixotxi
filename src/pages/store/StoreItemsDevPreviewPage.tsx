@@ -178,7 +178,7 @@ const NEW_25_ITEM_SPECS: Record<
 };
 
 export const StoreItemsDevPreviewPage: React.FC = () => {
-  const { user, loading: authLoading } = useAuth();
+  const { user, profileLoading } = useAuth();
   const [isAuthorized, setIsAuthorized] = useState<boolean>(Boolean(import.meta.env.DEV));
   const [checkingRole, setCheckingRole] = useState<boolean>(!import.meta.env.DEV);
   const [fps, setFps] = useState<number>(60);
@@ -195,17 +195,17 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
       setCheckingRole(false);
       return;
     }
-    if (authLoading) return;
+    if (profileLoading) return;
     if (!user) {
       setIsAuthorized(false);
       setCheckingRole(false);
       return;
     }
     let cancelled = false;
-    verifyStoreAdminRoleServerSide(user.uid)
-      .then((role) => {
+    verifyStoreAdminRoleServerSide()
+      .then((result) => {
         if (!cancelled) {
-          setIsAuthorized(role === 'admin' || role === 'superadmin');
+          setIsAuthorized(result.verified && (result.role === 'admin' || result.role === 'superadmin'));
           setCheckingRole(false);
         }
       })
@@ -218,7 +218,7 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [user, authLoading]);
+  }, [user, profileLoading]);
 
   // Live FPS + scheduler task telemetry
   useEffect(() => {

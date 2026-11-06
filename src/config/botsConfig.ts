@@ -24,6 +24,11 @@ export interface BotAccountConfig {
   equippedAvatar: string;
   bio: string;
   chapters: string[];
+  username?: string;
+  shortId?: string;
+  frame?: string;
+  grade?: string;
+  targetUniversity?: string;
 }
 
 export const BOARDLY_BOT_ACCOUNTS: readonly BotAccountConfig[] = [

@@ -11,6 +11,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
   loadingText?: string;
   progress?: number;
+  loadingProgress?: number;
   loadingMessages?: string[];
   successText?: string;
   error?: string | null;

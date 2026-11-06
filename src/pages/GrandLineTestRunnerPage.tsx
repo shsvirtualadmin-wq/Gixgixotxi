@@ -47,7 +47,7 @@ export function GrandLineTestRunnerPage() {
     searchParams.get('view') === 'result' ||
     location.pathname.endsWith('/result');
   const navigate = useNavigate();
-  const { user, profile, isAdmin, loading: authLoading } = useAuth();
+  const { user, profile, isAdmin, profileLoading: authLoading } = useAuth();
 
   const [test, setTest] = useState<AmbassadorCustomTest | null>(null);
   const [otherTests, setOtherTests] = useState<AmbassadorTestDoc[]>([]);
@@ -113,25 +113,27 @@ export function GrandLineTestRunnerPage() {
       if (testMeta) {
         setTest(testMeta);
       }
-      setScoreResult({
-        attemptId: attempt.id,
-        testTitle: attempt.testTitle || testMeta?.title || test?.title || 'Grand Line Drill',
-        subject: attempt.subject || testMeta?.subject || test?.subject || 'General',
-        captainName: attempt.captainName || testMeta?.captainName || test?.captainName || 'Captain',
-        crewName: testMeta?.crewName || test?.crewName || 'Grand Line Crew',
-        studentName: attempt.userName || attempt.studentName || resolveStudentProfileName(),
-        date: attempt.date,
-        score: attempt.score,
-        totalQuestions:
-          attempt.totalQuestions ||
-          testMeta?.questionCount ||
-          (attempt.gradedQuestions?.length ?? 0),
-        percentage: attempt.percentage,
-        timeTakenSeconds: attempt.timeTakenSeconds || 0,
-        gradedQuestions: attempt.gradedQuestions || [],
-      });
-      setAlreadyAttemptedInfo(null);
-      setSubmitted(true);
+      if (attempt) {
+        setScoreResult({
+          attemptId: attempt.id,
+          testTitle: attempt.testTitle || testMeta?.title || test?.title || 'Grand Line Drill',
+          subject: attempt.subject || testMeta?.subject || test?.subject || 'General',
+          captainName: attempt.captainName || testMeta?.captainName || test?.captainName || 'Captain',
+          crewName: testMeta?.crewName || test?.crewName || 'Grand Line Crew',
+          studentName: attempt.userName || attempt.studentName || resolveStudentProfileName(),
+          date: attempt.date,
+          score: attempt.score,
+          totalQuestions:
+            attempt.totalQuestions ||
+            testMeta?.questionCount ||
+            (attempt.gradedQuestions?.length ?? 0),
+          percentage: attempt.percentage,
+          timeTakenSeconds: attempt.timeTakenSeconds || 0,
+          gradedQuestions: attempt.gradedQuestions || [],
+        });
+        setAlreadyAttemptedInfo(null);
+        setSubmitted(true);
+      }
     } catch (err: any) {
       showApiToast(err?.rawMessage || err?.message || 'Could not load your drill result.', 'error');
     } finally {
@@ -184,24 +186,26 @@ export function GrandLineTestRunnerPage() {
         .then(({ attempt, test: testMeta }) => {
           if (!active) return;
           if (testMeta) setTest(testMeta);
-          setScoreResult({
-            attemptId: attempt.id,
-            testTitle: attempt.testTitle || testMeta?.title || 'Grand Line Drill',
-            subject: attempt.subject || testMeta?.subject || 'General',
-            captainName: attempt.captainName || testMeta?.captainName || 'Captain',
-            crewName: testMeta?.crewName || 'Grand Line Crew',
-            studentName: attempt.userName || attempt.studentName || resolveStudentProfileName(),
-            date: attempt.date,
-            score: attempt.score,
-            totalQuestions:
-              attempt.totalQuestions ||
-              testMeta?.questionCount ||
-              (attempt.gradedQuestions?.length ?? 0),
-            percentage: attempt.percentage,
-            timeTakenSeconds: attempt.timeTakenSeconds || 0,
-            gradedQuestions: attempt.gradedQuestions || [],
-          });
-          setSubmitted(true);
+          if (attempt) {
+            setScoreResult({
+              attemptId: attempt.id,
+              testTitle: attempt.testTitle || testMeta?.title || 'Grand Line Drill',
+              subject: attempt.subject || testMeta?.subject || 'General',
+              captainName: attempt.captainName || testMeta?.captainName || 'Captain',
+              crewName: testMeta?.crewName || 'Grand Line Crew',
+              studentName: attempt.userName || attempt.studentName || resolveStudentProfileName(),
+              date: attempt.date,
+              score: attempt.score,
+              totalQuestions:
+                attempt.totalQuestions ||
+                testMeta?.questionCount ||
+                (attempt.gradedQuestions?.length ?? 0),
+              percentage: attempt.percentage,
+              timeTakenSeconds: attempt.timeTakenSeconds || 0,
+              gradedQuestions: attempt.gradedQuestions || [],
+            });
+            setSubmitted(true);
+          }
         })
         .catch((err: any) => {
           if (!active) return;

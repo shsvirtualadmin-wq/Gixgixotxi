@@ -8,7 +8,7 @@ const LazyAvatarFrame = lazy(() =>
   import('@/components/koban/CosmeticRenderers').then((m) => ({ default: m.AvatarFrame }))
 );
 
-function isImageUrl(val?: string | null): val is string {
+function isImageUrl(val?: string | null): boolean {
   if (!val || typeof val !== 'string') return false;
   const trimmed = val.trim();
   if (!trimmed || trimmed === 'none' || trimmed === 'null' || trimmed === 'undefined') {
@@ -46,7 +46,7 @@ export function resolveCosmeticItemId(
 
   const catalogItem = getCosmeticById(candidate);
   if (catalogItem) {
-    if (!expectedSlot || catalogItem.slot === expectedSlot) {
+    if (!expectedSlot || catalogItem.type === expectedSlot) {
       return catalogItem.id;
     }
   }
@@ -74,9 +74,12 @@ export function resolveCosmeticItemId(
 }
 
 export interface BoardlyAvatarProps {
+  uid?: string;
   equippedAvatar?: string | null;
   avatarUrl?: string | null;
   photoURL?: string | null;
+  avatar?: string | null;
+  customAvatarUrl?: string | null;
   frame?: string | null;
   name?: string | null;
   size?: number | 'sm' | 'md' | 'lg';
@@ -88,7 +91,9 @@ export interface BoardlyAvatarProps {
   priority?: number;
   // Backward-compatible prop aliases
   avatarId?: string | null;
+  equippedAvatarId?: string | null;
   frameId?: string | null;
+  equippedFrameId?: string | null;
   fallbackInitials?: string | null;
 }
 
@@ -113,9 +118,12 @@ function normalizeAvatarSize(size?: number | 'sm' | 'md' | 'lg'): number {
  * Renders the equipped frame around the avatar if equipped.
  */
 export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
+  uid: _uid,
   equippedAvatar,
   avatarUrl,
   photoURL,
+  avatar,
+  customAvatarUrl,
   frame,
   name,
   size: rawSize = 36,
@@ -126,17 +134,23 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
   isSuperAdmin = false,
   priority,
   avatarId,
+  equippedAvatarId,
   frameId,
+  equippedFrameId,
   fallbackInitials,
 }) => {
   const size = normalizeAvatarSize(rawSize);
   const resolvedName = name || fallbackInitials || 'Student';
 
+  const effectiveEquippedAvatar = equippedAvatar || equippedAvatarId || avatar || null;
+  const effectiveAvatarUrl = avatarUrl || customAvatarUrl || null;
+  const effectiveFrame = frame || frameId || equippedFrameId || null;
+
   // Resolve store-bought cosmetic avatar ID from any provided avatar prop
   const resolvedCosmeticAvatar =
-    resolveCosmeticItemId(equippedAvatar, 'avatar') ||
+    resolveCosmeticItemId(effectiveEquippedAvatar, 'avatar') ||
     resolveCosmeticItemId(avatarId, 'avatar') ||
-    resolveCosmeticItemId(avatarUrl, 'avatar') ||
+    resolveCosmeticItemId(effectiveAvatarUrl, 'avatar') ||
     resolveCosmeticItemId(photoURL, 'avatar') ||
     resolveCosmeticItemId(avatarKey, 'avatar') ||
     null;
@@ -144,7 +158,7 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
   const hasEquipped = Boolean(resolvedCosmeticAvatar);
 
   // Resolve custom image URL if no store cosmetic avatar is active (or as image source)
-  const candidateUrl = [avatarUrl, photoURL, equippedAvatar, avatarId].find(
+  const candidateUrl = [effectiveAvatarUrl, photoURL, effectiveEquippedAvatar, avatarId].find(
     (v) => isImageUrl(v) && !resolveCosmeticItemId(v, 'avatar')
   );
 
@@ -242,6 +256,7 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
 
   // If frame is equipped, calculate outer frame size and wrap
   const resolvedFrame =
+    resolveCosmeticItemId(effectiveFrame, 'frame') ||
     resolveCosmeticItemId(frame, 'frame') ||
     resolveCosmeticItemId(frameId, 'frame') ||
     null;

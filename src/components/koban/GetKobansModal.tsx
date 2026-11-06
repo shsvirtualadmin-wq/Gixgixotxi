@@ -19,6 +19,7 @@ interface GetKobansModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialAmount?: number;
+  initialKobanAmount?: number;
 }
 
 const QUICK_AMOUNTS = [500, 1000, 2500, 5000];
@@ -26,12 +27,14 @@ const QUICK_AMOUNTS = [500, 1000, 2500, 5000];
 export const GetKobansModal: React.FC<GetKobansModalProps> = ({
   isOpen,
   onClose,
-  initialAmount = 1000,
+  initialAmount,
+  initialKobanAmount,
 }) => {
+  const effectiveInitial = initialAmount ?? initialKobanAmount ?? 1000;
   const { user } = useAuth();
   const { profile } = useUserProfile();
 
-  const [amount, setAmount] = useState<number>(initialAmount);
+  const [amount, setAmount] = useState<number>(effectiveInitial);
   const [selectedMethod, setSelectedMethod] = useState<'jazzcash' | 'easypaisa'>('jazzcash');
   const [transactionId, setTransactionId] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);

@@ -11,7 +11,7 @@ import {
 } from '../fx/storeFxEngine';
 import { ECLIPSE_WYRM_POSTER_DATA_URI } from './eclipseWyrmPosterFallback';
 
-interface PfpSvgProps {
+export interface PfpSvgProps {
   canAnimate?: boolean;
   className?: string;
   priority?: number;

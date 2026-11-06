@@ -729,7 +729,9 @@ export async function addPostComment(params: {
     avatarUrl?: string | null;
   };
   text: string;
+  body?: string;
   isAnonymous: boolean;
+  user?: any;
 }): Promise<CommonsComment> {
   const headers = await getRequiredAuthHeader();
   const cleanName = params.isAnonymous
@@ -885,7 +887,11 @@ export async function fetchUserSavedPosts(uid: string): Promise<CommonsPost[]> {
   }
 }
 
-export async function deleteCommonsPost(postId: string): Promise<void> {
+export async function deleteCommonsPost(
+  postId: string,
+  _userUid?: string,
+  _isAdmin?: boolean
+): Promise<void> {
   const headers = await getRequiredAuthHeader();
   const resp = await fetch(`/api/posts/${encodeURIComponent(postId)}`, {
     method: 'DELETE',

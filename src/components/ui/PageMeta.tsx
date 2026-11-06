@@ -6,6 +6,7 @@ export interface PageMetaProps {
   description: string;
   ogImage?: string;
   canonicalPath?: string;
+  canonical?: string;
   noindex?: boolean;
   ogType?: 'website' | 'article' | 'profile';
   jsonLd?: Record<string, unknown> | Array<Record<string, unknown>>;
@@ -16,6 +17,7 @@ export function PageMeta({
   description,
   ogImage = '/assets/og-image.png',
   canonicalPath,
+  canonical: directCanonical,
   noindex = false,
   ogType = 'website',
   jsonLd,
@@ -48,7 +50,8 @@ export function PageMeta({
     );
 
     // 3. Canonical URL (strip tracking params, normalize path)
-    const cleanPath = (canonicalPath || location.pathname).replace(/\/+$/, '') || '/';
+    const normalizedDirect = directCanonical ? directCanonical.replace(/^https?:\/\/[^/]+/, '') : null;
+    const cleanPath = (normalizedDirect || canonicalPath || location.pathname).replace(/\/+$/, '') || '/';
     const canonicalHref = `https://boardly.cfd${cleanPath}`;
     let canonical = document.querySelector('link[rel="canonical"]');
     if (!canonical) {

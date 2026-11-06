@@ -374,11 +374,13 @@ const TopperStarMedalAvatar: React.FC<PfpSvgProps> = ({
 };
 
 interface BaseCosmeticProps {
-  itemId: string;
+  itemId?: string;
+  frameId?: string;
   size?: number;
   children?: React.ReactNode;
   className?: string;
   forceStatic?: boolean;
+  animated?: boolean;
 }
 
 /**
@@ -500,6 +502,7 @@ export interface AvatarPictureProps {
   className?: string;
   forceStatic?: boolean;
   priority?: number;
+  animated?: boolean;
 }
 
 const VIDEO_LOOP_AVATAR_IDS = new Set([
@@ -599,12 +602,14 @@ export const CosmeticAvatar = AvatarPicture;
  * - Isolated within its own CosmeticErrorBoundary.
  */
 const AvatarFrameInner: React.FC<BaseCosmeticProps> = ({
-  itemId,
+  itemId: directItemId,
+  frameId,
   size = 56,
   children,
   className = '',
   forceStatic = false,
 }) => {
+  const itemId = directItemId || frameId || '';
   const { containerRef, canAnimate } = useCosmeticAnimation(itemId, false, forceStatic);
   const exists = Boolean(itemId && itemId !== 'none' && getCosmeticById(itemId));
 
@@ -694,14 +699,19 @@ const NameplateInner: React.FC<{
 };
 
 export const Nameplate: React.FC<{
-  itemId: string;
-  name: string;
+  itemId?: string;
+  nameplateId?: string;
+  name?: string;
+  displayName?: string;
   shortId?: string;
   roleBadge?: string;
   className?: string;
   forceStatic?: boolean;
-  allowWrap?: boolean | 'full' | 'two-lines';
+  allowWrap?: boolean | 'full' | 'two-lines' | 'clip';
+  animated?: boolean;
 }> = (props) => {
+  const actualItemId = props.nameplateId || props.itemId || '';
+  const actualName = props.displayName || props.name || '';
   const wrapCls =
     props.allowWrap === 'full'
       ? 'whitespace-normal break-words leading-snug'
@@ -710,13 +720,18 @@ export const Nameplate: React.FC<{
       : 'truncate';
   const fallback = (
     <div className={`inline-flex items-center gap-1.5 max-w-full ${props.allowWrap ? '' : 'truncate'} ${props.className || ''}`}>
-      <span className={`font-heading font-semibold text-xs text-[var(--text)] ${wrapCls}`}>{props.name}</span>
+      <span className={`font-heading font-semibold text-xs text-[var(--text)] ${wrapCls}`}>{actualName}</span>
       {props.shortId && <span className="font-mono text-[10px] text-[var(--muted)] shrink-0">#{props.shortId}</span>}
     </div>
   );
   return (
     <CosmeticErrorBoundary fallback={fallback}>
-      <NameplateInner {...props} />
+      <NameplateInner
+        {...props}
+        itemId={actualItemId}
+        name={actualName}
+        allowWrap={props.allowWrap === 'clip' ? false : props.allowWrap}
+      />
     </CosmeticErrorBoundary>
   );
 };
@@ -728,14 +743,15 @@ export const CosmeticNameplate = Nameplate;
  * SHARED PROFILE EFFECT COMPONENT (<CosmeticEffect />)
  */
 const CosmeticEffectInner: React.FC<BaseCosmeticProps> = ({
-  itemId,
+  itemId: directItemId,
   size = 64,
   children,
   className = '',
   forceStatic = false,
 }) => {
-  const { containerRef, canAnimate } = useCosmeticAnimation(itemId, false, forceStatic);
-  const exists = Boolean(itemId && itemId !== 'none' && getCosmeticById(itemId));
+  const safeItemId = directItemId || '';
+  const { containerRef, canAnimate } = useCosmeticAnimation(safeItemId, false, forceStatic);
+  const exists = Boolean(safeItemId && safeItemId !== 'none' && getCosmeticById(safeItemId));
 
   if (!exists) {
     return <>{children}</>;
@@ -744,7 +760,7 @@ const CosmeticEffectInner: React.FC<BaseCosmeticProps> = ({
   return (
     <div ref={containerRef} className="inline-flex items-center justify-center">
       <EffectAvatarRenderer
-        itemId={itemId}
+        itemId={safeItemId}
         size={size}
         canAnimate={canAnimate}
         className={className}

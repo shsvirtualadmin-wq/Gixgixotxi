@@ -70,7 +70,7 @@ export const GrandLineLeaderboardPage: React.FC = () => {
         }
         getPublicProfiles(uids)
           .then((fetched) => {
-            setProfilesByUid((prev) => ({ ...prev, ...fetched }));
+            setProfilesByUid((prev) => ({ ...prev, ...Object.fromEntries(fetched) }));
           })
           .catch(() => {
             // Keep cached/entry avatars on fallback

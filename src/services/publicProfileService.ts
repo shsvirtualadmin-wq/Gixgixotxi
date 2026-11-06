@@ -23,9 +23,9 @@ export interface PublicProfile extends BasePublicProfile {
   usernameLower?: string;
   isVerified?: boolean;
   isCaptain?: boolean;
-  board?: string;
-  grade?: string | number;
-  targetUniversity?: string;
+  board?: string | null;
+  grade?: string | number | null;
+  targetUniversity?: string | null;
   equippedAvatar?: string | null;
   equippedFrame?: string | null;
   equippedNameplate?: string | null;
@@ -489,7 +489,7 @@ export async function resolvePublicProfileByName(
   }
 
   const bot = BOARDLY_BOT_ACCOUNTS.find(
-    (b) => b.displayName.toLowerCase() === key || b.username.toLowerCase() === key
+    (b) => b.displayName.toLowerCase() === key || (b.username && b.username.toLowerCase() === key)
   );
   if (bot) {
     nameToUidCache.set(key, bot.uid);
@@ -546,7 +546,7 @@ export async function resolvePublicProfileByName(
  */
 export async function syncUserPublicProfile(
   uid: string,
-  data?: Partial<PublicProfile> & Record<string, any>
+  data?: Record<string, any>
 ): Promise<void> {
   if (!uid) return;
   const input = data || {};
@@ -685,6 +685,7 @@ export async function syncUserPublicProfile(
 }
 
 export const syncPublicProfile = syncUserPublicProfile;
+export type PublicUserProfileSummary = PublicProfile;
 
 export async function backfillAllPublicProfiles(): Promise<{
   totalUsers: number;

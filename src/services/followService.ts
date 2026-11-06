@@ -23,20 +23,20 @@ import {
 export interface FollowUserSummary {
   uid: string;
   displayName: string;
-  username?: string;
-  avatar?: string;
-  avatarKey?: string;
-  avatarVariant?: string;
-  avatarUrl?: string;
-  photoURL?: string;
+  username?: string | null;
+  avatar?: string | null;
+  avatarKey?: string | null;
+  avatarVariant?: string | null;
+  avatarUrl?: string | null;
+  photoURL?: string | null;
   equippedAvatar?: string | null;
   frame?: string | null;
   nameplate?: string | null;
   banner?: string | null;
   role?: string;
-  customRole?: string;
-  targetUniversity?: string;
-  board?: string;
+  customRole?: string | null;
+  targetUniversity?: string | null;
+  board?: string | null;
   shortId?: string;
   badges?: string[];
 }

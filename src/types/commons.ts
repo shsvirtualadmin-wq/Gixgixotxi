@@ -112,6 +112,8 @@ export interface CommonsPost {
   subject: string;
   chapter: string;
   target: string;
+  classLevel?: string;
+  board?: string;
   tags: string[];
   files: CommonsFileAttachment[];
   isAnonymous: boolean;
@@ -122,6 +124,7 @@ export interface CommonsPost {
   authorEquippedAvatar?: string | null;
   authorPhotoURL?: string | null;
   authorAlias?: string;
+  anonymousAlias?: string;
   authorRole?: string | null;
   authorCustomRole?: string | null;
   upvotes: number;
@@ -182,10 +185,13 @@ export interface CommonsUserPreview {
   customRole?: string;
   isSuperAdmin?: boolean;
   shortId?: string;
-  avatarUrl?: string;
-  photoURL?: string;
-  equippedAvatar?: string;
-  frame?: string;
+  avatarUrl?: string | null;
+  photoURL?: string | null;
+  equippedAvatar?: string | null;
+  frame?: string | null;
   targetUniversity?: string;
   streak?: number;
+  bio?: string | null;
+  followersCount?: number;
+  followingCount?: number;
 }

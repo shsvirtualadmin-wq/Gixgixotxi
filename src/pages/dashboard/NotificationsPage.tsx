@@ -219,7 +219,7 @@ function resolveDirectActorUid(notif: AppNotification): string {
         const bot = BOARDLY_BOT_ACCOUNTS.find(
           (b) =>
             b.displayName.toLowerCase() === lower ||
-            b.username.toLowerCase() === lower
+            (b.username && b.username.toLowerCase() === lower)
         );
         if (bot) {
           uid = bot.uid;

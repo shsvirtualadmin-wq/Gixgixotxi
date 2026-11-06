@@ -24,6 +24,14 @@ export interface CrewMember {
   questionsSolved?: number;
   streak?: number;
   isPro?: boolean;
+  avatarKey?: string;
+  avatarVariant?: string;
+  equipped?: {
+    effect?: string | null;
+    frame?: string | null;
+    nameplate?: string | null;
+    avatar?: string | null;
+  };
 }
 
 export interface CrewDoc {

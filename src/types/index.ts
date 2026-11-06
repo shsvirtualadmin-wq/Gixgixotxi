@@ -57,6 +57,12 @@ export interface UserProfile {
   track?: string;
   onboardingComplete?: boolean;
   equipped?: EquippedCosmetics;
+  avatar?: string | null;
+  frame?: string | null;
+  banner?: string | null;
+  nameplate?: string | null;
+  equippedAvatar?: string | null;
+  equippedFrame?: string | null;
   rankTitle?: string;
   bio?: string;
   accent?: string;
@@ -80,9 +86,9 @@ export interface EquippedCosmetics {
  */
 export interface PublicProfileStats {
   streak: number;
-  longestStreak: number;
-  mcqs: number;
-  accuracy: number;
+  longestStreak?: number;
+  mcqs?: number;
+  accuracy?: number;
   // Legacy / backwards compatibility aliases:
   score?: number;
   testsCompleted?: number;
@@ -136,6 +142,13 @@ export interface PublicProfile {
     staff?: boolean;
   };
   publicStats?: PublicProfileStats;
+  targetUniversity?: string | null;
+  board?: string | null;
+  grade?: string | number | null;
+  isSuperAdmin?: boolean;
+  equippedAvatarId?: string | null;
+  customAvatarUrl?: string | null;
+  equippedFrameId?: string | null;
   updatedAt?: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;
 }
 

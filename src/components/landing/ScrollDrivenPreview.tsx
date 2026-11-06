@@ -15,7 +15,7 @@ interface PreviewItem {
   title: string;
   subtitle: string;
   desc: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: React.ComponentType<{ size?: number | string; className?: string }>;
 }
 
 const PREVIEWS: PreviewItem[] = [

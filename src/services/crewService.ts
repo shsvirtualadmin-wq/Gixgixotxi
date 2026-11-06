@@ -208,13 +208,17 @@ export async function updateCrewSettings(
   crewId: string,
   settings: {
     name?: string;
+    bio?: string;
     description?: string;
     university?: string;
     avatarKey?: string;
     avatarVariant?: string;
     joinMode?: 'direct' | 'request';
     minStreak?: number;
-  }
+    maxMembers?: number;
+    isClosed?: boolean;
+  },
+  _actor?: { uid: string; email?: string; isAdmin?: boolean }
 ): Promise<void> {
   await api.put(`/api/crews/${encodeURIComponent(crewId)}`, settings, {
     requireAuth: true,
@@ -334,17 +338,18 @@ export async function createNewCrew(params: {
 
 export async function promoteMemberToLeader(
   _crewId: string,
-  _currentLeaderUid: string,
-  _newLeaderUid: string
+  _currentOrNewLeaderUid: string,
+  _newLeaderUidOrActor?: any,
+  _maybeActor?: any
 ): Promise<void> {
   // Handled via D1 crew settings
 }
 
 export async function handleRequestAction(
-  _crewId: string,
-  _leaderUid: string,
-  _requestUserId: string,
-  _action: 'approve' | 'reject'
+  _paramsOrCrewId: any,
+  _leaderUid?: string,
+  _requestUserId?: string,
+  _action?: 'approve' | 'reject'
 ): Promise<void> {
   // Direct join in D1
 }
@@ -355,9 +360,10 @@ export async function cancelJoinRequest(_crewId: string, _uid: string): Promise<
 
 export async function removeMemberFromCrew(
   crewId: string,
-  _leaderUid: string,
-  targetUid: string
+  arg2: string,
+  arg3?: any
 ): Promise<void> {
+  const targetUid = typeof arg3 === 'string' ? arg3 : arg2;
   await removeCrewMemberD1(crewId, targetUid);
 }
 
@@ -365,7 +371,11 @@ export async function leaveCrewSelf(crewId: string, uid: string): Promise<void> 
   await removeCrewMemberD1(crewId, uid);
 }
 
-export async function adminDisbandCrew(crewId: string): Promise<void> {
+export async function adminDisbandCrew(
+  crewId: string,
+  _disbandTypedName?: string,
+  _adminEmail?: string
+): Promise<void> {
   await deleteCrewD1(crewId);
 }
 

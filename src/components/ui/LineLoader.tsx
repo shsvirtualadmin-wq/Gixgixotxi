@@ -179,6 +179,10 @@ export interface LineLoaderProps {
    */
   error?: string | null;
   /**
+   * If true, shows immediately without 150ms delay.
+   */
+  immediate?: boolean;
+  /**
    * Retry handler when timed out or on error.
    */
   onRetry?: () => void;
@@ -195,12 +199,14 @@ export const LineLoader: React.FC<LineLoaderProps> = ({
   variant = 'section',
   loading = true,
   delayMs = 150,
+  immediate = false,
   minDisplayMs = 400,
   timeoutMs = 15000,
   error = null,
   onRetry,
   className = '',
 }) => {
+  const effectiveDelay = immediate ? 0 : delayMs;
   const resolvedContext: LineLoaderContext = useMemo(
     () => context || inferLoaderContextFromMessages(message, messages),
     [context, message, messages]
@@ -406,9 +412,15 @@ export const LineLoader: React.FC<LineLoaderProps> = ({
 /**
  * Thin 2px gliding line rendered along the bottom edge of a submitting button.
  */
-export const ButtonLineLoader: React.FC = () => (
-  <span className="line-loader-btn-track" aria-hidden="true">
+export interface ButtonLineLoaderProps {
+  label?: string;
+  className?: string;
+}
+
+export const ButtonLineLoader: React.FC<ButtonLineLoaderProps> = ({ label, className = '' }) => (
+  <span className={`line-loader-btn-track ${className}`} aria-hidden="true" title={label}>
     <span className="line-loader-btn-bar" />
+    {label && <span className="sr-only">{label}</span>}
   </span>
 );
 

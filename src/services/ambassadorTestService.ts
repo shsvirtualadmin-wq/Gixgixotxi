@@ -66,6 +66,7 @@ export interface AmbassadorTestAttempt {
   timeTakenSeconds: number;
   rank?: number;
   date?: string;
+  submittedAt?: any;
   gradedQuestions?: GradedAttemptQuestion[];
   createdAt: any;
 }
@@ -748,24 +749,29 @@ export async function hasUserAttemptedTest(testId: string, _userUid?: string): P
   }
 }
 
+export interface GlobalTopScorerEntry {
+  uid: string;
+  studentUid?: string;
+  name: string;
+  userName?: string;
+  studentName?: string;
+  testTitle?: string;
+  userAvatar?: string | null;
+  score: number;
+  totalQuestions: number;
+  percentage: number;
+  timeTakenSeconds: number;
+  testsCompleted: number;
+  rank: number;
+}
+
 export async function getGlobalGrandLineTopScorers(
   maxCount = 10
-): Promise<
-  Array<{
-    uid: string;
-    name: string;
-    userAvatar?: string | null;
-    score: number;
-    totalQuestions: number;
-    percentage: number;
-    timeTakenSeconds: number;
-    testsCompleted: number;
-    rank: number;
-  }>
-> {
+): Promise<GlobalTopScorerEntry[]> {
   const entries = await getGrandLineLeaderboard(maxCount);
   return entries.map((e, idx) => ({
     uid: e.uid,
+    studentUid: e.uid,
     name: e.displayName,
     userAvatar: e.userAvatar || null,
     score: e.totalScore,

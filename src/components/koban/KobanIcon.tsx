@@ -160,8 +160,10 @@ export const KobanIcon: React.FC<KobanIconProps> = ({
 };
 
 interface KobanAmountProps {
-  value: number;
+  value?: number;
+  amount?: number;
   iconSize?: KobanIconSize;
+  size?: string | number;
   className?: string;
   showIcon?: boolean;
   prefix?: string;
@@ -172,16 +174,20 @@ interface KobanAmountProps {
  */
 export const KobanAmount: React.FC<KobanAmountProps> = ({
   value,
+  amount,
   iconSize = 16,
+  size,
   className = '',
   showIcon = true,
   prefix = '',
 }) => {
-  const formatted = Math.max(0, Math.floor(value || 0)).toLocaleString('en-US');
+  const actualVal = value ?? amount ?? 0;
+  const numSize = typeof size === 'number' ? size : typeof iconSize === 'number' ? iconSize : 16;
+  const formatted = Math.max(0, Math.floor(actualVal || 0)).toLocaleString('en-US');
 
   return (
     <span className={`inline-flex items-center gap-1 font-mono font-bold tracking-tight ${className}`}>
-      {showIcon && <KobanIcon size={iconSize} />}
+      {showIcon && <KobanIcon size={numSize} />}
       <span>
         {prefix}
         {formatted}

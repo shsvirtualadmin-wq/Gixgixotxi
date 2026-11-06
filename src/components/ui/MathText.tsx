@@ -6,6 +6,8 @@ import 'katex/contrib/mhchem';
 export interface ValidateMathResult {
   ok: boolean;
   errors: string[];
+  valid?: boolean;
+  error?: string;
 }
 
 /**
@@ -15,7 +17,7 @@ export interface ValidateMathResult {
 // eslint-disable-next-line react-refresh/only-export-components
 export function validateMath(text: string): ValidateMathResult {
   if (!text || typeof text !== 'string') {
-    return { ok: true, errors: [] };
+    return { ok: true, valid: true, errors: [] };
   }
 
   const errors: string[] = [];
@@ -55,7 +57,9 @@ export function validateMath(text: string): ValidateMathResult {
 
   return {
     ok: errors.length === 0,
+    valid: errors.length === 0,
     errors,
+    error: errors[0],
   };
 }
 
