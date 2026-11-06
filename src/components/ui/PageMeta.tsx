@@ -100,7 +100,7 @@ export function PageMeta({
     } else if (scriptEl) {
       scriptEl.remove();
     }
-  }, [title, description, ogImage, canonicalPath, noindex, ogType, jsonLd, location.pathname]);
+  }, [title, description, ogImage, canonicalPath, directCanonical, noindex, ogType, jsonLd, location.pathname]);
 
   return null;
 }
