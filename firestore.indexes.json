@@ -1,92 +1,6 @@
 {
   "indexes": [
     {
-      "collectionGroup": "crewEvents",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "organizerId", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "crewEventAttempts",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "eventId", "order": "ASCENDING" },
-        { "fieldPath": "score", "order": "DESCENDING" },
-        { "fieldPath": "timeTakenSeconds", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "reviews",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "users",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "isCrewMember", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "questions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "active", "order": "ASCENDING" },
-        { "fieldPath": "subject", "order": "ASCENDING" },
-        { "fieldPath": "rand", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "questions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "active", "order": "ASCENDING" },
-        { "fieldPath": "subject", "order": "ASCENDING" },
-        { "fieldPath": "chapter", "order": "ASCENDING" },
-        { "fieldPath": "rand", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "questionReports",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "attempts",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "userId", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "attempts",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "uid", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "paymentRequests",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "userId", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "commonsPosts",
       "queryScope": "COLLECTION",
       "fields": [
@@ -99,7 +13,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "isHidden", "order": "ASCENDING" },
-        { "fieldPath": "searchKeywords", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "upvotes", "order": "DESCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },
@@ -109,6 +23,14 @@
       "fields": [
         { "fieldPath": "subject", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "commonsPosts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "subject", "order": "ASCENDING" },
+        { "fieldPath": "upvotes", "order": "DESCENDING" }
       ]
     },
     {
@@ -123,13 +45,115 @@
       "collectionGroup": "commonsPosts",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "classLevel", "order": "ASCENDING" },
-        { "fieldPath": "board", "order": "ASCENDING" },
+        { "fieldPath": "authorUid", "order": "ASCENDING" },
+        { "fieldPath": "isAnonymous", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "commonsReports",
+      "collectionGroup": "commonsPosts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "authorUid", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipientUid", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "read", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chatRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "toUid", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chatRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "fromUid", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "conversations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "participants", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "attempts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "completedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ambassador_test_attempts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "submittedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ambassador_test_attempts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "testId", "order": "ASCENDING" },
+        { "fieldPath": "isOfficialAttempt", "order": "ASCENDING" },
+        { "fieldPath": "percentage", "order": "DESCENDING" },
+        { "fieldPath": "timeTakenSeconds", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "grand_line_leaderboard",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "testId", "order": "ASCENDING" },
+        { "fieldPath": "percentage", "order": "DESCENDING" },
+        { "fieldPath": "timeTakenSeconds", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "paymentRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "paymentRequests",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "status", "order": "ASCENDING" },

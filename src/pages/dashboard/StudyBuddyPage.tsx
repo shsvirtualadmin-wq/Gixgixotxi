@@ -277,6 +277,7 @@ export function StudyBuddyPage() {
     try {
       await addDoc(collection(db, 'study_buddy_logs'), {
         crewId,
+        uid: user.uid,
         studentUid: user.uid,
         studentName: profile?.displayName || user.displayName || 'Student',
         studentShortId: profile?.shortId || user.uid.slice(0, 5),

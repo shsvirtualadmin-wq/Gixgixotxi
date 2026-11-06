@@ -21,7 +21,9 @@ const ALL_NAV_LINKS = [
 ];
 
 // Top desktop navbar excludes Grand Line button to keep it clean and focused
-const DESKTOP_NAV_LINKS = ALL_NAV_LINKS.filter((link) => link.to !== '/grand-line');
+const DESKTOP_NAV_LINKS = ALL_NAV_LINKS.filter(
+  (link) => link.to !== '/grand-line' && link.to !== '/rewards'
+);
 
 export function Navbar() {
   const [isMounted, setIsMounted] = useState(false);
@@ -171,15 +173,8 @@ export function Navbar() {
               </Link>
             </div>
 
-            {/* Right side on Mobile & Mid-size screens (<1280px): Brand red Rewards link + Hamburger */}
+            {/* Right side on Mobile & Mid-size screens (<1280px): Hamburger menu */}
             <div className="flex xl:hidden items-center gap-1.5 sm:gap-2">
-              <Link
-                to="/rewards"
-                onClick={handleClose}
-                className="px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-heading font-bold bg-[#D71921]/15 text-[#D71921] border border-[#D71921]/40 hover:bg-[#D71921] hover:text-white transition-all shadow-sm whitespace-nowrap"
-              >
-                Rewards
-              </Link>
               <button
                 type="button"
                 onClick={() => (isOpen ? handleClose() : handleOpen())}

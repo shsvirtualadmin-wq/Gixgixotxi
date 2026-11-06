@@ -81,6 +81,68 @@ service cloud.firestore {
         name.lower().matches('.*(boardly|super\\s*admin|official|moderator|system|staff|support).*');
     }
 
+    // Checks if followerUid follows targetUid across follows or user/publicProfile subcollections
+    function isFollowingUser(followerUid, targetUid) {
+      return exists(/databases/$(database)/documents/follows/$(followerUid + '_' + targetUid)) ||
+        exists(/databases/$(database)/documents/users/$(followerUid)/following/$(targetUid)) ||
+        exists(/databases/$(database)/documents/publicProfiles/$(followerUid)/following/$(targetUid));
+    }
+
+    // True when two distinct users follow each other (mutual follow)
+    function isMutualFollow(uidA, uidB) {
+      return uidA is string &&
+        uidB is string &&
+        uidA != uidB &&
+        isFollowingUser(uidA, uidB) &&
+        isFollowingUser(uidB, uidA);
+    }
+
+    // True when an accepted chat request exists in either direction between uidA and uidB
+    function hasAcceptedChatRequest(uidA, uidB) {
+      return uidA is string &&
+        uidB is string &&
+        uidA != uidB &&
+        (
+          (
+            exists(/databases/$(database)/documents/chatRequests/$(uidA + '_' + uidB)) &&
+            get(/databases/$(database)/documents/chatRequests/$(uidA + '_' + uidB)).data.get('status', '') == 'accepted'
+          ) ||
+          (
+            exists(/databases/$(database)/documents/chatRequests/$(uidB + '_' + uidA)) &&
+            get(/databases/$(database)/documents/chatRequests/$(uidB + '_' + uidA)).data.get('status', '') == 'accepted'
+          )
+        );
+    }
+
+    // Two users can chat freely only if they mutually follow each other or have an accepted chat request
+    function canUsersChat(uidA, uidB) {
+      return isAdmin() || isMutualFollow(uidA, uidB) || hasAcceptedChatRequest(uidA, uidB);
+    }
+
+    // Validates that follower/following counts only change by +/- 1 during a follow/unfollow transaction
+    function isValidFollowCountDelta() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return changed.hasOnly(['followersCount', 'followingCount', 'updatedAt']) &&
+        (
+          !changed.hasAny(['followersCount']) ||
+          (
+            request.resource.data.followersCount is int &&
+            request.resource.data.followersCount >= 0 &&
+            request.resource.data.followersCount - resource.data.get('followersCount', 0) >= -1 &&
+            request.resource.data.followersCount - resource.data.get('followersCount', 0) <= 1
+          )
+        ) &&
+        (
+          !changed.hasAny(['followingCount']) ||
+          (
+            request.resource.data.followingCount is int &&
+            request.resource.data.followingCount >= 0 &&
+            request.resource.data.followingCount - resource.data.get('followingCount', 0) >= -1 &&
+            request.resource.data.followingCount - resource.data.get('followingCount', 0) <= 1
+          )
+        );
+    }
+
     function isValidCommonsPostType(t) {
       return t in [
         'question',
@@ -381,7 +443,7 @@ service cloud.firestore {
         )
       ) || (
         isSignedIn() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount', 'followingCount', 'updatedAt'])
+        isValidFollowCountDelta()
       );
 
       allow delete: if isAdmin();
@@ -464,7 +526,7 @@ service cloud.firestore {
         )
       ) || (
         isSignedIn() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount', 'followingCount', 'updatedAt'])
+        isValidFollowCountDelta()
       );
 
       allow delete: if isOwner(userId) || isAdmin();
@@ -605,6 +667,11 @@ service cloud.firestore {
 
     match /storePriceHistory/{docId} {
       allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /store_price_audit/{docId} {
+      allow read: if isAdmin();
       allow write: if isAdmin();
     }
 
@@ -1050,20 +1117,37 @@ service cloud.firestore {
     // 10. STUDY BUDDY & NOTIFICATIONS
     // =========================================================================
 
-    match /study_buddy_presence/{userId} {
+    // Study Buddy live presence (doc ID is either {uid} or {crewId}_{uid})
+    match /study_buddy_presence/{presenceId} {
       allow read: if isSignedIn();
-      allow create, update, delete: if isOwner(userId) || isAdmin();
-    }
-
-    match /study_buddy_logs/{logId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() &&
-        request.resource.data.get('uid', '') == request.auth.uid;
-      allow update, delete: if isAdmin() || (
-        isSignedIn() && resource.data.get('uid', '') == request.auth.uid
+      allow create, update: if isSignedIn() && (
+        isOwner(presenceId) ||
+        request.resource.data.get('uid', '') == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isSignedIn() && (
+        isOwner(presenceId) ||
+        resource.data.get('uid', '') == request.auth.uid ||
+        isAdmin()
       );
     }
 
+    // Study Buddy sprint logs
+    match /study_buddy_logs/{logId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (
+        request.resource.data.get('uid', '') == request.auth.uid ||
+        request.resource.data.get('studentUid', '') == request.auth.uid
+      );
+      allow update, delete: if isAdmin() || (
+        isSignedIn() && (
+          resource.data.get('uid', '') == request.auth.uid ||
+          resource.data.get('studentUid', '') == request.auth.uid
+        )
+      );
+    }
+
+    // Study Buddy squad messages
     match /study_buddy_messages/{msgId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() &&
@@ -1077,6 +1161,59 @@ service cloud.firestore {
       );
     }
 
+    // Chat requests between users who do not mutually follow each other (ID: {fromUid}_{toUid})
+    match /chatRequests/{requestId} {
+      allow get: if isSignedIn() && (
+        resource == null ||
+        resource.data.fromUid == request.auth.uid ||
+        resource.data.toUid == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow list: if isSignedIn() && (
+        resource.data.fromUid == request.auth.uid ||
+        resource.data.toUid == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow create: if isSignedIn() &&
+        request.resource.data.fromUid == request.auth.uid &&
+        request.resource.data.toUid is string &&
+        request.resource.data.toUid.size() > 0 &&
+        request.resource.data.toUid != request.auth.uid &&
+        requestId == (request.resource.data.fromUid + '_' + request.resource.data.toUid) &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.createdAt is timestamp;
+
+      allow update: if isAdmin() || (
+        // Receiver can accept or decline a pending request
+        isSignedIn() &&
+        resource.data.toUid == request.auth.uid &&
+        resource.data.status == 'pending' &&
+        request.resource.data.fromUid == resource.data.fromUid &&
+        request.resource.data.toUid == resource.data.toUid &&
+        request.resource.data.status in ['accepted', 'declined'] &&
+        (
+          request.resource.data.status == 'accepted' ||
+          request.resource.data.declinedAt is timestamp
+        )
+      ) || (
+        // Sender can re-send a previously declined request only after 24 hours
+        isSignedIn() &&
+        resource.data.fromUid == request.auth.uid &&
+        resource.data.status == 'declined' &&
+        resource.data.declinedAt is timestamp &&
+        request.time > resource.data.declinedAt + duration.value(24, 'h') &&
+        request.resource.data.fromUid == resource.data.fromUid &&
+        request.resource.data.toUid == resource.data.toUid &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.createdAt is timestamp
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // Direct 1-on-1 conversations (requires mutual follow or accepted chat request)
     match /conversations/{conversationId} {
       allow get: if isSignedIn() && (
         resource == null ||
@@ -1087,25 +1224,41 @@ service cloud.firestore {
         request.auth.uid in resource.data.get('participants', []) ||
         isAdmin()
       );
-      allow create: if isSignedIn() && (
-        request.auth.uid in request.resource.data.get('participants', []) ||
-        isAdmin()
-      );
-      allow update: if isSignedIn() && (
-        request.auth.uid in resource.data.get('participants', []) ||
-        isAdmin()
-      );
+      allow create: if isSignedIn() &&
+        request.resource.data.participants is list &&
+        request.resource.data.participants.size() == 2 &&
+        request.auth.uid in request.resource.data.participants &&
+        canUsersChat(request.resource.data.participants[0], request.resource.data.participants[1]);
+
+      allow update: if isSignedIn() &&
+        resource.data.participants is list &&
+        resource.data.participants.size() == 2 &&
+        request.auth.uid in resource.data.participants &&
+        request.resource.data.participants == resource.data.participants &&
+        canUsersChat(resource.data.participants[0], resource.data.participants[1]);
+
       allow delete: if isAdmin();
 
+      // Direct messages inside a conversation (requires mutual follow or accepted chat request)
       match /messages/{messageId} {
         allow get, list: if isSignedIn() && (
-          exists(/databases/$(database)/documents/conversations/$(conversationId)) &&
-          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.get('participants', [])
+          isAdmin() ||
+          (
+            exists(/databases/$(database)/documents/conversations/$(conversationId)) &&
+            request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.get('participants', [])
+          )
         );
         allow create: if isSignedIn() &&
           request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() >= 1 &&
+          request.resource.data.text.size() <= 1000 &&
           exists(/databases/$(database)/documents/conversations/$(conversationId)) &&
-          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.get('participants', []);
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.get('participants', []) &&
+          canUsersChat(
+            get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants[0],
+            get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants[1]
+          );
         allow update, delete: if isAdmin();
       }
     }
@@ -1515,6 +1668,35 @@ service cloud.firestore {
           request.resource.data.get('uid', '') == request.auth.uid
         );
       allow update, delete: if isAdmin();
+    }
+
+    // Server-side Rewards Engine fallback collections (managed via /api/rewards/* and Admin)
+    match /reward_users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /reward_codes/{codeId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /reward_redemptions/{redemptionId} {
+      allow read: if isAdmin() || (
+        isSignedIn() && resource.data.get('uid', '') == request.auth.uid
+      );
+      allow write: if isAdmin();
+    }
+
+    match /reward_events/{eventId} {
+      allow read: if isAdmin() || (
+        isSignedIn() && resource.data.get('uid', '') == request.auth.uid
+      );
+      allow write: if isAdmin();
+    }
+
+    match /reward_audit_logs/{logId} {
+      allow read, write: if isAdmin();
     }
 
     // =========================================================================

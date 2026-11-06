@@ -512,6 +512,20 @@ export function resolveNotificationDestination(notif: NotificationRouteParams): 
     return '/dashboard/commons';
   }
 
+  // 1b. Chat request or Direct Message notification
+  if (type === 'chat_request' || type === 'chat_request_accepted' || type === 'new_message') {
+    const senderUid = notif.authorId || notif.actorId;
+    if (senderUid) {
+      const tabParam = type === 'chat_request' ? 'requests' : 'open';
+      return `${routes.profile(senderUid)}?chat=${tabParam}`;
+    }
+    if (notif.link) {
+      const mapped = mapLegacyNotificationPath(notif.link);
+      if (mapped) return mapped;
+    }
+    return '/dashboard/profile?chat=requests';
+  }
+
   // 2. Post notifications (someone you follow posted something new)
   if (type === 'following_post' || type === 'new_post' || type === 'post') {
     if (notif.postSlug) {

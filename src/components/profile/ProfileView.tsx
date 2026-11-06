@@ -30,6 +30,12 @@ import {
 } from 'lucide-react';
 
 import { DirectMessageModal } from '@/components/chat/DirectMessageModal';
+import {
+  checkChatPermission,
+  sendChatRequest,
+  subscribeIncomingChatRequests,
+  type ChatPermissionState,
+} from '@/services/chatService';
 
 // Fast in-memory cache for instant profile reopening
 const profileMemoryCache = new Map<string, { profile: PublicProfile; timestamp: number }>();
@@ -160,8 +166,36 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   // Pinned stamps in showcase (up to 3)
   const [pinnedShowcase, setPinnedShowcase] = useState<string[]>([]);
 
-  // 1-on-1 Direct Message modal
+  // 1-on-1 Direct Message & Chat Requests modal
   const [dmModalOpen, setDmModalOpen] = useState(false);
+  const [dmInitialTab, setDmInitialTab] = useState<'chat' | 'requests'>('chat');
+  const [chatPermission, setChatPermission] = useState<ChatPermissionState | null>(null);
+  const [chatRequestWorking, setChatRequestWorking] = useState(false);
+  const [incomingRequestsCount, setIncomingRequestsCount] = useState(0);
+
+  // Subscribe to incoming chat requests count for signed-in user
+  useEffect(() => {
+    if (!currentUid) {
+      setIncomingRequestsCount(0);
+      return;
+    }
+    return subscribeIncomingChatRequests(currentUid, (reqs) => {
+      setIncomingRequestsCount(reqs.length);
+    });
+  }, [currentUid]);
+
+  // Open chat/requests modal automatically if navigated from notification (?chat=requests or ?chat=open)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const chatParam = params.get('chat');
+    if (chatParam === 'requests') {
+      setDmInitialTab('requests');
+      setDmModalOpen(true);
+    } else if (chatParam === 'open') {
+      setDmInitialTab('chat');
+      setDmModalOpen(true);
+    }
+  }, [targetUid]);
 
   useEffect(() => {
     let isMounted = true;
@@ -350,10 +384,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           currentUid && uid !== currentUid
             ? Promise.all([isFollowing(currentUid, uid), isFollowing(uid, currentUid)])
             : Promise.resolve([false, false] as [boolean, boolean]);
+        const chatPermPromise =
+          currentUid && uid !== currentUid
+            ? checkChatPermission(currentUid, uid).catch(() => null)
+            : Promise.resolve(null);
 
-        const [followCounts, [followingState, followsMeState]] = await Promise.all([
+        const [followCounts, [followingState, followsMeState], resolvedChatPerm] = await Promise.all([
           followCountsPromise,
           followRelationPromise,
+          chatPermPromise,
         ]);
 
         const resolvedBadges =
@@ -412,9 +451,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         if (currentUid && uid !== currentUid) {
           setIsFollowedByMe(followingState);
           setFollowsMe(followsMeState);
+          setChatPermission(resolvedChatPerm);
         } else {
           setIsFollowedByMe(false);
           setFollowsMe(false);
+          setChatPermission(null);
         }
       } catch (err: any) {
         if (!isMounted) return;
@@ -605,7 +646,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         followerFrame:
           (ownEquipped?.frame as string) || (ownProfile?.equipped?.frame as string) || null,
       });
-      const updatedCounts = await getFollowCounts(targetId);
+      const [updatedCounts, updatedPerm] = await Promise.all([
+        getFollowCounts(targetId),
+        checkChatPermission(currentUid, targetId).catch(() => null),
+      ]);
+      if (updatedPerm) setChatPermission(updatedPerm);
       setProfile((prev) => {
         if (!prev) return null;
         const updated = {
@@ -639,7 +684,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
     try {
       await unfollowUser(currentUid, targetId);
-      const updatedCounts = await getFollowCounts(targetId);
+      const [updatedCounts, updatedPerm] = await Promise.all([
+        getFollowCounts(targetId),
+        checkChatPermission(currentUid, targetId).catch(() => null),
+      ]);
+      if (updatedPerm) setChatPermission(updatedPerm);
       setProfile((prev) => {
         if (!prev) return null;
         const updated = {
@@ -659,6 +708,89 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       setProfile((prev) => (prev ? { ...prev, followersCount: (prev.followersCount || 0) + 1 } : null));
     } finally {
       setFollowWorking(false);
+    }
+  };
+
+  const handleMessageOrRequestClick = async () => {
+    if (!currentUid) {
+      requireAuth(`message ${profile?.displayName || 'this student'}`);
+      return;
+    }
+    if (!profile?.uid || isViewingSelf || currentUid === profile.uid) return;
+
+    const canChatDirectly =
+      (isFollowedByMe && followsMe) ||
+      Boolean(chatPermission?.canChat) ||
+      chatPermission?.outgoingRequest?.status === 'accepted' ||
+      chatPermission?.incomingRequest?.status === 'accepted';
+
+    if (canChatDirectly) {
+      setDmInitialTab('chat');
+      setDmModalOpen(true);
+      return;
+    }
+
+    if (chatPermission?.incomingRequest?.status === 'pending') {
+      setDmInitialTab('requests');
+      setDmModalOpen(true);
+      return;
+    }
+
+    if (
+      chatRequestWorking ||
+      chatPermission?.outgoingRequest?.status === 'pending' ||
+      chatPermission?.isCooldownActive
+    ) {
+      return;
+    }
+
+    setChatRequestWorking(true);
+    try {
+      const createdReq = await sendChatRequest(
+        currentUid,
+        profile.uid,
+        {
+          displayName: ownProfile?.displayName || authUser?.displayName || 'Student',
+          avatar:
+            (ownEquipped?.avatar as string) ||
+            (ownProfile?.equipped?.avatar as string) ||
+            (ownProfile as any)?.avatar ||
+            null,
+          frame:
+            (ownEquipped?.frame as string) ||
+            (ownProfile?.equipped?.frame as string) ||
+            null,
+          photoURL: authUser?.photoURL || null,
+          role: ownProfile?.role || 'student',
+        },
+        {
+          displayName: profile.displayName || 'Student',
+          avatar: profile.avatar || null,
+          frame: profile.frame || null,
+          photoURL: profile.photoURL || null,
+        }
+      );
+
+      setChatPermission((prev) => ({
+        canChat: createdReq.status === 'accepted',
+        reason: createdReq.status === 'accepted' ? 'request_accepted' : 'none',
+        isMutualFollow: Boolean(isFollowedByMe && followsMe),
+        outgoingRequest: createdReq,
+        incomingRequest: prev?.incomingRequest || null,
+        cooldownEndsAtMs: null,
+        isCooldownActive: false,
+      }));
+
+      if (createdReq.status === 'accepted') {
+        setDmInitialTab('chat');
+        setDmModalOpen(true);
+      }
+    } catch (err) {
+      console.warn('[ProfileView] sendChatRequest notice:', err);
+      const updatedPerm = await checkChatPermission(currentUid, profile.uid).catch(() => null);
+      if (updatedPerm) setChatPermission(updatedPerm);
+    } finally {
+      setChatRequestWorking(false);
     }
   };
 
@@ -767,7 +899,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         : [...prev, id];
 
       setDoc(doc(db, 'users', currentUid), { pinnedStamps: next }, { merge: true }).catch(() => {});
-      setDoc(doc(db, 'publicProfiles', currentUid), { pinnedStamps: next }, { merge: true }).catch(() => {});
+      setDoc(doc(db, 'publicProfiles', currentUid), { uid: currentUid, pinnedStamps: next }, { merge: true }).catch(() => {});
       return next;
     });
   };
@@ -1138,6 +1270,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
                 <button
                   onClick={() => {
+                    setDmInitialTab(incomingRequestsCount > 0 ? 'requests' : 'chat');
+                    setDmModalOpen(true);
+                  }}
+                  className="h-11 px-4 rounded-lg border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap relative"
+                  title="Messages & Chat Requests"
+                >
+                  <MessageSquare size={14} />
+                  <span>Messages</span>
+                  {incomingRequestsCount > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-[#D71921] text-white text-[10px] font-mono font-bold leading-none">
+                      {incomingRequestsCount}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => {
                     if (onClose) onClose(true);
                     navigate('/settings');
                   }}
@@ -1176,23 +1325,55 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   </button>
                 )}
 
-                {/* Message Button (opens 1-on-1 direct message chat; hidden on own profile) */}
-                {!isViewingSelf && currentUid !== profile?.uid && (
-                  <button
-                    onClick={() => {
-                      if (!currentUid) {
-                        requireAuth(`message ${profile?.displayName || 'this student'}`);
-                        return;
+                {/* Message / Chat Request Button (hidden on own profile) */}
+                {!isViewingSelf && currentUid !== profile?.uid && (() => {
+                  const canChatDirectly =
+                    (isFollowedByMe && followsMe) ||
+                    Boolean(chatPermission?.canChat) ||
+                    chatPermission?.outgoingRequest?.status === 'accepted' ||
+                    chatPermission?.incomingRequest?.status === 'accepted';
+                  const isPendingOutgoing = chatPermission?.outgoingRequest?.status === 'pending';
+                  const isPendingIncoming = chatPermission?.incomingRequest?.status === 'pending';
+                  const isCooldown = Boolean(chatPermission?.isCooldownActive);
+                  const isDisabled = chatRequestWorking || (!canChatDirectly && (isPendingOutgoing || isCooldown));
+
+                  let buttonLabel = 'Message';
+                  if (chatRequestWorking) {
+                    buttonLabel = 'Sending...';
+                  } else if (canChatDirectly) {
+                    buttonLabel = 'Message';
+                  } else if (isPendingIncoming) {
+                    buttonLabel = 'Respond to Request';
+                  } else if (isPendingOutgoing || isCooldown) {
+                    buttonLabel = 'Request Sent';
+                  }
+
+                  return (
+                    <button
+                      onClick={handleMessageOrRequestClick}
+                      disabled={isDisabled}
+                      className={`h-11 px-4 rounded-lg border text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                        isDisabled
+                          ? 'border-[var(--border)] bg-[var(--card-2)] text-[var(--muted)] opacity-70 cursor-not-allowed'
+                          : isPendingIncoming
+                          ? 'border-[#D71921]/40 bg-[#D71921]/10 hover:bg-[#D71921]/20 text-[#D71921] cursor-pointer'
+                          : 'border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] cursor-pointer'
+                      }`}
+                      title={
+                        canChatDirectly
+                          ? 'Send a direct message'
+                          : isPendingOutgoing
+                          ? 'Chat request sent and awaiting response'
+                          : isCooldown
+                          ? 'Request declined — 24h cooldown active'
+                          : 'Send a chat request'
                       }
-                      setDmModalOpen(true);
-                    }}
-                    className="h-11 px-4 rounded-lg border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                    title="Send a message"
-                  >
-                    <MessageSquare size={14} />
-                    <span>Message</span>
-                  </button>
-                )}
+                    >
+                      <MessageSquare size={14} />
+                      <span>{buttonLabel}</span>
+                    </button>
+                  );
+                })()}
 
                 {/* Share profile button */}
                 <button
@@ -2134,18 +2315,30 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         balance={kobanBalance}
       />
 
-      {/* ── 1-on-1 Direct Message Modal ── */}
+      {/* ── 1-on-1 Direct Message & Chat Requests Modal ── */}
       {profile && (
         <DirectMessageModal
           isOpen={dmModalOpen}
           onClose={() => setDmModalOpen(false)}
-          targetUser={{
-            uid: profile.uid,
-            displayName: profile.displayName,
-            avatar: profile.avatar,
-            frame: profile.frame,
-            role: profile.role,
-            photoURL: profile.photoURL,
+          initialTab={dmInitialTab}
+          targetUser={
+            !isViewingSelf && currentUid !== profile.uid
+              ? {
+                  uid: profile.uid,
+                  displayName: profile.displayName,
+                  avatar: profile.avatar,
+                  frame: profile.frame,
+                  role: profile.role,
+                  photoURL: profile.photoURL,
+                }
+              : null
+          }
+          onPermissionChange={() => {
+            if (currentUid && profile.uid && currentUid !== profile.uid) {
+              void checkChatPermission(currentUid, profile.uid)
+                .then((perm) => setChatPermission(perm))
+                .catch(() => {});
+            }
           }}
         />
       )}

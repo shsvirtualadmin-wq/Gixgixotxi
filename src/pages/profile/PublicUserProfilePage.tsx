@@ -67,9 +67,9 @@ export const PublicUserProfilePage: React.FC = () => {
           return;
         }
 
-        // 4. Query users where username == rawParam (case-insensitive fallback)
+        // 4. Query publicProfiles where username == rawParam (case-insensitive fallback)
         const q = query(
-          collection(db, 'users'),
+          collection(db, 'publicProfiles'),
           where('username', '==', uid.toLowerCase()),
           limit(1)
         );

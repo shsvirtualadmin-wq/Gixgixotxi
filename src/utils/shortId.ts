@@ -25,7 +25,7 @@ function randomNumericString(digits: number): string {
 export async function isShortIdTaken(shortId: string): Promise<boolean> {
   if (knownAllocatedIds.has(shortId)) return true;
   try {
-    const q = query(collection(db, 'users'), where('shortId', '==', shortId), limit(1));
+    const q = query(collection(db, 'publicProfiles'), where('shortId', '==', shortId), limit(1));
     const snap = await getDocs(q);
     if (!snap.empty) {
       knownAllocatedIds.add(shortId);

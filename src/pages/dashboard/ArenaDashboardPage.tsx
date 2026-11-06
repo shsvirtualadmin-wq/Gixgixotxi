@@ -59,7 +59,7 @@ export function ArenaDashboardPage() {
       try {
         let snap = await getDocs(query(collection(db, 'publicProfiles'), orderBy('publicStats.score', 'desc'), limit(15))).catch(() => null);
         if (!snap || snap.empty) {
-          snap = await getDocs(query(collection(db, 'users'), orderBy('score', 'desc'), limit(15))).catch(() => null);
+          snap = await getDocs(query(collection(db, 'leaderboard'), orderBy('score', 'desc'), limit(15))).catch(() => null);
         }
         if (!isMounted) return;
 
