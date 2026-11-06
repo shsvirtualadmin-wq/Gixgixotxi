@@ -1,4 +1,5 @@
-import React, { useState, lazy, Suspense } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
+import { getCosmeticById } from '@/data/cosmeticsCatalog';
 
 const LazyAvatarPicture = lazy(() =>
   import('@/components/koban/CosmeticRenderers').then((m) => ({ default: m.AvatarPicture }))
@@ -7,20 +8,69 @@ const LazyAvatarFrame = lazy(() =>
   import('@/components/koban/CosmeticRenderers').then((m) => ({ default: m.AvatarFrame }))
 );
 
-function isLikelyCosmeticId(val?: string | null): val is string {
-  if (!val) return false;
+function isImageUrl(val?: string | null): val is string {
+  if (!val || typeof val !== 'string') return false;
   const trimmed = val.trim();
-  if (!trimmed || trimmed === 'none') return false;
-  if (
+  if (!trimmed || trimmed === 'none' || trimmed === 'null' || trimmed === 'undefined') {
+    return false;
+  }
+  return (
     trimmed.startsWith('http://') ||
     trimmed.startsWith('https://') ||
     trimmed.startsWith('/') ||
     trimmed.startsWith('data:') ||
     trimmed.startsWith('blob:')
-  ) {
-    return false;
+  );
+}
+
+/**
+ * Resolves a store-bought cosmetic ID (avatar or frame) from a raw value.
+ * Handles direct catalog IDs (`pfp_pixel_pop_arcade`, `eclipse-wyrm`, `frame_topper_burst`),
+ * legacy ID aliases (`pfp_eclipse_wyrm`), and store asset paths (`/assets/store/pfp_.../poster.webp`).
+ */
+export function resolveCosmeticItemId(
+  val?: string | null,
+  expectedSlot?: 'avatar' | 'frame'
+): string | null {
+  if (!val || typeof val !== 'string') return null;
+  const trimmed = val.trim();
+  if (!trimmed || trimmed === 'none' || trimmed === 'null' || trimmed === 'undefined') {
+    return null;
   }
-  return true;
+
+  // Extract cosmetic ID if a store asset path was saved instead of the ID
+  const storePathMatch = trimmed.match(
+    /^\/assets\/store\/(?:avatars\/|frames\/)?([^/?#]+)/i
+  );
+  const candidate = storePathMatch ? storePathMatch[1] : trimmed;
+
+  const catalogItem = getCosmeticById(candidate);
+  if (catalogItem) {
+    if (!expectedSlot || catalogItem.slot === expectedSlot) {
+      return catalogItem.id;
+    }
+  }
+
+  if (expectedSlot === 'avatar' && candidate.startsWith('pfp_')) {
+    return candidate;
+  }
+  if (expectedSlot === 'frame' && candidate.startsWith('frame_')) {
+    return candidate;
+  }
+
+  if (!isImageUrl(candidate)) {
+    if (expectedSlot === 'avatar' && !candidate.startsWith('frame_')) {
+      return candidate;
+    }
+    if (expectedSlot === 'frame' && !candidate.startsWith('pfp_')) {
+      return candidate;
+    }
+    if (!expectedSlot) {
+      return candidate;
+    }
+  }
+
+  return null;
 }
 
 export interface BoardlyAvatarProps {
@@ -29,13 +79,27 @@ export interface BoardlyAvatarProps {
   photoURL?: string | null;
   frame?: string | null;
   name?: string | null;
-  size?: number;
+  size?: number | 'sm' | 'md' | 'lg';
   className?: string;
   avatarKey?: string | null;
   avatarVariant?: string | null;
   forceStatic?: boolean;
   isSuperAdmin?: boolean;
   priority?: number;
+  // Backward-compatible prop aliases
+  avatarId?: string | null;
+  frameId?: string | null;
+  fallbackInitials?: string | null;
+}
+
+function normalizeAvatarSize(size?: number | 'sm' | 'md' | 'lg'): number {
+  if (typeof size === 'number' && Number.isFinite(size) && size > 0) {
+    return size;
+  }
+  if (size === 'sm') return 32;
+  if (size === 'lg') return 56;
+  if (size === 'md') return 44;
+  return 36;
 }
 
 /**
@@ -53,27 +117,53 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
   avatarUrl,
   photoURL,
   frame,
-  name = 'Student',
-  size = 36,
+  name,
+  size: rawSize = 36,
   className = '',
+  avatarKey,
+  avatarVariant,
   forceStatic = false,
   isSuperAdmin = false,
   priority,
+  avatarId,
+  frameId,
+  fallbackInitials,
 }) => {
-  const [imageError, setImageError] = useState(false);
+  const size = normalizeAvatarSize(rawSize);
+  const resolvedName = name || fallbackInitials || 'Student';
 
-  // 1. Check for Boardly equipped avatar (e.g. pfp_, eclipse-wyrm, or catalog cosmetic)
-  const rawUrl = avatarUrl || photoURL;
-  const resolvedCosmeticAvatar = isLikelyCosmeticId(equippedAvatar)
-    ? equippedAvatar.trim()
-    : isLikelyCosmeticId(rawUrl)
-      ? rawUrl.trim()
-      : null;
+  // Resolve store-bought cosmetic avatar ID from any provided avatar prop
+  const resolvedCosmeticAvatar =
+    resolveCosmeticItemId(equippedAvatar, 'avatar') ||
+    resolveCosmeticItemId(avatarId, 'avatar') ||
+    resolveCosmeticItemId(avatarUrl, 'avatar') ||
+    resolveCosmeticItemId(photoURL, 'avatar') ||
+    resolveCosmeticItemId(avatarKey, 'avatar') ||
+    null;
+
   const hasEquipped = Boolean(resolvedCosmeticAvatar);
 
+  // Resolve custom image URL if no store cosmetic avatar is active (or as image source)
+  const candidateUrl = [avatarUrl, photoURL, equippedAvatar, avatarId].find(
+    (v) => isImageUrl(v) && !resolveCosmeticItemId(v, 'avatar')
+  );
+
+  const [imageError, setImageError] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+
+  useEffect(() => {
+    setImageError(false);
+    setImageLoaded(false);
+  }, [candidateUrl]);
+
   const cleanAvatarUrl =
-    !hasEquipped && !imageError && rawUrl && rawUrl.trim() !== '' ? rawUrl.trim() : null;
-  const initial = (name && name.trim().length > 0 ? name.trim().charAt(0) : 'S').toUpperCase();
+    !hasEquipped && !imageError && candidateUrl ? candidateUrl.trim() : null;
+
+  const initial = (
+    resolvedName && resolvedName.trim().length > 0
+      ? resolvedName.trim().charAt(0)
+      : 'S'
+  ).toUpperCase();
 
   const initialFallback = (
     <div
@@ -81,6 +171,22 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
       style={{ fontSize: Math.max(10, Math.floor(size * 0.42)) }}
     >
       {initial}
+    </div>
+  );
+
+  const superAdminLogoAvatar = (
+    <div
+      className="w-full h-full rounded-full bg-surface-raised border border-border flex items-center justify-center p-1 select-none overflow-hidden"
+      style={{ width: size, height: size }}
+    >
+      <img
+        src="/logo.png"
+        alt="SHS Virtual Academy"
+        className="w-full h-full object-contain"
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).src = '/favicon.svg';
+        }}
+      />
     </div>
   );
 
@@ -93,6 +199,8 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
       <Suspense fallback={initialFallback}>
         <LazyAvatarPicture
           avatarId={resolvedCosmeticAvatar}
+          avatarKey={avatarKey || undefined}
+          avatarVariant={avatarVariant || undefined}
           size={size}
           forceStatic={forceStatic}
           priority={priority ?? (size >= 56 ? 10 : 1)}
@@ -101,45 +209,44 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
       </Suspense>
     );
   } else if (cleanAvatarUrl) {
-    // Priority 2: Custom chosen avatar image with safe error fallback
+    // Priority 2: Custom chosen avatar image with loading & error fallback
     innerAvatar = (
-      <img
-        src={cleanAvatarUrl}
-        alt={name || 'Student'}
-        loading="lazy"
-        decoding="async"
-        width={size}
-        height={size}
-        onError={() => setImageError(true)}
-        className="w-full h-full object-cover rounded-full select-none"
-      />
-    );
-  } else if (isSuperAdmin) {
-    // Priority 3: Superadmin account (SHS Virtual Academy) shows Boardly / SHS logo
-    innerAvatar = (
-      <div
-        className="w-full h-full rounded-full bg-surface-raised border border-border flex items-center justify-center p-1 select-none overflow-hidden"
-        style={{ width: size, height: size }}
-      >
+      <div className="relative w-full h-full rounded-full overflow-hidden flex items-center justify-center">
+        {!imageLoaded && (
+          <div className="absolute inset-0">
+            {isSuperAdmin ? superAdminLogoAvatar : initialFallback}
+          </div>
+        )}
         <img
-          src="/logo.png"
-          alt="SHS Virtual Academy"
-          className="w-full h-full object-contain"
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).src = '/favicon.svg';
-          }}
+          src={cleanAvatarUrl}
+          alt={resolvedName}
+          loading="lazy"
+          decoding="async"
+          width={size}
+          height={size}
+          onLoad={() => setImageLoaded(true)}
+          onError={() => setImageError(true)}
+          className={`w-full h-full object-cover rounded-full select-none transition-opacity duration-150 ${
+            imageLoaded ? 'opacity-100' : 'opacity-0'
+          }`}
         />
       </div>
     );
+  } else if (isSuperAdmin) {
+    // Priority 3: Superadmin account (SHS Virtual Academy) shows Boardly / SHS logo
+    innerAvatar = superAdminLogoAvatar;
   } else {
     // Priority 4: User's initials on a neutral circle
     innerAvatar = initialFallback;
   }
 
   // If frame is equipped, calculate outer frame size and wrap
-  const hasFrame = isLikelyCosmeticId(frame);
+  const resolvedFrame =
+    resolveCosmeticItemId(frame, 'frame') ||
+    resolveCosmeticItemId(frameId, 'frame') ||
+    null;
 
-  if (hasFrame && frame) {
+  if (resolvedFrame) {
     return (
       <div
         className={`inline-flex items-center justify-center shrink-0 overflow-hidden ${className}`}
@@ -152,10 +259,8 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
             </div>
           }
         >
-          <LazyAvatarFrame itemId={frame} size={size} forceStatic={forceStatic}>
-            <div
-              className="w-full h-full rounded-full overflow-hidden flex items-center justify-center"
-            >
+          <LazyAvatarFrame itemId={resolvedFrame} size={size} forceStatic={forceStatic}>
+            <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">
               {innerAvatar}
             </div>
           </LazyAvatarFrame>
@@ -175,3 +280,4 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
 });
 
 export default BoardlyAvatar;
+

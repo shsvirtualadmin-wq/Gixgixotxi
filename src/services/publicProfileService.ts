@@ -14,6 +14,9 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
+import { SUPER_ADMIN_UID, SUPER_ADMIN_NAME, isAdminAccount } from '@/constants/superAdmin';
+import { BOARDLY_BOT_ACCOUNTS } from '@/config/botsConfig';
 import type { PublicProfile as BasePublicProfile } from '@/types';
 
 export interface PublicProfile extends BasePublicProfile {
@@ -31,7 +34,7 @@ export interface PublicProfile extends BasePublicProfile {
   equippedStreakBadges?: string[];
 }
 
-const SESSION_CACHE_PREFIX = 'boardly_pub_prof_v2_';
+const SESSION_CACHE_PREFIX = 'boardly_pub_prof_v3_';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 // Layer 1: In-memory cache
@@ -39,6 +42,21 @@ const memoryCache = new Map<string, { profile: PublicProfile; timestamp: number 
 
 // Layer 2: In-flight promise deduplication
 const inFlightRequests = new Map<string, Promise<PublicProfile | null>>();
+
+function isLikelyHttpOrPathUrl(val?: unknown): val is string {
+  if (!val || typeof val !== 'string') return false;
+  const trimmed = val.trim();
+  if (!trimmed || trimmed === 'none' || trimmed === 'null' || trimmed === 'undefined') {
+    return false;
+  }
+  return (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('/') ||
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('blob:')
+  );
+}
 
 function getFromSessionCache(uid: string): PublicProfile | null {
   try {
@@ -66,6 +84,20 @@ function saveToCaches(uid: string, profile: PublicProfile): void {
   }
 }
 
+export function getCachedPublicProfile(uid?: string | null): PublicProfile | null {
+  if (!uid) return null;
+  const mem = memoryCache.get(uid);
+  if (mem && Date.now() - mem.timestamp < CACHE_TTL_MS) {
+    return mem.profile;
+  }
+  const sess = getFromSessionCache(uid);
+  if (sess) {
+    memoryCache.set(uid, { profile: sess, timestamp: Date.now() });
+    return sess;
+  }
+  return null;
+}
+
 export function invalidatePublicProfileCache(uid?: string): void {
   if (!uid) {
     memoryCache.clear();
@@ -87,53 +119,140 @@ export function normalizePublicProfileDoc(
 ): PublicProfile {
   const p = pubData || {};
   const u = uData || {};
-  const wEquipped = walletData?.equipped || {};
+  const w = walletData || {};
+  const wEquipped = w.equipped || {};
+  const botMatch = BOARDLY_BOT_ACCOUNTS.find((b) => b.uid === uid);
+  const isSuperAdmin = isAdminAccount(uid, u.email || p.email);
 
-  const shortId = u.studentId || u.shortId || p.studentId || p.shortId || uid.slice(0, 6).toUpperCase();
-  const rawName = u.displayName || p.displayName || u.name || p.name || u.username || p.username || 'Student';
-  const displayName = sanitizeStudentDisplayName(rawName, shortId);
+  const shortId =
+    u.studentId ||
+    u.shortId ||
+    p.studentId ||
+    p.shortId ||
+    botMatch?.shortId ||
+    uid.slice(0, 6).toUpperCase();
+  const rawName =
+    u.displayName ||
+    p.displayName ||
+    u.name ||
+    p.name ||
+    u.username ||
+    p.username ||
+    botMatch?.displayName ||
+    (isSuperAdmin ? SUPER_ADMIN_NAME : 'Student');
+  const displayName = isSuperAdmin
+    ? u.displayName || p.displayName || SUPER_ADMIN_NAME
+    : sanitizeStudentDisplayName(rawName, shortId);
 
-  const equippedAvatar =
-    u.equipped?.avatar ||
-    p.equippedAvatar ||
-    p.equipped?.avatar ||
-    wEquipped.avatar ||
-    u.avatar ||
-    p.avatar ||
-    null;
+  const avatarCandidates = [
+    u.equipped?.avatar,
+    u.equippedAvatar,
+    p.equippedAvatar,
+    p.equipped?.avatar,
+    wEquipped.avatar,
+    w.equippedAvatar,
+    w.avatar,
+    u.avatar,
+    p.avatar,
+    u.avatarId,
+    p.avatarId,
+    u.avatarUrl,
+    p.avatarUrl,
+    u.photoURL,
+    p.photoURL,
+    botMatch?.equippedAvatar,
+  ];
 
-  const equippedFrame =
-    u.equipped?.frame ||
-    p.equippedFrame ||
-    p.equipped?.frame ||
-    wEquipped.frame ||
-    u.frame ||
-    p.frame ||
-    null;
+  let equippedAvatar: string | null = null;
+  for (const cand of avatarCandidates) {
+    const cosmeticId = resolveCosmeticItemId(cand, 'avatar');
+    if (cosmeticId) {
+      equippedAvatar = cosmeticId;
+      break;
+    }
+  }
+
+  const urlCandidates = [
+    u.avatarUrl,
+    p.avatarUrl,
+    u.photoURL,
+    p.photoURL,
+    u.avatar,
+    p.avatar,
+    u.equipped?.avatar,
+    p.equippedAvatar,
+  ];
+
+  let resolvedAvatarUrl: string | null = null;
+  for (const cand of urlCandidates) {
+    if (isLikelyHttpOrPathUrl(cand) && !resolveCosmeticItemId(cand, 'avatar')) {
+      resolvedAvatarUrl = cand.trim();
+      break;
+    }
+  }
+
+  const resolvedPhotoURL =
+    (isLikelyHttpOrPathUrl(u.photoURL) && !resolveCosmeticItemId(u.photoURL, 'avatar')
+      ? u.photoURL.trim()
+      : null) ||
+    (isLikelyHttpOrPathUrl(p.photoURL) && !resolveCosmeticItemId(p.photoURL, 'avatar')
+      ? p.photoURL.trim()
+      : null) ||
+    resolvedAvatarUrl;
+
+  const frameCandidates = [
+    u.equipped?.frame,
+    u.equippedFrame,
+    p.equippedFrame,
+    p.equipped?.frame,
+    wEquipped.frame,
+    w.equippedFrame,
+    w.frame,
+    u.frame,
+    p.frame,
+    u.frameId,
+    p.frameId,
+    botMatch?.frame,
+  ];
+
+  let equippedFrame: string | null = null;
+  for (const cand of frameCandidates) {
+    const cosmeticFrameId = resolveCosmeticItemId(cand, 'frame');
+    if (cosmeticFrameId) {
+      equippedFrame = cosmeticFrameId;
+      break;
+    }
+  }
 
   const equippedNameplate =
     u.equipped?.nameplate ||
+    u.equippedNameplate ||
     p.equippedNameplate ||
     p.equipped?.nameplate ||
     wEquipped.nameplate ||
+    w.equippedNameplate ||
     u.nameplate ||
     p.nameplate ||
     null;
 
   const equippedBanner =
     u.equipped?.banner ||
+    u.equippedBanner ||
     p.equippedBanner ||
     p.equipped?.banner ||
     wEquipped.banner ||
+    w.equippedBanner ||
     u.banner ||
     p.banner ||
     null;
 
   const equippedEffect =
     u.equipped?.effect ||
+    u.equippedEffect ||
     p.equippedEffect ||
     p.equipped?.effect ||
     wEquipped.effect ||
+    w.equippedEffect ||
     u.effectId ||
     p.effectId ||
     null;
@@ -166,19 +285,24 @@ export function normalizePublicProfileDoc(
     displayName,
     studentId: shortId,
     shortId,
-    username: u.username || p.username || undefined,
+    username: u.username || p.username || botMatch?.username || undefined,
     usernameLower:
       u.usernameLower ||
       p.usernameLower ||
-      (u.username || p.username ? String(u.username || p.username).toLowerCase() : undefined),
-    role: u.role || p.role || 'student',
+      (u.username || p.username || botMatch?.username
+        ? String(u.username || p.username || botMatch?.username).toLowerCase()
+        : undefined),
+    role: isSuperAdmin ? 'admin' : u.role || p.role || (botMatch ? 'bot' : 'student'),
     customRole: u.customRole || p.customRole || undefined,
-    isVerified: Boolean(u.isVerified ?? p.isVerified ?? u.verified ?? p.verified),
+    isVerified: Boolean(
+      isSuperAdmin || u.isVerified || p.isVerified || u.verified || p.verified
+    ),
     isCaptain: Boolean(u.isCaptain ?? p.isCaptain),
-    board: u.board || p.board || undefined,
-    grade: u.grade || p.grade || u.class || p.class || undefined,
-    targetUniversity: u.targetUniversity || p.targetUniversity || undefined,
-    bio: u.bio ?? p.bio ?? '',
+    board: u.board || p.board || botMatch?.board || undefined,
+    grade: u.grade || p.grade || u.class || p.class || botMatch?.grade || undefined,
+    targetUniversity:
+      u.targetUniversity || p.targetUniversity || botMatch?.targetUniversity || undefined,
+    bio: u.bio ?? p.bio ?? botMatch?.bio ?? '',
     status: u.status ?? p.status ?? '',
     accent: u.accent || p.accent || '#D71921',
     memberSince: u.createdAt || p.memberSince || null,
@@ -186,11 +310,11 @@ export function normalizePublicProfileDoc(
     lastActiveAt: u.lastActiveDate || p.lastActiveAt || null,
     stats,
     publicStats: stats,
-    avatar: equippedAvatar,
-    avatarKey: u.avatarKey || p.avatarKey || null,
-    avatarVariant: u.avatarVariant || p.avatarVariant || null,
-    avatarUrl: u.avatarUrl || p.avatarUrl || null,
-    photoURL: u.photoURL || p.photoURL || null,
+    avatar: equippedAvatar || resolvedAvatarUrl || null,
+    avatarKey: u.avatarKey || p.avatarKey || wEquipped.avatarKey || null,
+    avatarVariant: u.avatarVariant || p.avatarVariant || wEquipped.avatarVariant || null,
+    avatarUrl: resolvedAvatarUrl,
+    photoURL: resolvedPhotoURL,
     equippedAvatar,
     equippedFrame,
     equippedNameplate,
@@ -237,7 +361,10 @@ async function fetchPublicProfileFromNetwork(uid: string): Promise<PublicProfile
     const uData = userSnap?.exists() ? userSnap.data() : null;
     const walletData = walletSnap?.exists() ? walletSnap.data() : null;
 
-    if (!pubData && !uData) {
+    const botMatch = BOARDLY_BOT_ACCOUNTS.find((b) => b.uid === uid);
+    const isSuperAdmin = uid === SUPER_ADMIN_UID;
+
+    if (!pubData && !uData && ! walletData && !botMatch && !isSuperAdmin) {
       return null;
     }
 
@@ -253,15 +380,9 @@ async function fetchPublicProfileFromNetwork(uid: string): Promise<PublicProfile
 export async function getPublicProfile(uid: string): Promise<PublicProfile | null> {
   if (!uid) return null;
 
-  const mem = memoryCache.get(uid);
-  if (mem && Date.now() - mem.timestamp < CACHE_TTL_MS) {
-    return mem.profile;
-  }
-
-  const sess = getFromSessionCache(uid);
-  if (sess) {
-    memoryCache.set(uid, { profile: sess, timestamp: Date.now() });
-    return sess;
+  const cached = getCachedPublicProfile(uid);
+  if (cached) {
+    return cached;
   }
 
   const existingPromise = inFlightRequests.get(uid);
@@ -288,15 +409,9 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
   const missingUids: string[] = [];
 
   for (const uid of uniqueUids) {
-    const mem = memoryCache.get(uid);
-    if (mem && Date.now() - mem.timestamp < CACHE_TTL_MS) {
-      result.set(uid, mem.profile);
-      continue;
-    }
-    const sess = getFromSessionCache(uid);
-    if (sess) {
-      memoryCache.set(uid, { profile: sess, timestamp: Date.now() });
-      result.set(uid, sess);
+    const cached = getCachedPublicProfile(uid);
+    if (cached) {
+      result.set(uid, cached);
       continue;
     }
     missingUids.push(uid);
@@ -326,8 +441,10 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
           ]);
           const uData = uSnap?.exists() ? uSnap.data() : null;
           const wData = wSnap?.exists() ? wSnap.data() : null;
+          const botMatch = BOARDLY_BOT_ACCOUNTS.find((b) => b.uid === uid);
+          const isSuperAdmin = uid === SUPER_ADMIN_UID;
 
-          if (pubData || uData) {
+          if (pubData || uData || wData || botMatch || isSuperAdmin) {
             const prof = normalizePublicProfileDoc(uid, pubData, uData, wData);
             saveToCaches(uid, prof);
             result.set(uid, prof);
@@ -340,6 +457,88 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
   }
 
   return result;
+}
+
+const nameToUidCache = new Map<string, string | null>();
+const inFlightNameLookups = new Map<string, Promise<PublicProfile | null>>();
+
+export function getCachedUidByName(name?: string | null): string | null {
+  if (!name) return null;
+  const key = name.trim().toLowerCase();
+  if (!key) return null;
+  return nameToUidCache.get(key) ?? null;
+}
+
+/**
+ * Resolves a public profile by display name or username (used as a fallback when a legacy
+ * notification row did not store `authorId`) and caches the resolved UID -> PublicProfile.
+ */
+export async function resolvePublicProfileByName(
+  rawName?: string | null
+): Promise<PublicProfile | null> {
+  if (!rawName) return null;
+  const trimmed = rawName.trim();
+  const key = trimmed.toLowerCase();
+  if (!key || key === 'student' || key === 'a student' || key === 'anonymous') {
+    return null;
+  }
+
+  if (key === SUPER_ADMIN_NAME.toLowerCase() || key === 'shs virtual academy') {
+    nameToUidCache.set(key, SUPER_ADMIN_UID);
+    return getPublicProfile(SUPER_ADMIN_UID);
+  }
+
+  const bot = BOARDLY_BOT_ACCOUNTS.find(
+    (b) => b.displayName.toLowerCase() === key || b.username.toLowerCase() === key
+  );
+  if (bot) {
+    nameToUidCache.set(key, bot.uid);
+    return getPublicProfile(bot.uid);
+  }
+
+  if (nameToUidCache.has(key)) {
+    const cachedUid = nameToUidCache.get(key);
+    return cachedUid ? getPublicProfile(cachedUid) : null;
+  }
+
+  const existingPromise = inFlightNameLookups.get(key);
+  if (existingPromise) {
+    return existingPromise;
+  }
+
+  const lookupPromise = (async (): Promise<PublicProfile | null> => {
+    try {
+      const [pubByName, pubByUser, userByName] = await Promise.all([
+        getDocs(
+          query(collection(db, 'publicProfiles'), where('displayName', '==', trimmed), limit(1))
+        ).catch(() => null),
+        getDocs(
+          query(collection(db, 'publicProfiles'), where('usernameLower', '==', key), limit(1))
+        ).catch(() => null),
+        getDocs(
+          query(collection(db, 'users'), where('displayName', '==', trimmed), limit(1))
+        ).catch(() => null),
+      ]);
+
+      const matchedDoc =
+        pubByName?.docs?.[0] || pubByUser?.docs?.[0] || userByName?.docs?.[0] || null;
+      if (!matchedDoc) {
+        nameToUidCache.set(key, null);
+        return null;
+      }
+
+      const resolvedUid = matchedDoc.id;
+      nameToUidCache.set(key, resolvedUid);
+      return await getPublicProfile(resolvedUid);
+    } catch {
+      return null;
+    }
+  })().finally(() => {
+    inFlightNameLookups.delete(key);
+  });
+
+  inFlightNameLookups.set(key, lookupPromise);
+  return lookupPromise;
 }
 
 /**

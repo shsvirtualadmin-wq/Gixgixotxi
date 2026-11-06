@@ -3550,11 +3550,17 @@ body,
   color: var(--text-muted);
 }
 
+.notif-icon-circle--avatar {
+  background-color: transparent;
+  border-color: transparent;
+}
+
 /* Small badge on avatar corner */
 .notif-avatar-corner-badge {
   position: absolute;
   bottom: -1px;
   right: -1px;
+  z-index: 2;
   width: 18px;
   height: 18px;
   border-radius: 9999px;

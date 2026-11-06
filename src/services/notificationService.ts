@@ -19,8 +19,13 @@ import {
   type Timestamp,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { SUPER_ADMIN_EMAIL, SUPER_ADMIN_EMAIL_SUPPORT, SUPER_ADMIN_UID } from '@/constants/superAdmin';
-import { DEFAULT_WELCOME_ANNOUNCEMENT } from '@/config/botsConfig';
+import {
+  SUPER_ADMIN_EMAIL,
+  SUPER_ADMIN_EMAIL_SUPPORT,
+  SUPER_ADMIN_UID,
+  SUPER_ADMIN_NAME,
+} from '@/constants/superAdmin';
+import { DEFAULT_WELCOME_ANNOUNCEMENT, BOARDLY_BOT_ACCOUNTS } from '@/config/botsConfig';
 
 export type NotificationType =
   | 'following_post'
@@ -232,6 +237,125 @@ export function sanitizeNotificationText(rawText: unknown, fallbackName?: string
   text = text.replace(/\(\s*#(?:undefined|null|\[object Object\])\s*\)/gi, '');
   text = text.replace(/\s+\[object Object\]/g, '');
   return text.trim();
+}
+
+export function extractNotificationActorMeta(
+  raw: Record<string, any>,
+  docId?: string
+): {
+  authorId?: string;
+  actorId?: string;
+  followerId?: string;
+  authorName?: string;
+  authorAvatar?: string | null;
+  authorFrame?: string | null;
+  postId?: string;
+} {
+  const idStr = String(docId || raw.id || '').trim();
+
+  let extractedFollowUid = '';
+  if (idStr.startsWith('follow_')) {
+    const parts = idStr.split('_');
+    if (parts.length >= 3 && parts[1]) {
+      extractedFollowUid = parts[1];
+    }
+  }
+
+  let extractedPostId = raw.postId || raw.post_id || undefined;
+  if (!extractedPostId && idStr.startsWith('post_') && idStr.includes('_follower_')) {
+    const mid = idStr.slice('post_'.length, idStr.lastIndexOf('_follower_'));
+    if (mid) extractedPostId = mid;
+  }
+
+  let rawName =
+    raw.authorName ||
+    raw.author_name ||
+    raw.followerName ||
+    raw.actorName ||
+    raw.senderName ||
+    undefined;
+
+  const titleStr = String(raw.title || '').trim();
+  if (!rawName && titleStr) {
+    const postMatch = titleStr.match(/^(.+?)\s+posted:\s*/i);
+    if (postMatch && postMatch[1]) {
+      rawName = postMatch[1].trim();
+    } else {
+      const followMatch = titleStr.match(/^(.+?)\s+started following you/i);
+      if (followMatch && followMatch[1]) {
+        rawName = followMatch[1].trim();
+      }
+    }
+  }
+
+  let resolvedUid =
+    raw.authorId ||
+    raw.author_id ||
+    raw.actorId ||
+    raw.actor_id ||
+    raw.followerId ||
+    raw.follower_id ||
+    raw.authorUid ||
+    raw.senderId ||
+    raw.fromUid ||
+    extractedFollowUid ||
+    undefined;
+
+  if (!resolvedUid && rawName) {
+    const lowerName = String(rawName).trim().toLowerCase();
+    if (
+      lowerName === SUPER_ADMIN_NAME.toLowerCase() ||
+      lowerName === 'shs virtual academy'
+    ) {
+      resolvedUid = SUPER_ADMIN_UID;
+    } else {
+      const bot = BOARDLY_BOT_ACCOUNTS.find(
+        (b) =>
+          b.displayName.toLowerCase() === lowerName ||
+          b.username.toLowerCase() === lowerName
+      );
+      if (bot) {
+        resolvedUid = bot.uid;
+      }
+    }
+  }
+
+  const authorAvatar =
+    raw.authorEquippedAvatar ||
+    raw.equippedAvatar ||
+    raw.authorAvatar ||
+    raw.author_avatar ||
+    raw.followerAvatar ||
+    raw.actorAvatar ||
+    raw.avatar ||
+    raw.avatarUrl ||
+    raw.photoURL ||
+    null;
+
+  const authorFrame =
+    raw.authorFrame ||
+    raw.author_frame ||
+    raw.followerFrame ||
+    raw.actorFrame ||
+    raw.equippedFrame ||
+    raw.frame ||
+    null;
+
+  return {
+    authorId: resolvedUid ? String(resolvedUid) : undefined,
+    actorId:
+      raw.actorId || raw.followerId || resolvedUid
+        ? String(raw.actorId || raw.followerId || resolvedUid)
+        : undefined,
+    followerId:
+      raw.followerId || raw.actorId || resolvedUid
+        ? String(raw.followerId || raw.actorId || resolvedUid)
+        : undefined,
+    authorName: rawName ? String(rawName) : undefined,
+    authorAvatar,
+    authorFrame,
+    postId: extractedPostId ? String(extractedPostId) : undefined,
+  };
 }
 
 export function normalizeNotificationType(
@@ -474,7 +598,9 @@ function buildSnapshot(state: InternalStoreState): NotificationStoreSnapshot {
         message: existing.message.length >= n.message.length ? existing.message : n.message,
         createdAt: bestCreatedAt,
         read: combinedRead,
-        authorId: existing.authorId || n.authorId,
+        authorId: existing.authorId || n.authorId || existing.actorId || n.actorId || existing.followerId || n.followerId,
+        actorId: existing.actorId || n.actorId || existing.authorId || n.authorId,
+        followerId: existing.followerId || n.followerId || existing.authorId || n.authorId,
         authorName: existing.authorName || n.authorName,
         authorAvatar: existing.authorAvatar || n.authorAvatar || null,
         authorFrame: existing.authorFrame || n.authorFrame || null,
@@ -1250,8 +1376,9 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
           }
           const rawCreated = item.createdAtMs ?? item.createdAt ?? null;
           const parsedMs = toMillis(rawCreated);
-          const cleanTitle = sanitizeNotificationText(item.title, item.authorName);
-          const cleanMsg = sanitizeNotificationText(item.message, item.authorName);
+          const actorMeta = extractNotificationActorMeta(item, id);
+          const cleanTitle = sanitizeNotificationText(item.title, actorMeta.authorName);
+          const cleanMsg = sanitizeNotificationText(item.message, actorMeta.authorName);
           nextD1Map.set(id, {
             id,
             type: normalizeNotificationType(
@@ -1260,7 +1387,7 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
               cleanTitle,
               cleanMsg,
               item.link,
-              item.postId
+              actorMeta.postId
             ),
             title: cleanTitle,
             message: cleanMsg,
@@ -1268,11 +1395,13 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
             read: isRead,
             isPinned: Boolean(item.isPinned),
             link: item.link || null,
-            authorId: item.authorId,
-            authorName: item.authorName,
-            authorAvatar: item.authorAvatar || null,
-            authorFrame: item.authorFrame || null,
-            postId: item.postId,
+            authorId: actorMeta.authorId,
+            actorId: actorMeta.actorId,
+            followerId: actorMeta.followerId,
+            authorName: actorMeta.authorName,
+            authorAvatar: actorMeta.authorAvatar,
+            authorFrame: actorMeta.authorFrame,
+            postId: actorMeta.postId,
             postSlug: item.postSlug,
             postType: item.postType,
           });
@@ -1293,8 +1422,9 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
           if (isRead) {
             activeStore.optimisticReadIds.add(d.id);
           }
-          const cleanTitle = sanitizeNotificationText(data.title, data.authorName);
-          const cleanMsg = sanitizeNotificationText(data.message, data.authorName);
+          const actorMeta = extractNotificationActorMeta(data, d.id);
+          const cleanTitle = sanitizeNotificationText(data.title, actorMeta.authorName);
+          const cleanMsg = sanitizeNotificationText(data.message, actorMeta.authorName);
           const notifItem: AppNotification = {
             id: d.id,
             type: normalizeNotificationType(
@@ -1303,7 +1433,7 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
               cleanTitle,
               cleanMsg,
               data.link,
-              data.postId
+              actorMeta.postId
             ),
             title: cleanTitle,
             message: cleanMsg,
@@ -1311,11 +1441,13 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
             read: isRead,
             isPinned: Boolean(data.isPinned),
             link: data.link || null,
-            authorId: data.authorId,
-            authorName: data.authorName,
-            authorAvatar: data.authorAvatar || null,
-            authorFrame: data.authorFrame || null,
-            postId: data.postId,
+            authorId: actorMeta.authorId,
+            actorId: actorMeta.actorId,
+            followerId: actorMeta.followerId,
+            authorName: actorMeta.authorName,
+            authorAvatar: actorMeta.authorAvatar,
+            authorFrame: actorMeta.authorFrame,
+            postId: actorMeta.postId,
             postSlug: data.postSlug,
             postType: data.postType,
           };
@@ -1435,8 +1567,9 @@ function attachUserRealtimeStore(userId: string): void {
           if (isRead) {
             activeStore.optimisticReadIds.add(d.id);
           }
-          const cleanTitle = sanitizeNotificationText(data.title, data.authorName);
-          const cleanMsg = sanitizeNotificationText(data.message, data.authorName);
+          const actorMeta = extractNotificationActorMeta(data, d.id);
+          const cleanTitle = sanitizeNotificationText(data.title, actorMeta.authorName);
+          const cleanMsg = sanitizeNotificationText(data.message, actorMeta.authorName);
           const notifItem: AppNotification = {
             id: d.id,
             type: normalizeNotificationType(
@@ -1445,7 +1578,7 @@ function attachUserRealtimeStore(userId: string): void {
               cleanTitle,
               cleanMsg,
               data.link,
-              data.postId
+              actorMeta.postId
             ),
             title: cleanTitle,
             message: cleanMsg,
@@ -1453,11 +1586,13 @@ function attachUserRealtimeStore(userId: string): void {
             read: isRead,
             isPinned: Boolean(data.isPinned),
             link: data.link || null,
-            authorId: data.authorId,
-            authorName: data.authorName,
-            authorAvatar: data.authorAvatar || null,
-            authorFrame: data.authorFrame || null,
-            postId: data.postId,
+            authorId: actorMeta.authorId,
+            actorId: actorMeta.actorId,
+            followerId: actorMeta.followerId,
+            authorName: actorMeta.authorName,
+            authorAvatar: actorMeta.authorAvatar,
+            authorFrame: actorMeta.authorFrame,
+            postId: actorMeta.postId,
             postSlug: data.postSlug,
             postType: data.postType,
           };
@@ -1843,8 +1978,9 @@ export async function fetchUserNotificationsPage(params: {
       .map((d) => {
         const data = d.data();
         const isRead = Boolean(data.read) || activeStore.optimisticReadIds.has(d.id);
-        const cleanTitle = sanitizeNotificationText(data.title, data.authorName);
-        const cleanMsg = sanitizeNotificationText(data.message, data.authorName);
+        const actorMeta = extractNotificationActorMeta(data, d.id);
+        const cleanTitle = sanitizeNotificationText(data.title, actorMeta.authorName);
+        const cleanMsg = sanitizeNotificationText(data.message, actorMeta.authorName);
         return {
           id: d.id,
           type: normalizeNotificationType(
@@ -1853,7 +1989,7 @@ export async function fetchUserNotificationsPage(params: {
             cleanTitle,
             cleanMsg,
             data.link,
-            data.postId
+            actorMeta.postId
           ),
           title: cleanTitle,
           message: cleanMsg,
@@ -1861,11 +1997,13 @@ export async function fetchUserNotificationsPage(params: {
           read: isRead,
           isPinned: Boolean(data.isPinned),
           link: data.link || null,
-          authorId: data.authorId,
-          authorName: data.authorName,
-          authorAvatar: data.authorAvatar || null,
-          authorFrame: data.authorFrame || null,
-          postId: data.postId,
+          authorId: actorMeta.authorId,
+          actorId: actorMeta.actorId,
+          followerId: actorMeta.followerId,
+          authorName: actorMeta.authorName,
+          authorAvatar: actorMeta.authorAvatar,
+          authorFrame: actorMeta.authorFrame,
+          postId: actorMeta.postId,
           postSlug: data.postSlug,
           postType: data.postType,
         };

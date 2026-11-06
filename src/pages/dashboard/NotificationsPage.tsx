@@ -20,8 +20,18 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
-import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { BoardlyAvatar, resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
+import {
+  getPublicProfiles,
+  getCachedPublicProfile,
+  getCachedUidByName,
+  resolvePublicProfileByName,
+  type PublicProfile,
+} from '@/services/publicProfileService';
+import { fetchCommonsPostById } from '@/services/commonsService';
+import { SUPER_ADMIN_UID, SUPER_ADMIN_NAME, isAdminAccount } from '@/constants/superAdmin';
+import { BOARDLY_BOT_ACCOUNTS } from '@/config/botsConfig';
 import {
   subscribeToNotificationStore,
   getNotificationStoreSnapshot,
@@ -130,6 +140,100 @@ function resolveDisplayCategory(notif: AppNotification): DisplayCategory {
     return 'post';
   }
   return 'system';
+}
+
+interface CachedPostAuthorMeta {
+  authorUid?: string | null;
+  authorName?: string;
+  authorEquippedAvatar?: string | null;
+  authorAvatar?: string | null;
+  authorPhotoURL?: string | null;
+  authorFrame?: string | null;
+  authorRole?: string;
+}
+
+// Per-postId cache for notifications missing authorId on legacy notification rows
+const postAuthorCache = new Map<string, CachedPostAuthorMeta>();
+const inFlightPostLookups = new Map<string, Promise<CachedPostAuthorMeta | null>>();
+
+function extractActorNameFromNotification(notif: AppNotification): string {
+  if (notif.authorName && notif.authorName.trim()) {
+    return notif.authorName.trim();
+  }
+  const rawTitle = String(notif.title || '').trim();
+  const postMatch = rawTitle.match(/^(.+?)\s+posted:\s*/i);
+  if (postMatch && postMatch[1]) {
+    return postMatch[1].trim();
+  }
+  const followMatch = rawTitle.match(/^(.+?)\s+started following you/i);
+  if (followMatch && followMatch[1]) {
+    return followMatch[1].trim();
+  }
+  return '';
+}
+
+function extractPostIdFromNotification(notif: AppNotification): string {
+  if (notif.postId && notif.postId.trim()) {
+    return notif.postId.trim();
+  }
+  if (notif.id.startsWith('post_') && notif.id.includes('_follower_')) {
+    const extracted = notif.id.slice('post_'.length, notif.id.lastIndexOf('_follower_'));
+    if (extracted) return extracted;
+  }
+  return '';
+}
+
+function resolveDirectActorUid(notif: AppNotification): string {
+  let uid =
+    notif.authorId ||
+    notif.actorId ||
+    notif.followerId ||
+    (notif as any).authorUid ||
+    '';
+
+  if (!uid && notif.id.startsWith('follow_')) {
+    const parts = notif.id.split('_');
+    if (parts.length >= 3 && parts[1]) {
+      uid = parts[1];
+    }
+  }
+
+  if (!uid) {
+    const postId = extractPostIdFromNotification(notif);
+    const cachedPost = postId ? postAuthorCache.get(postId) : undefined;
+    if (cachedPost?.authorUid) {
+      uid = cachedPost.authorUid;
+    }
+  }
+
+  if (!uid) {
+    const actorName = extractActorNameFromNotification(notif);
+    if (actorName) {
+      const lower = actorName.toLowerCase();
+      if (
+        lower === SUPER_ADMIN_NAME.toLowerCase() ||
+        lower === 'shs virtual academy'
+      ) {
+        uid = SUPER_ADMIN_UID;
+      } else {
+        const bot = BOARDLY_BOT_ACCOUNTS.find(
+          (b) =>
+            b.displayName.toLowerCase() === lower ||
+            b.username.toLowerCase() === lower
+        );
+        if (bot) {
+          uid = bot.uid;
+        } else {
+          const cachedNameUid = getCachedUidByName(actorName);
+          if (cachedNameUid) {
+            uid = cachedNameUid;
+          }
+        }
+      }
+    }
+  }
+
+  return uid ? String(uid).trim() : '';
 }
 
 /**
@@ -338,6 +442,138 @@ export function NotificationsPage() {
       (a, b) => toMillis(b.createdAt) - toMillis(a.createdAt)
     );
   }, [storeSnapshot.notifications, extraNotifications, dismissedIds]);
+
+  // Per-UID cached actor profiles for follower and post notifications
+  const [actorProfilesByUid, setActorProfilesByUid] = useState<Map<string, PublicProfile>>(
+    () => new Map()
+  );
+  const [, setPostMetaVersion] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const uidsToFetch = new Set<string>();
+    const postIdsToResolve = new Set<string>();
+    const namesToResolve = new Set<string>();
+
+    for (const notif of allNotifications) {
+      const cat = resolveDisplayCategory(notif);
+      if (cat !== 'follower' && cat !== 'post') continue;
+
+      const actorUid = resolveDirectActorUid(notif);
+      if (actorUid) {
+        uidsToFetch.add(actorUid);
+      } else {
+        const postId = extractPostIdFromNotification(notif);
+        if (cat === 'post' && postId && !postAuthorCache.has(postId)) {
+          postIdsToResolve.add(postId);
+        }
+        const actorName = extractActorNameFromNotification(notif);
+        if (actorName && !getCachedUidByName(actorName)) {
+          namesToResolve.add(actorName);
+        }
+      }
+    }
+
+    if (uidsToFetch.size > 0) {
+      void getPublicProfiles(Array.from(uidsToFetch)).then((fetchedMap) => {
+        if (cancelled || fetchedMap.size === 0) return;
+        setActorProfilesByUid((prev) => {
+          let changed = false;
+          const next = new Map(prev);
+          fetchedMap.forEach((prof, uid) => {
+            const existing = next.get(uid);
+            if (
+              !existing ||
+              existing.equippedAvatar !== prof.equippedAvatar ||
+              existing.avatarUrl !== prof.avatarUrl ||
+              existing.photoURL !== prof.photoURL ||
+              existing.equippedFrame !== prof.equippedFrame ||
+              existing.displayName !== prof.displayName
+            ) {
+              next.set(uid, prof);
+              changed = true;
+            }
+          });
+          return changed ? next : prev;
+        });
+      });
+    }
+
+    if (postIdsToResolve.size > 0) {
+      void Promise.all(
+        Array.from(postIdsToResolve).map(async (postId) => {
+          let promise = inFlightPostLookups.get(postId);
+          if (!promise) {
+            promise = fetchCommonsPostById(postId)
+              .then((post) => {
+                if (!post || post.isAnonymous) {
+                  const emptyMeta: CachedPostAuthorMeta = { authorUid: null };
+                  postAuthorCache.set(postId, emptyMeta);
+                  return emptyMeta;
+                }
+                const meta: CachedPostAuthorMeta = {
+                  authorUid: post.authorUid || null,
+                  authorName: post.authorName || undefined,
+                  authorEquippedAvatar: (post as any).authorEquippedAvatar || null,
+                  authorAvatar: post.authorAvatar || null,
+                  authorPhotoURL: (post as any).authorPhotoURL || null,
+                  authorFrame: (post as any).authorFrame || null,
+                  authorRole: (post as any).authorRole || undefined,
+                };
+                postAuthorCache.set(postId, meta);
+                return meta;
+              })
+              .catch(() => null)
+              .finally(() => {
+                inFlightPostLookups.delete(postId);
+              });
+            inFlightPostLookups.set(postId, promise);
+          }
+          return promise;
+        })
+      ).then((results) => {
+        if (cancelled) return;
+        const newlyDiscoveredUids = results
+          .map((r) => r?.authorUid)
+          .filter((u): u is string => Boolean(u));
+        setPostMetaVersion((v) => v + 1);
+        if (newlyDiscoveredUids.length > 0) {
+          void getPublicProfiles(newlyDiscoveredUids).then((fetchedMap) => {
+            if (cancelled || fetchedMap.size === 0) return;
+            setActorProfilesByUid((prev) => {
+              const next = new Map(prev);
+              fetchedMap.forEach((prof, uid) => next.set(uid, prof));
+              return next;
+            });
+          });
+        }
+      });
+    }
+
+    if (namesToResolve.size > 0) {
+      void Promise.all(
+        Array.from(namesToResolve).map((name) => resolvePublicProfileByName(name))
+      ).then((profiles) => {
+        if (cancelled) return;
+        const validProfiles = profiles.filter((p): p is PublicProfile => Boolean(p && p.uid));
+        if (validProfiles.length > 0) {
+          setPostMetaVersion((v) => v + 1);
+          setActorProfilesByUid((prev) => {
+            const next = new Map(prev);
+            for (const prof of validProfiles) {
+              next.set(prof.uid, prof);
+            }
+            return next;
+          });
+        }
+      });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [allNotifications]);
 
   const filteredNotifications = useMemo(() => {
     if (filter === 'all') return allNotifications;
@@ -750,47 +986,100 @@ export function NotificationsPage() {
                         );
                       }
 
-                      if (category === 'follower') {
-                        if (notif.authorAvatar) {
-                          return (
-                            <div className="notif-icon-circle">
-                              <BoardlyAvatar
-                                size="md"
-                                avatarId={notif.authorAvatar || undefined}
-                                frameId={notif.authorFrame || undefined}
-                                fallbackInitials={notif.authorName || 'Student'}
-                              />
+                      if (category === 'follower' || category === 'post') {
+                        const actorUid = resolveDirectActorUid(notif);
+                        const actorProfile = actorUid
+                          ? actorProfilesByUid.get(actorUid) || getCachedPublicProfile(actorUid)
+                          : null;
+                        const postId = extractPostIdFromNotification(notif);
+                        const postMeta = postId ? postAuthorCache.get(postId) : undefined;
+                        const extractedName = extractActorNameFromNotification(notif);
+
+                        const resolvedActorName =
+                          actorProfile?.displayName ||
+                          postMeta?.authorName ||
+                          notif.authorName ||
+                          extractedName ||
+                          heading ||
+                          'Student';
+
+                        // Prefer live profile avatar/frame; only fall back to post/notification values if live profile has none
+                        const resolvedEquippedAvatar =
+                          actorProfile?.equipped?.avatar ||
+                          actorProfile?.equippedAvatar ||
+                          resolveCosmeticItemId(actorProfile?.avatar, 'avatar') ||
+                          resolveCosmeticItemId(
+                            postMeta?.authorEquippedAvatar || postMeta?.authorAvatar,
+                            'avatar'
+                          ) ||
+                          resolveCosmeticItemId(notif.authorAvatar, 'avatar') ||
+                          undefined;
+
+                        const resolvedAvatarUrl =
+                          actorProfile?.avatarUrl ||
+                          (actorProfile?.avatar &&
+                          !resolveCosmeticItemId(actorProfile.avatar, 'avatar')
+                            ? actorProfile.avatar
+                            : null) ||
+                          (postMeta?.authorAvatar &&
+                          !resolveCosmeticItemId(postMeta.authorAvatar, 'avatar')
+                            ? postMeta.authorAvatar
+                            : null) ||
+                          (notif.authorAvatar &&
+                          !resolveCosmeticItemId(notif.authorAvatar, 'avatar')
+                            ? notif.authorAvatar
+                            : null) ||
+                          undefined;
+
+                        const resolvedPhotoURL =
+                          actorProfile?.photoURL || postMeta?.authorPhotoURL || undefined;
+
+                        const resolvedFrame =
+                          actorProfile?.equipped?.frame ||
+                          actorProfile?.equippedFrame ||
+                          actorProfile?.frame ||
+                          postMeta?.authorFrame ||
+                          notif.authorFrame ||
+                          undefined;
+
+                        const isActorSuperAdmin = Boolean(
+                          isAdminAccount(actorUid) ||
+                            actorProfile?.role === 'admin' ||
+                            actorProfile?.role === 'superadmin' ||
+                            postMeta?.authorRole === 'admin' ||
+                            postMeta?.authorRole === 'superadmin' ||
+                            resolvedActorName.trim().toLowerCase() ===
+                              SUPER_ADMIN_NAME.toLowerCase()
+                        );
+
+                        return (
+                          <div className="notif-icon-circle notif-icon-circle--avatar">
+                            <BoardlyAvatar
+                              equippedAvatar={resolvedEquippedAvatar}
+                              avatarUrl={resolvedAvatarUrl}
+                              photoURL={resolvedPhotoURL}
+                              frame={resolvedFrame}
+                              avatarKey={actorProfile?.avatarKey}
+                              avatarVariant={actorProfile?.avatarVariant}
+                              name={resolvedActorName}
+                              isSuperAdmin={isActorSuperAdmin}
+                              size={44}
+                            />
+                            {category === 'follower' ? (
                               <span
                                 className="notif-avatar-corner-badge notif-avatar-corner-badge--follower"
                                 aria-hidden="true"
                               >
                                 <UserPlus className="w-2.5 h-2.5" strokeWidth={2} />
                               </span>
-                            </div>
-                          );
-                        }
-                        return (
-                          <div className="notif-icon-circle notif-icon-circle--follower">
-                            <UserPlus className="w-5 h-5" strokeWidth={1.75} />
-                          </div>
-                        );
-                      }
-
-                      if (category === 'post') {
-                        return (
-                          <div className="notif-icon-circle notif-icon-circle--post">
-                            <BoardlyAvatar
-                              size="md"
-                              avatarId={notif.authorAvatar || undefined}
-                              frameId={notif.authorFrame || undefined}
-                              fallbackInitials={notif.authorName || heading || 'Post'}
-                            />
-                            <span
-                              className="notif-avatar-corner-badge notif-avatar-corner-badge--post"
-                              aria-hidden="true"
-                            >
-                              <FileText className="w-2.5 h-2.5" strokeWidth={2} />
-                            </span>
+                            ) : (
+                              <span
+                                className="notif-avatar-corner-badge notif-avatar-corner-badge--post"
+                                aria-hidden="true"
+                              >
+                                <FileText className="w-2.5 h-2.5" strokeWidth={2} />
+                              </span>
+                            )}
                           </div>
                         );
                       }
