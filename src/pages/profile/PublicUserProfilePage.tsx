@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { doc, getDoc, collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { PageMeta } from '@/components/ui/PageMeta';
@@ -7,6 +7,7 @@ import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { ContentUnavailableScreen } from '@/components/ui/ContentUnavailableScreen';
 import { LineLoader } from '@/components/ui/LineLoader';
 import { ProfileView } from '@/components/profile/ProfileView';
+import { buildProfileSharePreview, humanizeSlugWithoutIds } from '@/utils/sharePreviewHelper';
 
 export const PublicUserProfilePage: React.FC = () => {
   const { username: rawUsername, userId: rawUserId } = useParams<{
@@ -16,11 +17,33 @@ export const PublicUserProfilePage: React.FC = () => {
   const rawParam = (rawUsername || rawUserId || '').trim();
 
   const [targetUid, setTargetUid] = useState<string | null>(null);
+  const [profileMeta, setProfileMeta] = useState<{
+    displayName?: string | null;
+    username?: string | null;
+    bio?: string | null;
+    avatarUrl?: string | null;
+    role?: string | null;
+    followersCount?: number | null;
+    postsCount?: number | null;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     let mounted = true;
+
+    const extractMeta = (data: Record<string, any> | undefined, fallbackHandle?: string) => {
+      if (!data) return null;
+      return {
+        displayName: data.displayName || data.name || null,
+        username: data.username || fallbackHandle || null,
+        bio: data.bio || null,
+        avatarUrl: data.photoURL || data.avatarUrl || null,
+        role: data.role || null,
+        followersCount: typeof data.followersCount === 'number' ? data.followersCount : null,
+        postsCount: typeof data.postsCount === 'number' ? data.postsCount : null,
+      };
+    };
 
     async function resolveUid() {
       if (!rawParam) {
@@ -35,13 +58,14 @@ export const PublicUserProfilePage: React.FC = () => {
       setNotFound(false);
 
       try {
-        let uid = rawParam;
+        const uid = rawParam;
 
         // 1. Check if rawParam exists directly in users/{uid}
         const directUserSnap = await getDoc(doc(db, 'users', uid)).catch(() => null);
         if (directUserSnap && directUserSnap.exists()) {
           if (mounted) {
             setTargetUid(uid);
+            setProfileMeta(extractMeta(directUserSnap.data()));
             setLoading(false);
           }
           return;
@@ -50,8 +74,13 @@ export const PublicUserProfilePage: React.FC = () => {
         // 2. Check usernames/{usernameLower}
         const unameSnap = await getDoc(doc(db, 'usernames', uid.toLowerCase())).catch(() => null);
         if (unameSnap && unameSnap.exists() && unameSnap.data()?.uid) {
+          const resolvedUid = unameSnap.data().uid;
+          const pubForUname = await getDoc(doc(db, 'publicProfiles', resolvedUid)).catch(() => null);
           if (mounted) {
-            setTargetUid(unameSnap.data().uid);
+            setTargetUid(resolvedUid);
+            setProfileMeta(
+              extractMeta(pubForUname?.exists() ? pubForUname.data() : unameSnap.data(), uid)
+            );
             setLoading(false);
           }
           return;
@@ -62,6 +91,7 @@ export const PublicUserProfilePage: React.FC = () => {
         if (pubSnap && pubSnap.exists()) {
           if (mounted) {
             setTargetUid(uid);
+            setProfileMeta(extractMeta(pubSnap.data()));
             setLoading(false);
           }
           return;
@@ -77,6 +107,7 @@ export const PublicUserProfilePage: React.FC = () => {
         if (querySnap && !querySnap.empty) {
           if (mounted) {
             setTargetUid(querySnap.docs[0].id);
+            setProfileMeta(extractMeta(querySnap.docs[0].data(), uid));
             setLoading(false);
           }
           return;
@@ -85,6 +116,10 @@ export const PublicUserProfilePage: React.FC = () => {
         // 5. Fallback: treat rawParam as the UID directly
         if (mounted) {
           setTargetUid(uid);
+          setProfileMeta({
+            displayName: humanizeSlugWithoutIds(rawParam) || 'Boardly Student',
+            username: rawUsername ? rawUsername.replace(/^@+/, '') : null,
+          });
           setLoading(false);
         }
       } catch (err) {
@@ -101,7 +136,7 @@ export const PublicUserProfilePage: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [rawParam]);
+  }, [rawParam, rawUsername]);
 
   if (loading) {
     return (
@@ -121,12 +156,28 @@ export const PublicUserProfilePage: React.FC = () => {
     );
   }
 
+  const cleanHandle =
+    profileMeta?.username ||
+    (rawUsername ? rawUsername.replace(/^@+/, '') : /^[a-f0-9-]{20,}$/i.test(rawParam) ? null : rawParam);
+  const sharePreview = buildProfileSharePreview({
+    uid: targetUid,
+    username: cleanHandle,
+    displayName: profileMeta?.displayName || humanizeSlugWithoutIds(rawParam) || 'Boardly Student',
+    bio: profileMeta?.bio,
+    avatarUrl: profileMeta?.avatarUrl,
+    role: profileMeta?.role,
+    followersCount: profileMeta?.followersCount,
+    postsCount: profileMeta?.postsCount,
+  });
+
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-24 pb-24 px-2 sm:px-6">
       <PageMeta
-        title="Student Profile — Boardly"
-        description="View public study profile, achievements, and contributions on Boardly."
-        canonicalPath={`/u/${encodeURIComponent(rawParam)}`}
+        title={sharePreview.title}
+        description={sharePreview.description}
+        ogImage={sharePreview.image}
+        ogImageAlt={sharePreview.imageAlt}
+        canonicalPath={`/u/${encodeURIComponent(cleanHandle || rawParam)}`}
         ogType="profile"
       />
 
@@ -134,7 +185,7 @@ export const PublicUserProfilePage: React.FC = () => {
         <Breadcrumbs
           items={[
             { label: 'Commons', href: '/commons' },
-            { label: 'Student Profile' },
+            { label: profileMeta?.displayName || 'Student Profile' },
           ]}
         />
       </div>
@@ -145,3 +196,4 @@ export const PublicUserProfilePage: React.FC = () => {
 };
 
 export default PublicUserProfilePage;
+

@@ -1,20 +1,30 @@
+import {
+  SHARE_DEFAULT_OG_IMAGE,
+  SHARE_SITE_ORIGIN,
+  buildDynamicOgImageUrl,
+  buildPostSharePreview,
+  buildProfileSharePreview,
+  buildTestSharePreview,
+  escapeHtmlMeta,
+  humanizeSlugWithoutIds,
+} from './sharePreviewHelper';
+
 export interface ResolvedRouteMeta {
   title: string;
   description: string;
   canonicalUrl: string;
   ogType: 'website' | 'article' | 'profile';
   ogImage: string;
+  ogImageAlt?: string;
   noindex?: boolean;
+  redirectUrl?: string;
 }
 
-const BASE_URL = 'https://boardly.cfd';
-const DEFAULT_OG_IMAGE = `${BASE_URL}/assets/og-image.png`;
+const BASE_URL = SHARE_SITE_ORIGIN;
+const DEFAULT_OG_IMAGE = SHARE_DEFAULT_OG_IMAGE;
 
 function formatSlugLabel(slug: string): string {
-  return decodeURIComponent(slug || '')
-    .replace(/[-_]+/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-    .trim();
+  return humanizeSlugWithoutIds(slug);
 }
 
 export const UNIVERSITY_META: Record<
@@ -71,31 +81,52 @@ export const UNIVERSITY_META: Record<
   },
 };
 
+export interface RouteDynamicDataInput {
+  post?: {
+    id?: string;
+    title?: string;
+    description?: string;
+    body?: string;
+    authorName?: string;
+    subject?: string;
+    boardTag?: string;
+    classLevel?: string;
+    slug?: string;
+    imageUrl?: string | null;
+    files?: Array<{ url?: string; type?: string; name?: string }>;
+    filesJson?: unknown;
+    updatedAt?: string;
+    isPrivateOrMissing?: boolean;
+  } | null;
+  test?: {
+    id?: string;
+    title?: string;
+    description?: string;
+    subject?: string;
+    slug?: string;
+    questionCount?: number | null;
+    durationMinutes?: number | null;
+    creatorName?: string | null;
+    updatedAt?: string;
+    isPrivateOrMissing?: boolean;
+  } | null;
+  profile?: {
+    uid?: string;
+    displayName?: string;
+    bio?: string;
+    username?: string;
+    avatarUrl?: string | null;
+    role?: string | null;
+    followersCount?: number | null;
+    postsCount?: number | null;
+    isPrivateOrMissing?: boolean;
+  } | null;
+}
+
 export function resolveStaticOrPatternRouteMeta(
   pathname: string,
   search = '',
-  dynamicData?: {
-    post?: {
-      title?: string;
-      description?: string;
-      subject?: string;
-      slug?: string;
-      id?: string;
-      files?: Array<{ url?: string; type?: string; name?: string }>;
-    } | null;
-    test?: {
-      title?: string;
-      description?: string;
-      subject?: string;
-      slug?: string;
-      id?: string;
-    } | null;
-    profile?: {
-      displayName?: string;
-      bio?: string;
-      username?: string;
-    } | null;
-  }
+  dynamicData?: RouteDynamicDataInput
 ): ResolvedRouteMeta {
   const cleanPath = (pathname || '/').replace(/\/+$/, '') || '/';
   const canonicalUrl = `${BASE_URL}${cleanPath}`;
@@ -104,41 +135,60 @@ export function resolveStaticOrPatternRouteMeta(
   if (cleanPath.startsWith('/commons/post/')) {
     const slugParam = decodeURIComponent(cleanPath.slice('/commons/post/'.length));
     const post = dynamicData?.post;
-    if (post && post.title) {
-      const title = `${post.title} — ${post.subject || 'Commons'} | Boardly`;
-      const desc =
-        String(post.description || '')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .slice(0, 200) ||
-        `View "${post.title}" and join the student discussion on Boardly Commons.`;
-      const firstImage = (post.files || []).find(
-        (f) =>
-          f?.url &&
-          (String(f.type || '').startsWith('image/') ||
-            /\.(png|jpe?g|webp|gif)$/i.test(String(f.name || f.url || '')))
-      );
-      const ogImage = firstImage?.url
-        ? firstImage.url.startsWith('http')
-          ? firstImage.url
-          : `${BASE_URL}${firstImage.url}`
-        : DEFAULT_OG_IMAGE;
-      const canonicalSlug = post.slug || post.id || slugParam;
+    if (post?.isPrivateOrMissing) {
       return {
-        title,
-        description: desc,
-        canonicalUrl: `${BASE_URL}/commons/post/${canonicalSlug}`,
-        ogType: 'article',
-        ogImage,
+        title: 'Boardly Commons | Boardly',
+        description:
+          'Explore student study resources, shared notes, and verified entrance exam discussions on Boardly Commons.',
+        canonicalUrl: `${BASE_URL}/commons`,
+        ogType: 'website',
+        ogImage: DEFAULT_OG_IMAGE,
+        ogImageAlt: 'Boardly Commons',
+        noindex: true,
       };
     }
-    const readable = formatSlugLabel(slugParam.replace(/^post_[a-zA-Z0-9_]+-?/, '')) || 'Student Post';
+    if (post && (post.title || post.body || post.description)) {
+      const preview = buildPostSharePreview(
+        {
+          id: post.id || slugParam,
+          title: post.title,
+          body: post.body ?? post.description,
+          authorName: post.authorName,
+          subjectTag: post.subject,
+          boardTag: post.boardTag,
+          classLevel: post.classLevel,
+          imageUrl: post.imageUrl,
+          filesJson: post.filesJson ?? post.files,
+          updatedAt: post.updatedAt,
+        },
+        BASE_URL
+      );
+      const canonicalSlug = post.slug || preview.canonicalSlug || slugParam;
+      return {
+        title: preview.title,
+        description: preview.description,
+        canonicalUrl: `${BASE_URL}/commons/post/${canonicalSlug}`,
+        ogType: 'article',
+        ogImage: preview.image,
+        ogImageAlt: preview.imageAlt,
+      };
+    }
+    const readable = formatSlugLabel(slugParam) || 'Student Study Post';
+    const fallbackPreview = buildPostSharePreview(
+      {
+        id: slugParam,
+        title: readable,
+        body: `${readable} — Student notes and study discussion on Boardly Commons.`,
+      },
+      BASE_URL
+    );
     return {
-      title: `${readable} — Boardly Commons`,
-      description: `Read this student post, view comments, and download shared study resources on Boardly Commons.`,
+      title: fallbackPreview.title,
+      description: fallbackPreview.description,
       canonicalUrl,
       ogType: 'article',
-      ogImage: DEFAULT_OG_IMAGE,
+      ogImage: fallbackPreview.image,
+      ogImageAlt: fallbackPreview.imageAlt,
     };
   }
 
@@ -151,29 +201,60 @@ export function resolveStaticOrPatternRouteMeta(
       cleanPath.replace(/^\/(study-)?material\//, '')
     );
     const post = dynamicData?.post;
-    if (post && post.title) {
-      const title = `${post.title} — ${post.subject || 'Study Material'} PDF & Notes | Boardly`;
-      const desc =
-        String(post.description || '')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .slice(0, 200) ||
-        `Read and download "${post.title}" (${post.subject || 'Study Notes'}) for Class 11, Class 12 & Entrance Test prep on Boardly.`;
+    if (post?.isPrivateOrMissing) {
       return {
-        title,
-        description: desc,
-        canonicalUrl,
-        ogType: 'article',
+        title: 'Study Material | Boardly Commons',
+        description:
+          'Browse verified FSc Class 11 & 12 study notes, formula sheets, and past papers on Boardly Commons.',
+        canonicalUrl: `${BASE_URL}/material`,
+        ogType: 'website',
         ogImage: DEFAULT_OG_IMAGE,
+        ogImageAlt: 'Boardly Commons Study Material',
+        noindex: true,
       };
     }
-    const readable = formatSlugLabel(slugParam.replace(/^post_[a-zA-Z0-9_]+-?/, '')) || 'Study Material';
+    if (post && (post.title || post.body || post.description)) {
+      const preview = buildPostSharePreview(
+        {
+          id: post.id || slugParam,
+          title: post.title,
+          body: post.body ?? post.description,
+          authorName: post.authorName,
+          subjectTag: post.subject,
+          boardTag: post.boardTag,
+          classLevel: post.classLevel,
+          imageUrl: post.imageUrl,
+          filesJson: post.filesJson ?? post.files,
+          updatedAt: post.updatedAt,
+        },
+        BASE_URL
+      );
+      const canonicalSlug = post.slug || preview.canonicalSlug || slugParam;
+      return {
+        title: preview.title,
+        description: preview.description,
+        canonicalUrl: `${BASE_URL}/material/${canonicalSlug}`,
+        ogType: 'article',
+        ogImage: preview.image,
+        ogImageAlt: preview.imageAlt,
+      };
+    }
+    const readable = formatSlugLabel(slugParam) || 'Study Material';
+    const fallbackPreview = buildPostSharePreview(
+      {
+        id: slugParam,
+        title: readable,
+        body: `Verified ${readable} study notes, formula sheets, and practice resources on Boardly Commons.`,
+      },
+      BASE_URL
+    );
     return {
-      title: `${readable} — Study Material & Notes | Boardly`,
-      description: `Download verified ${readable} PDF notes, formula sheets, and past papers on Boardly.`,
+      title: fallbackPreview.title,
+      description: fallbackPreview.description,
       canonicalUrl,
       ogType: 'article',
-      ogImage: DEFAULT_OG_IMAGE,
+      ogImage: fallbackPreview.image,
+      ogImageAlt: fallbackPreview.imageAlt,
     };
   }
 
@@ -335,22 +416,67 @@ export function resolveStaticOrPatternRouteMeta(
     };
   }
 
-  // 8. Public User Profiles: /u/:username and /profile/:userId
-  if (cleanPath.startsWith('/u/') || (cleanPath.startsWith('/profile/') && cleanPath !== '/profile/edit')) {
+  // 8. Public User & Captain Profiles: /u/:username, /profile/:userId, /user/:userId, /users/:userId, /captains/:username
+  const isCaptainProfileRoute =
+    cleanPath.startsWith('/captains/') &&
+    cleanPath !== '/captains/apply' &&
+    cleanPath !== '/captains/leaderboard';
+  if (
+    cleanPath.startsWith('/u/') ||
+    (cleanPath.startsWith('/profile/') && cleanPath !== '/profile/edit') ||
+    cleanPath.startsWith('/user/') ||
+    cleanPath.startsWith('/users/') ||
+    isCaptainProfileRoute
+  ) {
     const rawUser = decodeURIComponent(cleanPath.split('/').pop() || 'Student');
-    const displayName = dynamicData?.profile?.displayName || formatSlugLabel(rawUser);
+    const profile = dynamicData?.profile;
+    if (profile?.isPrivateOrMissing) {
+      return {
+        title: 'Student Profile | Boardly',
+        description:
+          'Connect with students, explore shared study notes, and track national test rankings on Boardly.',
+        canonicalUrl: `${BASE_URL}/commons`,
+        ogType: 'profile',
+        ogImage: DEFAULT_OG_IMAGE,
+        ogImageAlt: 'Boardly Student Profile',
+        noindex: true,
+      };
+    }
+    const cleanHandle =
+      profile?.username ||
+      (cleanPath.startsWith('/u/') || isCaptainProfileRoute
+        ? rawUser.replace(/^@+/, '')
+        : /^[a-f0-9-]{20,}$/i.test(rawUser)
+          ? ''
+          : rawUser.replace(/^@+/, ''));
+    const displayName = profile?.displayName || formatSlugLabel(rawUser) || 'Boardly Student';
+    const preview = buildProfileSharePreview(
+      {
+        uid: profile?.uid || rawUser,
+        username: cleanHandle || null,
+        displayName,
+        bio: profile?.bio,
+        avatarUrl: profile?.avatarUrl,
+        role: profile?.role || (isCaptainProfileRoute ? 'captain' : null),
+        followersCount: profile?.followersCount,
+        postsCount: profile?.postsCount,
+      },
+      BASE_URL
+    );
+    const canonicalProfileUrl = cleanHandle
+      ? `${BASE_URL}/u/${encodeURIComponent(cleanHandle)}`
+      : canonicalUrl;
     return {
-      title: `${displayName} — Student Profile on Boardly`,
-      description:
-        dynamicData?.profile?.bio ||
-        `View ${displayName}'s public study notes, shared resources, and community contributions on Boardly.`,
-      canonicalUrl,
+      title: preview.title,
+      description: preview.description,
+      canonicalUrl: canonicalProfileUrl,
       ogType: 'profile',
-      ogImage: DEFAULT_OG_IMAGE,
+      ogImage: preview.image,
+      ogImageAlt: preview.imageAlt,
     };
   }
 
-  // 9. Leaderboards & Grand Line: /leaderboard, /grand-line, /grand-line/leaderboard, /grand-line/test/:id
+  // 9. Leaderboards & Grand Line: /leaderboard, /grand-line, /grand-line/leaderboard, /grand-line/test/:id, /tests/:id, /test/:id
   if (cleanPath === '/leaderboard' || cleanPath === '/grand-line/leaderboard') {
     return {
       title: 'Grand Line Leaderboard — Top Student Rankings | Boardly',
@@ -358,7 +484,17 @@ export function resolveStaticOrPatternRouteMeta(
         'See the top-scoring students across Pakistan on the Boardly Grand Line leaderboard. Compete in verified timed drills and track your national rank.',
       canonicalUrl,
       ogType: 'website',
-      ogImage: DEFAULT_OG_IMAGE,
+      ogImage: buildDynamicOgImageUrl(
+        {
+          type: 'test',
+          title: 'Grand Line National Leaderboard',
+          subtitle: 'See the top-scoring students across Pakistan in verified timed entrance tests.',
+          badge: 'GRAND LINE LEADERBOARD',
+          meta: 'Live National Rankings · Boardly',
+        },
+        BASE_URL
+      ),
+      ogImageAlt: 'Grand Line Leaderboard — Boardly',
     };
   }
   if (cleanPath === '/grand-line') {
@@ -368,7 +504,17 @@ export function resolveStaticOrPatternRouteMeta(
         'Compete in official timed entrance exam drills on Boardly Grand Line. One verified attempt per drill, live rankings, and downloadable PDF solutions.',
       canonicalUrl,
       ogType: 'website',
-      ogImage: DEFAULT_OG_IMAGE,
+      ogImage: buildDynamicOgImageUrl(
+        {
+          type: 'test',
+          title: 'The Grand Line — National Ranked Tests',
+          subtitle: 'One verified attempt per test, live rankings, and downloadable PDF solutions.',
+          badge: 'THE GRAND LINE',
+          meta: 'Official Timed Entrance Tests · Boardly',
+        },
+        BASE_URL
+      ),
+      ogImageAlt: 'The Grand Line — Boardly',
     };
   }
   if (cleanPath === '/grand-line/about') {
@@ -379,19 +525,53 @@ export function resolveStaticOrPatternRouteMeta(
       canonicalUrl,
       ogType: 'website',
       ogImage: DEFAULT_OG_IMAGE,
+      ogImageAlt: 'About The Grand Line — Boardly',
     };
   }
-  if (cleanPath.startsWith('/grand-line/test/')) {
-    const slug = decodeURIComponent(cleanPath.slice('/grand-line/test/'.length).replace(/\/run$/, ''));
-    const testTitle = dynamicData?.test?.title || formatSlugLabel(slug);
+  if (
+    cleanPath.startsWith('/grand-line/test/') ||
+    cleanPath.startsWith('/tests/') ||
+    cleanPath.startsWith('/test/')
+  ) {
+    const rawSegment = cleanPath
+      .replace(/^\/(?:grand-line\/test|tests|test)\//, '')
+      .replace(/\/run$/, '');
+    const slug = decodeURIComponent(rawSegment);
+    const test = dynamicData?.test;
+    if (test?.isPrivateOrMissing) {
+      return {
+        title: 'Grand Line Test | Boardly',
+        description:
+          'Compete in official timed entrance exam tests on Boardly Grand Line and see where you rank on the national leaderboard.',
+        canonicalUrl: `${BASE_URL}/grand-line`,
+        ogType: 'website',
+        ogImage: DEFAULT_OG_IMAGE,
+        ogImageAlt: 'Boardly Grand Line Test',
+        noindex: true,
+      };
+    }
+    const testTitle = test?.title || formatSlugLabel(slug) || 'Grand Line Test';
+    const preview = buildTestSharePreview(
+      {
+        id: test?.id || slug,
+        title: testTitle,
+        description: test?.description,
+        questionCount: test?.questionCount,
+        durationMinutes: test?.durationMinutes,
+        creatorName: test?.creatorName,
+        subject: test?.subject,
+        updatedAt: test?.updatedAt,
+      },
+      BASE_URL
+    );
+    const canonicalSlug = test?.slug || preview.canonicalSlug || slug;
     return {
-      title: `${testTitle} — Grand Line Verified Drill | Boardly`,
-      description:
-        dynamicData?.test?.description ||
-        `Take the "${testTitle}" verified drill on Boardly Grand Line and benchmark your score on the national leaderboard.`,
-      canonicalUrl,
+      title: preview.title,
+      description: preview.description,
+      canonicalUrl: `${BASE_URL}/grand-line/test/${canonicalSlug}`,
       ogType: 'website',
-      ogImage: DEFAULT_OG_IMAGE,
+      ogImage: preview.image,
+      ogImageAlt: preview.imageAlt,
     };
   }
 
@@ -523,28 +703,21 @@ export function resolveStaticOrPatternRouteMeta(
       canonicalUrl,
       ogType: 'website',
       ogImage: DEFAULT_OG_IMAGE,
+      ogImageAlt: staticPages[cleanPath].title,
     };
   }
 
   // Fallback for any other route (e.g. /dashboard, /join/:code, etc.)
   const fallbackLabel = formatSlugLabel(cleanPath.split('/').filter(Boolean).join(' — ')) || 'Boardly';
   return {
-    title: `${fallbackLabel} — Boardly`,
+    title: `${fallbackLabel} | Boardly`,
     description:
       'Boardly — Free adaptive MCQ practice, study notes, and entrance test preparation for Pakistani students.',
     canonicalUrl,
     ogType: 'website',
     ogImage: DEFAULT_OG_IMAGE,
+    ogImageAlt: `${fallbackLabel} | Boardly`,
   };
-}
-
-function escapeHtml(str: string): string {
-  return String(str || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 /**
@@ -554,13 +727,19 @@ function escapeHtml(str: string): string {
  * search crawlers always show the exact page preview and URL (never the home page).
  */
 export function injectMetaIntoIndexHtml(html: string, meta: ResolvedRouteMeta): string {
-  const safeTitle = escapeHtml(meta.title);
-  const safeDesc = escapeHtml(meta.description);
-  const safeUrl = escapeHtml(meta.canonicalUrl);
-  const safeImg = escapeHtml(meta.ogImage);
-  const safeType = escapeHtml(meta.ogType);
+  const safeTitle = escapeHtmlMeta(meta.title);
+  const safeDesc = escapeHtmlMeta(meta.description);
+  const safeUrl = escapeHtmlMeta(meta.canonicalUrl);
+  const safeImg = escapeHtmlMeta(meta.ogImage);
+  const safeImgAlt = escapeHtmlMeta(meta.ogImageAlt || meta.title);
+  const safeType = escapeHtmlMeta(meta.ogType);
 
   let out = html;
+
+  // Remove any existing extra og:image:* or twitter:url / twitter:image:alt tags before injecting cleanly
+  out = out
+    .replace(/\s*<meta\s+property="og:image:(?:secure_url|type|width|height|alt)"\s+content="[^"]*"\s*\/?>/gi, '')
+    .replace(/\s*<meta\s+name="twitter:(?:url|image:alt)"\s+content="[^"]*"\s*\/?>/gi, '');
 
   // Replace <title>...</title>
   out = out.replace(/<title>[\s\S]*?<\/title>/i, `<title>${safeTitle}</title>`);
@@ -570,6 +749,14 @@ export function injectMetaIntoIndexHtml(html: string, meta: ResolvedRouteMeta): 
     /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
     `<meta name="description" content="${safeDesc}" />`
   );
+
+  // Replace robots tag if noindex
+  if (meta.noindex) {
+    out = out.replace(
+      /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="robots" content="noindex, nofollow" />`
+    );
+  }
 
   // Replace <link rel="canonical" ...>
   out = out.replace(
@@ -596,10 +783,14 @@ export function injectMetaIntoIndexHtml(html: string, meta: ResolvedRouteMeta): 
   );
   out = out.replace(
     /<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i,
-    `<meta property="og:image" content="${safeImg}" />`
+    `<meta property="og:image" content="${safeImg}" />\n    <meta property="og:image:secure_url" content="${safeImg}" />\n    <meta property="og:image:type" content="image/png" />\n    <meta property="og:image:width" content="1200" />\n    <meta property="og:image:height" content="630" />\n    <meta property="og:image:alt" content="${safeImgAlt}" />`
   );
 
   // Replace Twitter tags
+  out = out.replace(
+    /<meta\s+name="twitter:card"\s+content="[^"]*"\s*\/?>/i,
+    `<meta name="twitter:card" content="summary_large_image" />\n    <meta name="twitter:url" content="${safeUrl}" />`
+  );
   out = out.replace(
     /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
     `<meta name="twitter:title" content="${safeTitle}" />`
@@ -610,8 +801,9 @@ export function injectMetaIntoIndexHtml(html: string, meta: ResolvedRouteMeta): 
   );
   out = out.replace(
     /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
-    `<meta name="twitter:image" content="${safeImg}" />`
+    `<meta name="twitter:image" content="${safeImg}" />\n    <meta name="twitter:image:alt" content="${safeImgAlt}" />`
   );
 
   return out;
 }
+

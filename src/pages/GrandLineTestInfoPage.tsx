@@ -29,6 +29,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { sanitizeStudentDisplayName, extractIdFromSlug, buildEntitySlug } from '@/utils/privacy';
+import { buildTestSharePreview } from '@/utils/sharePreviewHelper';
 import { routes } from '@/utils/routes';
 import { showApiToast } from '@/lib/api';
 import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
@@ -96,6 +97,14 @@ export const GrandLineTestInfoPage: React.FC = () => {
     };
   }, [testId, user, retryCount]);
 
+  useEffect(() => {
+    if (!test || test.status === 'unpublished') return;
+    const expectedSlug = buildEntitySlug(test.id, test.title);
+    if (idSlug && expectedSlug && idSlug !== expectedSlug) {
+      navigate(`/grand-line/test/${expectedSlug}`, { replace: true });
+    }
+  }, [test, idSlug, navigate]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4">
@@ -149,6 +158,15 @@ export const GrandLineTestInfoPage: React.FC = () => {
   const creatorName = sanitizeStudentDisplayName(test.creatorName, test.creatorUid);
   const qCount = test.questionCount || test.questions?.length || 0;
   const estMinutes = Math.max(10, qCount * 1.5);
+  const sharePreview = buildTestSharePreview({
+    id: test.id,
+    title: test.title,
+    description: test.description,
+    questionCount: qCount,
+    durationMinutes: Math.round(estMinutes),
+    creatorName,
+    subject: test.subject,
+  });
   const studentFallbackName =
     profile?.displayName?.trim() ||
     user?.displayName?.trim() ||
@@ -172,9 +190,12 @@ export const GrandLineTestInfoPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6">
       <PageMeta
-        title={`${test.title} — Grand Line Public Test by ${creatorName}`}
-        description={`View syllabus, question count, duration, and live top scorers for "${test.title}" (${test.subject}) created by Nakama Captain ${creatorName} on Boardly Grand Line.`}
+        title={sharePreview.title}
+        description={sharePreview.description}
+        ogImage={sharePreview.image}
+        ogImageAlt={sharePreview.imageAlt}
         canonicalPath={canonicalPath}
+        noindex={test.visibility === 'private'}
       />
 
       <div className="max-w-4xl mx-auto">
