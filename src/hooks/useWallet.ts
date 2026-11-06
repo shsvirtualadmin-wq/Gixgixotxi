@@ -1,5 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { doc, getDoc, setDoc, serverTimestamp, runTransaction } from 'firebase/firestore';
+import {
+  doc,
+  getDoc,
+  getDocs,
+  collection,
+  setDoc,
+  serverTimestamp,
+  runTransaction,
+} from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { syncPublicProfile } from '@/services/publicProfileService';
@@ -29,17 +37,28 @@ const sessionWalletCache: { [uid: string]: WalletDoc } = {};
 
 export function useWallet() {
   const { user } = useAuth();
-  const initialWallet = user?.uid && sessionWalletCache[user.uid]
-    ? sessionWalletCache[user.uid]
-    : DEFAULT_WALLET;
+  const initialWallet =
+    user?.uid && sessionWalletCache[user.uid]
+      ? sessionWalletCache[user.uid]
+      : DEFAULT_WALLET;
 
   const [wallet, setWallet] = useState<WalletDoc>(initialWallet);
-  const [loading, setLoading] = useState<boolean>(Boolean(user?.uid && !sessionWalletCache[user.uid]));
+  const [loading, setLoading] = useState<boolean>(
+    Boolean(user?.uid && !sessionWalletCache[user.uid])
+  );
   const walletRef = useRef(wallet);
   walletRef.current = wallet;
 
+  const emailLower = user?.email?.toLowerCase().trim() || '';
+  const isSuperAdminUser = Boolean(
+    emailLower === 'shsvirtualadmin@gmail.com' ||
+      emailLower === 'support@boardly.cfd' ||
+      emailLower === 'support@scholario.me' ||
+      user?.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
+      user?.uid === 'jJfb1nThG1X9phL8fFDZ0G0J7m33'
+  );
+
   const fetchWallet = useCallback(async (uid: string, forceRefresh = false) => {
-    // If already read once this session and not forced, reuse session cache
     if (!forceRefresh && sessionWalletCache[uid]) {
       setWallet(sessionWalletCache[uid]);
       setLoading(false);
@@ -48,20 +67,79 @@ export function useWallet() {
 
     setLoading(true);
     const walletDocRef = doc(db, 'wallets', uid);
+    const userDocRef = doc(db, 'users', uid);
+    const unlockedColRef = collection(db, 'users', uid, 'unlocked');
 
     try {
-      const snap = await getDoc(walletDocRef);
-      if (snap.exists()) {
+      const [snap, userSnap, unlockedSnap] = await Promise.all([
+        getDoc(walletDocRef).catch((err) => {
+          console.error('[useWallet] getDoc wallets error:', err?.code || 'ERROR', `wallets/${uid}`, err);
+          return null;
+        }),
+        getDoc(userDocRef).catch((err) => {
+          console.error('[useWallet] getDoc users error:', err?.code || 'ERROR', `users/${uid}`, err);
+          return null;
+        }),
+        getDocs(unlockedColRef).catch((err) => {
+          console.error(
+            '[useWallet] getDocs unlocked error:',
+            err?.code || 'ERROR',
+            `users/${uid}/unlocked`,
+            err
+          );
+          return null;
+        }),
+      ]);
+
+      const uData = userSnap && userSnap.exists() ? userSnap.data() : null;
+      const userKobans =
+        uData && typeof uData.kobans === 'number' && Number.isFinite(uData.kobans)
+          ? Math.max(0, Math.floor(uData.kobans))
+          : 0;
+      const userKobanBalance =
+        uData && typeof uData.kobanBalance === 'number' && Number.isFinite(uData.kobanBalance)
+          ? Math.max(0, Math.floor(uData.kobanBalance))
+          : 0;
+      const userBalance = Math.max(userKobans, userKobanBalance);
+
+      const userOwned: string[] = Array.isArray(uData?.ownedCosmetics)
+        ? (uData.ownedCosmetics as string[])
+        : [];
+      const unlockedIds: string[] = unlockedSnap
+        ? unlockedSnap.docs.map((d) => String(d.data()?.itemId || d.id))
+        : [];
+
+      if (snap && snap.exists()) {
         const data = snap.data() as Partial<WalletDoc>;
+        const walletBalance =
+          typeof data.balance === 'number' && Number.isFinite(data.balance)
+            ? Math.max(0, Math.floor(data.balance))
+            : null;
+        const resolvedBalance =
+          walletBalance !== null && walletBalance > 0
+            ? walletBalance
+            : Math.max(walletBalance ?? 0, userBalance);
+
+        const walletOwned = Array.isArray(data.owned) ? data.owned : [];
+        const mergedOwned = Array.from(
+          new Set([...walletOwned, ...userOwned, ...unlockedIds])
+        );
+
+        const rawEquipped = {
+          ...(uData?.equipped || {}),
+          ...(data.equipped || {}),
+        };
+
         const cleanWallet: WalletDoc = {
-          balance: typeof data.balance === 'number' ? Math.max(0, Math.floor(data.balance)) : 0,
-          owned: Array.isArray(data.owned) ? data.owned : [],
+          balance: resolvedBalance,
+          owned: mergedOwned,
           equipped: {
-            effect: data.equipped?.effect ?? null,
-            frame: data.equipped?.frame ?? null,
-            nameplate: data.equipped?.nameplate ?? null,
-            avatar: data.equipped?.avatar ?? null,
-            banner: data.equipped?.banner ?? null,
+            effect: rawEquipped.effect ?? uData?.effectId ?? null,
+            frame: rawEquipped.frame ?? uData?.frame ?? uData?.equippedFrame ?? null,
+            nameplate:
+              rawEquipped.nameplate ?? uData?.nameplate ?? uData?.equippedNameplate ?? null,
+            avatar: rawEquipped.avatar ?? uData?.avatar ?? uData?.equippedAvatar ?? null,
+            banner: rawEquipped.banner ?? uData?.banner ?? uData?.equippedBanner ?? null,
           },
           updatedAt: data.updatedAt,
         };
@@ -69,20 +147,41 @@ export function useWallet() {
         setWallet(cleanWallet);
         return cleanWallet;
       } else {
-        // Initialize empty wallet document for new user
+        // Initialize wallet document using existing user balance & unlocked items so we never overwrite a non-zero user balance with 0
+        const mergedOwned = Array.from(new Set([...userOwned, ...unlockedIds]));
+        const uEquipped = uData?.equipped || {};
         const initial: WalletDoc = {
-          balance: 0,
-          owned: [],
-          equipped: { effect: null, frame: null, nameplate: null, avatar: null, banner: null },
+          balance: userBalance,
+          owned: mergedOwned,
+          equipped: {
+            effect: uEquipped.effect ?? uData?.effectId ?? null,
+            frame: uEquipped.frame ?? uData?.frame ?? uData?.equippedFrame ?? null,
+            nameplate:
+              uEquipped.nameplate ?? uData?.nameplate ?? uData?.equippedNameplate ?? null,
+            avatar: uEquipped.avatar ?? uData?.avatar ?? uData?.equippedAvatar ?? null,
+            banner: uEquipped.banner ?? uData?.banner ?? uData?.equippedBanner ?? null,
+          },
           updatedAt: serverTimestamp(),
         };
-        await setDoc(walletDocRef, initial, { merge: true });
+        await setDoc(walletDocRef, initial, { merge: true }).catch((err) => {
+          console.error(
+            '[useWallet] Initial wallet setDoc error:',
+            err?.code || 'ERROR',
+            `wallets/${uid}`,
+            err
+          );
+        });
         sessionWalletCache[uid] = initial;
         setWallet(initial);
         return initial;
       }
-    } catch (err) {
-      console.warn('[useWallet] Once-per-session wallet read error:', err);
+    } catch (err: any) {
+      console.error(
+        '[useWallet] Wallet read error:',
+        err?.code || 'ERROR',
+        `wallets/${uid}`,
+        err
+      );
       return sessionWalletCache[uid] || DEFAULT_WALLET;
     } finally {
       setLoading(false);
@@ -96,30 +195,26 @@ export function useWallet() {
       return;
     }
 
-    // Read wallet once per session
     fetchWallet(user.uid, false);
   }, [user?.uid, fetchWallet]);
-
-  const emailLower = user?.email?.toLowerCase().trim() || '';
-  const isSuperAdminUser = Boolean(
-    emailLower === 'shsvirtualadmin@gmail.com' ||
-    emailLower === 'support@boardly.cfd' ||
-    user?.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2'
-  );
 
   /**
    * Equips or unequips a cosmetic item owned by the user.
    * Super Admin can equip any item freely without ownership restriction.
-   * Mirrors immediately to publicProfiles/{uid} for leaderboards and crew views.
+   * Mirrors immediately to users/{uid} and publicProfiles/{uid} for leaderboards and crew views.
    */
   const equipCosmetic = useCallback(
-    async (type: 'effect' | 'frame' | 'nameplate' | 'avatar' | 'banner', itemId: string | null) => {
+    async (
+      type: 'effect' | 'frame' | 'nameplate' | 'avatar' | 'banner',
+      itemId: string | null
+    ) => {
       if (!user?.uid) throw new Error('Must be logged in to equip cosmetics');
       const current = walletRef.current;
 
-      // Validation: item must be owned if not un-equipping and not Super Admin
       if (!isSuperAdminUser && itemId !== null && !current.owned.includes(itemId)) {
-        throw new Error('You do not own this cosmetic item. Please unlock it from the Store first.');
+        throw new Error(
+          'You do not own this cosmetic item. Please unlock it from the Store first.'
+        );
       }
 
       const updatedEquipped: EquippedCosmetics = {
@@ -129,20 +224,48 @@ export function useWallet() {
 
       const walletDocRef = doc(db, 'wallets', user.uid);
 
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(walletDocRef);
-        const curData = snap.exists() ? (snap.data() as WalletDoc) : current;
-        if (!isSuperAdminUser && itemId !== null && !curData.owned.includes(itemId)) {
-          throw new Error('Item not owned');
-        }
-        tx.update(walletDocRef, {
-          equipped: updatedEquipped,
-          updatedAt: serverTimestamp(),
+      try {
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(walletDocRef);
+          const curData = snap.exists() ? (snap.data() as WalletDoc) : current;
+          const ownedList = Array.isArray(curData.owned) ? curData.owned : current.owned;
+          if (!isSuperAdminUser && itemId !== null && !ownedList.includes(itemId)) {
+            throw new Error('Item not owned');
+          }
+          if (snap.exists()) {
+            tx.update(walletDocRef, {
+              equipped: updatedEquipped,
+              updatedAt: serverTimestamp(),
+            });
+          } else {
+            tx.set(
+              walletDocRef,
+              {
+                balance: typeof curData.balance === 'number' ? curData.balance : current.balance,
+                owned: ownedList,
+                equipped: updatedEquipped,
+                updatedAt: serverTimestamp(),
+              },
+              { merge: true }
+            );
+          }
         });
-      });
+      } catch (err: any) {
+        console.error(
+          '[useWallet] equipCosmetic transaction error:',
+          err?.code || 'ERROR',
+          `wallets/${user.uid}`,
+          err
+        );
+        throw err;
+      }
 
-      const topLevelSlotField =
+      const topLevelSlotField: Record<string, unknown> =
         type === 'effect' ? { effectId: itemId } : { [type]: itemId };
+      if (type === 'frame') topLevelSlotField.equippedFrame = itemId;
+      if (type === 'avatar') topLevelSlotField.equippedAvatar = itemId;
+      if (type === 'banner') topLevelSlotField.equippedBanner = itemId;
+      if (type === 'nameplate') topLevelSlotField.equippedNameplate = itemId;
 
       // Persist equipped cosmetics to users/{uid} so useUserProfile listener stays in sync
       await setDoc(
@@ -153,8 +276,13 @@ export function useWallet() {
           updatedAt: serverTimestamp(),
         },
         { merge: true }
-      ).catch((err) => {
-        console.warn('[useWallet] Failed to mirror equipped cosmetic to users doc:', err);
+      ).catch((err: any) => {
+        console.error(
+          '[useWallet] Failed to mirror equipped cosmetic to users doc:',
+          err?.code || 'ERROR',
+          `users/${user.uid}`,
+          err
+        );
       });
 
       // Synchronize to public profile so leaderboards, crew roster, and other viewers display it
@@ -182,12 +310,15 @@ export function useWallet() {
       if (!user?.uid) throw new Error('Must be logged in to purchase cosmetics');
       const { purchaseCosmeticItem } = await import('@/services/kobanService');
       const result = await purchaseCosmeticItem(user.uid, item, isSuperAdminUser);
+      const updatedOwned = result.owned
+        ? result.owned
+        : walletRef.current.owned.includes(item.id)
+        ? walletRef.current.owned
+        : [...walletRef.current.owned, item.id];
       const updated: WalletDoc = {
         ...walletRef.current,
         balance: result.newBalance,
-        owned: walletRef.current.owned.includes(item.id)
-          ? walletRef.current.owned
-          : [...walletRef.current.owned, item.id],
+        owned: updatedOwned,
       };
       sessionWalletCache[user.uid] = updated;
       setWallet(updated);

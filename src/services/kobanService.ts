@@ -51,8 +51,10 @@ export async function purchaseCosmeticItem(
   userId: string,
   item: CosmeticItem,
   isSuperAdmin = false
-): Promise<{ success: boolean; newBalance: number }> {
-  if (!userId) throw new Error('You must be signed in to purchase cosmetics.');
+): Promise<{ success: boolean; newBalance: number; owned: string[] }> {
+  if (!userId) {
+    throw new Error('Please sign in to purchase cosmetics.');
+  }
 
   const userRef = doc(db, 'users', userId);
   const walletRef = doc(db, 'wallets', userId);
@@ -61,79 +63,122 @@ export async function purchaseCosmeticItem(
   const legacyStoreItemRef = doc(db, 'store_items', item.id);
 
   try {
-    const newBalance = await runTransaction(db, async (tx) => {
+    const result = await runTransaction(db, async (tx) => {
       // 1. Reads
-      const [userSnap, walletSnap, unlockedSnap] = await Promise.all([
+      const [userSnap, walletSnap, unlockedSnap, storeItemSnap, legacySnap] = await Promise.all([
         tx.get(userRef),
         tx.get(walletRef),
         tx.get(unlockedDocRef),
+        tx.get(storeItemRef),
+        tx.get(legacyStoreItemRef),
       ]);
 
       if (unlockedSnap.exists()) {
-        throw new Error(`You have already unlocked "${item.name}".`);
+        throw new Error(`You already own "${item.name}".`);
       }
 
       const walletData = walletSnap.exists() ? walletSnap.data() : null;
-      const currentOwned: string[] = Array.isArray(walletData?.owned) ? walletData.owned : [];
+      const userData = userSnap.exists() ? userSnap.data() : null;
+      const walletOwned: string[] = Array.isArray(walletData?.owned) ? walletData.owned : [];
+      const userOwned: string[] = Array.isArray(userData?.ownedCosmetics)
+        ? userData.ownedCosmetics
+        : [];
+      const currentOwned: string[] = Array.from(new Set([...walletOwned, ...userOwned]));
+
       if (currentOwned.includes(item.id)) {
         throw new Error(`You already own "${item.name}".`);
       }
 
-      // Check item price from Firestore store items if present
-      let effectivePrice = item.priceKobans;
-      const storeItemSnap = await tx.get(storeItemRef);
-      if (storeItemSnap.exists()) {
-        const sData = storeItemSnap.data();
-        if (sData.active === false && !isSuperAdmin) {
+      // Check item price from Firestore store items if present (prefer V2 schema in store_items, then storeItems, then catalog)
+      let effectivePrice = Math.max(0, Math.floor(Number(item.priceKobans) || 0));
+      const v2StoreData =
+        legacySnap.exists() && legacySnap.data()?.priceSchemaV2
+          ? legacySnap.data()
+          : storeItemSnap.exists() && storeItemSnap.data()?.priceSchemaV2
+          ? storeItemSnap.data()
+          : storeItemSnap.exists()
+          ? storeItemSnap.data()
+          : legacySnap.exists()
+          ? legacySnap.data()
+          : null;
+
+      if (v2StoreData) {
+        if (v2StoreData.active === false && !isSuperAdmin) {
           throw new Error(`"${item.name}" is currently inactive in the Boardly Store.`);
         }
-        if (typeof sData.priceKobans === 'number') {
-          effectivePrice = Math.max(0, sData.priceKobans);
+        const basePrice =
+          typeof v2StoreData.priceKobans === 'number'
+            ? Math.max(0, Math.floor(v2StoreData.priceKobans))
+            : typeof v2StoreData.price_kobans === 'number'
+            ? Math.max(0, Math.floor(v2StoreData.price_kobans))
+            : effectivePrice;
+        const salePrice =
+          typeof v2StoreData.salePriceKobans === 'number'
+            ? Math.max(0, Math.floor(v2StoreData.salePriceKobans))
+            : typeof v2StoreData.sale_price_kobans === 'number'
+            ? Math.max(0, Math.floor(v2StoreData.sale_price_kobans))
+            : null;
+        const saleEndsRaw = v2StoreData.saleEndsAt ?? v2StoreData.sale_ends_at ?? null;
+        let saleStillValid = true;
+        if (saleEndsRaw) {
+          const endMs =
+            typeof saleEndsRaw === 'string'
+              ? new Date(saleEndsRaw).getTime()
+              : typeof saleEndsRaw?.toMillis === 'function'
+              ? saleEndsRaw.toMillis()
+              : Number(saleEndsRaw);
+          if (Number.isFinite(endMs) && endMs <= Date.now()) {
+            saleStillValid = false;
+          }
         }
-      } else {
-        const legacySnap = await tx.get(legacyStoreItemRef);
-        if (legacySnap.exists()) {
-          const sData = legacySnap.data();
-          if (sData.active === false && !isSuperAdmin) {
-            throw new Error(`"${item.name}" is currently inactive in the Boardly Store.`);
-          }
-          if (typeof sData.priceKobans === 'number') {
-            effectivePrice = Math.max(0, sData.priceKobans);
-          }
+        if (salePrice !== null && salePrice < basePrice && saleStillValid) {
+          effectivePrice = salePrice;
+        } else {
+          effectivePrice = basePrice;
         }
       }
 
-      // Read current balance from wallets doc (fallback to users doc only if wallet is uninitialized)
-      const userData = userSnap.exists() ? userSnap.data() : null;
+      // Read current balance across wallets/{uid} and users/{uid}
       const userKobans =
-        userData && typeof userData.kobans === 'number'
-          ? userData.kobans
-          : userData && typeof userData.kobanBalance === 'number'
-          ? userData.kobanBalance
+        userData && typeof userData.kobans === 'number' && Number.isFinite(userData.kobans)
+          ? Math.floor(userData.kobans)
           : 0;
-      const hasInitializedWallet =
-        walletSnap.exists() &&
-        typeof walletData?.balance === 'number' &&
-        (walletData.balance > 0 || currentOwned.length > 0);
-      const currentBalance = hasInitializedWallet
-        ? (walletData!.balance as number)
-        : Math.max(userKobans, typeof walletData?.balance === 'number' ? walletData.balance : 0);
+      const userKobanBalance =
+        userData &&
+        typeof userData.kobanBalance === 'number' &&
+        Number.isFinite(userData.kobanBalance)
+          ? Math.floor(userData.kobanBalance)
+          : 0;
+      const userDocBalance = Math.max(userKobans, userKobanBalance);
 
-      if (currentBalance < effectivePrice) {
+      const walletBalance =
+        walletData && typeof walletData.balance === 'number' && Number.isFinite(walletData.balance)
+          ? Math.floor(walletData.balance)
+          : null;
+
+      const currentBalance =
+        walletBalance !== null && walletBalance > 0
+          ? walletBalance
+          : Math.max(walletBalance ?? 0, userDocBalance);
+
+      if (currentBalance < effectivePrice && !isSuperAdmin) {
         throw new Error(
-          `Insufficient Kobans. You have ${currentBalance.toLocaleString()} Kobans, but ${item.name} costs ${effectivePrice.toLocaleString()} Kobans.`
+          `Insufficient Kobans. You have ${currentBalance.toLocaleString()} Kobans, but "${item.name}" costs ${effectivePrice.toLocaleString()} Kobans.`
         );
       }
 
-      const balanceAfter = Math.max(0, currentBalance - effectivePrice);
+      const priceToDeduct =
+        isSuperAdmin && currentBalance < effectivePrice ? 0 : effectivePrice;
+      const balanceAfter = Math.max(0, currentBalance - priceToDeduct);
       const updatedOwned = Array.from(new Set([...currentOwned, item.id]));
 
-      // 2. Writes in same atomic batch:
-      // A. Update users doc (decrement only kobans and kobanBalance down)
+      // 2. Writes in same atomic transaction:
+      // A. Update users/{uid} (decrement kobans and kobanBalance down)
       if (userSnap.exists()) {
         tx.update(userRef, {
           kobans: balanceAfter,
           kobanBalance: balanceAfter,
+          ownedCosmetics: updatedOwned,
           updatedAt: serverTimestamp(),
         });
       } else {
@@ -143,6 +188,7 @@ export async function purchaseCosmeticItem(
             uid: userId,
             kobans: balanceAfter,
             kobanBalance: balanceAfter,
+            ownedCosmetics: updatedOwned,
             updatedAt: serverTimestamp(),
           },
           { merge: true }
@@ -153,11 +199,22 @@ export async function purchaseCosmeticItem(
       tx.set(unlockedDocRef, {
         itemId: item.id,
         itemName: item.name,
-        pricePaid: effectivePrice,
+        category: item.type,
+        rarity: item.rarity,
+        animated: Boolean(item.animated),
+        pricePaid: priceToDeduct,
         unlockedAt: serverTimestamp(),
       });
 
       // C. Update wallets/{uid} balance & owned
+      const resolvedEquipped = walletData?.equipped ||
+        userData?.equipped || {
+          effect: null,
+          frame: null,
+          nameplate: null,
+          avatar: null,
+          banner: null,
+        };
       if (walletSnap.exists()) {
         tx.update(walletRef, {
           balance: balanceAfter,
@@ -168,24 +225,28 @@ export async function purchaseCosmeticItem(
         tx.set(
           walletRef,
           {
+            uid: userId,
+            userId,
             balance: balanceAfter,
             owned: updatedOwned,
-            equipped: { effect: null, frame: null, nameplate: null, avatar: null, banner: null },
+            equipped: resolvedEquipped,
             updatedAt: serverTimestamp(),
           },
           { merge: true }
         );
       }
 
-      // D. Append immutable ledger document
+      // D. Append immutable ledger document in wallets/{uid}/ledger/{entryId}
       const ledgerEntryRef = doc(
         collection(db, 'wallets', userId, 'ledger'),
         `purchase_${item.id}_${Date.now()}`
       );
       tx.set(ledgerEntryRef, {
         id: ledgerEntryRef.id,
+        userId,
         type: 'purchase',
-        amount: -effectivePrice,
+        amount: -priceToDeduct,
+        balanceBefore: currentBalance,
         balanceAfter,
         itemId: item.id,
         itemName: item.name,
@@ -193,17 +254,22 @@ export async function purchaseCosmeticItem(
         timestamp: serverTimestamp(),
       });
 
-      return balanceAfter;
+      return { newBalance: balanceAfter, owned: updatedOwned };
     });
 
-    return { success: true, newBalance };
+    return { success: true, newBalance: result.newBalance, owned: result.owned };
   } catch (err: any) {
     console.error(
       '[kobanService] purchaseCosmeticItem error:',
       err?.code || 'ERROR',
-      `users/${userId}/unlocked/${item.id}`,
+      `paths=[wallets/${userId}, users/${userId}, users/${userId}/unlocked/${item.id}, wallets/${userId}/ledger]`,
       err
     );
+    if (err?.code === 'permission-denied') {
+      throw new Error(
+        'Purchase failed: Missing or insufficient permissions. Please refresh the page and try again.'
+      );
+    }
     throw err;
   }
 }

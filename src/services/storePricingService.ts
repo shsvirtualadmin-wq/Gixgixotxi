@@ -472,32 +472,19 @@ export async function verifyItemPriceAtPurchase(
       };
     }
 
-    // Sync storeItems/{id} so kobanService.ts reads the exact effective price (instead of any legacy 600 doc)
-    try {
-      await setDoc(
-        doc(db, 'storeItems', itemId),
-        {
-          id: itemId,
-          priceKobans: effectivePrice,
-          basePriceKobans: liveBasePrice,
-          salePriceKobans: liveSalePrice,
-          saleEndsAt: liveSaleEndsAt,
-          active: isActive,
-          priceSchemaV2: true,
-        },
-        { merge: true }
-      );
-    } catch {
-      // Non-fatal if student role cannot write storeItems; kobanService uses item.priceKobans fallback
-    }
-
     return {
       valid: true,
       liveEffectivePrice: effectivePrice,
       liveBasePrice,
       isActive,
     };
-  } catch {
+  } catch (err: any) {
+    console.error(
+      '[StorePricingService] verifyItemPriceAtPurchase error:',
+      err?.code || 'unknown',
+      `store_items/${itemId}`,
+      err
+    );
     return {
       valid: true,
       liveEffectivePrice: expectedEffectivePrice,
