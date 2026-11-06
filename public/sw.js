@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shs-boardly-mcq-v8';
+const CACHE_NAME = 'shs-boardly-mcq-v9';
 
 const ASSETS_TO_CACHE = [
   '/logo.png',
@@ -35,6 +35,15 @@ self.addEventListener('activate', (event) => {
 // Fetch Event
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+
+  // Never intercept Vite dev modules or source files
+  if (
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.pathname.startsWith('/@')
+  ) {
+    return;
+  }
 
   // Handle API Requests (Network First, Cache Fallback)
   if (url.pathname.startsWith('/api/')) {
@@ -100,7 +109,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle JavaScript, CSS & Store Assets (Never cache HTML fallbacks on missing assets)
+  // Handle JavaScript, CSS & Store Assets (Network First so updates are always immediate)
   if (url.pathname.startsWith('/assets/')) {
     event.respondWith(
       fetch(event.request)
@@ -114,6 +123,11 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() => caches.match(event.request))
     );
+    return;
+  }
+
+  // Only use Cache-First for actual static media/font/icon assets
+  if (!/\.(png|jpe?g|svg|webp|gif|ico|woff2?|ttf|eot)$/i.test(url.pathname)) {
     return;
   }
 

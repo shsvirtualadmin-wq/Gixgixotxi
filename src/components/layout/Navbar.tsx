@@ -7,8 +7,8 @@ import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
 import { useHomeUrl } from '@/utils/homeUrl';
 
 const ALL_NAV_LINKS = [
-  { to: '/rewards', label: 'Rewards', highlight: true },
-  { to: '/grand-line', label: GRAND_LINE_NAME, highlight: true },
+  { to: '/rewards', label: 'Rewards' },
+  { to: '/grand-line', label: GRAND_LINE_NAME },
   { to: '/mcqs', label: 'Subject MCQs', shortLabel: 'MCQs' },
   { to: '/commons', label: 'Boardly Commons', shortLabel: 'Commons' },
   { to: '/material', label: 'Study Material', shortLabel: 'Material' },
@@ -20,7 +20,7 @@ const ALL_NAV_LINKS = [
   { to: '/contact', label: 'Contact' },
 ];
 
-// Top desktop navbar excludes Grand Line button to keep it clean and focused
+// Top desktop navbar excludes Grand Line and Rewards buttons to keep it clean and focused
 const DESKTOP_NAV_LINKS = ALL_NAV_LINKS.filter(
   (link) => link.to !== '/grand-line' && link.to !== '/rewards'
 );
@@ -114,22 +114,6 @@ export function Navbar() {
             <div className="hidden xl:flex items-center gap-1 2xl:gap-1.5">
               {DESKTOP_NAV_LINKS.map((link) => {
                 const active = isLinkActive(link.to);
-                if (link.highlight) {
-                  return (
-                    <Link
-                      key={link.to}
-                      to={link.to}
-                      onClick={handleClose}
-                      className={`px-3 py-1.5 rounded-full text-xs font-heading font-bold transition-all border whitespace-nowrap shadow-sm hover:-translate-y-0.5 active:scale-95 ${
-                        active
-                          ? 'bg-[#D71921] text-white border-[#D71921] shadow-[0_4px_14px_rgba(215,25,33,0.45)]'
-                          : 'bg-[#D71921]/15 text-[#D71921] border-[#D71921]/40 hover:bg-[#D71921] hover:text-white hover:shadow-[0_4px_16px_rgba(215,25,33,0.4)]'
-                      }`}
-                    >
-                      {link.shortLabel || link.label}
-                    </Link>
-                  );
-                }
                 return (
                   <Link
                     key={link.to}

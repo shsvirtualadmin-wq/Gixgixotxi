@@ -12,27 +12,45 @@ if (typeof window !== 'undefined') {
   
   // Safely check and unregister any legacy service workers/caches without throwing in sandboxed iframes
   try {
+    const clearPromises: Promise<unknown>[] = [];
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker
-        .getRegistrations()
-        .then((registrations) => {
-          for (const registration of registrations) {
-            registration.unregister().catch(() => {});
-          }
-        })
-        .catch(() => {});
+      clearPromises.push(
+        navigator.serviceWorker
+          .getRegistrations()
+          .then(async (registrations) => {
+            let hadRegistration = false;
+            for (const registration of registrations) {
+              hadRegistration = true;
+              await registration.unregister().catch(() => {});
+            }
+            return hadRegistration;
+          })
+          .catch(() => false)
+      );
     }
-  } catch {
-    // Ignore restricted iframe sandbox security errors
-  }
-
-  try {
     if ('caches' in window) {
-      window.caches
-        .keys()
-        .then((names) => {
-          for (const name of names) {
-            window.caches.delete(name).catch(() => {});
+      clearPromises.push(
+        window.caches
+          .keys()
+          .then(async (names) => {
+            let hadCache = false;
+            for (const name of names) {
+              hadCache = true;
+              await window.caches.delete(name).catch(() => {});
+            }
+            return hadCache;
+          })
+          .catch(() => false)
+      );
+    }
+    if (clearPromises.length > 0) {
+      Promise.all(clearPromises)
+        .then((results) => {
+          const hadStaleSwOrCache = results.some(Boolean);
+          const purgeReloadKey = 'boardly_sw_cache_purged_v9';
+          if (hadStaleSwOrCache && !sessionStorage.getItem(purgeReloadKey)) {
+            sessionStorage.setItem(purgeReloadKey, '1');
+            window.location.reload();
           }
         })
         .catch(() => {});

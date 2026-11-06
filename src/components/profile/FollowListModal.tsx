@@ -5,7 +5,7 @@ import { getPublicProfiles } from '@/services/publicProfileService';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { getRankTitle } from '@/config/rankLadder';
 import type { PublicProfile } from '@/types';
-import { LineLoader } from '@/components/ui/LineLoader';
+import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 
 interface FollowListModalProps {
   isOpen: boolean;

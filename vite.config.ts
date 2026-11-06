@@ -13,6 +13,11 @@ function aiTutorPlugin() {
       server.middlewares.use((req: any, res: any, next: () => void) => {
         const acceptEncoding = String(req.headers?.['accept-encoding'] || '');
         const rawUrl = String(req.url || '').split('?')[0].toLowerCase();
+        if (rawUrl.startsWith('/src/')) {
+          try {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+          } catch {}
+        }
         if (
           !acceptEncoding.includes('gzip') ||
           (req.method !== 'GET' && req.method !== 'POST') ||
