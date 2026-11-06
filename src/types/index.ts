@@ -13,7 +13,6 @@ export interface UserProfile {
   photoURL?: string | null;
   role: UserRole | string;
   customRole?: string | null;
-  hasChosenRole?: boolean;
   plan: UserPlan;
   status?: string;
   isPremium?: boolean;

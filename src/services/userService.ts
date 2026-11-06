@@ -143,7 +143,6 @@ export async function saveProfileIdentity(
     displayName: cleanNickname,
     name: cleanNickname,
     username: cleanUsername,
-    hasChosenRole: true,
     updatedAt: now,
   };
 

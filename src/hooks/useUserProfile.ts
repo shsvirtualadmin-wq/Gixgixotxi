@@ -162,7 +162,11 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
 
       if (snap.exists()) {
         const data = snap.data() as UserProfile;
-        const fullProfile = { ...data, uid };
+        const fullProfile: UserProfile = {
+          ...data,
+          uid,
+          role: data.role || 'student',
+        };
         sharedState.docExists = true;
         sharedState.fetchStatus = 'success';
         sharedState.profile = fullProfile;
@@ -250,6 +254,31 @@ export function useUserProfile(): UserProfileHookResult {
         releaseSubscription();
       }
     };
+  }, [user?.uid, authProfile]);
+
+  useEffect(() => {
+    if (!user?.uid || !authProfile) return;
+    if (sharedState.profile && sharedState.profile.uid === user.uid) {
+      const nextCustomRole = authProfile.customRole ?? sharedState.profile.customRole;
+      const nextRole = authProfile.role || sharedState.profile.role || 'student';
+      const nextUsername = authProfile.username ?? sharedState.profile.username;
+      const nextDisplayName = authProfile.displayName ?? sharedState.profile.displayName;
+      if (
+        nextCustomRole !== sharedState.profile.customRole ||
+        nextRole !== sharedState.profile.role ||
+        nextUsername !== sharedState.profile.username ||
+        nextDisplayName !== sharedState.profile.displayName
+      ) {
+        sharedState.profile = {
+          ...sharedState.profile,
+          ...authProfile,
+          role: nextRole,
+          customRole: nextCustomRole,
+        };
+        setLocalCachedProfile(user.uid, sharedState.profile);
+        broadcastState();
+      }
+    }
   }, [user?.uid, authProfile]);
 
   const profile = sharedState.profile || (user?.uid ? getLocalCachedProfile(user.uid) : null);

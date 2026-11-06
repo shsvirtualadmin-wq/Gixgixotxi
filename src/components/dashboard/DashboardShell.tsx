@@ -5,7 +5,6 @@ import { VerificationBanner } from '@/components/auth/VerificationBanner';
 import { DashboardTopBar } from './DashboardTopBar';
 import { DashboardBottomNav } from './DashboardBottomNav';
 import { DashboardErrorBoundary } from './DashboardErrorBoundary';
-import { RoleSelectionPromptModal } from '@/components/profile/RoleSelectionPromptModal';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
 import { LineLoader } from '@/components/ui/LineLoader';
@@ -64,7 +63,6 @@ export function DashboardShell() {
         noindex={true}
       />
       <VerificationBanner />
-      <RoleSelectionPromptModal />
       {!isProfileRoute && !isCommonsRoute && <DashboardTopBar />}
 
       {/* Main Content Container: when on profile route, remove bottom nav padding and use safe-area padding */}

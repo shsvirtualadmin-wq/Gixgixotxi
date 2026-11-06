@@ -105,9 +105,11 @@ export function SettingsPage() {
     if (profile?.username) {
       setUsernameInput(profile.username);
     }
-    if (profile?.customRole || profile?.role) {
-      setSelectedRole(profile.customRole || profile.role || 'Student');
-    }
+    const rawRole = (profile?.customRole || profile?.role || 'Student').trim();
+    const matchedSelectable = SELECTABLE_USER_ROLES.find(
+      (r) => r.toLowerCase() === rawRole.toLowerCase()
+    );
+    setSelectedRole(matchedSelectable || (rawRole.toLowerCase() === 'student' ? 'Student' : rawRole));
   }, [
     profile?.displayName,
     profile?.nickname,

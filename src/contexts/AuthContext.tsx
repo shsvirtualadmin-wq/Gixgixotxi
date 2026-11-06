@@ -255,10 +255,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // Ensure displayName is populated without touching plan/role
+        // Ensure displayName and default Student role are populated silently
+        const silentPatches: Record<string, unknown> = {};
         if (!loadedProfile.displayName || loadedProfile.displayName === 'Unnamed Student') {
           loadedProfile.displayName = fallbackName;
-          setDoc(docRef, { displayName: fallbackName }, { merge: true }).catch(() => {});
+          silentPatches.displayName = fallbackName;
+        }
+        if (!loadedProfile.role) {
+          loadedProfile.role = isSuperAdminAccount ? 'admin' : 'student';
+          silentPatches.role = loadedProfile.role;
+        }
+        if (Object.keys(silentPatches).length > 0) {
+          setDoc(docRef, silentPatches, { merge: true }).catch(() => {});
         }
 
         setProfile(loadedProfile);
