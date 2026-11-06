@@ -1692,25 +1692,23 @@ body,
 }
 
 .allow-backdrop-blur {
-  backdrop-filter: blur(14px) !important;
-  -webkit-backdrop-filter: blur(14px) !important;
+  backdrop-filter: blur(28px) saturate(1.2) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.2) !important;
 }
 
 /* Touch devices, mobile viewports, and Smooth Mode (Lite Mode) */
 @media (max-width: 768px), (hover: none) and (pointer: coarse) {
-  .allow-backdrop-blur {
+  .allow-backdrop-blur:not(.dashboard-glass-bar):not(.more-sheet-panel):not(.avatar-dropdown-panel):not(.more-sheet-backdrop):not(.avatar-dropdown-backdrop):not(nav) {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
 
-  /* Solid semi-opaque navbar/menu surface when blur is off on phones */
+  /* Keep proper glass blur and high-opacity surface on navbars on phones */
   header nav.allow-backdrop-blur,
-  nav.allow-backdrop-blur {
-    background-color: rgba(12, 12, 16, 0.95) !important;
-  }
-  :is(.light, [data-theme="light"]) header nav.allow-backdrop-blur,
-  :is(.light, [data-theme="light"]) nav.allow-backdrop-blur {
-    background-color: rgba(255, 255, 255, 0.96) !important;
+  nav.allow-backdrop-blur,
+  .dashboard-glass-bar {
+    backdrop-filter: blur(28px) saturate(1.2) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(1.2) !important;
   }
 
   /* Disable idle float animations on touch/mobile devices to save 60fps compositor drain */
@@ -2609,35 +2607,79 @@ body,
 }
 
 /* ==========================================================================
-   MORE MENU BOTTOM SHEET — GLASSMORPHISM & DUAL-THEME SYSTEM
-   Uses only existing tokens: --bg, --surface, --text, --text-muted,
-   --border, --accent, --glass-bg, --glass-border, --glass-highlight, --glass-shadow
+   DASHBOARD MENUS & NAVIGATION BARS — NOTHING OS + CLEAN GLASSMORPHISM
+   Covers:
+   - Top Navbar (.dashboard-glass-bar)
+   - Bottom Navigation Bar (.dashboard-glass-bar)
+   - Avatar Dropdown (.avatar-dropdown-backdrop, .avatar-dropdown-panel)
+   - Hamburger Bottom Sheet (.more-sheet-backdrop, .more-sheet-panel)
    ========================================================================== */
 
-.more-sheet-backdrop {
-  background-color: color-mix(in srgb, var(--bg) 58%, rgba(0, 0, 0, 0.42));
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+:root,
+.light,
+[data-theme="light"] {
+  --glass-menu-bg: rgba(255, 255, 255, 0.88);
+  --glass-menu-fallback: #ffffff;
+  --glass-menu-border: rgba(0, 0, 0, 0.07);
+  --glass-menu-divider: rgba(0, 0, 0, 0.07);
+  --glass-menu-shadow: 0 20px 48px -12px rgba(15, 23, 42, 0.14), 0 4px 16px -4px rgba(15, 23, 42, 0.06);
+  --glass-menu-backdrop: rgba(15, 23, 42, 0.45);
+  --glass-menu-item-bg: rgba(17, 17, 20, 0.035);
+  --glass-menu-item-hover: rgba(17, 17, 20, 0.065);
+  --glass-menu-item-border: rgba(0, 0, 0, 0.06);
+  --glass-menu-icon-bg: rgba(17, 17, 20, 0.05);
+  --glass-menu-active-bg: rgba(217, 20, 34, 0.09);
+  --glass-menu-active-border: rgba(217, 20, 34, 0.28);
+}
+
+.dark,
+[data-theme="dark"] {
+  --glass-menu-bg: rgba(16, 16, 20, 0.78);
+  --glass-menu-fallback: #121216;
+  --glass-menu-border: rgba(255, 255, 255, 0.14);
+  --glass-menu-divider: rgba(255, 255, 255, 0.10);
+  --glass-menu-shadow: 0 24px 56px -12px rgba(0, 0, 0, 0.76), 0 6px 20px -4px rgba(0, 0, 0, 0.52);
+  --glass-menu-backdrop: rgba(0, 0, 0, 0.66);
+  --glass-menu-item-bg: rgba(255, 255, 255, 0.045);
+  --glass-menu-item-hover: rgba(255, 255, 255, 0.08);
+  --glass-menu-item-border: rgba(255, 255, 255, 0.10);
+  --glass-menu-icon-bg: rgba(255, 255, 255, 0.06);
+  --glass-menu-active-bg: rgba(225, 29, 42, 0.14);
+  --glass-menu-active-border: rgba(225, 29, 42, 0.36);
+}
+
+/* Shared Glass Bar for Dashboard Top Navbar & Bottom Navigation Bar */
+.dashboard-glass-bar {
+  background-color: var(--glass-menu-bg) !important;
+  background-image: none !important;
+  border: 1px solid var(--glass-menu-border) !important;
+  box-shadow: var(--glass-menu-shadow) !important;
+  backdrop-filter: blur(28px) saturate(1.2) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.2) !important;
+}
+
+/* Dimmed, blurred backdrop overlay behind both the Avatar Dropdown and the Bottom Sheet */
+.more-sheet-backdrop,
+.avatar-dropdown-backdrop {
+  background-color: var(--glass-menu-backdrop);
+  backdrop-filter: blur(16px) saturate(1.1);
+  -webkit-backdrop-filter: blur(16px) saturate(1.1);
   transition: opacity 200ms ease-out;
 }
 
+/* Hamburger Bottom Sheet Panel (max 85% screen height, rounded top corners) */
 .more-sheet-panel {
   position: relative;
   width: 100%;
-  max-height: 78vh;
-  max-height: 78dvh;
-  border-radius: 30px 30px 0 0;
-  background-color: color-mix(in srgb, var(--surface) 74%, var(--glass-bg));
-  background-image: linear-gradient(
-    145deg,
-    var(--glass-highlight) 0%,
-    transparent 42%
-  );
-  border: 1px solid var(--glass-border);
-  border-top-color: var(--glass-highlight);
-  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  max-height: 85vh;
+  max-height: 85dvh;
+  border-radius: 28px 28px 0 0;
+  background-color: var(--glass-menu-bg);
+  background-image: none;
+  border: 1px solid var(--glass-menu-border);
+  box-shadow: var(--glass-menu-shadow);
+  backdrop-filter: blur(28px) saturate(1.2);
+  -webkit-backdrop-filter: blur(28px) saturate(1.2);
   color: var(--text);
   overflow: hidden;
   display: flex;
@@ -2646,8 +2688,8 @@ body,
 
 @media (min-width: 640px) {
   .more-sheet-panel {
-    max-width: 430px;
-    border-radius: 30px;
+    max-width: 420px;
+    border-radius: 28px;
   }
 }
 
@@ -2667,25 +2709,51 @@ body,
     opacity 200ms ease-in;
 }
 
-/* Profile Card, Glass Tiles & List Containers (no nested backdrop-filter) */
+/* Desktop Avatar Dropdown Panel (matches Nothing OS glass spec & sheet structure) */
+.avatar-dropdown-panel {
+  width: 376px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 88px);
+  border-radius: 26px;
+  background-color: var(--glass-menu-bg);
+  background-image: none;
+  border: 1px solid var(--glass-menu-border);
+  box-shadow: var(--glass-menu-shadow);
+  backdrop-filter: blur(28px) saturate(1.2);
+  -webkit-backdrop-filter: blur(28px) saturate(1.2);
+  color: var(--text);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  animation: avatar-dropdown-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes avatar-dropdown-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Profile Card, Glass Tiles & List Containers (clean monochrome, no gradients) */
 .more-glass-card {
   position: relative;
-  border-radius: 22px;
-  background-color: var(--glass-bg);
-  background-image: linear-gradient(
-    135deg,
-    var(--glass-highlight) 0%,
-    transparent 58%
-  );
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  border-radius: 18px;
+  background-color: var(--glass-menu-item-bg);
+  background-image: none;
+  border: 1px solid var(--glass-menu-item-border);
+  box-shadow: none;
   color: var(--text);
   transition:
-    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 200ms ease,
-    border-color 200ms ease,
-    box-shadow 200ms ease,
-    color 200ms ease;
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
 }
 
 .more-glass-card--interactive {
@@ -2693,27 +2761,25 @@ body,
 }
 
 .more-glass-card--interactive:hover {
-  border-color: color-mix(in srgb, var(--accent) 30%, var(--glass-border));
+  background-color: var(--glass-menu-item-hover);
+  border-color: var(--glass-menu-border);
 }
 
 .more-glass-card--interactive:active {
-  transform: scale(0.97);
+  transform: scale(0.985);
 }
 
-/* 2-Column Compact Glass Tiles */
+/* 2-Column Compact Glass Tiles (uniform height >= 52px, uniform padding, no gradients) */
 .more-glass-tile {
   position: relative;
-  min-height: 54px;
+  min-height: 52px;
+  height: 52px;
   padding: 10px 12px;
-  border-radius: 20px;
-  background-color: var(--glass-bg);
-  background-image: linear-gradient(
-    135deg,
-    var(--glass-highlight) 0%,
-    transparent 60%
-  );
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  border-radius: 18px;
+  background-color: var(--glass-menu-item-bg);
+  background-image: none;
+  border: 1px solid var(--glass-menu-item-border);
+  box-shadow: none;
   color: var(--text);
   display: flex;
   align-items: center;
@@ -2721,32 +2787,33 @@ body,
   text-align: left;
   cursor: pointer;
   transition:
-    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 200ms ease,
-    border-color 200ms ease,
-    box-shadow 200ms ease,
-    color 200ms ease;
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
 }
 
 .more-glass-tile:hover {
-  border-color: color-mix(in srgb, var(--accent) 32%, var(--glass-border));
+  background-color: var(--glass-menu-item-hover);
+  border-color: var(--glass-menu-border);
 }
 
 .more-glass-tile:active {
-  transform: scale(0.97);
+  transform: scale(0.985);
 }
 
 .more-glass-tile--active {
-  background-color: color-mix(in srgb, var(--accent) 12%, var(--glass-bg));
-  border-color: color-mix(in srgb, var(--accent) 42%, var(--glass-border));
-  color: var(--accent);
+  background-color: var(--glass-menu-active-bg) !important;
+  border-color: var(--glass-menu-active-border) !important;
+  color: var(--accent) !important;
 }
 
-/* Glass Row (min touch target 48px, press effect scale(0.97)) */
+/* Full-width Glass Row (uniform height 48px, touch target >= 44px, uniform padding) */
 .more-glass-row {
   width: 100%;
   min-height: 48px;
-  padding: 10px 13px;
+  height: 48px;
+  padding: 10px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2756,56 +2823,53 @@ body,
   background-color: transparent;
   cursor: pointer;
   transition:
-    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 200ms ease,
-    color 200ms ease;
+    background-color 180ms ease,
+    color 180ms ease;
 }
 
 .more-glass-row:hover {
-  background-color: color-mix(in srgb, var(--text) 4%, transparent);
+  background-color: var(--glass-menu-item-hover);
 }
 
 .more-glass-row:active {
-  transform: scale(0.97);
+  background-color: var(--glass-menu-item-hover);
 }
 
 .more-glass-row--active {
-  background-color: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
+  background-color: var(--glass-menu-active-bg) !important;
+  color: var(--accent) !important;
 }
 
-/* Small Frosted Icon Circle */
+/* Uniform Thin-Line Icon Circle */
 .more-icon-circle {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border-radius: 9999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background-color: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  background-color: var(--glass-menu-icon-bg);
+  border: 1px solid var(--glass-menu-item-border);
   color: var(--text);
-  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
 }
 
 .more-icon-circle--accent {
-  background-color: color-mix(in srgb, var(--accent) 12%, var(--glass-bg));
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--glass-border));
+  background-color: var(--glass-menu-active-bg);
+  border-color: var(--glass-menu-active-border);
   color: var(--accent);
 }
 
-/* Small Glass Pill (Role/Plan badge, Mock Tests tag, Coin pill) */
+/* Small Pill (Role/Plan badge, Coin balance) */
 .more-glass-pill {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
   border-radius: 9999px;
-  background-color: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  background-color: var(--glass-menu-icon-bg);
+  border: 1px solid var(--glass-menu-item-border);
   color: var(--text-muted);
   font-size: 11px;
   font-weight: 600;
@@ -2814,27 +2878,26 @@ body,
 }
 
 .more-glass-pill--accent {
-  background-color: color-mix(in srgb, var(--accent) 12%, var(--glass-bg));
-  border-color: color-mix(in srgb, var(--accent) 36%, var(--glass-border));
+  background-color: var(--glass-menu-active-bg);
+  border-color: var(--glass-menu-active-border);
   color: var(--accent);
 }
 
-/* Segmented Glass Control for Theme */
+/* Segmented Control for Theme (Light / Dark / System) */
 .more-theme-segmented {
   display: inline-flex;
   align-items: center;
   padding: 3px;
-  border-radius: 14px;
-  background-color: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  border-radius: 9999px;
+  background-color: var(--glass-menu-icon-bg);
+  border: 1px solid var(--glass-menu-item-border);
   gap: 2px;
 }
 
 .more-theme-segment {
   min-height: 32px;
-  padding: 4px 9px;
-  border-radius: 10px;
+  padding: 4px 10px;
+  border-radius: 9999px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -2844,40 +2907,36 @@ body,
   border: 1px solid transparent;
   cursor: pointer;
   transition:
-    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 200ms ease,
-    border-color 200ms ease,
-    color 200ms ease,
-    box-shadow 200ms ease;
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
 }
 
 .more-theme-segment:hover {
   color: var(--text);
 }
 
-.more-theme-segment:active {
-  transform: scale(0.97);
-}
-
 .more-theme-segment--active {
-  background-color: color-mix(in srgb, var(--accent) 13%, var(--surface));
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--glass-border));
-  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  background-color: var(--glass-menu-active-bg);
+  border-color: var(--glass-menu-active-border);
   color: var(--accent);
-  font-weight: 700;
+  font-weight: 600;
 }
 
-/* Fallback when backdrop-filter is not supported */
+/* Solid background fallback when backdrop-filter is not supported */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .more-sheet-backdrop {
-    background-color: rgba(0, 0, 0, 0.65);
+  .more-sheet-backdrop,
+  .avatar-dropdown-backdrop {
+    background-color: rgba(0, 0, 0, 0.72);
   }
-  .more-sheet-panel {
-    background-color: var(--surface);
+  .dashboard-glass-bar,
+  .more-sheet-panel,
+  .avatar-dropdown-panel {
+    background-color: var(--glass-menu-fallback) !important;
   }
   .more-glass-card,
   .more-glass-tile {
-    background-color: var(--surface);
+    background-color: var(--surface-muted);
   }
 }
 
@@ -2892,6 +2951,9 @@ body,
     transform: none !important;
     opacity: 0;
     transition: opacity 140ms linear !important;
+  }
+  .avatar-dropdown-panel {
+    animation: none !important;
   }
   .more-glass-card,
   .more-glass-tile,

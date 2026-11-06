@@ -36,12 +36,7 @@ export function PillNav({
   return (
     <nav
       role="tablist"
-      style={{
-        backgroundColor: 'var(--nav-bg)',
-        borderColor: 'var(--glass-border)',
-        boxShadow: 'var(--glass-card-shadow)',
-      }}
-      className={`rounded-full allow-backdrop-blur border p-1.5 flex items-center justify-between w-full select-none relative overflow-hidden h-[56px] ${className}`}
+      className={`rounded-full dashboard-glass-bar allow-backdrop-blur border p-1.5 flex items-center justify-between w-full select-none relative overflow-hidden h-[56px] ${className}`}
     >
       {items.map((item, index) => {
         const id = item.id ?? item.to ?? index;
