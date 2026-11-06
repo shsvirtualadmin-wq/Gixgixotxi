@@ -36,7 +36,7 @@ export function PillNav({
   return (
     <nav
       role="tablist"
-      className={`rounded-full dashboard-glass-bar allow-backdrop-blur border p-1.5 flex items-center justify-between w-full select-none relative overflow-hidden h-[56px] ${className}`}
+      className={`rounded-full glass dashboard-glass-bar allow-backdrop-blur border p-1.5 flex items-center justify-between w-full select-none relative h-[56px] ${className}`}
     >
       {items.map((item, index) => {
         const id = item.id ?? item.to ?? index;

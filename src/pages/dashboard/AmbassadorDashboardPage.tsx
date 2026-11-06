@@ -1097,11 +1097,17 @@ export function AmbassadorDashboardPage() {
             role="dialog"
             aria-modal="true"
             data-fullscreen-modal="true"
-            className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
+            className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4"
           >
-            <div className="w-full h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-h-[90dvh] sm:max-w-2xl bg-[var(--card)] sm:rounded-2xl border-0 sm:border border-[var(--border)] flex flex-col overflow-hidden">
+            {/* Sibling dimmed/blurred backdrop so the modal panel is not nested inside a blurred element */}
+            <div
+              onClick={() => !savingTest && setModalOpen(false)}
+              className="fixed inset-0 z-0 bg-black/30 backdrop-blur-sm glass-backdrop cursor-pointer"
+              aria-hidden="true"
+            />
+            <div className="relative z-10 w-full h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-h-[90dvh] sm:max-w-2xl glass sm:rounded-2xl flex flex-col">
               {/* Modal Header — fixed at the top */}
-              <div className="sticky top-0 z-10 bg-[var(--card)] px-4 sm:px-6 py-4 border-b border-[var(--border)] flex items-center justify-between gap-3 shrink-0">
+              <div className="sticky top-0 z-10 px-4 sm:px-6 py-4 border-b border-[var(--border)] flex items-center justify-between gap-3 shrink-0">
                 <div>
                   <h2 className="text-base sm:text-lg font-bold text-[var(--text)]">
                     {editingTestId ? 'Edit Captain Test' : 'Create & Publish Test'}
@@ -1288,7 +1294,7 @@ export function AmbassadorDashboardPage() {
 
               {/* Sticky Safe-Area Footer — never clipped */}
               <div
-                className="sticky bottom-0 z-10 px-4 sm:px-6 pt-3 pb-[calc(16px+env(safe-area-inset-bottom,0px))] border-t border-[var(--border)] bg-[var(--card)] flex items-center justify-end gap-2.5 shrink-0"
+                className="sticky bottom-0 z-10 px-4 sm:px-6 pt-3 pb-[calc(16px+env(safe-area-inset-bottom,0px))] border-t border-[var(--border)] flex items-center justify-end gap-2.5 shrink-0"
                 style={{ paddingBottom: 'max(16px, calc(16px + env(safe-area-inset-bottom, 0px)))' }}
               >
                 <button
@@ -1329,9 +1335,14 @@ export function AmbassadorDashboardPage() {
             role="dialog"
             aria-modal="true"
             data-fullscreen-modal="true"
-            className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-xs flex items-center justify-center p-4"
+            className="fixed inset-0 z-[200] flex items-center justify-center p-4"
           >
-            <div className="w-full max-w-md rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4">
+            <div
+              onClick={() => !deletingTestId && setDeleteConfirmTest(null)}
+              className="fixed inset-0 z-0 bg-black/30 backdrop-blur-sm glass-backdrop cursor-pointer"
+              aria-hidden="true"
+            />
+            <div className="relative z-10 w-full max-w-md rounded-2xl glass p-5 space-y-4">
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-xl bg-red-500/15 text-red-400 flex items-center justify-center shrink-0">
                   <ShieldAlert size={20} />

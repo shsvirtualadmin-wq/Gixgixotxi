@@ -131,7 +131,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
     <>
       <header className="sticky top-0 z-[70] w-full max-w-full px-3 sm:px-6 pt-3 pb-1 shrink-0 pointer-events-none box-border">
         <div
-          className="w-full max-w-5xl min-w-0 box-border mx-auto h-14 sm:h-16 px-3 sm:px-5 rounded-full dashboard-glass-bar allow-backdrop-blur border flex items-center justify-between gap-2 pointer-events-auto transition-all duration-200"
+          className="w-full max-w-5xl min-w-0 box-border mx-auto h-14 sm:h-16 px-3 sm:px-5 rounded-full glass dashboard-glass-bar allow-backdrop-blur border flex items-center justify-between gap-2 pointer-events-auto transition-all duration-200"
         >
           {/* Left side: Brand logo, PRO/FREE badge, and Admin Portal label */}
           <div className="flex items-center gap-2 min-w-0 shrink">
@@ -271,7 +271,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
             {/* Dimmed, blurred backdrop overlay so page content underneath never competes with menu text */}
             <div
               onClick={() => setMenuOpen(false)}
-              className="fixed inset-0 z-0 cursor-pointer avatar-dropdown-backdrop allow-backdrop-blur"
+              className="fixed inset-0 z-0 cursor-pointer bg-black/30 backdrop-blur-sm avatar-dropdown-backdrop"
               aria-hidden="true"
             />
 
@@ -284,7 +284,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
                 top: `${dropdownCoords.top}px`,
                 right: `${dropdownCoords.right}px`,
               }}
-              className="z-10 avatar-dropdown-panel allow-backdrop-blur p-3.5"
+              className="z-10 glass avatar-dropdown-panel allow-backdrop-blur p-3.5"
             >
               <DashboardMenuContent
                 onNavigate={handleNav}

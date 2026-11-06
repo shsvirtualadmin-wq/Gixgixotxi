@@ -169,10 +169,10 @@ function DashboardBottomNavComponent() {
     <>
       {/* ─── FIXED UNIFIED PILL BOTTOM NAVIGATION ────────────────────────────── */}
       <div
-        className={`fixed bottom-[calc(12px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[520px] z-40 transition-opacity duration-150 ${
+        className={`fixed bottom-[calc(12px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[520px] z-40 ${
           shouldHideBottomNav
             ? 'opacity-0 pointer-events-none invisible'
-            : 'opacity-100 pointer-events-auto'
+            : 'pointer-events-auto'
         }`}
         aria-label="Student Navigation Bar"
         aria-hidden={shouldHideBottomNav}

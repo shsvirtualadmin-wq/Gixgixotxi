@@ -715,7 +715,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
       {/* Dimmed, blurred backdrop overlay */}
       <div
         onClick={dismissSheet}
-        className={`fixed inset-0 z-0 cursor-pointer more-sheet-backdrop allow-backdrop-blur ${
+        className={`fixed inset-0 z-0 cursor-pointer bg-black/30 backdrop-blur-sm more-sheet-backdrop ${
           isVisible ? 'opacity-100' : 'opacity-0'
         }`}
         aria-hidden="true"
@@ -725,7 +725,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
       <div
         ref={sheetRef}
         onClick={(e) => e.stopPropagation()}
-        className={`z-10 more-sheet-panel allow-backdrop-blur ${
+        className={`z-10 glass more-sheet-panel allow-backdrop-blur ${
           isVisible ? 'more-sheet-panel--open' : 'more-sheet-panel--closed'
         }`}
       >

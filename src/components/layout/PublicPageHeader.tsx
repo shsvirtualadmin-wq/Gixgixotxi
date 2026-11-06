@@ -73,7 +73,7 @@ export const PublicPageHeader: React.FC<PublicPageHeaderProps> = ({ title }) => 
       <div className="w-full max-w-6xl mx-auto pt-3 sm:pt-3.5 px-3 sm:px-4 md:px-6">
         <nav
           aria-label="Page Header Navigation"
-          className="public-header-glass-bar pointer-events-auto w-full min-h-[58px] sm:min-h-[62px] px-2.5 sm:px-4 rounded-full flex items-center justify-between gap-3 allow-backdrop-blur text-[var(--text)] transition-all"
+          className="glass public-header-glass-bar pointer-events-auto w-full min-h-[58px] sm:min-h-[62px] px-2.5 sm:px-4 rounded-full flex items-center justify-between gap-3 allow-backdrop-blur text-[var(--text)] transition-all"
         >
           {/* Left: Back Arrow Button + Title */}
           <div className="flex items-center gap-2.5 min-w-0">

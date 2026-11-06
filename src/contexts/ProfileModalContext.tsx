@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, lazy } from 'react';
+import { createPortal } from 'react-dom';
 import { BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
 
 const LazyProfileView = lazy(() =>
@@ -84,17 +85,23 @@ export const ProfileModalHost: React.FC = () => {
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-[140] flex items-center justify-center p-0 sm:p-4 bg-black/65 backdrop-blur-sm animate-fade-in overflow-hidden">
-      {/* Backdrop on desktop */}
+  const modalContent = (
+    <div
+      role="dialog"
+      aria-modal="true"
+      data-fullscreen-modal="true"
+      className="fixed inset-0 z-[140] flex items-center justify-center p-0 sm:p-4 animate-fade-in"
+    >
+      {/* Sibling dimmed/blurred backdrop */}
       <div
         onClick={() => closeProfile()}
-        className="absolute inset-0 hidden sm:block bg-black/40 backdrop-blur-xs"
+        className="fixed inset-0 z-0 bg-black/30 backdrop-blur-sm glass-backdrop cursor-pointer"
+        aria-hidden="true"
       />
 
       {/* Modal Container: Full-screen on mobile, centered dialog max-w-560px on desktop */}
       <div
-        className="relative z-10 w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-[560px] bg-[var(--background)] sm:rounded-3xl shadow-2xl overflow-y-auto scrollbar-none flex flex-col"
+        className="relative z-10 w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-[560px] glass sm:rounded-3xl shadow-2xl overflow-y-auto scrollbar-none flex flex-col"
       >
         <BoardlySuspenseBoundary
           variant="inline"
@@ -110,4 +117,8 @@ export const ProfileModalHost: React.FC = () => {
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(modalContent, document.body)
+    : modalContent;
 };

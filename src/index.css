@@ -630,8 +630,44 @@
   transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
 }
 
-/* GlassCard & legacy aliases mapped to floating glass cards (no backdrop-filter on cards) */
-.glass,
+/* Reusable iOS-style frosted glass utility class for navigation, headers, sheets & modals */
+.glass {
+  background: rgba(255, 255, 255, 0.65) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.35) !important;
+  box-shadow: 0 12px 36px -8px rgba(15, 23, 42, 0.12), 0 4px 12px -2px rgba(15, 23, 42, 0.06) !important;
+}
+.light .glass,
+[data-theme="light"] .glass {
+  background: rgba(255, 255, 255, 0.65) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.35) !important;
+  box-shadow: 0 12px 36px -8px rgba(15, 23, 42, 0.12), 0 4px 12px -2px rgba(15, 23, 42, 0.06) !important;
+}
+.dark .glass,
+[data-theme="dark"] .glass {
+  background: rgba(20, 20, 22, 0.55) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 16px 42px -8px rgba(0, 0, 0, 0.55), 0 4px 14px -2px rgba(0, 0, 0, 0.35) !important;
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .glass,
+  .light .glass,
+  [data-theme="light"] .glass {
+    background: rgba(255, 255, 255, 0.92) !important;
+  }
+  .dark .glass,
+  [data-theme="dark"] .glass {
+    background: rgba(20, 20, 22, 0.92) !important;
+  }
+}
+
+/* Solid card utility (no backdrop-filter on standard cards) */
 .card-solid {
   background: var(--glass-surface) !important;
   border: 1px solid var(--glass-border) !important;
@@ -642,8 +678,6 @@
   contain: layout paint;
   transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
-.light .glass,
-[data-theme="light"] .glass,
 .light .card-solid,
 [data-theme="light"] .card-solid {
   background: var(--glass-surface) !important;
@@ -1677,38 +1711,33 @@ body,
       with 1px border, top highlight, and 2-layer shadow — zero backdrop-filter.
    3. On touch devices, mobile screens (<=768px), or Smooth Mode (`.smooth-mode`),
       backdrop-filter and idle floating animations are disabled completely. */
-:is(
-  .backdrop-blur-3xl,
-  .backdrop-blur-2xl,
-  .backdrop-blur-xl,
-  .backdrop-blur-lg,
-  .backdrop-blur-md,
-  .backdrop-blur-sm,
-  .backdrop-blur,
-  [class*="backdrop-blur-["]
-):not(.allow-backdrop-blur) {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+.allow-backdrop-blur {
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
 }
 
-.allow-backdrop-blur {
-  backdrop-filter: blur(28px) saturate(1.2) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(1.2) !important;
+.backdrop-blur-sm {
+  -webkit-backdrop-filter: blur(4px) !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+.backdrop-blur-xs {
+  -webkit-backdrop-filter: blur(2px) !important;
+  backdrop-filter: blur(2px) !important;
 }
 
 /* Touch devices, mobile viewports, and Smooth Mode (Lite Mode) */
 @media (max-width: 768px), (hover: none) and (pointer: coarse) {
-  .allow-backdrop-blur:not(.dashboard-glass-bar):not(.more-sheet-panel):not(.avatar-dropdown-panel):not(.more-sheet-backdrop):not(.avatar-dropdown-backdrop):not(nav) {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-  }
-
-  /* Keep proper glass blur and high-opacity surface on navbars on phones */
+  /* Keep proper glass blur on navbars, headers, sheets, and modals on phones */
   header nav.allow-backdrop-blur,
   nav.allow-backdrop-blur,
-  .dashboard-glass-bar {
-    backdrop-filter: blur(28px) saturate(1.2) !important;
-    -webkit-backdrop-filter: blur(28px) saturate(1.2) !important;
+  .dashboard-glass-bar,
+  .public-header-glass-bar,
+  .more-sheet-panel,
+  .avatar-dropdown-panel,
+  .glass {
+    -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+    backdrop-filter: blur(24px) saturate(180%) !important;
   }
 
   /* Disable idle float animations on touch/mobile devices to save 60fps compositor drain */
@@ -1726,26 +1755,17 @@ body,
     filter: none !important;
   }
 
-  /* Cap box-shadow spread on mobile */
-  .shadow-2xl,
-  .shadow-xl,
-  .glass-panel,
-  .glass-card {
+  /* Cap box-shadow spread on mobile (excluding .glass surfaces which use soft frosted shadows) */
+  :is(.shadow-2xl, .shadow-xl, .glass-panel, .glass-card):not(.glass) {
     box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.1) !important;
   }
-  :is(.light, [data-theme="light"]) :is(.shadow-2xl, .shadow-xl, .glass-panel, .glass-card) {
+  :is(.light, [data-theme="light"]) :is(.shadow-2xl, .shadow-xl, .glass-panel, .glass-card):not(.glass) {
     box-shadow: 0 6px 16px -4px rgba(15, 23, 42, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.9) !important;
   }
 }
 
 /* Explicit Smooth Mode (Lite Mode) overrides across any screen size */
 :is(html.smooth-mode, html[data-smooth-mode="true"]) {
-  & *,
-  & .allow-backdrop-blur {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-  }
-
   & .animate-float-1,
   & .animate-float-2,
   & .animate-float-3,
@@ -1760,13 +1780,6 @@ body,
   & [class*="blur-["] {
     filter: none !important;
   }
-}
-
-/* Promote fixed and sticky navigation to independent GPU compositor layers */
-.fixed,
-.sticky {
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
 }
 
 /* ===== ACCESSIBILITY & PREFERS REDUCED MOTION ===== */
@@ -1874,7 +1887,7 @@ body,
     .bg-black\/50,
     .bg-black\/60,
     .bg-black\/70
-  ):not(.dark-surface-preserve) {
+  ):not(.dark-surface-preserve):not(.fixed):not(.glass):not(.glass-backdrop):not(.more-sheet-backdrop):not(.avatar-dropdown-backdrop):not(.backdrop-blur-sm):not(.backdrop-blur-xs) {
     background-color: var(--glass-row-bg) !important;
     border-color: var(--glass-border);
     box-shadow: var(--shadow-row) !important;
@@ -2695,52 +2708,52 @@ body,
 :root,
 .light,
 [data-theme="light"] {
-  --glass-menu-bg: rgba(255, 255, 255, 0.90);
-  --glass-menu-fallback: #ffffff;
-  --glass-menu-border: rgba(0, 0, 0, 0.08);
+  --glass-menu-bg: rgba(255, 255, 255, 0.65);
+  --glass-menu-fallback: rgba(255, 255, 255, 0.92);
+  --glass-menu-border: rgba(255, 255, 255, 0.35);
   --glass-menu-divider: rgba(0, 0, 0, 0.07);
-  --glass-menu-shadow: 0 20px 48px -12px rgba(15, 23, 42, 0.14), 0 4px 16px -4px rgba(15, 23, 42, 0.06);
-  --glass-menu-backdrop: rgba(15, 23, 42, 0.45);
-  --glass-menu-item-bg: rgba(17, 17, 20, 0.035);
-  --glass-menu-item-hover: rgba(17, 17, 20, 0.065);
+  --glass-menu-shadow: 0 12px 36px -8px rgba(15, 23, 42, 0.12), 0 4px 12px -2px rgba(15, 23, 42, 0.06);
+  --glass-menu-backdrop: rgba(0, 0, 0, 0.30);
+  --glass-menu-item-bg: rgba(17, 17, 20, 0.045);
+  --glass-menu-item-hover: rgba(17, 17, 20, 0.08);
   --glass-menu-item-border: rgba(0, 0, 0, 0.07);
-  --glass-menu-icon-bg: rgba(17, 17, 20, 0.05);
+  --glass-menu-icon-bg: rgba(17, 17, 20, 0.055);
   --glass-menu-active-bg: rgba(217, 20, 34, 0.09);
   --glass-menu-active-border: rgba(217, 20, 34, 0.28);
 }
 
 .dark,
 [data-theme="dark"] {
-  --glass-menu-bg: rgba(16, 16, 20, 0.90);
-  --glass-menu-fallback: #121216;
-  --glass-menu-border: rgba(255, 255, 255, 0.14);
+  --glass-menu-bg: rgba(20, 20, 22, 0.55);
+  --glass-menu-fallback: rgba(20, 20, 22, 0.92);
+  --glass-menu-border: rgba(255, 255, 255, 0.08);
   --glass-menu-divider: rgba(255, 255, 255, 0.10);
-  --glass-menu-shadow: 0 24px 56px -12px rgba(0, 0, 0, 0.76), 0 6px 20px -4px rgba(0, 0, 0, 0.52);
-  --glass-menu-backdrop: rgba(0, 0, 0, 0.66);
-  --glass-menu-item-bg: rgba(255, 255, 255, 0.045);
-  --glass-menu-item-hover: rgba(255, 255, 255, 0.08);
+  --glass-menu-shadow: 0 16px 42px -8px rgba(0, 0, 0, 0.55), 0 4px 14px -2px rgba(0, 0, 0, 0.35);
+  --glass-menu-backdrop: rgba(0, 0, 0, 0.30);
+  --glass-menu-item-bg: rgba(255, 255, 255, 0.055);
+  --glass-menu-item-hover: rgba(255, 255, 255, 0.09);
   --glass-menu-item-border: rgba(255, 255, 255, 0.10);
-  --glass-menu-icon-bg: rgba(255, 255, 255, 0.06);
+  --glass-menu-icon-bg: rgba(255, 255, 255, 0.065);
   --glass-menu-active-bg: rgba(225, 29, 42, 0.14);
   --glass-menu-active-border: rgba(225, 29, 42, 0.36);
 }
 
 /* Shared Glass Bar for Dashboard Top Navbar & Bottom Navigation Bar */
 .dashboard-glass-bar {
-  background-color: var(--glass-menu-bg) !important;
-  background-image: none !important;
+  background: var(--glass-menu-bg) !important;
   border: 1px solid var(--glass-menu-border) !important;
   box-shadow: var(--glass-menu-shadow) !important;
-  backdrop-filter: blur(28px) saturate(1.25) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(1.25) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
 }
 
 /* Dimmed, blurred backdrop overlay behind both the Avatar Dropdown and the Bottom Sheet */
 .more-sheet-backdrop,
-.avatar-dropdown-backdrop {
-  background-color: var(--glass-menu-backdrop);
-  backdrop-filter: blur(16px) saturate(1.1);
-  -webkit-backdrop-filter: blur(16px) saturate(1.1);
+.avatar-dropdown-backdrop,
+.glass-backdrop {
+  background-color: rgba(0, 0, 0, 0.30) !important;
+  -webkit-backdrop-filter: blur(4px) !important;
+  backdrop-filter: blur(4px) !important;
   transition: opacity 200ms ease-out;
 }
 
@@ -2751,14 +2764,12 @@ body,
   max-height: 85vh;
   max-height: 85dvh;
   border-radius: 28px 28px 0 0;
-  background-color: var(--glass-menu-bg);
-  background-image: none;
-  border: 1px solid var(--glass-menu-border);
-  box-shadow: var(--glass-menu-shadow);
-  backdrop-filter: blur(28px) saturate(1.2);
-  -webkit-backdrop-filter: blur(28px) saturate(1.2);
+  background: var(--glass-menu-bg) !important;
+  border: 1px solid var(--glass-menu-border) !important;
+  box-shadow: var(--glass-menu-shadow) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
   color: var(--text);
-  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -2792,12 +2803,11 @@ body,
   max-width: calc(100vw - 24px);
   max-height: calc(100dvh - 88px);
   border-radius: 26px;
-  background-color: var(--glass-menu-bg);
-  background-image: none;
-  border: 1px solid var(--glass-menu-border);
-  box-shadow: var(--glass-menu-shadow);
-  backdrop-filter: blur(28px) saturate(1.2);
-  -webkit-backdrop-filter: blur(28px) saturate(1.2);
+  background: var(--glass-menu-bg) !important;
+  border: 1px solid var(--glass-menu-border) !important;
+  box-shadow: var(--glass-menu-shadow) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
   color: var(--text);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -3003,13 +3013,19 @@ body,
 /* Solid background fallback when backdrop-filter is not supported */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .more-sheet-backdrop,
-  .avatar-dropdown-backdrop {
-    background-color: rgba(0, 0, 0, 0.72);
+  .avatar-dropdown-backdrop,
+  .glass-backdrop {
+    background-color: rgba(0, 0, 0, 0.5) !important;
   }
+  .glass,
   .dashboard-glass-bar,
+  .public-header-glass-bar,
   .more-sheet-panel,
   .avatar-dropdown-panel {
-    background-color: var(--glass-menu-fallback) !important;
+    background: rgba(255, 255, 255, 0.92) !important;
+  }
+  :is(.dark, [data-theme="dark"]) :is(.glass, .dashboard-glass-bar, .public-header-glass-bar, .more-sheet-panel, .avatar-dropdown-panel) {
+    background: rgba(20, 20, 22, 0.92) !important;
   }
   .more-glass-card,
   .more-glass-tile {
@@ -5896,9 +5912,9 @@ html:not(.dark) .zenryu-stage--active {
 :root,
 .light,
 [data-theme="light"] {
-  --public-header-bg: rgba(255, 255, 255, 0.89);
-  --public-header-border: rgba(15, 23, 42, 0.08);
-  --public-header-shadow: 0 8px 24px -6px rgba(15, 23, 42, 0.08), 0 2px 8px -2px rgba(15, 23, 42, 0.04);
+  --public-header-bg: rgba(255, 255, 255, 0.65);
+  --public-header-border: rgba(255, 255, 255, 0.35);
+  --public-header-shadow: 0 12px 36px -8px rgba(15, 23, 42, 0.12), 0 4px 12px -2px rgba(15, 23, 42, 0.06);
 
   --captain-panel-bg: rgba(255, 255, 255, 0.80);
   --captain-panel-border: rgba(15, 23, 42, 0.08);
@@ -5928,9 +5944,9 @@ html:not(.dark) .zenryu-stage--active {
 
 .dark,
 [data-theme="dark"] {
-  --public-header-bg: rgba(14, 14, 18, 0.89);
-  --public-header-border: rgba(255, 255, 255, 0.13);
-  --public-header-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.55), 0 4px 12px -2px rgba(0, 0, 0, 0.35);
+  --public-header-bg: rgba(20, 20, 22, 0.55);
+  --public-header-border: rgba(255, 255, 255, 0.08);
+  --public-header-shadow: 0 16px 42px -8px rgba(0, 0, 0, 0.55), 0 4px 14px -2px rgba(0, 0, 0, 0.35);
 
   --captain-panel-bg: rgba(20, 20, 26, 0.76);
   --captain-panel-border: rgba(255, 255, 255, 0.11);
@@ -5959,12 +5975,11 @@ html:not(.dark) .zenryu-stage--active {
 }
 
 .public-header-glass-bar {
-  background-color: var(--public-header-bg) !important;
-  background-image: none !important;
+  background: var(--public-header-bg) !important;
   border: 1px solid var(--public-header-border) !important;
   box-shadow: var(--public-header-shadow) !important;
-  backdrop-filter: blur(28px) saturate(1.25) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(1.25) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
 }
 
 .captain-glass-panel {

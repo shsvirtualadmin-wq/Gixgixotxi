@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { X, Lock, Mail, UserPlus } from 'lucide-react';
 import { useAuth } from './AuthContext';
@@ -98,18 +99,24 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     <AuthGateContext.Provider value={{ requireAuth, openSignInModal, closeSignInModal }}>
       {children}
 
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[var(--overlay)] allow-backdrop-blur animate-in fade-in duration-200"
-          onClick={closeSignInModal}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="auth-gate-title"
-        >
+      {isOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
           <div
-            className="glass-panel relative w-full max-w-md p-6 sm:p-8 border border-[var(--glass-border)] shadow-2xl text-left"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="auth-gate-title"
           >
+            <div
+              onClick={closeSignInModal}
+              className="fixed inset-0 z-0 bg-black/30 backdrop-blur-sm glass-backdrop cursor-pointer"
+              aria-hidden="true"
+            />
+            <div
+              className="glass glass-panel relative z-10 w-full max-w-md rounded-[28px] p-6 sm:p-8 text-left"
+              onClick={(e) => e.stopPropagation()}
+            >
             <button
               onClick={closeSignInModal}
               className="absolute top-4 right-4 w-9 h-9 rounded-full glass-pill flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
@@ -201,9 +208,10 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+            </div>
+          </div>,
+          document.body
+        )}
     </AuthGateContext.Provider>
   );
 };

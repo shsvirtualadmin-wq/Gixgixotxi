@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
 import { Logo } from '@/components/ui/Logo';
@@ -85,14 +86,7 @@ export function Navbar() {
         <div className="w-full max-w-7xl mx-auto pt-3.5 sm:pt-4 md:pt-5 px-3 sm:px-4 md:px-6">
           <nav
             aria-label="Main Navigation"
-            className={`pointer-events-auto w-full h-[64px] sm:h-[70px] px-3.5 sm:px-6 rounded-full flex items-center justify-between gap-2 sm:gap-3 transition-all duration-300 border allow-backdrop-blur text-[var(--text)] ${
-              isDark
-                ? 'border-white/10 shadow-[0_16px_40px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.14)]'
-                : 'border-black/[0.08] shadow-[0_14px_32px_rgba(15,23,42,0.08),inset_0_1px_1px_rgba(255,255,255,0.92)]'
-            }`}
-            style={{
-              backgroundColor: isDark ? 'rgba(10, 10, 14, 0.85)' : 'rgba(255, 255, 255, 0.82)',
-            }}
+            className="pointer-events-auto w-full h-[64px] sm:h-[70px] px-3.5 sm:px-6 rounded-full flex items-center justify-between gap-2 sm:gap-3 transition-all duration-300 glass public-header-glass-bar allow-backdrop-blur text-[var(--text)]"
           >
             {/* Left side: Prominent Boardly logo/wordmark in brand red */}
             <Link
@@ -181,34 +175,35 @@ export function Navbar() {
         </div>
       </header>
 
-      {/* Floating Glass Mobile Menu Panel with Staggered 300ms Animation */}
-      {isMounted && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Mobile Navigation"
-          className={`fixed inset-0 z-[1001] xl:hidden w-full h-[100dvh] max-h-[100dvh] overflow-y-auto overscroll-contain select-none transition-[opacity] duration-300 ease-out motion-reduce:transition-none flex flex-col justify-start p-4 sm:p-6 ${
-            isDark ? 'bg-black/70' : 'bg-slate-900/40'
-          }`}
-          style={{
-            paddingTop: 'calc(88px + env(safe-area-inset-top, 0px))',
-            opacity: isOpen ? 1 : 0,
-          }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) handleClose();
-          }}
-        >
+      {/* Floating Glass Mobile Menu Panel with Staggered 300ms Animation (Portaled to body) */}
+      {isMounted &&
+        typeof document !== 'undefined' &&
+        createPortal(
           <div
-            className={`w-full max-w-lg mx-auto rounded-[28px] sm:rounded-[32px] p-5 sm:p-7 flex flex-col gap-5 border allow-backdrop-blur transition-all duration-300 max-h-[calc(100dvh-110px)] overflow-y-auto ${
-              isDark
-                ? 'border-white/15 shadow-[0_20px_48px_rgba(0,0,0,0.72),inset_0_1px_1px_rgba(255,255,255,0.14)]'
-                : 'border-black/10 shadow-[0_20px_44px_rgba(15,23,42,0.14),inset_0_1px_1px_rgba(255,255,255,0.95)]'
-            }`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Mobile Navigation"
+            className="fixed inset-0 z-[1001] xl:hidden w-full h-[100dvh] max-h-[100dvh] overflow-y-auto overscroll-contain select-none flex flex-col justify-start p-4 sm:p-6"
             style={{
-              backgroundColor: isDark ? 'rgba(12, 12, 16, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-              transform: isOpen ? 'translateY(0) scale(1)' : 'translateY(-12px) scale(0.98)',
+              paddingTop: 'calc(88px + env(safe-area-inset-top, 0px))',
             }}
           >
+            {/* Sibling dimmed/blurred backdrop so blurred menu panel is not nested inside a blurred parent */}
+            <div
+              onClick={handleClose}
+              className="fixed inset-0 z-0 bg-black/30 backdrop-blur-sm glass-backdrop transition-opacity duration-300 ease-out cursor-pointer"
+              style={{ opacity: isOpen ? 1 : 0 }}
+              aria-hidden="true"
+            />
+
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="relative z-10 w-full max-w-lg mx-auto rounded-[28px] sm:rounded-[32px] p-5 sm:p-7 flex flex-col gap-5 glass allow-backdrop-blur transition-all duration-300 max-h-[calc(100dvh-110px)] overflow-y-auto"
+              style={{
+                opacity: isOpen ? 1 : 0,
+                transform: isOpen ? 'translateY(0) scale(1)' : 'translateY(-12px) scale(0.98)',
+              }}
+            >
             {/* Navigation Links in the dot font with Staggered Transition & 48px+ tap target */}
             <div className="flex flex-col gap-1.5 sm:gap-2 py-1 shrink-0">
               {ALL_NAV_LINKS.map((link, idx) => {
@@ -327,7 +322,8 @@ export function Navbar() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

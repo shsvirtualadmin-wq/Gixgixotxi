@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { NavLink, Outlet, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -67,6 +68,20 @@ export function AdminLayout() {
 
   const [isMoreOpen, setIsMoreOpen] = useState(false);
 
+  useEffect(() => {
+    if (isMoreOpen) {
+      document.body.style.overflow = 'hidden';
+      document.body.setAttribute('data-fullscreen-modal-open', 'true');
+    } else {
+      document.body.style.overflow = '';
+      document.body.removeAttribute('data-fullscreen-modal-open');
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.body.removeAttribute('data-fullscreen-modal-open');
+    };
+  }, [isMoreOpen]);
+
   const handleSignOut = async () => {
     setIsMoreOpen(false);
     await signOutUser();
@@ -89,7 +104,7 @@ export function AdminLayout() {
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] flex flex-col md:flex-row antialiased overflow-x-clip">
       {/* ─── DESKTOP LEFT SIDEBAR (240px) ─────────────────────────────────── */}
-      <aside className="hidden md:flex md:w-[240px] md:flex-col md:fixed md:inset-y-0 md:left-0 bg-[var(--glass-surface)] border-r border-[var(--glass-border)] z-30">
+      <aside className="hidden md:flex md:w-[240px] md:flex-col md:fixed md:inset-y-0 md:left-0 glass border-r border-[var(--glass-border)] z-30">
         {/* Sidebar Header */}
         <div className="h-16 px-5 border-b border-[var(--glass-border)] flex items-center">
           <Link to="/admin" className="flex items-center" aria-label="Boardly Admin">
@@ -170,7 +185,7 @@ export function AdminLayout() {
       </aside>
 
       {/* ─── MOBILE TOP BAR ─────────────────────────────────────────────────── */}
-      <header className="md:hidden sticky top-0 z-30 h-14 w-full max-w-full min-w-0 box-border bg-[var(--nav-bg)] allow-backdrop-blur border-b border-[var(--glass-border)] px-3.5 flex items-center justify-between gap-2 overflow-hidden">
+      <header className="md:hidden sticky top-0 z-30 h-14 w-full max-w-full min-w-0 box-border glass allow-backdrop-blur border-b border-[var(--glass-border)] px-3.5 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0 shrink">
           <Link to="/admin" className="flex items-center shrink-0" aria-label="Boardly Admin">
             <Logo size="admin" className="!h-[28px] min-[400px]:!h-[30px] w-auto shrink-0" />
@@ -227,17 +242,15 @@ export function AdminLayout() {
 
       {/* ─── MOBILE FLOATING PILL BOTTOM NAV (Overview, Users, Questions, More) ──── */}
       <div
-        className="md:hidden fixed bottom-[calc(12px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[420px] z-40"
+        className={`md:hidden fixed bottom-[calc(12px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[420px] z-40 ${
+          isMoreOpen ? 'opacity-0 pointer-events-none invisible' : 'pointer-events-auto'
+        }`}
         aria-label="Admin Navigation Bar"
+        aria-hidden={isMoreOpen}
       >
         <nav
           role="tablist"
-          style={{
-            backgroundColor: 'var(--nav-bg)',
-            borderColor: 'var(--glass-border)',
-            boxShadow: 'var(--glass-card-shadow), var(--glass-highlight)',
-          }}
-          className="rounded-full allow-backdrop-blur border p-1 flex items-center justify-between select-none relative overflow-hidden h-[54px]"
+          className="rounded-full glass dashboard-glass-bar allow-backdrop-blur border p-1 flex items-center justify-between select-none relative h-[54px]"
         >
           {PRIMARY_NAV.map(({ to, label, icon: Icon, end }) => {
             const isQuestions = to.includes('questions');
@@ -331,76 +344,86 @@ export function AdminLayout() {
         </nav>
       </div>
 
-      {/* ─── MOBILE "MORE" BOTTOM SHEET ────────────────────────────────────── */}
-      {isMoreOpen && (
-        <div className="md:hidden fixed inset-0 z-50 flex items-end">
+      {/* ─── MOBILE "MORE" BOTTOM SHEET (Portaled to body so never nested inside blurred parent) ─── */}
+      {isMoreOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
           <div
-            className="fixed inset-0 bg-[var(--overlay-bg)] transition-opacity"
-            onClick={() => setIsMoreOpen(false)}
-          />
-          <div className="relative w-full max-h-[80vh] glass-panel allow-backdrop-blur rounded-t-[28px] p-5 flex flex-col gap-4 overflow-y-auto animate-in slide-in-from-bottom duration-200">
-            {/* Grab handle */}
-            <div className="w-10 h-1 bg-[var(--glass-border)] rounded-full mx-auto -mt-1 mb-1" />
+            role="dialog"
+            aria-modal="true"
+            aria-label="More admin sections"
+            data-fullscreen-modal="true"
+            className="md:hidden fixed inset-0 z-[120] flex items-end justify-center"
+          >
+            <div
+              className="fixed inset-0 z-0 bg-black/30 backdrop-blur-sm more-sheet-backdrop transition-opacity cursor-pointer"
+              onClick={() => setIsMoreOpen(false)}
+              aria-hidden="true"
+            />
+            <div className="relative z-10 w-full max-h-[80dvh] glass more-sheet-panel allow-backdrop-blur rounded-t-[28px] p-5 pb-[calc(20px+env(safe-area-inset-bottom,0px))] flex flex-col gap-4 overflow-y-auto animate-in slide-in-from-bottom duration-200">
+              {/* Grab handle */}
+              <div className="w-10 h-1 bg-[var(--glass-border)] rounded-full mx-auto -mt-1 mb-1 shrink-0" />
 
-            <div className="flex items-center justify-between pb-2 border-b border-[var(--glass-border)]">
-              <h2 className="font-dot font-bold text-[15px] text-[var(--text)]">
-                More admin sections
-              </h2>
-              <button
-                type="button"
-                onClick={() => setIsMoreOpen(false)}
-                className="p-1.5 rounded-full glass-pill text-[var(--muted)] hover:text-[var(--text)]"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="space-y-1.5">
-              {SECONDARY_NAV.map(({ to, label, icon: Icon }) => (
-                <Link
-                  key={to}
-                  to={to}
+              <div className="flex items-center justify-between pb-2 border-b border-[var(--glass-border)] shrink-0">
+                <h2 className="font-dot font-bold text-[15px] text-[var(--text)]">
+                  More admin sections
+                </h2>
+                <button
+                  type="button"
                   onClick={() => setIsMoreOpen(false)}
-                  className={`flex items-center justify-between p-3 rounded-[18px] text-[13px] font-heading transition-colors ${
-                    location.pathname.startsWith(to)
-                      ? 'glass-row border-[var(--red)]/40 text-[var(--text)] font-semibold'
-                      : 'glass-row text-[var(--muted)] hover:text-[var(--text)]'
-                  }`}
+                  className="p-1.5 rounded-full glass-pill text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="space-y-1.5">
+                {SECONDARY_NAV.map(({ to, label, icon: Icon }) => (
+                  <Link
+                    key={to}
+                    to={to}
+                    onClick={() => setIsMoreOpen(false)}
+                    className={`flex items-center justify-between p-3 rounded-[18px] text-[13px] font-heading transition-colors ${
+                      location.pathname.startsWith(to)
+                        ? 'glass-row border-[var(--red)]/40 text-[var(--text)] font-semibold'
+                        : 'glass-row text-[var(--muted)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Icon size={16} />
+                      <span>{label}</span>
+                    </div>
+                    <ChevronRight size={14} className="text-[var(--muted)]" />
+                  </Link>
+                ))}
+              </div>
+
+              <div className="pt-2 border-t border-[var(--glass-border)] flex flex-col gap-2">
+                <Link
+                  to="/dashboard"
+                  onClick={() => setIsMoreOpen(false)}
+                  className="flex items-center justify-between p-3 rounded-[18px] glass-row text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)]"
                 >
                   <div className="flex items-center gap-3">
-                    <Icon size={16} />
-                    <span>{label}</span>
+                    <ExternalLink size={16} />
+                    <span>Student cockpit view</span>
                   </div>
                   <ChevronRight size={14} className="text-[var(--muted)]" />
                 </Link>
-              ))}
-            </div>
 
-            <div className="pt-2 border-t border-[var(--glass-border)] flex flex-col gap-2">
-              <Link
-                to="/dashboard"
-                onClick={() => setIsMoreOpen(false)}
-                className="flex items-center justify-between p-3 rounded-[18px] glass-row text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)]"
-              >
-                <div className="flex items-center gap-3">
-                  <ExternalLink size={16} />
-                  <span>Student cockpit view</span>
-                </div>
-                <ChevronRight size={14} className="text-[var(--muted)]" />
-              </Link>
-
-              <button
-                type="button"
-                onClick={handleSignOut}
-                className="w-full flex items-center justify-center gap-2 p-3 rounded-[18px] glass-row border-[var(--red)]/40 text-[var(--red)] font-heading text-[13px] font-medium"
-              >
-                <LogOut size={15} />
-                <span>Sign out</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="w-full flex items-center justify-center gap-2 p-3 rounded-[18px] glass-row border-[var(--red)]/40 text-[var(--red)] font-heading text-[13px] font-medium cursor-pointer"
+                >
+                  <LogOut size={15} />
+                  <span>Sign out</span>
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
