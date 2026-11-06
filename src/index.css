@@ -2287,102 +2287,144 @@ body,
 :root,
 .light,
 [data-theme="light"] {
-  --cockpit-edge-bright: rgba(255, 255, 255, 0.92);
+  --cockpit-edge-bright: rgba(255, 255, 255, 0.94);
   --cockpit-sheen: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.65) 0%,
-    rgba(255, 255, 255, 0.18) 48%,
-    rgba(217, 20, 34, 0.04) 100%
+    rgba(255, 255, 255, 0.78) 0%,
+    rgba(255, 255, 255, 0.35) 52%,
+    rgba(255, 255, 255, 0.12) 100%
   );
-  --cockpit-live-bg: rgba(255, 246, 247, 0.62);
+  --cockpit-stage-sheen: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.12) 100%
+  );
+  --cockpit-live-bg: rgba(255, 250, 251, 0.92);
   --cockpit-live-sheen: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.78) 0%,
-    rgba(255, 235, 238, 0.32) 52%,
-    rgba(217, 20, 34, 0.10) 100%
+    rgba(255, 255, 255, 0.92) 0%,
+    rgba(255, 241, 242, 0.52) 54%,
+    rgba(217, 20, 34, 0.08) 100%
   );
-  --cockpit-live-border: rgba(217, 20, 34, 0.28);
-  --cockpit-live-edge-bright: rgba(255, 255, 255, 0.95);
-  --cockpit-live-glow-hover: 0 18px 38px -6px rgba(217, 20, 34, 0.25), 0 6px 16px -2px rgba(217, 20, 34, 0.14), 0 0 0 1px rgba(217, 20, 34, 0.26);
-  --cockpit-soon-bg: rgba(255, 255, 255, 0.42);
-  --cockpit-soon-border: rgba(255, 255, 255, 0.55);
-  --cockpit-soon-shadow: 0 6px 18px -6px rgba(17, 17, 24, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.05);
-  --cockpit-circle-bg: rgba(255, 255, 255, 0.72);
-  --cockpit-circle-live-bg: rgba(217, 20, 34, 0.11);
-  --cockpit-circle-border: rgba(17, 17, 20, 0.08);
-  --cockpit-circle-live-border: rgba(217, 20, 34, 0.28);
-  --cockpit-pill-soon-bg: rgba(17, 17, 20, 0.06);
-  --cockpit-pill-soon-border: rgba(17, 17, 20, 0.10);
-  --cockpit-pill-live-bg: rgba(217, 20, 34, 0.12);
-  --cockpit-pill-live-border: rgba(217, 20, 34, 0.30);
-  --cockpit-fallback-bg: rgba(255, 255, 255, 0.94);
-  --cockpit-fallback-live-bg: rgba(255, 245, 246, 0.96);
+  --cockpit-live-border: rgba(217, 20, 34, 0.44);
+  --cockpit-live-edge-bright: rgba(217, 20, 34, 0.54);
+  --cockpit-live-glow: 0 10px 26px -6px rgba(217, 20, 34, 0.18), 0 4px 12px -2px rgba(217, 20, 34, 0.10), 0 0 0 1px rgba(217, 20, 34, 0.22), inset 0 0 18px rgba(217, 20, 34, 0.04);
+  --cockpit-live-glow-hover: 0 16px 36px -6px rgba(217, 20, 34, 0.26), 0 6px 16px -2px rgba(217, 20, 34, 0.15), 0 0 0 1.5px rgba(217, 20, 34, 0.42), inset 0 0 22px rgba(217, 20, 34, 0.07);
+  --cockpit-soon-bg: rgba(244, 245, 248, 0.90);
+  --cockpit-soon-border: rgba(17, 17, 20, 0.11);
+  --cockpit-soon-edge-bright: rgba(255, 255, 255, 0.90);
+  --cockpit-soon-shadow: 0 4px 14px -6px rgba(15, 23, 42, 0.05);
+  --cockpit-soon-text: #272730;
+  --cockpit-soon-subtext: #525260;
+  --cockpit-circle-bg: rgba(255, 255, 255, 0.88);
+  --cockpit-circle-live-bg: rgba(217, 20, 34, 0.12);
+  --cockpit-circle-border: rgba(17, 17, 20, 0.12);
+  --cockpit-circle-live-border: rgba(217, 20, 34, 0.34);
+  --cockpit-pill-soon-bg: rgba(17, 17, 20, 0.075);
+  --cockpit-pill-soon-border: rgba(17, 17, 20, 0.15);
+  --cockpit-pill-soon-text: #2e2e38;
+  --cockpit-pill-live-bg: rgba(217, 20, 34, 0.13);
+  --cockpit-pill-live-border: rgba(217, 20, 34, 0.34);
+  --cockpit-fallback-bg: rgba(255, 255, 255, 0.96);
+  --cockpit-fallback-live-bg: rgba(255, 246, 247, 0.98);
 }
 
 .dark,
 [data-theme="dark"] {
-  --cockpit-edge-bright: rgba(255, 255, 255, 0.22);
+  --cockpit-edge-bright: rgba(255, 255, 255, 0.20);
   --cockpit-sheen: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.10) 0%,
-    rgba(255, 255, 255, 0.02) 48%,
-    rgba(225, 29, 42, 0.05) 100%
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.02) 52%,
+    rgba(255, 255, 255, 0.01) 100%
   );
-  --cockpit-live-bg: rgba(225, 29, 42, 0.09);
+  --cockpit-stage-sheen: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.00) 100%
+  );
+  --cockpit-live-bg: rgba(30, 16, 20, 0.88);
   --cockpit-live-sheen: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.14) 0%,
-    rgba(225, 29, 42, 0.08) 52%,
-    rgba(225, 29, 42, 0.16) 100%
+    rgba(255, 255, 255, 0.10) 0%,
+    rgba(225, 29, 42, 0.10) 52%,
+    rgba(225, 29, 42, 0.18) 100%
   );
-  --cockpit-live-border: rgba(225, 29, 42, 0.36);
-  --cockpit-live-edge-bright: rgba(255, 160, 168, 0.42);
-  --cockpit-live-glow-hover: 0 20px 42px -6px rgba(225, 29, 42, 0.38), 0 0 28px -2px rgba(225, 29, 42, 0.28);
-  --cockpit-soon-bg: rgba(255, 255, 255, 0.035);
-  --cockpit-soon-border: rgba(255, 255, 255, 0.08);
-  --cockpit-soon-shadow: 0 10px 24px -8px rgba(0, 0, 0, 0.50);
-  --cockpit-circle-bg: rgba(255, 255, 255, 0.07);
-  --cockpit-circle-live-bg: rgba(225, 29, 42, 0.18);
-  --cockpit-circle-border: rgba(255, 255, 255, 0.12);
-  --cockpit-circle-live-border: rgba(225, 29, 42, 0.40);
-  --cockpit-pill-soon-bg: rgba(255, 255, 255, 0.06);
-  --cockpit-pill-soon-border: rgba(255, 255, 255, 0.11);
-  --cockpit-pill-live-bg: rgba(225, 29, 42, 0.20);
-  --cockpit-pill-live-border: rgba(225, 29, 42, 0.42);
-  --cockpit-fallback-bg: #141419;
-  --cockpit-fallback-live-bg: #1c1215;
+  --cockpit-live-border: rgba(225, 29, 42, 0.52);
+  --cockpit-live-edge-bright: rgba(244, 63, 78, 0.64);
+  --cockpit-live-glow: 0 12px 30px -6px rgba(225, 29, 42, 0.28), 0 0 20px -4px rgba(225, 29, 42, 0.22), 0 0 0 1px rgba(225, 29, 42, 0.32), inset 0 0 20px rgba(225, 29, 42, 0.08);
+  --cockpit-live-glow-hover: 0 18px 40px -6px rgba(225, 29, 42, 0.40), 0 0 28px -2px rgba(225, 29, 42, 0.32), 0 0 0 1.5px rgba(244, 63, 78, 0.56);
+  --cockpit-soon-bg: rgba(24, 24, 30, 0.84);
+  --cockpit-soon-border: rgba(255, 255, 255, 0.11);
+  --cockpit-soon-edge-bright: rgba(255, 255, 255, 0.16);
+  --cockpit-soon-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.46);
+  --cockpit-soon-text: #dcdce4;
+  --cockpit-soon-subtext: #a2a2b2;
+  --cockpit-circle-bg: rgba(255, 255, 255, 0.08);
+  --cockpit-circle-live-bg: rgba(225, 29, 42, 0.20);
+  --cockpit-circle-border: rgba(255, 255, 255, 0.14);
+  --cockpit-circle-live-border: rgba(225, 29, 42, 0.45);
+  --cockpit-pill-soon-bg: rgba(255, 255, 255, 0.085);
+  --cockpit-pill-soon-border: rgba(255, 255, 255, 0.16);
+  --cockpit-pill-soon-text: #d6d6e0;
+  --cockpit-pill-live-bg: rgba(225, 29, 42, 0.22);
+  --cockpit-pill-live-border: rgba(225, 29, 42, 0.46);
+  --cockpit-fallback-bg: #16161c;
+  --cockpit-fallback-live-bg: #1e1216;
 }
 
 .cockpit-root {
   color: var(--text);
+  padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
   transition: background-color 180ms ease, color 180ms ease;
 }
 
-/* Soft blurred red/crimson radial-gradient blobs behind the university grid (no images) */
+/* Clean Nothing OS glass container behind the university cards (equal padding, rounded corners, nothing cut off) */
 .cockpit-grid-stage {
   position: relative;
   isolation: isolate;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 16px;
+  border-radius: 24px;
+  background-color: var(--glass-menu-bg);
+  border: 1px solid var(--glass-menu-border);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  overflow: hidden;
+  transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+@media (min-width: 640px) {
+  .cockpit-grid-stage {
+    padding: 20px;
+  }
 }
 
 .cockpit-blob-layer {
   position: absolute;
-  inset: -16px -8px;
+  inset: 0;
+  margin: 0 !important;
   pointer-events: none;
   z-index: -1;
   overflow: hidden;
-  border-radius: 32px;
-  background:
-    radial-gradient(circle at 18% 22%, var(--blob-1) 0%, transparent 54%),
-    radial-gradient(circle at 82% 74%, var(--blob-2) 0%, transparent 56%),
-    radial-gradient(circle at 52% 48%, var(--blob-1) 0%, transparent 62%);
+  border-radius: inherit;
+  background: var(--cockpit-stage-sheen);
 }
 
-/* 2-column University Bubble Grid (gap 12-14px, equal heights, works at 360-430px) */
+.cockpit-blob-layer + * {
+  margin-top: 0 !important;
+}
+
+/* 2-column University Grid (gap 12-14px, adaptive row heights so Coming Soon cards stay compact) */
 .cockpit-uni-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-rows: 1fr;
-  gap: 13px;
+  grid-auto-rows: auto;
+  align-items: stretch;
+  gap: 12px;
   width: 100%;
 }
 
@@ -2408,15 +2450,15 @@ body,
   justify-content: space-between;
   min-height: 124px;
   padding: 15px 14px;
-  border-radius: 26px;
+  border-radius: 22px;
   background-color: var(--glass-bg);
   background-image: var(--cockpit-sheen);
   border: 1px solid var(--glass-border);
   border-top-color: var(--cockpit-edge-bright);
   border-left-color: var(--cockpit-edge-bright);
   box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
-  backdrop-filter: blur(16px) saturate(160%);
-  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
   text-align: left;
   transition:
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -2433,14 +2475,14 @@ body,
   }
 }
 
-/* LIVE University Bubble (mcq_count > 0) */
+/* LIVE University Card (mcq_count > 0) — subtle red border & crimson glow */
 .cockpit-uni-bubble--live {
   background-color: var(--cockpit-live-bg);
   background-image: var(--cockpit-live-sheen);
   border: 1px solid var(--cockpit-live-border);
   border-top-color: var(--cockpit-live-edge-bright);
   border-left-color: var(--cockpit-live-edge-bright);
-  box-shadow: var(--glass-glow), inset 0 1px 0 var(--glass-highlight);
+  box-shadow: var(--cockpit-live-glow), inset 0 1px 0 var(--glass-highlight);
   cursor: pointer;
 }
 
@@ -2486,17 +2528,46 @@ body,
   animation: cockpit-shimmer-once 1.15s cubic-bezier(0.22, 1, 0.36, 1) 0.18s 1 both;
 }
 
-/* COMING SOON University Bubble (mcq_count = 0) */
+/* COMING SOON University Card (mcq_count = 0) — high contrast text/tag, calm disabled look, reduced height & padding */
 .cockpit-uni-bubble--soon {
+  min-height: 98px;
+  padding: 11px 12px;
   background-color: var(--cockpit-soon-bg);
+  background-image: none;
   border: 1px solid var(--cockpit-soon-border);
-  border-top-color: var(--cockpit-edge-bright);
-  border-left-color: var(--cockpit-edge-bright);
+  border-top-color: var(--cockpit-soon-edge-bright);
+  border-left-color: var(--cockpit-soon-edge-bright);
   box-shadow: var(--cockpit-soon-shadow), inset 0 1px 0 var(--glass-highlight);
-  backdrop-filter: blur(8px) saturate(105%);
-  -webkit-backdrop-filter: blur(8px) saturate(105%);
-  opacity: 0.78;
+  backdrop-filter: blur(12px) saturate(110%);
+  -webkit-backdrop-filter: blur(12px) saturate(110%);
+  opacity: 1;
   cursor: not-allowed;
+}
+
+@media (min-width: 400px) {
+  .cockpit-uni-bubble--soon {
+    min-height: 104px;
+    padding: 12px 14px;
+  }
+}
+
+.cockpit-uni-bubble--soon > div:last-child {
+  margin-top: 8px;
+}
+
+.cockpit-uni-bubble--soon > div:last-child > div:first-child {
+  color: var(--cockpit-soon-text);
+}
+
+.cockpit-uni-bubble--soon > div:last-child > div:last-child {
+  color: var(--cockpit-soon-subtext);
+}
+
+.cockpit-uni-bubble--soon .cockpit-uni-circle {
+  width: 34px;
+  height: 34px;
+  font-size: 11px;
+  color: var(--cockpit-soon-text);
 }
 
 .cockpit-uni-bubble--soon:hover,
@@ -2557,29 +2628,35 @@ body,
 .cockpit-uni-pill--soon {
   background-color: var(--cockpit-pill-soon-bg);
   border: 1px solid var(--cockpit-pill-soon-border);
-  color: var(--text-muted);
+  color: var(--cockpit-pill-soon-text);
 }
 
 /* Cockpit Surface Cards (Stat Cards, Weak Chapters, Recent Attempts) */
 .cockpit-surface-card {
   border-radius: 24px;
-  background-color: var(--surface);
-  border: 1px solid var(--border);
+  background-color: var(--glass-menu-bg);
+  border: 1px solid var(--glass-menu-border);
   box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
   color: var(--text);
   transition: background-color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, color 180ms ease;
 }
 
 .cockpit-subrow {
   border-radius: 18px;
-  background-color: var(--surface-2);
-  border: 1px solid var(--border);
+  background-color: var(--glass-menu-item-bg);
+  border: 1px solid var(--glass-menu-item-border);
   color: var(--text);
   transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
 }
 
 /* Fallback when backdrop-filter is not supported */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .cockpit-grid-stage,
+  .cockpit-surface-card {
+    background-color: var(--glass-menu-fallback);
+  }
   .cockpit-uni-bubble {
     background-color: var(--cockpit-fallback-bg);
   }
@@ -2618,15 +2695,15 @@ body,
 :root,
 .light,
 [data-theme="light"] {
-  --glass-menu-bg: rgba(255, 255, 255, 0.88);
+  --glass-menu-bg: rgba(255, 255, 255, 0.90);
   --glass-menu-fallback: #ffffff;
-  --glass-menu-border: rgba(0, 0, 0, 0.07);
+  --glass-menu-border: rgba(0, 0, 0, 0.08);
   --glass-menu-divider: rgba(0, 0, 0, 0.07);
   --glass-menu-shadow: 0 20px 48px -12px rgba(15, 23, 42, 0.14), 0 4px 16px -4px rgba(15, 23, 42, 0.06);
   --glass-menu-backdrop: rgba(15, 23, 42, 0.45);
   --glass-menu-item-bg: rgba(17, 17, 20, 0.035);
   --glass-menu-item-hover: rgba(17, 17, 20, 0.065);
-  --glass-menu-item-border: rgba(0, 0, 0, 0.06);
+  --glass-menu-item-border: rgba(0, 0, 0, 0.07);
   --glass-menu-icon-bg: rgba(17, 17, 20, 0.05);
   --glass-menu-active-bg: rgba(217, 20, 34, 0.09);
   --glass-menu-active-border: rgba(217, 20, 34, 0.28);
@@ -2634,7 +2711,7 @@ body,
 
 .dark,
 [data-theme="dark"] {
-  --glass-menu-bg: rgba(16, 16, 20, 0.78);
+  --glass-menu-bg: rgba(16, 16, 20, 0.90);
   --glass-menu-fallback: #121216;
   --glass-menu-border: rgba(255, 255, 255, 0.14);
   --glass-menu-divider: rgba(255, 255, 255, 0.10);
@@ -2654,8 +2731,8 @@ body,
   background-image: none !important;
   border: 1px solid var(--glass-menu-border) !important;
   box-shadow: var(--glass-menu-shadow) !important;
-  backdrop-filter: blur(28px) saturate(1.2) !important;
-  -webkit-backdrop-filter: blur(28px) saturate(1.2) !important;
+  backdrop-filter: blur(28px) saturate(1.25) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.25) !important;
 }
 
 /* Dimmed, blurred backdrop overlay behind both the Avatar Dropdown and the Bottom Sheet */

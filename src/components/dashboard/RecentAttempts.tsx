@@ -58,7 +58,7 @@ export const RecentAttempts = memo(function RecentAttempts({
             No university attempts yet
           </p>
           <p className="text-[11px] sm:text-xs text-[var(--text-muted)] max-w-md mx-auto">
-            Tap any live university bubble above to start a practice test. Your latest 5 attempts will appear here.
+            Tap any live university above to start a practice test. Your latest 5 attempts will appear here.
           </p>
         </div>
       ) : (

@@ -439,7 +439,7 @@ export function OverviewPage() {
               Choose your university
             </h2>
             <p className="text-xs text-[var(--text-muted)]">
-              Tap a live university bubble to start its official entry test pattern
+              Tap a live university to start its official entry test pattern
             </p>
           </div>
           {!loadingUniversities && universities.length > 0 && (
@@ -476,7 +476,7 @@ export function OverviewPage() {
             <button
               type="button"
               onClick={() => void loadUniversitiesFromD1()}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 transition-opacity cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-5 py-2.5 rounded-full text-xs font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 transition-opacity cursor-pointer"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
               <RefreshCw size={13} />
@@ -691,7 +691,7 @@ export function OverviewPage() {
             ) : (
               <Link
                 to="/dashboard/plans"
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--accent)] hover:underline"
+                className="inline-flex items-center gap-1 min-h-[44px] -my-2.5 py-2.5 text-[11px] font-semibold text-[var(--accent)] hover:underline"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
                 <span>Upgrade to Pro</span>
@@ -748,7 +748,7 @@ export function OverviewPage() {
                 type="button"
                 onClick={() => setActiveUni(null)}
                 aria-label="Close university test modal"
-                className="w-8 h-8 rounded-full cockpit-subrow flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer shrink-0"
+                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full cockpit-subrow flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer shrink-0"
               >
                 <X size={16} />
               </button>
@@ -892,7 +892,7 @@ export function OverviewPage() {
                   <button
                     type="button"
                     onClick={() => setActiveUni(null)}
-                    className="px-4 py-2.5 rounded-full text-xs font-semibold cockpit-subrow text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+                    className="inline-flex items-center justify-center min-h-[44px] px-4 py-2.5 rounded-full text-xs font-semibold cockpit-subrow text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -902,7 +902,7 @@ export function OverviewPage() {
                     onClick={() =>
                       void startUniversityD1Test(activeUni, selectedSubject, selectedTopic)
                     }
-                    className="relative overflow-hidden inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs sm:text-sm font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-75"
+                    className="relative overflow-hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-full text-xs sm:text-sm font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-75"
                   >
                     <span>
                       {loadingMcqs ? 'Preparing your test...' : `Start ${activeUni.name} Test`}
@@ -1006,7 +1006,7 @@ export function OverviewPage() {
                     type="button"
                     disabled={currentIndex === 0}
                     onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
-                    className="inline-flex items-center gap-1 px-3.5 py-2 rounded-full text-xs font-semibold cockpit-subrow text-[var(--text)] disabled:opacity-40 cursor-pointer"
+                    className="inline-flex items-center justify-center gap-1 min-h-[44px] px-4 py-2.5 rounded-full text-xs font-semibold cockpit-subrow text-[var(--text)] disabled:opacity-40 cursor-pointer"
                   >
                     <ChevronLeft size={14} />
                     <span>Previous</span>
@@ -1019,7 +1019,7 @@ export function OverviewPage() {
                         onClick={() =>
                           setCurrentIndex((i) => Math.min(testMcqs.length - 1, i + 1))
                         }
-                        className="inline-flex items-center gap-1 px-4 py-2 rounded-full text-xs font-semibold cockpit-subrow text-[var(--text)] cursor-pointer"
+                        className="inline-flex items-center justify-center gap-1 min-h-[44px] px-4 py-2.5 rounded-full text-xs font-semibold cockpit-subrow text-[var(--text)] cursor-pointer"
                       >
                         <span>Next</span>
                         <ChevronRight size={14} />
@@ -1030,7 +1030,7 @@ export function OverviewPage() {
                       type="button"
                       disabled={submittingTest}
                       onClick={() => void submitUniversityD1Test()}
-                      className="relative overflow-hidden inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 cursor-pointer disabled:opacity-75"
+                      className="relative overflow-hidden inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2.5 rounded-full text-xs font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 cursor-pointer disabled:opacity-75"
                     >
                       {!submittingTest && <CheckCircle2 size={14} />}
                       <span>{submittingTest ? 'Calculating your score...' : 'Finish & Submit'}</span>
@@ -1106,14 +1106,14 @@ export function OverviewPage() {
                   <button
                     type="button"
                     onClick={() => setTestStage('overview')}
-                    className="px-4 py-2 rounded-full text-xs font-semibold cockpit-subrow text-[var(--text)] cursor-pointer"
+                    className="inline-flex items-center justify-center min-h-[44px] px-4 py-2.5 rounded-full text-xs font-semibold cockpit-subrow text-[var(--text)] cursor-pointer"
                   >
                     New Filter
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveUni(null)}
-                    className="px-5 py-2 rounded-full text-xs font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] cursor-pointer"
+                    className="inline-flex items-center justify-center min-h-[44px] px-5 py-2.5 rounded-full text-xs font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] cursor-pointer"
                   >
                     Back to Cockpit
                   </button>

@@ -64,7 +64,7 @@ export const WeakChapters = memo(function WeakChapters({
                 <button
                   type="button"
                   onClick={() => onDrillChapter(c)}
-                  className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 transition-opacity cursor-pointer"
+                  className="inline-flex items-center justify-center gap-1 min-h-[44px] text-xs font-semibold px-3.5 py-2 rounded-full bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 transition-opacity cursor-pointer"
                   style={{ fontFamily: 'var(--font-heading)' }}
                 >
                   <span>Drill</span>
