@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import {
   Plus,
@@ -201,6 +202,23 @@ export function AmbassadorDashboardPage() {
       setTargetQuestionCount(String(Math.max(1, Math.min(200, questions.length))));
     }
   }, [csvText, editingTestId]);
+
+  // Lock background scroll while the Create/Edit Test modal or Delete modal is open
+  useEffect(() => {
+    const isAnyModalOpen = modalOpen || Boolean(deleteConfirmTest);
+    if (!isAnyModalOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.body.setAttribute('data-fullscreen-modal-open', 'true');
+    window.dispatchEvent(new CustomEvent('boardly:modal-change'));
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.removeAttribute('data-fullscreen-modal-open');
+      window.dispatchEvent(new CustomEvent('boardly:modal-change'));
+    };
+  }, [modalOpen, deleteConfirmTest]);
 
   // Computed stats for the 4 top stat cards
   const testsCreatedCount = myTests.length;
@@ -1071,266 +1089,285 @@ export function AmbassadorDashboardPage() {
         </div>
       )}
 
-      {/* ── CREATE / EDIT TEST MODAL (Full-screen sheet on mobile) ──────────── */}
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="w-full h-[100dvh] sm:h-auto sm:max-h-[90dvh] sm:max-w-2xl bg-[var(--card)] sm:rounded-2xl border-0 sm:border border-[var(--border)] flex flex-col overflow-hidden">
-            {/* Modal Header */}
-            <div className="px-4 sm:px-6 py-4 border-b border-[var(--border)] flex items-center justify-between gap-3 shrink-0">
-              <div>
-                <h2 className="text-base sm:text-lg font-bold text-[var(--text)]">
-                  {editingTestId ? 'Edit Captain Test' : 'Create & Publish Test'}
-                </h2>
-                <p className="text-xs text-[var(--muted)]">
-                  Configure test details and import questions
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => !savingTest && setModalOpen(false)}
-                className="p-2 rounded-xl bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            {/* Scrollable Body */}
-            <form
-              id="captain-create-test-form"
-              onSubmit={handleSaveAndPublishTest}
-              className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4"
-            >
-              <div>
-                <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
-                  Test Title *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. NUST NET-4 Physics High-Yield Mock #1"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[#D71921]"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* ── CREATE / EDIT TEST MODAL (Full-screen sheet on mobile, portaled to body) ── */}
+      {modalOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            data-fullscreen-modal="true"
+            className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
+          >
+            <div className="w-full h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-h-[90dvh] sm:max-w-2xl bg-[var(--card)] sm:rounded-2xl border-0 sm:border border-[var(--border)] flex flex-col overflow-hidden">
+              {/* Modal Header — fixed at the top */}
+              <div className="sticky top-0 z-10 bg-[var(--card)] px-4 sm:px-6 py-4 border-b border-[var(--border)] flex items-center justify-between gap-3 shrink-0">
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
-                    Subject
-                  </label>
-                  <select
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
-                  >
-                    {SUBJECT_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
+                  <h2 className="text-base sm:text-lg font-bold text-[var(--text)]">
+                    {editingTestId ? 'Edit Captain Test' : 'Create & Publish Test'}
+                  </h2>
+                  <p className="text-xs text-[var(--muted)]">
+                    Configure test details and import questions
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => !savingTest && setModalOpen(false)}
+                  className="p-2 rounded-xl bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)] cursor-pointer shrink-0"
+                >
+                  <X size={16} />
+                </button>
+              </div>
 
+              {/* Scrollable Body — pb-24 ensures last field is never hidden behind sticky footer */}
+              <form
+                id="captain-create-test-form"
+                onSubmit={handleSaveAndPublishTest}
+                className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 pb-24 sm:pb-24 space-y-4"
+              >
                 <div>
                   <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
-                    Number of Questions
+                    Test Title *
                   </label>
                   <input
                     type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={targetQuestionCount}
-                    onChange={(e) => setTargetQuestionCount(e.target.value.replace(/\D/g, ''))}
-                    onBlur={() =>
-                      setTargetQuestionCount(String(clampQuestionCount(targetQuestionCount)))
-                    }
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] font-sans tabular-nums focus:outline-none focus:border-[#D71921]"
+                    required
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="e.g. NUST NET-4 Physics High-Yield Mock #1"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[#D71921]"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
-                    Visibility
-                  </label>
-                  <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-                    <button
-                      type="button"
-                      onClick={() => setVisibility('public')}
-                      className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors ${
-                        visibility === 'public'
-                          ? 'bg-[#D71921] text-white'
-                          : 'text-[var(--muted)] hover:text-[var(--text)]'
-                      }`}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
+                      Subject
+                    </label>
+                    <select
+                      value={subject}
+                      onChange={(e) => setSubject(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
                     >
-                      <Globe size={12} />
-                      Public
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setVisibility('private')}
-                      className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors ${
-                        visibility === 'private'
-                          ? 'bg-[#D71921] text-white'
-                          : 'text-[var(--muted)] hover:text-[var(--text)]'
-                      }`}
-                    >
-                      <Lock size={12} />
-                      Private
-                    </button>
+                      {SUBJECT_OPTIONS.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                </div>
-              </div>
 
-              {/* CSV Upload or Paste */}
-              <div className="space-y-2 pt-1">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <label className="block text-xs font-semibold text-[var(--text)]">
-                    Upload or Paste Questions (CSV)
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleDownloadSampleCsv}
-                      className="px-2.5 py-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[11px] font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1 cursor-pointer"
-                    >
-                      <Download size={12} />
-                      Template
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-2.5 py-1.5 rounded-lg bg-[#D71921]/15 border border-[#D71921]/30 text-[11px] font-semibold text-[#D71921] hover:bg-[#D71921]/25 flex items-center gap-1 cursor-pointer"
-                    >
-                      <Upload size={12} />
-                      Choose File
-                    </button>
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
+                      Number of Questions
+                    </label>
                     <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".csv,text/csv,text/plain"
-                      onChange={handleCsvFileUpload}
-                      className="hidden"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={targetQuestionCount}
+                      onChange={(e) => setTargetQuestionCount(e.target.value.replace(/\D/g, ''))}
+                      onBlur={() =>
+                        setTargetQuestionCount(String(clampQuestionCount(targetQuestionCount)))
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] font-sans tabular-nums focus:outline-none focus:border-[#D71921]"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
+                      Visibility
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                      <button
+                        type="button"
+                        onClick={() => setVisibility('public')}
+                        className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors ${
+                          visibility === 'public'
+                            ? 'bg-[#D71921] text-white'
+                            : 'text-[var(--muted)] hover:text-[var(--text)]'
+                        }`}
+                      >
+                        <Globe size={12} />
+                        Public
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVisibility('private')}
+                        className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors ${
+                          visibility === 'private'
+                            ? 'bg-[#D71921] text-white'
+                            : 'text-[var(--muted)] hover:text-[var(--text)]'
+                        }`}
+                      >
+                        <Lock size={12} />
+                        Private
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                <textarea
-                  rows={5}
-                  value={csvText}
-                  onChange={(e) => setCsvText(e.target.value)}
-                  placeholder={`question,optionA,optionB,optionC,optionD,correctOption,explanation\n"What is the SI unit of force?","Joule","Newton","Watt","Pascal","B","F = ma is measured in Newtons."`}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-mono text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[#D71921]"
-                />
-
-                {/* Clear "X questions parsed" status banner */}
-                <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2
-                      size={16}
-                      className={
-                        parsedQuestions.length > 0 ? 'text-emerald-400 shrink-0' : 'text-[var(--muted)] shrink-0'
-                      }
-                    />
-                    <span className="text-xs font-bold text-[var(--text)] tabular-nums">
-                      {parsedQuestions.length} {parsedQuestions.length === 1 ? 'question' : 'questions'} parsed
-                    </span>
+                {/* CSV Upload or Paste */}
+                <div className="space-y-2 pt-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="block text-xs font-semibold text-[var(--text)]">
+                      Upload or Paste Questions (CSV)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDownloadSampleCsv}
+                        className="px-2.5 py-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[11px] font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1 cursor-pointer"
+                      >
+                        <Download size={12} />
+                        Template
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-2.5 py-1.5 rounded-lg bg-[#D71921]/15 border border-[#D71921]/30 text-[11px] font-semibold text-[#D71921] hover:bg-[#D71921]/25 flex items-center gap-1 cursor-pointer"
+                      >
+                        <Upload size={12} />
+                        Choose File
+                      </button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".csv,text/csv,text/plain"
+                        onChange={handleCsvFileUpload}
+                        className="hidden"
+                      />
+                    </div>
                   </div>
+
+                  <textarea
+                    rows={5}
+                    value={csvText}
+                    onChange={(e) => setCsvText(e.target.value)}
+                    placeholder={`question,optionA,optionB,optionC,optionD,correctOption,explanation\n"What is the SI unit of force?","Joule","Newton","Watt","Pascal","B","F = ma is measured in Newtons."`}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-mono text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[#D71921]"
+                  />
+
+                  {/* Clear "X questions parsed" status banner */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2
+                        size={16}
+                        className={
+                          parsedQuestions.length > 0 ? 'text-emerald-400 shrink-0' : 'text-[var(--muted)] shrink-0'
+                        }
+                      />
+                      <span className="text-xs font-bold text-[var(--text)] tabular-nums">
+                        {parsedQuestions.length} {parsedQuestions.length === 1 ? 'question' : 'questions'} parsed
+                      </span>
+                    </div>
+                    {parseErrors.length > 0 && (
+                      <span className="text-[11px] font-semibold text-amber-400 flex items-center gap-1">
+                        <AlertCircle size={13} />
+                        {parseErrors.length} row issue{parseErrors.length === 1 ? '' : 's'}
+                      </span>
+                    )}
+                  </div>
+
                   {parseErrors.length > 0 && (
-                    <span className="text-[11px] font-semibold text-amber-400 flex items-center gap-1">
-                      <AlertCircle size={13} />
-                      {parseErrors.length} row issue{parseErrors.length === 1 ? '' : 's'}
-                    </span>
+                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300 space-y-1 max-h-28 overflow-y-auto">
+                      {parseErrors.slice(0, 5).map((err, i) => (
+                        <p key={i}>• {err}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  {submitError && (
+                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 flex items-start gap-2">
+                      <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                      <span className="break-words">{submitError}</span>
+                    </div>
                   )}
                 </div>
+              </form>
 
-                {parseErrors.length > 0 && (
-                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300 space-y-1 max-h-28 overflow-y-auto">
-                    {parseErrors.slice(0, 5).map((err, i) => (
-                      <p key={i}>• {err}</p>
-                    ))}
-                  </div>
-                )}
-
-                {submitError && (
-                  <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 flex items-start gap-2">
-                    <AlertCircle size={15} className="shrink-0 mt-0.5" />
-                    <span className="break-words">{submitError}</span>
-                  </div>
-                )}
+              {/* Sticky Safe-Area Footer — never clipped */}
+              <div
+                className="sticky bottom-0 z-10 px-4 sm:px-6 pt-3 pb-[calc(16px+env(safe-area-inset-bottom,0px))] border-t border-[var(--border)] bg-[var(--card)] flex items-center justify-end gap-2.5 shrink-0"
+                style={{ paddingBottom: 'max(16px, calc(16px + env(safe-area-inset-bottom, 0px)))' }}
+              >
+                <button
+                  type="button"
+                  disabled={savingTest}
+                  onClick={() => setModalOpen(false)}
+                  className="min-h-[44px] px-4 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] inline-flex items-center justify-center cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  form="captain-create-test-form"
+                  disabled={savingTest || parsedQuestions.length === 0}
+                  className="relative overflow-hidden min-h-[44px] px-5 py-2.5 rounded-xl bg-[#D71921] text-white text-xs sm:text-sm font-bold hover:opacity-95 inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <CheckCircle2 size={15} className="shrink-0" />
+                  <span>
+                    {savingTest
+                      ? 'Saving...'
+                      : editingTestId
+                      ? 'Save Changes'
+                      : 'Create & Publish Test'}
+                  </span>
+                  {savingTest && <ButtonLineLoader />}
+                </button>
               </div>
-            </form>
-
-            {/* Sticky Safe-Area Footer — never clipped */}
-            <div className="px-4 sm:px-6 pt-3 pb-[calc(16px+env(safe-area-inset-bottom,0px))] border-t border-[var(--border)] bg-[var(--card)] flex items-center justify-end gap-2.5 shrink-0">
-              <button
-                type="button"
-                disabled={savingTest}
-                onClick={() => setModalOpen(false)}
-                className="px-4 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] cursor-pointer disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                form="captain-create-test-form"
-                disabled={savingTest || parsedQuestions.length === 0}
-                className="relative overflow-hidden px-5 py-2.5 rounded-xl bg-[#D71921] text-white text-xs sm:text-sm font-bold hover:opacity-95 flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <CheckCircle2 size={15} />
-                <span>
-                  {savingTest
-                    ? 'Saving...'
-                    : editingTestId
-                    ? 'Save Changes'
-                    : 'Create & Publish Test'}
-                </span>
-                {savingTest && <ButtonLineLoader />}
-              </button>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
       {/* ── DELETE CONFIRMATION MODAL ────────────────────────────────────────── */}
-      {deleteConfirmTest && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-red-500/15 text-red-400 flex items-center justify-center shrink-0">
-                <ShieldAlert size={20} />
+      {deleteConfirmTest &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            data-fullscreen-modal="true"
+            className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-xs flex items-center justify-center p-4"
+          >
+            <div className="w-full max-w-md rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-500/15 text-red-400 flex items-center justify-center shrink-0">
+                  <ShieldAlert size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[var(--text)]">Delete Test?</h3>
+                  <p className="text-xs text-[var(--muted)] mt-1">
+                    Are you sure you want to delete{' '}
+                    <strong className="text-[var(--text)]">{deleteConfirmTest.title}</strong>? This will also remove all questions and student results for this test.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-bold text-[var(--text)]">Delete Test?</h3>
-                <p className="text-xs text-[var(--muted)] mt-1">
-                  Are you sure you want to delete{' '}
-                  <strong className="text-[var(--text)]">{deleteConfirmTest.title}</strong>? This will also remove all questions and student results for this test.
-                </p>
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={Boolean(deletingTestId)}
+                  onClick={() => setDeleteConfirmTest(null)}
+                  className="min-h-[44px] px-4 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(deletingTestId)}
+                  onClick={handleConfirmDeleteTest}
+                  className="relative overflow-hidden min-h-[44px] px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <Trash2 size={14} />
+                  <span>{deletingTestId ? 'Deleting...' : 'Delete Permanently'}</span>
+                  {Boolean(deletingTestId) && <ButtonLineLoader />}
+                </button>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                disabled={Boolean(deletingTestId)}
-                onClick={() => setDeleteConfirmTest(null)}
-                className="px-4 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={Boolean(deletingTestId)}
-                onClick={handleConfirmDeleteTest}
-                className="relative overflow-hidden px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <Trash2 size={14} />
-                <span>{deletingTestId ? 'Deleting...' : 'Delete Permanently'}</span>
-                {Boolean(deletingTestId) && <ButtonLineLoader />}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

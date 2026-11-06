@@ -12,6 +12,7 @@ import {
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
+import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { PillNav, type PillNavItem } from '@/components/ui/PillNav';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 import { getHomeUrl, isUserAuthenticated } from '@/utils/homeUrl';
@@ -24,10 +25,12 @@ function DashboardBottomNavComponent() {
   const { user, profile } = useUserProfile();
   const { profileLoading } = useAuth();
   const { requireAuth } = useAuthGate();
+  const { isOpen: isProfileModalOpen } = useProfileModal();
   const unreadCount = useUnreadNotificationsCount();
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [hasOpenedMenu, setHasOpenedMenu] = useState(false);
+  const [isExternalModalOpen, setIsExternalModalOpen] = useState(false);
 
   const isAuthenticated = isUserAuthenticated(user, profileLoading);
   const homeUrl = getHomeUrl(user, profileLoading);
@@ -36,6 +39,53 @@ function DashboardBottomNavComponent() {
   useEffect(() => {
     setIsMenuOpen(false);
   }, [location.pathname]);
+
+  // Detect any open full-screen modal across the app and hide the bottom navigation
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const checkModalState = () => {
+      if (
+        document.body.getAttribute('data-fullscreen-modal-open') === 'true' ||
+        document.body.style.overflow === 'hidden'
+      ) {
+        setIsExternalModalOpen(true);
+        return;
+      }
+      const overlays = document.querySelectorAll<HTMLElement>(
+        '[data-fullscreen-modal="true"], [role="dialog"], [aria-modal="true"], .fixed.inset-0'
+      );
+      const hasActiveModal = Array.from(overlays).some((el) => {
+        if (
+          el.classList.contains('pointer-events-none') ||
+          el.classList.contains('-z-10') ||
+          el.getAttribute('aria-hidden') === 'true'
+        ) {
+          return false;
+        }
+        return true;
+      });
+      setIsExternalModalOpen(hasActiveModal);
+    };
+
+    checkModalState();
+
+    const observer = new MutationObserver(checkModalState);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['style', 'class', 'data-fullscreen-modal-open'],
+      childList: true,
+      subtree: true,
+    });
+
+    window.addEventListener('boardly:modal-change', checkModalState);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('boardly:modal-change', checkModalState);
+    };
+  }, [location.pathname]);
+
+  const shouldHideBottomNav = isMenuOpen || isProfileModalOpen || isExternalModalOpen;
 
   const role = profile?.role || 'student';
   const isApprovedCaptain =
@@ -119,12 +169,13 @@ function DashboardBottomNavComponent() {
     <>
       {/* ─── FIXED UNIFIED PILL BOTTOM NAVIGATION ────────────────────────────── */}
       <div
-        className={`fixed bottom-[calc(12px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[520px] z-[60] transition-opacity duration-150 ${
-          isMenuOpen
-            ? 'pointer-events-none opacity-0 invisible'
-            : 'pointer-events-auto opacity-100'
+        className={`fixed bottom-[calc(12px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[520px] z-40 transition-opacity duration-150 ${
+          shouldHideBottomNav
+            ? 'opacity-0 pointer-events-none invisible'
+            : 'opacity-100 pointer-events-auto'
         }`}
         aria-label="Student Navigation Bar"
+        aria-hidden={shouldHideBottomNav}
       >
         <PillNav
           items={navItems}
