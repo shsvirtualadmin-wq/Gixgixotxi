@@ -5886,4 +5886,172 @@ html:not(.dark) .zenryu-stage--active {
   }
 }
 
+/* ==========================================================================
+   LEADERBOARD, PUBLIC HEADER & NAKAMA CAPTAIN DECK — NOTHING OS GLASSMORPHISM
+   - Solid-enough glass sticky header (88-90% opacity + blur, soft light shadow)
+   - Clean glass panels, stat cards, test selector cards, and ranking rows
+   - Uniform rank badges (#1 gold, #2 silver, #3 bronze, #4+ neutral) with >=4.5:1 contrast
+   ========================================================================== */
+
+:root,
+.light,
+[data-theme="light"] {
+  --public-header-bg: rgba(255, 255, 255, 0.89);
+  --public-header-border: rgba(15, 23, 42, 0.08);
+  --public-header-shadow: 0 8px 24px -6px rgba(15, 23, 42, 0.08), 0 2px 8px -2px rgba(15, 23, 42, 0.04);
+
+  --captain-panel-bg: rgba(255, 255, 255, 0.80);
+  --captain-panel-border: rgba(15, 23, 42, 0.08);
+  --captain-panel-shadow: 0 12px 32px -10px rgba(15, 23, 42, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.88);
+
+  --captain-card-bg: rgba(255, 255, 255, 0.72);
+  --captain-card-hover-bg: rgba(255, 255, 255, 0.90);
+  --captain-card-border: rgba(15, 23, 42, 0.08);
+  --captain-card-shadow: 0 4px 16px -4px rgba(15, 23, 42, 0.05);
+
+  --rank-gold-bg: rgba(245, 158, 11, 0.18);
+  --rank-gold-border: rgba(217, 119, 6, 0.42);
+  --rank-gold-text: #92400e;
+
+  --rank-silver-bg: rgba(100, 116, 139, 0.16);
+  --rank-silver-border: rgba(100, 116, 139, 0.38);
+  --rank-silver-text: #1e293b;
+
+  --rank-bronze-bg: rgba(180, 83, 9, 0.15);
+  --rank-bronze-border: rgba(180, 83, 9, 0.38);
+  --rank-bronze-text: #7c2d12;
+
+  --rank-default-bg: rgba(15, 23, 42, 0.055);
+  --rank-default-border: rgba(15, 23, 42, 0.12);
+  --rank-default-text: #334155;
+}
+
+.dark,
+[data-theme="dark"] {
+  --public-header-bg: rgba(14, 14, 18, 0.89);
+  --public-header-border: rgba(255, 255, 255, 0.13);
+  --public-header-shadow: 0 12px 30px -8px rgba(0, 0, 0, 0.55), 0 4px 12px -2px rgba(0, 0, 0, 0.35);
+
+  --captain-panel-bg: rgba(20, 20, 26, 0.76);
+  --captain-panel-border: rgba(255, 255, 255, 0.11);
+  --captain-panel-shadow: 0 16px 38px -12px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+
+  --captain-card-bg: rgba(255, 255, 255, 0.045);
+  --captain-card-hover-bg: rgba(255, 255, 255, 0.075);
+  --captain-card-border: rgba(255, 255, 255, 0.10);
+  --captain-card-shadow: 0 6px 20px -6px rgba(0, 0, 0, 0.42);
+
+  --rank-gold-bg: rgba(245, 158, 11, 0.20);
+  --rank-gold-border: rgba(251, 191, 36, 0.48);
+  --rank-gold-text: #fde68a;
+
+  --rank-silver-bg: rgba(203, 213, 225, 0.18);
+  --rank-silver-border: rgba(226, 232, 240, 0.42);
+  --rank-silver-text: #f1f5f9;
+
+  --rank-bronze-bg: rgba(217, 119, 6, 0.22);
+  --rank-bronze-border: rgba(245, 158, 11, 0.45);
+  --rank-bronze-text: #fdba74;
+
+  --rank-default-bg: rgba(255, 255, 255, 0.06);
+  --rank-default-border: rgba(255, 255, 255, 0.14);
+  --rank-default-text: #e2e8f0;
+}
+
+.public-header-glass-bar {
+  background-color: var(--public-header-bg) !important;
+  background-image: none !important;
+  border: 1px solid var(--public-header-border) !important;
+  box-shadow: var(--public-header-shadow) !important;
+  backdrop-filter: blur(28px) saturate(1.25) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.25) !important;
+}
+
+.captain-glass-panel {
+  background-color: var(--captain-panel-bg);
+  border: 1px solid var(--captain-panel-border);
+  box-shadow: var(--captain-panel-shadow);
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  border-radius: 24px;
+}
+
+.captain-glass-card {
+  background-color: var(--captain-card-bg);
+  border: 1px solid var(--captain-card-border);
+  box-shadow: var(--captain-card-shadow);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  border-radius: 18px;
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.captain-glass-card--interactive:hover {
+  background-color: var(--captain-card-hover-bg);
+}
+
+.captain-glass-card--selected {
+  background-color: rgba(215, 25, 33, 0.10) !important;
+  border-color: #D71921 !important;
+  box-shadow: 0 0 0 1px rgba(215, 25, 33, 0.24), 0 8px 22px -6px rgba(215, 25, 33, 0.18) !important;
+}
+
+.ranking-glass-row {
+  background-color: var(--captain-card-bg);
+  border: 1px solid var(--captain-card-border);
+  box-shadow: var(--captain-card-shadow);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  border-radius: 18px;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.ranking-glass-row--highlight {
+  background-color: rgba(215, 25, 33, 0.10) !important;
+  border-color: rgba(215, 25, 33, 0.50) !important;
+}
+
+.rank-badge {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.rank-badge--1 {
+  background-color: var(--rank-gold-bg);
+  border: 1px solid var(--rank-gold-border);
+  color: var(--rank-gold-text);
+}
+
+.rank-badge--2 {
+  background-color: var(--rank-silver-bg);
+  border: 1px solid var(--rank-silver-border);
+  color: var(--rank-silver-text);
+}
+
+.rank-badge--3 {
+  background-color: var(--rank-bronze-bg);
+  border: 1px solid var(--rank-bronze-border);
+  color: var(--rank-bronze-text);
+}
+
+.rank-badge--default {
+  background-color: var(--rank-default-bg);
+  border: 1px solid var(--rank-default-border);
+  color: var(--rank-default-text);
+}
+
+
 

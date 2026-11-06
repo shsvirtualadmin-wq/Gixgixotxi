@@ -54,6 +54,12 @@ import {
 import { NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
 import { showApiToast } from '@/lib/api';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import {
+  getPublicProfiles,
+  getCachedPublicProfile,
+  type PublicUserProfileSummary,
+} from '@/services/publicProfileService';
+import { isAdminAccount } from '@/constants/superAdmin';
 
 const SUBJECT_OPTIONS = [
   'Physics',
@@ -67,6 +73,13 @@ const SUBJECT_OPTIONS = [
 ];
 
 type CaptainTab = 'tests' | 'results' | 'crew';
+
+function getRankBadgeClass(rank: number): string {
+  if (rank === 1) return 'rank-badge rank-badge--1';
+  if (rank === 2) return 'rank-badge rank-badge--2';
+  if (rank === 3) return 'rank-badge rank-badge--3';
+  return 'rank-badge rank-badge--default';
+}
 
 export function AmbassadorDashboardPage() {
   const { user, profile, isAdmin } = useAuth();
@@ -83,6 +96,7 @@ export function AmbassadorDashboardPage() {
   // Results tab state
   const [selectedResultTestId, setSelectedResultTestId] = useState<string>('');
   const [testResults, setTestResults] = useState<AmbassadorTestAttempt[]>([]);
+  const [profilesByUid, setProfilesByUid] = useState<Record<string, PublicUserProfileSummary>>({});
   const [loadingResults, setLoadingResults] = useState(false);
 
   // Create / Edit Test Modal state
@@ -443,9 +457,9 @@ export function AmbassadorDashboardPage() {
   };
 
   return (
-    <div className="w-full max-w-full min-w-0 overflow-x-hidden space-y-5 pb-10">
+    <div className="w-full max-w-full min-w-0 overflow-x-hidden space-y-5 pb-[calc(96px+env(safe-area-inset-bottom,0px))]">
       {/* ── CAPTAIN HOME HEADER ──────────────────────────────────────────────── */}
-      <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-4 sm:p-6">
+      <div className="captain-glass-panel p-4 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="min-w-0">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#D71921]/15 border border-[#D71921]/30 text-[#D71921] text-[11px] font-mono uppercase tracking-wider mb-2">
@@ -460,19 +474,21 @@ export function AmbassadorDashboardPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
             <Link
               to="/grand-line"
-              className="px-3 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1.5 transition-colors"
+              title="Explore Grand Line"
+              aria-label="Explore Grand Line"
+              className="captain-glass-card captain-glass-card--interactive min-h-[44px] px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-[var(--text)] inline-flex items-center justify-center gap-1.5 transition-colors"
             >
-              <Compass size={14} className="text-[#D71921]" />
-              <span className="hidden xs:inline">Grand Line</span>
+              <Compass size={15} className="text-[#D71921] shrink-0" />
+              <span>Grand Line</span>
             </Link>
 
             <button
               type="button"
               onClick={openCreateModal}
-              className="px-4 py-2.5 rounded-xl bg-[#D71921] text-white text-xs sm:text-sm font-bold hover:opacity-95 flex items-center gap-1.5 cursor-pointer shadow-sm shrink-0"
+              className="min-h-[44px] px-4 py-2.5 rounded-xl bg-[#D71921] text-white text-xs sm:text-sm font-bold hover:opacity-95 inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shrink-0"
             >
               <Plus size={16} />
               <span>Create Test</span>
@@ -480,53 +496,69 @@ export function AmbassadorDashboardPage() {
           </div>
         </div>
 
-        {/* ── 4 STAT CARDS ───────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mt-5">
-          <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] min-w-0">
-            <div className="flex items-center justify-between gap-1 text-[var(--muted)]">
-              <span className="text-[11px] font-medium truncate">Tests created</span>
-              <FileSpreadsheet size={14} className="text-[#D71921] shrink-0" />
+        {/* ── 4 STAT CARDS (Uniform icon color & equal height) ───────────────── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mt-5 items-stretch">
+          <div className="captain-glass-card p-3.5 sm:p-4 min-h-[88px] h-full flex flex-col justify-between min-w-0">
+            <div className="flex items-center justify-between gap-2 text-[var(--muted)]">
+              <span className="text-[11px] font-semibold uppercase tracking-wider truncate">
+                Tests created
+              </span>
+              <span className="w-7 h-7 rounded-lg bg-[#D71921]/12 border border-[#D71921]/25 flex items-center justify-center shrink-0">
+                <FileSpreadsheet size={14} className="text-[#D71921]" />
+              </span>
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-1.5 font-sans tabular-nums">
+            <p className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-2 font-sans tabular-nums">
               {loading ? '—' : testsCreatedCount}
             </p>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] min-w-0">
-            <div className="flex items-center justify-between gap-1 text-[var(--muted)]">
-              <span className="text-[11px] font-medium truncate">Total attempts</span>
-              <BarChart3 size={14} className="text-amber-400 shrink-0" />
+          <div className="captain-glass-card p-3.5 sm:p-4 min-h-[88px] h-full flex flex-col justify-between min-w-0">
+            <div className="flex items-center justify-between gap-2 text-[var(--muted)]">
+              <span className="text-[11px] font-semibold uppercase tracking-wider truncate">
+                Total attempts
+              </span>
+              <span className="w-7 h-7 rounded-lg bg-[#D71921]/12 border border-[#D71921]/25 flex items-center justify-center shrink-0">
+                <BarChart3 size={14} className="text-[#D71921]" />
+              </span>
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-1.5 font-sans tabular-nums">
+            <p className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-2 font-sans tabular-nums">
               {loading ? '—' : totalAttemptsCount}
             </p>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] min-w-0">
-            <div className="flex items-center justify-between gap-1 text-[var(--muted)]">
-              <span className="text-[11px] font-medium truncate">Average score</span>
-              <Trophy size={14} className="text-emerald-400 shrink-0" />
+          <div className="captain-glass-card p-3.5 sm:p-4 min-h-[88px] h-full flex flex-col justify-between min-w-0">
+            <div className="flex items-center justify-between gap-2 text-[var(--muted)]">
+              <span className="text-[11px] font-semibold uppercase tracking-wider truncate">
+                Average score
+              </span>
+              <span className="w-7 h-7 rounded-lg bg-[#D71921]/12 border border-[#D71921]/25 flex items-center justify-center shrink-0">
+                <Trophy size={14} className="text-[#D71921]" />
+              </span>
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-1.5 font-sans tabular-nums">
+            <p className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-2 font-sans tabular-nums">
               {loading ? '—' : `${averageScorePct}%`}
             </p>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] min-w-0">
-            <div className="flex items-center justify-between gap-1 text-[var(--muted)]">
-              <span className="text-[11px] font-medium truncate">Crew members</span>
-              <Users size={14} className="text-cyan-400 shrink-0" />
+          <div className="captain-glass-card p-3.5 sm:p-4 min-h-[88px] h-full flex flex-col justify-between min-w-0">
+            <div className="flex items-center justify-between gap-2 text-[var(--muted)]">
+              <span className="text-[11px] font-semibold uppercase tracking-wider truncate">
+                Crew members
+              </span>
+              <span className="w-7 h-7 rounded-lg bg-[#D71921]/12 border border-[#D71921]/25 flex items-center justify-center shrink-0">
+                <Users size={14} className="text-[#D71921]" />
+              </span>
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-1.5 font-sans tabular-nums">
+            <p className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-2 font-sans tabular-nums">
               {loading ? '—' : crewMembersCount}
             </p>
           </div>
         </div>
       </div>
 
-      {/* ── NAVIGATION TABS: My Tests | Results | Crew ───────────────────────── */}
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] pb-2">
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+      {/* ── NAVIGATION TABS: My Tests | Results | Crew (Aligned Pill Style) ──── */}
+      <div className="flex items-center justify-between gap-2 pb-1">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
           {(
             [
               { id: 'tests', label: 'My Tests', count: testsCreatedCount },
@@ -540,16 +572,18 @@ export function AmbassadorDashboardPage() {
                 key={t.id}
                 type="button"
                 onClick={() => setActiveTab(t.id)}
-                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors flex items-center gap-2 cursor-pointer shrink-0 ${
+                className={`min-h-[44px] px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all inline-flex items-center justify-center gap-2 cursor-pointer shrink-0 ${
                   active
-                    ? 'bg-[#D71921] text-white'
-                    : 'bg-[var(--card)] text-[var(--muted)] hover:text-[var(--text)] border border-[var(--border)]'
+                    ? 'bg-[#D71921] text-white border border-[#D71921] shadow-[0_6px_18px_-4px_rgba(215,25,33,0.45)]'
+                    : 'captain-glass-card captain-glass-card--interactive text-[var(--muted)] hover:text-[var(--text)]'
                 }`}
               >
                 <span>{t.label}</span>
                 <span
-                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono tabular-nums ${
-                    active ? 'bg-black/25 text-white' : 'bg-[var(--surface-2)] text-[var(--muted)]'
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-mono tabular-nums ${
+                    active
+                      ? 'bg-black/25 text-white'
+                      : 'bg-black/[0.06] dark:bg-white/[0.08] text-[var(--muted)]'
                   }`}
                 >
                   {t.count}
@@ -563,10 +597,12 @@ export function AmbassadorDashboardPage() {
           type="button"
           onClick={loadCaptainWorkspace}
           disabled={loading}
-          className="p-2 rounded-xl bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] cursor-pointer shrink-0"
-          title="Refresh"
+          className="captain-glass-card captain-glass-card--interactive min-h-[44px] min-w-[44px] px-3.5 rounded-full text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+          title="Refresh workspace"
+          aria-label="Refresh workspace"
         >
-          <RefreshCw size={15} />
+          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+          <span className="hidden sm:inline text-xs font-semibold">Refresh</span>
         </button>
       </div>
 
@@ -576,7 +612,7 @@ export function AmbassadorDashboardPage() {
           {loading ? (
             <LineLoader context="dashboard" variant="section" />
           ) : myTests.length === 0 ? (
-            <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-8 text-center">
+            <div className="captain-glass-panel p-8 text-center">
               <FileSpreadsheet size={32} className="mx-auto text-[var(--muted)] mb-2.5" />
               <p className="text-sm font-bold text-[var(--text)]">No Captain tests created yet</p>
               <p className="text-xs text-[var(--muted)] mt-1 max-w-md mx-auto">
@@ -585,7 +621,7 @@ export function AmbassadorDashboardPage() {
               <button
                 type="button"
                 onClick={openCreateModal}
-                className="mt-4 inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#D71921] text-white text-xs font-bold cursor-pointer"
+                className="mt-4 min-h-[44px] inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#D71921] text-white text-xs font-bold cursor-pointer"
               >
                 <Plus size={14} />
                 Create Your First Test
@@ -596,10 +632,12 @@ export function AmbassadorDashboardPage() {
               {myTests.map((t) => {
                 const isPublished = t.status === 'published';
                 const isPublic = t.visibility === 'public';
+                const qCount = Number(t.questionCount) || 0;
+                const aCount = Number(t.attemptsCount) || 0;
                 return (
                   <div
                     key={t.id}
-                    className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                    className="captain-glass-card p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                   >
                     <div className="min-w-0 space-y-1.5">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -609,15 +647,15 @@ export function AmbassadorDashboardPage() {
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-semibold ${
                             isPublic
-                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                              : 'bg-zinc-500/15 text-zinc-300 border border-zinc-500/30'
+                              ? 'bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border border-emerald-500/30'
+                              : 'bg-zinc-500/15 text-[var(--muted)] border border-zinc-500/30'
                           }`}
                         >
                           {isPublic ? <Globe size={10} /> : <Lock size={10} />}
                           {isPublic ? 'Public' : 'Private'}
                         </span>
                         {!isPublished && (
-                          <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-mono font-semibold">
+                          <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-[10px] font-mono font-semibold">
                             Unpublished
                           </span>
                         )}
@@ -627,11 +665,15 @@ export function AmbassadorDashboardPage() {
                         {t.title}
                       </h3>
 
-                      <div className="flex items-center gap-3 text-xs text-[var(--muted)] flex-wrap tabular-nums">
-                        <span>{t.questionCount} questions</span>
+                      <div className="flex items-center gap-2.5 text-xs text-[var(--muted)] flex-wrap tabular-nums">
+                        <span>
+                          {qCount} {qCount === 1 ? 'question' : 'questions'}
+                        </span>
                         <span>•</span>
-                        <span>{t.attemptsCount || 0} attempts</span>
-                        {typeof t.avgScore === 'number' && t.attemptsCount > 0 && (
+                        <span>
+                          {aCount} {aCount === 1 ? 'attempt' : 'attempts'}
+                        </span>
+                        {typeof t.avgScore === 'number' && aCount > 0 && (
                           <>
                             <span>•</span>
                             <span>Avg {Math.round(t.avgScore)}%</span>
@@ -646,7 +688,7 @@ export function AmbassadorDashboardPage() {
                         type="button"
                         onClick={() => handleTogglePublish(t)}
                         disabled={togglingPublishId === t.id}
-                        className="relative overflow-hidden px-3 py-1.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="captain-glass-card captain-glass-card--interactive relative overflow-hidden min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-semibold text-[var(--text)] inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         {isPublished ? <EyeOff size={13} /> : <Eye size={13} />}
                         <span>
@@ -662,7 +704,7 @@ export function AmbassadorDashboardPage() {
                       <button
                         type="button"
                         onClick={() => openEditModal(t)}
-                        className="px-3 py-1.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1.5 cursor-pointer"
+                        className="captain-glass-card captain-glass-card--interactive min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-semibold text-[var(--text)] inline-flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <Pencil size={13} />
                         <span>Edit</span>
@@ -674,7 +716,7 @@ export function AmbassadorDashboardPage() {
                           setSelectedResultTestId(t.id);
                           setActiveTab('results');
                         }}
-                        className="px-3 py-1.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1.5 cursor-pointer"
+                        className="captain-glass-card captain-glass-card--interactive min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-semibold text-[var(--text)] inline-flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <BarChart3 size={13} />
                         <span>Results</span>
@@ -683,10 +725,11 @@ export function AmbassadorDashboardPage() {
                       <button
                         type="button"
                         onClick={() => setDeleteConfirmTest(t)}
-                        className="p-2 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 hover:bg-red-500/20 cursor-pointer"
+                        className="min-h-[44px] min-w-[44px] p-2.5 rounded-xl bg-red-500/10 border border-red-500/25 text-red-500 dark:text-red-400 hover:bg-red-500/20 inline-flex items-center justify-center cursor-pointer"
                         title="Delete Test"
+                        aria-label={`Delete test ${t.title}`}
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   </div>
@@ -701,7 +744,7 @@ export function AmbassadorDashboardPage() {
       {activeTab === 'results' && (
         <div className="space-y-4">
           {myTests.length === 0 ? (
-            <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-8 text-center">
+            <div className="captain-glass-panel p-8 text-center">
               <Trophy size={32} className="mx-auto text-[var(--muted)] mb-2.5" />
               <p className="text-sm font-bold text-[var(--text)]">No tests to show results for</p>
               <p className="text-xs text-[var(--muted)] mt-1">
@@ -711,34 +754,35 @@ export function AmbassadorDashboardPage() {
           ) : (
             <>
               {/* Per-test selector list */}
-              <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-4 space-y-3">
+              <div className="captain-glass-panel p-4 sm:p-5 space-y-3">
                 <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
-                  Select Test to View Student Rankings
+                  SELECT TEST TO VIEW STUDENT RANKINGS
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-stretch">
                   {myTests.map((t) => {
                     const isSelected = selectedResultTestId === t.id;
+                    const aCount = Number(t.attemptsCount) || 0;
                     return (
                       <button
                         key={t.id}
                         type="button"
                         onClick={() => setSelectedResultTestId(t.id)}
-                        className={`p-3 rounded-xl border text-left transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                        className={`captain-glass-card min-h-[64px] p-3.5 text-left transition-all flex items-center justify-between gap-3 cursor-pointer ${
                           isSelected
-                            ? 'border-[#D71921] bg-[#D71921]/10 text-[var(--text)]'
-                            : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)]'
+                            ? 'captain-glass-card--selected text-[var(--text)]'
+                            : 'captain-glass-card--interactive text-[var(--muted)] hover:text-[var(--text)]'
                         }`}
                       >
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="text-xs sm:text-sm font-bold text-[var(--text)] truncate">
                             {t.title}
                           </p>
-                          <p className="text-[11px] text-[var(--muted)] mt-0.5 tabular-nums">
-                            {t.subject} • {t.attemptsCount || 0} attempts
+                          <p className="text-[11px] text-[var(--muted)] mt-0.5 tabular-nums truncate">
+                            {t.subject} • {aCount} {aCount === 1 ? 'attempt' : 'attempts'}
                           </p>
                         </div>
                         <ChevronRight
-                          size={15}
+                          size={16}
                           className={isSelected ? 'text-[#D71921] shrink-0' : 'text-[var(--muted)] shrink-0'}
                         />
                       </button>
@@ -748,10 +792,10 @@ export function AmbassadorDashboardPage() {
               </div>
 
               {/* Per-student scores and ranking */}
-              <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-4 sm:p-5 space-y-3">
+              <div className="captain-glass-panel p-4 sm:p-5 space-y-3.5">
                 <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-bold text-[var(--text)]">
-                    Student Scores &amp; Ranking
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+                    STUDENT SCORES &amp; RANKING
                   </h3>
                   <span className="text-xs text-[var(--muted)] font-mono tabular-nums">
                     {testResults.length} {testResults.length === 1 ? 'submission' : 'submissions'}
@@ -761,7 +805,7 @@ export function AmbassadorDashboardPage() {
                 {loadingResults ? (
                   <LineLoader context="results" variant="section" />
                 ) : testResults.length === 0 ? (
-                  <div className="py-8 text-center">
+                  <div className="captain-glass-card py-8 px-4 text-center">
                     <Users size={28} className="mx-auto text-[var(--muted)] mb-2" />
                     <p className="text-xs font-semibold text-[var(--text)]">
                       No attempts recorded for this test yet
@@ -771,44 +815,42 @@ export function AmbassadorDashboardPage() {
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     {testResults.map((r, index) => {
                       const rank = r.rank ?? index + 1;
                       const mins = Math.floor((r.timeTakenSeconds || 0) / 60);
                       const secs = (r.timeTakenSeconds || 0) % 60;
+                      const uid = (r.studentUid || '').trim();
+                      const liveProfile = uid ? profilesByUid[uid] : undefined;
                       const displayName =
-                        (r.userName || r.studentName || '').trim() || 'Student';
-                      const isCurrentUser =
-                        Boolean(user?.uid && r.studentUid && r.studentUid === user.uid);
+                        (r.userName || r.studentName || liveProfile?.displayName || '').trim() ||
+                        'Student';
+                      const isCurrentUser = Boolean(user?.uid && uid && uid === user.uid);
+                      const isSuperAdminActor =
+                        Boolean(liveProfile?.isSuperAdmin) || isAdminAccount(uid, displayName);
+
                       return (
                         <div
-                          key={r.id || `${rank}-${displayName}`}
-                          className={`p-3 rounded-xl border flex items-center justify-between gap-2 sm:gap-3 ${
-                            isCurrentUser
-                              ? 'bg-[#D71921]/10 border-[#D71921]/50'
-                              : 'bg-[var(--surface-2)] border-[var(--border)]'
+                          key={r.id || `${rank}-${displayName}-${index}`}
+                          className={`ranking-glass-row min-h-[68px] p-3 sm:px-4 sm:py-3.5 flex items-center justify-between gap-3 ${
+                            isCurrentUser ? 'ranking-glass-row--highlight' : ''
                           }`}
                         >
-                          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                            <span
-                              className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-mono font-bold shrink-0 tabular-nums ${
-                                rank === 1
-                                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                                  : rank === 2
-                                  ? 'bg-zinc-400/20 text-zinc-300 border border-zinc-400/40'
-                                  : rank === 3
-                                  ? 'bg-amber-700/20 text-amber-500 border border-amber-700/40'
-                                  : 'bg-[var(--card)] text-[var(--muted)] border border-[var(--border)]'
-                              }`}
-                            >
-                              #{rank}
-                            </span>
-                            <BoardlyAvatar
-                              uid={r.studentUid || `${rank}-${displayName}`}
-                              name={displayName}
-                              photoURL={r.userAvatar || null}
-                              size="sm"
-                            />
+                          <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0 flex-1">
+                            <span className={getRankBadgeClass(rank)}>#{rank}</span>
+                            <div className="w-[44px] h-[44px] shrink-0 flex items-center justify-center">
+                              <BoardlyAvatar
+                                uid={uid || `${rank}-${displayName}`}
+                                name={displayName}
+                                photoURL={liveProfile?.photoURL || r.userAvatar || null}
+                                avatar={liveProfile?.avatar || null}
+                                equippedAvatarId={liveProfile?.equippedAvatarId || null}
+                                customAvatarUrl={liveProfile?.customAvatarUrl || null}
+                                equippedFrameId={liveProfile?.equippedFrameId || null}
+                                isSuperAdmin={isSuperAdminActor}
+                                size={44}
+                              />
+                            </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5 min-w-0">
                                 <p className="text-xs sm:text-sm font-bold text-[var(--text)] truncate">
@@ -820,17 +862,17 @@ export function AmbassadorDashboardPage() {
                                   </span>
                                 )}
                               </div>
-                              <p className="text-[11px] text-[var(--muted)] font-mono tabular-nums truncate">
+                              <p className="text-[11px] text-[var(--muted)] font-mono tabular-nums truncate mt-0.5">
                                 Time: {mins > 0 ? `${mins}m ${secs}s` : `${secs}s`} · {r.percentage}% accuracy
                               </p>
                             </div>
                           </div>
 
-                          <div className="text-right shrink-0 tabular-nums">
-                            <p className="text-xs sm:text-sm font-bold text-[var(--text)] font-mono">
+                          <div className="text-right shrink-0 whitespace-nowrap tabular-nums pl-2">
+                            <p className="text-xs sm:text-sm font-bold text-[var(--text)] font-mono whitespace-nowrap">
                               {r.score}/{r.totalQuestions}
                             </p>
-                            <p className="text-[11px] font-bold text-[#D71921]">
+                            <p className="text-[11px] font-bold text-[#D71921] whitespace-nowrap mt-0.5">
                               {r.percentage}%
                             </p>
                           </div>
@@ -851,7 +893,7 @@ export function AmbassadorDashboardPage() {
           {loading ? (
             <LineLoader context="dashboard" variant="section" />
           ) : !crew ? (
-            <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 sm:p-6 space-y-4">
+            <div className="captain-glass-panel p-5 sm:p-6 space-y-4">
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-xl bg-[#D71921]/15 text-[#D71921] flex items-center justify-center shrink-0">
                   <Users size={20} />
@@ -877,7 +919,7 @@ export function AmbassadorDashboardPage() {
                     value={newCrewName}
                     onChange={(e) => setNewCrewName(e.target.value)}
                     placeholder="e.g. NUST Seeker Squadron"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
                   />
                 </div>
                 <div>
@@ -889,13 +931,13 @@ export function AmbassadorDashboardPage() {
                     value={newCrewUniversity}
                     onChange={(e) => setNewCrewUniversity(e.target.value)}
                     placeholder="e.g. NUST / FAST / MDCAT"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={creatingCrew}
-                  className="relative overflow-hidden px-5 py-2.5 rounded-xl bg-[#D71921] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="relative overflow-hidden min-h-[44px] px-5 py-2.5 rounded-xl bg-[#D71921] text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <Plus size={14} />
                   <span>{creatingCrew ? 'Creating...' : 'Create Crew'}</span>
@@ -906,15 +948,15 @@ export function AmbassadorDashboardPage() {
           ) : (
             <div className="space-y-4">
               {/* Crew Summary Card */}
-              <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="captain-glass-panel p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-base font-bold text-[var(--text)] truncate">{crew.name}</h3>
                     <span
                       className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-semibold uppercase ${
                         crew.status === 'suspended'
-                          ? 'bg-red-500/15 text-red-400'
-                          : 'bg-emerald-500/15 text-emerald-400'
+                          ? 'bg-red-500/15 text-red-500 dark:text-red-400'
+                          : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
                       }`}
                     >
                       {crew.status}
@@ -930,23 +972,26 @@ export function AmbassadorDashboardPage() {
                 <button
                   type="button"
                   onClick={copyCrewCode}
-                  className="px-3.5 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+                  className="captain-glass-card captain-glass-card--interactive min-h-[44px] px-4 py-2 rounded-xl text-xs font-semibold text-[var(--text)] inline-flex items-center justify-center gap-1.5 cursor-pointer self-start sm:self-auto"
                 >
-                  {copiedCode ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                  {copiedCode ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
                   <span>{copiedCode ? 'Copied Code' : 'Copy Invite Code'}</span>
                 </button>
               </div>
 
               {/* Crew Members List */}
-              <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-4 sm:p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-bold text-[var(--text)]">
-                    Crew Members ({crewMembers.length})
+              <div className="captain-glass-panel p-4 sm:p-5 space-y-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+                    CREW MEMBERS
                   </h4>
+                  <span className="text-xs font-mono text-[var(--muted)] tabular-nums">
+                    {crewMembers.length} {crewMembers.length === 1 ? 'member' : 'members'}
+                  </span>
                 </div>
 
                 {crewMembers.length === 0 ? (
-                  <div className="py-8 text-center">
+                  <div className="captain-glass-card py-8 px-4 text-center">
                     <Users size={28} className="mx-auto text-[var(--muted)] mb-2" />
                     <p className="text-xs font-semibold text-[var(--text)]">No members yet</p>
                     <p className="text-[11px] text-[var(--muted)] mt-0.5">
@@ -954,7 +999,7 @@ export function AmbassadorDashboardPage() {
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     {crewMembers.map((m) => {
                       const isCaptainRow = m.role === 'captain' || m.userUid === crew.captainUid;
                       const canManage =
@@ -964,7 +1009,7 @@ export function AmbassadorDashboardPage() {
                       return (
                         <div
                           key={m.id || m.userUid}
-                          className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex flex-col xs:flex-row xs:items-center justify-between gap-3"
+                          className="captain-glass-card p-3.5 flex flex-col xs:flex-row xs:items-center justify-between gap-3"
                         >
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -975,13 +1020,13 @@ export function AmbassadorDashboardPage() {
                                 className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-semibold uppercase ${
                                   isCaptainRow
                                     ? 'bg-[#D71921]/15 text-[#D71921]'
-                                    : 'bg-[var(--card)] text-[var(--muted)]'
+                                    : 'bg-black/[0.06] dark:bg-white/[0.08] text-[var(--muted)]'
                                 }`}
                               >
                                 {isCaptainRow ? 'Captain' : 'Member'}
                               </span>
                               {isSuspended && (
-                                <span className="px-2 py-0.5 rounded-md bg-red-500/15 text-red-400 text-[10px] font-mono font-semibold">
+                                <span className="px-2 py-0.5 rounded-md bg-red-500/15 text-red-500 dark:text-red-400 text-[10px] font-mono font-semibold">
                                   Suspended
                                 </span>
                               )}
@@ -999,7 +1044,7 @@ export function AmbassadorDashboardPage() {
                                 type="button"
                                 disabled={memberActionUid === m.userUid}
                                 onClick={() => handleToggleSuspendMember(m)}
-                                className="px-2.5 py-1.5 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[11px] font-semibold text-amber-400 hover:bg-amber-500/10 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                className="captain-glass-card captain-glass-card--interactive min-h-[44px] px-3 py-1.5 rounded-xl text-[11px] font-semibold text-amber-600 dark:text-amber-400 inline-flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
                               >
                                 <Ban size={12} />
                                 <span>{isSuspended ? 'Unsuspend' : 'Suspend'}</span>
@@ -1008,7 +1053,7 @@ export function AmbassadorDashboardPage() {
                                 type="button"
                                 disabled={memberActionUid === m.userUid}
                                 onClick={() => handleRemoveMember(m)}
-                                className="px-2.5 py-1.5 rounded-lg bg-red-500/10 border border-red-500/25 text-[11px] font-semibold text-red-400 hover:bg-red-500/20 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                className="min-h-[44px] px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/25 text-[11px] font-semibold text-red-500 dark:text-red-400 hover:bg-red-500/20 inline-flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
                               >
                                 <UserMinus size={12} />
                                 <span>Remove</span>
@@ -1188,7 +1233,7 @@ export function AmbassadorDashboardPage() {
                       }
                     />
                     <span className="text-xs font-bold text-[var(--text)] tabular-nums">
-                      {parsedQuestions.length} questions parsed
+                      {parsedQuestions.length} {parsedQuestions.length === 1 ? 'question' : 'questions'} parsed
                     </span>
                   </div>
                   {parseErrors.length > 0 && (

@@ -293,10 +293,10 @@ export function Footer() {
         </div>
       </div>
 
-      {/* Dot-matrix "Boardly" wordmark in Doto font with balanced spacing */}
+      {/* Dot-matrix "Boardly" wordmark in Doto font with balanced spacing and clearance above floating bottom nav */}
       <div
         ref={wordmarkContainerRef}
-        className="w-full flex items-center justify-center text-center px-4 pt-2 pb-6 sm:pb-8 select-none pointer-events-none"
+        className="w-full flex items-center justify-center text-center px-4 pt-2 pb-[calc(88px+env(safe-area-inset-bottom,0px))] select-none pointer-events-none"
         style={{
           boxSizing: 'border-box',
         }}

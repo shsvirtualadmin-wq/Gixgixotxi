@@ -7,7 +7,9 @@ import { PublicLayout } from './components/layout/PublicLayout';
 import { DashboardErrorBoundary } from './components/dashboard/DashboardErrorBoundary';
 
 const LazyDebugPanel = lazy(() =>
-  import('./components/debug/DebugPanel').then((m) => ({ default: m.DebugPanel }))
+  import('./components/debug/DebugPanel')
+    .then((m) => ({ default: m.DebugPanel }))
+    .catch(() => ({ default: () => null }))
 );
 
 /**
