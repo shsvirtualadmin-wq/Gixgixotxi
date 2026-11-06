@@ -885,13 +885,7 @@ export default {
       // Single test routes: /api/tests/:id
       const testMatch = path.match(/^\/api\/tests\/([^/]+)$/);
       if (testMatch) {
-        const rawTestParam = decodeURIComponent(testMatch[1]);
-        const uuidMatch = rawTestParam.match(
-          /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-|$)/i
-        );
-        const shortSuffixMatch = rawTestParam.match(/^.+-([0-9a-f]{6,8})$/i);
-        const candidateId = uuidMatch ? uuidMatch[1] : rawTestParam;
-        const shortLike = shortSuffixMatch ? `${shortSuffixMatch[1].toLowerCase()}%` : '';
+        const testId = decodeURIComponent(testMatch[1]);
         const isInfoOnly = method === 'GET' && url.searchParams.get('view') === 'info';
         const user = await authenticateRequest(request, env, !isInfoOnly);
 
@@ -903,17 +897,14 @@ export default {
                     crew_id AS crewId, crew_name AS crewName,
                     attempts_count AS attemptsCount, avg_score AS avgScore,
                     created_at AS createdAt, updated_at AS updatedAt
-             FROM captain_tests
-             WHERE id = ?1 OR id = ?2 OR (?3 != '' AND LOWER(id) LIKE ?3)
-             LIMIT 1`
+             FROM captain_tests WHERE id = ?1`
           )
-          .bind(candidateId, rawTestParam, shortLike)
+          .bind(testId)
           .first();
 
         if (!testRow) {
           return errorResponse(request, env, 'Test not found.', 'NOT_FOUND', 404);
         }
-        const testId = testRow.id;
 
         const isOwnerOrAdmin = Boolean(user && (testRow.captainUid === user.uid || user.isAdminOrAbove));
 

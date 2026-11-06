@@ -12,7 +12,6 @@ import {
   buildR2PostFileKey,
   sanitizeUploadFileName,
 } from '../../../src/config/cloudflareConfig';
-import { matchesEntitySlugOrId } from '../../../src/utils/sharePreviewHelper';
 import seedDataset from '../../../data/cloudflare_d1_posts.json';
 
 interface MemoryStore {
@@ -457,9 +456,7 @@ export async function onRequest(context: {
   const postId = extractIdFromSlugOrId(slugOrId);
 
   if (!action && request.method === 'GET') {
-    const row = memoryStore.posts.find(
-      (p) => p.id === postId || p.slug === slugOrId || matchesEntitySlugOrId(p, slugOrId)
-    );
+    const row = memoryStore.posts.find((p) => p.id === postId || p.slug === slugOrId);
     if (!row) {
       return new Response(
         JSON.stringify({ success: false, error: 'Post not found.' }),
@@ -478,9 +475,7 @@ export async function onRequest(context: {
 
   if (action === 'status' && request.method === 'GET') {
     const userId = (url.searchParams.get('userId') || '').trim();
-    const row = memoryStore.posts.find(
-      (p) => p.id === postId || p.slug === slugOrId || matchesEntitySlugOrId(p, slugOrId)
-    );
+    const row = memoryStore.posts.find((p) => p.id === postId || p.slug === slugOrId);
     const canonicalId = row?.id || postId;
     const voted = Boolean(
       userId && memoryStore.likes.some((l) => l.post_id === canonicalId && l.user_uid === userId)

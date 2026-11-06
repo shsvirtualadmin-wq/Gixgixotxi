@@ -1,81 +1,37 @@
 export function buildEntitySlug(id: string, title?: string | null): string {
   const cleanId = String(id || '').trim();
-  if (!cleanId) return '';
   if (!title) return cleanId;
-
-  const cleanedTitle = String(title)
-    .replace(/\b[0-9a-f]{8}[-\s][0-9a-f]{4}[-\s][0-9a-f]{4}[-\s][0-9a-f]{4}[-\s][0-9a-f]{12}\b/gi, ' ')
-    .replace(/\bcommons[_-\s]anon[_-\s]topic[_-\s]\d+\b/gi, ' ')
-    .replace(/\bpost[_-\s]gen[_-\s]\d+\b/gi, ' ')
+  const cleanTitle = title.trim();
+  if (cleanTitle.toLowerCase().startsWith(`${cleanId.toLowerCase()}-`)) {
+    return cleanTitle;
+  }
+  const slug = cleanTitle
     .toLowerCase()
-    .trim()
     .replace(/['’]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 64)
-    .replace(/-+$/g, '');
-
-  if (!cleanedTitle) return cleanId;
-
-  const topicMatch = cleanId.match(/^commons_anon_topic_(\d+)$/i);
-  const genMatch = cleanId.match(/^post_gen_(\d+)$/i);
-  const uuidMatch = cleanId.match(/^([0-9a-f]{6,8})[0-9a-f]*-[0-9a-f]{4}-/i);
-
-  const shortId = topicMatch
-    ? `topic${topicMatch[1]}`
-    : genMatch
-      ? `gen${genMatch[1]}`
-      : uuidMatch
-        ? uuidMatch[1].toLowerCase().slice(0, 6)
-        : cleanId.replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 6);
-
-  if (!shortId || cleanedTitle === shortId || cleanedTitle.endsWith(`-${shortId}`)) {
-    return cleanedTitle;
-  }
-  return `${cleanedTitle}-${shortId}`;
+    .slice(0, 60);
+  return slug ? `${cleanId}-${slug}` : cleanId;
 }
 
 export function extractIdFromSlug(idSlug?: string | null): string {
   if (!idSlug) return '';
-  const trimmed = (() => {
-    try {
-      return decodeURIComponent(idSlug).trim();
-    } catch {
-      return String(idSlug).trim();
-    }
-  })();
+  const trimmed = decodeURIComponent(idSlug).trim();
   if (!trimmed) return '';
-
-  // 1. Legacy full UUID prefix
   const uuidMatch = trimmed.match(
     /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-|$)/i
   );
   if (uuidMatch) return uuidMatch[1];
-
-  // 2. Legacy custom post/test prefixes
-  const customMatch = trimmed.match(
-    /^(commons_anon_topic_\d+|post_gen_\d+|post_\d+_[a-zA-Z0-9]+|gl-[a-z0-9]+-\d+)(?:-|$)/i
-  );
-  if (customMatch) return customMatch[1];
-
-  // 3. New human-readable suffixes for known post ID patterns
-  const trailingTopicMatch = trimmed.match(/^.+-topic(\d+)$/i);
-  if (trailingTopicMatch) return `commons_anon_topic_${trailingTopicMatch[1]}`;
-
-  const trailingGenMatch = trimmed.match(/^.+-gen(\d+)$/i);
-  if (trailingGenMatch) return `post_gen_${trailingGenMatch[1]}`;
-
-  // 4. Legacy 20-char Firestore random ID prefix
+  const postGenMatch = trimmed.match(/^(post_gen_\d+)(?:-|$)/);
+  if (postGenMatch) return postGenMatch[1];
+  const postMatch = trimmed.match(/^(post_\d+_[a-zA-Z0-9]+)(?:-|$)/);
+  if (postMatch) return postMatch[1];
+  const glMatch = trimmed.match(/^(gl-[a-z0-9]+-\d+)(?:-|$)/i);
+  if (glMatch) return glMatch[1];
   const dashIndex = trimmed.indexOf('-');
   if (dashIndex === -1) return trimmed;
-  const firstSegment = trimmed.slice(0, dashIndex);
-  if (firstSegment.length >= 16 && /^[a-zA-Z0-9]+$/.test(firstSegment) && /[A-Z0-9]/.test(firstSegment)) {
-    return firstSegment;
-  }
-
-  return trimmed;
+  return trimmed.slice(0, dashIndex);
 }
-
 
 export const CANONICAL_SUBJECT_LABELS: Record<string, string> = {
   physics: 'Physics',

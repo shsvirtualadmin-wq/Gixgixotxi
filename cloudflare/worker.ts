@@ -37,15 +37,6 @@ import {
   type D1McqRow,
   type D1McqReportRow,
 } from '../src/constants/d1Universities';
-import {
-  buildHumanEntitySlug,
-  buildPostSharePreview,
-  buildTestSharePreview,
-  buildProfileSharePreview,
-  escapeHtmlMeta,
-  extractEntityIdOrShortToken,
-} from '../src/utils/sharePreviewHelper';
-import { renderBoardlyOgCardPngEdge } from '../src/utils/ogCardPngFallback';
 
 
 export interface Env {
@@ -695,30 +686,28 @@ export async function verifyFirebaseIdToken(
 }
 
 export function buildSlug(id: string, title: string): string {
-  return buildHumanEntitySlug(id, title || 'post');
+  const cleanTitle = (title || 'post')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 72);
+  return `${id}-${cleanTitle || 'post'}`;
 }
 
 export function extractIdFromSlugOrId(slugOrId: string): string {
   const trimmed = (slugOrId || '').trim();
   if (!trimmed) return '';
-  const uuidMatch = trimmed.match(
-    /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-|$)/i
-  );
-  if (uuidMatch) return uuidMatch[1];
-  const customMatch = trimmed.match(
-    /^(commons_anon_topic_\d+|post_gen_\d+|post_\d+_[a-zA-Z0-9]+|gl-[a-z0-9]+-\d+)(?:-|$)/i
-  );
-  if (customMatch) return customMatch[1];
-  const trailingTopicMatch = trimmed.match(/^.+-topic(\d+)$/i);
-  if (trailingTopicMatch) return `commons_anon_topic_${trailingTopicMatch[1]}`;
-  const trailingGenMatch = trimmed.match(/^.+-gen(\d+)$/i);
-  if (trailingGenMatch) return `post_gen_${trailingGenMatch[1]}`;
+  if (trimmed.startsWith('post_gen_')) {
+    const m = trimmed.match(/^(post_gen_\d+)/);
+    if (m) return m[1];
+  }
+  if (trimmed.startsWith('post_')) {
+    const m = trimmed.match(/^(post_\d+_[a-zA-Z0-9]+)/);
+    if (m) return m[1];
+  }
   const dashIdx = trimmed.indexOf('-');
-  if (dashIdx >= 16) {
-    const first = trimmed.slice(0, dashIdx);
-    if (/^[a-zA-Z0-9]+$/.test(first) && /[A-Z0-9]/.test(first)) {
-      return first;
-    }
+  if (dashIdx >= 15) {
+    return trimmed.slice(0, dashIdx);
   }
   return trimmed;
 }
@@ -1830,183 +1819,69 @@ ${urls
       return resp;
     }
 
-    // 1c. Dynamic 1200x630 Open Graph PNG Card Endpoint (/api/og)
-    if ((url.pathname === '/api/og' || url.pathname === '/api/og/') && req.method === 'GET') {
-      try {
-        const pngBytes = await renderBoardlyOgCardPngEdge({
-          type: url.searchParams.get('type') || 'default',
-          title: url.searchParams.get('title') || '',
-          subtitle: url.searchParams.get('subtitle') || '',
-          badge: url.searchParams.get('badge') || '',
-          meta: url.searchParams.get('meta') || '',
-          avatar: url.searchParams.get('avatar') || '',
-        });
-        return new Response(pngBytes, {
-          status: 200,
-          headers: {
-            'Content-Type': 'image/png',
-            'Cache-Control': 'public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400',
-            ...cors,
-          },
-        });
-      } catch (err: any) {
-        return jsonResponse({ error: err?.message || 'Failed to generate OG image' }, 500, cors);
-      }
-    }
-
-    // 2. Server-Rendered SEO Post, Test & Profile Pages for crawlers
+    // 2. Server-Rendered SEO Post Pages (/commons/post/:slug and /material/:slug) for crawlers
     if (
-      (url.pathname.startsWith('/commons/post/') ||
-        url.pathname.startsWith('/material/') ||
-        url.pathname.startsWith('/grand-line/test/') ||
-        url.pathname.startsWith('/test/') ||
-        url.pathname.startsWith('/u/') ||
-        url.pathname.startsWith('/profile/')) &&
+      (url.pathname.startsWith('/commons/post/') || url.pathname.startsWith('/material/')) &&
       req.method === 'GET' &&
       env.DB
     ) {
       const ua = (req.headers.get('User-Agent') || '').toLowerCase();
       const isBot =
-        /googlebot|bingbot|whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|discordbot|linkedinbot|slackbot|applebot/i.test(
+        /googlebot|bingbot|whatsapp|facebookexternalhit|twitterbot|telegrambot|discordbot|linkedinbot|slackbot|applebot/i.test(
           ua
-        ) ||
-        url.searchParams.get('ssr') === '1' ||
-        url.searchParams.get('crawler') === '1';
+        ) || url.searchParams.get('ssr') === '1';
 
       if (isBot) {
-        if (url.pathname.startsWith('/commons/post/') || url.pathname.startsWith('/material/')) {
-          const slugPart = decodeURIComponent(
-            url.pathname.replace(/^\/commons\/post\//, '').replace(/^\/material\//, '')
-          );
-          const parsed = extractEntityIdOrShortToken(slugPart);
-          const postId = parsed.legacyFullId || extractIdFromSlugOrId(slugPart);
-          const shortPrefix = parsed.shortToken ? `${parsed.shortToken}%` : '';
-          const row = await env.DB.prepare(
-            `SELECT * FROM posts WHERE (id = ?1 OR slug = ?2 OR (?3 != '' AND LOWER(id) LIKE ?3)) AND is_hidden = 0 LIMIT 1`
-          )
-            .bind(postId, slugPart, shortPrefix)
-            .first<Record<string, any>>();
+        const slugPart = url.pathname
+          .replace(/^\/commons\/post\//, '')
+          .replace(/^\/material\//, '');
+        const postId = extractIdFromSlugOrId(slugPart);
+        const row = await env.DB.prepare(
+          'SELECT * FROM posts WHERE (id = ? OR slug = ?) AND is_hidden = 0 LIMIT 1'
+        )
+          .bind(postId, slugPart)
+          .first<Record<string, any>>();
 
-          if (row && String(row.visibility || 'public').toLowerCase() !== 'private') {
-            const post = rowToCommonsPost(row);
-            const preview = buildPostSharePreview({
-              id: String(post.id),
-              title: post.title,
-              body: post.description,
-              authorName: post.isAnonymous ? 'Anonymous Student' : post.authorName,
-              subjectTag: post.subject,
-              boardTag: post.board,
-              classLevel: post.classLevel,
-              filesJson: row.files_json,
-              updatedAt: String(row.updated_at || row.created_at || ''),
-            });
-            const canonical = `https://boardly.cfd/commons/post/${preview.canonicalSlug}`;
-            const html = `<!doctype html>
+        if (row) {
+          const post = rowToCommonsPost(row);
+          const cleanDesc = String(post.description || '').slice(0, 160);
+          const canonical = `https://boardly.cfd/commons/post/${post.slug}`;
+          const html = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>${escapeHtmlMeta(preview.title)}</title>
-  <meta name="description" content="${escapeHtmlMeta(preview.description)}" />
-  <link rel="canonical" href="${escapeHtmlMeta(canonical)}" />
+  <title>${post.title} — ${post.subject} | Boardly Commons</title>
+  <meta name="description" content="${cleanDesc.replace(/"/g, '&quot;')}" />
+  <link rel="canonical" href="${canonical}" />
   <meta property="og:type" content="article" />
-  <meta property="og:site_name" content="Boardly" />
-  <meta property="og:title" content="${escapeHtmlMeta(preview.title)}" />
-  <meta property="og:description" content="${escapeHtmlMeta(preview.description)}" />
-  <meta property="og:url" content="${escapeHtmlMeta(canonical)}" />
-  <meta property="og:image" content="${escapeHtmlMeta(preview.image)}" />
-  <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
-  <meta property="og:image:alt" content="${escapeHtmlMeta(preview.imageAlt)}" />
+  <meta property="og:title" content="${post.title.replace(/"/g, '&quot;')}" />
+  <meta property="og:description" content="${cleanDesc.replace(/"/g, '&quot;')}" />
+  <meta property="og:url" content="${canonical}" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="${escapeHtmlMeta(preview.title)}" />
-  <meta name="twitter:description" content="${escapeHtmlMeta(preview.description)}" />
-  <meta name="twitter:image" content="${escapeHtmlMeta(preview.image)}" />
+  <script type="application/ld+json">${JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'LearningResource',
+    name: post.title,
+    description: cleanDesc,
+    educationalLevel: `Class ${post.classLevel} (${post.board})`,
+    url: canonical,
+  })}</script>
 </head>
 <body>
   <article>
-    <h1>${escapeHtmlMeta(post.title)}</h1>
-    <p>${escapeHtmlMeta(preview.description)}</p>
+    <h1>${post.title}</h1>
+    <p>Subject: ${post.subject} | Class ${post.classLevel} (${post.board})</p>
+    <div>${post.description}</div>
   </article>
 </body>
 </html>`;
-            return new Response(html, {
-              status: 200,
-              headers: {
-                'Content-Type': 'text/html; charset=utf-8',
-                'Cache-Control': 'public, max-age=300, s-maxage=900',
-              },
-            });
-          }
-        }
-
-        if (url.pathname.startsWith('/grand-line/test/') || url.pathname.startsWith('/test/')) {
-          const slugPart = decodeURIComponent(
-            url.pathname.replace(/^\/(?:grand-line\/test|test)\//, '').replace(/\/run$/, '')
-          );
-          const parsed = extractEntityIdOrShortToken(slugPart);
-          const testId = parsed.legacyFullId || extractIdFromSlugOrId(slugPart);
-          const shortPrefix = parsed.shortToken ? `${parsed.shortToken}%` : '';
-          const row = await env.DB.prepare(
-            `SELECT * FROM captain_tests WHERE (id = ?1 OR (?2 != '' AND LOWER(id) LIKE ?2)) AND status = 'published' AND visibility = 'public' LIMIT 1`
-          )
-            .bind(testId, shortPrefix)
-            .first<Record<string, any>>();
-
-          if (row) {
-            let qCount = 0;
-            try {
-              const qArr = JSON.parse(String(row.questions_json || '[]'));
-              if (Array.isArray(qArr)) qCount = qArr.length;
-            } catch {
-              qCount = 0;
-            }
-            const preview = buildTestSharePreview({
-              id: String(row.id),
-              title: String(row.title || ''),
-              description: String(row.description || ''),
-              questionCount: qCount || null,
-              durationMinutes: Number(row.duration_minutes || 0) || null,
-              creatorName: row.captain_name ? String(row.captain_name) : null,
-              subject: row.subject ? String(row.subject) : null,
-              updatedAt: String(row.created_at || ''),
-            });
-            const canonical = `https://boardly.cfd/grand-line/test/${preview.canonicalSlug}`;
-            const html = `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>${escapeHtmlMeta(preview.title)}</title>
-  <meta name="description" content="${escapeHtmlMeta(preview.description)}" />
-  <link rel="canonical" href="${escapeHtmlMeta(canonical)}" />
-  <meta property="og:type" content="website" />
-  <meta property="og:site_name" content="Boardly" />
-  <meta property="og:title" content="${escapeHtmlMeta(preview.title)}" />
-  <meta property="og:description" content="${escapeHtmlMeta(preview.description)}" />
-  <meta property="og:url" content="${escapeHtmlMeta(canonical)}" />
-  <meta property="og:image" content="${escapeHtmlMeta(preview.image)}" />
-  <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
-  <meta property="og:image:alt" content="${escapeHtmlMeta(preview.imageAlt)}" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="${escapeHtmlMeta(preview.title)}" />
-  <meta name="twitter:description" content="${escapeHtmlMeta(preview.description)}" />
-  <meta name="twitter:image" content="${escapeHtmlMeta(preview.image)}" />
-</head>
-<body>
-  <main>
-    <h1>${escapeHtmlMeta(row.title)}</h1>
-    <p>${escapeHtmlMeta(preview.description)}</p>
-  </main>
-</body>
-</html>`;
-            return new Response(html, {
-              status: 200,
-              headers: {
-                'Content-Type': 'text/html; charset=utf-8',
-                'Cache-Control': 'public, max-age=300, s-maxage=900',
-              },
-            });
-          }
+          return new Response(html, {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': 'public, max-age=300, s-maxage=900',
+            },
+          });
         }
       }
     }

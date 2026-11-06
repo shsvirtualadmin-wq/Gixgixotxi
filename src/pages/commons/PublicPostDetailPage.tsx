@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import {
   ThumbsUp,
   MessageSquare,
@@ -53,7 +53,6 @@ import {
   extractIdFromSlug,
   buildEntitySlug,
 } from '@/utils/privacy';
-import { buildPostSharePreview } from '@/utils/sharePreviewHelper';
 
 export const PublicPostDetailPage: React.FC = () => {
   const { idSlug, postId: rawPostIdParam } = useParams<{
@@ -62,7 +61,6 @@ export const PublicPostDetailPage: React.FC = () => {
   }>();
   const postId = extractIdFromSlug(idSlug || rawPostIdParam || '');
   const location = useLocation();
-  const navigate = useNavigate();
   const { user } = useAuth();
   const { profile } = useUserProfile();
   const { requireAuth } = useAuthGate();
@@ -164,14 +162,6 @@ export const PublicPostDetailPage: React.FC = () => {
   useEffect(() => {
     void loadData();
   }, [loadData]);
-
-  useEffect(() => {
-    if (!post?.id || !post?.title || !idSlug) return;
-    const expectedSlug = buildEntitySlug(post.id, post.title);
-    if (expectedSlug && idSlug !== expectedSlug && location.pathname.startsWith('/commons/post/')) {
-      navigate(`/commons/post/${expectedSlug}${location.hash || ''}`, { replace: true });
-    }
-  }, [post?.id, post?.title, idSlug, location.pathname, location.hash, navigate]);
 
   // Keep post detail upvotes and voted state synchronized with the shared post like store
   useEffect(() => {
@@ -422,25 +412,14 @@ export const PublicPostDetailPage: React.FC = () => {
     `${post.title || ''} ${post.chapter || ''} ${(post.tags || []).join(' ')}`
   );
 
-  const resolvedFirstImage =
-    imageFiles.length > 0 ? resolveCommonsAttachmentUrl(imageFiles[0]) : null;
-  const postSharePreview = buildPostSharePreview({
-    id: post.id,
-    title: post.title,
-    body: post.description,
-    authorName: authorDisplay,
-    subjectTag: resolvedPractice.subjectSlug ? resolvedPractice.label : post.subject,
-    imageUrl: resolvedFirstImage && /^https?:\/\//i.test(resolvedFirstImage) ? resolvedFirstImage : null,
-    filesJson: post.files,
-  });
-
   return (
     <div className="min-h-screen w-full max-w-full min-w-0 box-border overflow-x-hidden bg-[var(--bg)] text-[var(--text)] pt-28 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-4 sm:px-6">
       <PageMeta
-        title={postSharePreview.title}
-        description={postSharePreview.description}
-        ogImage={postSharePreview.image}
-        ogImageAlt={postSharePreview.imageAlt}
+        title={`${post.title} — ${resolvedPractice.subjectSlug ? resolvedPractice.label : post.subject || 'Boardly Commons'}`}
+        description={
+          maskPublicUserText(post.description).slice(0, 155) ||
+          `Read ${post.title} shared in Boardly Commons for ${resolvedPractice.label || 'exam'} preparation.`
+        }
         canonicalPath={canonicalPath}
         ogType="article"
         jsonLd={jsonLd}

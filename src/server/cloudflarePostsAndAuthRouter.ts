@@ -31,14 +31,6 @@ import {
   injectMetaIntoIndexHtml,
   type ResolvedRouteMeta,
 } from '../utils/routeSeoMeta';
-import sharp from 'sharp';
-import { buildBoardlyOgCardSvg } from '../utils/ogCardRenderer';
-import { renderBoardlyOgCardPngEdge } from '../utils/ogCardPngFallback';
-import {
-  buildHumanEntitySlug,
-  isLegacyLongIdSlug,
-  matchesEntitySlugOrId,
-} from '../utils/sharePreviewHelper';
 
 const R2_PUBLIC_BASE_URL = (
   process.env.R2_PUBLIC_BASE_URL ||
@@ -615,7 +607,12 @@ export function saveD1Store(store: D1StoreData): void {
 const edgeFeedCache = new Map<string, { payload: any; expiresAt: number }>();
 
 export function buildSlug(id: string, title: string): string {
-  return buildHumanEntitySlug(id, title || 'post');
+  const cleanTitle = String(title || 'post')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 72);
+  return `${id}-${cleanTitle || 'post'}`;
 }
 
 export function extractIdFromSlugOrId(slugOrId: string): string {
@@ -625,20 +622,19 @@ export function extractIdFromSlugOrId(slugOrId: string): string {
     /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-|$)/i
   );
   if (uuidMatch) return uuidMatch[1];
-  const customMatch = trimmed.match(
-    /^(commons_anon_topic_\d+|post_gen_\d+|post_\d+_[a-zA-Z0-9]+|gl-[a-z0-9]+-\d+)(?:-|$)/i
-  );
-  if (customMatch) return customMatch[1];
-  const trailingTopicMatch = trimmed.match(/^.+-topic(\d+)$/i);
-  if (trailingTopicMatch) return `commons_anon_topic_${trailingTopicMatch[1]}`;
-  const trailingGenMatch = trimmed.match(/^.+-gen(\d+)$/i);
-  if (trailingGenMatch) return `post_gen_${trailingGenMatch[1]}`;
+  if (trimmed.startsWith('post_gen_')) {
+    const m = trimmed.match(/^(post_gen_\d+)/);
+    if (m) return m[1];
+  }
+  if (trimmed.startsWith('post_')) {
+    const m = trimmed.match(/^(post_\d+_[a-zA-Z0-9]+)/);
+    if (m) return m[1];
+  }
+  const glMatch = trimmed.match(/^(gl-[a-z0-9]+-\d+)(?:-|$)/i);
+  if (glMatch) return glMatch[1];
   const dashIdx = trimmed.indexOf('-');
-  if (dashIdx >= 16) {
-    const first = trimmed.slice(0, dashIdx);
-    if (/^[a-zA-Z0-9]+$/.test(first) && /[A-Z0-9]/.test(first)) {
-      return first;
-    }
+  if (dashIdx >= 15) {
+    return trimmed.slice(0, dashIdx);
   }
   return trimmed;
 }
@@ -1734,13 +1730,7 @@ ${allUrls
     const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
 
     const store = loadD1Store();
-    const row = store.posts.find(
-      (p) =>
-        p.id === postId ||
-        p.slug === slugOrId ||
-        p.id === slugOrId ||
-        matchesEntitySlugOrId(p, slugOrId)
-    );
+    const row = store.posts.find((p) => p.id === postId || p.slug === slugOrId || p.id === slugOrId);
 
     if (!row) {
       return res.status(404).json({ success: false, error: 'Post not found.' });
@@ -1770,11 +1760,7 @@ ${allUrls
       const postId = extractIdFromSlugOrId(slugOrId);
       const store = loadD1Store();
       const row = store.posts.find(
-        (p) =>
-          p.id === postId ||
-          p.slug === slugOrId ||
-          p.id === slugOrId ||
-          matchesEntitySlugOrId(p, slugOrId)
+        (p) => p.id === postId || p.slug === slugOrId || p.id === slugOrId
       );
 
       if (!row) {
@@ -6736,12 +6722,7 @@ ${allUrls
     if (!Array.isArray(store.testAttempts)) store.testAttempts = [];
     const rawId = decodeURIComponent(String(req.params.id || ''));
     const testId = extractIdFromSlugOrId(rawId);
-    const test = store.captainTests.find(
-      (t: any) =>
-        t.id === testId ||
-        t.id === rawId ||
-        matchesEntitySlugOrId({ id: t.id, title: t.title, slug: t.slug }, rawId)
-    );
+    const test = store.captainTests.find((t: any) => t.id === testId || t.id === rawId);
     if (!test) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
 
     const isInfoOnly = req.query.view === 'info';
@@ -7372,42 +7353,6 @@ ${allUrls
     saveD1Store(store);
     return res.status(200).json({ ok: true, userUid: memberUid });
   });
-
-  // Dynamic 1200x630 Open Graph PNG Card Endpoint (/api/og)
-  app.get('/api/og', async (req: Request, res: Response) => {
-    try {
-      const cardOptions = {
-        type: String(req.query.type || 'default'),
-        title: String(req.query.title || ''),
-        subtitle: String(req.query.subtitle || ''),
-        badge: String(req.query.badge || ''),
-        meta: String(req.query.meta || ''),
-        avatar: String(req.query.avatar || ''),
-      };
-      const svg = buildBoardlyOgCardSvg(cardOptions);
-      let pngBuffer: Buffer;
-      try {
-        pngBuffer = await sharp(Buffer.from(svg, 'utf-8'))
-          .resize(1200, 630, { fit: 'cover' })
-          .png({ compressionLevel: 8 })
-          .toBuffer();
-      } catch {
-        const fallbackBytes = await renderBoardlyOgCardPngEdge(cardOptions);
-        pngBuffer = Buffer.from(fallbackBytes);
-      }
-      res.statusCode = 200;
-      res.setHeader('Content-Type', 'image/png');
-      res.setHeader('Content-Length', pngBuffer.length);
-      res.setHeader(
-        'Cache-Control',
-        'public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400'
-      );
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.end(pngBuffer);
-    } catch (err: any) {
-      res.status(500).json({ error: err?.message || 'Failed to render OG card' });
-    }
-  });
 }
 
 function escapeHtmlAttr(str: string): string {
@@ -7421,275 +7366,8 @@ function escapeHtmlAttr(str: string): string {
 
 export function resolveServerRouteMeta(pathname: string) {
   const cleanPath = (pathname || '/').split('?')[0].split('#')[0].replace(/\/+$/, '') || '/';
-  const store = loadD1Store() as any;
-
-  // 1. Commons Post or Study Material Permalink
-  if (
-    (cleanPath.startsWith('/commons/post/') ||
-      cleanPath.startsWith('/material/') ||
-      cleanPath.startsWith('/study-material/')) &&
-    !cleanPath.startsWith('/material/subject/') &&
-    !cleanPath.startsWith('/study-material/subject/')
-  ) {
-    const slugParam = decodeURIComponent(
-      cleanPath
-        .replace(/^\/commons\/post\//, '')
-        .replace(/^\/study-material\//, '')
-        .replace(/^\/material\//, '')
-        .replace(/\/+$/, '')
-    );
-    const lookupId = extractIdFromSlugOrId(slugParam);
-    const d1Row = (store.posts || []).find(
-      (p: any) =>
-        p.slug === slugParam ||
-        p.id === slugParam ||
-        p.id === lookupId ||
-        matchesEntitySlugOrId(p, slugParam)
-    );
-
-    if (d1Row) {
-      const isPrivateOrHidden =
-        Boolean(d1Row.is_hidden) ||
-        String(d1Row.visibility || 'public').toLowerCase() === 'private' ||
-        String(d1Row.status || 'published').toLowerCase() === 'removed';
-      if (isPrivateOrHidden) {
-        const privateMeta = resolveStaticOrPatternRouteMeta(cleanPath, '', {
-          post: { isPrivateOrMissing: true },
-        });
-        return {
-          ...privateMeta,
-          canonical: privateMeta.canonicalUrl,
-          robots: 'noindex, nofollow',
-          h1: 'Boardly Commons',
-          statusCode: 200,
-        };
-      }
-
-      const authorLabel = d1Row.is_anonymous
-        ? 'Anonymous Student'
-        : d1Row.author_name || 'Boardly Student';
-      const resolved = resolveStaticOrPatternRouteMeta(cleanPath, '', {
-        post: {
-          id: d1Row.id,
-          title: d1Row.title,
-          body: d1Row.description || d1Row.body || '',
-          authorName: authorLabel,
-          subject: d1Row.subject || d1Row.subject_tag,
-          boardTag: d1Row.board_tag,
-          classLevel: d1Row.class_level,
-          slug: buildHumanEntitySlug(d1Row.id, d1Row.title),
-          filesJson: d1Row.files_json,
-          updatedAt: String(d1Row.updated_at || d1Row.created_at || ''),
-        },
-      });
-      const expectedSlug = buildHumanEntitySlug(d1Row.id, d1Row.title);
-      const prefix = cleanPath.startsWith('/commons/post/') ? '/commons/post' : '/material';
-      const redirectUrl =
-        isLegacyLongIdSlug(slugParam) && expectedSlug && slugParam !== expectedSlug
-          ? `${prefix}/${expectedSlug}`
-          : undefined;
-      return {
-        ...resolved,
-        canonical: resolved.canonicalUrl,
-        robots: 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1',
-        h1: d1Row.title || resolved.title,
-        statusCode: 200,
-        redirectUrl,
-      };
-    } else if (/^(?:commons_anon_topic_\d+|post_gen_\d+|post_\d+_[a-zA-Z0-9]+)$/i.test(lookupId)) {
-      const missingMeta = resolveStaticOrPatternRouteMeta(cleanPath, '', {
-        post: { isPrivateOrMissing: true },
-      });
-      return {
-        ...missingMeta,
-        canonical: missingMeta.canonicalUrl,
-        robots: 'noindex, nofollow',
-        h1: 'Boardly Commons',
-        statusCode: 200,
-      };
-    }
-  }
-
-  // 2. Grand Line Test Link (/grand-line/test/:slug, /tests/:slug, /test/:slug)
-  if (
-    cleanPath.startsWith('/grand-line/test/') ||
-    cleanPath.startsWith('/tests/') ||
-    cleanPath.startsWith('/test/')
-  ) {
-    const rawSegment = cleanPath
-      .replace(/^\/(?:grand-line\/test|tests|test)\//, '')
-      .replace(/\/run$/, '');
-    const slugParam = decodeURIComponent(rawSegment);
-    const lookupId = extractIdFromSlugOrId(slugParam);
-    const testsList = Array.isArray(store.captainTests) ? store.captainTests : [];
-    const matchedTest = testsList.find(
-      (t: any) =>
-        t.id === lookupId ||
-        t.id === slugParam ||
-        matchesEntitySlugOrId({ id: t.id, title: t.title, slug: t.slug }, slugParam)
-    );
-
-    if (matchedTest) {
-      const isPrivateOrUnpublished =
-        String(matchedTest.visibility || 'public').toLowerCase() === 'private' ||
-        (matchedTest.status && String(matchedTest.status).toLowerCase() === 'unpublished');
-      if (isPrivateOrUnpublished) {
-        const privateTestMeta = resolveStaticOrPatternRouteMeta(cleanPath, '', {
-          test: { isPrivateOrMissing: true },
-        });
-        return {
-          ...privateTestMeta,
-          canonical: privateTestMeta.canonicalUrl,
-          robots: 'noindex, nofollow',
-          h1: 'Grand Line Test',
-          statusCode: 200,
-        };
-      }
-
-      const qCount =
-        Number(
-          matchedTest.questionCount ??
-            matchedTest.question_count ??
-            (Array.isArray(matchedTest.questions) ? matchedTest.questions.length : 0)
-        ) || null;
-      const durationMinutes =
-        Number(matchedTest.durationMinutes ?? matchedTest.duration_minutes ?? 0) || null;
-      const creatorName =
-        matchedTest.captainName ||
-        matchedTest.creator_name ||
-        matchedTest.creatorName ||
-        null;
-      const expectedSlug = buildHumanEntitySlug(matchedTest.id, matchedTest.title);
-      const resolved = resolveStaticOrPatternRouteMeta(cleanPath, '', {
-        test: {
-          id: matchedTest.id,
-          title: matchedTest.title,
-          description: matchedTest.description,
-          subject: matchedTest.subject,
-          slug: expectedSlug,
-          questionCount: qCount,
-          durationMinutes,
-          creatorName,
-          updatedAt: String(matchedTest.updatedAt || matchedTest.createdAt || ''),
-        },
-      });
-      const redirectUrl =
-        isLegacyLongIdSlug(slugParam) && expectedSlug && slugParam !== expectedSlug
-          ? `/grand-line/test/${expectedSlug}`
-          : undefined;
-      return {
-        ...resolved,
-        canonical: resolved.canonicalUrl,
-        robots: 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1',
-        h1: matchedTest.title || resolved.title,
-        statusCode: 200,
-        redirectUrl,
-      };
-    }
-  }
-
-  // 3. Public User & Captain Profile Link (/u/:username, /profile/:userId, /user/:userId, /users/:userId, /captains/:username)
-  const isCaptainProfileRoute =
-    cleanPath.startsWith('/captains/') &&
-    cleanPath !== '/captains/apply' &&
-    cleanPath !== '/captains/leaderboard';
-  if (
-    cleanPath.startsWith('/u/') ||
-    (cleanPath.startsWith('/profile/') && cleanPath !== '/profile/edit') ||
-    cleanPath.startsWith('/user/') ||
-    cleanPath.startsWith('/users/') ||
-    isCaptainProfileRoute
-  ) {
-    const rawUser = decodeURIComponent(cleanPath.split('/').pop() || '').trim();
-    const cleanLookup = rawUser.replace(/^@+/, '').toLowerCase();
-
-    const botMatch = (store.botAccounts || BOARDLY_BOT_ACCOUNTS || []).find(
-      (b: any) =>
-        String(b.uid || '').toLowerCase() === cleanLookup ||
-        String(b.username || '').toLowerCase() === cleanLookup ||
-        String(b.displayName || '')
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '') === cleanLookup.replace(/[^a-z0-9]+/g, '')
-    );
-
-    const roleMatch = (store.userRoles || []).find(
-      (r: any) =>
-        String(r.uid || '').toLowerCase() === cleanLookup ||
-        String(r.username || '').toLowerCase() === cleanLookup ||
-        String(r.display_name || r.displayName || '')
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '') === cleanLookup.replace(/[^a-z0-9]+/g, '')
-    );
-
-    const captainTestMatch = (store.captainTests || []).find(
-      (t: any) =>
-        String(t.captainUid || '').toLowerCase() === cleanLookup ||
-        String(t.captainName || '')
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '') === cleanLookup.replace(/[^a-z0-9]+/g, '')
-    );
-
-    const authoredPosts = (store.posts || []).filter((p: any) => {
-      if (p.is_hidden || p.is_anonymous) return false;
-      const pUid = String(p.author_uid || '').toLowerCase();
-      const pUname = String(p.author_username || '').toLowerCase();
-      const pNameSlug = String(p.author_name || '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '');
-      const cleanAlpha = cleanLookup.replace(/[^a-z0-9]+/g, '');
-      return (
-        pUid === cleanLookup ||
-        (pUname && pUname === cleanLookup) ||
-        (cleanAlpha && pNameSlug === cleanAlpha)
-      );
-    });
-
-    const firstPost = authoredPosts[0];
-    const displayName =
-      botMatch?.displayName ||
-      roleMatch?.display_name ||
-      roleMatch?.displayName ||
-      captainTestMatch?.captainName ||
-      firstPost?.author_name ||
-      undefined;
-    const username =
-      botMatch?.username ||
-      roleMatch?.username ||
-      firstPost?.author_username ||
-      (!/^[a-f0-9-]{20,}$/i.test(rawUser) ? rawUser.replace(/^@+/, '') : undefined);
-    const bio = botMatch?.bio || roleMatch?.bio || undefined;
-    const avatarUrl =
-      botMatch?.avatar ||
-      firstPost?.author_avatar ||
-      undefined;
-    const role =
-      roleMatch?.role ||
-      firstPost?.author_role ||
-      (captainTestMatch || isCaptainProfileRoute ? 'captain' : undefined);
-
-    const resolved = resolveStaticOrPatternRouteMeta(cleanPath, '', {
-      profile: {
-        uid: botMatch?.uid || roleMatch?.uid || captainTestMatch?.captainUid || rawUser,
-        displayName,
-        username,
-        bio,
-        avatarUrl,
-        role,
-        postsCount: authoredPosts.length > 0 ? authoredPosts.length : null,
-      },
-    });
-
-    return {
-      ...resolved,
-      canonical: resolved.canonicalUrl,
-      robots: 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1',
-      h1: displayName || resolved.title,
-      statusCode: 200,
-    };
-  }
-
   const rawBase = resolveStaticOrPatternRouteMeta(cleanPath);
-  return {
+  const baseMeta = {
     ...rawBase,
     canonical: rawBase.canonicalUrl || `https://boardly.cfd${cleanPath === '/' ? '' : cleanPath}`,
     robots: rawBase.noindex
@@ -7698,25 +7376,121 @@ export function resolveServerRouteMeta(pathname: string) {
     h1: rawBase.title.split('—')[0].split('|')[0].trim() || rawBase.title,
     statusCode: cleanPath === '/410' ? 410 : 200,
   };
+
+  if (
+    cleanPath.startsWith('/commons/post/') ||
+    cleanPath.startsWith('/material/') ||
+    cleanPath.startsWith('/study-material/')
+  ) {
+    if (
+      cleanPath.startsWith('/material/subject/') ||
+      cleanPath.startsWith('/study-material/subject/')
+    ) {
+      return baseMeta;
+    }
+    const slugParam = decodeURIComponent(
+      cleanPath
+        .replace(/^\/commons\/post\//, '')
+        .replace(/^\/study-material\//, '')
+        .replace(/^\/material\//, '')
+        .replace(/\/+$/, '')
+    );
+    const lookupId = extractIdFromSlugOrId(slugParam);
+    const d1Row = loadD1Store().posts.find(
+      (p) => (p.slug === slugParam || p.id === slugParam || p.id === lookupId) && !p.is_hidden
+    );
+    if (d1Row) {
+      const isMaterial = cleanPath.startsWith('/material/') || cleanPath.startsWith('/study-material/');
+      const title = isMaterial
+        ? `${d1Row.title} — ${d1Row.subject || 'Study Material'} PDF & Notes | Boardly`
+        : `${d1Row.title} — ${d1Row.subject || 'Student Discussion'} | Boardly Commons`;
+      const rawDesc = String(d1Row.description || '').replace(/\s+/g, ' ').trim();
+      const authorLabel = d1Row.is_anonymous
+        ? 'Anonymous Student'
+        : d1Row.author_name || 'Boardly Student';
+      const description = rawDesc
+        ? `${rawDesc.slice(0, 180)}${rawDesc.length > 180 ? '...' : ''} — Shared by ${authorLabel} (${d1Row.subject || 'Academic'}, Class ${d1Row.class_level || '11/12'}).`
+        : `Read "${d1Row.title}" in ${d1Row.subject || 'Boardly Commons'} on Boardly.`;
+      return {
+        ...baseMeta,
+        title,
+        description,
+        ogType: 'article' as const,
+        h1: d1Row.title,
+      };
+    }
+  }
+
+  return baseMeta;
 }
 
 export function injectRouteMetaIntoHtml(html: string, pathname: string): string {
   const meta = resolveServerRouteMeta(pathname);
-  return injectMetaIntoIndexHtml(html, {
-    title: meta.title,
-    description: meta.description,
-    canonicalUrl: meta.canonical,
-    ogType: meta.ogType,
-    ogImage: meta.ogImage,
-    ogImageAlt: meta.ogImageAlt || meta.title,
-    noindex: meta.noindex,
-  });
+  const t = escapeHtmlAttr(meta.title);
+  const d = escapeHtmlAttr(meta.description);
+  const c = escapeHtmlAttr(meta.canonical);
+  const img = escapeHtmlAttr(meta.ogImage);
+
+  return html
+    .replace(/<title>[\s\S]*?<\/title>/i, `<title>${t}</title>`)
+    .replace(
+      /<meta\s+name="title"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="title" content="${t}" />`
+    )
+    .replace(
+      /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="description" content="${d}" />`
+    )
+    .replace(
+      /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="robots" content="${escapeHtmlAttr(meta.robots)}" />`
+    )
+    .replace(
+      /<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/i,
+      `<link rel="canonical" href="${c}" />`
+    )
+    .replace(
+      /<meta\s+property="og:type"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:type" content="${meta.ogType}" />`
+    )
+    .replace(
+      /<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:url" content="${c}" />`
+    )
+    .replace(
+      /<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:title" content="${t}" />`
+    )
+    .replace(
+      /<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:description" content="${d}" />`
+    )
+    .replace(
+      /<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:image" content="${img}" />`
+    )
+    .replace(
+      /<meta\s+name="twitter:url"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:url" content="${c}" />`
+    )
+    .replace(
+      /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:title" content="${t}" />`
+    )
+    .replace(
+      /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:description" content="${d}" />`
+    )
+    .replace(
+      /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:image" content="${img}" />`
+    );
 }
 
 /**
  * Creates a universal Node HTTP / Connect / Express middleware that serves all
  * Cloudflare D1 + R2 `/api/posts*`, `/api/r2/*`, `/sitemap.xml`, `/api/auth/*`,
- * `/api/admin/users/delete`, `/api/og`, and pre-rendered SEO HTML for crawlers.
+ * `/api/admin/users/delete`, and pre-rendered SEO HTML for crawlers.
  */
 export function createCloudflarePostsAndAuthMiddleware(options?: {
   getGoogleAccessToken?: () => Promise<string | null>;
@@ -7768,7 +7542,7 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
 
     // 1. Pre-rendered SEO HTML for search engine & social crawlers on any page route
     if (
-      (req.method === 'GET' || req.method === 'HEAD') &&
+      req.method === 'GET' &&
       !pathname.startsWith('/api/') &&
       !pathname.startsWith('/assets/') &&
       !pathname.startsWith('/src/') &&
@@ -7777,7 +7551,7 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
     ) {
       const ua = String(req.headers?.['user-agent'] || '').toLowerCase();
       const isBot =
-        /facebookexternalhit|facebot|whatsapp|twitterbot|telegrambot|discordbot|linkedinbot|slackbot|pinterest|googlebot|bingbot|yandex|duckduckbot|applebot|crawler|spider|embedly|quora|outbrain|vkshare|w3c_validator/i.test(
+        /facebookexternalhit|whatsapp|twitterbot|telegrambot|discordbot|linkedinbot|slackbot|googlebot|bingbot|yandex|duckduckbot|applebot|crawler|spider/i.test(
           ua
         ) ||
         parsedUrl.searchParams.get('crawler') === '1' ||
@@ -7785,7 +7559,6 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
 
       if (isBot) {
         const meta = resolveServerRouteMeta(pathname);
-        const safeImgAlt = escapeHtmlAttr(meta.ogImageAlt || meta.title);
         const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -7801,17 +7574,10 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
   <meta property="og:description" content="${escapeHtmlAttr(meta.description)}" />
   <meta property="og:url" content="${escapeHtmlAttr(meta.canonical)}" />
   <meta property="og:image" content="${escapeHtmlAttr(meta.ogImage)}" />
-  <meta property="og:image:secure_url" content="${escapeHtmlAttr(meta.ogImage)}" />
-  <meta property="og:image:type" content="image/png" />
-  <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
-  <meta property="og:image:alt" content="${safeImgAlt}" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:url" content="${escapeHtmlAttr(meta.canonical)}" />
   <meta name="twitter:title" content="${escapeHtmlAttr(meta.title)}" />
   <meta name="twitter:description" content="${escapeHtmlAttr(meta.description)}" />
   <meta name="twitter:image" content="${escapeHtmlAttr(meta.ogImage)}" />
-  <meta name="twitter:image:alt" content="${safeImgAlt}" />
 </head>
 <body>
   <main>
@@ -7822,31 +7588,13 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
 </html>`;
         res.statusCode = meta.statusCode || 200;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=300');
         res.end(html);
         return;
       }
-
-      // Redirect old long-ID URLs (e.g. /grand-line/test/<uuid>-<slug>) to clean canonical slug
-      if (
-        pathname.startsWith('/grand-line/test/') ||
-        pathname.startsWith('/commons/post/') ||
-        pathname.startsWith('/material/')
-      ) {
-        const meta = resolveServerRouteMeta(pathname);
-        const canonicalPath = meta.canonical ? new URL(meta.canonical).pathname : '';
-        const targetRedirect = meta.redirectUrl || (canonicalPath && canonicalPath !== pathname ? canonicalPath : '');
-        if (targetRedirect && targetRedirect !== pathname) {
-          res.writeHead(301, { Location: `${targetRedirect}${parsedUrl.search || ''}` });
-          res.end();
-          return;
-        }
-      }
     }
 
-    // 2. Match registered API / sitemap / R2 / OG routes
+    // 2. Match registered API / sitemap / R2 routes
     const method = String(req.method || 'GET').toUpperCase();
-    const lookupMethod = method === 'HEAD' ? 'GET' : method;
     if (
       method === 'OPTIONS' &&
       (pathname.startsWith('/api/posts') ||
@@ -7857,12 +7605,11 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
         pathname.startsWith('/api/r2') ||
         pathname.startsWith('/api/auth') ||
         pathname.startsWith('/api/bots') ||
-        pathname.startsWith('/api/announcements') ||
-        pathname.startsWith('/api/og'))
+        pathname.startsWith('/api/announcements'))
     ) {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Bot-Run-Secret',
       });
       res.end();
@@ -7873,7 +7620,7 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
     let matchResult: RegExpExecArray | null = null;
 
     for (const r of routes) {
-      if (r.method !== lookupMethod) continue;
+      if (r.method !== method) continue;
       const m = r.regex.exec(pathname);
       if (m) {
         matchedRoute = r;
