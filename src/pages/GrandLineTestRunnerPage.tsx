@@ -756,7 +756,7 @@ export function GrandLineTestRunnerPage() {
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] flex flex-col">
       {/* Top Bar */}
-      <header className="sticky top-0 z-20 bg-[var(--card)]/90 backdrop-blur-md border-b border-[var(--border)] px-4 sm:px-6 py-3">
+      <header className="sticky top-0 z-20 floating-blur backdrop-blur-lg border-b border-[var(--border)] px-4 sm:px-6 py-3">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2">

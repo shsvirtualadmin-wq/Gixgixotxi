@@ -652,8 +652,8 @@ export function PostingWizardModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 overflow-y-auto font-sans">
-      <div className="relative w-full max-w-2xl glass-panel allow-backdrop-blur rounded-[28px] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overlay-blur bg-black/60 backdrop-blur-md overflow-y-auto font-sans">
+      <div className="relative w-full max-w-2xl glass-panel rounded-[28px] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
         {/* Header Bar */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--glass-border)]">
           <div className="flex items-center gap-2.5">

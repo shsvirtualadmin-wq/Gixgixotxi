@@ -461,6 +461,7 @@ export function PlansBillingPage() {
       {/* Payment Modal */}
       {modalOpen && (
         <div
+          className="overlay-blur bg-black/60 backdrop-blur-md"
           style={{
             position: 'fixed',
             inset: 0,
@@ -469,11 +470,9 @@ export function PlansBillingPage() {
             alignItems: 'center',
             justifyContent: 'center',
             padding: 16,
-            background: 'rgba(0,0,0,0.8)',
           }}
         >
           <div
-            className="glass"
             style={{
               maxWidth: 480,
               width: '100%',

@@ -100,7 +100,7 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[160] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/65 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-[160] flex items-end sm:items-center justify-center p-0 sm:p-4 overlay-blur bg-black/60 backdrop-blur-md animate-fade-in">
       <div
         className="w-full sm:max-w-xl bg-[var(--card)] border-t sm:border border-[var(--border)] sm:rounded-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh] shadow-2xl overflow-hidden"
         style={{ borderRadius: '24px 24px 0 0' }}

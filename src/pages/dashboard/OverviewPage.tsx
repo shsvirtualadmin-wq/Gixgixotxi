@@ -719,8 +719,7 @@ export function OverviewPage() {
       {/* ── University Test Flow Modal (Opened ONLY by tapping a LIVE University Bubble) ── */}
       {activeUni && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 overflow-y-auto"
-          style={{ backgroundColor: 'var(--overlay)' }}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 overflow-y-auto overlay-blur bg-black/60 backdrop-blur-md"
           role="dialog"
           aria-modal="true"
           aria-label={`${activeUni.name} Test Flow`}

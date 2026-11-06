@@ -54,8 +54,8 @@ export function CommonsReportModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 animate-fade-in">
-      <div className="w-full max-w-md rounded-[28px] glass-panel allow-backdrop-blur p-6 space-y-4 text-[var(--text)]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md animate-fade-in">
+      <div className="w-full max-w-md rounded-[28px] glass-panel p-6 space-y-4 text-[var(--text)]">
         <div className="flex items-center justify-between pb-2 border-b border-[var(--glass-border)]">
           <div className="flex items-center gap-2">
             <Flag size={16} className="text-[#D71921]" />

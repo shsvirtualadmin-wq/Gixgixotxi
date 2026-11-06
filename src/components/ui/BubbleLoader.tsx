@@ -673,7 +673,7 @@ export const BubbleLoader: React.FC<BubbleLoaderProps> = ({
       aria-valuemax={100}
       className={`relative flex flex-col items-center justify-center select-none ${
         isOverlay
-          ? 'fixed inset-0 z-[9999] w-screen h-[100dvh] bg-[var(--bg,#090a0f)]/95 backdrop-blur-md px-5'
+          ? 'fixed inset-0 z-[9999] w-screen h-[100dvh] overlay-blur bg-black/60 backdrop-blur-md px-5'
           : 'w-full py-8 px-4'
       } ${className}`}
       style={{ willChange: 'transform, opacity' }}

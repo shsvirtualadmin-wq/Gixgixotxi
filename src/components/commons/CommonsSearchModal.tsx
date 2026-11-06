@@ -210,11 +210,11 @@ export function CommonsSearchModal({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-start justify-center pt-3 sm:pt-14 px-3 sm:px-4 bg-black/60 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-3 sm:pt-14 px-3 sm:px-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl rounded-[28px] glass-panel allow-backdrop-blur text-primary flex flex-col max-h-[88vh] overflow-hidden"
+        className="w-full max-w-2xl rounded-[28px] glass-panel text-primary flex flex-col max-h-[88vh] overflow-hidden"
       >
         {/* Search Input Bar */}
         <div className="p-3.5 sm:p-4 border-b border-[var(--glass-border)] space-y-3">

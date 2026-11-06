@@ -743,7 +743,7 @@ export function AdminCrewsPage() {
 
       {/* ── Payment Management Modal ── */}
       {paymentModalOpen && crewDetails && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 overlay-blur bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-[#0A0A0A] border border-[rgba(255,255,255,0.15)] rounded-2xl max-w-md w-full p-6 space-y-5 text-white shadow-2xl">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold font-heading">Manage Squad Payments</h3>
@@ -828,7 +828,7 @@ export function AdminCrewsPage() {
 
       {/* ── Disband Confirmation Modal ── */}
       {disbandModalOpen && crewDetails && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 overlay-blur bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-[#0A0A0A] border border-red-500/50 rounded-2xl max-w-md w-full p-6 space-y-4 text-white shadow-2xl">
             <div className="flex items-center gap-2 text-red-400">
               <AlertTriangle size={20} />

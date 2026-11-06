@@ -534,7 +534,7 @@ export function TestRunnerPage() {
 
       {/* Success Notification Toast */}
       {pdfSuccessMessage && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-xs font-semibold shadow-2xl animate-in slide-in-from-bottom duration-200">
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl floating-blur backdrop-blur-lg border border-[var(--border)] text-[var(--text)] text-xs font-semibold shadow-2xl animate-in slide-in-from-bottom duration-200">
           <Check size={16} className="text-emerald-500 shrink-0" />
           <span>{pdfSuccessMessage}</span>
         </div>
@@ -542,7 +542,7 @@ export function TestRunnerPage() {
 
       {/* Hourly Rate Limit Modal */}
       {pdfLimitMessage && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 overlay-blur bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl text-[var(--text)] animate-in zoom-in-95 duration-150">
             <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center">
               <AlertCircle size={20} />
@@ -570,7 +570,7 @@ export function TestRunnerPage() {
 
       {/* Pro Locked State / Upgrade Modal */}
       {pdfUpgradeModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 overlay-blur bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-[var(--surface)] border border-[var(--border)] rounded-3xl max-w-md w-full p-6 sm:p-7 space-y-5 shadow-2xl text-[var(--text)] animate-in zoom-in-95 duration-150">
             <div className="flex items-start justify-between">
               <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--accent)] flex items-center justify-center shrink-0">
@@ -636,7 +636,7 @@ export function TestRunnerPage() {
 
       {/* ── LEAVE-TEST MIDWAY WARNING POPUP (Requirement 7) ── */}
       {leaveWarningOpen && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[100] overlay-blur bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl sm:rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl text-[var(--text)] animate-in zoom-in-95 duration-150">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center shrink-0">

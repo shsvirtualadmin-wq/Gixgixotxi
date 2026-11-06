@@ -403,7 +403,7 @@ export const QuestionCard = memo(function QuestionCard({
 
       {/* ── REPORT ISSUE MODAL ────────────────────────────────────────────── */}
       {isReportOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 overlay-blur bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl text-[var(--text)]">
             <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
               <h3 className="font-bold text-sm" style={{ fontFamily: 'var(--font-heading)' }}>

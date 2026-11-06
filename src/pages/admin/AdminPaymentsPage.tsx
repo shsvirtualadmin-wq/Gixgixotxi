@@ -433,7 +433,7 @@ export function AdminPaymentsPage() {
 
       {/* ─── MODAL: REJECT PLAN REQUEST ─────────────────────────────────────── */}
       {planRejectTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md">
           <div className="relative w-full max-w-md bg-[var(--card)] border border-[var(--border)] rounded-3xl p-6 shadow-2xl space-y-4">
             <h3 className="font-heading font-bold text-base text-[var(--text)]">Reject Plan Payment</h3>
             <textarea
@@ -465,7 +465,7 @@ export function AdminPaymentsPage() {
 
       {/* ─── MODAL: APPROVE KOBAN REQUEST ───────────────────────────────────── */}
       {kobanApproveTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md">
           <div className="relative w-full max-w-md bg-[var(--card)] border border-[var(--border)] rounded-3xl p-6 shadow-2xl space-y-5">
             <h3 className="font-heading font-extrabold text-base text-[var(--text)]">
               Approve Koban Payment
@@ -530,7 +530,7 @@ export function AdminPaymentsPage() {
 
       {/* ─── MODAL: REJECT KOBAN REQUEST ────────────────────────────────────── */}
       {kobanRejectTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md">
           <div className="relative w-full max-w-md bg-[var(--card)] border border-[var(--border)] rounded-3xl p-6 shadow-2xl space-y-4">
             <h3 className="font-heading font-extrabold text-base text-[var(--text)]">Reject Koban Request</h3>
             <textarea

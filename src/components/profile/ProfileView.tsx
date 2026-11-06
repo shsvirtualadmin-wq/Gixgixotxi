@@ -1221,7 +1221,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
             {/* Badge popover dialog */}
             {badgePopover && (
-              <div className="absolute left-0 bottom-full mb-2 z-50 p-2.5 rounded-xl bg-[var(--card)] border border-[var(--border)] shadow-xl text-xs flex flex-col gap-1 min-w-[200px] animate-fade-in">
+              <div className="absolute left-0 bottom-full mb-2 z-50 p-2.5 rounded-xl floating-blur backdrop-blur-lg border border-[var(--border)] shadow-xl text-xs flex flex-col gap-1 min-w-[200px] animate-fade-in">
                 <div className="flex items-center justify-between">
                   <span className="font-heading font-bold text-[var(--text)]">{badgePopover.name}</span>
                   <button onClick={() => setBadgePopover(null)} className="text-[var(--muted)] hover:text-[var(--text)]">
@@ -2247,7 +2247,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
       {/* ── LIMITED CREW DETAIL MODAL (PUBLIC MODE) ── */}
       {crewDetailModalOpen && profile?.crewName && (
-        <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-black/70 animate-fade-in">
+        <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md animate-fade-in">
           <div className="w-full max-w-sm rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 shadow-2xl flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <span className="font-heading font-bold text-base text-[var(--text)]">Study Squad</span>
@@ -2280,7 +2280,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
       {/* ── CONFIRMATION MODAL: Unfollow @name? ── */}
       {unfollowModalOpen && profile && (
-        <div className="fixed inset-0 z-[170] flex items-center justify-center p-4 bg-black/70 animate-fade-in">
+        <div className="fixed inset-0 z-[170] flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md animate-fade-in">
           <div className="w-full max-w-sm rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 shadow-2xl flex flex-col gap-4">
             <h3 className="font-heading font-bold text-base text-[var(--text)]">
               Unfollow @{sanitizeStudentDisplayName(profile.displayName, profile.studentId)}?

@@ -409,7 +409,11 @@
 
 .bg-tag-bg { background-color: var(--tag-bg) !important; }
 .text-tag-text { color: var(--tag-text) !important; }
-.bg-overlay { background-color: var(--overlay) !important; }
+.bg-overlay {
+  background-color: var(--overlay) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  backdrop-filter: blur(8px) !important;
+}
 .bg-skeleton { background-color: var(--skeleton) !important; }
 
 
@@ -665,6 +669,51 @@
   [data-theme="dark"] .glass {
     background: rgba(20, 20, 22, 0.92) !important;
   }
+}
+
+/* Reusable Full-Screen Overlay / Modal Backdrop Blur (Rule 1: bg-black/60 backdrop-blur-md) */
+.overlay-blur {
+  background: rgba(0, 0, 0, 0.6) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+/* Prevent nested backdrop-filter inside a blurred overlay backdrop (Rule 5: avoid lag on low-end phones) */
+.overlay-blur .allow-backdrop-blur,
+.overlay-blur .cockpit-surface-card,
+.overlay-blur .akb-glass-card,
+.overlay-blur .aqb-glass-card,
+.overlay-blur .aqb-sheet,
+.overlay-blur .zenryu-sheet-panel,
+.overlay-blur [class*="backdrop-blur"] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Reusable Floating Panel / Dropdown / Tooltip / Sticky Header Blur (Rule 2: semi-transparent + backdrop-blur-lg) */
+.floating-blur {
+  background: rgba(255, 255, 255, 0.72) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(160%) !important;
+  backdrop-filter: blur(16px) saturate(160%) !important;
+}
+.light .floating-blur,
+[data-theme="light"] .floating-blur {
+  background: rgba(255, 255, 255, 0.72) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(160%) !important;
+  backdrop-filter: blur(16px) saturate(160%) !important;
+}
+.dark .floating-blur,
+[data-theme="dark"] .floating-blur {
+  background: rgba(0, 0, 0, 0.45) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(160%) !important;
+  backdrop-filter: blur(16px) saturate(160%) !important;
+}
+
+/* Dark floating toast / pill variant that stays translucent dark in both themes */
+.floating-blur-dark {
+  background: rgba(0, 0, 0, 0.6) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(160%) !important;
+  backdrop-filter: blur(16px) saturate(160%) !important;
 }
 
 /* Solid card utility (no backdrop-filter on standard cards) */
@@ -1739,6 +1788,15 @@ body,
     -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
     backdrop-filter: blur(24px) saturate(180%) !important;
   }
+  .overlay-blur {
+    -webkit-backdrop-filter: blur(8px) !important;
+    backdrop-filter: blur(8px) !important;
+  }
+  .floating-blur,
+  .floating-blur-dark {
+    -webkit-backdrop-filter: blur(16px) saturate(160%) !important;
+    backdrop-filter: blur(16px) saturate(160%) !important;
+  }
 
   /* Disable idle float animations on touch/mobile devices to save 60fps compositor drain */
   .animate-float-1,
@@ -1887,7 +1945,7 @@ body,
     .bg-black\/50,
     .bg-black\/60,
     .bg-black\/70
-  ):not(.dark-surface-preserve):not(.fixed):not(.glass):not(.glass-backdrop):not(.more-sheet-backdrop):not(.avatar-dropdown-backdrop):not(.backdrop-blur-sm):not(.backdrop-blur-xs) {
+  ):not(.dark-surface-preserve):not(.fixed):not(.glass):not(.overlay-blur):not(.floating-blur):not(.floating-blur-dark):not(.glass-backdrop):not(.more-sheet-backdrop):not(.avatar-dropdown-backdrop):not(.backdrop-blur-md):not(.backdrop-blur-lg):not(.backdrop-blur-sm):not(.backdrop-blur-xs) {
     background-color: var(--glass-row-bg) !important;
     border-color: var(--glass-border);
     box-shadow: var(--shadow-row) !important;
@@ -2751,9 +2809,9 @@ body,
 .more-sheet-backdrop,
 .avatar-dropdown-backdrop,
 .glass-backdrop {
-  background-color: rgba(0, 0, 0, 0.30) !important;
-  -webkit-backdrop-filter: blur(4px) !important;
-  backdrop-filter: blur(4px) !important;
+  background-color: rgba(0, 0, 0, 0.60) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  backdrop-filter: blur(8px) !important;
   transition: opacity 200ms ease-out;
 }
 
@@ -4340,7 +4398,9 @@ body,
   position: fixed;
   inset: 0;
   z-index: 100;
-  background-color: var(--overlay);
+  background-color: rgba(0, 0, 0, 0.6);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -4367,8 +4427,6 @@ body,
   border: 1px solid var(--glass-border-strong);
   border-bottom: none;
   box-shadow: var(--shadow-panel);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -5670,9 +5728,9 @@ html:not(.dark) .zenryu-stage--active {
   position: fixed;
   inset: 0;
   z-index: 110;
-  background-color: var(--overlay);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -5688,8 +5746,6 @@ html:not(.dark) .zenryu-stage--active {
   border-top-left-radius: 26px;
   border-top-right-radius: 26px;
   background-color: var(--glass-surface-strong);
-  backdrop-filter: blur(18px) saturate(165%);
-  -webkit-backdrop-filter: blur(18px) saturate(165%);
   border: 1px solid var(--glass-border);
   border-top-color: var(--glass-border-highlight);
   box-shadow: var(--glass-shadow), var(--glass-glow);

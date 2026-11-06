@@ -630,7 +630,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       </div>
 
       {/* ── Feed Tabs: "Newest", "Trending", and "Following" ── */}
-      <div className="sticky top-[58px] z-20 bg-background/95 backdrop-blur-md border-b border-border px-2 sm:px-3 flex flex-wrap items-center justify-between gap-2 w-full max-w-full min-w-0 box-border overflow-x-hidden">
+      <div className="sticky top-[58px] z-20 floating-blur backdrop-blur-lg border-b border-border px-2 sm:px-3 flex flex-wrap items-center justify-between gap-2 w-full max-w-full min-w-0 box-border overflow-x-hidden">
         <div className="flex items-center gap-4 sm:gap-6 min-w-0">
           <button
             onClick={() => setFeedTab('all')}
@@ -773,7 +773,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       {showBackToTop && (
         <button
           onClick={scrollToTop}
-          className="fixed bottom-[calc(96px+env(safe-area-inset-bottom,0px))] md:bottom-8 right-4 sm:right-8 z-30 px-3.5 py-2 rounded-full bg-surface-raised border border-border text-primary shadow-lg text-xs font-semibold flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+          className="fixed bottom-[calc(96px+env(safe-area-inset-bottom,0px))] md:bottom-8 right-4 sm:right-8 z-30 px-3.5 py-2 rounded-full floating-blur backdrop-blur-lg border border-border text-primary shadow-lg text-xs font-semibold flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer"
           title="Back to top"
         >
           <ArrowUp size={14} />

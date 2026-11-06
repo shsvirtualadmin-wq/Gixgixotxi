@@ -166,7 +166,7 @@ export const CommonsImageViewerModal: React.FC<CommonsImageViewerModalProps> = (
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 select-none touch-none animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center overlay-blur bg-black/60 backdrop-blur-md select-none touch-none animate-in fade-in duration-200"
       onClick={scale === 1 ? onClose : undefined}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -270,7 +270,7 @@ export const CommonsImageViewerModal: React.FC<CommonsImageViewerModalProps> = (
       </div>
 
       {/* Bottom Hint */}
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none text-[11px] text-white/60 bg-black/50 backdrop-blur-xs px-3 py-1 rounded-full font-sans">
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none text-[11px] text-white/60 bg-black/50 px-3 py-1 rounded-full font-sans">
         {scale > 1 ? 'Drag to pan · Double tap to reset' : 'Pinch or double tap to zoom'}
       </div>
     </div>

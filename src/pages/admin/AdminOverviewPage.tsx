@@ -724,7 +724,7 @@ export function AdminOverviewPage() {
       {isConfirmSeedOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            className="fixed inset-0 overlay-blur bg-black/60 backdrop-blur-md"
             onClick={() => setIsConfirmSeedOpen(false)}
           />
           <div className="relative w-full max-w-[420px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-none">
@@ -761,7 +761,7 @@ export function AdminOverviewPage() {
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
         >
           <div
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            className="fixed inset-0 overlay-blur bg-black/60 backdrop-blur-md"
             onClick={() => setPendingRewardsMode(null)}
           />
           <div className="relative w-full max-w-[420px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-none">

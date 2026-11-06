@@ -342,11 +342,14 @@ export const LineLoader: React.FC<LineLoaderProps> = ({
   const isFullPage = variant === 'page' || variant === 'overlay';
   const isInline = variant === 'inline';
 
-  const containerClass = isFullPage
-    ? 'fixed inset-0 z-[9999] w-screen h-[100dvh] bg-[var(--bg)] flex flex-col items-center justify-center px-5 select-none'
-    : isInline
-    ? 'w-full py-4 px-3 flex flex-col items-center justify-center select-none'
-    : 'w-full min-h-[180px] py-10 px-4 flex flex-col items-center justify-center select-none';
+  const containerClass =
+    variant === 'overlay'
+      ? 'fixed inset-0 z-[9999] w-screen h-[100dvh] overlay-blur bg-black/60 backdrop-blur-md flex flex-col items-center justify-center px-5 select-none'
+      : isFullPage
+      ? 'fixed inset-0 z-[9999] w-screen h-[100dvh] bg-[var(--bg)]/85 backdrop-blur-md flex flex-col items-center justify-center px-5 select-none'
+      : isInline
+      ? 'w-full py-4 px-3 flex flex-col items-center justify-center select-none'
+      : 'w-full min-h-[180px] py-10 px-4 flex flex-col items-center justify-center select-none';
 
   // During the initial 150ms anti-flicker window, reserve space quietly without flashing
   if (!isVisible && !error && !timedOut) {

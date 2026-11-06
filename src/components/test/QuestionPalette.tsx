@@ -36,13 +36,13 @@ export const QuestionPalette = memo(function QuestionPalette({
         justifyContent: 'flex-end',
       }}
     >
-      {/* Backdrop (no backdrop-filter during active test for distraction-free speed) */}
+      {/* Backdrop */}
       <div
         onClick={onClose}
+        className="overlay-blur bg-black/60 backdrop-blur-md"
         style={{
           position: 'absolute',
           inset: 0,
-          background: 'rgba(0, 0, 0, 0.65)',
         }}
       />
 

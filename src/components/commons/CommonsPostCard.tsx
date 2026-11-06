@@ -464,7 +464,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
 
           {menuOpen && (
             <div
-              className="absolute right-0 top-10 z-20 w-44 rounded-xl border border-border-strong bg-surface-raised py-1.5 shadow-xl animate-in fade-in zoom-in-95"
+              className="absolute right-0 top-10 z-20 w-44 rounded-xl border border-border-strong floating-blur backdrop-blur-lg py-1.5 shadow-xl animate-in fade-in zoom-in-95"
               onMouseLeave={() => setMenuOpen(false)}
             >
               <button

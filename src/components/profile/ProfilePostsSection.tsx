@@ -665,7 +665,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
 
                       {/* Dropdown Menu */}
                       {activeMenuPostId === post.id && (
-                        <div className="absolute right-0 top-9 z-30 w-36 rounded-xl bg-[var(--card)] border border-[var(--border)] shadow-xl p-1 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-100">
+                        <div className="absolute right-0 top-9 z-30 w-36 rounded-xl floating-blur backdrop-blur-lg border border-[var(--border)] shadow-xl p-1 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-100">
                           <button
                             type="button"
                             onClick={() => handleStartEdit(post)}
@@ -854,7 +854,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
 
       {/* ── DELETE CONFIRMATION MODAL ── */}
       {postToDelete && (
-        <div className="fixed inset-0 z-[180] flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-100">
+        <div className="fixed inset-0 z-[180] flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in duration-100">
           <div className="w-full max-w-sm rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 shadow-2xl flex flex-col gap-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center shrink-0">
@@ -905,7 +905,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
       {/* ── IMAGE LIGHTBOX MODAL ── */}
       {lightboxImageUrl && (
         <div
-          className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-6 bg-black/90 backdrop-blur-md animate-in fade-in duration-150"
+          className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-6 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
           onClick={() => setLightboxImageUrl(null)}
         >
           <button

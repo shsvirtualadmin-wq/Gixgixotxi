@@ -276,7 +276,7 @@ export function UserOverrideDrawer({
     <div className="fixed inset-0 z-50 flex items-end md:items-stretch md:justify-end">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+        className="fixed inset-0 overlay-blur bg-black/60 backdrop-blur-md"
         onClick={onClose}
       />
 
@@ -704,7 +704,7 @@ export function UserOverrideDrawer({
       {confirmAction && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
           <div
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+            className="fixed inset-0 overlay-blur bg-black/60 backdrop-blur-md"
             onClick={() => setConfirmAction(null)}
           />
           <div className="relative w-full max-w-[380px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 shadow-2xl">

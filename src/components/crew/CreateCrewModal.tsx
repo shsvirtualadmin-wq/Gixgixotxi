@@ -62,7 +62,7 @@ export const CreateCrewModal: React.FC<CreateCrewModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 overlay-blur bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
       <div className="bg-[#0A0A0A] border border-[rgba(255,255,255,0.15)] rounded-2xl max-w-xl w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto text-white shadow-2xl relative">
         {/* Header */}
         <div className="flex items-center justify-between">

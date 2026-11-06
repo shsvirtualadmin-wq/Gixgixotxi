@@ -444,7 +444,7 @@ export function AdminApplicationsPage() {
       {/* ─── MODAL: GRANT TO ALL APPROVED CAPTAINS ─────────────────────────── */}
       {grantAllModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md"
           role="dialog"
           aria-modal="true"
         >
@@ -508,7 +508,7 @@ export function AdminApplicationsPage() {
 
       {/* ─── MODAL: REJECT APPLICATION ─────────────────────────────────────── */}
       {rejectTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md">
           <div className="relative w-full max-w-[420px] rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
               <h3 className="font-heading font-bold text-base text-[var(--text)]">

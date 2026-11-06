@@ -20,7 +20,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-[var(--overlay-bg)] animate-in fade-in duration-150"
+      className="fixed inset-0 z-[150] flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -28,7 +28,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-sm rounded-[32px] glass-panel allow-backdrop-blur p-5 sm:p-6 flex flex-col gap-5 animate-in zoom-in-95 duration-150"
+        className="relative w-full max-w-sm rounded-[32px] glass-panel p-5 sm:p-6 flex flex-col gap-5 animate-in zoom-in-95 duration-150"
       >
         {/* Header with Close */}
         <div className="flex items-center justify-between">

@@ -305,7 +305,7 @@ export const DirectMessageModal: React.FC<DirectMessageModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-[150] flex items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-[150] flex items-center justify-center p-0 sm:p-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
     >
       {/* Backdrop */}
       <div onClick={onClose} className="absolute inset-0" />

@@ -324,7 +324,7 @@ export const StoreItemsDevPreviewPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#07070B] text-white pb-20">
       {/* Sticky Diagnostic Header */}
-      <header className="sticky top-0 z-40 bg-[#0B0B12]/90 backdrop-blur-md border-b border-white/10 px-4 sm:px-8 py-3.5">
+      <header className="sticky top-0 z-40 floating-blur-dark backdrop-blur-lg border-b border-white/10 px-4 sm:px-8 py-3.5">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Link

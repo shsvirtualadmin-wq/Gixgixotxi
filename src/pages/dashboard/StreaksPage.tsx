@@ -749,11 +749,11 @@ export function StreaksPage() {
       {/* ── Day Details Bottom Sheet ────────────────────────────────────── */}
       {selectedDay && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
           onClick={() => setSelectedDay(null)}
         >
           <div
-            className="w-full max-w-sm rounded-t-[28px] sm:rounded-[28px] glass-panel allow-backdrop-blur p-6 flex flex-col gap-4 max-h-[85vh] overflow-y-auto"
+            className="w-full max-w-sm rounded-t-[28px] sm:rounded-[28px] glass-panel p-6 flex flex-col gap-4 max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-3">
@@ -845,11 +845,11 @@ export function StreaksPage() {
       {/* ── Badge Details Bottom Sheet ──────────────────────────────────── */}
       {selectedBadge && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
           onClick={() => setSelectedBadge(null)}
         >
           <div
-            className="w-full max-w-sm rounded-t-[28px] sm:rounded-[28px] glass-panel allow-backdrop-blur p-6 flex flex-col items-center text-center gap-4 max-h-[85vh] overflow-y-auto"
+            className="w-full max-w-sm rounded-t-[28px] sm:rounded-[28px] glass-panel p-6 flex flex-col items-center text-center gap-4 max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-full flex justify-end">
@@ -942,11 +942,11 @@ export function StreaksPage() {
       {/* ── Streak Freeze Confirmation Modal ────────────────────────────── */}
       {freezeConfirmOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
           onClick={() => !freezeToggling && setFreezeConfirmOpen(false)}
         >
           <div
-            className="w-full max-w-sm rounded-[28px] glass-panel allow-backdrop-blur p-6 flex flex-col gap-4 text-center"
+            className="w-full max-w-sm rounded-[28px] glass-panel p-6 flex flex-col gap-4 text-center"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-12 h-12 rounded-full bg-sky-500/15 text-sky-400 mx-auto flex items-center justify-center">
@@ -993,11 +993,11 @@ export function StreaksPage() {
       {/* ── Share Modal ─────────────────────────────────────────────────── */}
       {shareModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
           onClick={() => setShareModalOpen(false)}
         >
           <div
-            className="w-full max-w-sm rounded-[28px] glass-panel allow-backdrop-blur p-6 flex flex-col gap-4 text-center"
+            className="w-full max-w-sm rounded-[28px] glass-panel p-6 flex flex-col gap-4 text-center"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-3">

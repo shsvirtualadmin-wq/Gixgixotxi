@@ -1420,7 +1420,7 @@ export function AdminKobansPage() {
       {/* ─── MODAL: APPROVE REQUEST ─────────────────────────────────────────── */}
       {approveTarget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md"
           role="dialog"
           aria-modal="true"
           aria-labelledby="akb-approve-modal-title"
@@ -1511,7 +1511,7 @@ export function AdminKobansPage() {
       {/* ─── MODAL: REJECT REQUEST ──────────────────────────────────────────── */}
       {rejectTarget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md"
           role="dialog"
           aria-modal="true"
           aria-labelledby="akb-reject-modal-title"
@@ -1560,7 +1560,7 @@ export function AdminKobansPage() {
       {/* ─── MODAL: CONFIRM BALANCE ADJUSTMENT ──────────────────────────────── */}
       {adjustConfirmOpen && selectedUser && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md"
           role="dialog"
           aria-modal="true"
           aria-labelledby="akb-confirm-adjust-title"

@@ -883,10 +883,10 @@ export function PracticePage() {
 
         {/* ── TARGET TRACK PICKER BOTTOM-SHEET / POPUP MODAL ── */}
         {trackPickerOpen && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 animate-in fade-in">
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in">
             <div
               onClick={(e) => e.stopPropagation()}
-              className="relative w-full max-w-xl max-h-[85vh] glass-panel allow-backdrop-blur rounded-t-[28px] sm:rounded-[28px] p-5 sm:p-6 flex flex-col gap-4 overflow-y-auto animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200 text-[var(--text)]"
+              className="relative w-full max-w-xl max-h-[85vh] glass-panel rounded-t-[28px] sm:rounded-[28px] p-5 sm:p-6 flex flex-col gap-4 overflow-y-auto animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200 text-[var(--text)]"
             >
               {/* Header */}
               <div className="flex items-center justify-between pb-3 border-b border-[var(--glass-border)]">
@@ -995,10 +995,10 @@ export function PracticePage() {
 
         {/* ── STEP-BY-STEP TARGETED CHAPTER DRILL POPUP MODAL ── */}
         {drillModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 animate-in fade-in">
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in">
             <div
               onClick={(e) => e.stopPropagation()}
-              className="relative w-full max-w-xl max-h-[90vh] glass-panel allow-backdrop-blur rounded-t-[28px] sm:rounded-[28px] p-5 sm:p-6 flex flex-col gap-4 overflow-y-auto animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200 text-[var(--text)]"
+              className="relative w-full max-w-xl max-h-[90vh] glass-panel rounded-t-[28px] sm:rounded-[28px] p-5 sm:p-6 flex flex-col gap-4 overflow-y-auto animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200 text-[var(--text)]"
             >
               {/* Modal Top Header with Steps Indicator */}
               <div className="flex items-center justify-between pb-3 border-b border-[var(--glass-border)]">
@@ -1164,7 +1164,7 @@ export function PracticePage() {
 
         {/* ── INTERACTIVE D1 UNIVERSITY PRACTICE MODAL (KATEX + \ce) ── */}
         {d1PracticeOpen && d1PracticeMcqs.length > 0 && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md overflow-y-auto">
             <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl bg-[var(--surface)] border border-[var(--border)] p-6 space-y-5 shadow-2xl text-[var(--text)]">
               {(() => {
                 const currentQ = d1PracticeMcqs[d1PracticeIndex] || d1PracticeMcqs[0];

@@ -466,7 +466,7 @@ export function CrewDashboardPage() {
     return (
       <div className="max-w-3xl mx-auto py-6 px-4 space-y-6">
         {/* Sticky Top Bar */}
-        <header className="sticky top-0 z-30 bg-[var(--surface)]/95 backdrop-blur-md border-b border-[var(--border)] -mx-4 px-4 py-3 flex items-center gap-3">
+        <header className="sticky top-0 z-30 floating-blur backdrop-blur-lg border-b border-[var(--border)] -mx-4 px-4 py-3 flex items-center gap-3">
           <button
             type="button"
             onClick={handleBack}
@@ -571,7 +571,7 @@ export function CrewDashboardPage() {
   return (
     <div className="max-w-3xl mx-auto py-4 px-4 sm:px-6 space-y-4 pb-28">
       {/* ── 1. Top Bar (Sticky, Clean, 360px mobile safe) ──────────────── */}
-      <header className="sticky top-0 z-30 bg-[var(--surface)]/95 backdrop-blur-md border-b border-[var(--border)] -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 flex items-center justify-between shadow-xs">
+      <header className="sticky top-0 z-30 floating-blur backdrop-blur-lg border-b border-[var(--border)] -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 flex items-center justify-between shadow-xs">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -599,7 +599,7 @@ export function CrewDashboardPage() {
           </button>
 
           {moreMenuOpen && (
-            <div className="absolute right-0 mt-1 w-52 rounded-2xl bg-[var(--surface)] border border-[var(--border)] shadow-xl p-1.5 z-50 text-xs font-semibold space-y-0.5">
+            <div className="absolute right-0 mt-1 w-52 rounded-2xl floating-blur backdrop-blur-lg border border-[var(--border)] shadow-xl p-1.5 z-50 text-xs font-semibold space-y-0.5">
               <button
                 type="button"
                 onClick={() => {
@@ -1038,7 +1038,7 @@ export function CrewDashboardPage() {
 
       {/* ── Modal: Leave Confirmation ─────────────────────────────────── */}
       {leaveConfirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md">
           <div className="w-full max-w-sm rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-5 shadow-2xl space-y-4">
             <div className="space-y-1.5">
               <h3 className="text-lg font-bold font-sans text-[var(--text-primary)]">
@@ -1071,7 +1071,7 @@ export function CrewDashboardPage() {
 
       {/* ── Modal: Rename Squad (Leader Only) ─────────────────────────── */}
       {renameModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md">
           <div className="w-full max-w-sm rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-5 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold font-sans text-[var(--text-primary)]">
@@ -1132,7 +1132,7 @@ export function CrewDashboardPage() {
 
       {/* ── Modal: Transfer Leadership (Leader Only) ───────────────────── */}
       {transferModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md">
           <div className="w-full max-w-sm rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-5 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold font-sans text-[var(--text-primary)]">
@@ -1190,7 +1190,7 @@ export function CrewDashboardPage() {
 
       {/* ── Toast Notification ────────────────────────────────────────── */}
       {toastMessage && (
-        <div className="fixed bottom-20 inset-x-0 mx-auto w-fit max-w-[90vw] px-4 py-2.5 rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-xs font-semibold shadow-lg z-50 flex items-center gap-2 animate-fade-in">
+        <div className="fixed bottom-20 inset-x-0 mx-auto w-fit max-w-[90vw] px-4 py-2.5 rounded-xl floating-blur backdrop-blur-lg border border-[var(--border)] text-[var(--text-primary)] text-xs font-semibold shadow-lg z-50 flex items-center gap-2 animate-fade-in">
           <Check size={14} className="text-emerald-400 dark:text-emerald-600 shrink-0" />
           <span>{toastMessage}</span>
         </div>

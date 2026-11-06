@@ -1147,7 +1147,7 @@ export function StorePage() {
 
       {/* Toast Notification Banner */}
       {toastMessage && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 max-w-[92vw] px-4 py-2.5 rounded-xl bg-zinc-900/95 text-white border border-white/15 shadow-xl flex items-center gap-2 text-xs sm:text-sm font-medium">
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 max-w-[92vw] px-4 py-2.5 rounded-xl floating-blur-dark backdrop-blur-lg text-white border border-white/15 shadow-xl flex items-center gap-2 text-xs sm:text-sm font-medium">
           {toastMessage.tone === 'err' ? (
             <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
           ) : (
@@ -1842,7 +1842,7 @@ export function StorePage() {
          ═══════════════════════════════════════════════════════════════════════ */}
       {isFilterSheetOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
+          className="fixed inset-0 z-50 overlay-blur bg-black/60 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={() => setIsFilterSheetOpen(false)}
         >
           <div
@@ -1983,7 +1983,7 @@ export function StorePage() {
          ═══════════════════════════════════════════════════════════════════════ */}
       {selectedDetailItem && (
         <div
-          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
+          className="fixed inset-0 z-50 overlay-blur bg-black/60 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={() => guardUnsavedChanges(() => setSelectedDetailItem(null))}
         >
           <div
@@ -2296,7 +2296,7 @@ export function StorePage() {
          ═══════════════════════════════════════════════════════════════════════ */}
       {isVerifiedAdmin && isBulkSheetOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
+          className="fixed inset-0 z-50 overlay-blur bg-black/60 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={() => setIsBulkSheetOpen(false)}
         >
           <div
@@ -2449,7 +2449,7 @@ export function StorePage() {
 
       {/* Unsaved Admin Changes Confirmation Modal */}
       {unsavedConfirmPending && (
-        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 overlay-blur bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
           <div className="w-full max-w-sm rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4">
             <h3 className="text-base font-heading font-bold text-[var(--text)]">
               Unsaved price changes

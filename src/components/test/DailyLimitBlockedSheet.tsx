@@ -47,11 +47,11 @@ export function DailyLimitBlockedSheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center overlay-blur bg-black/60 backdrop-blur-md p-0 sm:p-4 animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
-        className="w-full sm:max-w-md glass-panel allow-backdrop-blur rounded-t-[28px] sm:rounded-[28px] p-6 text-[var(--text)] space-y-6"
+        className="w-full sm:max-w-md glass-panel rounded-t-[28px] sm:rounded-[28px] p-6 text-[var(--text)] space-y-6"
         style={{ fontFamily: 'var(--font-heading)' }}
         onClick={(e) => e.stopPropagation()}
       >

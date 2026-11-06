@@ -466,7 +466,7 @@ export function AdminCaptainsPage() {
       {/* Grant All Modal */}
       {grantAllModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md"
           role="dialog"
           aria-modal="true"
         >
@@ -532,7 +532,7 @@ export function AdminCaptainsPage() {
 
       {/* Roster Drawer / Modal */}
       {selectedCaptain && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md">
           <div className="relative w-full max-w-lg rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
               <div>

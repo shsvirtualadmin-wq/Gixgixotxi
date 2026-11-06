@@ -170,11 +170,11 @@ export function CommonsCommentsDrawer({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 flex flex-col justify-end sm:justify-center sm:items-center bg-black/60 p-0 sm:p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex flex-col justify-end sm:justify-center sm:items-center overlay-blur bg-black/60 backdrop-blur-md p-0 sm:p-4 animate-in fade-in duration-150"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full sm:max-w-lg glass-panel allow-backdrop-blur rounded-t-[28px] sm:rounded-[28px] flex flex-col max-h-[85vh] sm:max-h-[80vh] overflow-hidden"
+        className="w-full sm:max-w-lg glass-panel rounded-t-[28px] sm:rounded-[28px] flex flex-col max-h-[85vh] sm:max-h-[80vh] overflow-hidden"
       >
         {/* Mobile drag bar */}
         <div className="w-10 h-1 bg-[var(--glass-border-hover)] rounded-full mx-auto my-2.5 sm:hidden shrink-0" />

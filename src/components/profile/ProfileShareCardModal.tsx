@@ -53,7 +53,7 @@ export const ProfileShareCardModal: React.FC<ProfileShareCardModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md animate-fade-in">
       <div className="relative w-full max-w-sm rounded-2xl border border-neutral-800 bg-[#0d0d0e] p-5 shadow-2xl space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">

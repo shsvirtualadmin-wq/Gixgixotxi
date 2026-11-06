@@ -103,11 +103,11 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-[var(--overlay-bg)] overflow-hidden"
+      className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center p-0 sm:p-4 overlay-blur bg-black/60 backdrop-blur-md overflow-hidden"
       role="dialog"
       aria-modal="true"
     >
-      <div className="relative w-full max-w-lg glass-panel allow-backdrop-blur rounded-t-[28px] sm:rounded-[32px] p-5 sm:p-7 space-y-5 my-0 sm:my-auto text-[var(--text)] max-h-[94vh] sm:max-h-[90vh] overflow-y-auto animate-in fade-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200">
+      <div className="relative w-full max-w-lg glass-panel rounded-t-[28px] sm:rounded-[32px] p-5 sm:p-7 space-y-5 my-0 sm:my-auto text-[var(--text)] max-h-[94vh] sm:max-h-[90vh] overflow-y-auto animate-in fade-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200">
         {/* Mobile Drag Indicator */}
         <div className="sm:hidden w-10 h-1 bg-[var(--glass-border)] rounded-full mx-auto -mt-1 mb-2 pointer-events-none" />
 

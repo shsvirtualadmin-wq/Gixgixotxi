@@ -48,10 +48,10 @@ export function ConfirmSubmitModal({
       {/* Backdrop */}
       <div
         onClick={() => !submitting && onClose()}
+        className="overlay-blur bg-black/60 backdrop-blur-md"
         style={{
           position: 'absolute',
           inset: 0,
-          background: 'rgba(0, 0, 0, 0.72)',
         }}
       />
 
