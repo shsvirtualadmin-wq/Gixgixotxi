@@ -1,26 +1,32 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Gift,
   CheckCircle2,
   Lock,
-  Sparkles,
   Copy,
   Check,
   Share2,
   Clock,
   ShieldCheck,
-  Award,
-  Users,
   ArrowRight,
-  HelpCircle,
-  Flame,
   AlertCircle,
   ExternalLink,
+  ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWallet } from '@/hooks/useWallet';
 import { PageMeta } from '@/components/ui/PageMeta';
+import {
+  GlassCard,
+  PillRow,
+  TabPills,
+  KobanBadge,
+  KobanCoinSvg,
+  TreasureChestSvg,
+  DragonCrestSvg,
+  type TabPillItem,
+} from '@/components/ui/RewardsPrimitives';
 import {
   CHEST_DAYS,
   DEFAULT_DAILY_LADDER,
@@ -38,121 +44,48 @@ import {
   getPendingReferralCode,
 } from '@/services/rewardsService';
 
-// ─── Custom SVG Icons (Pure SVG, zero external image assets) ──────────────────
+type RewardsTabId = 'checkin' | 'milestones' | 'invite' | 'faq';
 
-function KobanCoinIcon({ size = 18, className = '' }: { size?: number; className?: string }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      className={`inline-block shrink-0 ${className}`}
-      aria-hidden="true"
-    >
-      <ellipse
-        cx="12"
-        cy="12"
-        rx="7.5"
-        ry="10"
-        fill="url(#kobanGoldGrad)"
-        stroke="#B45309"
-        strokeWidth="1.5"
-      />
-      <ellipse
-        cx="12"
-        cy="12"
-        rx="5"
-        ry="7"
-        stroke="#FEF3C7"
-        strokeWidth="0.9"
-        strokeDasharray="2 1.5"
-        opacity="0.75"
-      />
-      <rect x="9.2" y="9.2" width="5.6" height="5.6" rx="1" fill="#92400E" opacity="0.85" />
-      <defs>
-        <linearGradient id="kobanGoldGrad" x1="4.5" y1="2" x2="19.5" y2="22" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#FDE68A" />
-          <stop offset="0.5" stopColor="#F59E0B" />
-          <stop offset="1" stopColor="#D97706" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}
+const REWARDS_TABS: TabPillItem<RewardsTabId>[] = [
+  { id: 'checkin', label: 'Check-In' },
+  { id: 'milestones', label: 'Milestones' },
+  { id: 'invite', label: 'Invite' },
+  { id: 'faq', label: 'FAQ' },
+];
 
-function TreasureChestSvg({
-  grand = false,
-  size = 24,
-}: {
-  grand?: boolean;
-  size?: number;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 28 28"
-      fill="none"
-      className="inline-block shrink-0"
-      aria-hidden="true"
-    >
-      <rect
-        x="3"
-        y="11"
-        width="22"
-        height="13"
-        rx="2.5"
-        fill={grand ? '#B91C1C' : '#92400E'}
-        stroke={grand ? '#FCA5A5' : '#FCD34D'}
-        strokeWidth="1.6"
-      />
-      <path
-        d="M3 11C3 7.5 6.5 5 14 5C21.5 5 25 7.5 25 11H3Z"
-        fill={grand ? '#DC2626' : '#B45309'}
-        stroke={grand ? '#FCA5A5' : '#FCD34D'}
-        strokeWidth="1.6"
-      />
-      <rect
-        x="11.5"
-        y="9.5"
-        width="5"
-        height="6"
-        rx="1.2"
-        fill="#FDE68A"
-        stroke="#78350F"
-        strokeWidth="1.2"
-      />
-      <circle cx="14" cy="12.5" r="1" fill="#78350F" />
-    </svg>
-  );
-}
+const FAQ_ITEMS = [
+  {
+    id: 'faq-missed-day',
+    question: 'What happens if I miss a day in the 30-day check-in?',
+    answer:
+      'Your 30-day check-in progress is cumulative and does not reset if you miss a day. Each day resets at 00:00 PKT (Asia/Karachi, UTC+5), and after Day 30 the cycle renews at Day 1.',
+  },
+  {
+    id: 'faq-milestones',
+    question: 'How are MCQ milestones counted?',
+    answer:
+      'Milestones count verified answered questions from your completed practice test attempts on the server. Each milestone (50, 100, 250, 500 MCQs) can be claimed once per student account.',
+  },
+  {
+    id: 'faq-two-way',
+    question: 'Why do referrals require two-way code confirmation?',
+    answer:
+      'To keep referrals fair for real classmates, your friend attaches your link/code on signup and shares their own BLD-XXXXXX code with you to confirm within 14 days.',
+  },
+  {
+    id: 'faq-payout',
+    question: 'When are referral Kobans paid out?',
+    answer:
+      'Once both codes are linked, your friend verifies their email, and they complete 20 practice MCQs, the server credits +5,000 Kobans to you and +1,000 Kobans to your friend (up to 10 paid referrals per month).',
+  },
+];
 
-function DragonCrestSvg({ size = 28 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 32 32"
-      fill="none"
-      className="inline-block shrink-0"
-      aria-hidden="true"
-    >
-      <circle
-        cx="16"
-        cy="16"
-        r="14"
-        fill="rgba(215, 25, 33, 0.14)"
-        stroke="#D71921"
-        strokeWidth="1.5"
-      />
-      <path
-        d="M9 21C10.5 16.5 13 14 16.5 13.5C15 11.5 12.5 10.5 10.5 11C12.5 8 16.8 7.5 20.2 9.8C22.8 11.5 24 14.8 22.8 18.2C21.6 21.5 18.2 23.5 14.5 23.2C16.8 21.8 18.2 19.6 18 17.5C15.5 18.5 12.2 19.8 9 21Z"
-        fill="#D71921"
-      />
-      <circle cx="18.5" cy="11.5" r="1.2" fill="#FEF08A" />
-    </svg>
-  );
+function parseTabFromHash(hash: string): RewardsTabId {
+  const clean = hash.replace(/^#/, '').toLowerCase();
+  if (clean === 'milestones' || clean === 'invite' || clean === 'faq' || clean === 'checkin') {
+    return clean;
+  }
+  return 'checkin';
 }
 
 function formatCountdownHms(totalSeconds: number): string {
@@ -165,13 +98,22 @@ function formatCountdownHms(totalSeconds: number): string {
 
 export function RewardsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isAdmin } = useAuth();
   const { balance: walletBalance, refreshWallet } = useWallet();
+
+  // Tab state synced with URL hash (#checkin, #milestones, #invite, #faq)
+  const [activeTab, setActiveTab] = useState<RewardsTabId>(() =>
+    typeof window !== 'undefined' ? parseTabFromHash(window.location.hash) : 'checkin'
+  );
+
+  // Single-open FAQ accordion state
+  const [openFaqId, setOpenFaqId] = useState<string | null>(FAQ_ITEMS[0].id);
 
   const [state, setState] = useState<RewardsStateResponse>(() =>
     buildFallbackClientState(user?.uid)
   );
-  const [loading, setLoading] = useState<boolean>(true);
+  const [, setLoading] = useState<boolean>(true);
   const [countdownSec, setCountdownSec] = useState<number>(() =>
     getSecondsUntilNextPktMidnight()
   );
@@ -192,6 +134,29 @@ export function RewardsPage() {
     type: 'success' | 'error' | 'info';
     text: string;
   } | null>(null);
+
+  // Sync tab with URL hash changes
+  useEffect(() => {
+    if (location.hash) {
+      setActiveTab(parseTabFromHash(location.hash));
+    }
+  }, [location.hash]);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setActiveTab(parseTabFromHash(window.location.hash));
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  const handleTabChange = useCallback((nextTab: RewardsTabId) => {
+    setActiveTab(nextTab);
+    if (typeof window !== 'undefined') {
+      const nextUrl = `${window.location.pathname}${window.location.search}#${nextTab}`;
+      window.history.replaceState(null, '', nextUrl);
+    }
+  }, []);
 
   const triggerServerNotReadyFailSafe = useCallback(() => {
     setState((prev) => ({
@@ -440,113 +405,57 @@ export function RewardsPage() {
       ? state.dailyLadder
       : DEFAULT_DAILY_LADDER;
 
+  const isPublicRoute = !location.pathname.startsWith('/dashboard');
+
   return (
-    <div className="rewards-page-root relative min-h-screen overflow-x-hidden pb-20 pt-6 md:pt-10">
+    <div
+      className={`rewards-page-root relative min-h-screen w-full overflow-x-hidden pb-28 ${
+        isPublicRoute ? 'pt-24 sm:pt-28' : 'pt-2 sm:pt-4'
+      }`}
+      style={{ color: 'var(--rw-text-primary)' }}
+    >
       <PageMeta
         title="Boardly Rewards"
         description="Earn up to 7,550 Kobans every 30 days with the Boardly daily check-in, unlock MCQ practice milestones, and invite classmates for +5,000 Kobans."
         canonicalPath="/rewards"
       />
-      <style>{`
-        .rewards-glass-card {
-          background: rgba(255, 255, 255, 0.78);
-          border: 1px solid rgba(15, 23, 42, 0.10);
-          box-shadow: 0 16px 40px -12px rgba(15, 23, 42, 0.08), inset 0 1px 0 0 rgba(255, 255, 255, 0.75);
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-        }
-        [data-theme="dark"] .rewards-glass-card,
-        .dark .rewards-glass-card {
-          background: rgba(18, 20, 28, 0.74);
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          box-shadow: 0 20px 44px -12px rgba(0, 0, 0, 0.55), inset 0 1px 0 0 rgba(255, 255, 255, 0.14);
-        }
-        @supports not ((backdrop-filter: blur(16px)) or (-webkit-backdrop-filter: blur(16px))) {
-          .rewards-glass-card {
-            background: rgba(255, 255, 255, 0.96);
-          }
-          [data-theme="dark"] .rewards-glass-card,
-          .dark .rewards-glass-card {
-            background: rgba(18, 20, 28, 0.96);
-          }
-        }
-        .rewards-lifted-btn {
-          min-height: 44px;
-          transform: translateY(-2px);
-          box-shadow: 0 10px 18px -6px rgba(215, 25, 33, 0.42);
-          transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.18s ease, background-color 0.18s ease;
-        }
-        .rewards-lifted-btn:hover:not(:disabled) {
-          transform: translateY(-4px);
-          box-shadow: 0 14px 24px -6px rgba(215, 25, 33, 0.52);
-        }
-        .rewards-lifted-btn:active:not(:disabled) {
-          transform: translateY(0px);
-          box-shadow: 0 4px 10px -4px rgba(215, 25, 33, 0.35);
-        }
-        .rewards-lifted-btn:disabled {
-          transform: translateY(0px);
-          box-shadow: none;
-          cursor: not-allowed;
-        }
-        .rewards-secondary-lifted-btn {
-          min-height: 44px;
-          transform: translateY(-2px);
-          box-shadow: 0 10px 18px -6px rgba(15, 23, 42, 0.16);
-          transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.18s ease;
-        }
-        .rewards-secondary-lifted-btn:hover:not(:disabled) {
-          transform: translateY(-4px);
-          box-shadow: 0 14px 22px -6px rgba(15, 23, 42, 0.24);
-        }
-        .rewards-secondary-lifted-btn:active:not(:disabled) {
-          transform: translateY(0px);
-        }
-        .rewards-secondary-lifted-btn:disabled {
-          transform: translateY(0px);
-          box-shadow: none;
-          cursor: not-allowed;
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .rewards-lifted-btn,
-          .rewards-secondary-lifted-btn {
-            transition: none !important;
-            transform: none !important;
-          }
-        }
-      `}</style>
 
-      {/* Subtle Ambient Blurred Color Blobs */}
+      {/* Full-Viewport Theme Background & Top/Bottom Soft Red Radial Glows */}
       <div
-        className="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
+        className="pointer-events-none fixed inset-0 -z-10 overflow-hidden transition-colors duration-200"
+        style={{ backgroundColor: 'var(--rw-page-bg)' }}
         aria-hidden="true"
       >
         <div
-          className="absolute -top-24 left-1/4 h-80 w-80 rounded-full opacity-25 blur-3xl"
-          style={{ background: 'radial-gradient(circle, #D71921 0%, transparent 70%)' }}
+          className="absolute inset-x-0 top-0 h-[420px]"
+          style={{ background: 'var(--rw-glow-top)' }}
         />
         <div
-          className="absolute top-1/3 -right-20 h-96 w-96 rounded-full opacity-20 blur-3xl"
-          style={{ background: 'radial-gradient(circle, #F59E0B 0%, transparent 70%)' }}
-        />
-        <div
-          className="absolute bottom-10 left-10 h-80 w-80 rounded-full opacity-15 blur-3xl"
-          style={{ background: 'radial-gradient(circle, #D71921 0%, transparent 70%)' }}
+          className="absolute inset-x-0 bottom-0 h-[420px]"
+          style={{ background: 'var(--rw-glow-bottom)' }}
         />
       </div>
 
-      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 space-y-8">
-        {/* ─── SUPER ADMIN RED BANNER WHEN MODE IS NOT "EVERYONE" ──────────── */}
+      {/* Centered Mobile-First Container (max-w-md on mobile, max-w-2xl on desktop, 16px gutters) */}
+      <div className="mx-auto w-full max-w-md md:max-w-2xl px-4 space-y-5">
+        {/* ─── SUPER ADMIN BANNER WHEN MODE IS NOT "EVERYONE" ─────────────── */}
         {isAdmin && state.mode !== 'everyone' && (
           <div
             data-testid="super-admin-rewards-mode-banner"
-            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-[#D71921] bg-[#D71921] px-5 py-4 text-white shadow-lg"
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-[28px] border px-5 py-4"
+            style={{
+              backgroundColor: 'var(--rw-accent)',
+              borderColor: 'var(--rw-accent)',
+              color: 'var(--rw-accent-text)',
+              boxShadow: 'var(--rw-btn-primary-shadow)',
+            }}
           >
             <div className="flex items-start sm:items-center gap-3">
               <ShieldCheck size={20} className="shrink-0 mt-0.5 sm:mt-0" />
               <div className="text-xs sm:text-sm">
                 <p className="font-extrabold uppercase tracking-wider">
-                  Super Admin Notice · Rewards Mode: {state.mode === 'admin_only' ? 'ADMIN ONLY (TESTING)' : 'OFF'}
+                  Super Admin Notice · Rewards Mode:{' '}
+                  {state.mode === 'admin_only' ? 'ADMIN ONLY (TESTING)' : 'OFF'}
                 </p>
                 <p className="opacity-95 mt-0.5">
                   {state.mode === 'admin_only'
@@ -557,7 +466,11 @@ export function RewardsPage() {
             </div>
             <Link
               to="/admin"
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-white px-4 py-2 text-xs font-extrabold text-[#D71921] hover:bg-neutral-100 transition-colors shrink-0"
+              className="inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-xs font-extrabold transition-transform active:scale-95 shrink-0"
+              style={{
+                backgroundColor: 'var(--rw-accent-text)',
+                color: 'var(--rw-accent)',
+              }}
             >
               <span>Manage in Admin</span>
               <ArrowRight size={14} />
@@ -565,810 +478,1213 @@ export function RewardsPage() {
           </div>
         )}
 
-        {/* ─── SECTION 1: HERO ────────────────────────────────────────────── */}
-        <section
+        {/* ─── 1. HERO CARD ────────────────────────────────────────────────── */}
+        <GlassCard
+          as="section"
+          primary
           aria-labelledby="rewards-hero-heading"
-          className="rewards-glass-card rounded-3xl p-6 sm:p-8 md:p-10 relative overflow-hidden"
+          className="p-6 sm:p-7 text-center flex flex-col items-center gap-4"
         >
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-            <div className="space-y-3 max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-lg border border-[#D71921]/30 bg-[#D71921]/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-[#D71921]">
-                <Sparkles size={14} />
-                <span>Boardly Student Rewards</span>
-                {isComingSoon && (
-                  <span className="ml-1 rounded bg-[#D71921] px-1.5 py-0.5 text-[10px] font-extrabold text-white">
-                    PREVIEW
-                  </span>
-                )}
-              </div>
-
-              <h1
-                id="rewards-hero-heading"
-                className="font-display text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-[var(--text)] leading-[1.08]"
+          <div className="flex items-center justify-center gap-2">
+            <span
+              className="text-[11px] font-bold uppercase tracking-widest"
+              style={{ color: 'var(--rw-text-label)' }}
+            >
+              Your Live Balance
+            </span>
+            {isComingSoon && (
+              <span
+                className="rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider"
+                style={{
+                  backgroundColor: 'var(--rw-accent)',
+                  color: 'var(--rw-accent-text)',
+                }}
               >
-                Earn <span className="text-[#D71921]">Kobans</span> Every Day You Study.
-              </h1>
+                Preview
+              </span>
+            )}
+          </div>
 
-              <p className="text-sm sm:text-base text-[var(--muted)] leading-relaxed">
-                Check in daily for up to <strong className="text-[var(--text)]">7,550 Kobans</strong> per 30-day cycle, unlock MCQ practice milestones, and invite classmates for <strong className="text-[var(--text)]">+5,000 Kobans</strong> per verified referral.
-              </p>
+          <h1 id="rewards-hero-heading" className="sr-only">
+            Boardly Student Rewards
+          </h1>
+
+          {/* Big Balance Display */}
+          <div className="flex items-center justify-center gap-3">
+            <div
+              className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full border shrink-0"
+              style={{
+                backgroundColor: 'var(--rw-gold-bg)',
+                borderColor: 'var(--rw-gold-border)',
+              }}
+            >
+              <KobanCoinSvg size={28} />
             </div>
-
-            {/* Balance & Primary CTA Card */}
-            <div className="flex flex-col sm:flex-row lg:flex-col items-stretch sm:items-center lg:items-end justify-between gap-4 shrink-0 rounded-2xl border border-[var(--border)] bg-[var(--surface)]/80 p-4 sm:p-5">
-              {user ? (
-                <>
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/15 border border-amber-500/30">
-                      <KobanCoinIcon size={26} />
-                    </div>
-                    <div>
-                      <span className="block text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                        Your Live Balance
-                      </span>
-                      <span
-                        data-testid="rewards-balance-pill"
-                        className="font-display text-2xl sm:text-3xl font-black text-[var(--text)] tabular-nums"
-                      >
-                        {displayBalance.toLocaleString()}{' '}
-                        <span className="text-sm font-bold text-amber-500">Kobans</span>
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
-                    <Link
-                      to="/store"
-                      className="rewards-lifted-btn inline-flex flex-1 sm:flex-initial items-center justify-center gap-2 rounded-xl bg-[#D71921] px-5 py-2.5 text-sm font-bold text-white"
-                    >
-                      <span>Spend in Store</span>
-                      <ArrowRight size={16} />
-                    </Link>
-                    <Link
-                      to="/dashboard/practice"
-                      className="rewards-secondary-lifted-btn inline-flex items-center justify-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-4 py-2.5 text-sm font-semibold text-[var(--text)]"
-                    >
-                      <span>Practice MCQs</span>
-                    </Link>
-                  </div>
-                </>
-              ) : (
-                <div className="space-y-3 text-left sm:text-right">
-                  <div>
-                    <span className="block text-xs font-mono uppercase tracking-wider text-[var(--muted)]">
-                      Start Earning Today
-                    </span>
-                    <p className="text-sm font-semibold text-[var(--text)] mt-0.5">
-                      Create a free student account to track your streak & Kobans
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <Link
-                      to="/signup"
-                      className="rewards-lifted-btn inline-flex items-center justify-center gap-2 rounded-xl bg-[#D71921] px-5 py-2.5 text-sm font-bold text-white"
-                    >
-                      <span>Sign up free</span>
-                      <ArrowRight size={16} />
-                    </Link>
-                    <Link
-                      to="/login"
-                      className="rewards-secondary-lifted-btn inline-flex items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg)] px-4 py-2.5 text-sm font-semibold text-[var(--text)]"
-                    >
-                      Sign In
-                    </Link>
-                  </div>
-                </div>
-              )}
+            <div className="text-left">
+              <span
+                data-testid="rewards-balance-pill"
+                className="font-display text-3xl sm:text-4xl font-black tracking-tight tabular-nums block leading-none"
+                style={{ color: 'var(--rw-text-primary)' }}
+              >
+                {displayBalance.toLocaleString()}{' '}
+                <span
+                  className="text-sm sm:text-base font-extrabold uppercase tracking-wider"
+                  style={{ color: 'var(--rw-gold-text)' }}
+                >
+                  Kobans
+                </span>
+              </span>
             </div>
           </div>
 
+          {/* Two Pill Buttons under balance */}
+          {user ? (
+            <div className="grid grid-cols-2 gap-3 w-full pt-1">
+              <Link
+                to="/store"
+                className="h-12 min-h-[48px] rounded-full inline-flex items-center justify-center gap-2 px-4 text-xs sm:text-sm font-bold transition-transform active:scale-95"
+                style={{
+                  backgroundColor: 'var(--rw-accent)',
+                  color: 'var(--rw-accent-text)',
+                  boxShadow: 'var(--rw-btn-primary-shadow)',
+                }}
+              >
+                <span>Spend in Store</span>
+                <ArrowRight size={15} />
+              </Link>
+              <Link
+                to="/dashboard/practice"
+                className="h-12 min-h-[48px] rounded-full border inline-flex items-center justify-center gap-2 px-4 text-xs sm:text-sm font-bold transition-transform active:scale-95"
+                style={{
+                  backgroundColor: 'var(--rw-btn-secondary-bg)',
+                  borderColor: 'var(--rw-btn-secondary-border)',
+                  color: 'var(--rw-btn-secondary-text)',
+                  boxShadow: 'var(--rw-btn-secondary-shadow)',
+                }}
+              >
+                <span>Practice MCQs</span>
+              </Link>
+            </div>
+          ) : (
+            <div className="w-full space-y-2.5 pt-1">
+              <div className="grid grid-cols-2 gap-3 w-full">
+                <Link
+                  to="/store"
+                  className="h-12 min-h-[48px] rounded-full inline-flex items-center justify-center gap-2 px-4 text-xs sm:text-sm font-bold transition-transform active:scale-95"
+                  style={{
+                    backgroundColor: 'var(--rw-accent)',
+                    color: 'var(--rw-accent-text)',
+                    boxShadow: 'var(--rw-btn-primary-shadow)',
+                  }}
+                >
+                  <span>Spend in Store</span>
+                  <ArrowRight size={15} />
+                </Link>
+                <Link
+                  to="/dashboard/practice"
+                  className="h-12 min-h-[48px] rounded-full border inline-flex items-center justify-center gap-2 px-4 text-xs sm:text-sm font-bold transition-transform active:scale-95"
+                  style={{
+                    backgroundColor: 'var(--rw-btn-secondary-bg)',
+                    borderColor: 'var(--rw-btn-secondary-border)',
+                    color: 'var(--rw-btn-secondary-text)',
+                    boxShadow: 'var(--rw-btn-secondary-shadow)',
+                  }}
+                >
+                  <span>Practice MCQs</span>
+                </Link>
+              </div>
+              <div className="flex items-center justify-center gap-3 pt-1">
+                <Link
+                  to="/signup"
+                  className="text-xs font-bold underline underline-offset-4"
+                  style={{ color: 'var(--rw-accent)' }}
+                >
+                  Sign up free
+                </Link>
+                <span style={{ color: 'var(--rw-text-label)' }}>·</span>
+                <Link
+                  to="/login"
+                  className="text-xs font-semibold"
+                  style={{ color: 'var(--rw-text-secondary)' }}
+                >
+                  Sign In
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {/* Muted line beneath */}
+          <p
+            className="text-xs sm:text-[13px] font-medium"
+            style={{ color: 'var(--rw-text-secondary)' }}
+          >
+            Earn up to 7,550 Kobans per 30-day cycle.
+          </p>
+
+          {/* Action Feedback Notice */}
           {bannerNotice && (
             <div
               role="status"
-              className={`mt-5 flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium ${
+              className="w-full flex items-center gap-2.5 rounded-full border px-4 py-2.5 text-xs sm:text-sm font-semibold text-left"
+              style={
                 bannerNotice.type === 'success'
-                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
+                  ? {
+                      backgroundColor: 'var(--rw-green-bg)',
+                      borderColor: 'var(--rw-green-border)',
+                      color: 'var(--rw-green-text)',
+                    }
                   : bannerNotice.type === 'error'
-                  ? 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-300'
-                  : 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-              }`}
+                  ? {
+                      backgroundColor: 'var(--rw-zenryu-bg)',
+                      borderColor: 'var(--rw-zenryu-border)',
+                      color: 'var(--rw-accent)',
+                    }
+                  : {
+                      backgroundColor: 'var(--rw-gold-bg)',
+                      borderColor: 'var(--rw-gold-border)',
+                      color: 'var(--rw-gold-text)',
+                    }
+              }
             >
               {bannerNotice.type === 'success' ? (
-                <CheckCircle2 size={18} className="shrink-0" />
+                <CheckCircle2 size={16} className="shrink-0" />
               ) : (
-                <AlertCircle size={18} className="shrink-0" />
+                <AlertCircle size={16} className="shrink-0" />
               )}
-              <span>{bannerNotice.text}</span>
+              <span className="truncate">{bannerNotice.text}</span>
             </div>
           )}
-        </section>
+        </GlassCard>
 
-        {/* ─── SECTION 2: 30-DAY DAILY CHECK-IN ───────────────────────────── */}
-        <section
-          aria-labelledby="daily-checkin-heading"
-          className="rewards-glass-card rounded-3xl p-6 sm:p-8 space-y-6"
-        >
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-[var(--border)] pb-5">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#D71921]">
-                <Flame size={15} />
-                <span>Cumulative 30-Day Cycle · Never Resets on Missed Days</span>
-              </div>
+        {/* ─── 2. STICKY PILL TAB SWITCHER ────────────────────────────────── */}
+        <TabPills
+          tabs={REWARDS_TABS}
+          activeTab={activeTab}
+          onChange={handleTabChange}
+          ariaLabel="Student Rewards sections"
+        />
+
+        {/* ─── 3. CHECK-IN TAB (#checkin) ─────────────────────────────────── */}
+        {activeTab === 'checkin' && (
+          <section
+            key="checkin"
+            aria-labelledby="daily-checkin-heading"
+            className="rw-tab-panel space-y-4"
+          >
+            <div className="px-1">
+              <span
+                className="block text-[11px] font-bold uppercase tracking-widest"
+                style={{ color: 'var(--rw-text-label)' }}
+              >
+                Daily Streak Ladder
+              </span>
               <h2
                 id="daily-checkin-heading"
-                className="font-display text-2xl sm:text-3xl font-extrabold text-[var(--text)]"
+                className="font-display text-xl sm:text-2xl font-bold mt-0.5"
+                style={{ color: 'var(--rw-text-primary)' }}
               >
                 30-Day Daily Check-In
               </h2>
-              <p className="text-sm text-[var(--muted)]">
-                Claim once per calendar day (Asia/Karachi, UTC+5). Earn{' '}
-                <strong className="text-[var(--text)]">7,550 Kobans</strong> every 30 check-ins with bonus treasure chests on Days 4, 7, 14, 21, 28 & 30!
-              </p>
             </div>
 
-            {/* Countdown + Claim Button */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
-              <div className="flex items-center gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5">
-                <Clock size={16} className="text-[#D71921] shrink-0" />
-                <div>
-                  <span className="block text-[10px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                    Next Reset (00:00 PKT)
-                  </span>
-                  <span
-                    data-testid="pkt-countdown"
-                    className="font-mono text-sm font-bold text-[var(--text)] tabular-nums"
-                  >
-                    {formatCountdownHms(countdownSec)}
-                  </span>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                data-testid="daily-claim-btn"
-                disabled={isComingSoon || state.daily.claimedToday || claimingDaily}
-                onClick={handleClaimDaily}
-                className="rewards-lifted-btn inline-flex items-center justify-center gap-2 rounded-xl bg-[#D71921] px-6 py-3 text-sm font-bold text-white disabled:bg-neutral-500/30 disabled:text-[var(--muted)] disabled:border disabled:border-[var(--border)]"
-              >
-                <Gift size={17} />
-                <span>
-                  {isComingSoon
-                    ? 'Coming soon'
-                    : state.daily.claimedToday
-                    ? `Claimed Day ${state.daily.completedDaysInCycle}`
-                    : claimingDaily
-                    ? 'Claiming...'
-                    : `Claim Day ${state.daily.nextDayNumber} (+${state.daily.nextRewardAmount} Kobans)`}
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {/* 30-Day Grid: 3x10 on mobile (grid-cols-3), 6x5 on desktop (md:grid-cols-6) */}
-          <div
-            data-testid="daily-30-grid"
-            className="grid grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-3"
-          >
-            {ladder.map((amount, idx) => {
-              const dayNum = idx + 1;
-              const isChest = CHEST_DAYS.has(dayNum);
-              const isGrandChest = dayNum === 30;
-              const isCompleted = state.daily.claimedToday
-                ? dayNum <= state.daily.completedDaysInCycle
-                : dayNum < state.daily.nextDayNumber;
-              const isToday = !state.daily.claimedToday && dayNum === state.daily.nextDayNumber;
-
-              return (
-                <div
-                  key={dayNum}
-                  data-testid={`daily-tile-${dayNum}`}
-                  className={`relative flex flex-col items-center justify-between rounded-2xl border p-3 transition-all ${
-                    isToday
-                      ? 'border-[#D71921] bg-[#D71921]/12 ring-2 ring-[#D71921]/30'
-                      : isCompleted
-                      ? 'border-emerald-500/40 bg-emerald-500/10'
-                      : isGrandChest
-                      ? 'border-amber-500/50 bg-amber-500/10'
-                      : isChest
-                      ? 'border-amber-500/35 bg-amber-500/5'
-                      : 'border-[var(--border)] bg-[var(--surface)]/70'
-                  }`}
+            {/* Pill Row: Next reset (00:00 PKT) */}
+            <PillRow
+              leftSlot={
+                <Clock
+                  size={16}
+                  className="shrink-0"
+                  style={{ color: 'var(--rw-accent)' }}
+                />
+              }
+              label="Next reset (00:00 PKT)"
+              value={
+                <span
+                  data-testid="pkt-countdown"
+                  className="font-mono text-sm sm:text-base font-bold tabular-nums"
                 >
-                  <div className="flex w-full items-center justify-between text-[11px] font-bold">
-                    <span
-                      className={
-                        isToday
-                          ? 'text-[#D71921] font-extrabold'
-                          : isCompleted
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-[var(--muted)]'
-                      }
+                  {formatCountdownHms(countdownSec)}
+                </span>
+              }
+            />
+
+            {/* Full-width red button: Claim Day N (+X Kobans) */}
+            <button
+              type="button"
+              data-testid="daily-claim-btn"
+              disabled={isComingSoon || state.daily.claimedToday || claimingDaily}
+              onClick={handleClaimDaily}
+              className="w-full h-14 min-h-[56px] rounded-full inline-flex items-center justify-center gap-2.5 px-6 text-sm sm:text-base font-bold transition-all active:scale-[0.99] disabled:cursor-not-allowed"
+              style={
+                isComingSoon || state.daily.claimedToday || claimingDaily
+                  ? {
+                      backgroundColor: 'var(--rw-locked-bg)',
+                      borderColor: 'var(--rw-locked-border)',
+                      color: 'var(--rw-locked-text)',
+                      borderWidth: '1px',
+                      borderStyle: 'solid',
+                    }
+                  : {
+                      backgroundColor: 'var(--rw-accent)',
+                      color: 'var(--rw-accent-text)',
+                      boxShadow: 'var(--rw-btn-primary-shadow)',
+                    }
+              }
+            >
+              <Gift size={18} />
+              <span>
+                {isComingSoon
+                  ? 'Coming soon'
+                  : state.daily.claimedToday
+                  ? `Claimed Day ${state.daily.completedDaysInCycle}`
+                  : claimingDaily
+                  ? 'Claiming...'
+                  : `Claim Day ${state.daily.nextDayNumber} (+${state.daily.nextRewardAmount} Kobans)`}
+              </span>
+            </button>
+
+            {/* Compact 5-column grid of small tiles */}
+            <div
+              data-testid="daily-30-grid"
+              className="grid grid-cols-5 gap-2 sm:gap-2.5"
+            >
+              {ladder.map((amount, idx) => {
+                const dayNum = idx + 1;
+                const isChest = CHEST_DAYS.has(dayNum);
+                const isGrandChest = dayNum === 30;
+                const isCompleted = state.daily.claimedToday
+                  ? dayNum <= state.daily.completedDaysInCycle
+                  : dayNum < state.daily.nextDayNumber;
+                const isToday =
+                  !state.daily.claimedToday && dayNum === state.daily.nextDayNumber;
+
+                // Day 30 is a wider GRAND tile in red/gold
+                if (isGrandChest) {
+                  return (
+                    <div
+                      key={dayNum}
+                      data-testid={`daily-tile-${dayNum}`}
+                      className="col-span-5 rounded-[24px] border px-4 py-3.5 flex items-center justify-between gap-3 transition-all"
+                      style={{
+                        background: isCompleted
+                          ? 'var(--rw-green-bg)'
+                          : 'var(--rw-grand-bg)',
+                        borderColor: isCompleted
+                          ? 'var(--rw-green-border)'
+                          : 'var(--rw-grand-border)',
+                        boxShadow: isToday ? 'var(--rw-next-shadow)' : undefined,
+                      }}
                     >
-                      Day {dayNum}
-                    </span>
-                    {isCompleted ? (
-                      <CheckCircle2
-                        size={14}
-                        className="text-emerald-500 shrink-0"
-                        aria-label="Completed"
-                      />
-                    ) : isToday ? (
-                      <span className="rounded bg-[#D71921] px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-white">
-                        Next
-                      </span>
-                    ) : isChest ? (
-                      <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-amber-600 dark:text-amber-300">
-                        {isGrandChest ? 'Grand' : 'Chest'}
-                      </span>
-                    ) : (
-                      <Lock size={12} className="text-[var(--muted)] opacity-50" />
-                    )}
-                  </div>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <TreasureChestSvg grand size={30} />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="text-xs font-extrabold uppercase tracking-wider"
+                              style={{
+                                color: isCompleted
+                                  ? 'var(--rw-green-text)'
+                                  : 'var(--rw-accent)',
+                              }}
+                            >
+                              Day 30 · GRAND
+                            </span>
+                            {isToday && (
+                              <span
+                                className="rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase"
+                                style={{
+                                  backgroundColor: 'var(--rw-accent)',
+                                  color: 'var(--rw-accent-text)',
+                                }}
+                              >
+                                NEXT
+                              </span>
+                            )}
+                          </div>
+                          <span
+                            className="block text-[11px] truncate"
+                            style={{ color: 'var(--rw-text-secondary)' }}
+                          >
+                            30-Day Grand Treasure Chest
+                          </span>
+                        </div>
+                      </div>
 
-                  <div className="my-2.5 flex items-center justify-center">
-                    {isChest ? (
-                      <TreasureChestSvg grand={isGrandChest} size={isGrandChest ? 30 : 26} />
-                    ) : (
-                      <KobanCoinIcon size={22} />
-                    )}
-                  </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <KobanBadge amount={amount} size="md" />
+                        {isCompleted ? (
+                          <CheckCircle2
+                            size={16}
+                            style={{ color: 'var(--rw-green-text)' }}
+                            aria-label="Completed"
+                          />
+                        ) : !isToday ? (
+                          <Lock
+                            size={14}
+                            style={{ color: 'var(--rw-locked-icon)' }}
+                          />
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                }
 
-                  <div className="text-center">
+                // Standard & Chest tiles (Days 1–29; Day 28 chest spans 2 cols so rows 1-6 are 100% full)
+                const tileSpanClass = dayNum === 28 ? 'col-span-2' : 'col-span-1';
+
+                let tileBg = 'var(--rw-locked-bg)';
+                let tileBorder = 'var(--rw-locked-border)';
+                let tileShadow: string | undefined = undefined;
+
+                if (isToday) {
+                  tileBg = 'var(--rw-next-bg)';
+                  tileBorder = 'var(--rw-next-border)';
+                  tileShadow = 'var(--rw-next-shadow)';
+                } else if (isCompleted) {
+                  tileBg = 'var(--rw-green-bg)';
+                  tileBorder = 'var(--rw-green-border)';
+                } else if (isChest) {
+                  tileBg = 'var(--rw-chest-bg)';
+                  tileBorder = 'var(--rw-chest-border)';
+                }
+
+                return (
+                  <div
+                    key={dayNum}
+                    data-testid={`daily-tile-${dayNum}`}
+                    className={`${tileSpanClass} relative flex flex-col items-center justify-between rounded-2xl border p-2 sm:p-2.5 min-h-[82px] transition-all`}
+                    style={{
+                      backgroundColor: tileBg,
+                      borderColor: tileBorder,
+                      boxShadow: tileShadow,
+                    }}
+                  >
+                    {/* Top row: Day number + state indicator */}
+                    <div className="flex w-full items-center justify-between gap-1 text-[10px] font-bold leading-none">
+                      <span
+                        style={{
+                          color: isToday
+                            ? 'var(--rw-accent)'
+                            : isCompleted
+                            ? 'var(--rw-green-text)'
+                            : isChest
+                            ? 'var(--rw-gold-text)'
+                            : 'var(--rw-locked-text)',
+                        }}
+                      >
+                        D{dayNum}
+                      </span>
+                      {isCompleted ? (
+                        <CheckCircle2
+                          size={12}
+                          className="shrink-0"
+                          style={{ color: 'var(--rw-green-text)' }}
+                          aria-label="Completed"
+                        />
+                      ) : isToday ? (
+                        <span
+                          className="rounded px-1 py-0.5 text-[8px] font-extrabold uppercase leading-none"
+                          style={{
+                            backgroundColor: 'var(--rw-accent)',
+                            color: 'var(--rw-accent-text)',
+                          }}
+                        >
+                          NEXT
+                        </span>
+                      ) : (
+                        <Lock
+                          size={10}
+                          className="shrink-0"
+                          style={{ color: 'var(--rw-locked-icon)' }}
+                        />
+                      )}
+                    </div>
+
+                    {/* Center Icon */}
+                    <div className="my-1 flex items-center justify-center">
+                      {isChest ? (
+                        <TreasureChestSvg size={20} />
+                      ) : (
+                        <KobanCoinSvg size={17} />
+                      )}
+                    </div>
+
+                    {/* Amount */}
                     <span
-                      className={`font-display text-sm sm:text-base font-black tabular-nums ${
-                        isGrandChest
-                          ? 'text-[#D71921] dark:text-amber-300'
+                      className="font-display text-[11px] sm:text-xs font-black tabular-nums leading-none"
+                      style={{
+                        color: isCompleted
+                          ? 'var(--rw-green-text)'
+                          : isToday
+                          ? 'var(--rw-text-primary)'
                           : isChest
-                          ? 'text-amber-600 dark:text-amber-300'
-                          : 'text-[var(--text)]'
-                      }`}
+                          ? 'var(--rw-gold-text)'
+                          : 'var(--rw-locked-text)',
+                      }}
                     >
                       +{amount.toLocaleString()}
                     </span>
-                    <span className="block text-[10px] text-[var(--muted)]">Kobans</span>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
+                );
+              })}
+            </div>
 
-        {/* ─── SECTION 3: MCQ MILESTONES + DRAGON READ-ONLY CARD ───────────── */}
-        <section
-          aria-labelledby="milestones-heading"
-          className="rewards-glass-card rounded-3xl p-6 sm:p-8 space-y-6"
-        >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[var(--border)] pb-5">
-            <div>
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#D71921]">
-                <Award size={15} />
-                <span>Verified Practice Progression</span>
-              </div>
+            {/* Muted line beneath grid */}
+            <p
+              className="text-center text-xs font-medium pt-1"
+              style={{ color: 'var(--rw-text-secondary)' }}
+            >
+              Cumulative cycle. Never resets if you miss a day.
+            </p>
+          </section>
+        )}
+
+        {/* ─── 4. MILESTONES TAB (#milestones) ────────────────────────────── */}
+        {activeTab === 'milestones' && (
+          <section
+            key="milestones"
+            aria-labelledby="milestones-heading"
+            className="rw-tab-panel space-y-4"
+          >
+            <div className="px-1">
+              <span
+                className="block text-[11px] font-bold uppercase tracking-widest"
+                style={{ color: 'var(--rw-text-label)' }}
+              >
+                Verified Practice Progression
+              </span>
               <h2
                 id="milestones-heading"
-                className="font-display text-2xl sm:text-3xl font-extrabold text-[var(--text)] mt-1"
+                className="font-display text-xl sm:text-2xl font-bold mt-0.5"
+                style={{ color: 'var(--rw-text-primary)' }}
               >
                 MCQ Practice Milestones
               </h2>
-              <p className="text-sm text-[var(--muted)]">
-                Answer practice MCQs in completed drills to unlock one-time Koban milestone bonuses.
-              </p>
             </div>
 
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-left sm:text-right shrink-0">
-              <span className="block text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                Verified MCQs Answered
-              </span>
-              <span
-                data-testid="mcqs-answered-count"
-                className="font-display text-2xl font-black text-[var(--text)] tabular-nums"
-              >
-                {state.mcqsAnswered.toLocaleString()}{' '}
-                <span className="text-xs font-semibold text-[#D71921]">MCQs</span>
-              </span>
-            </div>
-          </div>
-
-          {isAdmin && (
-            <div
-              data-testid="super-admin-milestone-note"
-              className="flex items-start gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-xs sm:text-sm text-amber-800 dark:text-amber-200"
-            >
-              <ShieldCheck size={18} className="shrink-0 mt-0.5 text-amber-500" />
-              <div>
-                <p className="font-bold">Super Admin Account Exclusion Notice</p>
-                <p className="mt-0.5 opacity-90">
-                  Admin accounts have all Boardly Store items and companions unlocked by default and are excluded from claiming student MCQ milestone rewards.
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {state.milestones.map((m) => {
-              const pct = Math.min(100, Math.round((m.progress / m.threshold) * 100));
-              const isClaimingThis = claimingMilestoneId === m.id;
-              const btnDisabled =
-                isComingSoon || isMilestoneAdminExcluded || m.claimed || !m.eligible || isClaimingThis;
-
-              return (
-                <div
-                  key={m.id}
-                  data-testid={`milestone-card-${m.threshold}`}
-                  className="flex flex-col justify-between rounded-2xl border border-[var(--border)] bg-[var(--surface)]/80 p-5 gap-4"
+            {/* Pill Row: Verified MCQs answered */}
+            <PillRow
+              label="Verified MCQs answered"
+              value={
+                <span
+                  data-testid="mcqs-answered-count"
+                  className="font-display text-base sm:text-lg font-black tabular-nums"
+                  style={{ color: 'var(--rw-text-primary)' }}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#D71921]">
-                        <span>{m.threshold.toLocaleString()} MCQs Milestone</span>
-                      </span>
-                      <h3 className="font-display text-lg font-extrabold text-[var(--text)] mt-0.5">
-                        {m.title}
-                      </h3>
-                      <p className="text-xs text-[var(--muted)] mt-1">{m.subtitle}</p>
-                    </div>
+                  {state.mcqsAnswered.toLocaleString()}
+                </span>
+              }
+            />
 
-                    <div className="flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 shrink-0">
-                      <KobanCoinIcon size={16} />
-                      <span className="font-display text-sm font-black text-amber-600 dark:text-amber-300 tabular-nums">
-                        +{m.reward.toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs font-semibold">
-                      <span className="text-[var(--muted)]">Progress</span>
-                      <span className="font-mono text-[var(--text)] tabular-nums">
-                        {m.progress.toLocaleString()} / {m.threshold.toLocaleString()} MCQs ({pct}%)
-                      </span>
-                    </div>
-                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-neutral-500/15">
-                      <div
-                        className="h-full rounded-full bg-[#D71921] transition-all duration-300"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-3 pt-1">
-                    <span className="text-xs text-[var(--muted)]">
-                      {m.claimed
-                        ? 'Reward credited to your wallet'
-                        : m.eligible
-                        ? 'Milestone reached!'
-                        : `${Math.max(0, m.threshold - m.progress)} more MCQs needed`}
-                    </span>
-
-                    <button
-                      type="button"
-                      data-testid={`milestone-claim-btn-${m.threshold}`}
-                      disabled={btnDisabled}
-                      onClick={() => handleClaimMilestone(m.id)}
-                      className="rewards-lifted-btn inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#D71921] px-4 py-2 text-xs font-bold text-white disabled:bg-neutral-500/25 disabled:text-[var(--muted)] disabled:border disabled:border-[var(--border)]"
-                    >
-                      {isComingSoon ? (
-                        <span>Coming soon</span>
-                      ) : m.claimed ? (
-                        <>
-                          <CheckCircle2 size={14} />
-                          <span>Claimed</span>
-                        </>
-                      ) : isMilestoneAdminExcluded ? (
-                        <span>Admin Excluded</span>
-                      ) : isClaimingThis ? (
-                        <span>Claiming...</span>
-                      ) : (
-                        <span>Claim +{m.reward} Kobans</span>
-                      )}
-                    </button>
-                  </div>
+            {isAdmin && (
+              <div
+                data-testid="super-admin-milestone-note"
+                className="flex items-start gap-3 rounded-[24px] border p-4 text-xs"
+                style={{
+                  backgroundColor: 'var(--rw-gold-bg)',
+                  borderColor: 'var(--rw-gold-border)',
+                  color: 'var(--rw-gold-text)',
+                }}
+              >
+                <ShieldCheck size={16} className="shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold">Super Admin Account Exclusion Notice</p>
+                  <p className="mt-0.5 opacity-90">
+                    Admin accounts have all Boardly Store items and companions unlocked by default and are excluded from claiming student MCQ milestone rewards.
+                  </p>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            )}
 
-          {/* Read-Only 1,000-MCQ Dragon Companion Card (Untouched unlock logic) */}
-          <div
-            data-testid="dragon-readonly-card"
-            className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-[#D71921]/35 bg-gradient-to-r from-[#D71921]/10 via-amber-500/5 to-transparent p-5"
-          >
-            <div className="flex items-start sm:items-center gap-4">
-              <DragonCrestSvg size={44} />
-              <div className="space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded bg-[#D71921] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white">
+            {/* One Card per Milestone (50, 100, 250, 500) */}
+            <div className="space-y-3.5">
+              {state.milestones.map((m) => {
+                const pct = Math.min(100, Math.round((m.progress / m.threshold) * 100));
+                const isClaimingThis = claimingMilestoneId === m.id;
+                const isReady =
+                  !isComingSoon && !isMilestoneAdminExcluded && !m.claimed && m.eligible;
+                const btnDisabled =
+                  isComingSoon ||
+                  isMilestoneAdminExcluded ||
+                  m.claimed ||
+                  !m.eligible ||
+                  isClaimingThis;
+
+                return (
+                  <GlassCard
+                    key={m.id}
+                    data-testid={`milestone-card-${m.threshold}`}
+                    className="p-5 space-y-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <span
+                          className="block text-[10px] font-bold uppercase tracking-widest"
+                          style={{ color: 'var(--rw-text-label)' }}
+                        >
+                          {m.threshold.toLocaleString()} MCQs Milestone
+                        </span>
+                        <h3
+                          className="font-display text-base sm:text-lg font-bold mt-0.5 truncate"
+                          style={{ color: 'var(--rw-text-primary)' }}
+                        >
+                          {m.title}
+                        </h3>
+                        <p
+                          className="text-xs mt-0.5"
+                          style={{ color: 'var(--rw-text-secondary)' }}
+                        >
+                          {m.subtitle}
+                        </p>
+                      </div>
+
+                      <KobanBadge amount={m.reward} />
+                    </div>
+
+                    {/* Slim progress bar + Claim pill button on the right */}
+                    <div className="flex items-center justify-between gap-4 pt-1">
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs font-semibold">
+                          <span style={{ color: 'var(--rw-text-secondary)' }}>
+                            Progress
+                          </span>
+                          <span
+                            className="font-mono tabular-nums"
+                            style={{ color: 'var(--rw-text-primary)' }}
+                          >
+                            {m.progress.toLocaleString()} / {m.threshold.toLocaleString()}
+                          </span>
+                        </div>
+                        <div
+                          className="h-2 w-full overflow-hidden rounded-full"
+                          style={{ backgroundColor: 'var(--rw-progress-track)' }}
+                        >
+                          <div
+                            className="h-full rounded-full transition-all duration-300"
+                            style={{
+                              width: `${pct}%`,
+                              backgroundColor: m.claimed
+                                ? 'var(--rw-green-text)'
+                                : 'var(--rw-accent)',
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        data-testid={`milestone-claim-btn-${m.threshold}`}
+                        disabled={btnDisabled}
+                        onClick={() => handleClaimMilestone(m.id)}
+                        className="h-10 min-h-[40px] px-4 rounded-full inline-flex items-center justify-center gap-1.5 text-xs font-bold shrink-0 transition-all active:scale-95 disabled:cursor-not-allowed"
+                        style={
+                          m.claimed
+                            ? {
+                                backgroundColor: 'var(--rw-green-bg)',
+                                borderColor: 'var(--rw-green-border)',
+                                color: 'var(--rw-green-text)',
+                                borderWidth: '1px',
+                                borderStyle: 'solid',
+                              }
+                            : isReady
+                            ? {
+                                backgroundColor: 'var(--rw-accent)',
+                                color: 'var(--rw-accent-text)',
+                                boxShadow: 'var(--rw-btn-primary-shadow)',
+                              }
+                            : {
+                                backgroundColor: 'var(--rw-locked-bg)',
+                                borderColor: 'var(--rw-locked-border)',
+                                color: 'var(--rw-locked-text)',
+                                borderWidth: '1px',
+                                borderStyle: 'solid',
+                              }
+                        }
+                      >
+                        {isComingSoon ? (
+                          <span>Coming soon</span>
+                        ) : m.claimed ? (
+                          <>
+                            <CheckCircle2 size={13} />
+                            <span>Claimed</span>
+                          </>
+                        ) : isMilestoneAdminExcluded ? (
+                          <span>Admin Excluded</span>
+                        ) : isClaimingThis ? (
+                          <span>Claiming...</span>
+                        ) : (
+                          <span>Claim</span>
+                        )}
+                      </button>
+                    </div>
+                  </GlassCard>
+                );
+              })}
+            </div>
+
+            {/* Zenryu Card at the bottom (1,000 MCQs) */}
+            <GlassCard
+              variant="zenryu"
+              data-testid="dragon-readonly-card"
+              className="p-5 space-y-4"
+            >
+              <div className="flex items-start gap-3.5">
+                <DragonCrestSvg size={42} />
+                <div className="min-w-0 flex-1">
+                  <span
+                    className="block text-[10px] font-bold uppercase tracking-widest"
+                    style={{ color: 'var(--rw-accent)' }}
+                  >
                     1,000 MCQs Companion Unlock
                   </span>
-                  <span className="text-xs font-semibold text-[var(--muted)]">
-                    Read-Only Companion Status
-                  </span>
+                  <h3
+                    className="font-display text-base sm:text-lg font-bold mt-0.5"
+                    style={{ color: 'var(--rw-text-primary)' }}
+                  >
+                    Zenryu — The Guardian Dragon
+                  </h3>
+                  <p
+                    className="text-xs mt-0.5"
+                    style={{ color: 'var(--rw-text-secondary)' }}
+                  >
+                    Answer 1,000 practice MCQs to awaken Zenryu on your student dashboard.
+                  </p>
                 </div>
-                <h3 className="font-display text-lg font-extrabold text-[var(--text)]">
-                  Zenryu — The Guardian Dragon Companion
-                </h3>
-                <p className="text-xs sm:text-sm text-[var(--muted)]">
-                  Answer 1,000 practice MCQs to awaken Zenryu on your student dashboard (or unlock early in the Koban Store). Progress:{' '}
-                  <strong className="text-[var(--text)] tabular-nums">
-                    {state.dragonMilestone.progress.toLocaleString()} / 1,000 MCQs
-                  </strong>
-                  .
-                </p>
               </div>
-            </div>
 
-            <Link
-              to={user ? '/dashboard' : '/signup'}
-              className="rewards-secondary-lifted-btn inline-flex items-center justify-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-xs sm:text-sm font-bold text-[var(--text)] shrink-0"
-            >
-              <span>{state.dragonMilestone.unlocked ? 'Dragon Unlocked · View' : 'View on Dashboard'}</span>
-              <ExternalLink size={14} />
-            </Link>
-          </div>
-        </section>
+              <div className="flex items-center justify-between gap-4 pt-1">
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs font-semibold">
+                    <span style={{ color: 'var(--rw-text-secondary)' }}>Progress</span>
+                    <span
+                      className="font-mono tabular-nums"
+                      style={{ color: 'var(--rw-text-primary)' }}
+                    >
+                      {state.dragonMilestone.progress.toLocaleString()} / 1,000
+                    </span>
+                  </div>
+                  <div
+                    className="h-2 w-full overflow-hidden rounded-full"
+                    style={{ backgroundColor: 'var(--rw-progress-track)' }}
+                  >
+                    <div
+                      className="h-full rounded-full transition-all duration-300"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          Math.round((state.dragonMilestone.progress / 1000) * 100)
+                        )}%`,
+                        backgroundColor: 'var(--rw-accent)',
+                      }}
+                    />
+                  </div>
+                </div>
 
-        {/* ─── SECTION 4: INVITE FRIENDS (+5,000 INVITER / +1,000 INVITEE) ─── */}
-        <section
-          aria-labelledby="referral-heading"
-          className="rewards-glass-card rounded-3xl p-6 sm:p-8 space-y-6"
-        >
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-[var(--border)] pb-5">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#D71921]">
-                <Users size={15} />
-                <span>Two-Way Verified Friend Referrals</span>
+                <Link
+                  to={user ? '/dashboard' : '/signup'}
+                  className="h-10 min-h-[40px] px-4 rounded-full border inline-flex items-center justify-center gap-1.5 text-xs font-bold shrink-0 transition-transform active:scale-95"
+                  style={{
+                    backgroundColor: 'var(--rw-btn-secondary-bg)',
+                    borderColor: 'var(--rw-btn-secondary-border)',
+                    color: 'var(--rw-btn-secondary-text)',
+                    boxShadow: 'var(--rw-btn-secondary-shadow)',
+                  }}
+                >
+                  <span>View on Dashboard</span>
+                  <ExternalLink size={13} />
+                </Link>
               </div>
+            </GlassCard>
+          </section>
+        )}
+
+        {/* ─── 5. INVITE TAB (#invite) ────────────────────────────────────── */}
+        {activeTab === 'invite' && (
+          <section
+            key="invite"
+            aria-labelledby="referral-heading"
+            className="rw-tab-panel space-y-4"
+          >
+            <div className="px-1">
+              <span
+                className="block text-[11px] font-bold uppercase tracking-widest"
+                style={{ color: 'var(--rw-text-label)' }}
+              >
+                Two-Way Verified Friend Referrals
+              </span>
               <h2
                 id="referral-heading"
-                className="font-display text-2xl sm:text-3xl font-extrabold text-[var(--text)]"
+                className="font-display text-xl sm:text-2xl font-bold mt-0.5"
+                style={{ color: 'var(--rw-text-primary)' }}
               >
-                Invite Classmates: <span className="text-[#D71921]">+5,000</span> for You,{' '}
-                <span className="text-amber-500">+1,000</span> for Your Friend
+                <span style={{ color: 'var(--rw-accent)' }}>+5,000</span> for you,{' '}
+                <span style={{ color: 'var(--rw-gold-text)' }}>+1,000</span> for your friend
               </h2>
-              <p className="text-sm text-[var(--muted)]">
-                Both you and your friend earn Kobans automatically as soon as you confirm their code and they answer{' '}
-                <strong className="text-[var(--text)]">{state.referral.config.minInviteeMcqs} practice MCQs</strong>.
-              </p>
             </div>
 
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-left md:text-right shrink-0">
-              <span className="block text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                Monthly Paid Referrals
-              </span>
-              <span className="font-display text-xl font-black text-[var(--text)] tabular-nums">
-                {state.referral.paidCountThisMonth} / {state.referral.maxPaidPerMonth}{' '}
-                <span className="text-xs font-semibold text-[var(--muted)]">this month</span>
-              </span>
-            </div>
-          </div>
+            {/* Pill Row: Monthly paid referrals 0 / 10 */}
+            <PillRow
+              label="Monthly paid referrals"
+              value={
+                <span className="font-display font-black tabular-nums">
+                  {state.referral.paidCountThisMonth} / {state.referral.maxPaidPerMonth}
+                </span>
+              }
+            />
 
-          {/* 3-Step Visual Strip */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]/70 p-4 space-y-1.5">
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#D71921] text-xs font-black text-white">
-                1
+            {/* Compact 3-Step Vertical Stepper */}
+            <GlassCard className="p-5">
+              <span
+                className="block text-[10px] font-bold uppercase tracking-widest mb-3.5"
+                style={{ color: 'var(--rw-text-label)' }}
+              >
+                How It Works
               </span>
-              <h3 className="font-display text-base font-bold text-[var(--text)]">
-                Share Your Referral Link
-              </h3>
-              <p className="text-xs text-[var(--muted)] leading-relaxed">
-                Send your personal <code className="font-mono text-[var(--text)]">/join/{state.referral.myCode}</code> link to a classmate (or have them enter your code within 7 days of signup).
-              </p>
-            </div>
+              <div className="relative space-y-4">
+                {[
+                  {
+                    step: 1,
+                    title: 'Share Your Referral Link',
+                    desc: `Send your personal /join/${state.referral.myCode} link to a classmate (or have them enter your code within 7 days of signup).`,
+                  },
+                  {
+                    step: 2,
+                    title: "Confirm Your Friend's Code",
+                    desc: 'Once your friend signs up and verifies their email, ask them for their own BLD-XXXXXX code and enter it below within 14 days.',
+                  },
+                  {
+                    step: 3,
+                    title: `Friend Answers ${state.referral.config.minInviteeMcqs} MCQs`,
+                    desc: `As soon as your friend completes ${state.referral.config.minInviteeMcqs} practice MCQs, you receive +5,000 Kobans and they receive +1,000 Kobans!`,
+                  },
+                ].map((item, idx, arr) => (
+                  <div key={item.step} className="relative flex items-start gap-3.5">
+                    {/* Connecting vertical line */}
+                    {idx < arr.length - 1 && (
+                      <div
+                        className="absolute left-[13px] top-7 bottom-[-16px] w-[2px]"
+                        style={{ backgroundColor: 'var(--rw-divider)' }}
+                        aria-hidden="true"
+                      />
+                    )}
+                    <span
+                      className="relative z-10 inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-black shrink-0"
+                      style={{
+                        backgroundColor: 'var(--rw-accent)',
+                        color: 'var(--rw-accent-text)',
+                      }}
+                    >
+                      {item.step}
+                    </span>
+                    <div className="min-w-0 pt-0.5">
+                      <h3
+                        className="font-display text-sm font-bold leading-snug"
+                        style={{ color: 'var(--rw-text-primary)' }}
+                      >
+                        {item.title}
+                      </h3>
+                      <p
+                        className="text-xs mt-0.5 leading-relaxed"
+                        style={{ color: 'var(--rw-text-secondary)' }}
+                      >
+                        {item.desc}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
 
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]/70 p-4 space-y-1.5">
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#D71921] text-xs font-black text-white">
-                2
-              </span>
-              <h3 className="font-display text-base font-bold text-[var(--text)]">
-                Confirm Your Friend&apos;s Code
-              </h3>
-              <p className="text-xs text-[var(--muted)] leading-relaxed">
-                Once your friend signs up and verifies their email, ask them for their own <code className="font-mono text-[var(--text)]">BLD-XXXXXX</code> code and enter it below within 14 days.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]/70 p-4 space-y-1.5">
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#D71921] text-xs font-black text-white">
-                3
-              </span>
-              <h3 className="font-display text-base font-bold text-[var(--text)]">
-                Friend Answers 20 MCQs
-              </h3>
-              <p className="text-xs text-[var(--muted)] leading-relaxed">
-                As soon as your friend completes 20 practice MCQs, you receive{' '}
-                <strong className="text-[var(--text)]">+5,000 Kobans</strong> and they receive{' '}
-                <strong className="text-[var(--text)]">+1,000 Kobans</strong>!
-              </p>
-            </div>
-          </div>
-
-          {/* Your Code + Share Controls */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]/90 p-5 space-y-4">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <span className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] block">
+            {/* Referral Code Card */}
+            <GlassCard className="p-5 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <span
+                    className="block text-[10px] font-bold uppercase tracking-widest"
+                    style={{ color: 'var(--rw-text-label)' }}
+                  >
                     Your Permanent Referral Code
                   </span>
                   <span
                     data-testid="my-referral-code"
-                    className="font-mono text-2xl font-black tracking-wider text-[#D71921]"
+                    className="font-mono text-2xl sm:text-3xl font-black tracking-wider block mt-0.5"
+                    style={{ color: 'var(--rw-accent)' }}
                   >
                     {state.referral.myCode}
                   </span>
                 </div>
+
                 <button
                   type="button"
                   onClick={handleCopyCode}
-                  className="rewards-secondary-lifted-btn inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2 text-xs font-bold text-[var(--text)]"
+                  className="h-10 min-h-[40px] px-4 rounded-full border inline-flex items-center justify-center gap-1.5 text-xs font-bold shrink-0 transition-transform active:scale-95"
+                  style={{
+                    backgroundColor: 'var(--rw-pill-bg)',
+                    borderColor: 'var(--rw-pill-border)',
+                    color: 'var(--rw-text-primary)',
+                  }}
                 >
-                  {copiedCode ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                  {copiedCode ? (
+                    <Check size={14} style={{ color: 'var(--rw-green-text)' }} />
+                  ) : (
+                    <Copy size={14} />
+                  )}
                   <span>{copiedCode ? 'Copied Code' : 'Copy Code'}</span>
                 </button>
               </div>
 
-              <div>
-                <span className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] block mb-1.5">
-                  Your Direct Invite Link
+              {/* Link pill with truncation and [Copy Link] */}
+              <PillRow className="pr-2 pl-4">
+                <span
+                  className="font-mono text-xs truncate min-w-0 flex-1"
+                  style={{ color: 'var(--rw-text-secondary)' }}
+                  title={state.referral.shareUrl}
+                >
+                  {state.referral.shareUrl}
                 </span>
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value={state.referral.shareUrl}
-                    aria-label="Your referral share URL"
-                    className="min-h-[44px] flex-1 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2 font-mono text-xs text-[var(--text)]"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleCopyLink}
-                    className="rewards-secondary-lifted-btn inline-flex items-center justify-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-4 py-2.5 text-xs font-bold text-[var(--text)] shrink-0"
-                  >
-                    {copiedLink ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
-                    <span>{copiedLink ? 'Link Copied!' : 'Copy Link'}</span>
-                  </button>
-                </div>
-              </div>
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="h-10 min-h-[40px] px-4 rounded-full border inline-flex items-center justify-center gap-1.5 text-xs font-bold shrink-0 transition-transform active:scale-95"
+                  style={{
+                    backgroundColor: 'var(--rw-btn-secondary-bg)',
+                    borderColor: 'var(--rw-btn-secondary-border)',
+                    color: 'var(--rw-btn-secondary-text)',
+                  }}
+                >
+                  {copiedLink ? (
+                    <Check size={14} style={{ color: 'var(--rw-green-text)' }} />
+                  ) : (
+                    <Copy size={14} />
+                  )}
+                  <span>{copiedLink ? 'Copied!' : 'Copy Link'}</span>
+                </button>
+              </PillRow>
 
-              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+              {/* [Share Invite Link] (red) and [Share on WhatsApp] (green) side by side */}
+              <div className="grid grid-cols-2 gap-3 pt-1">
                 <button
                   type="button"
                   onClick={handleWebShare}
-                  className="rewards-lifted-btn inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#D71921] px-4 py-2.5 text-xs sm:text-sm font-bold text-white"
+                  className="h-12 min-h-[48px] rounded-full inline-flex items-center justify-center gap-2 px-4 text-xs sm:text-sm font-bold transition-transform active:scale-95"
+                  style={{
+                    backgroundColor: 'var(--rw-accent)',
+                    color: 'var(--rw-accent-text)',
+                    boxShadow: 'var(--rw-btn-primary-shadow)',
+                  }}
                 >
                   <Share2 size={15} />
                   <span>Share Invite Link</span>
                 </button>
+
                 <a
                   href={whatsappShareHref}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="rewards-secondary-lifted-btn inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-xs sm:text-sm font-bold text-emerald-700 dark:text-emerald-300"
+                  className="h-12 min-h-[48px] rounded-full border inline-flex items-center justify-center gap-2 px-4 text-xs sm:text-sm font-bold transition-transform active:scale-95"
+                  style={{
+                    backgroundColor: 'var(--rw-green-bg)',
+                    borderColor: 'var(--rw-green-border)',
+                    color: 'var(--rw-green-text)',
+                  }}
                 >
                   <Share2 size={15} />
                   <span>Share on WhatsApp</span>
                 </a>
               </div>
-            </div>
+            </GlassCard>
 
-            {/* Manual Inviter Code Input (Within 7 days of signup if none attached) */}
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]/90 p-5 flex flex-col justify-between gap-4">
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] block">
+            {/* Attach a friend's referral code card */}
+            <GlassCard className="p-5 space-y-3.5">
+              <div>
+                <span
+                  className="block text-[10px] font-bold uppercase tracking-widest"
+                  style={{ color: 'var(--rw-text-label)' }}
+                >
                   Joined Without a Link?
                 </span>
-                <h3 className="font-display text-lg font-extrabold text-[var(--text)]">
-                  Attach a Friend&apos;s Referral Code
+                <h3
+                  className="font-display text-base sm:text-lg font-bold mt-0.5"
+                  style={{ color: 'var(--rw-text-primary)' }}
+                >
+                  Attach a friend&apos;s referral code
                 </h3>
-                <p className="text-xs text-[var(--muted)] leading-relaxed">
-                  If you signed up within the last {state.referral.config.manualCodeWindowDays} days without clicking a referral link, enter your friend&apos;s <code className="font-mono text-[var(--text)]">BLD-XXXXXX</code> code here.
+                <p
+                  className="text-xs mt-0.5"
+                  style={{ color: 'var(--rw-text-secondary)' }}
+                >
+                  Enter your friend&apos;s BLD-XXXXXX code within{' '}
+                  {state.referral.config.manualCodeWindowDays} days of signup.
                 </p>
               </div>
 
               {state.referral.alreadyAttachedInviter ? (
-                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-                  <CheckCircle2 size={16} className="shrink-0" />
-                  <span>You have already attached an inviter referral code to your account.</span>
-                </div>
-              ) : (
-                <form onSubmit={handleAttachManualCode} className="space-y-3">
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-                    <input
-                      type="text"
-                      value={manualCodeInput}
-                      onChange={(e) => setManualCodeInput(e.target.value.toUpperCase())}
-                      placeholder="BLD-7K9M2P"
-                      maxLength={12}
-                      aria-label="Enter friend's referral code"
-                      className="min-h-[44px] flex-1 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2 font-mono text-sm uppercase tracking-wider text-[var(--text)] placeholder:text-[var(--muted)]/50"
+                <PillRow
+                  leftSlot={
+                    <CheckCircle2
+                      size={16}
+                      style={{ color: 'var(--rw-green-text)' }}
                     />
-                    <button
-                      type="submit"
-                      data-testid="attach-referral-btn"
-                      disabled={isComingSoon || attachingCode || !manualCodeInput.trim()}
-                      className="rewards-lifted-btn inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#D71921] px-5 py-2.5 text-xs sm:text-sm font-bold text-white disabled:bg-neutral-500/25 disabled:text-[var(--muted)] disabled:border disabled:border-[var(--border)] shrink-0"
-                    >
-                      <span>
-                        {isComingSoon
-                          ? 'Coming soon'
-                          : attachingCode
-                          ? 'Attaching...'
-                          : 'Attach Code'}
-                      </span>
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-[var(--muted)]">
-                    Requires verified email. Self-referrals and mutual referrals are automatically blocked.
-                  </p>
+                  }
+                  label="Inviter referral code attached"
+                />
+              ) : (
+                <form
+                  onSubmit={handleAttachManualCode}
+                  className="flex items-center gap-2.5"
+                >
+                  <input
+                    type="text"
+                    value={manualCodeInput}
+                    onChange={(e) => setManualCodeInput(e.target.value.toUpperCase())}
+                    placeholder="BLD-7K9M2P"
+                    maxLength={12}
+                    aria-label="Enter friend's referral code"
+                    className="h-12 min-h-[48px] flex-1 min-w-0 rounded-full border px-4 font-mono text-sm uppercase tracking-wider outline-none"
+                    style={{
+                      backgroundColor: 'var(--rw-pill-bg)',
+                      borderColor: 'var(--rw-pill-border)',
+                      color: 'var(--rw-text-primary)',
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    data-testid="attach-referral-btn"
+                    disabled={isComingSoon || attachingCode || !manualCodeInput.trim()}
+                    className="h-12 min-h-[48px] px-5 rounded-full inline-flex items-center justify-center text-xs sm:text-sm font-bold shrink-0 transition-transform active:scale-95 disabled:cursor-not-allowed"
+                    style={
+                      isComingSoon || attachingCode || !manualCodeInput.trim()
+                        ? {
+                            backgroundColor: 'var(--rw-locked-bg)',
+                            borderColor: 'var(--rw-locked-border)',
+                            color: 'var(--rw-locked-text)',
+                            borderWidth: '1px',
+                            borderStyle: 'solid',
+                          }
+                        : {
+                            backgroundColor: 'var(--rw-accent)',
+                            color: 'var(--rw-accent-text)',
+                            boxShadow: 'var(--rw-btn-primary-shadow)',
+                          }
+                    }
+                  >
+                    {isComingSoon
+                      ? 'Coming soon'
+                      : attachingCode
+                      ? 'Attaching...'
+                      : 'Attach Code'}
+                  </button>
                 </form>
               )}
-            </div>
-          </div>
+            </GlassCard>
 
-          {/* Pending & Completed Referrals List */}
-          <div className="space-y-3 pt-2">
-            <h3 className="font-display text-lg font-extrabold text-[var(--text)]">
-              Your Referrals ({state.referral.items.length})
-            </h3>
+            {/* Your Referrals (n) list */}
+            <div className="space-y-3 pt-1">
+              <h3
+                className="font-display text-base font-bold px-1"
+                style={{ color: 'var(--rw-text-primary)' }}
+              >
+                Your Referrals ({state.referral.items.length})
+              </h3>
 
-            {state.referral.items.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface)]/50 p-6 text-center">
-                <p className="text-sm font-semibold text-[var(--text)]">No referrals yet</p>
-                <p className="text-xs text-[var(--muted)] mt-1">
-                  Share your link above with classmates to start earning +5,000 Kobans per verified referral.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {state.referral.items.map((item) => {
-                  const mySideAccepted =
-                    item.role === 'inviter' ? item.inviterAccepted : item.inviteeAccepted;
-                  const needsMyAcceptance =
-                    item.status === 'pending_confirmation' && !mySideAccepted;
-                  const waitingForCounterpart =
-                    item.status === 'pending_confirmation' && mySideAccepted;
-                  const pct = Math.min(
-                    100,
-                    Math.round((item.inviteeMcqsAnswered / item.minInviteeMcqs) * 100)
-                  );
+              {state.referral.items.length === 0 ? (
+                <PillRow
+                  dashed
+                  label="No referrals yet — share your code above to earn +5,000 Kobans"
+                />
+              ) : (
+                <div className="space-y-3">
+                  {state.referral.items.map((item) => {
+                    const mySideAccepted =
+                      item.role === 'inviter' ? item.inviterAccepted : item.inviteeAccepted;
+                    const needsMyAcceptance =
+                      item.status === 'pending_confirmation' && !mySideAccepted;
+                    const waitingForCounterpart =
+                      item.status === 'pending_confirmation' && mySideAccepted;
+                    const isPaid =
+                      item.status === 'completed' || item.status === 'paid';
 
-                  return (
-                    <div
-                      key={item.id}
-                      data-testid={`referral-item-${item.id}`}
-                      className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]/80 p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4"
-                    >
-                      <div className="space-y-1.5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-display text-base font-extrabold text-[var(--text)]">
-                            {item.counterpartDisplayName}
-                          </span>
-                          <span className="rounded-md border border-[var(--border)] bg-[var(--bg)] px-2 py-0.5 text-[10px] font-mono uppercase text-[var(--muted)]">
-                            {item.role === 'inviter' ? 'You Invited' : 'Invited You'}
-                          </span>
-                          <span
-                            className={`rounded-md px-2 py-0.5 text-[10px] font-extrabold uppercase ${
-                              item.status === 'completed' || item.status === 'paid'
-                                ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300'
-                                : item.status === 'confirmed' || item.status === 'confirmed_waiting_mcqs'
-                                ? 'bg-sky-500/15 text-sky-600 dark:text-sky-300'
-                                : item.status === 'pending_confirmation'
-                                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                                : 'bg-red-500/15 text-red-600 dark:text-red-300'
-                            }`}
-                          >
-                            {item.status.replace(/_/g, ' ')}
-                          </span>
-                          {waitingForCounterpart && (
-                            <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-300">
-                              You Accepted · Waiting for Friend
+                    return (
+                      <GlassCard
+                        key={item.id}
+                        data-testid={`referral-item-${item.id}`}
+                        className="p-4 sm:p-5 space-y-3"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <span
+                              className="font-display text-sm sm:text-base font-bold block truncate"
+                              style={{ color: 'var(--rw-text-primary)' }}
+                            >
+                              {item.counterpartDisplayName}
                             </span>
-                          )}
+                            <span
+                              className="text-xs"
+                              style={{ color: 'var(--rw-text-secondary)' }}
+                            >
+                              {item.role === 'inviter' ? 'You Invited' : 'Invited You'} ·{' '}
+                              {item.inviteeMcqsAnswered} / {item.minInviteeMcqs} MCQs
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <KobanBadge
+                              amount={
+                                item.role === 'inviter'
+                                  ? item.inviterReward
+                                  : item.inviteeReward
+                              }
+                              size="sm"
+                            />
+                            <span
+                              className="rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase border"
+                              style={
+                                isPaid
+                                  ? {
+                                      backgroundColor: 'var(--rw-green-bg)',
+                                      borderColor: 'var(--rw-green-border)',
+                                      color: 'var(--rw-green-text)',
+                                    }
+                                  : {
+                                      backgroundColor: 'var(--rw-pill-bg)',
+                                      borderColor: 'var(--rw-pill-border)',
+                                      color: 'var(--rw-text-secondary)',
+                                    }
+                              }
+                            >
+                              {waitingForCounterpart
+                                ? 'Waiting for Friend'
+                                : item.status.replace(/_/g, ' ')}
+                            </span>
+                          </div>
                         </div>
 
-                        <p className="text-xs text-[var(--muted)]">
-                          Invitee MCQ Progress:{' '}
-                          <strong className="text-[var(--text)] tabular-nums">
-                            {item.inviteeMcqsAnswered} / {item.minInviteeMcqs} MCQs
-                          </strong>{' '}
-                          ({pct}%) · Reward:{' '}
-                          <strong className="text-[var(--text)]">
-                            +{(item.role === 'inviter' ? item.inviterReward : item.inviteeReward).toLocaleString()} Kobans
-                          </strong>
-                        </p>
-                      </div>
+                        {needsMyAcceptance && (
+                          <div className="flex items-center gap-2 pt-1">
+                            <input
+                              type="text"
+                              value={confirmInputs[item.id] || ''}
+                              onChange={(e) =>
+                                setConfirmInputs((prev) => ({
+                                  ...prev,
+                                  [item.id]: e.target.value.toUpperCase(),
+                                }))
+                              }
+                              placeholder="Enter friend's BLD-XXXXXX"
+                              aria-label={`Enter referral code for ${item.counterpartDisplayName}`}
+                              className="h-11 min-h-[44px] flex-1 min-w-0 rounded-full border px-4 font-mono text-xs uppercase outline-none"
+                              style={{
+                                backgroundColor: 'var(--rw-pill-bg)',
+                                borderColor: 'var(--rw-pill-border)',
+                                color: 'var(--rw-text-primary)',
+                              }}
+                            />
+                            <button
+                              type="button"
+                              disabled={isComingSoon || confirmingRefId === item.id}
+                              onClick={() => handleConfirmFriendCode(item.id)}
+                              className="h-11 min-h-[44px] px-4 rounded-full inline-flex items-center justify-center text-xs font-bold shrink-0"
+                              style={{
+                                backgroundColor: 'var(--rw-accent)',
+                                color: 'var(--rw-accent-text)',
+                              }}
+                            >
+                              {isComingSoon
+                                ? 'Coming soon'
+                                : confirmingRefId === item.id
+                                ? 'Accepting...'
+                                : 'Accept'}
+                            </button>
+                          </div>
+                        )}
+                      </GlassCard>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
-                      {needsMyAcceptance && (
-                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
-                          <input
-                            type="text"
-                            value={confirmInputs[item.id] || ''}
-                            onChange={(e) =>
-                              setConfirmInputs((prev) => ({
-                                ...prev,
-                                [item.id]: e.target.value.toUpperCase(),
-                              }))
-                            }
-                            placeholder="Enter friend's BLD-XXXXXX"
-                            aria-label={`Enter referral code for ${item.counterpartDisplayName}`}
-                            className="min-h-[44px] rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2 font-mono text-xs uppercase text-[var(--text)]"
-                          />
-                          <button
-                            type="button"
-                            disabled={isComingSoon || confirmingRefId === item.id}
-                            onClick={() => handleConfirmFriendCode(item.id)}
-                            className="rewards-lifted-btn inline-flex items-center justify-center rounded-xl bg-[#D71921] px-4 py-2.5 text-xs font-bold text-white disabled:bg-neutral-500/25 disabled:text-[var(--muted)]"
-                          >
-                            {isComingSoon
-                              ? 'Coming soon'
-                              : confirmingRefId === item.id
-                              ? 'Accepting...'
-                              : 'Accept'}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* ─── SECTION 5: SHORT FAQ & RULES ───────────────────────────────── */}
-        <section
-          aria-labelledby="rewards-faq-heading"
-          className="rewards-glass-card rounded-3xl p-6 sm:p-8 space-y-5"
-        >
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#D71921]">
-            <HelpCircle size={15} />
-            <span>Transparency & Fair Play</span>
-          </div>
-          <h2
-            id="rewards-faq-heading"
-            className="font-display text-2xl font-extrabold text-[var(--text)]"
+        {/* ─── 6. FAQ TAB (#faq) ──────────────────────────────────────────── */}
+        {activeTab === 'faq' && (
+          <section
+            key="faq"
+            aria-labelledby="rewards-faq-heading"
+            className="rw-tab-panel space-y-3"
           >
-            Rewards FAQ & Rules
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]/75 p-4 space-y-1.5">
-              <h3 className="font-display text-sm font-bold text-[var(--text)]">
-                What happens if I miss a day in the 30-day check-in?
-              </h3>
-              <p className="text-xs text-[var(--muted)] leading-relaxed">
-                Your 30-day check-in progress is cumulative and does not reset if you miss a day. Each day resets at 00:00 PKT (Asia/Karachi, UTC+5), and after Day 30 the cycle renews at Day 1.
-              </p>
+            <div className="px-1 mb-1">
+              <span
+                className="block text-[11px] font-bold uppercase tracking-widest"
+                style={{ color: 'var(--rw-text-label)' }}
+              >
+                Transparency & Fair Play
+              </span>
+              <h2
+                id="rewards-faq-heading"
+                className="font-display text-xl sm:text-2xl font-bold mt-0.5"
+                style={{ color: 'var(--rw-text-primary)' }}
+              >
+                Rewards FAQ & Rules
+              </h2>
             </div>
 
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]/75 p-4 space-y-1.5">
-              <h3 className="font-display text-sm font-bold text-[var(--text)]">
-                How are MCQ milestones counted?
-              </h3>
-              <p className="text-xs text-[var(--muted)] leading-relaxed">
-                Milestones count verified answered questions from your completed practice test attempts on the server. Each milestone (50, 100, 250, 500 MCQs) can be claimed once per student account.
-              </p>
-            </div>
+            {FAQ_ITEMS.map((faq) => {
+              const isOpen = openFaqId === faq.id;
+              return (
+                <div key={faq.id} className="space-y-1.5">
+                  <PillRow
+                    as="button"
+                    aria-expanded={isOpen}
+                    onClick={() =>
+                      setOpenFaqId((prev) => (prev === faq.id ? null : faq.id))
+                    }
+                    className="w-full"
+                  >
+                    <span
+                      className="font-display text-xs sm:text-sm font-bold text-left pr-2"
+                      style={{ color: 'var(--rw-text-primary)' }}
+                    >
+                      {faq.question}
+                    </span>
+                    <ChevronDown
+                      size={18}
+                      className={`shrink-0 transition-transform duration-200 ${
+                        isOpen ? 'rotate-180' : 'rotate-0'
+                      }`}
+                      style={{
+                        color: isOpen
+                          ? 'var(--rw-accent)'
+                          : 'var(--rw-text-secondary)',
+                      }}
+                    />
+                  </PillRow>
 
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]/75 p-4 space-y-1.5">
-              <h3 className="font-display text-sm font-bold text-[var(--text)]">
-                Why do referrals require two-way code confirmation?
-              </h3>
-              <p className="text-xs text-[var(--muted)] leading-relaxed">
-                To keep referrals fair for real classmates, your friend attaches your link/code on signup and shares their own <code className="font-mono">BLD-XXXXXX</code> code with you to confirm within 14 days.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]/75 p-4 space-y-1.5">
-              <h3 className="font-display text-sm font-bold text-[var(--text)]">
-                When are referral Kobans paid out?
-              </h3>
-              <p className="text-xs text-[var(--muted)] leading-relaxed">
-                Once both codes are linked, your friend verifies their email, and they complete 20 practice MCQs, the server credits +5,000 Kobans to you and +1,000 Kobans to your friend (up to 10 paid referrals per month).
-              </p>
-            </div>
-          </div>
-        </section>
+                  {/* Smooth height animation for expanded answer */}
+                  <div
+                    className={`grid transition-all duration-200 ease-out ${
+                      isOpen
+                        ? 'grid-rows-[1fr] opacity-100'
+                        : 'grid-rows-[0fr] opacity-0 pointer-events-none'
+                    }`}
+                  >
+                    <div className="overflow-hidden">
+                      <div
+                        className="rounded-[24px] border px-5 py-4 text-xs sm:text-sm leading-relaxed"
+                        style={{
+                          backgroundColor: 'var(--rw-card-bg)',
+                          borderColor: 'var(--rw-card-border)',
+                          color: 'var(--rw-text-secondary)',
+                        }}
+                      >
+                        {faq.answer}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </section>
+        )}
       </div>
     </div>
   );

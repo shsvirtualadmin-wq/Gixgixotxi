@@ -40,6 +40,35 @@
 
   --color-overlay: var(--overlay);
   --color-skeleton: var(--skeleton);
+
+  /* Student Rewards semantic theme tokens */
+  --color-rw-bg: var(--rw-page-bg);
+  --color-rw-card: var(--rw-card-bg);
+  --color-rw-card-border: var(--rw-card-border);
+  --color-rw-pill: var(--rw-pill-bg);
+  --color-rw-pill-border: var(--rw-pill-border);
+  --color-rw-text: var(--rw-text-primary);
+  --color-rw-secondary: var(--rw-text-secondary);
+  --color-rw-label: var(--rw-text-label);
+  --color-rw-accent: var(--rw-accent);
+  --color-rw-gold-bg: var(--rw-gold-bg);
+  --color-rw-gold-border: var(--rw-gold-border);
+  --color-rw-gold-text: var(--rw-gold-text);
+  --color-rw-green-bg: var(--rw-green-bg);
+  --color-rw-green-border: var(--rw-green-border);
+  --color-rw-green-text: var(--rw-green-text);
+  --color-rw-locked-bg: var(--rw-locked-bg);
+  --color-rw-locked-border: var(--rw-locked-border);
+  --color-rw-locked-text: var(--rw-locked-text);
+  --color-rw-locked-icon: var(--rw-locked-icon);
+  --color-rw-chest-bg: var(--rw-chest-bg);
+  --color-rw-chest-border: var(--rw-chest-border);
+  --color-rw-zenryu-bg: var(--rw-zenryu-bg);
+  --color-rw-zenryu-border: var(--rw-zenryu-border);
+  --color-rw-progress-track: var(--rw-progress-track);
+  --color-rw-divider: var(--rw-divider);
+  --color-rw-tab-track: var(--rw-tab-track-bg);
+  --color-rw-tab-inactive: var(--rw-tab-inactive-text);
 }
 
 /* ===== LOCAL FONTS ===== */
@@ -2766,11 +2795,11 @@ body,
 :root,
 .light,
 [data-theme="light"] {
-  --glass-menu-bg: rgba(255, 255, 255, 0.65);
+  --glass-menu-bg: rgba(255, 255, 255, 0.70);
   --glass-menu-fallback: rgba(255, 255, 255, 0.92);
-  --glass-menu-border: rgba(255, 255, 255, 0.35);
+  --glass-menu-border: rgba(0, 0, 0, 0.06);
   --glass-menu-divider: rgba(0, 0, 0, 0.07);
-  --glass-menu-shadow: 0 12px 36px -8px rgba(15, 23, 42, 0.12), 0 4px 12px -2px rgba(15, 23, 42, 0.06);
+  --glass-menu-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
   --glass-menu-backdrop: rgba(0, 0, 0, 0.30);
   --glass-menu-item-bg: rgba(17, 17, 20, 0.045);
   --glass-menu-item-hover: rgba(17, 17, 20, 0.08);
@@ -2782,9 +2811,9 @@ body,
 
 .dark,
 [data-theme="dark"] {
-  --glass-menu-bg: rgba(20, 20, 22, 0.55);
+  --glass-menu-bg: rgba(0, 0, 0, 0.40);
   --glass-menu-fallback: rgba(20, 20, 22, 0.92);
-  --glass-menu-border: rgba(255, 255, 255, 0.08);
+  --glass-menu-border: rgba(255, 255, 255, 0.10);
   --glass-menu-divider: rgba(255, 255, 255, 0.10);
   --glass-menu-shadow: 0 16px 42px -8px rgba(0, 0, 0, 0.55), 0 4px 14px -2px rgba(0, 0, 0, 0.35);
   --glass-menu-backdrop: rgba(0, 0, 0, 0.30);
@@ -6123,6 +6152,158 @@ html:not(.dark) .zenryu-stage--active {
   border: 1px solid var(--rank-default-border);
   color: var(--rank-default-text);
 }
+
+/* ==========================================================================
+   STUDENT REWARDS & SHARED COCKPIT PRIMITIVES THEME TOKENS (DARK + LIGHT)
+   ========================================================================== */
+
+:root,
+.light,
+[data-theme="light"] {
+  --rw-page-bg: #F6F6F8;
+  --rw-glow-top: radial-gradient(ellipse 80% 45% at 50% 0%, rgba(225, 29, 42, 0.06) 0%, transparent 72%);
+  --rw-glow-bottom: radial-gradient(ellipse 80% 45% at 50% 100%, rgba(225, 29, 42, 0.03) 0%, transparent 72%);
+
+  --rw-card-bg: rgba(255, 255, 255, 0.85);
+  --rw-card-border: rgba(0, 0, 0, 0.07);
+  --rw-card-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
+  --rw-card-primary-shadow: 0 8px 30px rgba(225, 29, 42, 0.25), 0 8px 30px rgba(0, 0, 0, 0.06);
+
+  --rw-pill-bg: rgba(0, 0, 0, 0.04);
+  --rw-pill-border: rgba(0, 0, 0, 0.08);
+
+  --rw-text-primary: #0B0B0F;
+  --rw-text-secondary: rgba(0, 0, 0, 0.60);
+  --rw-text-label: rgba(0, 0, 0, 0.45);
+
+  --rw-accent: #E11D2A;
+  --rw-accent-hover: #C81924;
+  --rw-accent-text: #FFFFFF;
+  --rw-btn-primary-shadow: 0 8px 24px rgba(225, 29, 42, 0.25);
+
+  --rw-btn-secondary-bg: #FFFFFF;
+  --rw-btn-secondary-border: rgba(0, 0, 0, 0.10);
+  --rw-btn-secondary-text: #0B0B0F;
+  --rw-btn-secondary-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+
+  --rw-gold-bg: #FFF4D6;
+  --rw-gold-border: rgba(245, 179, 1, 0.40);
+  --rw-gold-text: #B97700;
+
+  --rw-green-bg: #E3F7EC;
+  --rw-green-border: rgba(15, 138, 75, 0.25);
+  --rw-green-text: #0F8A4B;
+
+  --rw-locked-bg: rgba(0, 0, 0, 0.04);
+  --rw-locked-border: rgba(0, 0, 0, 0.07);
+  --rw-locked-text: rgba(0, 0, 0, 0.35);
+  --rw-locked-icon: rgba(0, 0, 0, 0.30);
+
+  --rw-chest-bg: #FFF8E6;
+  --rw-chest-border: rgba(245, 179, 1, 0.50);
+
+  --rw-grand-bg: linear-gradient(135deg, #FFF1F2 0%, #FFF8E6 100%);
+  --rw-grand-border: #E11D2A;
+
+  --rw-next-bg: rgba(225, 29, 42, 0.08);
+  --rw-next-border: #E11D2A;
+  --rw-next-shadow: 0 6px 20px rgba(225, 29, 42, 0.25);
+
+  --rw-zenryu-bg: #FFF1F2;
+  --rw-zenryu-border: rgba(225, 29, 42, 0.20);
+
+  --rw-progress-track: rgba(0, 0, 0, 0.08);
+  --rw-divider: rgba(0, 0, 0, 0.07);
+
+  --rw-tab-track-bg: rgba(0, 0, 0, 0.05);
+  --rw-tab-track-border: rgba(0, 0, 0, 0.07);
+  --rw-tab-inactive-text: rgba(0, 0, 0, 0.60);
+}
+
+.dark,
+[data-theme="dark"] {
+  --rw-page-bg: #050507;
+  --rw-glow-top: radial-gradient(ellipse 80% 45% at 50% 0%, rgba(225, 29, 42, 0.12) 0%, transparent 72%);
+  --rw-glow-bottom: radial-gradient(ellipse 80% 45% at 50% 100%, rgba(225, 29, 42, 0.12) 0%, transparent 72%);
+
+  --rw-card-bg: rgba(255, 255, 255, 0.04);
+  --rw-card-border: rgba(255, 255, 255, 0.10);
+  --rw-card-shadow: none;
+  --rw-card-primary-shadow: 0 16px 40px -8px rgba(225, 29, 42, 0.22), 0 0 28px -4px rgba(225, 29, 42, 0.16);
+
+  --rw-pill-bg: rgba(255, 255, 255, 0.05);
+  --rw-pill-border: rgba(255, 255, 255, 0.10);
+
+  --rw-text-primary: #FFFFFF;
+  --rw-text-secondary: rgba(255, 255, 255, 0.60);
+  --rw-text-label: rgba(255, 255, 255, 0.40);
+
+  --rw-accent: #E11D2A;
+  --rw-accent-hover: #F02836;
+  --rw-accent-text: #FFFFFF;
+  --rw-btn-primary-shadow: 0 8px 24px -4px rgba(225, 29, 42, 0.42);
+
+  --rw-btn-secondary-bg: rgba(255, 255, 255, 0.05);
+  --rw-btn-secondary-border: rgba(255, 255, 255, 0.10);
+  --rw-btn-secondary-text: #FFFFFF;
+  --rw-btn-secondary-shadow: none;
+
+  --rw-gold-bg: rgba(245, 179, 1, 0.12);
+  --rw-gold-border: rgba(245, 179, 1, 0.40);
+  --rw-gold-text: #FCD34D;
+
+  --rw-green-bg: rgba(16, 185, 129, 0.14);
+  --rw-green-border: rgba(16, 185, 129, 0.35);
+  --rw-green-text: #34D399;
+
+  --rw-locked-bg: rgba(255, 255, 255, 0.03);
+  --rw-locked-border: rgba(255, 255, 255, 0.07);
+  --rw-locked-text: rgba(255, 255, 255, 0.35);
+  --rw-locked-icon: rgba(255, 255, 255, 0.30);
+
+  --rw-chest-bg: rgba(245, 179, 1, 0.08);
+  --rw-chest-border: rgba(245, 179, 1, 0.50);
+
+  --rw-grand-bg: linear-gradient(135deg, rgba(225, 29, 42, 0.18) 0%, rgba(245, 179, 1, 0.14) 100%);
+  --rw-grand-border: #E11D2A;
+
+  --rw-next-bg: rgba(225, 29, 42, 0.14);
+  --rw-next-border: #E11D2A;
+  --rw-next-shadow: 0 0 22px rgba(225, 29, 42, 0.35);
+
+  --rw-zenryu-bg: rgba(225, 29, 42, 0.10);
+  --rw-zenryu-border: rgba(225, 29, 42, 0.25);
+
+  --rw-progress-track: rgba(255, 255, 255, 0.10);
+  --rw-divider: rgba(255, 255, 255, 0.08);
+
+  --rw-tab-track-bg: rgba(255, 255, 255, 0.05);
+  --rw-tab-track-border: rgba(255, 255, 255, 0.10);
+  --rw-tab-inactive-text: rgba(255, 255, 255, 0.60);
+}
+
+@keyframes rw-tab-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rw-tab-panel {
+  animation: rw-tab-enter 200ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rw-tab-panel {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
 
 
 

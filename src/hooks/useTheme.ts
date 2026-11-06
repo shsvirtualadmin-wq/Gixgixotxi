@@ -43,7 +43,7 @@ function applyThemeSetting(setting: ThemeSetting): ResolvedTheme {
 
   const metaThemeColor = document.querySelector('meta[name="theme-color"]');
   if (metaThemeColor) {
-    metaThemeColor.setAttribute('content', resolved === 'dark' ? '#07070a' : '#f6f6f8');
+    metaThemeColor.setAttribute('content', resolved === 'dark' ? '#050507' : '#f6f6f8');
   }
 
   return resolved;

@@ -12,6 +12,9 @@ export function ScrollToTop() {
   useEffect(() => {
     if (hash) {
       const id = decodeURIComponent(hash.replace(/^#/, ''));
+      if (id === 'checkin' || id === 'milestones' || id === 'invite' || id === 'faq') {
+        return;
+      }
       const scrollToAnchor = () => {
         const el = document.getElementById(id);
         if (el) {
