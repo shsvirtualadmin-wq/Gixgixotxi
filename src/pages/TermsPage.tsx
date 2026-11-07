@@ -126,7 +126,7 @@ export function TermsPage() {
               <div className="glass-row p-4 sm:p-5 rounded-2xl  text-xs space-y-1.5 leading-relaxed">
                 <p className="font-bold text-[var(--text)]">How Payments Work:</p>
                 <p className="text-[var(--muted)]">
-                  Payments are conducted via manual local mobile and bank transfers in Pakistan (JazzCash, EasyPaisa, SadaPay, or direct bank transfer). After transferring the amount, you submit your Transaction ID (TRX) and receipt screenshot on the billing page. An administrator manually verifies the transaction against official bank records before activating your account.
+                  Payments are conducted via manual local mobile and bank transfers in Pakistan (JazzCash, Opay, SadaPay, or direct bank transfer). After transferring the amount, you submit your Transaction ID (TRX) and receipt screenshot on the billing page. An administrator manually verifies the transaction against official bank records before activating your account.
                 </p>
               </div>
             </div>

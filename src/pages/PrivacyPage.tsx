@@ -156,7 +156,7 @@ export function PrivacyPage() {
                 Boardly offers simple and transparent paid options: Unlimited access at 199 PKR, and Koban cosmetic packs at 50 PKR for 500 kobans.
               </p>
               <p className="text-sm text-[var(--muted)] leading-relaxed">
-                Payments are made through local Pakistani payment services (JazzCash, EasyPaisa, SadaPay, or direct bank transfer). When submitting payment proof, you provide your Transaction ID (TRX) and an optional receipt image for manual verification. We do not process or store credit card numbers, debit card details, or automated bank mandates.
+                Payments are made through local Pakistani payment services (JazzCash, Opay, SadaPay, or direct bank transfer). When submitting payment proof, you provide your Transaction ID (TRX) and an optional receipt image for manual verification. We do not process or store credit card numbers, debit card details, or automated bank mandates.
               </p>
             </div>
 

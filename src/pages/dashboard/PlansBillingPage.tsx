@@ -13,11 +13,19 @@ import { Badge } from '@/components/ui/Badge';
 import { LineLoader } from '@/components/ui/LineLoader';
 import { Check, Zap, Users, Clock, Sparkles } from 'lucide-react';
 import { notifyKobanPurchaseRequestSubmitted } from '@/services/emailNotificationService';
+import {
+  PAYMENT_METHODS,
+  PAYMENT_METHODS_LIST,
+  formatPaymentMethodLabel,
+  type SupportedPaymentMethod,
+} from '@/constants/branding';
 
 interface PaymentRequestItem {
   id: string;
   status?: string;
   planRequested?: string;
+  plan?: string;
+  amount?: number;
   method?: string;
   transactionId?: string;
   createdAt?: { seconds: number; nanoseconds?: number } | null;
@@ -30,7 +38,7 @@ export function PlansBillingPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [upgradeTarget, setUpgradeTarget] = useState<'pro' | 'crew'>('pro');
-  const [method, setMethod] = useState<'easypaisa' | 'jazzcash' | 'sadapay' | 'nayapay' | 'bank'>('easypaisa');
+  const [method, setMethod] = useState<SupportedPaymentMethod>('jazzcash');
   const [transactionId, setTransactionId] = useState('');
   const [senderName, setSenderName] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -64,6 +72,7 @@ export function PlansBillingPage() {
       const amount = isCrewUpgrade ? DEFAULT_CREW_PRICING.largeCrewPricePKR : 199;
       const planName = isCrewUpgrade ? 'large_crew' : 'pro';
 
+      const activeMethodConfig = PAYMENT_METHODS[method];
       const docRef = await addDoc(collection(db, 'paymentRequests'), {
         userId: user.uid,
         userEmail: user.email?.toLowerCase(),
@@ -73,7 +82,7 @@ export function PlansBillingPage() {
         crewId: isCrewUpgrade ? (crew?.id || null) : null,
         crewName: isCrewUpgrade ? (crew?.name || null) : null,
         durationMonths: 1,
-        method,
+        method: activeMethodConfig.displayName,
         transactionId: transactionId.trim().toUpperCase(),
         status: 'pending',
         createdAt: serverTimestamp(),
@@ -86,7 +95,7 @@ export function PlansBillingPage() {
         studentEmail: user.email || undefined,
         kobansAmount: amount * 10,
         pkrAmount: amount,
-        paymentMethod: method,
+        paymentMethod: activeMethodConfig.displayName,
         transactionId: transactionId.trim().toUpperCase(),
         packageName: isCrewUpgrade ? 'Large Crew Pass (30 Days)' : 'Boardly Pro Pass (30 Days)',
       });
@@ -186,27 +195,72 @@ export function PlansBillingPage() {
         </GlassCard>
       )}
 
-      {/* Pending verification alert if submitted */}
-      {pendingRequests.filter((r) => r.status === 'pending').length > 0 && (
+      {/* Pending verification alert & student payment request history */}
+      {pendingRequests.length > 0 && (
         <div
           style={{
             padding: '16px 20px',
             borderRadius: 'var(--r-card)',
             background: 'var(--surface)',
-            border: '1px solid #D71921',
+            border: pendingRequests.some((r) => r.status === 'pending')
+              ? '1px solid #D71921'
+              : '1px solid var(--border)',
             display: 'flex',
-            alignItems: 'center',
-            gap: 12,
+            flexDirection: 'column',
+            gap: 10,
           }}
         >
-          <Clock size={20} className="text-[#D71921] flex-shrink-0" />
-          <div>
-            <h4 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
-              Payment Verification In Progress
-            </h4>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Your transaction is being verified by admin. Pro access will activate automatically within 15–30 minutes.
-            </p>
+          {pendingRequests.some((r) => r.status === 'pending') && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Clock size={20} className="text-[#D71921] flex-shrink-0" />
+              <div>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+                  Payment Verification In Progress
+                </h4>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  Your transaction is being verified by admin. Pro access will activate automatically within 15–30 minutes.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-faint)' }}>
+              Your Payment History
+            </span>
+            {pendingRequests.slice(0, 5).map((r) => (
+              <div
+                key={r.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  fontSize: 12,
+                  paddingTop: 6,
+                  borderTop: '1px solid var(--border)',
+                }}
+              >
+                <span style={{ color: 'var(--text)', fontFamily: 'monospace' }}>
+                  {r.amount ? `PKR ${r.amount} · ` : ''}via {formatPaymentMethodLabel(r.method)} (TRX: {r.transactionId})
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    color:
+                      r.status === 'approved'
+                        ? '#10b981'
+                        : r.status === 'rejected'
+                        ? '#ef4444'
+                        : '#f59e0b',
+                  }}
+                >
+                  {r.status || 'pending'}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -524,30 +578,29 @@ export function PlansBillingPage() {
                 Select Payment Account
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-                {(['easypaisa', 'jazzcash', 'sadapay', 'nayapay', 'bank'] as const).map((m) => (
+                {PAYMENT_METHODS_LIST.map((m) => (
                   <button
-                    key={m}
+                    key={m.id}
                     type="button"
-                    onClick={() => setMethod(m)}
+                    onClick={() => setMethod(m.id)}
                     style={{
                       padding: '8px 12px',
                       borderRadius: 'var(--r-input)',
                       fontSize: 12,
                       fontWeight: 600,
-                      textTransform: 'capitalize',
                       cursor: 'pointer',
-                      border: method === m ? '1px solid #D71921' : '1px solid var(--border)',
-                      background: method === m ? 'rgba(215, 25, 33, 0.1)' : 'var(--surface)',
-                      color: method === m ? '#D71921' : 'var(--text)',
+                      border: method === m.id ? '1px solid #D71921' : '1px solid var(--border)',
+                      background: method === m.id ? 'rgba(215, 25, 33, 0.1)' : 'var(--surface)',
+                      color: method === m.id ? '#D71921' : 'var(--text)',
                     }}
                   >
-                    {m}
+                    {m.displayName} ({m.number})
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Account Details */}
+            {/* Account Details (reads from shared PAYMENT_METHODS config) */}
             <div
               style={{
                 padding: '12px 14px',
@@ -558,8 +611,8 @@ export function PlansBillingPage() {
                 lineHeight: 1.6,
               }}
             >
-              <p><strong>Account Name:</strong> SHS Virtual Academy / Boardly</p>
-              <p><strong>Account / IBAN:</strong> 0300-1234567</p>
+              <p><strong>Account Title:</strong> {PAYMENT_METHODS[method].accountTitle}</p>
+              <p><strong>Account Number:</strong> {PAYMENT_METHODS[method].number}</p>
               <p><strong>Amount:</strong> PKR {upgradeTarget === 'crew' ? DEFAULT_CREW_PRICING.largeCrewPricePKR : 199}</p>
             </div>
 

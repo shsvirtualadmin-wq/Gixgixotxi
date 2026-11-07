@@ -45,6 +45,7 @@ import {
 } from '@/constants/taxonomy';
 import { normalizeCorrectAnswer } from './testEngine';
 import { recordCrewPaymentActionServer } from './crewBackend';
+import { formatPaymentMethodLabel } from '@/constants/branding';
 import {
   notifyApplicationDecision,
   notifyKobanPurchaseApproved,
@@ -2368,13 +2369,15 @@ export async function approvePaymentRequest(
     approvedBy: adminEmail,
   });
 
+  const methodDisplay = formatPaymentMethodLabel(req.method);
+
   // If this is a Large Crew upgrade request, update crew record (never write crew Pro into user's personal subscription)
   if ((req.plan === 'large_crew' || req.crewId) && req.crewId) {
     await recordCrewPaymentActionServer({
       crewId: req.crewId,
       action: 'extend_month',
       adminEmail,
-      reason: `Verified ${req.method} transaction ${req.transactionId}`,
+      reason: `Verified ${methodDisplay} transaction ${req.transactionId}`,
       amount: req.amount,
       transactionId: req.transactionId,
     });
@@ -2385,7 +2388,7 @@ export async function approvePaymentRequest(
         userId: req.userId,
         type: 'crew',
         title: 'Squad Upgraded to Large Crew!',
-        message: `Your payment of PKR ${req.amount} via ${req.method} (TRX: ${req.transactionId}) was verified. Your study squad now has Large Crew status with up to 30 members and Pro sharing for all squad members!`,
+        message: `Your payment of PKR ${req.amount} via ${methodDisplay} (TRX: ${req.transactionId}) was verified. Your study squad now has Large Crew status with up to 30 members and Pro sharing for all squad members!`,
         link: '/dashboard/crew',
         read: false,
         createdAt: serverTimestamp(),
@@ -2437,7 +2440,7 @@ export async function approvePaymentRequest(
       userId: req.userId,
       type: 'system',
       title: 'Boardly Pro Activated!',
-      message: `Your payment of PKR ${req.amount} via ${req.method} (TRX: ${req.transactionId}) was verified. You have full access until ${expiresAt.toDate().toLocaleDateString()}.`,
+      message: `Your payment of PKR ${req.amount} via ${methodDisplay} (TRX: ${req.transactionId}) was verified. You have full access until ${expiresAt.toDate().toLocaleDateString()}.`,
       link: '/dashboard/settings',
       read: false,
       createdAt: serverTimestamp(),

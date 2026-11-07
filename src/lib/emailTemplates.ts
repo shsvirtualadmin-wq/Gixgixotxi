@@ -8,6 +8,11 @@
  * - Koban Accent: #F5B301 (Koban Gold)
  */
 
+import {
+  formatPaymentMethodLabel,
+  PAYMENT_METHODS_PAIR_LABEL,
+} from '../constants/branding';
+
 export type TransactionalEmailEventType =
   | 'koban_purchase_request'
   | 'koban_purchase_approved'
@@ -306,6 +311,7 @@ export function buildKobanPurchaseRequestStudentEmail(params: {
   const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
   const maskedRef = maskPaymentReference(params.transactionId);
   const timeStr = formatPktDateTime(params.requestedAt);
+  const methodLabel = formatPaymentMethodLabel(params.paymentMethod);
   const pkgLabel = params.packageName || `${params.kobansAmount.toLocaleString()} Kobans Package`;
   const subject = `We received your Koban request (${params.kobansAmount.toLocaleString()} Kobans) — Boardly`;
   const preheader = `Your request for ${params.kobansAmount.toLocaleString()} Kobans (PKR ${params.pkrAmount}) is pending verification.`;
@@ -327,7 +333,7 @@ export function buildKobanPurchaseRequestStudentEmail(params: {
     detailsRows: [
       { label: 'Package', value: pkgLabel },
       { label: 'Amount (PKR)', value: `PKR ${params.pkrAmount.toLocaleString()}` },
-      { label: 'Payment Method', value: params.paymentMethod.toUpperCase() },
+      { label: 'Payment Method', value: methodLabel },
       { label: 'Payment Reference', value: maskedRef, mono: true },
       { label: 'Status', value: 'Pending Verification', highlightGold: true },
       { label: 'Submitted (PKT)', value: timeStr },
@@ -345,7 +351,7 @@ export function buildKobanPurchaseRequestStudentEmail(params: {
     ``,
     `Package: ${pkgLabel}`,
     `Amount: PKR ${params.pkrAmount.toLocaleString()}`,
-    `Payment Method: ${params.paymentMethod.toUpperCase()}`,
+    `Payment Method: ${methodLabel}`,
     `Payment Reference (Masked): ${maskedRef}`,
     `Status: Pending Verification`,
     `Time: ${timeStr}`,
@@ -374,9 +380,10 @@ export function buildKobanPurchaseRequestAdminEmail(params: {
 }): RenderedEmailTemplate {
   const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
   const timeStr = formatPktDateTime(params.requestedAt);
+  const methodLabel = formatPaymentMethodLabel(params.paymentMethod);
   const pkgLabel = params.packageName || `${params.kobansAmount.toLocaleString()} Kobans`;
   const subject = `[Admin] New Koban purchase request — ${params.studentName || params.studentEmail} (PKR ${params.pkrAmount})`;
-  const preheader = `${params.studentName} requested ${params.kobansAmount.toLocaleString()} Kobans via ${params.paymentMethod.toUpperCase()} (TRX: ${params.transactionId}).`;
+  const preheader = `${params.studentName} requested ${params.kobansAmount.toLocaleString()} Kobans via ${methodLabel} (TRX: ${params.transactionId}).`;
 
   const html = renderBaseHtmlLayout({
     subject,
@@ -388,14 +395,14 @@ export function buildKobanPurchaseRequestAdminEmail(params: {
     kobanHighlight: {
       label: 'Requested Credit',
       amountText: `${params.kobansAmount.toLocaleString()} Kobans`,
-      subtext: `PKR ${params.pkrAmount.toLocaleString()} via ${params.paymentMethod.toUpperCase()}`,
+      subtext: `PKR ${params.pkrAmount.toLocaleString()} via ${methodLabel}`,
     },
     detailsRows: [
       { label: 'Student Name', value: params.studentName || 'Student' },
       { label: 'Student Email', value: params.studentEmail || 'Not provided', mono: true },
       { label: 'Package', value: pkgLabel },
       { label: 'Amount (PKR)', value: `PKR ${params.pkrAmount.toLocaleString()}` },
-      { label: 'Payment Method', value: params.paymentMethod.toUpperCase() },
+      { label: 'Payment Method', value: methodLabel },
       { label: 'Full Transaction ID', value: params.transactionId, mono: true, highlightGold: true },
       { label: 'Request ID', value: params.requestId, mono: true },
       { label: 'Submitted Time', value: timeStr },
@@ -412,7 +419,7 @@ export function buildKobanPurchaseRequestAdminEmail(params: {
     `Student: ${params.studentName} (${params.studentEmail})`,
     `Package: ${pkgLabel}`,
     `Amount (PKR): PKR ${params.pkrAmount.toLocaleString()}`,
-    `Payment Method: ${params.paymentMethod.toUpperCase()}`,
+    `Payment Method: ${methodLabel}`,
     `Full Transaction ID / Reference: ${params.transactionId}`,
     `Time: ${timeStr}`,
     ...(params.note ? [`Note: ${params.note}`] : []),
@@ -506,7 +513,7 @@ export function buildKobanPurchaseRejectedStudentEmail(params: {
     )}</strong>, our team reviewed your Koban purchase request (${escapeHtml(
       maskedRef
     )}) but could not verify the transaction.</p>
-    <p style="margin:0;"><strong>What to do next:</strong> Please double-check your 11-digit Easypaisa/JazzCash/bank Transaction ID (TRX) and submit a new request with the exact reference, or reply/contact <a href="mailto:admin@boardly.cfd" style="color:#E11D2A;">admin@boardly.cfd</a> with your payment screenshot.</p>`,
+    <p style="margin:0;"><strong>What to do next:</strong> Please double-check your ${PAYMENT_METHODS_PAIR_LABEL} or bank Transaction ID (TRX) and submit a new request with the exact reference, or reply/contact <a href="mailto:admin@boardly.cfd" style="color:#E11D2A;">admin@boardly.cfd</a> with your payment screenshot.</p>`,
     detailsRows: [
       { label: 'Requested Amount', value: `${params.requestedKobans.toLocaleString()} Kobans` },
       { label: 'Payment Reference', value: maskedRef, mono: true },

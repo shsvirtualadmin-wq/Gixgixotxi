@@ -44,6 +44,10 @@ import {
   Nameplate,
   ProfileEffectCardPreview,
 } from '@/components/koban/CosmeticRenderers';
+import {
+  formatPaymentMethodLabel,
+  PAYMENT_METHODS_PAIR_LABEL,
+} from '@/constants/branding';
 import type { KobanRequest, WalletLedgerEntry } from '@/types';
 
 function getInitials(nameOrEmail: string): string {
@@ -700,7 +704,9 @@ export function AdminKobansPage() {
                         >
                           {req.status}
                         </span>
-                        <span className="akb-chip akb-chip--muted">via {req.paymentMethod}</span>
+                        <span className="akb-chip akb-chip--muted">
+                          via {formatPaymentMethodLabel(req.paymentMethod)}
+                        </span>
                       </div>
 
                       <div className="text-xs text-[var(--text-muted)] font-mono flex items-center gap-2 flex-wrap break-all">
@@ -919,7 +925,7 @@ export function AdminKobansPage() {
                           type="text"
                           value={adjustReason}
                           onChange={(e) => setAdjustReason(e.target.value)}
-                          placeholder="e.g. Verified JazzCash transfer / Monthly Captain reward"
+                          placeholder={`e.g. Verified ${PAYMENT_METHODS_PAIR_LABEL} transfer / Monthly Captain reward`}
                           className="akb-input"
                         />
                       </div>
@@ -1454,8 +1460,8 @@ export function AdminKobansPage() {
               </div>
               <div className="flex justify-between gap-2 text-[var(--text-muted)]">
                 <span>Method:</span>
-                <span className="text-[var(--text)] uppercase text-right">
-                  {approveTarget.paymentMethod}
+                <span className="text-[var(--text)] text-right">
+                  {formatPaymentMethodLabel(approveTarget.paymentMethod)}
                 </span>
               </div>
             </div>

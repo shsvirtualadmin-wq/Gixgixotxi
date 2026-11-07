@@ -23,7 +23,7 @@ const FAQ_ITEMS = [
   },
   {
     q: 'How do I pay if I do not have an international credit card?',
-    a: 'Boardly supports 100% local Pakistani payment methods including JazzCash, EasyPaisa, SadaPay, NayaPay, and direct Bank Transfer with fast verification.',
+    a: 'Boardly supports 100% local Pakistani payment methods including JazzCash, Opay, SadaPay, NayaPay, and direct Bank Transfer with fast verification.',
   },
   {
     q: 'Can I study effectively on my smartphone?',
@@ -55,7 +55,7 @@ export const FaqPage: React.FC = () => {
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6">
       <PageMeta
         title="Frequently Asked Questions (FAQ) — Boardly"
-        description="Answers to common questions about Boardly's Class 11 & 12 MCQ bank, timed entrance exam mocks, Boardly Commons, PKT midnight resets, and local JazzCash/EasyPaisa payments."
+        description="Answers to common questions about Boardly's Class 11 & 12 MCQ bank, timed entrance exam mocks, Boardly Commons, PKT midnight resets, and local JazzCash/Opay payments."
         canonicalPath="/faq"
         jsonLd={faqSchema}
       />

@@ -7,6 +7,7 @@ import { KobanIcon, KobanAmount } from '@/components/koban/KobanIcon';
 import { COSMETICS_CATALOG } from '@/data/cosmeticsCatalog';
 import { CosmeticFrame, CosmeticNameplate, CosmeticEffect } from '@/components/koban/CosmeticRenderers';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
+import { PAYMENT_METHODS, PAYMENT_METHODS_PAIR_LABEL } from '@/constants/branding';
 import {
   ArrowRight,
   ShieldCheck,
@@ -39,7 +40,7 @@ const KOBANS_FAQS = [
   },
   {
     q: 'What are the rules for students under 18 years old?',
-    a: 'Students under the age of 18 must obtain the express authorization and consent of a parent or legal guardian before initiating any mobile banking payment (JazzCash or EasyPaisa) to purchase Kobans.',
+    a: `Students under the age of 18 must obtain the express authorization and consent of a parent or legal guardian before initiating any mobile banking payment (${PAYMENT_METHODS_PAIR_LABEL}) to purchase Kobans.`,
   },
   {
     q: 'How long does payment verification take?',
@@ -226,7 +227,7 @@ export function KobansPage() {
               </span>
               <h3 className="font-heading font-bold text-base text-[var(--text)]">Transfer via Mobile Bank</h3>
               <p className="text-xs text-[var(--muted)] leading-relaxed">
-                Send the exact PKR amount to Boardly&apos;s verified <strong className="text-[var(--text)]">JazzCash</strong> or <strong className="text-[var(--text)]">EasyPaisa</strong> account displayed in the modal.
+                Send the exact PKR amount to Boardly&apos;s verified <strong className="text-[var(--text)]">{PAYMENT_METHODS.jazzcash.displayName}</strong> or <strong className="text-[var(--text)]">{PAYMENT_METHODS.opay.displayName}</strong> account displayed in the modal.
               </p>
             </div>
 

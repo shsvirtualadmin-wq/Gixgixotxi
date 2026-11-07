@@ -216,7 +216,7 @@ export function PricingSection() {
                 </Link>
                 {/* Pay locally note centered inside the card under the button */}
                 <div className="mt-2.5 min-h-[18px] text-center text-[11px] text-[var(--muted)] leading-relaxed">
-                  Pay locally: JazzCash, EasyPaisa, SadaPay, or Bank Transfer.
+                  Pay locally: JazzCash, Opay, SadaPay, or Bank Transfer.
                 </div>
               </div>
             </div>

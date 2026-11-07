@@ -90,7 +90,7 @@ export function LandingPage() {
             name: 'How do I pay if I do not have an international credit card?',
             acceptedAnswer: {
               '@type': 'Answer',
-              text: 'Boardly supports 100% local Pakistani payment methods including JazzCash, EasyPaisa, SadaPay, NayaPay, and direct Bank Transfer.',
+              text: 'Boardly supports 100% local Pakistani payment methods including JazzCash, Opay, SadaPay, NayaPay, and direct Bank Transfer.',
             },
           },
           {

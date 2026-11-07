@@ -20,7 +20,7 @@ const FAQS = [
   },
   {
     q: 'How do I pay if I do not have an international credit card?',
-    a: 'We accept local Pakistani payment methods: JazzCash, EasyPaisa, SadaPay, NayaPay, and direct bank transfer. Upload your transaction screenshot on the Plans page and our team activates Pro within minutes.',
+    a: 'We accept local Pakistani payment methods: JazzCash, Opay, SadaPay, NayaPay, and direct bank transfer. Upload your transaction screenshot on the Plans page and our team activates Pro within minutes.',
   },
   {
     q: 'Can I study effectively on my smartphone?',

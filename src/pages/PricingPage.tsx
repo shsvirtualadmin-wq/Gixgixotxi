@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { Check, X, Shield } from 'lucide-react';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { FREE_DAILY_TESTS, FREE_DAILY_TOKEN_LIMIT, FREE_DAILY_ARENA_LIMIT } from '@/constants/limits';
+import { PAYMENT_METHODS as OFFICIAL_PAYMENT_METHODS } from '@/constants/branding';
 
 const COMPARISON_ROWS = [
   { feature: 'Daily Practice Tests & Sprints', free: `${FREE_DAILY_TESTS} / day`, pro: 'Unlimited' },
@@ -23,13 +24,13 @@ const COMPARISON_ROWS = [
 
 const PAYMENT_METHODS = [
   {
-    name: 'JazzCash',
-    desc: 'Instant wallet transfer via JazzCash mobile account.',
+    name: OFFICIAL_PAYMENT_METHODS.jazzcash.displayName,
+    desc: `Instant wallet transfer via ${OFFICIAL_PAYMENT_METHODS.jazzcash.displayName} mobile account (${OFFICIAL_PAYMENT_METHODS.jazzcash.number}).`,
     icon: '📱',
   },
   {
-    name: 'EasyPaisa',
-    desc: 'Instant mobile account transfer via EasyPaisa app or agent.',
+    name: OFFICIAL_PAYMENT_METHODS.opay.displayName,
+    desc: `Instant mobile account transfer via ${OFFICIAL_PAYMENT_METHODS.opay.displayName} app (${OFFICIAL_PAYMENT_METHODS.opay.number}).`,
     icon: '🟢',
   },
   {
@@ -340,7 +341,7 @@ export function PricingPage() {
               <div className="p-4 rounded-2xl glass-row text-xs space-y-2">
                 <span className="font-bold text-[var(--red)]">1. Transfer PKR 199</span>
                 <p className="text-[var(--muted)]">
-                  Send PKR 199 via JazzCash, EasyPaisa, SadaPay, or local bank transfer to the account details provided on your dashboard.
+                  Send PKR 199 via {OFFICIAL_PAYMENT_METHODS.jazzcash.displayName}, {OFFICIAL_PAYMENT_METHODS.opay.displayName}, SadaPay, or local bank transfer to the account details provided on your dashboard.
                 </p>
               </div>
 

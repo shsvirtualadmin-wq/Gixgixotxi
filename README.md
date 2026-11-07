@@ -12,6 +12,7 @@ Boardly (B-O-A-R-D-L-Y) is a mobile-first, diagnostic testing and exam revision 
 - **Study Circles**: Student and teacher-led study groups with competitive sessions.
 - **Campus Captains**: Student ambassador program with referral tracking and missions.
 - **Plans**: Only three clean tiers: **Free**, **Pro**, and **Premium**.
+- **Official Payment Methods**: Centralized in `src/constants/branding.ts` (`PAYMENT_METHODS`): **JazzCash** (`+923058969050`) and **Opay** (`+923058969050`).
 
 ---
 

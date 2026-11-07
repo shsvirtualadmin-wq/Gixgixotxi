@@ -22,6 +22,7 @@ import {
   notifyKobanPurchaseRejected,
   notifyKobanReceipt,
 } from './emailNotificationService';
+import { getPaymentMethodConfig } from '@/constants/branding';
 
 export interface WalletData {
   balance: number;
@@ -317,6 +318,7 @@ export async function submitKobanRequest(params: {
   }
 
   const pkrAmount = Math.floor(amount / 10);
+  const resolvedMethod = getPaymentMethodConfig(params.paymentMethod).displayName;
 
   const docRef = await addDoc(collection(db, 'kobanRequests'), {
     userId: params.userId,
@@ -325,7 +327,7 @@ export async function submitKobanRequest(params: {
     amount,
     pkrAmount,
     transactionId: params.transactionId.trim(),
-    paymentMethod: params.paymentMethod,
+    paymentMethod: resolvedMethod,
     note: params.note || '',
     status: 'pending',
     createdAt: serverTimestamp(),
@@ -338,7 +340,7 @@ export async function submitKobanRequest(params: {
     studentEmail: params.userEmail,
     kobansAmount: amount,
     pkrAmount,
-    paymentMethod: params.paymentMethod,
+    paymentMethod: resolvedMethod,
     transactionId: params.transactionId.trim(),
     note: params.note,
   });

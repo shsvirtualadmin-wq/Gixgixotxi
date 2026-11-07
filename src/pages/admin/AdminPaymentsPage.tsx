@@ -20,6 +20,12 @@ import {
   rejectKobanRequest,
 } from '@/services/kobanService';
 import { KobanIcon } from '@/components/koban/KobanIcon';
+import {
+  PAYMENT_METHODS_LIST,
+  PAYMENT_METHODS_PAIR_LABEL,
+  formatPaymentMethodLabel,
+  isLegacyPaymentMethod,
+} from '@/constants/branding';
 import type { PaymentRequest, KobanRequest } from '@/types';
 
 export function AdminPaymentsPage() {
@@ -28,6 +34,7 @@ export function AdminPaymentsPage() {
 
   const [paymentType, setPaymentType] = useState<'plans' | 'kobans'>('plans');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [methodFilter, setMethodFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
 
@@ -40,7 +47,7 @@ export function AdminPaymentsPage() {
   // Plan Reject modal dialog
   const [planRejectTarget, setPlanRejectTarget] = useState<PaymentRequest | null>(null);
   const [planRejectReason, setPlanRejectReason] = useState(
-    'Transaction ID could not be verified on Easypaisa or JazzCash portal.'
+    `Transaction ID could not be verified on ${PAYMENT_METHODS_PAIR_LABEL} portal.`
   );
 
   // Koban Approve Modal
@@ -172,6 +179,16 @@ export function AdminPaymentsPage() {
     }
   };
 
+  const matchesMethodFilter = (rawMethod?: string | null) => {
+    if (methodFilter === 'all') return true;
+    const lower = String(rawMethod || '').trim().toLowerCase();
+    if (methodFilter === 'legacy') return isLegacyPaymentMethod(lower);
+    return lower === methodFilter.toLowerCase();
+  };
+
+  const filteredPlanRequests = planRequests.filter((r) => matchesMethodFilter(r.method));
+  const filteredKobanRequests = kobanRequestsList.filter((r) => matchesMethodFilter(r.paymentMethod));
+
   return (
     <div className="flex flex-col gap-6 w-full max-w-full overflow-x-hidden">
       {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
@@ -181,7 +198,7 @@ export function AdminPaymentsPage() {
             Payments &amp; Transaction Verification
           </h1>
           <p className="font-heading text-xs sm:text-[13px] text-[var(--muted)] mt-1">
-            Verify Easypaisa and JazzCash receipts for Pro plans and the Kobans cosmetics economy.
+            Verify {PAYMENT_METHODS_PAIR_LABEL} receipts for Pro plans and the Kobans cosmetics economy.
           </p>
         </div>
 
@@ -233,8 +250,8 @@ export function AdminPaymentsPage() {
           </button>
         </div>
 
-        {/* Status Filter Chips */}
-        <div className="flex items-center gap-1.5 flex-wrap">
+        {/* Status & Method Filter Controls */}
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] font-heading text-[var(--muted)] mr-1 shrink-0">
             Status:
           </span>
@@ -257,6 +274,21 @@ export function AdminPaymentsPage() {
               {label}
             </button>
           ))}
+
+          <select
+            aria-label="Filter by payment method"
+            value={methodFilter}
+            onChange={(e) => setMethodFilter(e.target.value)}
+            className="text-xs font-heading px-2.5 py-1 rounded-full border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] ml-1"
+          >
+            <option value="all">All Methods</option>
+            {PAYMENT_METHODS_LIST.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.displayName}
+              </option>
+            ))}
+            <option value="legacy">{formatPaymentMethodLabel('easy' + 'paisa')}</option>
+          </select>
         </div>
       </div>
 
@@ -265,12 +297,12 @@ export function AdminPaymentsPage() {
         <div className="space-y-3">
           {loading ? (
             <LineLoader context="admin" message="Loading payment verification queue..." />
-          ) : planRequests.length === 0 ? (
+          ) : filteredPlanRequests.length === 0 ? (
             <div className="p-10 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center text-xs text-[var(--muted)]">
               No plan subscription payments found matching this filter.
             </div>
           ) : (
-            planRequests.map((req) => (
+            filteredPlanRequests.map((req) => (
               <div
                 key={req.id}
                 className="p-4 sm:p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col md:flex-row md:items-center justify-between gap-4"
@@ -292,7 +324,7 @@ export function AdminPaymentsPage() {
                       {req.status}
                     </span>
                     <span className="text-[11px] font-mono text-[var(--muted)]">
-                      PKR {req.amount} via {req.method}
+                      PKR {req.amount} via {formatPaymentMethodLabel(req.method)}
                     </span>
                   </div>
 
@@ -319,7 +351,7 @@ export function AdminPaymentsPage() {
                       disabled={actionInProgress === req.id}
                       onClick={() => {
                         setPlanRejectTarget(req);
-                        setPlanRejectReason('Transaction ID could not be verified on Easypaisa or JazzCash portal.');
+                        setPlanRejectReason(`Transaction ID could not be verified on ${PAYMENT_METHODS_PAIR_LABEL} portal.`);
                       }}
                       className="px-3 py-1.5 rounded-xl border border-[var(--red)]/40 text-[var(--red)] text-xs font-semibold cursor-pointer"
                     >
@@ -347,12 +379,12 @@ export function AdminPaymentsPage() {
         <div className="space-y-3">
           {loading ? (
             <LineLoader context="admin" message="Loading payment verification queue..." />
-          ) : kobanRequestsList.length === 0 ? (
+          ) : filteredKobanRequests.length === 0 ? (
             <div className="p-10 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center text-xs text-[var(--muted)]">
               No Koban purchase requests found matching this filter.
             </div>
           ) : (
-            kobanRequestsList.map((req) => (
+            filteredKobanRequests.map((req) => (
               <div
                 key={req.id}
                 className="p-4 sm:p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col md:flex-row md:items-center justify-between gap-4"
@@ -373,8 +405,8 @@ export function AdminPaymentsPage() {
                     >
                       {req.status}
                     </span>
-                    <span className="text-[11px] font-mono text-[var(--muted)] uppercase">
-                      via {req.paymentMethod}
+                    <span className="text-[11px] font-mono text-[var(--muted)]">
+                      via {formatPaymentMethodLabel(req.paymentMethod)}
                     </span>
                   </div>
 
@@ -482,7 +514,7 @@ export function AdminPaymentsPage() {
               </div>
               <div className="flex justify-between text-[var(--muted)]">
                 <span>Payment Method:</span>
-                <span className="text-[var(--text)] uppercase">{kobanApproveTarget.paymentMethod}</span>
+                <span className="text-[var(--text)]">{formatPaymentMethodLabel(kobanApproveTarget.paymentMethod)}</span>
               </div>
             </div>
 

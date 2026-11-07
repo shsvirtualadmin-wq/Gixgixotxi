@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Copy,
@@ -8,12 +8,21 @@ import {
   ArrowRight,
   ShieldCheck,
 } from 'lucide-react';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { KobanIcon, KobanStack } from './KobanIcon';
-import { PAYMENT_METHODS } from '@/constants/branding';
+import {
+  PAYMENT_METHODS,
+  PAYMENT_METHODS_LIST,
+  PAYMENT_METHODS_PAIR_LABEL,
+  formatPaymentMethodLabel,
+  type SupportedPaymentMethod,
+} from '@/constants/branding';
 import { submitKobanRequest } from '@/services/kobanService';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import type { KobanRequest } from '@/types';
 
 interface GetKobansModalProps {
   isOpen: boolean;
@@ -35,12 +44,35 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
   const { profile } = useUserProfile();
 
   const [amount, setAmount] = useState<number>(effectiveInitial);
-  const [selectedMethod, setSelectedMethod] = useState<'jazzcash' | 'easypaisa'>('jazzcash');
+  const [selectedMethod, setSelectedMethod] = useState<SupportedPaymentMethod>('jazzcash');
   const [transactionId, setTransactionId] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successRequestId, setSuccessRequestId] = useState<string | null>(null);
+  const [recentRequests, setRecentRequests] = useState<KobanRequest[]>([]);
+
+  useEffect(() => {
+    if (!isOpen || !user?.uid) return;
+    let cancelled = false;
+    getDocs(
+      query(collection(db, 'kobanRequests'), where('userId', '==', user.uid), limit(5))
+    )
+      .then((snap) => {
+        if (cancelled) return;
+        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() } as KobanRequest));
+        rows.sort((a, b) => {
+          const tA = (a.createdAt as { seconds?: number })?.seconds || 0;
+          const tB = (b.createdAt as { seconds?: number })?.seconds || 0;
+          return tB - tA;
+        });
+        setRecentRequests(rows.slice(0, 3));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, user?.uid, successRequestId]);
 
   if (!isOpen) return null;
 
@@ -90,7 +122,7 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
         userName: profile?.displayName || user.displayName || 'Student',
         amount,
         transactionId: transactionId.trim(),
-        paymentMethod: selectedMethod,
+        paymentMethod: activeMethod.displayName,
       });
 
       setSuccessRequestId(docId);
@@ -152,6 +184,10 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
             </div>
 
             <div className="p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-left text-xs space-y-1.5 font-mono">
+              <div className="flex justify-between text-[var(--muted)]">
+                <span>Payment Method:</span>
+                <span className="text-[var(--text)] font-bold">{activeMethod.displayName}</span>
+              </div>
               <div className="flex justify-between text-[var(--muted)]">
                 <span>Transaction ID:</span>
                 <span className="text-[var(--text)] font-bold">{transactionId}</span>
@@ -243,23 +279,24 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
               </label>
 
               <div className="grid grid-cols-2 gap-2.5">
-                {(['jazzcash', 'easypaisa'] as const).map((method) => {
-                  const m = PAYMENT_METHODS[method];
-                  const isSelected = selectedMethod === method;
+                {PAYMENT_METHODS_LIST.map((m) => {
+                  const isSelected = selectedMethod === m.id;
                   return (
                     <button
-                      key={method}
+                      key={m.id}
                       type="button"
-                      onClick={() => setSelectedMethod(method)}
+                      onClick={() => setSelectedMethod(m.id)}
                       className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                         isSelected
                           ? 'border-[var(--red)] bg-[rgba(215,25,33,0.08)] shadow-sm'
                           : 'border-[var(--border)] bg-[var(--surface-2)] opacity-70 hover:opacity-100'
                       }`}
                     >
-                      <div className="font-heading font-bold text-xs text-[var(--text)]">{m.label}</div>
+                      <div className="font-heading font-bold text-xs text-[var(--text)]">
+                        {m.displayName}
+                      </div>
                       <div className="text-[11px] text-[var(--muted)] font-mono truncate mt-0.5">
-                        {m.accountNumber}
+                        {m.number}
                       </div>
                     </button>
                   );
@@ -278,11 +315,11 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
                 <div className="flex items-center justify-between pt-1 border-t border-[var(--border)]">
                   <div>
                     <span className="text-[10px] text-[var(--muted)] uppercase font-mono block">Account Number</span>
-                    <span className="font-mono font-bold text-xs text-[var(--text)]">{activeMethod.accountNumber}</span>
+                    <span className="font-mono font-bold text-xs text-[var(--text)]">{activeMethod.number}</span>
                   </div>
                   <button
                     type="button"
-                    onClick={() => handleCopy(activeMethod.accountNumber, 'num')}
+                    onClick={() => handleCopy(activeMethod.number, 'num')}
                     className="p-1.5 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] hover:text-white transition-colors"
                     title="Copy number"
                   >
@@ -321,7 +358,7 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
                 className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm font-mono text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)]"
               />
               <p className="text-[11px] text-[var(--muted)]">
-                Copy the TID from your JazzCash / Easypaisa confirmation SMS or receipt screen.
+                Copy the TID from your {PAYMENT_METHODS_PAIR_LABEL} confirmation SMS or receipt screen.
               </p>
             </div>
 
@@ -330,6 +367,38 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
               <div className="p-3 rounded-xl bg-red-950/40 border border-red-500 text-red-300 text-xs flex items-center gap-2">
                 <AlertCircle size={15} className="shrink-0" />
                 <span>{error}</span>
+              </div>
+            )}
+
+            {/* Recent Student Requests History (preserves legacy methods with "(legacy)" suffix) */}
+            {recentRequests.length > 0 && (
+              <div className="p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] space-y-2">
+                <span className="text-[10px] font-heading font-bold uppercase tracking-wider text-[var(--muted)] block">
+                  Your Recent Koban Requests
+                </span>
+                <div className="space-y-1.5">
+                  {recentRequests.map((req) => (
+                    <div
+                      key={req.id}
+                      className="flex items-center justify-between gap-2 text-[11px] font-mono pt-1 first:pt-0 border-t first:border-t-0 border-[var(--border)]"
+                    >
+                      <span className="text-[var(--text)] truncate">
+                        {req.amount.toLocaleString()} Kobans · {formatPaymentMethodLabel(req.paymentMethod)}
+                      </span>
+                      <span
+                        className={`uppercase font-bold shrink-0 ${
+                          req.status === 'approved'
+                            ? 'text-emerald-400'
+                            : req.status === 'rejected'
+                            ? 'text-red-400'
+                            : 'text-amber-400'
+                        }`}
+                      >
+                        {req.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

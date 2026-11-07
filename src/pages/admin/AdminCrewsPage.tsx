@@ -775,7 +775,7 @@ export function AdminCrewsPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Easypaisa receipt TRX-99214 verified manually"
+                  placeholder="e.g. Opay receipt TRX-99214 verified manually"
                   value={paymentReason}
                   onChange={(e) => setPaymentReason(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg bg-[#141414] border border-[rgba(255,255,255,0.15)] text-white text-xs"

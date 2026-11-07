@@ -354,7 +354,7 @@ export function PhoneMockup({
                 <span className="text-xs text-[#D71921] font-semibold">Unlocked</span>
               </div>
               <div className="p-3 px-4 rounded-[20px] glass-row flex items-center justify-between text-xs sm:text-[13px]">
-                <span className="text-[var(--text)] font-medium">JazzCash / EasyPaisa</span>
+                <span className="text-[var(--text)] font-medium">JazzCash / Opay</span>
                 <span className="text-xs text-[var(--text-muted)] font-medium">Direct Payouts</span>
               </div>
             </div>

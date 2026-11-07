@@ -356,7 +356,7 @@ export interface PaymentRequest {
   crewId?: string | null;
   crewName?: string | null;
   durationMonths?: number;
-  method: 'easypaisa' | 'jazzcash' | 'sadapay' | 'nayapay' | 'bank' | string;
+  method: 'jazzcash' | 'opay' | 'JazzCash' | 'Opay' | 'sadapay' | 'nayapay' | 'bank' | string;
   transactionId: string;
   screenshotUrl?: string;
   status: 'pending' | 'approved' | 'rejected';
