@@ -5163,6 +5163,17 @@ ${urls
         if (!rawKey || rawKey.includes('..')) {
           return jsonResponse({ success: false, error: 'Invalid file key.' }, 400, cors);
         }
+        if (rawKey.startsWith('signatures/') || rawKey.startsWith('certificates/')) {
+          return jsonResponse(
+            {
+              success: false,
+              code: 'PRIVATE_R2_PREFIX',
+              error: 'Forbidden: Private signature and certificate files cannot be accessed via post endpoints.',
+            },
+            403,
+            cors
+          );
+        }
 
         if (env.R2_BUCKET) {
           const obj = await env.R2_BUCKET.get(rawKey);
@@ -5208,6 +5219,17 @@ ${urls
         const rawKey = (url.searchParams.get('key') || '').trim().replace(/^\/+/, '');
         if (!rawKey || rawKey.includes('..')) {
           return jsonResponse({ success: false, error: 'Invalid file key.' }, 400, cors);
+        }
+        if (rawKey.startsWith('signatures/') || rawKey.startsWith('certificates/')) {
+          return jsonResponse(
+            {
+              success: false,
+              code: 'PRIVATE_R2_PREFIX',
+              error: 'Forbidden: Private signature and certificate files have no public URL.',
+            },
+            403,
+            cors
+          );
         }
 
         if (env.R2_BUCKET) {

@@ -95,6 +95,16 @@ export async function onRequest(context: {
         { status: 400, headers: jsonHeaders }
       );
     }
+    if (rawKey.startsWith('signatures/') || rawKey.startsWith('certificates/')) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          code: 'PRIVATE_R2_PREFIX',
+          error: 'Forbidden: Private signature and certificate files cannot be accessed via post endpoints.',
+        }),
+        { status: 403, headers: jsonHeaders }
+      );
+    }
 
     if (env?.R2_BUCKET) {
       const obj = await env.R2_BUCKET.get(rawKey);
@@ -151,6 +161,16 @@ export async function onRequest(context: {
   // GET /api/posts/file?key=... (Inline image streaming)
   if (subPath === '/file' && request.method === 'GET') {
     const rawKey = (url.searchParams.get('key') || '').trim().replace(/^\/+/, '');
+    if (rawKey.startsWith('signatures/') || rawKey.startsWith('certificates/')) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          code: 'PRIVATE_R2_PREFIX',
+          error: 'Forbidden: Private signature and certificate files have no public URL.',
+        }),
+        { status: 403, headers: jsonHeaders }
+      );
+    }
     if (env?.R2_BUCKET && rawKey) {
       const obj = await env.R2_BUCKET.get(rawKey);
       if (obj) {

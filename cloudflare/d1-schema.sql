@@ -375,3 +375,53 @@ ON CONFLICT(slug) DO UPDATE SET
 UPDATE posts SET created_at = created_at * 1000, updated_at = created_at * 1000 WHERE created_at > 0 AND created_at < 10000000000;
 UPDATE posts SET created_at = 1743465600000, updated_at = 1743465600000 WHERE id LIKE 'commons_anon_topic_%' AND created_at > 1743465600000;
 
+-- =============================================================================
+-- GRAND LINE CERTIFICATES & ADMIN SIGNATURES (D1 + PRIVATE R2)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS certificate_signatures (
+  id TEXT PRIMARY KEY,
+  r2_key TEXT NOT NULL,
+  signatory_name TEXT NOT NULL,
+  signatory_title TEXT NOT NULL,
+  version INTEGER NOT NULL UNIQUE,
+  uploaded_by TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  active INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_certificate_signatures_active
+  ON certificate_signatures(active, version DESC);
+
+CREATE TABLE IF NOT EXISTS certificates (
+  id TEXT PRIMARY KEY,
+  student_uid TEXT NOT NULL,
+  student_name TEXT NOT NULL,
+  student_email TEXT NOT NULL DEFAULT '',
+  grand_line_id TEXT NOT NULL,
+  grand_line_title TEXT NOT NULL,
+  edition_label TEXT NOT NULL DEFAULT '',
+  rank INTEGER NOT NULL DEFAULT 1,
+  score INTEGER NOT NULL DEFAULT 0,
+  total_questions INTEGER NOT NULL DEFAULT 0,
+  percentage INTEGER NOT NULL DEFAULT 0,
+  participants_count INTEGER NOT NULL DEFAULT 1,
+  serial TEXT NOT NULL UNIQUE,
+  theme_id TEXT NOT NULL,
+  signature_version INTEGER NOT NULL DEFAULT 0,
+  issued_at INTEGER NOT NULL,
+  pdf_r2_key TEXT NOT NULL,
+  png_r2_key TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')),
+  UNIQUE(student_uid, grand_line_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_certificates_student_uid
+  ON certificates(student_uid, issued_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_certificates_grand_line_id
+  ON certificates(grand_line_id, rank ASC);
+
+CREATE INDEX IF NOT EXISTS idx_certificates_serial
+  ON certificates(serial);
+
+

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { WeakChapters } from '@/components/dashboard/WeakChapters';
 import { RecentAttempts } from '@/components/dashboard/RecentAttempts';
+import { MyCertificatesSection } from '@/pages/dashboard/MyCertificatesPage';
 import {
   Flame,
   ArrowRight,
@@ -715,6 +716,9 @@ export function OverviewPage() {
           void handleRetakeFromRecent(uniId, subj, top)
         }
       />
+
+      {/* 7. My Certificates (1st Position Grand Line Mock Credentials) */}
+      <MyCertificatesSection compact={true} />
 
       {/* ── University Test Flow Modal (Opened ONLY by tapping a LIVE University Bubble) ── */}
       {activeUni && (

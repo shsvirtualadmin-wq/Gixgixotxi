@@ -31,6 +31,20 @@ import {
   injectMetaIntoIndexHtml,
   type ResolvedRouteMeta,
 } from '../utils/routeSeoMeta';
+import {
+  resolveCertificateTheme,
+  CERTIFICATE_THEMES,
+  CERTIFICATE_THEME_LIST,
+} from '../config/certificateThemes';
+import { formatCertificateScoreText } from '../lib/certificateRenderer';
+import {
+  processSignatureImageBuffer,
+  renderCertificateFilesOnServer,
+  createSignedCertificateDownloadToken,
+  verifySignedCertificateDownloadToken,
+  MAX_SIGNATURE_BYTES,
+} from './certificateServerEngine';
+import { buildCertificateIssuedStudentEmail } from '../lib/emailTemplates';
 
 const R2_PUBLIC_BASE_URL = (
   process.env.R2_PUBLIC_BASE_URL ||
@@ -1107,6 +1121,13 @@ ${allUrls
       if (!rawKey) {
         return res.status(400).json({ success: false, error: 'Missing file key.' });
       }
+      if (rawKey.startsWith('signatures/') || rawKey.startsWith('certificates/')) {
+        return res.status(403).json({
+          success: false,
+          code: 'PRIVATE_R2_PREFIX',
+          error: 'Forbidden: Private signature and certificate files cannot be accessed via post downloads.',
+        });
+      }
 
       const localPath = path.join(R2_LOCAL_DIR, rawKey);
       if (fs.existsSync(localPath) && fs.statSync(localPath).isFile()) {
@@ -1149,6 +1170,13 @@ ${allUrls
     if (!rawKey) {
       return res.status(400).json({ success: false, error: 'Missing file key.' });
     }
+    if (rawKey.startsWith('signatures/') || rawKey.startsWith('certificates/')) {
+      return res.status(403).json({
+        success: false,
+        code: 'PRIVATE_R2_PREFIX',
+        error: 'Forbidden: Private signature and certificate files cannot be accessed directly.',
+      });
+    }
     const localPath = path.join(R2_LOCAL_DIR, rawKey);
     if (fs.existsSync(localPath) && fs.statSync(localPath).isFile()) {
       const ext = path.extname(localPath).toLowerCase();
@@ -1175,6 +1203,13 @@ ${allUrls
     const safeKey = String(rawKey).replace(/\.\./g, '').replace(/^\/+/, '');
     if (!safeKey) {
       return res.status(400).send('Missing R2 object key');
+    }
+    if (safeKey.startsWith('signatures/') || safeKey.startsWith('certificates/')) {
+      return res.status(403).json({
+        success: false,
+        code: 'PRIVATE_R2_PREFIX',
+        error: 'Forbidden: Private signature and certificate files have no public URL.',
+      });
     }
 
     const localPath = path.join(R2_LOCAL_DIR, safeKey);
@@ -6544,6 +6579,11 @@ ${allUrls
         crewName: t.crewName || 'Grand Line Crew',
         attemptsCount: Number(t.attemptsCount || 0),
         avgScore: Number(t.avgScore || 0),
+        certificateThemeId: t.certificateThemeId ?? t.certificate_theme_id ?? null,
+        resultsFinalised: Boolean(t.resultsFinalised ?? t.results_finalised),
+        finalisedAt: t.finalisedAt ?? t.finalised_at ?? null,
+        mockNumber: t.mockNumber ?? t.mock_number ?? null,
+        editionLabel: t.editionLabel ?? t.edition_label ?? null,
         createdAt: t.createdAt,
       }));
     return res.status(200).json({ tests: list });
@@ -6555,12 +6595,13 @@ ${allUrls
     const store = loadD1Store() as any;
     if (!Array.isArray(store.captainTests)) store.captainTests = [];
     const roleRow = resolveD1Role(store, user);
+    const isAdmin = ['admin', 'superadmin'].includes(roleRow.role);
     const targetUid =
-      ['admin', 'superadmin'].includes(roleRow.role) && req.query.captainUid
+      isAdmin && req.query.captainUid
         ? String(req.query.captainUid)
         : user.uid;
     const list = store.captainTests
-      .filter((t: any) => t.captainUid === targetUid)
+      .filter((t: any) => (isAdmin && req.query.all === '1' ? true : t.captainUid === targetUid))
       .sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
     return res.status(200).json({ tests: list });
   });
@@ -6580,8 +6621,17 @@ ${allUrls
     const questions = Array.isArray(body.questions) ? body.questions.slice(0, 200) : [];
     const now = Date.now();
     const crew = store.crews.find((c: any) => c.captainUid === user.uid);
+    const rawThemeId =
+      body.certificateThemeId !== undefined
+        ? body.certificateThemeId
+        : body.certificate_theme_id;
+    const cleanThemeId =
+      typeof rawThemeId === 'string' && rawThemeId.trim() && rawThemeId.trim() !== 'auto'
+        ? rawThemeId.trim()
+        : null;
+    const nextMockNumber = store.captainTests.length + 1;
     const newTest = {
-      id: crypto.randomUUID(),
+      id: body.id && typeof body.id === 'string' ? body.id.trim() : crypto.randomUUID(),
       title,
       description: String(body.description || '').trim(),
       subject: String(body.subject || 'Physics').trim(),
@@ -6593,6 +6643,15 @@ ${allUrls
       crewId: crew?.id || null,
       crewName: String(body.crewName || crew?.name || 'Grand Line Crew'),
       questionCount: questions.length,
+      certificateThemeId: cleanThemeId,
+      certificate_theme_id: cleanThemeId,
+      resultsFinalised: 0,
+      results_finalised: 0,
+      finalisedAt: null,
+      finalised_at: null,
+      mockNumber: Number(body.mockNumber || nextMockNumber),
+      mock_number: Number(body.mockNumber || nextMockNumber),
+      editionLabel: body.editionLabel ? String(body.editionLabel).trim() : null,
       questions: questions.map((q: any, idx: number) => ({
         id: crypto.randomUUID(),
         position: idx,
@@ -6846,6 +6905,16 @@ ${allUrls
     if (body.subject !== undefined) existing.subject = String(body.subject).trim();
     if (body.visibility !== undefined) existing.visibility = body.visibility === 'private' ? 'private' : 'public';
     if (body.status !== undefined) existing.status = body.status;
+    if (body.editionLabel !== undefined) existing.editionLabel = body.editionLabel ? String(body.editionLabel).trim() : null;
+    if (body.certificateThemeId !== undefined || body.certificate_theme_id !== undefined) {
+      const rawTheme = body.certificateThemeId !== undefined ? body.certificateThemeId : body.certificate_theme_id;
+      const cleanTheme =
+        typeof rawTheme === 'string' && rawTheme.trim() && rawTheme.trim() !== 'auto'
+          ? rawTheme.trim()
+          : null;
+      existing.certificateThemeId = cleanTheme;
+      existing.certificate_theme_id = cleanTheme;
+    }
     if (Array.isArray(body.questions)) {
       existing.questions = body.questions.slice(0, 200).map((q: any, i: number) => ({
         id: q.id || crypto.randomUUID(),
@@ -6861,7 +6930,11 @@ ${allUrls
     }
     existing.updatedAt = Date.now();
     saveD1Store(store);
-    return res.status(200).json({ ok: true, id: testId });
+    return res.status(200).json({
+      ok: true,
+      id: testId,
+      certificateThemeId: existing.certificateThemeId ?? null,
+    });
   });
 
   app.delete('/api/tests/:id', async (req: Request, res: Response) => {
@@ -7353,6 +7426,1139 @@ ${allUrls
     saveD1Store(store);
     return res.status(200).json({ ok: true, userUid: memberUid });
   });
+
+  // ===========================================================================
+  // GRAND LINE CERTIFICATES & PRIVATE ADMIN SIGNATURES (D1 + PRIVATE R2)
+  // ===========================================================================
+
+  function ensureCertificateStoreArrays(store: any): void {
+    if (!Array.isArray(store.certificateSignatures)) {
+      store.certificateSignatures = [];
+    }
+    if (!Array.isArray(store.certificates)) {
+      store.certificates = [];
+    }
+    if (!Array.isArray(store.captainTests)) {
+      store.captainTests = [];
+    }
+    if (!Array.isArray(store.testAttempts)) {
+      store.testAttempts = [];
+    }
+  }
+
+  function writePrivateR2File(r2Key: string, data: Buffer): void {
+    const cleanKey = String(r2Key || '').replace(/\.\./g, '').replace(/^\/+/, '');
+    const fullPath = path.join(R2_LOCAL_DIR, cleanKey);
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, data);
+  }
+
+  function readPrivateR2File(r2Key: string): Buffer | null {
+    const cleanKey = String(r2Key || '').replace(/\.\./g, '').replace(/^\/+/, '');
+    if (!cleanKey) return null;
+    const fullPath = path.join(R2_LOCAL_DIR, cleanKey);
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+      return fs.readFileSync(fullPath);
+    }
+    return null;
+  }
+
+  function getSignatureDataUrlForVersion(store: any, version: number): {
+    signatureRow: any | null;
+    dataUrl: string | null;
+  } {
+    ensureCertificateStoreArrays(store);
+    if (!version || version <= 0) {
+      return { signatureRow: null, dataUrl: null };
+    }
+    const sigRow = store.certificateSignatures.find(
+      (s: any) => Number(s.version) === Number(version)
+    );
+    if (!sigRow || !sigRow.r2_key) {
+      return { signatureRow: sigRow || null, dataUrl: null };
+    }
+    const buf = readPrivateR2File(sigRow.r2_key);
+    if (!buf) {
+      return { signatureRow: sigRow, dataUrl: null };
+    }
+    return {
+      signatureRow: sigRow,
+      dataUrl: `data:image/png;base64,${buf.toString('base64')}`,
+    };
+  }
+
+  function getActiveSignatureRecord(store: any): {
+    signatureRow: any | null;
+    dataUrl: string | null;
+  } {
+    ensureCertificateStoreArrays(store);
+    const active = store.certificateSignatures.find((s: any) => Number(s.active) === 1);
+    if (!active) return { signatureRow: null, dataUrl: null };
+    return getSignatureDataUrlForVersion(store, Number(active.version));
+  }
+
+  function resolveMockNumberForTest(store: any, test: any): number {
+    if (typeof test.mockNumber === 'number' && test.mockNumber > 0) return test.mockNumber;
+    if (typeof test.mock_number === 'number' && test.mock_number > 0) return test.mock_number;
+    const sorted = [...(store.captainTests || [])].sort(
+      (a: any, b: any) => (a.createdAt || 0) - (b.createdAt || 0)
+    );
+    const idx = sorted.findIndex((t: any) => t.id === test.id);
+    const num = idx >= 0 ? idx + 1 : 1;
+    test.mockNumber = num;
+    test.mock_number = num;
+    return num;
+  }
+
+  function generateNextCertificateSerial(store: any, mockNumber: number): string {
+    ensureCertificateStoreArrays(store);
+    const mockPad = String(Math.max(1, Math.floor(mockNumber))).padStart(2, '0');
+    const prefix = `BDLY-GL${mockPad}-`;
+    let maxSeq = 0;
+    for (const cert of store.certificates) {
+      const s = String(cert.serial || '');
+      if (s.startsWith(prefix)) {
+        const tail = Number(s.slice(prefix.length));
+        if (Number.isFinite(tail) && tail > maxSeq) {
+          maxSeq = tail;
+        }
+      }
+    }
+    let nextSeq = maxSeq + 1;
+    let candidate = `${prefix}${String(nextSeq).padStart(4, '0')}`;
+    while (store.certificates.some((c: any) => c.serial === candidate)) {
+      nextSeq += 1;
+      candidate = `${prefix}${String(nextSeq).padStart(4, '0')}`;
+    }
+    return candidate;
+  }
+
+  async function renderAndPersistCertificateRow(store: any, certRow: any): Promise<void> {
+    const test = store.captainTests.find((t: any) => t.id === certRow.grand_line_id);
+    const preferredThemeId =
+      certRow.theme_id && certRow.theme_id !== 'auto'
+        ? certRow.theme_id
+        : test?.certificateThemeId ?? test?.certificate_theme_id ?? null;
+    const resolvedTheme = resolveCertificateTheme(certRow.grand_line_id, preferredThemeId);
+
+    const { signatureRow, dataUrl } = getSignatureDataUrlForVersion(
+      store,
+      Number(certRow.signature_version || 0)
+    );
+
+    const rendered = await renderCertificateFilesOnServer({
+      serial: certRow.serial,
+      studentName: certRow.student_name,
+      grandLineId: certRow.grand_line_id,
+      grandLineTitle: certRow.grand_line_title,
+      editionLabel:
+        certRow.edition_label ||
+        test?.editionLabel ||
+        `${test?.subject || 'Grand Line'} Official Mock`,
+      rank: Number(certRow.rank || 1),
+      score: Number(certRow.score || 0),
+      totalQuestions: Number(certRow.total_questions || 0),
+      percentage: Number(certRow.percentage || 0),
+      participantsCount: Number(certRow.participants_count || 1),
+      issuedAt: Number(certRow.issued_at || Date.now()),
+      themeId: resolvedTheme.id,
+      signatoryName: signatureRow?.signatory_name || 'Boardly Examination Council',
+      signatoryTitle: signatureRow?.signatory_title || 'Founder, Boardly',
+      signatureDataUrl: dataUrl,
+      verifyBaseUrl: process.env.APP_URL || 'https://boardly.cfd',
+    });
+
+    writePrivateR2File(certRow.png_r2_key, rendered.pngBuffer);
+    writePrivateR2File(certRow.pdf_r2_key, rendered.pdfBuffer);
+  }
+
+  async function finaliseGrandLineMockAndIssueCertificates(
+    store: any,
+    test: any
+  ): Promise<{
+    alreadyFinalised: boolean;
+    issuedCertificates: any[];
+    existingCertificates: any[];
+    participantsCount: number;
+  }> {
+    ensureCertificateStoreArrays(store);
+    const now = Date.now();
+    const wasAlreadyFinalised = Boolean(test.resultsFinalised || test.results_finalised);
+    test.resultsFinalised = 1;
+    test.results_finalised = 1;
+    if (!test.finalisedAt && !test.finalised_at) {
+      test.finalisedAt = now;
+      test.finalised_at = now;
+    }
+
+    const mockNumber = resolveMockNumberForTest(store, test);
+    const attemptsForTest = store.testAttempts.filter(
+      (a: any) =>
+        String(a.testId || a.test_id || '') === String(test.id) &&
+        String(a.userUid || a.user_uid || '').trim().length > 0
+    );
+
+    const participantsCount = attemptsForTest.length;
+    if (participantsCount === 0) {
+      saveD1Store(store);
+      return {
+        alreadyFinalised: wasAlreadyFinalised,
+        issuedCertificates: [],
+        existingCertificates: store.certificates.filter((c: any) => c.grand_line_id === test.id),
+        participantsCount: 0,
+      };
+    }
+
+    // Find highest score among all verified attempts for this Grand Line mock (ties for 1st all get rank = 1)
+    let topScore = -1;
+    for (const att of attemptsForTest) {
+      const s = Number(att.score ?? 0);
+      if (s > topScore) {
+        topScore = s;
+      }
+    }
+
+    const firstPlaceAttempts = attemptsForTest
+      .filter((att: any) => Number(att.score ?? 0) === topScore)
+      .sort((a: any, b: any) => Number(a.createdAt || 0) - Number(b.createdAt || 0));
+
+    const { signatureRow: activeSig } = getActiveSignatureRecord(store);
+    const activeSigVersion = activeSig ? Number(activeSig.version) : 0;
+    const preferredThemeId = test.certificateThemeId ?? test.certificate_theme_id ?? null;
+    const resolvedTheme = resolveCertificateTheme(test.id, preferredThemeId);
+    const themeIdToSave = preferredThemeId || resolvedTheme.id;
+    const editionLabel =
+      test.editionLabel ||
+      test.edition_label ||
+      `EDITION #${String(mockNumber).padStart(2, '0')} · ${String(test.subject || 'GENERAL').toUpperCase()}`;
+
+    const issuedCertificates: any[] = [];
+    const existingCertificates: any[] = [];
+
+    for (const winnerAttempt of firstPlaceAttempts) {
+      const studentUid = String(winnerAttempt.userUid || winnerAttempt.user_uid || '').trim();
+      if (!studentUid) continue;
+
+      // Idempotency: UNIQUE(student_uid, grand_line_id) -> ON CONFLICT DO NOTHING
+      const existingCert = store.certificates.find(
+        (c: any) => c.student_uid === studentUid && c.grand_line_id === test.id
+      );
+      if (existingCert) {
+        existingCertificates.push(existingCert);
+        continue;
+      }
+
+      const studentName = resolveLeaderboardDisplayName(winnerAttempt, store);
+      const roleEntry = (store.userRoles || []).find((r: any) => r.uid === studentUid);
+      const studentEmail = String(
+        winnerAttempt.userEmail || winnerAttempt.studentEmail || roleEntry?.email || ''
+      )
+        .trim()
+        .toLowerCase();
+
+      const serial = generateNextCertificateSerial(store, mockNumber);
+      const certId = `cert_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
+      const score = Number(winnerAttempt.score || 0);
+      const totalQuestions = Number(
+        winnerAttempt.totalQuestions || test.questionCount || test.questions?.length || 0
+      );
+      const percentage =
+        totalQuestions > 0
+          ? Math.round((score / totalQuestions) * 100)
+          : Number(winnerAttempt.percentage || 100);
+
+      const pdfR2Key = `certificates/${test.id}/${serial}.pdf`;
+      const pngR2Key = `certificates/${test.id}/${serial}.png`;
+
+      const certRow = {
+        id: certId,
+        student_uid: studentUid,
+        student_name: studentName,
+        student_email: studentEmail,
+        grand_line_id: test.id,
+        grand_line_title: test.title,
+        edition_label: editionLabel,
+        rank: 1,
+        score,
+        total_questions: totalQuestions,
+        percentage,
+        participants_count: participantsCount,
+        serial,
+        theme_id: themeIdToSave,
+        signature_version: activeSigVersion,
+        issued_at: now,
+        pdf_r2_key: pdfR2Key,
+        png_r2_key: pngR2Key,
+        status: 'active' as const,
+      };
+
+      await renderAndPersistCertificateRow(store, certRow);
+      store.certificates.unshift(certRow);
+      issuedCertificates.push(certRow);
+
+      // Dispatch notification + Resend email ("You took 1st position")
+      const appUrl = (process.env.APP_URL || 'https://boardly.cfd').replace(/\/+$/, '');
+      const signedPreview = createSignedCertificateDownloadToken({
+        certificateId: certRow.id,
+        format: 'png',
+      });
+      const signedPdf = createSignedCertificateDownloadToken({
+        certificateId: certRow.id,
+        format: 'pdf',
+      });
+      const pngPreviewUrl = `${appUrl}/api/certificates/${encodeURIComponent(
+        certRow.id
+      )}/download?format=png&inline=1&token=${signedPreview.token}&exp=${signedPreview.exp}`;
+      const downloadPdfUrl = `${appUrl}/api/certificates/${encodeURIComponent(
+        certRow.id
+      )}/download?format=pdf&token=${signedPdf.token}&exp=${signedPdf.exp}`;
+      const verifyUrl = `${appUrl}/verify/${encodeURIComponent(certRow.serial)}`;
+      const scoreLabel = formatCertificateScoreText({
+        serial: certRow.serial,
+        studentName: certRow.student_name,
+        grandLineId: certRow.grand_line_id,
+        grandLineTitle: certRow.grand_line_title,
+        score: certRow.score,
+        totalQuestions: certRow.total_questions,
+        percentage: certRow.percentage,
+        participantsCount: certRow.participants_count,
+        issuedAt: certRow.issued_at,
+      });
+
+      // Add in-app notification for student
+      if (!Array.isArray(store.notifications)) store.notifications = [];
+      store.notifications.unshift({
+        id: `notif_cert_${certRow.id}`,
+        user_id: studentUid,
+        type: 'certificate_issued',
+        title: `You took 1st position in ${test.title}!`,
+        message: `Your Certificate of Excellence (${certRow.serial}) is ready to download in My Certificates.`,
+        link: '/dashboard/certificates',
+        read: 0,
+        is_pinned: 1,
+        author_id: null,
+        author_name: 'Boardly Grand Line',
+        author_avatar: null,
+        author_frame: null,
+        post_id: certRow.id,
+        post_type: 'certificate',
+        created_at: now,
+        read_at: null,
+      });
+
+      // Record email dispatch (and send via Resend if RESEND_API_KEY is configured)
+      const emailTpl = buildCertificateIssuedStudentEmail({
+        studentName: certRow.student_name,
+        mockTitle: certRow.grand_line_title,
+        editionLabel: certRow.edition_label,
+        scoreLabel,
+        participantsCount: certRow.participants_count,
+        serial: certRow.serial,
+        issuedAt: certRow.issued_at,
+        pngPreviewUrl,
+        downloadPdfUrl,
+        verifyUrl,
+        appUrl,
+      });
+
+      if (!Array.isArray(store.certificateEmails)) store.certificateEmails = [];
+      const resendKey = (process.env.RESEND_API_KEY || '').trim();
+      let emailStatus: 'sent' | 'queued_local' | 'failed' = 'queued_local';
+      let resendId: string | null = null;
+
+      if (resendKey && studentEmail && studentEmail.includes('@')) {
+        try {
+          const emailResp = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${resendKey}`,
+              'Content-Type': 'application/json',
+              'Idempotency-Key': `certificate_issued:${certRow.serial}:student`,
+            },
+            body: JSON.stringify({
+              from: process.env.EMAIL_FROM || 'Boardly <no-reply@boardly.cfd>',
+              to: [studentEmail],
+              subject: emailTpl.subject,
+              html: emailTpl.html,
+              text: emailTpl.text,
+            }),
+          });
+          if (emailResp.ok) {
+            const ej = (await emailResp.json().catch(() => ({}))) as any;
+            resendId = ej?.id || null;
+            emailStatus = 'sent';
+          } else {
+            emailStatus = 'failed';
+          }
+        } catch {
+          emailStatus = 'failed';
+        }
+      }
+
+      store.certificateEmails.unshift({
+        id: `cert_email_${certRow.id}`,
+        certificate_id: certRow.id,
+        serial: certRow.serial,
+        student_uid: studentUid,
+        student_email: studentEmail,
+        subject: emailTpl.subject,
+        png_preview_url: pngPreviewUrl,
+        download_pdf_url: downloadPdfUrl,
+        verify_url: verifyUrl,
+        status: emailStatus,
+        resend_id: resendId,
+        created_at: now,
+      });
+    }
+
+    saveD1Store(store);
+    return {
+      alreadyFinalised: wasAlreadyFinalised,
+      issuedCertificates,
+      existingCertificates,
+      participantsCount,
+    };
+  }
+
+  // Block any direct public/student access to /api/signatures/*
+  app.get('/api/signatures/*', (_req: Request, res: Response) => {
+    return res.status(403).json({
+      error: 'Forbidden: Signature files are private and can only be managed by admins on the server.',
+      code: 'SIGNATURE_PRIVATE',
+    });
+  });
+
+  // 1. GET /api/admin/signatures — Admin only: get active signature + version history + preview data URL
+  app.get('/api/admin/signatures', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    }
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({
+        error: 'Forbidden: Only admins can read or manage certificate signatures.',
+        code: 'FORBIDDEN',
+      });
+    }
+
+    const history = [...store.certificateSignatures]
+      .sort((a: any, b: any) => Number(b.version || 0) - Number(a.version || 0))
+      .map((row: any) => {
+        const { dataUrl } = getSignatureDataUrlForVersion(store, Number(row.version));
+        return {
+          id: row.id,
+          r2Key: row.r2_key,
+          signatoryName: row.signatory_name,
+          signatoryTitle: row.signatory_title,
+          version: Number(row.version),
+          uploadedBy: row.uploaded_by,
+          createdAt: Number(row.created_at),
+          active: Boolean(row.active),
+          previewDataUrl: dataUrl,
+        };
+      });
+
+    const activeSignature = history.find((h) => h.active) || null;
+    return res.status(200).json({
+      ok: true,
+      hasActiveSignature: Boolean(activeSignature),
+      activeSignature,
+      history,
+    });
+  });
+
+  // 2. POST /api/admin/signatures — Admin only: upload or draw signature, strip white bg & trim margins, save to private R2 & D1
+  app.post('/api/admin/signatures', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    }
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({
+        error: 'Forbidden: Only admins can upload or modify certificate signatures.',
+        code: 'FORBIDDEN',
+      });
+    }
+
+    try {
+      const body = req.body || {};
+      const rawImage = String(body.imageBase64 || body.dataUrl || '').trim();
+      const signatoryName = String(body.signatoryName || 'Founder').trim().slice(0, 120);
+      const signatoryTitle = String(body.signatoryTitle || 'Founder, Boardly').trim().slice(0, 140);
+
+      if (!rawImage) {
+        return res.status(400).json({
+          error: 'Signature image data is required (PNG, JPG, or WebP).',
+          code: 'MISSING_SIGNATURE_IMAGE',
+        });
+      }
+      if (!signatoryName) {
+        return res.status(400).json({
+          error: 'Signatory name is required.',
+          code: 'MISSING_SIGNATORY_NAME',
+        });
+      }
+
+      // Extract base64 payload & validate mime
+      let base64Data = rawImage;
+      const dataUriMatch = /^data:(image\/(?:png|jpeg|jpg|webp));base64,(.+)$/i.exec(rawImage);
+      if (dataUriMatch) {
+        base64Data = dataUriMatch[2];
+      } else if (rawImage.startsWith('data:')) {
+        return res.status(400).json({
+          error: 'Unsupported image format. Please upload PNG, JPG, or WebP.',
+          code: 'INVALID_SIGNATURE_FORMAT',
+        });
+      }
+
+      const rawBuffer = Buffer.from(base64Data, 'base64');
+      if (rawBuffer.byteLength === 0) {
+        return res.status(400).json({ error: 'Uploaded signature image is empty.', code: 'EMPTY_IMAGE' });
+      }
+      if (rawBuffer.byteLength > MAX_SIGNATURE_BYTES) {
+        return res.status(400).json({
+          error: 'Signature image exceeds the maximum allowed size of 2 MB.',
+          code: 'FILE_TOO_LARGE',
+        });
+      }
+
+      // Server-side white/near-white background removal & margin trimming
+      const processed = await processSignatureImageBuffer(rawBuffer);
+
+      const maxVersion = store.certificateSignatures.reduce(
+        (max: number, row: any) => Math.max(max, Number(row.version || 0)),
+        0
+      );
+      const nextVersion = maxVersion + 1;
+      const sigId = `sig_v${nextVersion}_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+      const r2Key = `signatures/sig_v${nextVersion}_${sigId}.png`;
+
+      // Store processed transparent PNG in private R2
+      writePrivateR2File(r2Key, processed.pngBuffer);
+
+      // Deactivate previous signatures (preserving version history for existing certificates)
+      for (const s of store.certificateSignatures) {
+        s.active = 0;
+      }
+
+      const now = Date.now();
+      const newRecord = {
+        id: sigId,
+        r2_key: r2Key,
+        signatory_name: signatoryName,
+        signatory_title: signatoryTitle,
+        version: nextVersion,
+        uploaded_by: user.uid,
+        created_at: now,
+        active: 1,
+      };
+
+      store.certificateSignatures.unshift(newRecord);
+      saveD1Store(store);
+
+      return res.status(201).json({
+        ok: true,
+        signature: {
+          id: newRecord.id,
+          r2Key: newRecord.r2_key,
+          signatoryName: newRecord.signatory_name,
+          signatoryTitle: newRecord.signatory_title,
+          version: newRecord.version,
+          uploadedBy: newRecord.uploaded_by,
+          createdAt: newRecord.created_at,
+          active: true,
+          width: processed.width,
+          height: processed.height,
+          previewDataUrl: processed.dataUrl,
+        },
+      });
+    } catch (err: any) {
+      return res.status(400).json({
+        error: err?.message || 'Failed to process signature image.',
+        code: 'SIGNATURE_PROCESS_FAILED',
+      });
+    }
+  });
+
+  // 3. PUT /api/admin/signatures/active — Admin only: update signatory name/title on active signature
+  app.put('/api/admin/signatures/active', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+
+    const active = store.certificateSignatures.find((s: any) => Number(s.active) === 1);
+    if (!active) {
+      return res.status(404).json({ error: 'No active signature found.', code: 'NOT_FOUND' });
+    }
+
+    const body = req.body || {};
+    if (body.signatoryName !== undefined) {
+      active.signatory_name = String(body.signatoryName || '').trim().slice(0, 120) || active.signatory_name;
+    }
+    if (body.signatoryTitle !== undefined) {
+      active.signatory_title = String(body.signatoryTitle || '').trim().slice(0, 140);
+    }
+    saveD1Store(store);
+
+    const { dataUrl } = getSignatureDataUrlForVersion(store, Number(active.version));
+    return res.status(200).json({
+      ok: true,
+      signature: {
+        id: active.id,
+        r2Key: active.r2_key,
+        signatoryName: active.signatory_name,
+        signatoryTitle: active.signatory_title,
+        version: Number(active.version),
+        uploadedBy: active.uploaded_by,
+        createdAt: Number(active.created_at),
+        active: true,
+        previewDataUrl: dataUrl,
+      },
+    });
+  });
+
+  // 4. POST /api/admin/signatures/:version/restore — Admin only: restore a previous signature version
+  app.post('/api/admin/signatures/:version/restore', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+
+    const targetVersion = Number(req.params.version);
+    const targetRow = store.certificateSignatures.find(
+      (s: any) => Number(s.version) === targetVersion
+    );
+    if (!targetRow) {
+      return res.status(404).json({ error: 'Signature version not found.', code: 'NOT_FOUND' });
+    }
+
+    for (const s of store.certificateSignatures) {
+      s.active = Number(s.version) === targetVersion ? 1 : 0;
+    }
+    saveD1Store(store);
+
+    const { dataUrl } = getSignatureDataUrlForVersion(store, targetVersion);
+    return res.status(200).json({
+      ok: true,
+      activeSignature: {
+        id: targetRow.id,
+        r2Key: targetRow.r2_key,
+        signatoryName: targetRow.signatory_name,
+        signatoryTitle: targetRow.signatory_title,
+        version: Number(targetRow.version),
+        uploadedBy: targetRow.uploaded_by,
+        createdAt: Number(targetRow.created_at),
+        active: true,
+        previewDataUrl: dataUrl,
+      },
+    });
+  });
+
+  // 5. DELETE /api/admin/signatures/active — Admin only: remove active signature (keeps version history in D1/R2)
+  app.delete('/api/admin/signatures/active', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+
+    for (const s of store.certificateSignatures) {
+      s.active = 0;
+    }
+    saveD1Store(store);
+    return res.status(200).json({ ok: true, hasActiveSignature: false });
+  });
+
+  // 6. POST /api/tests/:id/finalise — Finalise Grand Line mock results & issue 1st-position certificate(s)
+  app.post('/api/tests/:id/finalise', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+
+    const testId = decodeURIComponent(String(req.params.id || ''));
+    const test = store.captainTests.find((t: any) => t.id === testId);
+    if (!test) return res.status(404).json({ error: 'Grand Line mock not found.', code: 'NOT_FOUND' });
+
+    const roleRow = resolveD1Role(store, user);
+    const isAdmin = ['admin', 'superadmin'].includes(roleRow.role);
+    if (!isAdmin && test.captainUid !== user.uid) {
+      return res.status(403).json({
+        error: 'Forbidden: Only admins or the mock captain can finalise results.',
+        code: 'FORBIDDEN',
+      });
+    }
+
+    const body = req.body || {};
+    if (body.certificateThemeId !== undefined || body.certificate_theme_id !== undefined) {
+      const rawTheme = body.certificateThemeId !== undefined ? body.certificateThemeId : body.certificate_theme_id;
+      const cleanTheme =
+        typeof rawTheme === 'string' && rawTheme.trim() && rawTheme.trim() !== 'auto'
+          ? rawTheme.trim()
+          : null;
+      test.certificateThemeId = cleanTheme;
+      test.certificate_theme_id = cleanTheme;
+    }
+
+    const outcome = await finaliseGrandLineMockAndIssueCertificates(store, test);
+    const mapCert = (c: any) => ({
+      ...c,
+      studentUid: c.student_uid,
+      studentName: c.student_name,
+      grandLineId: c.grand_line_id,
+      grandLineTitle: c.grand_line_title,
+      editionLabel: c.edition_label,
+      totalQuestions: Number(c.total_questions || 0),
+      participantsCount: Number(c.participants_count || 1),
+      themeId: c.theme_id,
+      signatureVersion: Number(c.signature_version || 0),
+      issuedAt: Number(c.issued_at),
+    });
+    return res.status(200).json({
+      ok: true,
+      testId: test.id,
+      resultsFinalised: true,
+      alreadyFinalised: outcome.alreadyFinalised,
+      participantsCount: outcome.participantsCount,
+      issuedCount: outcome.issuedCertificates.length,
+      existingCount: outcome.existingCertificates.length,
+      certificates: [...outcome.issuedCertificates, ...outcome.existingCertificates].map(mapCert),
+    });
+  });
+
+  // 7. GET /api/certificates/mine — Authenticated student: list own certificates
+  app.get('/api/certificates/mine', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+
+    const myCerts = store.certificates
+      .filter((c: any) => c.student_uid === user.uid && c.status === 'active')
+      .sort((a: any, b: any) => Number(b.issued_at || 0) - Number(a.issued_at || 0))
+      .map((c: any) => {
+        const signedPng = createSignedCertificateDownloadToken({
+          certificateId: c.id,
+          format: 'png',
+        });
+        const signedPdf = createSignedCertificateDownloadToken({
+          certificateId: c.id,
+          format: 'pdf',
+        });
+        const theme = resolveCertificateTheme(c.grand_line_id, c.theme_id);
+        return {
+          id: c.id,
+          serial: c.serial,
+          studentUid: c.student_uid,
+          studentName: c.student_name,
+          grandLineId: c.grand_line_id,
+          grandLineTitle: c.grand_line_title,
+          editionLabel: c.edition_label,
+          rank: Number(c.rank || 1),
+          score: Number(c.score || 0),
+          totalQuestions: Number(c.total_questions || 0),
+          percentage: Number(c.percentage || 0),
+          participantsCount: Number(c.participants_count || 1),
+          themeId: c.theme_id,
+          theme,
+          signatureVersion: Number(c.signature_version || 0),
+          issuedAt: Number(c.issued_at),
+          status: c.status,
+          verifyUrl: `/verify/${encodeURIComponent(c.serial)}`,
+          previewPngUrl: `/api/certificates/${encodeURIComponent(c.id)}/download?format=png&inline=1&token=${signedPng.token}&exp=${signedPng.exp}`,
+          downloadPngUrl: `/api/certificates/${encodeURIComponent(c.id)}/download?format=png&token=${signedPng.token}&exp=${signedPng.exp}`,
+          downloadPdfUrl: `/api/certificates/${encodeURIComponent(c.id)}/download?format=pdf&token=${signedPdf.token}&exp=${signedPdf.exp}`,
+        };
+      });
+
+    return res.status(200).json({ certificates: myCerts });
+  });
+
+  // 8. GET /api/certificates/:id/download — Authenticated owner, Admin, or short-lived signed token download
+  app.get('/api/certificates/:id/download', async (req: Request, res: Response) => {
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+
+    const certId = decodeURIComponent(String(req.params.id || '')).trim();
+    const formatRaw = String(req.query.format || 'pdf').trim().toLowerCase();
+    const format: 'pdf' | 'png' = formatRaw === 'png' ? 'png' : 'pdf';
+    const isInline = req.query.inline === '1' || req.query.inline === 'true';
+
+    const cert = store.certificates.find(
+      (c: any) => c.id === certId || c.serial === certId
+    );
+    if (!cert) {
+      return res.status(404).json({ error: 'Certificate not found.', code: 'NOT_FOUND' });
+    }
+
+    // Check short-lived signed token OR authenticated session
+    const tokenParam = String(req.query.token || '').trim();
+    const expParam = String(req.query.exp || '').trim();
+    const hasValidSignedToken =
+      tokenParam.length > 0 &&
+      verifySignedCertificateDownloadToken({
+        certificateId: cert.id,
+        format,
+        token: tokenParam,
+        exp: expParam,
+      });
+
+    let isAdmin = false;
+    let isOwner = false;
+
+    if (!hasValidSignedToken) {
+      const user = await verifyFirebaseJwtZeroFirestore(req);
+      if (!user) {
+        return res.status(401).json({
+          error: 'Authentication required to download this certificate.',
+          code: 'UNAUTHENTICATED',
+        });
+      }
+      const roleRow = resolveD1Role(store, user);
+      isAdmin = ['admin', 'superadmin'].includes(roleRow.role);
+      isOwner = user.uid === cert.student_uid;
+
+      if (!isOwner && !isAdmin) {
+        return res.status(403).json({
+          error: 'Forbidden: You can only download certificates issued to your own account.',
+          code: 'FORBIDDEN',
+        });
+      }
+    }
+
+    if (cert.status === 'revoked' && !isAdmin) {
+      return res.status(403).json({
+        error: 'This certificate has been revoked and is no longer available for download.',
+        code: 'CERTIFICATE_REVOKED',
+      });
+    }
+
+    const r2Key = format === 'png' ? cert.png_r2_key : cert.pdf_r2_key;
+    let fileBuffer = readPrivateR2File(r2Key);
+    if (!fileBuffer) {
+      await renderAndPersistCertificateRow(store, cert);
+      fileBuffer = readPrivateR2File(r2Key);
+    }
+
+    if (!fileBuffer) {
+      return res.status(500).json({ error: 'Failed to render certificate file.', code: 'RENDER_ERROR' });
+    }
+
+    const mime = format === 'png' ? 'image/png' : 'application/pdf';
+    const disposition = isInline
+      ? `inline; filename="${cert.serial}.${format}"`
+      : `attachment; filename="${cert.serial}.${format}"`;
+
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+    res.setHeader('Content-Disposition', disposition);
+    res.setHeader('Content-Length', String(fileBuffer.byteLength));
+    return res.status(200).send(fileBuffer);
+  });
+
+  // 9. POST /api/certificates/:id/share-link — Generate short-lived signed share/download links & public verify URL
+  app.post('/api/certificates/:id/share-link', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+
+    const certId = decodeURIComponent(String(req.params.id || '')).trim();
+    const cert = store.certificates.find((c: any) => c.id === certId || c.serial === certId);
+    if (!cert) return res.status(404).json({ error: 'Certificate not found.', code: 'NOT_FOUND' });
+
+    const roleRow = resolveD1Role(store, user);
+    const isAdmin = ['admin', 'superadmin'].includes(roleRow.role);
+    if (cert.student_uid !== user.uid && !isAdmin) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+
+    const expMs = Date.now() + 1000 * 60 * 60 * 24; // 24h short-lived signed link
+    const signedPng = createSignedCertificateDownloadToken({
+      certificateId: cert.id,
+      format: 'png',
+      expiresAtMs: expMs,
+    });
+    const signedPdf = createSignedCertificateDownloadToken({
+      certificateId: cert.id,
+      format: 'pdf',
+      expiresAtMs: expMs,
+    });
+
+    return res.status(200).json({
+      ok: true,
+      serial: cert.serial,
+      verifyUrl: `/verify/${encodeURIComponent(cert.serial)}`,
+      signedPngUrl: `/api/certificates/${encodeURIComponent(cert.id)}/download?format=png&token=${signedPng.token}&exp=${signedPng.exp}`,
+      signedPdfUrl: `/api/certificates/${encodeURIComponent(cert.id)}/download?format=pdf&token=${signedPdf.token}&exp=${signedPdf.exp}`,
+      expiresAt: expMs,
+    });
+  });
+
+  // 10. GET /api/verify/:serial — Public verification endpoint (returns ONLY safe fields, never signature or UID/email)
+  app.get('/api/verify/:serial', (req: Request, res: Response) => {
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+
+    const rawSerial = decodeURIComponent(String(req.params.serial || '')).trim().toUpperCase();
+    if (!rawSerial) {
+      return res.status(400).json({ valid: false, status: 'invalid', error: 'Serial number is required.' });
+    }
+
+    const cert = store.certificates.find(
+      (c: any) => String(c.serial || '').trim().toUpperCase() === rawSerial
+    );
+
+    if (!cert) {
+      return res.status(404).json({
+        valid: false,
+        status: 'not_found',
+        serial: rawSerial,
+        error: 'No certificate found with this serial number.',
+      });
+    }
+
+    const isRevoked = cert.status === 'revoked';
+    const safeCertificate = {
+      serial: cert.serial,
+      status: (isRevoked ? 'revoked' : 'active') as 'active' | 'revoked',
+      studentName: cert.student_name,
+      mockTitle: cert.grand_line_title,
+      grandLineTitle: cert.grand_line_title,
+      editionLabel: cert.edition_label,
+      rank: Number(cert.rank || 1),
+      score: Number(cert.score || 0),
+      totalQuestions: Number(cert.total_questions || 0),
+      percentage: Number(cert.percentage || 0),
+      participantsCount: Number(cert.participants_count || 1),
+      issuedAt: Number(cert.issued_at),
+    };
+    return res.status(200).json({
+      valid: !isRevoked,
+      ...safeCertificate,
+      certificate: safeCertificate,
+    });
+  });
+
+  // 11. GET /api/admin/certificates — Admin only: list all certificates, active signature status, and mocks
+  app.get('/api/admin/certificates', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden: Admin access required.', code: 'FORBIDDEN' });
+    }
+
+    const search = String(req.query.search || req.query.q || '').trim().toLowerCase();
+    const statusFilter = String(req.query.status || '').trim().toLowerCase();
+    const grandLineFilter = String(req.query.grandLineId || '').trim();
+
+    const { signatureRow: activeSig, dataUrl: activeSigDataUrl } = getActiveSignatureRecord(store);
+
+    const list = store.certificates
+      .filter((c: any) => {
+        if (statusFilter && statusFilter !== 'all' && c.status !== statusFilter) return false;
+        if (grandLineFilter && grandLineFilter !== 'all' && c.grand_line_id !== grandLineFilter) return false;
+        if (search) {
+          const hay = `${c.student_name} ${c.student_email} ${c.serial} ${c.grand_line_title}`.toLowerCase();
+          if (!hay.includes(search)) return false;
+        }
+        return true;
+      })
+      .sort((a: any, b: any) => Number(b.issued_at || 0) - Number(a.issued_at || 0))
+      .map((c: any) => {
+        const signedPng = createSignedCertificateDownloadToken({
+          certificateId: c.id,
+          format: 'png',
+        });
+        const signedPdf = createSignedCertificateDownloadToken({
+          certificateId: c.id,
+          format: 'pdf',
+        });
+        return {
+          id: c.id,
+          serial: c.serial,
+          studentUid: c.student_uid,
+          studentName: c.student_name,
+          studentEmail: c.student_email,
+          grandLineId: c.grand_line_id,
+          grandLineTitle: c.grand_line_title,
+          editionLabel: c.edition_label,
+          rank: Number(c.rank || 1),
+          score: Number(c.score || 0),
+          totalQuestions: Number(c.total_questions || 0),
+          percentage: Number(c.percentage || 0),
+          participantsCount: Number(c.participants_count || 1),
+          themeId: c.theme_id,
+          signatureVersion: Number(c.signature_version || 0),
+          issuedAt: Number(c.issued_at),
+          status: c.status,
+          verifyUrl: `/verify/${encodeURIComponent(c.serial)}`,
+          previewPngUrl: `/api/certificates/${encodeURIComponent(c.id)}/download?format=png&inline=1&token=${signedPng.token}&exp=${signedPng.exp}`,
+          downloadPngUrl: `/api/certificates/${encodeURIComponent(c.id)}/download?format=png&token=${signedPng.token}&exp=${signedPng.exp}`,
+          downloadPdfUrl: `/api/certificates/${encodeURIComponent(c.id)}/download?format=pdf&token=${signedPdf.token}&exp=${signedPdf.exp}`,
+        };
+      });
+
+    const mocks = (store.captainTests || []).map((t: any) => ({
+      id: t.id,
+      title: t.title,
+      subject: t.subject,
+      status: t.status,
+      visibility: t.visibility,
+      attemptsCount: Number(t.attemptsCount || 0),
+      certificateThemeId: t.certificateThemeId ?? t.certificate_theme_id ?? null,
+      resultsFinalised: Boolean(t.resultsFinalised ?? t.results_finalised),
+      finalisedAt: t.finalisedAt ?? t.finalised_at ?? null,
+      mockNumber: resolveMockNumberForTest(store, t),
+    }));
+
+    return res.status(200).json({
+      ok: true,
+      hasActiveSignature: Boolean(activeSig),
+      activeSignature: activeSig
+        ? {
+            id: activeSig.id,
+            version: Number(activeSig.version),
+            signatoryName: activeSig.signatory_name,
+            signatoryTitle: activeSig.signatory_title,
+            createdAt: Number(activeSig.created_at),
+            previewDataUrl: activeSigDataUrl,
+          }
+        : null,
+      certificates: list,
+      mocks,
+      themes: CERTIFICATE_THEME_LIST,
+    });
+  });
+
+  // 12. POST /api/admin/certificates/:id/regenerate — Admin only: regenerate single certificate with current active signature & theme
+  app.post('/api/admin/certificates/:id/regenerate', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+
+    const certId = decodeURIComponent(String(req.params.id || '')).trim();
+    const cert = store.certificates.find((c: any) => c.id === certId || c.serial === certId);
+    if (!cert) return res.status(404).json({ error: 'Certificate not found.', code: 'NOT_FOUND' });
+
+    const { signatureRow: activeSig } = getActiveSignatureRecord(store);
+    cert.signature_version = activeSig ? Number(activeSig.version) : 0;
+
+    const test = store.captainTests.find((t: any) => t.id === cert.grand_line_id);
+    const preferredTheme =
+      req.body?.themeId !== undefined
+        ? req.body.themeId
+        : test?.certificateThemeId ?? test?.certificate_theme_id ?? cert.theme_id;
+    const resolvedTheme = resolveCertificateTheme(cert.grand_line_id, preferredTheme);
+    cert.theme_id = preferredTheme && preferredTheme !== 'auto' ? preferredTheme : resolvedTheme.id;
+
+    await renderAndPersistCertificateRow(store, cert);
+    saveD1Store(store);
+
+    return res.status(200).json({
+      ok: true,
+      certificate: {
+        id: cert.id,
+        serial: cert.serial,
+        signatureVersion: cert.signature_version,
+        themeId: cert.theme_id,
+      },
+    });
+  });
+
+  // 13. POST /api/admin/certificates/regenerate-all — Admin only: regenerate all certificates with current active signature
+  app.post('/api/admin/certificates/regenerate-all', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+
+    const { signatureRow: activeSig } = getActiveSignatureRecord(store);
+    const activeVersion = activeSig ? Number(activeSig.version) : 0;
+    const targetGrandLineId = req.body?.grandLineId ? String(req.body.grandLineId).trim() : '';
+
+    let regeneratedCount = 0;
+    for (const cert of store.certificates) {
+      if (targetGrandLineId && cert.grand_line_id !== targetGrandLineId) continue;
+      cert.signature_version = activeVersion;
+      const test = store.captainTests.find((t: any) => t.id === cert.grand_line_id);
+      const preferredTheme = test?.certificateThemeId ?? test?.certificate_theme_id ?? cert.theme_id;
+      const resolvedTheme = resolveCertificateTheme(cert.grand_line_id, preferredTheme);
+      cert.theme_id = preferredTheme && preferredTheme !== 'auto' ? preferredTheme : resolvedTheme.id;
+      await renderAndPersistCertificateRow(store, cert);
+      regeneratedCount += 1;
+    }
+
+    saveD1Store(store);
+    return res.status(200).json({
+      ok: true,
+      regeneratedCount,
+      signatureVersion: activeVersion,
+    });
+  });
+
+  // 14. POST /api/admin/certificates/:id/revoke (and /status) — Admin only: revoke or restore a certificate
+  const handleRevokeOrRestoreCertificate = async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+
+    const certId = decodeURIComponent(String(req.params.id || '')).trim();
+    const cert = store.certificates.find((c: any) => c.id === certId || c.serial === certId);
+    if (!cert) return res.status(404).json({ error: 'Certificate not found.', code: 'NOT_FOUND' });
+
+    const requestedStatus = req.body?.status;
+    if (requestedStatus === 'active' || requestedStatus === 'revoked') {
+      cert.status = requestedStatus;
+    } else {
+      cert.status = cert.status === 'revoked' ? 'active' : 'revoked';
+    }
+
+    saveD1Store(store);
+    return res.status(200).json({
+      ok: true,
+      id: cert.id,
+      serial: cert.serial,
+      status: cert.status,
+    });
+  };
+  app.post('/api/admin/certificates/:id/revoke', handleRevokeOrRestoreCertificate);
+  app.post('/api/admin/certificates/:id/status', handleRevokeOrRestoreCertificate);
 }
 
 function escapeHtmlAttr(str: string): string {
@@ -7511,6 +8717,10 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
       paramNames.push('0');
       return { regex: /^\/api\/r2\/(.*)$/, paramNames };
     }
+    if (pattern === '/api/signatures/*') {
+      paramNames.push('0');
+      return { regex: /^\/api\/signatures\/(.*)$/, paramNames };
+    }
     const escaped = pattern
       .replace(/\/+$/, '')
       .replace(/:([a-zA-Z0-9_]+)/g, (_m, name) => {
@@ -7605,6 +8815,10 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
         pathname.startsWith('/api/r2') ||
         pathname.startsWith('/api/auth') ||
         pathname.startsWith('/api/bots') ||
+        pathname.startsWith('/api/certificates') ||
+        pathname.startsWith('/api/verify') ||
+        pathname.startsWith('/api/tests') ||
+        pathname.startsWith('/api/signatures') ||
         pathname.startsWith('/api/announcements'))
     ) {
       res.writeHead(204, {

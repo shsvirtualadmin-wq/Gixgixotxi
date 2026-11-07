@@ -30,6 +30,7 @@ import {
   buildProActivatedStudentEmail,
   buildProActivatedAdminEmail,
   buildProRequestRejectedStudentEmail,
+  buildCertificateIssuedStudentEmail,
   buildAdminSampleTestEmail,
   verifyEmailBalanceSanity,
   type TransactionalEmailEventType,
@@ -127,6 +128,7 @@ const VALID_EVENT_TYPES = new Set<TransactionalEmailEventType>([
   'pro_request_received',
   'pro_activated',
   'pro_request_rejected',
+  'certificate_issued',
   'admin_test_email',
 ]);
 
@@ -1845,6 +1847,48 @@ export async function handleSendEmailRequest(
         eventType,
         recipientRole: 'student',
         recordId,
+        rawEventData: data,
+        forceResend,
+      });
+      results.push({ role: 'student', ...rStudent });
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // EVENT 8: GRAND LINE 1ST POSITION CERTIFICATE ISSUED
+  // ───────────────────────────────────────────────────────────────────────────
+  else if (eventType === 'certificate_issued') {
+    const mockTitle = String(data.mockTitle || data.grandLineTitle || 'Grand Line Mock');
+    const editionLabel = String(data.editionLabel || 'Official Mock Edition');
+    const scoreLabel = String(data.scoreLabel || data.score || '100%');
+    const participantsCount = Math.max(1, Number(data.participantsCount || 1));
+    const serial = String(data.serial || recordId);
+    const pngPreviewUrl = data.pngPreviewUrl ? String(data.pngPreviewUrl) : undefined;
+    const downloadPdfUrl = data.downloadPdfUrl ? String(data.downloadPdfUrl) : `${appUrl}/dashboard/certificates`;
+    const verifyUrl = data.verifyUrl ? String(data.verifyUrl) : `${appUrl}/verify/${encodeURIComponent(serial)}`;
+
+    if (verifiedStudentEmail) {
+      const studentTpl = buildCertificateIssuedStudentEmail({
+        studentName: studentDisplayName,
+        mockTitle,
+        editionLabel,
+        scoreLabel,
+        participantsCount,
+        serial,
+        issuedAt: data.issuedAt,
+        pngPreviewUrl,
+        downloadPdfUrl,
+        verifyUrl,
+        appUrl,
+      });
+      const rStudent = await dispatchViaResendWithRetry({
+        env,
+        to: verifiedStudentEmail,
+        template: studentTpl,
+        idempotencyKey: `certificate_issued:${serial}:student`,
+        eventType,
+        recipientRole: 'student',
+        recordId: serial,
         rawEventData: data,
         forceResend,
       });

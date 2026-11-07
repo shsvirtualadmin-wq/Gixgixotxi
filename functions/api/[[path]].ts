@@ -39,6 +39,11 @@ export async function onRequest(context: {
     path.startsWith('/api/admin/roles') ||
     path.startsWith('/api/attempts') ||
     path.startsWith('/api/leaderboard') ||
+    path.startsWith('/api/certificates') ||
+    path.startsWith('/api/verify') ||
+    path.startsWith('/api/signatures') ||
+    path.startsWith('/api/admin/certificates') ||
+    path.startsWith('/api/admin/signatures') ||
     path.startsWith('/api/mcq-bank')
   ) {
     return (d1Worker as any).fetch(request, env || ({} as Env), context as any);

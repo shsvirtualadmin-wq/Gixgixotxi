@@ -61,6 +61,8 @@ import {
   type PublicUserProfileSummary,
 } from '@/services/publicProfileService';
 import { isAdminAccount } from '@/constants/superAdmin';
+import { ThemePicker } from '@/components/certificates/ThemePicker';
+import { finaliseGrandLineTest } from '@/services/certificateService';
 
 const SUBJECT_OPTIONS = [
   'Physics',
@@ -107,6 +109,8 @@ export function AmbassadorDashboardPage() {
   const [subject, setSubject] = useState('Physics');
   const [targetQuestionCount, setTargetQuestionCount] = useState<string>('20');
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
+  const [certificateThemeId, setCertificateThemeId] = useState<string | null>(null);
+  const [finalisingTestId, setFinalisingTestId] = useState<string | null>(null);
   const [csvText, setCsvText] = useState('');
   const [parsedQuestions, setParsedQuestions] = useState<AmbassadorTestQuestion[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
@@ -242,6 +246,7 @@ export function AmbassadorDashboardPage() {
     setSubject('Physics');
     setTargetQuestionCount('20');
     setVisibility('public');
+    setCertificateThemeId(null);
     setCsvText('');
     setParsedQuestions([]);
     setParseErrors([]);
@@ -255,6 +260,7 @@ export function AmbassadorDashboardPage() {
     setSubject(testItem.subject);
     setTargetQuestionCount(String(Math.max(1, Math.min(200, testItem.questionCount || 20))));
     setVisibility(testItem.visibility || 'public');
+    setCertificateThemeId(testItem.certificateThemeId || null);
     setCsvText('');
     setParseErrors([]);
     setSubmitError(null);
@@ -329,6 +335,7 @@ export function AmbassadorDashboardPage() {
           visibility,
           status: 'published',
           questions: questionsToSave,
+          certificateThemeId,
         });
         showApiToast('Test updated successfully.', 'success');
       } else {
@@ -341,6 +348,7 @@ export function AmbassadorDashboardPage() {
           captainUid: user.uid,
           captainName,
           crewName: crewNameDisplay,
+          certificateThemeId,
         });
         showApiToast(
           `Published "${title.trim()}" (${questionsToSave.length} questions)!`,
@@ -811,13 +819,46 @@ export function AmbassadorDashboardPage() {
 
               {/* Per-student scores and ranking */}
               <div className="captain-glass-panel p-4 sm:p-5 space-y-3.5">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-                    STUDENT SCORES &amp; RANKING
-                  </h3>
-                  <span className="text-xs text-[var(--muted)] font-mono tabular-nums">
-                    {testResults.length} {testResults.length === 1 ? 'submission' : 'submissions'}
-                  </span>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+                      STUDENT SCORES &amp; RANKING
+                    </h3>
+                    <span className="text-xs text-[var(--muted)] font-mono tabular-nums">
+                      {testResults.length} {testResults.length === 1 ? 'submission' : 'submissions'}
+                    </span>
+                  </div>
+                  {selectedResultTestId && testResults.length > 0 && (
+                    <button
+                      type="button"
+                      disabled={finalisingTestId === selectedResultTestId}
+                      onClick={async () => {
+                        setFinalisingTestId(selectedResultTestId);
+                        try {
+                          const res = await finaliseGrandLineTest(selectedResultTestId);
+                          showApiToast(
+                            res.issuedCount > 0
+                              ? `Results finalised! Issued ${res.issuedCount} 1st Position Certificate(s).`
+                              : 'Results finalised (1st Position Certificate already issued).',
+                            'success'
+                          );
+                          await loadCaptainWorkspace();
+                        } catch (err: any) {
+                          showApiToast(err?.message || 'Failed to finalise mock results.', 'error');
+                        } finally {
+                          setFinalisingTestId(null);
+                        }
+                      }}
+                      className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#D71921] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer hover:opacity-95 disabled:opacity-50"
+                    >
+                      <Award size={14} />
+                      <span>
+                        {finalisingTestId === selectedResultTestId
+                          ? 'Issuing 1st Position Certificate...'
+                          : 'Finalise & Issue 1st Position Certificate'}
+                      </span>
+                    </button>
+                  )}
                 </div>
 
                 {loadingResults ? (
@@ -1211,6 +1252,16 @@ export function AmbassadorDashboardPage() {
                       </button>
                     </div>
                   </div>
+                </div>
+
+                {/* Certificate Design Theme Picker */}
+                <div className="pt-2 border-t border-[var(--border)]">
+                  <ThemePicker
+                    grandLineId={editingTestId || title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'new_mock'}
+                    mockTitle={title.trim() || 'Grand Line Mock'}
+                    value={certificateThemeId}
+                    onChange={(nextThemeId) => setCertificateThemeId(nextThemeId)}
+                  />
                 </div>
 
                 {/* CSV Upload or Paste */}

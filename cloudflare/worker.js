@@ -2288,6 +2288,303 @@ export default {
         return jsonResponse(request, env, { ok: true });
       }
 
+      // =======================================================================
+      // 10. GRAND LINE CERTIFICATES & PRIVATE ADMIN SIGNATURES (D1 + PRIVATE R2)
+      // =======================================================================
+      async function ensureCertificateD1Tables(database) {
+        await database
+          .prepare(
+            `CREATE TABLE IF NOT EXISTS certificate_signatures (
+              id TEXT PRIMARY KEY,
+              r2_key TEXT NOT NULL,
+              signatory_name TEXT NOT NULL,
+              signatory_title TEXT NOT NULL,
+              version INTEGER NOT NULL UNIQUE,
+              uploaded_by TEXT NOT NULL,
+              created_at INTEGER NOT NULL,
+              active INTEGER NOT NULL DEFAULT 0
+            )`
+          )
+          .run();
+        await database
+          .prepare(
+            `CREATE TABLE IF NOT EXISTS certificates (
+              id TEXT PRIMARY KEY,
+              student_uid TEXT NOT NULL,
+              student_name TEXT NOT NULL,
+              student_email TEXT NOT NULL DEFAULT '',
+              grand_line_id TEXT NOT NULL,
+              grand_line_title TEXT NOT NULL,
+              edition_label TEXT NOT NULL DEFAULT '',
+              rank INTEGER NOT NULL DEFAULT 1,
+              score INTEGER NOT NULL DEFAULT 0,
+              total_questions INTEGER NOT NULL DEFAULT 0,
+              percentage INTEGER NOT NULL DEFAULT 0,
+              participants_count INTEGER NOT NULL DEFAULT 1,
+              serial TEXT NOT NULL UNIQUE,
+              theme_id TEXT NOT NULL,
+              signature_version INTEGER NOT NULL DEFAULT 0,
+              issued_at INTEGER NOT NULL,
+              pdf_r2_key TEXT NOT NULL,
+              png_r2_key TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')),
+              UNIQUE(student_uid, grand_line_id)
+            )`
+          )
+          .run();
+      }
+
+      async function signWorkerCertToken(certId, fmt, expMs) {
+        const secret = String(env.INTERNAL_EMAIL_SECRET || 'boardly_cert_hmac_v1').trim();
+        const key = await crypto.subtle.importKey(
+          'raw',
+          new TextEncoder().encode(secret),
+          { name: 'HMAC', hash: 'SHA-256' },
+          false,
+          ['sign']
+        );
+        const mac = await crypto.subtle.sign(
+          'HMAC',
+          key,
+          new TextEncoder().encode(`${certId}:${fmt}:${expMs}`)
+        );
+        return Array.from(new Uint8Array(mac))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+      }
+
+      async function verifyWorkerCertToken(certId, fmt, token, expMs) {
+        const expNum = Number(expMs || 0);
+        if (!Number.isFinite(expNum) || expNum < Date.now() || !token) return false;
+        const expected = await signWorkerCertToken(certId, fmt, expNum);
+        return expected === String(token).trim();
+      }
+
+      // Block any direct public/student access to /api/signatures/*
+      if (path.startsWith('/api/signatures/')) {
+        return errorResponse(
+          request,
+          env,
+          'Forbidden: Signature files are private in R2 and can only be accessed by admins on the server.',
+          'SIGNATURE_PRIVATE',
+          403
+        );
+      }
+
+      // Public Verification Endpoint: GET /api/verify/:serial
+      const verifyMatch = path.match(/^\/api\/verify\/([^/]+)$/);
+      if (verifyMatch && method === 'GET') {
+        await ensureCertificateD1Tables(db);
+        const serial = decodeURIComponent(verifyMatch[1]).trim().toUpperCase();
+        const cert = await db
+          .prepare(
+            `SELECT serial, student_name, grand_line_title, edition_label, rank, score,
+                    total_questions, percentage, participants_count, issued_at, status
+             FROM certificates
+             WHERE UPPER(serial) = ?1`
+          )
+          .bind(serial)
+          .first();
+
+        if (!cert) {
+          return jsonResponse(
+            request,
+            env,
+            { valid: false, status: 'not_found', serial, error: 'Certificate serial not found.' },
+            404
+          );
+        }
+
+        const isRevoked = cert.status === 'revoked';
+        return jsonResponse(request, env, {
+          valid: !isRevoked,
+          status: isRevoked ? 'revoked' : 'active',
+          serial: cert.serial,
+          studentName: cert.student_name,
+          mockTitle: cert.grand_line_title,
+          editionLabel: cert.edition_label,
+          rank: Number(cert.rank || 1),
+          score: Number(cert.score || 0),
+          totalQuestions: Number(cert.total_questions || 0),
+          percentage: Number(cert.percentage || 0),
+          participantsCount: Number(cert.participants_count || 1),
+          issuedAt: Number(cert.issued_at),
+        });
+      }
+
+      // Student My Certificates: GET /api/certificates/mine
+      if (path === '/api/certificates/mine' && method === 'GET') {
+        const user = await authenticateRequest(request, env, true);
+        await ensureCertificateD1Tables(db);
+        const { results } = await db
+          .prepare(
+            `SELECT * FROM certificates
+             WHERE student_uid = ?1 AND status = 'active'
+             ORDER BY issued_at DESC`
+          )
+          .bind(user.uid)
+          .all();
+
+        const exp = Date.now() + 1000 * 60 * 60 * 24 * 7;
+        const mapped = [];
+        for (const c of results || []) {
+          const pngToken = await signWorkerCertToken(c.id, 'png', exp);
+          const pdfToken = await signWorkerCertToken(c.id, 'pdf', exp);
+          mapped.push({
+            id: c.id,
+            serial: c.serial,
+            studentUid: c.student_uid,
+            studentName: c.student_name,
+            grandLineId: c.grand_line_id,
+            grandLineTitle: c.grand_line_title,
+            editionLabel: c.edition_label,
+            rank: Number(c.rank || 1),
+            score: Number(c.score || 0),
+            totalQuestions: Number(c.total_questions || 0),
+            percentage: Number(c.percentage || 0),
+            participantsCount: Number(c.participants_count || 1),
+            themeId: c.theme_id,
+            signatureVersion: Number(c.signature_version || 0),
+            issuedAt: Number(c.issued_at),
+            status: c.status,
+            verifyUrl: `/verify/${encodeURIComponent(c.serial)}`,
+            previewPngUrl: `/api/certificates/${encodeURIComponent(c.id)}/download?format=png&inline=1&token=${pngToken}&exp=${exp}`,
+            downloadPngUrl: `/api/certificates/${encodeURIComponent(c.id)}/download?format=png&token=${pngToken}&exp=${exp}`,
+            downloadPdfUrl: `/api/certificates/${encodeURIComponent(c.id)}/download?format=pdf&token=${pdfToken}&exp=${exp}`,
+          });
+        }
+        return jsonResponse(request, env, { certificates: mapped });
+      }
+
+      // Certificate Download (Authenticated Owner, Admin, or Signed Token): GET /api/certificates/:id/download
+      const certDownloadMatch = path.match(/^\/api\/certificates\/([^/]+)\/download$/);
+      if (certDownloadMatch && method === 'GET') {
+        await ensureCertificateD1Tables(db);
+        const certId = decodeURIComponent(certDownloadMatch[1]).trim();
+        const format = url.searchParams.get('format') === 'png' ? 'png' : 'pdf';
+        const isInline = url.searchParams.get('inline') === '1';
+
+        const cert = await db
+          .prepare('SELECT * FROM certificates WHERE id = ?1 OR serial = ?1')
+          .bind(certId)
+          .first();
+        if (!cert) {
+          return errorResponse(request, env, 'Certificate not found.', 'NOT_FOUND', 404);
+        }
+
+        const tokenParam = url.searchParams.get('token') || '';
+        const expParam = url.searchParams.get('exp') || '';
+        const validSigned = await verifyWorkerCertToken(cert.id, format, tokenParam, expParam);
+
+        let isAdmin = false;
+        if (!validSigned) {
+          const user = await authenticateRequest(request, env, true);
+          isAdmin = Boolean(user.isAdminOrAbove);
+          if (user.uid !== cert.student_uid && !isAdmin) {
+            return errorResponse(
+              request,
+              env,
+              'Forbidden: You can only download certificates belonging to your own account.',
+              'FORBIDDEN',
+              403
+            );
+          }
+        }
+
+        if (cert.status === 'revoked' && !isAdmin) {
+          return errorResponse(request, env, 'This certificate has been revoked.', 'CERTIFICATE_REVOKED', 403);
+        }
+
+        const r2Key = format === 'png' ? cert.png_r2_key : cert.pdf_r2_key;
+        if (env.R2_BUCKET) {
+          const obj = await env.R2_BUCKET.get(r2Key);
+          if (obj) {
+            return new Response(obj.body, {
+              status: 200,
+              headers: {
+                ...buildCorsHeaders(request, env),
+                'Content-Type': format === 'png' ? 'image/png' : 'application/pdf',
+                'Cache-Control': 'private, no-store',
+                'Content-Disposition': `${isInline ? 'inline' : 'attachment'}; filename="${cert.serial}.${format}"`,
+              },
+            });
+          }
+        }
+        return errorResponse(request, env, 'Certificate file not found in private R2.', 'NOT_FOUND', 404);
+      }
+
+      // Admin Signatures & Admin Certificates (Admin Only)
+      if (path.startsWith('/api/admin/signatures') || path.startsWith('/api/admin/certificates')) {
+        const user = await authenticateRequest(request, env, true);
+        requireRole(user, ['admin', 'superadmin']);
+        await ensureCertificateD1Tables(db);
+
+        if (path === '/api/admin/signatures' && method === 'GET') {
+          const { results } = await db
+            .prepare('SELECT * FROM certificate_signatures ORDER BY version DESC')
+            .all();
+          const history = (results || []).map((r) => ({
+            id: r.id,
+            r2Key: r.r2_key,
+            signatoryName: r.signatory_name,
+            signatoryTitle: r.signatory_title,
+            version: Number(r.version),
+            uploadedBy: r.uploaded_by,
+            createdAt: Number(r.created_at),
+            active: Boolean(r.active),
+          }));
+          const activeSignature = history.find((h) => h.active) || null;
+          return jsonResponse(request, env, {
+            ok: true,
+            hasActiveSignature: Boolean(activeSignature),
+            activeSignature,
+            history,
+          });
+        }
+
+        if (path === '/api/admin/signatures/active' && method === 'DELETE') {
+          await db.prepare('UPDATE certificate_signatures SET active = 0').run();
+          return jsonResponse(request, env, { ok: true, hasActiveSignature: false });
+        }
+
+        if (path === '/api/admin/certificates' && method === 'GET') {
+          const { results } = await db
+            .prepare('SELECT * FROM certificates ORDER BY issued_at DESC LIMIT 250')
+            .all();
+          const activeSig = await db
+            .prepare('SELECT * FROM certificate_signatures WHERE active = 1 ORDER BY version DESC LIMIT 1')
+            .first();
+          return jsonResponse(request, env, {
+            ok: true,
+            hasActiveSignature: Boolean(activeSig),
+            activeSignature: activeSig || null,
+            certificates: results || [],
+          });
+        }
+
+        const revokeMatch = path.match(/^\/api\/admin\/certificates\/([^/]+)\/revoke$/);
+        if (revokeMatch && method === 'POST') {
+          const certId = decodeURIComponent(revokeMatch[1]);
+          const body = await request.json().catch(() => ({}));
+          const cert = await db
+            .prepare('SELECT id, serial, status FROM certificates WHERE id = ?1 OR serial = ?1')
+            .bind(certId)
+            .first();
+          if (!cert) return errorResponse(request, env, 'Certificate not found.', 'NOT_FOUND', 404);
+          const nextStatus =
+            body.status === 'active' || body.status === 'revoked'
+              ? body.status
+              : cert.status === 'revoked'
+              ? 'active'
+              : 'revoked';
+          await db
+            .prepare('UPDATE certificates SET status = ?1 WHERE id = ?2')
+            .bind(nextStatus, cert.id)
+            .run();
+          return jsonResponse(request, env, { ok: true, id: cert.id, serial: cert.serial, status: nextStatus });
+        }
+      }
+
       return errorResponse(request, env, `Route not found: ${method} ${path}`, 'NOT_FOUND', 404);
     } catch (err) {
       const status = err.status || 500;

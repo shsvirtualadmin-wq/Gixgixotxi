@@ -32,6 +32,10 @@ export interface AmbassadorCustomTest {
   isPublic: boolean;
   attemptsCount: number;
   avgScore?: number;
+  certificateThemeId?: string | null;
+  resultsFinalised?: boolean;
+  finalisedAt?: number | null;
+  mockNumber?: number | null;
   createdAt: any;
   updatedAt?: any;
 }
@@ -159,6 +163,10 @@ function normalizeTestRow(raw: any): AmbassadorCustomTest {
     isPublic: visibility === 'public' && status === 'published',
     attemptsCount: Number(raw.attemptsCount ?? raw.attempts_count ?? 0),
     avgScore: Number(raw.avgScore ?? raw.avg_score ?? 0),
+    certificateThemeId: raw.certificateThemeId ?? raw.certificate_theme_id ?? null,
+    resultsFinalised: Boolean(raw.resultsFinalised ?? raw.results_finalised),
+    finalisedAt: raw.finalisedAt ?? raw.finalised_at ?? null,
+    mockNumber: raw.mockNumber ?? raw.mock_number ?? null,
     createdAt: toTimestampCompat(raw.createdAt ?? raw.created_at),
     updatedAt: toTimestampCompat(raw.updatedAt ?? raw.updated_at ?? raw.createdAt),
   };
@@ -409,6 +417,7 @@ export async function createAmbassadorTest(params: {
   visibility?: 'public' | 'private';
   status?: 'draft' | 'published' | 'unpublished';
   isPublic?: boolean;
+  certificateThemeId?: string | null;
 }): Promise<string> {
   const visibility =
     params.visibility || (params.isPublic === false ? 'private' : 'public');
@@ -429,6 +438,7 @@ export async function createAmbassadorTest(params: {
       durationMinutes:
         params.durationMinutes || Math.max(10, Math.round(formattedQuestions.length * 1.5)),
       questions: formattedQuestions,
+      certificateThemeId: params.certificateThemeId ?? null,
     },
     { requireAuth: true }
   );
@@ -447,6 +457,7 @@ export async function updateAmbassadorTest(
     visibility?: 'public' | 'private';
     status?: 'draft' | 'published' | 'unpublished';
     questions?: AmbassadorTestQuestion[];
+    certificateThemeId?: string | null;
   }
 ): Promise<void> {
   const defaultTopic = params.subject || 'General';
@@ -459,6 +470,9 @@ export async function updateAmbassadorTest(
       visibility: params.visibility,
       status: params.status,
       durationMinutes: params.durationMinutes,
+      ...(params.certificateThemeId !== undefined
+        ? { certificateThemeId: params.certificateThemeId }
+        : {}),
       ...(params.questions
         ? {
             questions: params.questions

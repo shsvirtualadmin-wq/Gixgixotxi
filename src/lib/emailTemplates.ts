@@ -43,6 +43,7 @@ export type EmailEventType =
   | 'application_decision'
   | 'referral_confirmed'
   | 'referral_reward_credited'
+  | 'certificate_issued'
   | 'admin_sample_test'
   | 'admin_test_email';
 
@@ -2526,5 +2527,96 @@ export function buildProRequestRejectedStudentEmail(params: {
 
   return { subject, preheader, html, text };
 }
+
+// ============================================================================
+// 8. GRAND LINE 1ST POSITION CERTIFICATE ISSUED EMAIL
+// ============================================================================
+
+export function buildCertificateIssuedStudentEmail(params: {
+  studentName: string;
+  mockTitle: string;
+  editionLabel?: string;
+  scoreLabel: string;
+  participantsCount: number;
+  serial: string;
+  issuedAt?: Date | string | number;
+  pngPreviewUrl?: string;
+  downloadPdfUrl?: string;
+  verifyUrl?: string;
+  appUrl?: string;
+}): RenderedEmailTemplate {
+  const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
+  const timeStr = formatPktDateTime(params.issuedAt);
+  const serial = (params.serial || 'BDLY-GL01-0001').trim();
+  const mockTitle = (params.mockTitle || 'Grand Line Mock').trim();
+  const edition = (params.editionLabel || 'Official Mock Edition').trim();
+  const participants = Math.max(1, Math.floor(Number(params.participantsCount || 1)));
+  const verifyLink = params.verifyUrl || `${appUrl}/verify/${encodeURIComponent(serial)}`;
+  const dashboardLink = params.downloadPdfUrl || `${appUrl}/dashboard/certificates`;
+
+  const subject = `You took 1st position in ${mockTitle} — Your Certificate is Ready`;
+  const preheader = `Congratulations ${params.studentName}! You secured 1st Position in ${mockTitle} (${params.scoreLabel}). Download your official Boardly certificate.`;
+
+  const previewHtml = params.pngPreviewUrl
+    ? `<div style="margin:18px 0;padding:12px;background:#0B0B0F;border:1px solid #262635;border-radius:16px;text-align:center;">
+        <div style="font-family:'Courier New',Courier,monospace;font-size:10px;letter-spacing:0.16em;text-transform:uppercase;color:#A0A0B0;margin-bottom:10px;">
+          OFFICIAL CERTIFICATE PREVIEW · ${escapeHtml(serial)}
+        </div>
+        <img src="${escapeHtml(
+          params.pngPreviewUrl
+        )}" alt="Boardly Certificate of Excellence — 1st Position" style="display:block;width:100%;max-width:520px;height:auto;margin:0 auto;border-radius:12px;border:1px solid #262635;" />
+      </div>`
+    : '';
+
+  const html = renderBaseHtmlLayout({
+    subject,
+    preheader,
+    badgeText: '1ST POSITION · CERTIFICATE ISSUED',
+    badgeColor: 'gold',
+    heading: `You took 1st position in ${mockTitle}`,
+    introHtml: `<p style="margin:0 0 10px 0;">Congratulations <strong>${escapeHtml(
+      params.studentName || 'Student'
+    )}</strong>! Your Grand Line mock result has been finalised and you secured <strong>First Position</strong> ahead of <strong>${participants.toLocaleString()}</strong> ${
+      participants === 1 ? 'participant' : 'participants'
+    }.</p>
+    <p style="margin:0;">Your official <strong>Certificate of Excellence</strong> has been issued and signed. You can download the print-ready A4 PDF or PNG anytime from <strong>My Certificates</strong> in your dashboard.</p>`,
+    detailsRows: [
+      { label: 'Achievement', value: '1st Position (National Merit)', highlightGold: true },
+      { label: 'Grand Line Mock', value: `${mockTitle} (${edition})` },
+      { label: 'Final Score', value: params.scoreLabel, highlightGreen: true },
+      { label: 'Participants Ahead Of', value: `${participants.toLocaleString()}` },
+      { label: 'Certificate Serial', value: serial, mono: true },
+      { label: 'Issued (PKT)', value: timeStr },
+    ],
+    extraBodyHtml: `${previewHtml}
+      <p style="margin:12px 0 0 0;font-size:12px;color:#A0A0B0;">
+        Public verification link: <a href="${escapeHtml(
+          verifyLink
+        )}" style="color:#E11D2A;text-decoration:underline;font-family:'Courier New',Courier,monospace;">${escapeHtml(
+      verifyLink
+    )}</a>
+      </p>`,
+    ctaLabel: 'Open My Certificates & Download',
+    ctaUrl: dashboardLink,
+    secondaryCtaLabel: 'Verify Certificate',
+    secondaryCtaUrl: verifyLink,
+    appUrl,
+  });
+
+  const text = [
+    `BOARDLY — YOU TOOK 1ST POSITION (${mockTitle})`,
+    ``,
+    `Congratulations ${params.studentName || 'Student'}!`,
+    `You secured First Position in ${mockTitle} (${edition}) with a score of ${params.scoreLabel}, ahead of ${participants.toLocaleString()} participants.`,
+    ``,
+    `Certificate Serial: ${serial}`,
+    `Issued (PKT): ${timeStr}`,
+    `Download PDF / PNG: ${dashboardLink}`,
+    `Verify Certificate: ${verifyLink}`,
+  ].join('\n');
+
+  return { subject, preheader, html, text };
+}
+
 
 

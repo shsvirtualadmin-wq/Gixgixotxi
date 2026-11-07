@@ -44,10 +44,12 @@ const PRIMARY_NAV: AdminNavItem[] = [
   { to: '/admin/bots', label: 'Bots', icon: Bot },
   { to: '/admin/crews', label: 'Crews', icon: Shield },
   { to: '/admin/captains', label: NAKAMA_CAPTAINS_NAME, icon: Award },
+  { to: '/admin/certificates', label: 'Certificates', icon: Award },
   { to: '/admin/questions', label: 'Questions', icon: Database },
 ];
 
 const SECONDARY_NAV: AdminNavItem[] = [
+  { to: '/admin/signatures?tab=signature', label: 'Certificate Signature', icon: FileCheck2 },
   { to: '/admin/pricing', label: 'Store Pricing', icon: Tag },
   { to: '/admin/kobans', label: 'Kobans', icon: Coins },
   { to: '/admin/applications', label: 'Applications', icon: FileCheck2 },

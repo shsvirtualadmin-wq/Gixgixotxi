@@ -148,6 +148,12 @@ const ProfilePage = lazyWithRetry(() =>
 const ResultsListPage = lazyWithRetry(() =>
   import('./pages/dashboard/ResultsListPage').then(m => ({ default: m.ResultsListPage }))
 );
+const MyCertificatesPage = lazyWithRetry(() =>
+  import('./pages/dashboard/MyCertificatesPage').then(m => ({ default: m.MyCertificatesPage }))
+);
+const VerifyCertificatePage = lazyWithRetry(() =>
+  import('./pages/VerifyCertificatePage').then(m => ({ default: m.VerifyCertificatePage }))
+);
 const PlaceholderPage = lazyWithRetry(() =>
   import('./pages/dashboard/PlaceholderPage').then(m => ({ default: m.PlaceholderPage }))
 );
@@ -226,6 +232,9 @@ const AdminBotsPage = lazyWithRetry(() =>
 const AdminPricingPage = lazyWithRetry(() =>
   import('./pages/admin/AdminPricingPage').then(m => ({ default: m.AdminPricingPage }))
 );
+const AdminCertificatesPage = lazyWithRetry(() =>
+  import('./pages/admin/AdminCertificatesPage').then(m => ({ default: m.AdminCertificatesPage }))
+);
 
 // Boardly Commons
 const CommonsFeedPage = lazyWithRetry(() =>
@@ -303,6 +312,9 @@ function AppInner() {
           <Route path="crews" element={<AdminCrewsPage />} />
           <Route path="commons" element={<AdminCommonsPage />} />
           <Route path="reviews" element={<AdminCommonsPage />} />
+          <Route path="certificates" element={<AdminCertificatesPage />} />
+          <Route path="signatures" element={<AdminCertificatesPage />} />
+          <Route path="settings" element={<AdminCertificatesPage />} />
           <Route path="health" element={<AdminHealthPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
@@ -319,6 +331,7 @@ function AppInner() {
           <Route path="history/:attemptId" element={<TestResultPage />} />
           <Route path="results" element={<ResultsListPage />} />
           <Route path="results/:attemptId" element={<TestResultPage />} />
+          <Route path="certificates" element={<MyCertificatesPage />} />
           <Route path="store" element={<StorePage />} />
           <Route path="rewards" element={<RewardsPage />} />
           <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />
@@ -345,6 +358,9 @@ function AppInner() {
         <Route path="/practice/:university/:subject/:chapter" element={<McqChapterPage />} />
         <Route path="/results" element={<DashboardShell />}>
           <Route index element={<ResultsListPage />} />
+        </Route>
+        <Route path="/certificates" element={<DashboardShell />}>
+          <Route index element={<MyCertificatesPage />} />
         </Route>
         <Route path="/commons/new" element={<DashboardShell />}>
           <Route index element={<CommonsFeedPage initialCompose={true} />} />
@@ -455,6 +471,8 @@ function AppInner() {
           <Route path="/grand-line/tests/:idSlug" element={<GrandLineTestInfoPage />} />
           <Route path="/tests" element={<Navigate to="/grand-line" replace />} />
           <Route path="/tests/:idSlug" element={<GrandLineTestInfoPage />} />
+          <Route path="/verify" element={<VerifyCertificatePage />} />
+          <Route path="/verify/:serial" element={<VerifyCertificatePage />} />
           <Route path="/arena" element={<ArenaPage />} />
 
           {/* Public Nakama Captains Overview, Leaderboard & Public Captain Profiles */}
