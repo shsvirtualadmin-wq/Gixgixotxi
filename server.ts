@@ -8698,10 +8698,16 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       </head>
       <body>
         <div class="container">
-          <div class="header">
-            <div class="header-brand">Boardly — Official Portal</div>
-            <div class="header-subtitle">Thanks, ${name}! Your payment is being reviewed.</div>
-          </div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td bgcolor="#0B0B0F" style="background-color:#0B0B0F;color:#E11D2A;padding:20px 24px;border-bottom:1px solid #262633;">
+                <a href="https://boardly.cfd" target="_blank" style="text-decoration:none;color:#E11D2A;font-weight:900;font-size:20px;display:inline-block;">
+                  <img src="https://boardly.cfd/email/boardly-logo.png" width="160" height="auto" alt="Boardly" style="display:block;border:0;outline:none;text-decoration:none;width:160px;height:auto;" />
+                </a>
+                <div style="font-size:14px;font-weight:600;color:#9A9AA6;margin-top:8px;">Thanks, ${name}! Your payment is being reviewed.</div>
+              </td>
+            </tr>
+          </table>
           <div class="body">
             <div class="greeting">We've received your payment proof</div>
             <p class="paragraph">
@@ -8754,10 +8760,16 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       </head>
       <body>
         <div class="container">
-          <div class="header">
-            <h1>Boardly Premium Access</h1>
-            <p style="margin: 4px 0 0; opacity: 0.9; font-size: 14px;">Your Access is Confirmed!</p>
-          </div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td bgcolor="#0B0B0F" style="background-color:#0B0B0F;color:#E11D2A;padding:20px 24px;border-bottom:1px solid #262633;">
+                <a href="https://boardly.cfd" target="_blank" style="text-decoration:none;color:#E11D2A;font-weight:900;font-size:20px;display:inline-block;">
+                  <img src="https://boardly.cfd/email/boardly-logo.png" width="160" height="auto" alt="Boardly" style="display:block;border:0;outline:none;text-decoration:none;width:160px;height:auto;" />
+                </a>
+                <div style="margin:6px 0 0;color:#10B981;font-size:14px;font-weight:700;">Boardly Premium Access Confirmed</div>
+              </td>
+            </tr>
+          </table>
           <div class="body">
             <span class="badge-success">✓ Payment Verified & Approved</span>
             <h2 style="font-size: 18px; font-weight: 700; color: #0f172a; margin-top: 0;">Welcome to Boardly Premium, ${name}!</h2>
@@ -8804,10 +8816,16 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       </head>
       <body>
         <div class="container">
-          <div class="header">
-            <h1>Boardly Support</h1>
-            <p style="margin: 4px 0 0; opacity: 0.9; font-size: 13px;">Payment Verification Update</p>
-          </div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td bgcolor="#0B0B0F" style="background-color:#0B0B0F;color:#E11D2A;padding:20px 24px;border-bottom:1px solid #262633;">
+                <a href="https://boardly.cfd" target="_blank" style="text-decoration:none;color:#E11D2A;font-weight:900;font-size:20px;display:inline-block;">
+                  <img src="https://boardly.cfd/email/boardly-logo.png" width="160" height="auto" alt="Boardly" style="display:block;border:0;outline:none;text-decoration:none;width:160px;height:auto;" />
+                </a>
+                <div style="margin:6px 0 0;color:#FF6B74;font-size:13px;font-weight:700;">Payment Verification Update</div>
+              </td>
+            </tr>
+          </table>
           <div class="body">
             <h2 style="font-size: 17px; font-weight: 700; color: #0f172a; margin-top: 0;">Hello ${name},</h2>
             <p style="font-size: 14px; line-height: 1.6; color: #334155;">
@@ -8875,10 +8893,16 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       </head>
       <body>
         <div class="container">
-          <div class="header">
-            <div class="header-brand">Boardly — Official Portal</div>
-            <div class="header-subtitle">New Payment Verification Request</div>
-          </div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td bgcolor="#0B0B0F" style="background-color:#0B0B0F;color:#E11D2A;padding:20px 24px;border-bottom:1px solid #262633;">
+                <a href="https://boardly.cfd" target="_blank" style="text-decoration:none;color:#E11D2A;font-weight:900;font-size:20px;display:inline-block;">
+                  <img src="https://boardly.cfd/email/boardly-logo.png" width="160" height="auto" alt="Boardly" style="display:block;border:0;outline:none;text-decoration:none;width:160px;height:auto;" />
+                </a>
+                <div style="margin:6px 0 0;color:#F5B301;font-size:15px;font-weight:700;">New Payment Verification Request</div>
+              </td>
+            </tr>
+          </table>
           <div class="body">
             <p style="font-size: 14px; line-height: 1.5; color: #333333; margin-top: 0;">
               A new payment proof submission has been logged and requires review:
@@ -8898,7 +8922,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
             </div>
           </div>
           <div class="footer">
-            Boardly — Official Portal | WhatsApp Support: +92 305 8969050
+            <strong>Internal admin notification</strong> · Boardly Admin Portal
           </div>
         </div>
       </body>
@@ -8942,10 +8966,16 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       </head>
       <body>
         <div class="container">
-          <div class="header">
-            <h1>Boardly / SHS Virtual Academy Student Portal</h1>
-            <p>Registration Confirmation & Student Welcome</p>
-          </div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td bgcolor="#0B0B0F" style="background-color:#0B0B0F;color:#E11D2A;padding:24px 28px;border-bottom:3px solid #f2b90c;">
+                <a href="https://boardly.cfd" target="_blank" style="text-decoration:none;color:#E11D2A;font-weight:900;font-size:20px;display:inline-block;">
+                  <img src="https://boardly.cfd/email/boardly-logo.png" width="160" height="auto" alt="Boardly" style="display:block;border:0;outline:none;text-decoration:none;width:160px;height:auto;" />
+                </a>
+                <p style="margin:6px 0 0;color:#94a3b8;font-size:13px;font-weight:600;">Registration Confirmation &amp; Student Welcome</p>
+              </td>
+            </tr>
+          </table>
           <div class="body">
             <h2 style="font-size: 19px; font-weight: 800; color: #0f172a; margin-top: 0;">Welcome, ${name}!</h2>
             <p style="font-size: 14px; line-height: 1.6; color: #334155;">
@@ -9197,10 +9227,16 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         </head>
         <body>
           <div class="container">
-            <div class="header">
-              <h1>New Student Inquiry · Boardly Support</h1>
-              <p>Submitted via boardly.cfd Contact Form</p>
-            </div>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td bgcolor="#0B0B0F" style="background-color:#0B0B0F;color:#E11D2A;padding:20px 24px;border-bottom:1px solid #262633;">
+                  <a href="https://boardly.cfd" target="_blank" style="text-decoration:none;color:#E11D2A;font-weight:900;font-size:20px;display:inline-block;">
+                    <img src="https://boardly.cfd/email/boardly-logo.png" width="160" height="auto" alt="Boardly" style="display:block;border:0;outline:none;text-decoration:none;width:160px;height:auto;" />
+                  </a>
+                  <p style="margin:6px 0 0;color:#9A9AA6;font-size:13px;font-weight:600;">New Student Inquiry · Submitted via boardly.cfd Contact Form</p>
+                </td>
+              </tr>
+            </table>
             <div class="body">
               <div class="field">
                 <div class="label">Student Name</div>
@@ -9225,7 +9261,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
               </div>
             </div>
             <div class="footer">
-              This message was sent to support@boardly.cfd and shsvirtualadmin@gmail.com
+              <strong>Internal admin notification</strong> · Sent to support@boardly.cfd
             </div>
           </div>
         </body>

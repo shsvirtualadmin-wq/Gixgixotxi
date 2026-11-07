@@ -26,6 +26,7 @@ import {
   buildApplicationDecisionApplicantEmail,
   buildReferralEventEmail,
   buildAdminSampleTestEmail,
+  verifyEmailBalanceSanity,
   type TransactionalEmailEventType,
   type KobanReceiptSubType,
   type SubjectBreakdownRow,
@@ -334,6 +335,40 @@ async function fetchServerUserInfo(
       email: typeof data.email === 'string' && data.email.includes('@') ? data.email.trim().toLowerCase() : null,
       displayName: data.displayName || data.name || data.nickname || null,
       emailPreferences: data.emailPreferences || undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchCommittedLedgerBalances(
+  env: SendEmailEnv,
+  uid: string,
+  ledgerId: string
+): Promise<{ balanceBefore?: number; amount?: number; balanceAfter?: number } | null> {
+  if (!uid || !ledgerId) return null;
+  try {
+    const token = await getFirestoreAdminAccessToken(env);
+    if (!token) return null;
+    const projectId = getTargetFirebaseProjectId(env);
+    const databaseId = getTargetFirestoreDatabaseId(env);
+    const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(
+      projectId
+    )}/databases/${encodeURIComponent(databaseId)}/documents/wallets/${encodeURIComponent(
+      uid
+    )}/ledger/${encodeURIComponent(ledgerId)}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const data = fromFirestoreFields(json.fields);
+    const bBefore = data.balanceBefore ?? data.balance_before;
+    const bAfter = data.balanceAfter ?? data.balance_after;
+    return {
+      balanceBefore: typeof bBefore === 'number' && Number.isFinite(bBefore) ? Math.floor(bBefore) : undefined,
+      amount: typeof data.amount === 'number' && Number.isFinite(data.amount) ? Math.floor(data.amount) : undefined,
+      balanceAfter: typeof bAfter === 'number' && Number.isFinite(bAfter) ? Math.floor(bAfter) : undefined,
     };
   } catch {
     return null;
@@ -933,79 +968,161 @@ export async function handleSendEmailRequest(
     }
 
     const isApproved = eventType === 'koban_purchase_approved';
-    const kobansAmount = Math.max(0, Number(data.kobansAmount || data.amount || 0));
-    const newBalance = typeof data.newBalance === 'number' ? data.newBalance : kobansAmount;
+    const kobansAmount = Math.max(0, Math.floor(Number(data.kobansAmount ?? data.delta ?? data.amount ?? 0)));
     const transactionId = data.transactionId ? String(data.transactionId) : undefined;
+    const ledgerId = data.ledgerId ? String(data.ledgerId) : `koban_req_${recordId}`;
     const reason = data.reason ? String(data.reason) : 'Transaction could not be verified.';
     const adminActorEmail = verifiedUser?.email || String(data.adminEmail || 'admin@boardly.cfd');
 
-    // 2A. To Student
-    if (verifiedStudentEmail) {
-      const studentTpl = isApproved
-        ? buildKobanPurchaseApprovedStudentEmail({
-            studentName: studentDisplayName,
-            approvedKobans: kobansAmount,
-            newBalance,
-            transactionId,
-            appUrl,
-          })
-        : buildKobanPurchaseRejectedStudentEmail({
-            studentName: studentDisplayName,
-            requestedKobans: kobansAmount,
-            reason,
-            transactionId,
-            appUrl,
-          });
+    let rawBalanceBefore = data.balanceBefore ?? data.balance_before;
+    let rawBalanceAfter = data.newBalance ?? data.balanceAfter ?? data.balance_after;
 
-      const rStudent = await dispatchViaResendWithRetry({
+    if (isApproved && (rawBalanceBefore === undefined || rawBalanceAfter === undefined)) {
+      const committedLedger = await fetchCommittedLedgerBalances(env, targetStudentUid, ledgerId);
+      if (committedLedger) {
+        if (rawBalanceBefore === undefined && committedLedger.balanceBefore !== undefined) {
+          rawBalanceBefore = committedLedger.balanceBefore;
+        }
+        if (rawBalanceAfter === undefined && committedLedger.balanceAfter !== undefined) {
+          rawBalanceAfter = committedLedger.balanceAfter;
+        }
+      }
+    }
+
+    if (isApproved) {
+      const sanity = verifyEmailBalanceSanity({
+        balanceBefore: rawBalanceBefore,
+        delta: kobansAmount,
+        balanceAfter: rawBalanceAfter,
+        context: `koban_purchase_approved:${recordId}`,
+      });
+
+      if (!sanity.valid) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            status: 'skipped',
+            eventType,
+            recordId,
+            error: sanity.error,
+          }),
+          { status: 200, headers: jsonHeaders }
+        );
+      }
+
+      // 2A. To Student (Approved)
+      if (verifiedStudentEmail) {
+        const studentTpl = buildKobanPurchaseApprovedStudentEmail({
+          studentName: studentDisplayName,
+          kobansCredited: sanity.delta,
+          balanceBefore: sanity.balanceBefore,
+          newBalance: sanity.balanceAfter,
+          transactionId,
+          appUrl,
+        });
+
+        const rStudent = await dispatchViaResendWithRetry({
+          env,
+          to: verifiedStudentEmail,
+          template: studentTpl,
+          idempotencyKey: `${eventType}:${recordId}:student`,
+          eventType,
+          recipientRole: 'student',
+          recordId,
+          rawEventData: data,
+          forceResend,
+        });
+        results.push({ role: 'student', ...rStudent });
+      }
+
+      // 2B. To Admins (Approved copy summary)
+      const adminCopyTpl = buildKobanPurchaseDecisionAdminCopyEmail({
+        decision: 'approved',
+        adminEmail: adminActorEmail,
+        studentUid: targetStudentUid,
+        studentName: studentDisplayName,
+        studentEmail: verifiedStudentEmail || undefined,
+        kobansAmount: sanity.delta,
+        balanceBefore: sanity.balanceBefore,
+        newBalance: sanity.balanceAfter,
+        transactionId,
+        ledgerId,
+        appUrl,
+      });
+      const rAdmin = await dispatchViaResendWithRetry({
         env,
-        to: verifiedStudentEmail,
-        template: studentTpl,
-        idempotencyKey: `${eventType}:${recordId}:student`,
+        to: adminEmails,
+        template: adminCopyTpl,
+        idempotencyKey: `${eventType}:${recordId}:admin`,
         eventType,
-        recipientRole: 'student',
+        recipientRole: 'admin',
         recordId,
         rawEventData: data,
         forceResend,
       });
-      results.push({ role: 'student', ...rStudent });
-    }
+      results.push({ role: 'admin', ...rAdmin });
+    } else {
+      // Rejected flow (no balance change)
+      if (verifiedStudentEmail) {
+        const studentTpl = buildKobanPurchaseRejectedStudentEmail({
+          studentName: studentDisplayName,
+          requestedKobans: kobansAmount,
+          reason,
+          transactionId,
+          appUrl,
+        });
 
-    // 2B. To Admins (copy summary)
-    const adminCopyTpl = buildKobanPurchaseDecisionAdminCopyEmail({
-      decision: isApproved ? 'approved' : 'rejected',
-      adminEmail: adminActorEmail,
-      studentName: studentDisplayName,
-      studentEmail: verifiedStudentEmail || undefined,
-      kobansAmount,
-      newBalance: isApproved ? newBalance : undefined,
-      transactionId,
-      reason: !isApproved ? reason : undefined,
-      appUrl,
-    });
-    const rAdmin = await dispatchViaResendWithRetry({
-      env,
-      to: adminEmails,
-      template: adminCopyTpl,
-      idempotencyKey: `${eventType}:${recordId}:admin`,
-      eventType,
-      recipientRole: 'admin',
-      recordId,
-      rawEventData: data,
-      forceResend,
-    });
-    results.push({ role: 'admin', ...rAdmin });
+        const rStudent = await dispatchViaResendWithRetry({
+          env,
+          to: verifiedStudentEmail,
+          template: studentTpl,
+          idempotencyKey: `${eventType}:${recordId}:student`,
+          eventType,
+          recipientRole: 'student',
+          recordId,
+          rawEventData: data,
+          forceResend,
+        });
+        results.push({ role: 'student', ...rStudent });
+      }
+
+      const adminCopyTpl = buildKobanPurchaseDecisionAdminCopyEmail({
+        decision: 'rejected',
+        adminEmail: adminActorEmail,
+        studentUid: targetStudentUid,
+        studentName: studentDisplayName,
+        studentEmail: verifiedStudentEmail || undefined,
+        kobansAmount,
+        transactionId,
+        ledgerId: recordId,
+        reason,
+        appUrl,
+      });
+      const rAdmin = await dispatchViaResendWithRetry({
+        env,
+        to: adminEmails,
+        template: adminCopyTpl,
+        idempotencyKey: `${eventType}:${recordId}:admin`,
+        eventType,
+        recipientRole: 'admin',
+        recordId,
+        rawEventData: data,
+        forceResend,
+      });
+      results.push({ role: 'admin', ...rAdmin });
+    }
   }
 
   // ───────────────────────────────────────────────────────────────────────────
   // EVENT 3: KOBANS RECEIVED OR SPENT FOR ANY REASON
   // ───────────────────────────────────────────────────────────────────────────
   else if (eventType === 'koban_receipt') {
-    const deltaAmount = Number(data.deltaAmount ?? data.amount ?? 0);
-    const newBalance = Math.max(0, Number(data.newBalance ?? 0));
+    const deltaAmount = Math.floor(Number(data.deltaAmount ?? data.delta ?? data.amount ?? 0));
     const subType = (data.subType || 'daily_claim') as KobanReceiptSubType;
     const reason = String(data.reason || 'Wallet activity');
-    const isSmallClaim = subType === 'daily_claim' || subType === 'milestone_claim';
+    const txId = String(data.transactionId || data.ledgerId || recordId);
+    const isSmallClaim =
+      subType === 'daily_claim' || subType === 'daily_checkin' || subType === 'milestone_claim';
     const items = Array.isArray(data.items)
       ? data.items.map((it: any) => ({
           id: it?.id ? String(it.id) : undefined,
@@ -1015,16 +1132,53 @@ export async function handleSendEmailRequest(
         }))
       : undefined;
 
+    let rawBalanceBefore = data.balanceBefore ?? data.balance_before;
+    let rawBalanceAfter = data.newBalance ?? data.balanceAfter ?? data.balance_after;
+
+    if (rawBalanceBefore === undefined || rawBalanceAfter === undefined) {
+      const committedLedger = await fetchCommittedLedgerBalances(env, targetStudentUid, txId);
+      if (committedLedger) {
+        if (rawBalanceBefore === undefined && committedLedger.balanceBefore !== undefined) {
+          rawBalanceBefore = committedLedger.balanceBefore;
+        }
+        if (rawBalanceAfter === undefined && committedLedger.balanceAfter !== undefined) {
+          rawBalanceAfter = committedLedger.balanceAfter;
+        }
+      }
+    }
+
+    const sanity = verifyEmailBalanceSanity({
+      balanceBefore: rawBalanceBefore,
+      delta: deltaAmount,
+      balanceAfter: rawBalanceAfter,
+      context: `koban_receipt:${subType}:${recordId}`,
+    });
+
+    if (!sanity.valid) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          status: 'skipped',
+          eventType,
+          recordId,
+          error: sanity.error,
+        }),
+        { status: 200, headers: jsonHeaders }
+      );
+    }
+
     // 3A. To Student (respects smallKobanReceipts preference for daily/milestone claims)
     if (verifiedStudentEmail && (!isSmallClaim || emailPrefs.smallKobanReceipts)) {
       const studentTpl = buildKobanReceiptStudentEmail({
         studentName: studentDisplayName,
-        deltaAmount,
-        newBalance,
+        deltaAmount: sanity.delta,
+        balanceBefore: sanity.balanceBefore,
+        newBalance: sanity.balanceAfter,
         reason,
         subType,
         itemName: data.itemName ? String(data.itemName) : undefined,
         items,
+        transactionId: txId,
         appUrl,
       });
       const rStudent = await dispatchViaResendWithRetry({
@@ -1045,21 +1199,25 @@ export async function handleSendEmailRequest(
     // NEVER email admins for daily check-in claims
     const shouldAlertAdmin =
       subType !== 'daily_claim' &&
+      subType !== 'daily_checkin' &&
       (subType === 'store_purchase' ||
         subType === 'admin_grant' ||
         subType === 'captain_allotment' ||
-        Math.abs(deltaAmount) >= kobanAlertThreshold);
+        Math.abs(sanity.delta) >= kobanAlertThreshold);
 
     if (shouldAlertAdmin) {
       const adminAlertTpl = buildKobanActivityAdminAlertEmail({
         studentName: studentDisplayName,
         studentEmail: verifiedStudentEmail || undefined,
         studentUid: targetStudentUid,
-        deltaAmount,
-        newBalance,
+        deltaAmount: sanity.delta,
+        balanceBefore: sanity.balanceBefore,
+        newBalance: sanity.balanceAfter,
         reason,
         subType,
+        itemName: data.itemName ? String(data.itemName) : undefined,
         items,
+        transactionId: txId,
         adminEmail: data.adminEmail ? String(data.adminEmail) : undefined,
         appUrl,
       });
@@ -1296,12 +1454,14 @@ export async function handleSendEmailRequest(
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // EVENT 6: REFERRAL CONFIRMED OR REWARD CREDITED (To Referrer & Friend)
+  // EVENT 6: REFERRAL CONFIRMED OR REWARD CREDITED (To Referrer & Friend + Admin)
   // ───────────────────────────────────────────────────────────────────────────
   else if (eventType === 'referral_confirmed' || eventType === 'referral_reward_credited') {
     const stage = eventType === 'referral_reward_credited' ? 'credited' : 'confirmed';
     const referrerUid = String(data.referrerUid || '');
     const friendUid = String(data.friendUid || verifiedUser?.uid || '');
+    const referrerKobans = Math.max(0, Math.floor(Number(data.referrerKobans || 5000)));
+    const friendKobans = Math.max(0, Math.floor(Number(data.friendKobans || 1000)));
 
     const [referrerProfile, friendProfile] = await Promise.all([
       referrerUid ? fetchServerUserInfo(env, referrerUid) : Promise.resolve(null),
@@ -1320,14 +1480,91 @@ export async function handleSendEmailRequest(
     const friendName =
       String(data.friendName || friendProfile?.displayName || studentDisplayName);
 
+    let refBalBefore = data.referrerBalanceBefore ?? data.balanceBefore;
+    let refBalAfter = data.referrerNewBalance ?? data.newBalance;
+    if (stage === 'credited' && (refBalBefore === undefined || refBalAfter === undefined) && referrerUid) {
+      const refLedger = await fetchCommittedLedgerBalances(
+        env,
+        referrerUid,
+        `reward_ref_inviter_${recordId}`
+      );
+      if (refLedger) {
+        if (refBalBefore === undefined) refBalBefore = refLedger.balanceBefore;
+        if (refBalAfter === undefined) refBalAfter = refLedger.balanceAfter;
+      }
+    }
+
+    let friendBalBefore = data.friendBalanceBefore;
+    let friendBalAfter = data.friendNewBalance;
+    if (stage === 'credited' && (friendBalBefore === undefined || friendBalAfter === undefined) && friendUid) {
+      const friendLedger = await fetchCommittedLedgerBalances(
+        env,
+        friendUid,
+        `reward_ref_invitee_${recordId}`
+      );
+      if (friendLedger) {
+        if (friendBalBefore === undefined) friendBalBefore = friendLedger.balanceBefore;
+        if (friendBalAfter === undefined) friendBalAfter = friendLedger.balanceAfter;
+      }
+    }
+
+    if (stage === 'credited' && (refBalBefore !== undefined || refBalAfter !== undefined)) {
+      const refSanity = verifyEmailBalanceSanity({
+        balanceBefore: refBalBefore,
+        delta: referrerKobans,
+        balanceAfter: refBalAfter,
+        context: `referral_reward_credited:referrer:${recordId}`,
+      });
+      if (!refSanity.valid) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            status: 'skipped',
+            eventType,
+            recordId,
+            error: refSanity.error,
+          }),
+          { status: 200, headers: jsonHeaders }
+        );
+      }
+      refBalBefore = refSanity.balanceBefore;
+      refBalAfter = refSanity.balanceAfter;
+    }
+
+    if (stage === 'credited' && (friendBalBefore !== undefined || friendBalAfter !== undefined)) {
+      const friendSanity = verifyEmailBalanceSanity({
+        balanceBefore: friendBalBefore,
+        delta: friendKobans,
+        balanceAfter: friendBalAfter,
+        context: `referral_reward_credited:friend:${recordId}`,
+      });
+      if (!friendSanity.valid) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            status: 'skipped',
+            eventType,
+            recordId,
+            error: friendSanity.error,
+          }),
+          { status: 200, headers: jsonHeaders }
+        );
+      }
+      friendBalBefore = friendSanity.balanceBefore;
+      friendBalAfter = friendSanity.balanceAfter;
+    }
+
     if (referrerEmail) {
       const refTpl = buildReferralEventEmail({
         recipientRole: 'referrer',
         recipientName: referrerName,
         counterpartyName: friendName,
         stage,
-        kobansCredited: Number(data.referrerKobans || 5000),
+        kobansCredited: referrerKobans,
+        balanceBefore: typeof refBalBefore === 'number' ? refBalBefore : undefined,
+        newBalance: typeof refBalAfter === 'number' ? refBalAfter : undefined,
         referralCode: data.referralCode ? String(data.referralCode) : undefined,
+        transactionId: `reward_ref_inviter_${recordId}`,
         appUrl,
       });
       const rRef = await dispatchViaResendWithRetry({
@@ -1350,8 +1587,11 @@ export async function handleSendEmailRequest(
         recipientName: friendName,
         counterpartyName: referrerName,
         stage,
-        kobansCredited: Number(data.friendKobans || 1000),
+        kobansCredited: friendKobans,
+        balanceBefore: typeof friendBalBefore === 'number' ? friendBalBefore : undefined,
+        newBalance: typeof friendBalAfter === 'number' ? friendBalAfter : undefined,
         referralCode: data.referralCode ? String(data.referralCode) : undefined,
+        transactionId: `reward_ref_invitee_${recordId}`,
         appUrl,
       });
       const rFriend = await dispatchViaResendWithRetry({
@@ -1366,6 +1606,34 @@ export async function handleSendEmailRequest(
         forceResend,
       });
       results.push({ role: 'friend', ...rFriend });
+    }
+
+    // Admin copy for referral reward / confirmation
+    if (stage === 'credited' && typeof refBalBefore === 'number' && typeof refBalAfter === 'number') {
+      const adminRefTpl = buildKobanActivityAdminAlertEmail({
+        studentName: referrerName,
+        studentEmail: referrerEmail || undefined,
+        studentUid: referrerUid || friendUid || 'referral',
+        deltaAmount: referrerKobans,
+        balanceBefore: refBalBefore,
+        newBalance: refBalAfter,
+        reason: `Referral reward with ${friendName}`,
+        subType: 'referral_reward',
+        transactionId: `reward_ref_inviter_${recordId}`,
+        appUrl,
+      });
+      const rAdminRef = await dispatchViaResendWithRetry({
+        env,
+        to: adminEmails,
+        template: adminRefTpl,
+        idempotencyKey: `${eventType}:${recordId}:admin`,
+        eventType,
+        recipientRole: 'admin',
+        recordId,
+        rawEventData: data,
+        forceResend,
+      });
+      results.push({ role: 'admin', ...rAdminRef });
     }
   }
 

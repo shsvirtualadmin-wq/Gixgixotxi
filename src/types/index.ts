@@ -422,7 +422,10 @@ export interface WalletLedgerEntry {
   id: string;
   type: 'grant' | 'deduction' | 'purchase' | 'captain_allotment';
   amount: number;
+  balanceBefore?: number;
+  balance_before?: number;
   balanceAfter?: number;
+  balance_after?: number;
   reason?: string;
   itemId?: string;
   itemName?: string;

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
 
 @theme {
   --color-background: var(--bg);
@@ -170,6 +171,9 @@
   /* Aliases strictly mapping to tokens */
   --fg: var(--text-primary);
   --text: var(--text-primary);
+  --bg-primary: var(--bg);
+  --bg-card: var(--surface);
+  --bg-elevated: var(--surface-muted);
   --card: var(--surface);
   --card-2: var(--surface-muted);
   --bg-2: var(--surface-muted);
@@ -297,6 +301,9 @@
   --skeleton: #1c1c22;
 
   --fg: var(--text-primary);
+  --bg-primary: var(--bg);
+  --bg-card: var(--surface);
+  --bg-elevated: var(--surface-muted);
   --card: var(--surface);
   --card-2: var(--surface-muted);
   --bg-2: var(--surface-muted);
@@ -395,6 +402,9 @@
 
   --fg: var(--text-primary);
   --text: var(--text-primary);
+  --bg-primary: var(--bg);
+  --bg-card: var(--surface);
+  --bg-elevated: var(--surface-muted);
   --card: var(--surface);
   --card-2: var(--surface-muted);
   --bg-2: var(--surface-muted);
@@ -2077,6 +2087,8 @@ body,
     .bg-\[\#D71921\] *,
     .bg-\[\#D71920\],
     .bg-\[\#D71920\] *,
+    .bg-\[\#E11D2A\],
+    .bg-\[\#E11D2A\] *,
     .bg-\[\#10b981\],
     .bg-\[\#10b981\] *,
     .bg-red-600,
@@ -2286,6 +2298,8 @@ body,
   footer :is(.text-white, [class*="text-white/"]),
   .bg-\[\#D71921\],
   .bg-\[\#D71921\] :is(.text-white, [class*="text-white/"]),
+  .bg-\[\#E11D2A\],
+  .bg-\[\#E11D2A\] :is(.text-white, [class*="text-white/"]),
   .bg-\[\#B8141B\],
   .bg-\[\#b8141b\],
   .bg-\[\#DC2626\],

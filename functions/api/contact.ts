@@ -1,3 +1,5 @@
+import { renderEmailHeader, formatPktDateTime } from '../../src/lib/emailTemplates';
+
 interface Env {
   RESEND_API_KEY?: string;
   CONTACT_TO_EMAIL?: string;
@@ -141,12 +143,8 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
       );
     }
 
-    // Format current time in Pakistan Standard Time (PKT)
-    const pktTimeStr = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Asia/Karachi',
-      dateStyle: 'full',
-      timeStyle: 'medium',
-    }).format(new Date());
+    // Format current time in Pakistan Standard Time (PKT) on one line
+    const pktTimeStr = formatPktDateTime(new Date());
 
     const safeName = escapeHtml(name);
     const safeEmail = escapeHtml(email);
@@ -160,24 +158,24 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
         <head>
           <meta charset="utf-8" />
           <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #111; margin: 0; padding: 20px; background: #f9f9f9; }
-            .card { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e5e5e5; overflow: hidden; }
-            .header { background: #D71921; color: #ffffff; padding: 20px; text-align: left; }
-            .header h2 { margin: 0; font-size: 20px; font-weight: 700; }
-            .content { padding: 24px; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #FFFFFF; margin: 0; padding: 20px; background: #0B0B0F; }
+            .card { max-width: 600px; margin: 0 auto; background: #14141C; border-radius: 16px; border: 1px solid #262633; overflow: hidden; }
+            .content { padding: 24px 28px; }
             .field { margin-bottom: 16px; }
-            .label { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #666; margin-bottom: 4px; }
-            .value { font-size: 15px; color: #111; word-break: break-word; }
-            .msg-box { background: #f4f4f5; border-left: 3px solid #D71921; padding: 14px; border-radius: 6px; font-size: 14px; line-height: 1.6; }
-            .footer { padding: 16px 24px; font-size: 12px; color: #888; background: #fafafa; border-top: 1px solid #eee; }
+            .label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #9A9AA6; letter-spacing: 0.08em; margin-bottom: 4px; }
+            .value { font-size: 14px; font-weight: 700; color: #FFFFFF; word-break: break-word; }
+            .value a { color: #F5B301; text-decoration: none; }
+            .msg-box { background: #1A1A24; border-left: 3px solid #E11D2A; padding: 14px; border-radius: 8px; font-size: 14px; line-height: 1.6; color: #FFFFFF; }
+            .footer { padding: 18px 28px; font-size: 12px; color: #9A9AA6; background: #101017; border-top: 1px solid #262633; }
           </style>
         </head>
         <body>
           <div class="card">
-            <div class="header">
-              <h2>New Student Inquiry — Boardly</h2>
-            </div>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              ${renderEmailHeader('https://boardly.cfd')}
+            </table>
             <div class="content">
+              <h2 style="margin:0 0 16px 0;font-size:20px;font-weight:800;color:#FFFFFF;">New Student Inquiry — ${safeName}</h2>
               <div class="field">
                 <div class="label">Sender Name</div>
                 <div class="value"><strong>${safeName}</strong></div>
@@ -191,7 +189,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
                 <div class="value">${safePhone}</div>
               </div>
               <div class="field">
-                <div class="label">Time (PKT, Asia/Karachi)</div>
+                <div class="label">Time</div>
                 <div class="value">${pktTimeStr}</div>
               </div>
               <div class="field">
@@ -204,7 +202,8 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
               </div>
             </div>
             <div class="footer">
-              This message was sent from the Boardly contact form on boardly.cfd. Reply directly to this email to reach the student.
+              <strong style="color:#FFFFFF;">Internal admin notification</strong><br/>
+              Boardly · Pakistan's Exam Prep Community · Reply directly to this email to reach the student.
             </div>
           </div>
         </body>

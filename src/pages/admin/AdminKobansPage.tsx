@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   Search,
   RefreshCw,
@@ -104,6 +105,10 @@ function StatusChip({ status }: { status: KobanStudentStatus }) {
 export function AdminKobansPage() {
   const { user } = useAuth();
   const superadminEmail = user?.email || 'shsvirtualadmin@gmail.com';
+  const params = useParams<{ uid?: string }>();
+  const [searchParams] = useSearchParams();
+  const deepLinkUid = (params.uid || searchParams.get('uid') || '').trim();
+  const deepLinkTx = (searchParams.get('tx') || '').trim();
 
   const [activeTab, setActiveTab] = useState<'requests' | 'adjust' | 'gallery'>('adjust');
   const [galleryViewport, setGalleryViewport] = useState<'360' | '390' | '768' | '100%'>('390');
@@ -382,6 +387,47 @@ export function AdminKobansPage() {
       setLedgerLoading(false);
     }
   }, []);
+
+  // Auto-select student when navigated via admin email deep-link (/admin/wallets/:uid?tx=:txId)
+  useEffect(() => {
+    if (!deepLinkUid) return;
+    setActiveTab('adjust');
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await searchStudentsForKobans(deepLinkUid, {
+          limit: 5,
+          offset: 0,
+          includeInactive: true,
+        });
+        if (cancelled) return;
+        const matched =
+          res.users.find((u) => u.uid === deepLinkUid) ||
+          res.users[0] || {
+            uid: deepLinkUid,
+            displayName: 'Student',
+            email: '',
+            kobans: 0,
+            hasWallet: true,
+            status: 'active' as KobanStudentStatus,
+          };
+        await handleSelectUser(matched);
+      } catch {
+        if (cancelled) return;
+        await handleSelectUser({
+          uid: deepLinkUid,
+          displayName: 'Student',
+          email: '',
+          kobans: 0,
+          hasWallet: true,
+          status: 'active',
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [deepLinkUid, handleSelectUser]);
 
   const handleChangeSelectedUser = () => {
     setSelectedUser(null);
@@ -1192,10 +1238,32 @@ export function AdminKobansPage() {
                           })
                         : 'Just now';
 
+                      const beforeBal =
+                        typeof entry.balanceBefore === 'number'
+                          ? entry.balanceBefore
+                          : typeof entry.balance_before === 'number'
+                          ? entry.balance_before
+                          : undefined;
+                      const afterBal =
+                        typeof entry.balanceAfter === 'number'
+                          ? entry.balanceAfter
+                          : typeof entry.balance_after === 'number'
+                          ? entry.balance_after
+                          : undefined;
+                      const isHighlightedTx =
+                        Boolean(deepLinkTx) &&
+                        (entry.id === deepLinkTx ||
+                          entry.transactionId === deepLinkTx ||
+                          entry.id?.includes(deepLinkTx));
+
                       return (
                         <div
                           key={entry.id}
-                          className="py-3.5 first:pt-1 last:pb-1 flex items-start justify-between gap-3 text-xs"
+                          className={`py-3.5 first:pt-1 last:pb-1 flex items-start justify-between gap-3 text-xs ${
+                            isHighlightedTx
+                              ? 'px-3 -mx-3 rounded-xl bg-amber-500/10 border border-amber-500/30'
+                              : ''
+                          }`}
                         >
                           <div className="space-y-1 min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -1213,6 +1281,7 @@ export function AdminKobansPage() {
 
                             <div className="text-[11px] text-[var(--text-muted)] font-mono flex items-center gap-2 flex-wrap">
                               <span>{dateStr} PKT</span>
+                              {entry.id && <span>• TX: {entry.id.slice(0, 14)}</span>}
                               {entry.adminEmail && <span>• Admin: {entry.adminEmail}</span>}
                             </div>
                           </div>
@@ -1229,9 +1298,11 @@ export function AdminKobansPage() {
                                 ? `+${entry.amount.toLocaleString()}`
                                 : entry.amount.toLocaleString()}
                             </span>
-                            {typeof entry.balanceAfter === 'number' && (
+                            {afterBal !== undefined && (
                               <span className="block text-[11px] text-[var(--text-muted)] font-mono tabular-nums">
-                                Bal: {entry.balanceAfter.toLocaleString()}
+                                {beforeBal !== undefined
+                                  ? `Bal: ${beforeBal.toLocaleString()} → ${afterBal.toLocaleString()}`
+                                  : `Bal: ${afterBal.toLocaleString()}`}
                               </span>
                             )}
                           </div>

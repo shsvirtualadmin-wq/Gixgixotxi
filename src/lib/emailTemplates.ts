@@ -1,19 +1,31 @@
 /**
- * Boardly Transactional Email Templates (HTML + Plain-Text Fallbacks)
+ * Boardly Transactional & Notification Email Templates
+ * ============================================================================
+ * Inline-styled HTML + Plain-Text fallback builders for all 7 Boardly email flows:
+ * 1. Welcome & Onboarding (after signup)
+ * 2. Koban Purchase Request Submitted & Approved / Rejected
+ * 3. Kobans Received or Spent Receipt (Store purchases, daily claim, milestones, admin grants, referrals)
+ * 4. Test Started (optional) & Test Completed Result Report + 00:00 PKT Daily Admin Digest
+ * 5. Applications (Captain, Crew, Ambassador, Name request) Submitted & Approved / Rejected
+ * 6. Referrals Confirmed & Referral Kobans Credited (both Referrer and Friend)
+ * 7. Admin Sample Test Email
  *
- * Compatible with Gmail, Apple Mail, Outlook (Desktop & Mobile), and Dark/Light modes.
- * Uses table-based 600px max-width layout with inline CSS and strict brand tokens:
- * - Header: #0B0B0F (near-black)
- * - Primary CTA: #E11D2A (Boardly Red)
- * - Koban Accent: #F5B301 (Koban Gold)
+ * Brand System:
+ * - Outer canvas: #0B0B0F
+ * - Card surface: #14141C (border #262635)
+ * - Primary accent / CTA: #E11D2A
+ * - Koban highlight gold: #F5B301
+ * - Debit / Spent red: #FF6B74
+ * - Text primary: #F4F4F6, muted: #A0A0B0
  */
 
 import {
-  formatPaymentMethodLabel,
   PAYMENT_METHODS_PAIR_LABEL,
+  formatPaymentMethodLabel,
 } from '../constants/branding';
 
-export type TransactionalEmailEventType =
+export type EmailEventType =
+  | 'welcome_onboarding'
   | 'koban_purchase_request'
   | 'koban_purchase_approved'
   | 'koban_purchase_rejected'
@@ -22,18 +34,153 @@ export type TransactionalEmailEventType =
   | 'test_completed'
   | 'daily_admin_digest'
   | 'application_submitted'
+  | 'application_approved'
+  | 'application_rejected'
   | 'application_decision'
   | 'referral_confirmed'
   | 'referral_reward_credited'
+  | 'admin_sample_test'
   | 'admin_test_email';
 
+export type TransactionalEmailEventType = EmailEventType;
+
+/**
+ * Sanity check before sending any email that displays a balance:
+ * balance_after must equal balance_before + delta.
+ */
+export function verifyEmailBalanceSanity(params: {
+  balanceBefore?: unknown;
+  delta?: unknown;
+  balanceAfter?: unknown;
+  context?: string;
+}): {
+  valid: boolean;
+  balanceBefore: number;
+  delta: number;
+  balanceAfter: number;
+  error?: string;
+} {
+  const beforeNum = Number(params.balanceBefore);
+  const deltaNum = Number(params.delta);
+  const afterNum = Number(params.balanceAfter);
+
+  if (
+    params.balanceBefore === undefined ||
+    params.balanceBefore === null ||
+    params.balanceAfter === undefined ||
+    params.balanceAfter === null ||
+    !Number.isFinite(beforeNum) ||
+    !Number.isFinite(deltaNum) ||
+    !Number.isFinite(afterNum)
+  ) {
+    const err = `[EmailBalanceSanity] Missing or non-numeric balance figures (${params.context || 'unknown'}): balanceBefore=${String(
+      params.balanceBefore
+    )}, delta=${String(params.delta)}, balanceAfter=${String(params.balanceAfter)}`;
+    console.error(err);
+    return {
+      valid: false,
+      balanceBefore: 0,
+      delta: Number.isFinite(deltaNum) ? Math.floor(deltaNum) : 0,
+      balanceAfter: 0,
+      error: err,
+    };
+  }
+
+  const bBefore = Math.floor(beforeNum);
+  const d = Math.floor(deltaNum);
+  const bAfter = Math.floor(afterNum);
+
+  if (bAfter !== bBefore + d) {
+    const err = `[EmailBalanceSanity] Mismatch in ${params.context || 'email'}: balanceAfter (${bAfter}) !== balanceBefore (${bBefore}) + delta (${d})`;
+    console.error(err);
+    return {
+      valid: false,
+      balanceBefore: bBefore,
+      delta: d,
+      balanceAfter: bAfter,
+      error: err,
+    };
+  }
+
+  return {
+    valid: true,
+    balanceBefore: bBefore,
+    delta: d,
+    balanceAfter: bAfter,
+  };
+}
+
 export type KobanReceiptSubType =
+  | 'store_purchase'
   | 'daily_claim'
+  | 'daily_checkin'
   | 'milestone_claim'
   | 'referral_reward'
-  | 'store_purchase'
   | 'admin_grant'
-  | 'captain_allotment';
+  | 'captain_allotment'
+  | 'koban_purchase_approved'
+  | 'koban_purchase_rejected';
+
+/**
+ * Shared logo constants (2x PNG exported at 480x120, rendered at 160px wide)
+ */
+export const EMAIL_LOGO_PATH = '/email/boardly-logo.png';
+export const EMAIL_LOGO_DARK_PATH = '/email/boardly-logo-dark.png';
+export const EMAIL_LOGO_URL = 'https://boardly.cfd/email/boardly-logo.png';
+
+export function getEmailLogoUrl(appUrl = 'https://boardly.cfd'): string {
+  const cleanBase = String(appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
+  return `${cleanBase}${EMAIL_LOGO_PATH}`;
+}
+
+/**
+ * Shared human-readable event label map for admin & student emails.
+ * Never display raw enum codes in email bodies or subjects.
+ */
+export const EMAIL_EVENT_LABELS: Record<string, string> = {
+  STORE_PURCHASE: 'Store purchase',
+  KOBAN_PURCHASE_APPROVED: 'Koban purchase approved',
+  KOBAN_PURCHASE_REJECTED: 'Koban purchase rejected',
+  KOBAN_PURCHASE_REQUEST: 'Koban purchase request',
+  DAILY_CHECKIN: 'Daily check-in',
+  DAILY_CLAIM: 'Daily check-in',
+  MILESTONE_CLAIM: 'Milestone reward',
+  REFERRAL_REWARD: 'Referral reward',
+  REFERRAL_REWARD_CREDITED: 'Referral reward',
+  ADMIN_GRANT: 'Admin grant',
+  CAPTAIN_ALLOTMENT: 'Captain allotment',
+};
+
+/**
+ * Formats an event code into a human-readable label using EMAIL_EVENT_LABELS,
+ * with a fallback that turns any unknown code into Title Case with underscores removed.
+ */
+export function formatEmailEventLabel(code?: string | null): string {
+  const raw = String(code || '').trim();
+  if (!raw) return 'Wallet activity';
+  const upperKey = raw.toUpperCase().replace(/[\s-]+/g, '_');
+  if (EMAIL_EVENT_LABELS[upperKey]) {
+    return EMAIL_EVENT_LABELS[upperKey];
+  }
+  const cleaned = raw.replace(/[_-]+/g, ' ').trim();
+  if (!cleaned) return 'Wallet activity';
+  return cleaned
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
+export interface EmailNotificationPreferences {
+  testStarted: boolean; // default: false (opt-in)
+  smallKobanReceipts: boolean; // default: true (daily check-in & milestone Koban claims)
+  marketingTips: boolean; // default: true (welcome & study tips)
+}
+
+export const DEFAULT_EMAIL_PREFERENCES: EmailNotificationPreferences = {
+  testStarted: false,
+  smallKobanReceipts: true,
+  marketingTips: true,
+};
 
 export interface SubjectBreakdownRow {
   subject: string;
@@ -50,69 +197,85 @@ export interface RenderedEmailTemplate {
   html: string;
   text: string;
   isOptional?: boolean;
-  optionalCategory?: 'testStarted' | 'smallKobanReceipts';
+  optionalCategory?: keyof EmailNotificationPreferences;
 }
 
-/**
- * Masks a payment reference / transaction ID so students only see the last 4 characters.
- * Admins receive the full unmasked transaction ID in their separate admin email.
- */
-export function maskPaymentReference(ref?: string | null): string {
-  const clean = String(ref || '').trim();
-  if (!clean) return '••••';
-  if (clean.length <= 4) return `••••${clean}`;
-  return `••••${clean.slice(-4)}`;
-}
-
-/**
- * Formats a timestamp or Date in Pakistan Standard Time (Asia/Karachi, UTC+5).
- */
-export function formatPktDateTime(dateInput?: Date | number | string | null): string {
-  try {
-    const d = dateInput ? new Date(dateInput) : new Date();
-    if (Number.isNaN(d.getTime())) {
-      return new Date().toLocaleString('en-PK', {
-        timeZone: 'Asia/Karachi',
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      }) + ' PKT';
-    }
-    return (
-      d.toLocaleString('en-US', {
-        timeZone: 'Asia/Karachi',
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      }) + ' PKT'
-    );
-  } catch {
-    return new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
-  }
-}
-
-export function formatDurationCompact(seconds?: number | null): string {
-  const totalSec = Math.max(0, Math.floor(Number(seconds) || 0));
-  const mins = Math.floor(totalSec / 60);
-  const secs = totalSec % 60;
-  if (mins === 0) return `${secs}s`;
-  if (mins < 60) return `${mins}m ${secs}s`;
-  const hrs = Math.floor(mins / 60);
-  const remMins = mins % 60;
-  return `${hrs}h ${remMins}m`;
-}
-
-function escapeHtml(raw?: string | number | null): string {
-  return String(raw ?? '')
+export function escapeHtml(value: unknown): string {
+  const str = value === null || value === undefined ? '' : String(value);
+  return str
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(/'/g, '&#039;');
 }
 
-interface BaseEmailLayoutParams {
+/**
+ * Formats date and time in Pakistan Standard Time (Asia/Karachi) on a single line,
+ * e.g. "7 Nov 2026, 06:19 AM PKT".
+ */
+export function formatPktDateTime(dateInput?: Date | string | number): string {
+  try {
+    const d = dateInput ? new Date(dateInput) : new Date();
+    const safeDate = Number.isNaN(d.getTime()) ? new Date() : d;
+    const datePart = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Karachi',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    }).format(safeDate);
+    const timePart = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Karachi',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).format(safeDate);
+    return `${datePart}, ${timePart} PKT`;
+  } catch {
+    return `${new Date().toISOString()} (PKT)`;
+  }
+}
+
+export function formatShortTxId(txId?: string | null): string {
+  const clean = String(txId || '').trim();
+  if (!clean) return 'N/A';
+  if (clean.length <= 16) return clean;
+  return `${clean.slice(0, 8)}…${clean.slice(-4)}`;
+}
+
+export function maskPaymentReference(ref?: string): string {
+  const clean = String(ref || '').trim();
+  if (!clean) return 'N/A';
+  if (clean.length <= 4) return `***${clean}`;
+  return `${'*'.repeat(Math.min(6, clean.length - 4))}${clean.slice(-4)}`;
+}
+
+export function formatDurationCompact(seconds?: number): string {
+  const totalSec = Math.max(0, Math.floor(Number(seconds) || 0));
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+  if (mins === 0) return `${secs}s`;
+  return `${mins}m ${secs}s`;
+}
+
+export interface EmailDetailRow {
+  label: string;
+  value: string;
+  highlightGold?: boolean;
+  highlightRed?: boolean;
+  highlightGreen?: boolean;
+  mutedSmall?: boolean;
+  mono?: boolean;
+}
+
+export interface AdminStudentIdentityBlock {
+  name: string;
+  email?: string;
+  uid?: string;
+  transactionId?: string;
+}
+
+interface BaseEmailLayoutOptions {
   subject: string;
   preheader: string;
   badgeText?: string;
@@ -123,46 +286,124 @@ interface BaseEmailLayoutParams {
     label: string;
     amountText: string;
     subtext?: string;
+    isNegative?: boolean;
   };
-  detailsRows?: Array<{ label: string; value: string; highlightGold?: boolean; mono?: boolean }>;
+  studentIdentity?: AdminStudentIdentityBlock;
+  detailsRows?: EmailDetailRow[];
   extraBodyHtml?: string;
-  ctaLabel: string;
-  ctaUrl: string;
-  appUrl: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  secondaryCtaLabel?: string;
+  secondaryCtaUrl?: string;
+  footerNoteHtml?: string;
+  appUrl?: string;
   isOptionalEmail?: boolean;
+  isAdminEmail?: boolean;
 }
 
-function renderBaseHtmlLayout(params: BaseEmailLayoutParams): string {
-  const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
-  const badgePalette = {
-    red: { bg: '#2A1014', border: '#E11D2A', text: '#FF6B74' },
+/**
+ * Shared Email Header Component:
+ * Renders the 2x dot-matrix Boardly logo PNG wrapped in a link to the app inside a dark
+ * #0B0B0F table cell with color:#E11D2A so blocked images still show "Boardly" in red.
+ */
+export function renderEmailHeader(appUrl = 'https://boardly.cfd'): string {
+  const cleanBase = String(appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
+  const logoSrc = getEmailLogoUrl(cleanBase);
+  return `
+    <tr>
+      <td bgcolor="#0B0B0F" style="padding:20px 24px;background-color:#0B0B0F;color:#E11D2A;border-bottom:1px solid #1C1C26;">
+        <a href="${escapeHtml(cleanBase)}" target="_blank" style="display:inline-block;text-decoration:none;color:#E11D2A;">
+          <img
+            src="${escapeHtml(logoSrc)}"
+            width="160"
+            height="auto"
+            alt="Boardly"
+            style="display:block;border:0;outline:none;text-decoration:none;width:160px;height:auto;color:#E11D2A;font-family:'Courier New',Courier,monospace;font-size:20px;font-weight:800;letter-spacing:0.06em;"
+          />
+        </a>
+      </td>
+    </tr>
+  `.trim();
+}
+
+function renderStudentIdentityHtml(identity: AdminStudentIdentityBlock): string {
+  const safeName = escapeHtml(identity.name || 'Student');
+  const safeEmail = identity.email ? escapeHtml(identity.email) : '';
+  const safeUid = identity.uid ? escapeHtml(identity.uid) : '';
+  const safeTx = identity.transactionId ? escapeHtml(formatShortTxId(identity.transactionId)) : '';
+
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 18px 0;background-color:#111118;border:1px solid #262635;border-left:3px solid #E11D2A;border-radius:12px;">
+      <tr>
+        <td style="padding:14px 16px;">
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#A0A0B0;margin-bottom:4px;">
+            Student Account
+          </div>
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;font-weight:800;color:#F4F4F6;line-height:1.3;">
+            ${safeName}
+          </div>
+          ${
+            safeEmail
+              ? `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;color:#A0A0B0;margin-top:2px;word-break:break-all;">
+                   <a href="mailto:${safeEmail}" style="color:#A0A0B0;text-decoration:none;">${safeEmail}</a>
+                 </div>`
+              : ''
+          }
+          <div style="margin-top:6px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:11px;color:#8E8EA0;line-height:1.5;word-break:break-all;">
+            ${safeUid ? `<span>UID: <strong style="color:#D1D5DB;">${safeUid}</strong></span>` : ''}
+            ${safeUid && safeTx ? `<span style="margin:0 6px;color:#3F3F52;">•</span>` : ''}
+            ${safeTx ? `<span>TX: <strong style="color:#D1D5DB;">${safeTx}</strong></span>` : ''}
+          </div>
+        </td>
+      </tr>
+    </table>
+  `.trim();
+}
+
+function renderBaseHtmlLayout(opts: BaseEmailLayoutOptions): string {
+  const appUrl = (opts.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
+  const settingsUrl = `${appUrl}/dashboard/settings`;
+  const supportEmail = 'support@boardly.cfd';
+
+  const badgeColors: Record<
+    NonNullable<BaseEmailLayoutOptions['badgeColor']>,
+    { bg: string; border: string; text: string }
+  > = {
+    red: { bg: '#2A0D12', border: '#E11D2A', text: '#FF6B74' },
     gold: { bg: '#2B220A', border: '#F5B301', text: '#F5B301' },
     green: { bg: '#0B291E', border: '#10B981', text: '#34D399' },
-    neutral: { bg: '#181820', border: '#2E2E3A', text: '#A1A1B5' },
-  }[params.badgeColor || 'red'];
+    neutral: { bg: '#1E1E2A', border: '#38384A', text: '#D1D5DB' },
+  };
 
-  const badgeHtml = params.badgeText
-    ? `<div style="margin-bottom:14px;">
-         <span style="display:inline-block;padding:4px 12px;border-radius:999px;background-color:${badgePalette.bg};border:1px solid ${badgePalette.border};color:${badgePalette.text};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">
-           ${escapeHtml(params.badgeText)}
+  const badgeStyle = badgeColors[opts.badgeColor || 'red'];
+
+  const badgeHtml = opts.badgeText
+    ? `<div style="margin-bottom:16px;">
+         <span style="display:inline-block;padding:5px 12px;border-radius:999px;background-color:${badgeStyle.bg};border:1px solid ${badgeStyle.border};color:${badgeStyle.text};font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">
+           ${escapeHtml(opts.badgeText)}
          </span>
        </div>`
     : '';
 
-  const kobanBannerHtml = params.kobanHighlight
-    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;background-color:#15130E;border:1px solid #4A3910;border-radius:14px;">
+  const isNegHighlight = Boolean(opts.kobanHighlight?.isNegative);
+  const highlightBorderColor = isNegHighlight ? '#E11D2A' : '#F5B301';
+  const highlightBgColor = isNegHighlight ? '#1E1115' : '#1B170D';
+  const highlightTextColor = isNegHighlight ? '#FF6B74' : '#F5B301';
+
+  const kobanHighlightHtml = opts.kobanHighlight
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;background-color:${highlightBgColor};border:1px solid ${highlightBorderColor};border-radius:14px;">
          <tr>
            <td style="padding:18px 20px;text-align:center;">
-             <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#D4A338;margin-bottom:4px;">
-               ${escapeHtml(params.kobanHighlight.label)}
+             <div style="font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#D4AF37;margin-bottom:4px;">
+               ${escapeHtml(opts.kobanHighlight.label)}
              </div>
-             <div style="font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:26px;font-weight:800;color:#F5B301;letter-spacing:-0.02em;">
-               ${escapeHtml(params.kobanHighlight.amountText)}
+             <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:28px;font-weight:800;color:${highlightTextColor};line-height:1.2;">
+               ${escapeHtml(opts.kobanHighlight.amountText)}
              </div>
              ${
-               params.kobanHighlight.subtext
-                 ? `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:#A8A29E;margin-top:4px;">
-                      ${escapeHtml(params.kobanHighlight.subtext)}
+               opts.kobanHighlight.subtext
+                 ? `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;color:#E5E7EB;margin-top:6px;font-weight:600;">
+                      ${escapeHtml(opts.kobanHighlight.subtext)}
                     </div>`
                  : ''
              }
@@ -171,42 +412,99 @@ function renderBaseHtmlLayout(params: BaseEmailLayoutParams): string {
        </table>`
     : '';
 
+  const studentIdentityHtml = opts.studentIdentity
+    ? renderStudentIdentityHtml(opts.studentIdentity)
+    : '';
+
   const detailsTableHtml =
-    params.detailsRows && params.detailsRows.length > 0
-      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:18px 0;background-color:#121218;border:1px solid #23232F;border-radius:14px;overflow:hidden;">
-           ${params.detailsRows
-             .map(
-               (row, idx) => `
-             <tr>
-               <td style="padding:11px 16px;border-bottom:${
-                 idx === params.detailsRows!.length - 1 ? 'none' : '1px solid #1E1E28'
-               };font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;color:#9CA3AF;width:42%;vertical-align:top;">
-                 ${escapeHtml(row.label)}
-               </td>
-               <td style="padding:11px 16px;border-bottom:${
-                 idx === params.detailsRows!.length - 1 ? 'none' : '1px solid #1E1E28'
-               };font-family:${
-                 row.mono
-                   ? "'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace"
-                   : "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
-               };font-size:13px;font-weight:600;color:${
-                 row.highlightGold ? '#F5B301' : '#F3F4F6'
-               };text-align:right;vertical-align:top;word-break:break-word;">
-                 ${escapeHtml(row.value)}
-               </td>
-             </tr>`
-             )
+    opts.detailsRows && opts.detailsRows.length > 0
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;background-color:#101017;border:1px solid #23232F;border-radius:12px;overflow:hidden;">
+           ${opts.detailsRows
+             .map((row, idx) => {
+               const isLast = idx === opts.detailsRows!.length - 1;
+               const borderBottom = isLast ? 'none' : '1px solid #1E1E28';
+
+               let valueColor = '#F3F4F6';
+               let valueFontSize = '14px';
+               let valueFontWeight = '600';
+
+               if (row.highlightGold) {
+                 valueColor = '#F5B301';
+                 valueFontWeight = '800';
+               } else if (row.highlightRed) {
+                 valueColor = '#FF6B74';
+                 valueFontWeight = '800';
+               } else if (row.highlightGreen) {
+                 valueColor = '#34D399';
+                 valueFontWeight = '800';
+               } else if (row.mutedSmall) {
+                 valueColor = '#9CA3AF';
+                 valueFontSize = '12px';
+                 valueFontWeight = '500';
+               }
+
+               const fontFamily = row.mono
+                 ? "'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace"
+                 : "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+
+               return `
+                 <tr>
+                   <td style="padding:12px 16px;border-bottom:${borderBottom};">
+                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="bd-row-table">
+                       <tr class="bd-row-inner-tr">
+                         <td class="bd-row-label" style="display:block;width:100%;padding:0 0 4px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#9CA3AF;text-align:left;">
+                           ${escapeHtml(row.label)}
+                         </td>
+                         <td class="bd-row-value" style="display:block;width:100%;padding:0;font-family:${fontFamily};font-size:${valueFontSize};font-weight:${valueFontWeight};color:${valueColor};text-align:left;word-break:break-word;">
+                           ${escapeHtml(row.value)}
+                         </td>
+                       </tr>
+                     </table>
+                   </td>
+                 </tr>`;
+             })
              .join('')}
          </table>`
       : '';
 
-  const optionalFooterHtml = params.isOptionalEmail
-    ? `<p style="margin:8px 0 0 0;font-size:11px;line-height:1.5;color:#6B7280;">
-         Prefer fewer activity emails? <a href="${escapeHtml(
-           `${appUrl}/dashboard/settings`
-         )}" style="color:#E11D2A;text-decoration:underline;">Manage your email notification preferences</a> in Settings.
+  const ctaHtml =
+    opts.ctaLabel && opts.ctaUrl
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 8px 0;">
+           <tr>
+             <td align="left">
+               <a href="${escapeHtml(opts.ctaUrl)}" target="_blank" style="display:inline-block;padding:13px 24px;background-color:#E11D2A;color:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;text-decoration:none;border-radius:10px;">
+                 ${escapeHtml(opts.ctaLabel)} &rarr;
+               </a>
+               ${
+                 opts.secondaryCtaLabel && opts.secondaryCtaUrl
+                   ? `<a href="${escapeHtml(opts.secondaryCtaUrl)}" target="_blank" style="display:inline-block;margin-left:10px;padding:12px 18px;background-color:#1E1E2A;border:1px solid #323246;color:#E5E7EB;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;font-weight:600;text-decoration:none;border-radius:10px;">
+                        ${escapeHtml(opts.secondaryCtaLabel)}
+                      </a>`
+                   : ''
+               }
+             </td>
+           </tr>
+         </table>`
+      : '';
+
+  const footerContentHtml = opts.isAdminEmail
+    ? `<p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:#8E8EA0;line-height:1.6;font-weight:600;">
+         Internal admin notification
+       </p>
+       <p style="margin:4px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:11px;color:#6B7280;line-height:1.5;">
+         Boardly Admin · <a href="${escapeHtml(appUrl)}/admin" style="color:#9CA3AF;text-decoration:none;">boardly.cfd/admin</a>
        </p>`
-    : '';
+    : `<p style="margin:0 0 6px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:#8E8EA0;line-height:1.6;">
+         Need help? Contact us at <a href="mailto:${supportEmail}" style="color:#E11D2A;text-decoration:none;font-weight:600;">${supportEmail}</a>
+       </p>
+       <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:11px;color:#6B7280;line-height:1.5;">
+         Boardly · Pakistan’s Entrance Exam &amp; Study Platform · <a href="${escapeHtml(appUrl)}" style="color:#9CA3AF;text-decoration:none;">boardly.cfd</a>
+         ${
+           opts.isOptionalEmail
+             ? ` · <a href="${escapeHtml(settingsUrl)}" style="color:#9CA3AF;text-decoration:underline;">Manage email preferences</a>`
+             : ''
+         }
+       </p>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -214,76 +512,62 @@ function renderBaseHtmlLayout(params: BaseEmailLayoutParams): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="color-scheme" content="dark light" />
-  <meta name="supported-color-schemes" content="dark light" />
-  <title>${escapeHtml(params.subject)}</title>
+  <title>${escapeHtml(opts.subject)}</title>
+  <style>
+    .bd-row-table { width: 100% !important; border-collapse: collapse !important; }
+    .bd-row-label { display: block !important; width: 100% !important; text-align: left !important; padding: 0 0 4px 0 !important; }
+    .bd-row-value { display: block !important; width: 100% !important; text-align: left !important; padding: 0 !important; }
+    @media only screen and (min-width: 481px) {
+      .bd-row-inner-tr { display: table-row !important; }
+      .bd-row-label { display: table-cell !important; width: 42% !important; padding: 0 12px 0 0 !important; vertical-align: middle !important; white-space: nowrap !important; }
+      .bd-row-value { display: table-cell !important; width: 58% !important; padding: 0 !important; text-align: right !important; vertical-align: middle !important; }
+    }
+  </style>
 </head>
-<body style="margin:0;padding:0;background-color:#07070A;color:#F3F4F6;-webkit-font-smoothing:antialiased;">
-  <!-- Preheader text -->
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;font-size:1px;line-height:1px;color:#07070A;">
-    ${escapeHtml(params.preheader)}
+<body style="margin:0;padding:0;background-color:#0B0B0F;color:#F4F4F6;-webkit-font-smoothing:antialiased;">
+  <!-- Hidden preheader text -->
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all;">
+    ${escapeHtml(opts.preheader)}
   </div>
 
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#07070A;padding:24px 12px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0B0B0F;padding:24px 12px;">
     <tr>
       <td align="center">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#0B0B0F;border:1px solid #1F1F2B;border-radius:20px;overflow:hidden;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#14141C;border:1px solid #262635;border-radius:16px;overflow:hidden;">
           <!-- Brand Header -->
-          <tr>
-            <td style="padding:22px 28px;background-color:#0B0B0F;border-bottom:1px solid #1C1C26;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td align="left" style="vertical-align:middle;">
-                    <a href="${escapeHtml(appUrl)}" style="text-decoration:none;display:inline-block;">
-                      <span style="font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:20px;font-weight:800;letter-spacing:0.12em;color:#FFFFFF;">BOARDLY</span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background-color:#E11D2A;margin-left:4px;vertical-align:middle;"></span>
-                    </a>
-                  </td>
-                  <td align="right" style="vertical-align:middle;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:11px;color:#9CA3AF;">
-                    boardly.cfd
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
+          ${renderEmailHeader(appUrl)}
 
-          <!-- Main Content Card -->
+          <!-- Main Content -->
           <tr>
-            <td style="padding:28px 28px 24px 28px;">
+            <td style="padding:28px 24px 24px 24px;">
               ${badgeHtml}
-              <h1 style="margin:0 0 12px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:22px;font-weight:800;line-height:1.3;color:#FFFFFF;letter-spacing:-0.02em;">
-                ${escapeHtml(params.heading)}
+              <h1 style="margin:0 0 14px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:22px;font-weight:800;color:#FFFFFF;line-height:1.3;letter-spacing:-0.01em;">
+                ${escapeHtml(opts.heading)}
               </h1>
-              <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.65;color:#D1D5DB;">
-                ${params.introHtml}
+              <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#D1D5DB;">
+                ${opts.introHtml}
               </div>
 
-              ${kobanBannerHtml}
+              ${studentIdentityHtml}
+              ${kobanHighlightHtml}
               ${detailsTableHtml}
-              ${params.extraBodyHtml || ''}
+              ${opts.extraBodyHtml || ''}
+              ${ctaHtml}
 
-              <!-- Single Primary CTA Button -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
-                <tr>
-                  <td align="center">
-                    <a href="${escapeHtml(params.ctaUrl)}" style="display:inline-block;padding:13px 28px;background-color:#E11D2A;color:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;text-decoration:none;border-radius:12px;letter-spacing:0.01em;">
-                      ${escapeHtml(params.ctaLabel)}
-                    </a>
-                  </td>
-                </tr>
-              </table>
+              ${
+                opts.footerNoteHtml
+                  ? `<div style="margin-top:20px;padding-top:16px;border-top:1px solid #222230;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#9CA3AF;">
+                       ${opts.footerNoteHtml}
+                     </div>`
+                  : ''
+              }
             </td>
           </tr>
 
           <!-- Footer -->
           <tr>
-            <td style="padding:20px 28px;background-color:#08080C;border-top:1px solid #181822;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.5;color:#6B7280;text-align:center;">
-              <p style="margin:0 0 6px 0;color:#9CA3AF;font-weight:600;">
-                Boardly · Pakistan's Entrance Exam &amp; FSc Preparation Platform
-              </p>
-              <p style="margin:0;">
-                This is an automated message. Need help? Contact support at
-                <a href="mailto:admin@boardly.cfd" style="color:#E11D2A;text-decoration:none;">admin@boardly.cfd</a>.
-              </p>
-              ${optionalFooterHtml}
+            <td style="padding:18px 24px;background-color:#0E0E14;border-top:1px solid #1E1E2A;">
+              ${footerContentHtml}
             </td>
           </tr>
         </table>
@@ -295,50 +579,130 @@ function renderBaseHtmlLayout(params: BaseEmailLayoutParams): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. KOBAN PURCHASE REQUEST SUBMITTED (Student + Admin)
+// 1. WELCOME & ONBOARDING EMAIL (After Signup)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function buildWelcomeOnboardingEmail(params: {
+  studentName: string;
+  studentEmail?: string;
+  referralCode?: string;
+  appUrl?: string;
+}): RenderedEmailTemplate {
+  const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
+  const firstName = (params.studentName || 'Student').trim().split(/\s+/)[0] || 'Student';
+  const subject = `Welcome to Boardly, ${firstName}! Your Entrance Prep Starts Now`;
+  const preheader = `Practice MDCAT, ECAT, NET, FAST & NTS MCQs, claim daily Kobans, and climb the Grand Line leaderboard.`;
+
+  const stepsHtml = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:18px 0;background-color:#101017;border:1px solid #242432;border-radius:12px;">
+      <tr>
+        <td style="padding:16px 18px;border-bottom:1px solid #1E1E2A;">
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;color:#FFFFFF;">
+            1. Take Your First Timed Practice Test
+          </div>
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;color:#9CA3AF;margin-top:4px;">
+            Pick your target university pattern (MDCAT, NET, FAST, ECAT, NTS) and get instant per-subject accuracy analytics.
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:16px 18px;border-bottom:1px solid #1E1E2A;">
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;color:#F5B301;">
+            2. Claim Daily Check-In &amp; Milestone Kobans
+          </div>
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;color:#9CA3AF;margin-top:4px;">
+            Earn free Kobans every day and unlock profile frames, nameplates, and aura effects in the Boardly Store.
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:16px 18px;">
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;color:#FFFFFF;">
+            3. Invite Friends (+5,000 Kobans Each)
+          </div>
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;color:#9CA3AF;margin-top:4px;">
+            Share your personal invite link from the Rewards Hub. When a friend verifies their email and completes 20 MCQs, you earn <strong style="color:#F5B301;">5,000 Kobans</strong> and they get <strong style="color:#F5B301;">1,000 Kobans</strong>.
+          </div>
+        </td>
+      </tr>
+    </table>
+  `;
+
+  const html = renderBaseHtmlLayout({
+    subject,
+    preheader,
+    badgeText: 'Welcome Aboard',
+    badgeColor: 'red',
+    heading: `Welcome to Boardly, ${firstName}!`,
+    introHtml: `<p style="margin:0 0 12px 0;">Your account is ready. Boardly is built to help you master university entrance tests with real exam simulations, subject-level analytics, and competitive study squads.</p>`,
+    extraBodyHtml: stepsHtml,
+    ctaLabel: 'Start Practising Now',
+    ctaUrl: `${appUrl}/dashboard/practice`,
+    secondaryCtaLabel: 'Open Rewards Hub',
+    secondaryCtaUrl: `${appUrl}/dashboard/rewards`,
+    appUrl,
+  });
+
+  const text = [
+    `Welcome to Boardly, ${firstName}!`,
+    ``,
+    `Your account is ready. Here is how to get started:`,
+    `1. Take a timed practice test: ${appUrl}/dashboard/practice`,
+    `2. Claim daily check-in Kobans & Store cosmetics: ${appUrl}/dashboard/rewards`,
+    `3. Invite friends to earn +5,000 Kobans per qualified referral.`,
+    ``,
+    `Need help? Contact us at support@boardly.cfd`,
+  ].join('\n');
+
+  return { subject, preheader, html, text };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. KOBAN PURCHASE REQUEST, APPROVAL & REJECTION
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function buildKobanPurchaseRequestStudentEmail(params: {
   studentName: string;
+  requestId?: string;
   kobansAmount: number;
   pkrAmount: number;
   paymentMethod: string;
   transactionId: string;
   packageName?: string;
-  requestedAt?: Date | string | number;
+  createdAt?: Date | string | number;
   appUrl?: string;
 }): RenderedEmailTemplate {
   const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
   const maskedRef = maskPaymentReference(params.transactionId);
-  const timeStr = formatPktDateTime(params.requestedAt);
-  const methodLabel = formatPaymentMethodLabel(params.paymentMethod);
-  const pkgLabel = params.packageName || `${params.kobansAmount.toLocaleString()} Kobans Package`;
+  const timeStr = formatPktDateTime(params.createdAt);
+  const pkgLabel = params.packageName || `${params.kobansAmount.toLocaleString()} Kobans Pack`;
+
   const subject = `We received your Koban request (${params.kobansAmount.toLocaleString()} Kobans) — Boardly`;
-  const preheader = `Your request for ${params.kobansAmount.toLocaleString()} Kobans (PKR ${params.pkrAmount}) is pending verification.`;
+  const preheader = `Your payment verification (${maskedRef}) for ${params.kobansAmount.toLocaleString()} Kobans is under admin review.`;
 
   const html = renderBaseHtmlLayout({
     subject,
     preheader,
-    badgeText: 'Pending Verification',
+    badgeText: 'Verification Pending',
     badgeColor: 'gold',
     heading: 'We received your Koban purchase request',
-    introHtml: `<p style="margin:0;">Assalam-o-Alaikum <strong>${escapeHtml(
+    introHtml: `<p style="margin:0;">Hi <strong>${escapeHtml(
       params.studentName || 'Student'
-    )}</strong>, we have received your payment verification request. Our team verifies mobile banking transfers promptly and will email you as soon as your Kobans are credited.</p>`,
+    )}</strong>, we have received your payment details and our admin team is verifying your transfer. You will receive an email confirmation as soon as your Kobans are credited.</p>`,
     kobanHighlight: {
       label: pkgLabel,
-      amountText: `+${params.kobansAmount.toLocaleString()} Kobans`,
-      subtext: `Amount Paid: PKR ${params.pkrAmount.toLocaleString()} · Status: Pending Verification`,
+      amountText: `${params.kobansAmount.toLocaleString()} Kobans`,
+      subtext: `PKR ${params.pkrAmount.toLocaleString()} via ${formatPaymentMethodLabel(params.paymentMethod)}`,
     },
     detailsRows: [
       { label: 'Package', value: pkgLabel },
-      { label: 'Amount (PKR)', value: `PKR ${params.pkrAmount.toLocaleString()}` },
-      { label: 'Payment Method', value: methodLabel },
+      { label: 'Kobans Requested', value: `${params.kobansAmount.toLocaleString()} Kobans`, highlightGold: true },
+      { label: 'Amount Paid', value: `PKR ${params.pkrAmount.toLocaleString()}` },
+      { label: 'Payment Method', value: formatPaymentMethodLabel(params.paymentMethod) },
       { label: 'Payment Reference', value: maskedRef, mono: true },
-      { label: 'Status', value: 'Pending Verification', highlightGold: true },
-      { label: 'Submitted (PKT)', value: timeStr },
+      { label: 'Time (PKT)', value: timeStr },
     ],
-    ctaLabel: 'View Wallet & Rewards',
+    ctaLabel: 'Check Wallet Status',
     ctaUrl: `${appUrl}/dashboard/rewards`,
     appUrl,
   });
@@ -347,96 +711,100 @@ export function buildKobanPurchaseRequestStudentEmail(params: {
     `BOARDLY — We received your Koban purchase request`,
     ``,
     `Hi ${params.studentName || 'Student'},`,
-    `We received your request for ${params.kobansAmount.toLocaleString()} Kobans (PKR ${params.pkrAmount.toLocaleString()}).`,
+    `We received your payment verification request and our team is reviewing it.`,
     ``,
     `Package: ${pkgLabel}`,
-    `Amount: PKR ${params.pkrAmount.toLocaleString()}`,
-    `Payment Method: ${methodLabel}`,
-    `Payment Reference (Masked): ${maskedRef}`,
-    `Status: Pending Verification`,
-    `Time: ${timeStr}`,
+    `Kobans Requested: ${params.kobansAmount.toLocaleString()} Kobans`,
+    `Amount Paid: PKR ${params.pkrAmount.toLocaleString()}`,
+    `Payment Method: ${formatPaymentMethodLabel(params.paymentMethod)}`,
+    `Payment Reference: ${maskedRef}`,
+    `Time (PKT): ${timeStr}`,
     ``,
-    `View your wallet: ${appUrl}/dashboard/rewards`,
-    ``,
-    `This is an automated message from Boardly (${appUrl}). Support: admin@boardly.cfd`,
+    `Check your wallet: ${appUrl}/dashboard/rewards`,
   ].join('\n');
 
   return { subject, preheader, html, text };
 }
 
 export function buildKobanPurchaseRequestAdminEmail(params: {
-  requestId: string;
+  requestId?: string;
+  studentUid: string;
   studentName: string;
   studentEmail: string;
-  studentUid: string;
   kobansAmount: number;
   pkrAmount: number;
   paymentMethod: string;
   transactionId: string;
   packageName?: string;
   note?: string;
-  requestedAt?: Date | string | number;
+  createdAt?: Date | string | number;
   appUrl?: string;
 }): RenderedEmailTemplate {
   const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
-  const timeStr = formatPktDateTime(params.requestedAt);
-  const methodLabel = formatPaymentMethodLabel(params.paymentMethod);
-  const pkgLabel = params.packageName || `${params.kobansAmount.toLocaleString()} Kobans`;
-  const subject = `[Admin] New Koban purchase request — ${params.studentName || params.studentEmail} (PKR ${params.pkrAmount})`;
-  const preheader = `${params.studentName} requested ${params.kobansAmount.toLocaleString()} Kobans via ${methodLabel} (TRX: ${params.transactionId}).`;
+  const timeStr = formatPktDateTime(params.createdAt);
+  const pkgLabel = params.packageName || `${params.kobansAmount.toLocaleString()} Kobans Pack`;
+  const eventLabel = formatEmailEventLabel('KOBAN_PURCHASE_REQUEST');
+  const txId = params.transactionId || params.requestId || 'N/A';
+
+  const subject = `${eventLabel}: +${params.kobansAmount.toLocaleString()} Kobans (PKR ${params.pkrAmount.toLocaleString()}) by ${params.studentName || 'Student'}`;
+  const preheader = `${params.studentName} (${params.studentEmail}) submitted TRX ${params.transactionId} via ${formatPaymentMethodLabel(params.paymentMethod)}.`;
 
   const html = renderBaseHtmlLayout({
     subject,
     preheader,
-    badgeText: 'Action Required · Payment Queue',
+    badgeText: eventLabel,
     badgeColor: 'red',
-    heading: 'New Koban purchase request',
-    introHtml: `<p style="margin:0;">A student has submitted a Koban purchase verification request. Please verify the transaction reference on your mobile banking portal before approving.</p>`,
-    kobanHighlight: {
-      label: 'Requested Credit',
-      amountText: `${params.kobansAmount.toLocaleString()} Kobans`,
-      subtext: `PKR ${params.pkrAmount.toLocaleString()} via ${methodLabel}`,
+    heading: `${eventLabel}: +${params.kobansAmount.toLocaleString()} Kobans`,
+    introHtml: `<p style="margin:0;">A student submitted a mobile payment transfer for verification.</p>`,
+    studentIdentity: {
+      name: params.studentName || 'Student',
+      email: params.studentEmail,
+      uid: params.studentUid,
+      transactionId: txId,
     },
     detailsRows: [
-      { label: 'Student Name', value: params.studentName || 'Student' },
-      { label: 'Student Email', value: params.studentEmail || 'Not provided', mono: true },
+      { label: 'Event type', value: eventLabel },
       { label: 'Package', value: pkgLabel },
-      { label: 'Amount (PKR)', value: `PKR ${params.pkrAmount.toLocaleString()}` },
-      { label: 'Payment Method', value: methodLabel },
-      { label: 'Full Transaction ID', value: params.transactionId, mono: true, highlightGold: true },
-      { label: 'Request ID', value: params.requestId, mono: true },
-      { label: 'Submitted Time', value: timeStr },
-      ...(params.note ? [{ label: 'Note', value: params.note }] : []),
+      { label: 'Kobans received (pending)', value: `+${params.kobansAmount.toLocaleString()} Kobans`, highlightGold: true },
+      { label: 'PKR amount', value: `PKR ${params.pkrAmount.toLocaleString()}` },
+      { label: 'Payment method', value: formatPaymentMethodLabel(params.paymentMethod) },
+      { label: 'Transaction ID', value: formatShortTxId(txId), mono: true },
+      { label: 'Full reference', value: params.transactionId, mono: true },
+      { label: 'Time (PKT)', value: timeStr },
     ],
-    ctaLabel: 'Review in Admin Panel',
-    ctaUrl: `${appUrl}/admin/payments`,
+    ctaLabel: 'View this transaction',
+    ctaUrl: `${appUrl}/admin/wallets/${encodeURIComponent(params.studentUid)}?tx=${encodeURIComponent(txId)}`,
     appUrl,
+    isAdminEmail: true,
   });
 
   const text = [
-    `BOARDLY ADMIN — New Koban purchase request`,
+    `BOARDLY ADMIN — ${subject}`,
     ``,
     `Student: ${params.studentName} (${params.studentEmail})`,
+    `User ID: ${params.studentUid}`,
+    `Event type: ${eventLabel}`,
     `Package: ${pkgLabel}`,
-    `Amount (PKR): PKR ${params.pkrAmount.toLocaleString()}`,
-    `Payment Method: ${methodLabel}`,
-    `Full Transaction ID / Reference: ${params.transactionId}`,
-    `Time: ${timeStr}`,
-    ...(params.note ? [`Note: ${params.note}`] : []),
+    `Kobans requested: +${params.kobansAmount.toLocaleString()} Kobans`,
+    `PKR amount: PKR ${params.pkrAmount.toLocaleString()}`,
+    `Payment method: ${formatPaymentMethodLabel(params.paymentMethod)}`,
+    `Transaction ID: ${txId}`,
+    `Time (PKT): ${timeStr}`,
     ``,
-    `Review in Admin Panel: ${appUrl}/admin/payments`,
+    `View this transaction: ${appUrl}/admin/wallets/${encodeURIComponent(params.studentUid)}?tx=${encodeURIComponent(txId)}`,
+    `Internal admin notification`,
   ].join('\n');
 
   return { subject, preheader, html, text };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 2. KOBAN PURCHASE APPROVED OR REJECTED BY ADMIN (Student + Admin Copy)
-// ─────────────────────────────────────────────────────────────────────────────
-
 export function buildKobanPurchaseApprovedStudentEmail(params: {
+  requestId?: string;
   studentName: string;
-  approvedKobans: number;
+  kobansCredited?: number;
+  approvedKobans?: number;
+  kobansAmount?: number;
+  balanceBefore?: number;
   newBalance: number;
   transactionId?: string;
   approvedAt?: Date | string | number;
@@ -445,44 +813,61 @@ export function buildKobanPurchaseApprovedStudentEmail(params: {
   const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
   const timeStr = formatPktDateTime(params.approvedAt);
   const maskedRef = maskPaymentReference(params.transactionId);
-  const subject = `Kobans added! +${params.approvedKobans.toLocaleString()} Kobans credited — Boardly`;
-  const preheader = `Your payment was verified and +${params.approvedKobans.toLocaleString()} Kobans were added to your wallet. New balance: ${params.newBalance.toLocaleString()} Kobans.`;
+  const credited = Math.max(
+    0,
+    Math.floor(Number(params.kobansCredited ?? params.approvedKobans ?? params.kobansAmount) || 0)
+  );
+  const afterBal = Math.max(0, Math.floor(Number(params.newBalance) || 0));
+  const beforeBal =
+    typeof params.balanceBefore === 'number' && Number.isFinite(params.balanceBefore)
+      ? Math.max(0, Math.floor(params.balanceBefore))
+      : Math.max(0, afterBal - credited);
+
+  const subject = `+${credited.toLocaleString()} Kobans Added to Your Wallet! — Boardly`;
+  const preheader = `Your payment has been verified. Balance before: ${beforeBal.toLocaleString()} Kobans · New wallet balance: ${afterBal.toLocaleString()} Kobans.`;
 
   const html = renderBaseHtmlLayout({
     subject,
     preheader,
-    badgeText: 'Payment Verified',
-    badgeColor: 'green',
-    heading: 'Kobans added to your wallet!',
+    badgeText: 'Payment Approved',
+    badgeColor: 'gold',
+    heading: `+${credited.toLocaleString()} Kobans credited to your wallet!`,
     introHtml: `<p style="margin:0;">Great news, <strong>${escapeHtml(
       params.studentName || 'Student'
-    )}</strong>! Your payment has been verified and your Kobans are ready to use in the Boardly Store.</p>`,
+    )}</strong>! Your payment request has been verified and your Kobans are now ready to spend in the Boardly Store.</p>`,
     kobanHighlight: {
-      label: 'Kobans Added',
-      amountText: `+${params.approvedKobans.toLocaleString()} Kobans`,
-      subtext: `New Wallet Balance: ${params.newBalance.toLocaleString()} Kobans`,
+      label: 'Kobans Credited',
+      amountText: `+${credited.toLocaleString()} Kobans`,
+      subtext: `Balance before: ${beforeBal.toLocaleString()} Kobans  •  New Balance: ${afterBal.toLocaleString()} Kobans`,
     },
     detailsRows: [
-      { label: 'Kobans Credited', value: `+${params.approvedKobans.toLocaleString()} Kobans`, highlightGold: true },
-      { label: 'New Balance', value: `${params.newBalance.toLocaleString()} Kobans`, highlightGold: true },
-      { label: 'Payment Reference', value: maskedRef, mono: true },
-      { label: 'Verified At', value: timeStr },
+      { label: 'Status', value: 'Approved & Credited' },
+      { label: 'Kobans credited', value: `+${credited.toLocaleString()} Kobans`, highlightGold: true },
+      { label: 'Balance before', value: `${beforeBal.toLocaleString()} Kobans`, mutedSmall: true },
+      { label: 'New balance', value: `${afterBal.toLocaleString()} Kobans`, highlightGold: true },
+      ...(params.transactionId ? [{ label: 'Payment reference', value: maskedRef, mono: true }] : []),
+      { label: 'Time (PKT)', value: timeStr },
     ],
-    ctaLabel: 'Open Boardly Store',
-    ctaUrl: `${appUrl}/dashboard/store`,
+    ctaLabel: 'Visit Boardly Store',
+    ctaUrl: `${appUrl}/store`,
+    secondaryCtaLabel: 'Open Wallet',
+    secondaryCtaUrl: `${appUrl}/dashboard/rewards`,
     appUrl,
   });
 
   const text = [
-    `BOARDLY — Kobans added to your wallet!`,
+    `BOARDLY — +${credited.toLocaleString()} Kobans Added to Your Wallet!`,
     ``,
     `Hi ${params.studentName || 'Student'},`,
-    `Your payment (Ref: ${maskedRef}) has been verified!`,
-    `Kobans Added: +${params.approvedKobans.toLocaleString()} Kobans`,
-    `New Balance: ${params.newBalance.toLocaleString()} Kobans`,
-    `Verified At: ${timeStr}`,
+    `Your Koban purchase request has been approved!`,
     ``,
-    `Open Boardly Store: ${appUrl}/dashboard/store`,
+    `Kobans Credited: +${credited.toLocaleString()} Kobans`,
+    `Balance Before: ${beforeBal.toLocaleString()} Kobans`,
+    `New Balance: ${afterBal.toLocaleString()} Kobans`,
+    ...(params.transactionId ? [`Payment Reference: ${maskedRef}`] : []),
+    `Time (PKT): ${timeStr}`,
+    ``,
+    `Spend your Kobans in the Boardly Store: ${appUrl}/store`,
   ].join('\n');
 
   return { subject, preheader, html, text };
@@ -491,8 +876,8 @@ export function buildKobanPurchaseApprovedStudentEmail(params: {
 export function buildKobanPurchaseRejectedStudentEmail(params: {
   studentName: string;
   requestedKobans: number;
-  reason: string;
   transactionId?: string;
+  reason: string;
   rejectedAt?: Date | string | number;
   appUrl?: string;
 }): RenderedEmailTemplate {
@@ -515,10 +900,10 @@ export function buildKobanPurchaseRejectedStudentEmail(params: {
     )}) but could not verify the transaction.</p>
     <p style="margin:0;"><strong>What to do next:</strong> Please double-check your ${PAYMENT_METHODS_PAIR_LABEL} or bank Transaction ID (TRX) and submit a new request with the exact reference, or reply/contact <a href="mailto:admin@boardly.cfd" style="color:#E11D2A;">admin@boardly.cfd</a> with your payment screenshot.</p>`,
     detailsRows: [
-      { label: 'Requested Amount', value: `${params.requestedKobans.toLocaleString()} Kobans` },
-      { label: 'Payment Reference', value: maskedRef, mono: true },
+      { label: 'Requested amount', value: `${params.requestedKobans.toLocaleString()} Kobans` },
+      { label: 'Payment reference', value: maskedRef, mono: true },
       { label: 'Reason', value: params.reason || 'Transaction ID could not be verified on mobile banking portal.' },
-      { label: 'Reviewed At', value: timeStr },
+      { label: 'Time (PKT)', value: timeStr },
     ],
     ctaLabel: 'Submit Corrected Request',
     ctaUrl: `${appUrl}/dashboard/rewards`,
@@ -531,6 +916,7 @@ export function buildKobanPurchaseRejectedStudentEmail(params: {
     `Hi ${params.studentName || 'Student'},`,
     `We could not verify your request for ${params.requestedKobans.toLocaleString()} Kobans (Ref: ${maskedRef}).`,
     `Reason: ${params.reason || 'Transaction ID could not be verified.'}`,
+    `Time (PKT): ${timeStr}`,
     ``,
     `What to do next: Double-check your Transaction ID (TRX) and submit a corrected request at ${appUrl}/dashboard/rewards, or email admin@boardly.cfd with your payment receipt.`,
   ].join('\n');
@@ -541,11 +927,14 @@ export function buildKobanPurchaseRejectedStudentEmail(params: {
 export function buildKobanPurchaseDecisionAdminCopyEmail(params: {
   decision: 'approved' | 'rejected';
   adminEmail: string;
+  studentUid?: string;
   studentName: string;
   studentEmail?: string;
   kobansAmount: number;
+  balanceBefore?: number;
   newBalance?: number;
   transactionId?: string;
+  ledgerId?: string;
   reason?: string;
   decidedAt?: Date | string | number;
   appUrl?: string;
@@ -553,45 +942,83 @@ export function buildKobanPurchaseDecisionAdminCopyEmail(params: {
   const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
   const timeStr = formatPktDateTime(params.decidedAt);
   const isApproved = params.decision === 'approved';
-  const subject = `[Admin Copy] Purchase ${isApproved ? 'approved' : 'rejected'} by ${params.adminEmail} — ${params.studentName}`;
-  const preheader = `Koban request (${params.kobansAmount.toLocaleString()} Kobans) for ${params.studentName} was ${params.decision} by ${params.adminEmail}.`;
+  const eventCode = isApproved ? 'KOBAN_PURCHASE_APPROVED' : 'KOBAN_PURCHASE_REJECTED';
+  const eventLabel = formatEmailEventLabel(eventCode);
+  const amount = Math.max(0, Math.floor(Number(params.kobansAmount) || 0));
+  const hasNewBal = typeof params.newBalance === 'number' && Number.isFinite(params.newBalance);
+  const afterBal = hasNewBal ? Math.max(0, Math.floor(params.newBalance!)) : undefined;
+  const beforeBal =
+    typeof params.balanceBefore === 'number' && Number.isFinite(params.balanceBefore)
+      ? Math.max(0, Math.floor(params.balanceBefore))
+      : afterBal !== undefined && isApproved
+      ? Math.max(0, afterBal - amount)
+      : undefined;
+
+  const txId = params.ledgerId || params.transactionId || 'N/A';
+  const uidForUrl = params.studentUid || 'search';
+
+  const subject = isApproved
+    ? `${eventLabel}: +${amount.toLocaleString()} Kobans by ${params.studentName || 'Student'}`
+    : `${eventLabel}: ${amount.toLocaleString()} Kobans by ${params.studentName || 'Student'}`;
+
+  const preheader = `${eventLabel} (${isApproved ? '+' : ''}${amount.toLocaleString()} Kobans) for ${params.studentName}${
+    afterBal !== undefined ? ` · New balance: ${afterBal.toLocaleString()} Kobans` : ''
+  }.`;
 
   const html = renderBaseHtmlLayout({
     subject,
     preheader,
-    badgeText: isApproved ? 'Approved by Admin' : 'Rejected by Admin',
+    badgeText: eventLabel,
     badgeColor: isApproved ? 'green' : 'red',
-    heading: `Purchase ${isApproved ? 'approved' : 'rejected'} by ${params.adminEmail}`,
-    introHtml: `<p style="margin:0;">Admin audit summary for Koban purchase verification.</p>`,
+    heading: `${eventLabel} · ${params.studentName || 'Student'}`,
+    introHtml: `<p style="margin:0;">Processed by administrator <strong>${escapeHtml(params.adminEmail)}</strong>.</p>`,
+    studentIdentity: {
+      name: params.studentName || 'Student',
+      email: params.studentEmail,
+      uid: params.studentUid,
+      transactionId: txId,
+    },
     detailsRows: [
-      { label: 'Action By', value: params.adminEmail, mono: true },
-      { label: 'Decision', value: isApproved ? 'APPROVED' : 'REJECTED', highlightGold: isApproved },
-      { label: 'Student', value: `${params.studentName} (${params.studentEmail || 'N/A'})` },
-      { label: 'Kobans Amount', value: `${params.kobansAmount.toLocaleString()} Kobans`, highlightGold: true },
-      ...(typeof params.newBalance === 'number'
-        ? [{ label: 'Student New Balance', value: `${params.newBalance.toLocaleString()} Kobans`, highlightGold: true }]
+      { label: 'Event type', value: eventLabel },
+      ...(beforeBal !== undefined
+        ? [{ label: 'Balance before', value: `${beforeBal.toLocaleString()} Kobans`, mutedSmall: true }]
         : []),
-      ...(params.transactionId
-        ? [{ label: 'Full Transaction ID', value: params.transactionId, mono: true }]
+      {
+        label: isApproved ? 'Kobans received' : 'Requested amount',
+        value: `${isApproved ? '+' : ''}${amount.toLocaleString()} Kobans`,
+        highlightGold: isApproved,
+        highlightRed: !isApproved,
+      },
+      ...(afterBal !== undefined
+        ? [{ label: 'New balance', value: `${afterBal.toLocaleString()} Kobans`, highlightGold: true }]
         : []),
-      ...(params.reason ? [{ label: 'Rejection Reason', value: params.reason }] : []),
-      { label: 'Timestamp', value: timeStr },
+      { label: 'Transaction ID', value: formatShortTxId(txId), mono: true },
+      { label: 'Action by', value: params.adminEmail, mono: true },
+      ...(params.reason ? [{ label: 'Rejection reason', value: params.reason }] : []),
+      { label: 'Time (PKT)', value: timeStr },
     ],
-    ctaLabel: 'Open Admin Payments',
-    ctaUrl: `${appUrl}/admin/payments`,
+    ctaLabel: 'View this transaction',
+    ctaUrl: `${appUrl}/admin/wallets/${encodeURIComponent(uidForUrl)}?tx=${encodeURIComponent(txId)}`,
     appUrl,
+    isAdminEmail: true,
   });
 
   const text = [
-    `BOARDLY ADMIN COPY — Purchase ${params.decision} by ${params.adminEmail}`,
+    `BOARDLY ADMIN — ${subject}`,
     ``,
     `Student: ${params.studentName} (${params.studentEmail || 'N/A'})`,
-    `Decision: ${params.decision.toUpperCase()}`,
-    `Kobans: ${params.kobansAmount.toLocaleString()} Kobans`,
-    ...(typeof params.newBalance === 'number' ? [`New Balance: ${params.newBalance.toLocaleString()} Kobans`] : []),
-    ...(params.transactionId ? [`Transaction ID: ${params.transactionId}`] : []),
+    ...(params.studentUid ? [`User ID: ${params.studentUid}`] : []),
+    `Event type: ${eventLabel}`,
+    ...(beforeBal !== undefined ? [`Balance before: ${beforeBal.toLocaleString()} Kobans`] : []),
+    `${isApproved ? 'Kobans received' : 'Requested amount'}: ${isApproved ? '+' : ''}${amount.toLocaleString()} Kobans`,
+    ...(afterBal !== undefined ? [`New balance: ${afterBal.toLocaleString()} Kobans`] : []),
+    `Transaction ID: ${txId}`,
+    `Action by: ${params.adminEmail}`,
     ...(params.reason ? [`Reason: ${params.reason}`] : []),
-    `Time: ${timeStr}`,
+    `Time (PKT): ${timeStr}`,
+    ``,
+    `View this transaction: ${appUrl}/admin/wallets/${encodeURIComponent(uidForUrl)}?tx=${encodeURIComponent(txId)}`,
+    `Internal admin notification`,
   ].join('\n');
 
   return { subject, preheader, html, text };
@@ -610,31 +1037,46 @@ export interface KobanReceiptLineItem {
 
 export function buildKobanReceiptStudentEmail(params: {
   studentName: string;
-  deltaAmount: number; // positive = received, negative = spent
+  deltaAmount?: number; // positive = received, negative = spent
+  amount?: number;
+  balanceBefore?: number;
   newBalance: number;
   reason: string;
-  subType: KobanReceiptSubType;
+  subType?: KobanReceiptSubType;
+  eventType?: KobanReceiptSubType;
   itemName?: string;
+  itemNames?: string[];
   items?: KobanReceiptLineItem[];
+  transactionId?: string;
   timestamp?: Date | string | number;
   appUrl?: string;
 }): RenderedEmailTemplate {
   const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
-  const isPositive = params.deltaAmount >= 0;
-  const absAmount = Math.abs(Math.floor(params.deltaAmount));
+  const rawDelta = Number(params.deltaAmount ?? params.amount ?? 0);
+  const subTypeVal = (params.subType || params.eventType || 'store_purchase') as KobanReceiptSubType;
+  const isPositive = rawDelta >= 0;
+  const absAmount = Math.abs(Math.floor(rawDelta));
+  const afterBal = Math.max(0, Math.floor(Number(params.newBalance) || 0));
+  const beforeBal =
+    typeof params.balanceBefore === 'number' && Number.isFinite(params.balanceBefore)
+      ? Math.max(0, Math.floor(params.balanceBefore))
+      : Math.max(0, afterBal - Math.floor(rawDelta));
+
   const amountSignText = isPositive
     ? `+${absAmount.toLocaleString()} Kobans received`
     : `-${absAmount.toLocaleString()} Kobans spent`;
   const timeStr = formatPktDateTime(params.timestamp);
   const isSmallOptional =
-    params.subType === 'daily_claim' || params.subType === 'milestone_claim';
+    subTypeVal === 'daily_claim' ||
+    subTypeVal === 'daily_checkin' ||
+    subTypeVal === 'milestone_claim';
 
   const lineItems = Array.isArray(params.items)
     ? params.items.filter((it) => it && typeof it.name === 'string')
     : [];
 
   const subject = `${amountSignText} (${params.reason}) — Boardly`;
-  const preheader = `${amountSignText} · New wallet balance: ${params.newBalance.toLocaleString()} Kobans.`;
+  const preheader = `${amountSignText} · Balance before: ${beforeBal.toLocaleString()} Kobans · New balance: ${afterBal.toLocaleString()} Kobans.`;
 
   const itemizedTableHtml =
     lineItems.length > 0
@@ -679,8 +1121,8 @@ export function buildKobanReceiptStudentEmail(params: {
                <td style="padding:11px 14px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;font-weight:700;color:#FFFFFF;">
                  Total Spent
                </td>
-               <td align="right" style="padding:11px 14px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:14px;font-weight:800;color:#F5B301;white-space:nowrap;">
-                 ${absAmount.toLocaleString()} Kobans
+               <td align="right" style="padding:11px 14px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:14px;font-weight:800;color:#FF6B74;white-space:nowrap;">
+                 -${absAmount.toLocaleString()} Kobans
                </td>
              </tr>
            </table>
@@ -691,30 +1133,37 @@ export function buildKobanReceiptStudentEmail(params: {
     subject,
     preheader,
     badgeText: isPositive ? 'Kobans Credited' : 'Kobans Spent',
-    badgeColor: isPositive ? 'gold' : 'neutral',
+    badgeColor: isPositive ? 'gold' : 'red',
     heading: amountSignText,
     introHtml: `<p style="margin:0;">Hi <strong>${escapeHtml(
       params.studentName || 'Student'
     )}</strong>, here is your Boardly Koban wallet receipt.</p>`,
     kobanHighlight: {
-      label: params.reason,
+      label: formatEmailEventLabel(subTypeVal),
       amountText: isPositive ? `+${absAmount.toLocaleString()} Kobans` : `-${absAmount.toLocaleString()} Kobans`,
-      subtext: `New Balance: ${params.newBalance.toLocaleString()} Kobans`,
+      subtext: `Balance before: ${beforeBal.toLocaleString()} Kobans  •  New Balance: ${afterBal.toLocaleString()} Kobans`,
+      isNegative: !isPositive,
     },
     extraBodyHtml: itemizedTableHtml,
     detailsRows: [
+      { label: 'Event type', value: formatEmailEventLabel(subTypeVal) },
       { label: 'Activity', value: params.reason },
       ...(params.itemName && lineItems.length === 0 ? [{ label: 'Item', value: params.itemName }] : []),
       {
-        label: isPositive ? 'Amount Received' : 'Total Spent',
+        label: isPositive ? 'Kobans received' : 'Kobans spent',
         value: `${isPositive ? '+' : '-'}${absAmount.toLocaleString()} Kobans`,
-        highlightGold: true,
+        highlightGold: isPositive,
+        highlightRed: !isPositive,
       },
-      { label: 'New Wallet Balance', value: `${params.newBalance.toLocaleString()} Kobans`, highlightGold: true },
+      { label: 'Balance before', value: `${beforeBal.toLocaleString()} Kobans`, mutedSmall: true },
+      { label: 'New balance', value: `${afterBal.toLocaleString()} Kobans`, highlightGold: true },
+      ...(params.transactionId
+        ? [{ label: 'Transaction ID', value: formatShortTxId(params.transactionId), mono: true }]
+        : []),
       { label: 'Time (PKT)', value: timeStr },
     ],
-    ctaLabel: params.subType === 'store_purchase' ? 'View Cosmetics in Store' : 'Open Student Rewards',
-    ctaUrl: params.subType === 'store_purchase' ? `${appUrl}/store` : `${appUrl}/dashboard/rewards`,
+    ctaLabel: subTypeVal === 'store_purchase' ? 'View Cosmetics in Store' : 'Open Student Rewards',
+    ctaUrl: subTypeVal === 'store_purchase' ? `${appUrl}/store` : `${appUrl}/dashboard/rewards`,
     appUrl,
     isOptionalEmail: isSmallOptional,
   });
@@ -731,7 +1180,7 @@ export function buildKobanReceiptStudentEmail(params: {
                 Math.floor(Number(it.priceKobans) || 0)
               ).toLocaleString()} Kobans`
           ),
-          `Total: ${absAmount.toLocaleString()} Kobans`,
+          `Total Spent: -${absAmount.toLocaleString()} Kobans`,
         ]
       : [];
 
@@ -739,11 +1188,14 @@ export function buildKobanReceiptStudentEmail(params: {
     `BOARDLY WALLET RECEIPT — ${amountSignText}`,
     ``,
     `Hi ${params.studentName || 'Student'},`,
+    `Event: ${formatEmailEventLabel(subTypeVal)}`,
     `Reason: ${params.reason}`,
     ...itemizedTextLines,
-    `Change: ${isPositive ? '+' : '-'}${absAmount.toLocaleString()} Kobans`,
-    `New Balance: ${params.newBalance.toLocaleString()} Kobans`,
-    `Time: ${timeStr}`,
+    `${isPositive ? 'Kobans received' : 'Kobans spent'}: ${isPositive ? '+' : '-'}${absAmount.toLocaleString()} Kobans`,
+    `Balance before: ${beforeBal.toLocaleString()} Kobans`,
+    `New balance: ${afterBal.toLocaleString()} Kobans`,
+    ...(params.transactionId ? [`Transaction ID: ${formatShortTxId(params.transactionId)}`] : []),
+    `Time (PKT): ${timeStr}`,
     ``,
     `View wallet: ${appUrl}/dashboard/rewards`,
   ].join('\n');
@@ -762,66 +1214,112 @@ export function buildKobanActivityAdminAlertEmail(params: {
   studentName: string;
   studentEmail?: string;
   studentUid: string;
-  deltaAmount: number;
+  deltaAmount?: number;
+  amount?: number;
+  balanceBefore?: number;
   newBalance: number;
   reason: string;
-  subType: KobanReceiptSubType;
+  subType?: KobanReceiptSubType;
+  eventType?: KobanReceiptSubType;
+  itemName?: string;
+  itemNames?: string[];
   items?: KobanReceiptLineItem[];
+  transactionId?: string;
   adminEmail?: string;
   timestamp?: Date | string | number;
   appUrl?: string;
 }): RenderedEmailTemplate {
   const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
-  const isPositive = params.deltaAmount >= 0;
-  const absAmount = Math.abs(Math.floor(params.deltaAmount));
+  const rawDelta = Number(params.deltaAmount ?? params.amount ?? 0);
+  const subTypeVal = (params.subType || params.eventType || 'store_purchase') as KobanReceiptSubType;
+  const isPositive = rawDelta >= 0;
+  const absAmount = Math.abs(Math.floor(rawDelta));
+  const afterBal = Math.max(0, Math.floor(Number(params.newBalance) || 0));
+  const beforeBal =
+    typeof params.balanceBefore === 'number' && Number.isFinite(params.balanceBefore)
+      ? Math.max(0, Math.floor(params.balanceBefore))
+      : Math.max(0, afterBal - Math.floor(rawDelta));
+
   const timeStr = formatPktDateTime(params.timestamp);
+  const eventLabel = formatEmailEventLabel(subTypeVal);
+
   const lineItems = Array.isArray(params.items)
     ? params.items.filter((it) => it && typeof it.name === 'string')
     : [];
   const itemsSummary =
     lineItems.length > 0
       ? lineItems
-          .map((it) => `${it.name} (${Math.max(0, Math.floor(Number(it.priceKobans) || 0)).toLocaleString()} K)`)
+          .map((it) => `${it.name} (${Math.max(0, Math.floor(Number(it.priceKobans) || 0)).toLocaleString()} Kobans)`)
           .join(', ')
       : undefined;
 
-  const subject = `[Admin Wallet Alert] ${isPositive ? '+' : '-'}${absAmount.toLocaleString()} Kobans (${params.reason}) — ${params.studentName}`;
-  const preheader = `${params.studentName} (${params.subType}): ${isPositive ? '+' : '-'}${absAmount.toLocaleString()} Kobans. New balance: ${params.newBalance.toLocaleString()} Kobans.`;
+  const primaryItemLabel =
+    lineItems.length === 1
+      ? lineItems[0].name
+      : lineItems.length > 1
+      ? `${lineItems[0].name} +${lineItems.length - 1} more`
+      : params.itemName || (Array.isArray(params.itemNames) && params.itemNames[0]) || params.reason.replace(/^Store Purchase:\s*/i, '').trim() || eventLabel;
+
+  const signedKobansText = `${isPositive ? '+' : '-'}${absAmount.toLocaleString()} Kobans`;
+  const studentDisplay = params.studentName || params.studentEmail || params.studentUid || 'Student';
+  const txId = params.transactionId || `${subTypeVal}_${Date.now()}`;
+
+  // Informative subject line, e.g. "Store purchase: Sakura Blade Ring (-840 Kobans) by <student name>"
+  const subject = `${eventLabel}: ${primaryItemLabel} (${signedKobansText}) by ${studentDisplay}`;
+  const preheader = `${eventLabel} by ${studentDisplay}: ${signedKobansText}. Balance before: ${beforeBal.toLocaleString()} Kobans → New balance: ${afterBal.toLocaleString()} Kobans.`;
 
   const html = renderBaseHtmlLayout({
     subject,
     preheader,
-    badgeText: `Wallet Alert · ${params.subType.replace(/_/g, ' ')}`,
-    badgeColor: 'gold',
-    heading: `${isPositive ? '+' : '-'}${absAmount.toLocaleString()} Kobans · ${params.reason}`,
-    introHtml: `<p style="margin:0;">High-value Koban transaction, Store purchase, or Admin wallet adjustment recorded.</p>`,
+    badgeText: eventLabel,
+    badgeColor: isPositive ? 'gold' : 'red',
+    heading: `${eventLabel}: ${primaryItemLabel}`,
+    introHtml: `<p style="margin:0;">Wallet transaction recorded for <strong>${escapeHtml(studentDisplay)}</strong>.</p>`,
+    studentIdentity: {
+      name: studentDisplay,
+      email: params.studentEmail,
+      uid: params.studentUid,
+      transactionId: txId,
+    },
     detailsRows: [
-      { label: 'Student', value: `${params.studentName} (${params.studentEmail || params.studentUid})` },
-      { label: 'Event Type', value: params.subType.toUpperCase(), mono: true },
-      { label: 'Reason', value: params.reason },
+      { label: 'Event type', value: eventLabel },
+      { label: 'Description', value: params.reason },
       ...(itemsSummary ? [{ label: `Items (${lineItems.length})`, value: itemsSummary }] : []),
+      { label: 'Balance before', value: `${beforeBal.toLocaleString()} Kobans`, mutedSmall: true },
       {
-        label: 'Kobans Delta',
-        value: `${isPositive ? '+' : '-'}${absAmount.toLocaleString()} Kobans`,
-        highlightGold: true,
+        label: isPositive ? 'Kobans received' : 'Kobans spent',
+        value: signedKobansText,
+        highlightGold: isPositive,
+        highlightRed: !isPositive,
       },
-      { label: 'New Balance', value: `${params.newBalance.toLocaleString()} Kobans`, highlightGold: true },
-      ...(params.adminEmail ? [{ label: 'Performed By Admin', value: params.adminEmail, mono: true }] : []),
+      { label: 'New balance', value: `${afterBal.toLocaleString()} Kobans`, highlightGold: true },
+      { label: 'Transaction ID', value: formatShortTxId(txId), mono: true },
+      ...(params.adminEmail ? [{ label: 'Performed by admin', value: params.adminEmail, mono: true }] : []),
       { label: 'Time (PKT)', value: timeStr },
     ],
-    ctaLabel: 'Inspect Student Wallets',
-    ctaUrl: `${appUrl}/admin/kobans`,
+    ctaLabel: 'View this transaction',
+    ctaUrl: `${appUrl}/admin/wallets/${encodeURIComponent(params.studentUid)}?tx=${encodeURIComponent(txId)}`,
     appUrl,
+    isAdminEmail: true,
   });
 
   const text = [
-    `BOARDLY ADMIN WALLET ALERT`,
-    `Student: ${params.studentName} (${params.studentEmail || params.studentUid})`,
-    `Event: ${params.subType} — ${params.reason}`,
+    `BOARDLY ADMIN — ${subject}`,
+    ``,
+    `Student: ${studentDisplay} (${params.studentEmail || 'N/A'})`,
+    `User ID: ${params.studentUid}`,
+    `Event type: ${eventLabel}`,
+    `Description: ${params.reason}`,
     ...(itemsSummary ? [`Items: ${itemsSummary}`] : []),
-    `Amount: ${isPositive ? '+' : '-'}${absAmount.toLocaleString()} Kobans`,
-    `New Balance: ${params.newBalance.toLocaleString()} Kobans`,
-    `Time: ${timeStr}`,
+    `Balance before: ${beforeBal.toLocaleString()} Kobans`,
+    `${isPositive ? 'Kobans received' : 'Kobans spent'}: ${signedKobansText}`,
+    `New balance: ${afterBal.toLocaleString()} Kobans`,
+    `Transaction ID: ${formatShortTxId(txId)}`,
+    ...(params.adminEmail ? [`Performed by admin: ${params.adminEmail}`] : []),
+    `Time (PKT): ${timeStr}`,
+    ``,
+    `View this transaction: ${appUrl}/admin/wallets/${encodeURIComponent(params.studentUid)}?tx=${encodeURIComponent(txId)}`,
+    `Internal admin notification`,
   ].join('\n');
 
   return { subject, preheader, html, text };
@@ -857,12 +1355,12 @@ export function buildTestStartedStudentEmail(params: {
       params.studentName || 'Student'
     )}</strong>, your test session is now active. Stay focused and give it your best effort!</p>`,
     detailsRows: [
-      { label: 'Test Name', value: params.testName },
+      { label: 'Test name', value: params.testName },
       { label: 'University / Pattern', value: params.universityPattern || 'Standard Drill' },
-      { label: 'Subject Scope', value: params.subjectScope || 'General' },
-      { label: 'Total Questions', value: `${params.totalQuestions} MCQs` },
-      ...(params.durationMinutes ? [{ label: 'Time Limit', value: `${params.durationMinutes} minutes` }] : []),
-      { label: 'Started At', value: timeStr },
+      { label: 'Subject scope', value: params.subjectScope || 'General' },
+      { label: 'Total questions', value: `${params.totalQuestions} MCQs` },
+      ...(params.durationMinutes ? [{ label: 'Time limit', value: `${params.durationMinutes} minutes` }] : []),
+      { label: 'Time (PKT)', value: timeStr },
     ],
     ctaLabel: 'Resume Test Session',
     ctaUrl: `${appUrl}/test/${encodeURIComponent(params.attemptId)}`,
@@ -875,7 +1373,7 @@ export function buildTestStartedStudentEmail(params: {
     `Pattern: ${params.universityPattern}`,
     `Subject Scope: ${params.subjectScope}`,
     `Questions: ${params.totalQuestions} MCQs`,
-    `Started At: ${timeStr}`,
+    `Time (PKT): ${timeStr}`,
     `Resume Test: ${appUrl}/test/${params.attemptId}`,
   ].join('\n');
 
@@ -995,12 +1493,12 @@ export function buildTestCompletedStudentEmail(params: {
       ${escapeHtml(statusLine)}
     </p>`,
     detailsRows: [
-      { label: 'Test Name', value: params.testName },
+      { label: 'Test name', value: params.testName },
       { label: 'University / Pattern', value: params.universityPattern || 'Standard Drill' },
-      { label: 'Subject Scope', value: params.subjectScope || 'All Subjects' },
-      { label: 'Date / Time (PKT)', value: timeStr },
-      { label: 'Duration Used', value: durationStr },
-      { label: 'Total Questions', value: String(params.totalQuestions), mono: true },
+      { label: 'Subject scope', value: params.subjectScope || 'All Subjects' },
+      { label: 'Time (PKT)', value: timeStr },
+      { label: 'Duration used', value: durationStr },
+      { label: 'Total questions', value: String(params.totalQuestions), mono: true },
       { label: 'Attempted', value: `${params.attempted} / ${params.totalQuestions}`, mono: true },
       { label: 'Correct / Wrong', value: `${params.correct} Correct · ${params.wrong} Wrong`, mono: true },
       { label: 'Score', value: `${params.score} / ${maxMarks}`, highlightGold: true, mono: true },
@@ -1019,7 +1517,7 @@ export function buildTestCompletedStudentEmail(params: {
     `Verdict: ${statusLine}`,
     `University / Pattern: ${params.universityPattern || 'Standard Drill'}`,
     `Subject Scope: ${params.subjectScope || 'All Subjects'}`,
-    `Date / Time: ${timeStr}`,
+    `Time (PKT): ${timeStr}`,
     `Duration Used: ${durationStr}`,
     `Total Questions: ${params.totalQuestions}`,
     `Attempted: ${params.attempted}`,
@@ -1046,8 +1544,9 @@ export function buildDailyAdminDigestEmail(params: {
   appUrl?: string;
 }): RenderedEmailTemplate {
   const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
-  const subject = `[Boardly Daily Digest] ${params.pktDateLabel} — ${params.testsTakenCount} Tests · +${params.totalKobansEarned.toLocaleString()} / -${params.totalKobansSpent.toLocaleString()} Kobans`;
-  const preheader = `00:00 PKT Summary: ${params.testsTakenCount} tests completed, +${params.totalKobansEarned.toLocaleString()} Kobans earned, -${params.totalKobansSpent.toLocaleString()} Kobans spent.`;
+  const timeStr = formatPktDateTime();
+  const subject = `Daily digest (${params.pktDateLabel}): ${params.testsTakenCount} tests · +${params.totalKobansEarned.toLocaleString()} / -${params.totalKobansSpent.toLocaleString()} Kobans`;
+  const preheader = `00:00 PKT Summary: ${params.testsTakenCount} tests completed, +${params.totalKobansEarned.toLocaleString()} Kobans received, -${params.totalKobansSpent.toLocaleString()} Kobans spent.`;
 
   const topScorersHtml =
     params.topScorers.length > 0
@@ -1083,27 +1582,30 @@ export function buildDailyAdminDigestEmail(params: {
   const html = renderBaseHtmlLayout({
     subject,
     preheader,
-    badgeText: '00:00 PKT Daily Admin Digest',
+    badgeText: 'Daily Admin Digest',
     badgeColor: 'red',
     heading: `Boardly Daily Summary · ${params.pktDateLabel}`,
     introHtml: `<p style="margin:0;">Automated 24-hour activity digest across entrance tests and the Kobans economy.</p>`,
     detailsRows: [
-      { label: 'Date (PKT)', value: params.pktDateLabel },
-      { label: 'Total Tests Taken', value: String(params.testsTakenCount), mono: true },
-      { label: 'Total Kobans Earned', value: `+${params.totalKobansEarned.toLocaleString()} Kobans`, highlightGold: true },
-      { label: 'Total Kobans Spent', value: `-${params.totalKobansSpent.toLocaleString()} Kobans`, highlightGold: true },
+      { label: 'Date window (PKT)', value: params.pktDateLabel },
+      { label: 'Total tests taken', value: String(params.testsTakenCount), mono: true },
+      { label: 'Kobans received (total)', value: `+${params.totalKobansEarned.toLocaleString()} Kobans`, highlightGold: true },
+      { label: 'Kobans spent (total)', value: `-${params.totalKobansSpent.toLocaleString()} Kobans`, highlightRed: true },
+      { label: 'Time (PKT)', value: timeStr },
     ],
     extraBodyHtml: topScorersHtml,
     ctaLabel: 'Open Superadmin Portal',
     ctaUrl: `${appUrl}/admin`,
     appUrl,
+    isAdminEmail: true,
   });
 
   const text = [
     `BOARDLY 00:00 PKT DAILY ADMIN DIGEST (${params.pktDateLabel})`,
     `Tests Taken: ${params.testsTakenCount}`,
-    `Kobans Earned: +${params.totalKobansEarned.toLocaleString()} Kobans`,
+    `Kobans Received: +${params.totalKobansEarned.toLocaleString()} Kobans`,
     `Kobans Spent: -${params.totalKobansSpent.toLocaleString()} Kobans`,
+    `Time (PKT): ${timeStr}`,
     ``,
     `Top Scorers:`,
     ...(params.topScorers.length > 0
@@ -1111,6 +1613,7 @@ export function buildDailyAdminDigestEmail(params: {
       : ['No tests recorded in this window.']),
     ``,
     `Admin Portal: ${appUrl}/admin`,
+    `Internal admin notification`,
   ].join('\n');
 
   return { subject, preheader, html, text };
@@ -1148,7 +1651,7 @@ export function buildApplicationSubmittedApplicantEmail(params: {
       ...(params.institution ? [{ label: 'Institution / Campus', value: params.institution }] : []),
       ...(params.city ? [{ label: 'City', value: params.city }] : []),
       { label: 'Status', value: 'Pending Admin Review', highlightGold: true },
-      { label: 'Submitted At', value: timeStr },
+      { label: 'Time (PKT)', value: timeStr },
     ],
     ctaLabel: 'Return to Student Dashboard',
     ctaUrl: `${appUrl}/dashboard`,
@@ -1163,7 +1666,7 @@ export function buildApplicationSubmittedApplicantEmail(params: {
     ...(params.institution ? [`Institution: ${params.institution}`] : []),
     ...(params.city ? [`City: ${params.city}`] : []),
     `Status: Pending Admin Review`,
-    `Submitted At: ${timeStr}`,
+    `Time (PKT): ${timeStr}`,
     ``,
     `Dashboard: ${appUrl}/dashboard`,
   ].join('\n');
@@ -1173,6 +1676,7 @@ export function buildApplicationSubmittedApplicantEmail(params: {
 
 export function buildApplicationSubmittedAdminEmail(params: {
   applicationId: string;
+  applicantUid?: string;
   programName: string;
   applicantName: string;
   applicantEmail: string;
@@ -1186,40 +1690,48 @@ export function buildApplicationSubmittedAdminEmail(params: {
 }): RenderedEmailTemplate {
   const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
   const timeStr = formatPktDateTime(params.submittedAt);
-  const subject = `[Admin] New application: ${params.programName} — ${params.applicantName}`;
+  const subject = `New application: ${params.programName} by ${params.applicantName}`;
   const preheader = `${params.applicantName} (${params.applicantEmail}) applied for ${params.programName}.`;
 
   const html = renderBaseHtmlLayout({
     subject,
     preheader,
-    badgeText: 'New Candidate Application',
+    badgeText: 'Candidate Application',
     badgeColor: 'red',
     heading: `New ${params.programName} application`,
     introHtml: `<p style="margin:0;">A student has submitted a new application requiring administrator review.</p>`,
+    studentIdentity: {
+      name: params.applicantName || 'Student',
+      email: params.applicantEmail,
+      uid: params.applicantUid || params.applicationId,
+      transactionId: params.applicationId,
+    },
     detailsRows: [
       { label: 'Program', value: params.programName },
-      { label: 'Applicant Name', value: params.applicantName },
-      { label: 'Email', value: params.applicantEmail, mono: true },
       ...(params.applicantPhone ? [{ label: 'Phone / WhatsApp', value: params.applicantPhone, mono: true }] : []),
       ...(params.institution ? [{ label: 'Institution', value: params.institution }] : []),
       ...(params.city ? [{ label: 'City', value: params.city }] : []),
       ...(params.statement ? [{ label: 'Statement / Note', value: params.statement }] : []),
-      { label: 'Submitted At', value: timeStr },
+      { label: 'Application ID', value: formatShortTxId(params.applicationId), mono: true },
+      { label: 'Time (PKT)', value: timeStr },
     ],
     ctaLabel: 'Review Application in Admin Panel',
     ctaUrl: `${appUrl}${params.reviewPath || '/admin/applications'}`,
     appUrl,
+    isAdminEmail: true,
   });
 
   const text = [
-    `BOARDLY ADMIN — New Application: ${params.programName}`,
+    `BOARDLY ADMIN — ${subject}`,
     `Applicant: ${params.applicantName} (${params.applicantEmail})`,
     ...(params.applicantPhone ? [`Phone: ${params.applicantPhone}`] : []),
     ...(params.institution ? [`Institution: ${params.institution}`] : []),
     ...(params.city ? [`City: ${params.city}`] : []),
     ...(params.statement ? [`Statement: ${params.statement}`] : []),
-    `Submitted At: ${timeStr}`,
+    `Application ID: ${params.applicationId}`,
+    `Time (PKT): ${timeStr}`,
     `Review: ${appUrl}${params.reviewPath || '/admin/applications'}`,
+    `Internal admin notification`,
   ].join('\n');
 
   return { subject, preheader, html, text };
@@ -1267,9 +1779,9 @@ export function buildApplicationDecisionApplicantEmail(params: {
     detailsRows: [
       { label: 'Program', value: params.programName },
       { label: 'Decision', value: isApproved ? 'Approved' : 'Not Approved', highlightGold: isApproved },
-      ...(params.codeOrBadge ? [{ label: 'Official Code / Badge', value: params.codeOrBadge, mono: true, highlightGold: true }] : []),
-      ...(!isApproved && params.reason ? [{ label: 'Reviewer Note', value: params.reason }] : []),
-      { label: 'Reviewed At', value: timeStr },
+      ...(params.codeOrBadge ? [{ label: 'Official code / badge', value: params.codeOrBadge, mono: true, highlightGold: true }] : []),
+      ...(!isApproved && params.reason ? [{ label: 'Reviewer note', value: params.reason }] : []),
+      { label: 'Time (PKT)', value: timeStr },
     ],
     ctaLabel: isApproved ? 'Open Leadership Dashboard' : 'Open Student Dashboard',
     ctaUrl: `${appUrl}${params.ctaPath || (isApproved ? '/dashboard/captain' : '/dashboard')}`,
@@ -1283,7 +1795,7 @@ export function buildApplicationDecisionApplicantEmail(params: {
     `Decision: ${isApproved ? 'APPROVED' : 'NOT APPROVED'}`,
     ...(params.codeOrBadge ? [`Official Code: ${params.codeOrBadge}`] : []),
     ...(!isApproved && params.reason ? [`Note: ${params.reason}`] : []),
-    `Reviewed At: ${timeStr}`,
+    `Time (PKT): ${timeStr}`,
     `Open Boardly: ${appUrl}${params.ctaPath || '/dashboard'}`,
   ].join('\n');
 
@@ -1300,8 +1812,10 @@ export function buildReferralEventEmail(params: {
   counterpartyName: string;
   stage: 'confirmed' | 'credited';
   kobansCredited?: number;
+  balanceBefore?: number;
   newBalance?: number;
   referralCode?: string;
+  transactionId?: string;
   timestamp?: Date | string | number;
   appUrl?: string;
 }): RenderedEmailTemplate {
@@ -1309,14 +1823,24 @@ export function buildReferralEventEmail(params: {
   const timeStr = formatPktDateTime(params.timestamp);
   const isCredited = params.stage === 'credited';
   const isReferrer = params.recipientRole === 'referrer';
-  const rewardKobans = params.kobansCredited ?? (isReferrer ? 5000 : 1000);
+  const rewardKobans = Math.max(0, Math.floor(Number(params.kobansCredited ?? (isReferrer ? 5000 : 1000))));
+  const hasNewBal = typeof params.newBalance === 'number' && Number.isFinite(params.newBalance);
+  const afterBal = hasNewBal ? Math.max(0, Math.floor(params.newBalance!)) : undefined;
+  const beforeBal =
+    typeof params.balanceBefore === 'number' && Number.isFinite(params.balanceBefore)
+      ? Math.max(0, Math.floor(params.balanceBefore))
+      : afterBal !== undefined
+      ? Math.max(0, afterBal - rewardKobans)
+      : undefined;
 
   const subject = isCredited
     ? `+${rewardKobans.toLocaleString()} Kobans credited! Referral reward with ${params.counterpartyName} — Boardly`
     : `Referral confirmed with ${params.counterpartyName} — Boardly`;
 
   const preheader = isCredited
-    ? `+${rewardKobans.toLocaleString()} Kobans have been added to your Boardly wallet.`
+    ? `+${rewardKobans.toLocaleString()} Kobans have been added to your Boardly wallet${
+        afterBal !== undefined ? ` · New balance: ${afterBal.toLocaleString()} Kobans` : ''
+      }.`
     : `Your two-way referral link with ${params.counterpartyName} is confirmed!`;
 
   const html = renderBaseHtmlLayout({
@@ -1344,17 +1868,29 @@ export function buildReferralEventEmail(params: {
             label: isReferrer ? 'Referrer Bonus' : 'Friend Welcome Bonus',
             amountText: `+${rewardKobans.toLocaleString()} Kobans`,
             subtext:
-              typeof params.newBalance === 'number'
-                ? `New Wallet Balance: ${params.newBalance.toLocaleString()} Kobans`
+              afterBal !== undefined && beforeBal !== undefined
+                ? `Balance before: ${beforeBal.toLocaleString()} Kobans  •  New Balance: ${afterBal.toLocaleString()} Kobans`
+                : afterBal !== undefined
+                ? `New Wallet Balance: ${afterBal.toLocaleString()} Kobans`
                 : 'Credited to your Boardly Wallet',
           },
         }
       : {}),
     detailsRows: [
-      { label: isReferrer ? 'Referred Classmate' : 'Invited By', value: params.counterpartyName },
+      { label: isReferrer ? 'Referred classmate' : 'Invited by', value: params.counterpartyName },
+      { label: 'Event type', value: formatEmailEventLabel('REFERRAL_REWARD') },
       { label: 'Status', value: isCredited ? 'Kobans Credited' : 'Confirmed · Qualifying', highlightGold: isCredited },
-      { label: 'Reward Amount', value: `+${rewardKobans.toLocaleString()} Kobans`, highlightGold: true },
-      ...(params.referralCode ? [{ label: 'Referral Code', value: params.referralCode, mono: true }] : []),
+      { label: 'Kobans received', value: `+${rewardKobans.toLocaleString()} Kobans`, highlightGold: true },
+      ...(isCredited && beforeBal !== undefined
+        ? [{ label: 'Balance before', value: `${beforeBal.toLocaleString()} Kobans`, mutedSmall: true }]
+        : []),
+      ...(isCredited && afterBal !== undefined
+        ? [{ label: 'New balance', value: `${afterBal.toLocaleString()} Kobans`, highlightGold: true }]
+        : []),
+      ...(params.referralCode ? [{ label: 'Referral code', value: params.referralCode, mono: true }] : []),
+      ...(params.transactionId
+        ? [{ label: 'Transaction ID', value: formatShortTxId(params.transactionId), mono: true }]
+        : []),
       { label: 'Time (PKT)', value: timeStr },
     ],
     ctaLabel: 'View Referrals & Rewards',
@@ -1367,9 +1903,12 @@ export function buildReferralEventEmail(params: {
     ``,
     `Hi ${params.recipientName || 'Student'},`,
     `Connection: ${params.counterpartyName}`,
+    `Event type: ${formatEmailEventLabel('REFERRAL_REWARD')}`,
     `Status: ${isCredited ? 'Kobans Credited' : 'Referral Confirmed'}`,
-    `Reward: +${rewardKobans.toLocaleString()} Kobans`,
-    `Time: ${timeStr}`,
+    `Kobans received: +${rewardKobans.toLocaleString()} Kobans`,
+    ...(isCredited && beforeBal !== undefined ? [`Balance before: ${beforeBal.toLocaleString()} Kobans`] : []),
+    ...(isCredited && afterBal !== undefined ? [`New balance: ${afterBal.toLocaleString()} Kobans`] : []),
+    `Time (PKT): ${timeStr}`,
     ``,
     `View Rewards: ${appUrl}/dashboard/rewards`,
   ].join('\n');
@@ -1389,7 +1928,7 @@ export function buildAdminSampleTestEmail(params: {
 }): RenderedEmailTemplate {
   const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
   const timeStr = formatPktDateTime();
-  const subject = `[Boardly Test] Transactional Email Pipeline Verified (${timeStr})`;
+  const subject = `System diagnostic: Transactional Email Pipeline Verified (${timeStr})`;
   const preheader = `Resend API + Cloudflare Email Routing verification succeeded for ${params.adminEmail}.`;
 
   const html = renderBaseHtmlLayout({
@@ -1402,28 +1941,124 @@ export function buildAdminSampleTestEmail(params: {
     kobanHighlight: {
       label: 'Sample Koban Badge Preview',
       amountText: '+1,000 Kobans',
-      subtext: 'Gold #F5B301 · Primary CTA #E11D2A · Header #0B0B0F',
+      subtext: 'Balance before: 14,000 Kobans  •  New Balance: 15,000 Kobans',
     },
     detailsRows: [
-      { label: 'Triggered By Admin', value: params.adminEmail, mono: true },
+      { label: 'Event type', value: formatEmailEventLabel('KOBAN_PURCHASE_APPROVED') },
+      { label: 'Triggered by admin', value: params.adminEmail, mono: true },
       { label: 'EMAIL_FROM', value: params.emailFrom, mono: true },
       { label: 'ADMIN_EMAILS', value: params.adminRecipientsList.join(', '), mono: true },
-      { label: 'Inbound Routing', value: 'admin@boardly.cfd, superadmin@boardly.cfd', mono: true },
-      { label: 'Sent Time (PKT)', value: timeStr },
+      { label: 'Inbound routing', value: 'admin@boardly.cfd, superadmin@boardly.cfd', mono: true },
+      { label: 'Time (PKT)', value: timeStr },
     ],
     ctaLabel: 'Open Admin Email Logs',
-    ctaUrl: `${appUrl}/admin/audit`,
+    ctaUrl: `${appUrl}/admin/health`,
     appUrl,
+    isAdminEmail: true,
   });
 
   const text = [
-    `BOARDLY — Transactional Email Pipeline Verified`,
+    `BOARDLY TEST — Transactional Email Pipeline Verified`,
     `Triggered By: ${params.adminEmail}`,
-    `From: ${params.emailFrom}`,
-    `Admin Recipients: ${params.adminRecipientsList.join(', ')}`,
-    `Time: ${timeStr}`,
-    `Admin Logs: ${appUrl}/admin/audit`,
+    `EMAIL_FROM: ${params.emailFrom}`,
+    `ADMIN_EMAILS: ${params.adminRecipientsList.join(', ')}`,
+    `Time (PKT): ${timeStr}`,
+    `Internal admin notification`,
   ].join('\n');
 
   return { subject, preheader, html, text };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. FIREBASE PASSWORD RESET & EMAIL VERIFICATION TEMPLATES
+//    Uses the same hosted dot-matrix logo (https://boardly.cfd/email/boardly-logo.png)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function buildFirebasePasswordResetEmail(params: {
+  studentName?: string;
+  studentEmail: string;
+  resetUrl?: string;
+  appUrl?: string;
+}): RenderedEmailTemplate {
+  const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
+  const resetLink = params.resetUrl || '%LINK%';
+  const subject = 'Reset your Boardly password';
+  const preheader = 'Follow this link to reset your Boardly student account password.';
+
+  const html = renderBaseHtmlLayout({
+    subject,
+    preheader,
+    badgeText: 'Account Security',
+    badgeColor: 'red',
+    heading: 'Reset your password',
+    introHtml: `<p style="margin:0;">Hi <strong>${escapeHtml(
+      params.studentName || params.studentEmail
+    )}</strong>, we received a request to reset the password for your Boardly account (<code>${escapeHtml(
+      params.studentEmail
+    )}</code>). Click the button below to choose a new password.</p>`,
+    detailsRows: [
+      { label: 'Account email', value: params.studentEmail, mono: true },
+      { label: 'Requested at', value: formatPktDateTime() },
+    ],
+    ctaLabel: 'Reset Password',
+    ctaUrl: resetLink,
+    footerNote: 'If you did not request a password reset, you can safely ignore this email.',
+    appUrl,
+  });
+
+  const text = [
+    `BOARDLY — Reset your password`,
+    ``,
+    `Hi ${params.studentName || params.studentEmail},`,
+    `Follow this link to reset your Boardly password for ${params.studentEmail}:`,
+    `${resetLink}`,
+    ``,
+    `If you didn't ask to reset your password, you can ignore this email.`,
+  ].join('\n');
+
+  return { subject, preheader, html, text };
+}
+
+export function buildFirebaseEmailVerificationEmail(params: {
+  studentName?: string;
+  studentEmail: string;
+  verifyUrl?: string;
+  appUrl?: string;
+}): RenderedEmailTemplate {
+  const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
+  const verifyLink = params.verifyUrl || '%LINK%';
+  const subject = 'Verify your email for Boardly';
+  const preheader = 'Confirm your email address to verify your Boardly student account.';
+
+  const html = renderBaseHtmlLayout({
+    subject,
+    preheader,
+    badgeText: 'Email Verification',
+    badgeColor: 'gold',
+    heading: 'Verify your email address',
+    introHtml: `<p style="margin:0;">Hi <strong>${escapeHtml(
+      params.studentName || params.studentEmail
+    )}</strong>, please confirm your email address (<code>${escapeHtml(
+      params.studentEmail
+    )}</code>) to complete your Boardly profile verification.</p>`,
+    detailsRows: [
+      { label: 'Account email', value: params.studentEmail, mono: true },
+      { label: 'Requested at', value: formatPktDateTime() },
+    ],
+    ctaLabel: 'Verify Email Address',
+    ctaUrl: verifyLink,
+    footerNote: 'If you did not create a Boardly account, you can safely ignore this email.',
+    appUrl,
+  });
+
+  const text = [
+    `BOARDLY — Verify your email address`,
+    ``,
+    `Hi ${params.studentName || params.studentEmail},`,
+    `Follow this link to verify your email address (${params.studentEmail}):`,
+    `${verifyLink}`,
+  ].join('\n');
+
+  return { subject, preheader, html, text };
+}
+

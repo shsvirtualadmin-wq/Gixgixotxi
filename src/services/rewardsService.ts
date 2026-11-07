@@ -251,16 +251,26 @@ export async function claimDailyReward(): Promise<{
       };
     }
     if (auth.currentUser && typeof data.rewardAmount === 'number') {
-      notifyKobanReceipt({
-        recordId: `daily_claim_${auth.currentUser.uid}_day_${data.dayNumber || Date.now()}`,
-        studentUid: auth.currentUser.uid,
-        studentName: auth.currentUser.displayName || undefined,
-        studentEmail: auth.currentUser.email || undefined,
-        deltaAmount: data.rewardAmount,
-        newBalance: Number(data.newBalance || 0),
-        reason: `Daily Check-In Claim (Day ${data.dayNumber || 1})`,
-        subType: 'daily_claim',
-      });
+      const deltaAmount = Number(data.delta ?? data.rewardAmount);
+      const newBalance = Number(data.balanceAfter ?? data.newBalance ?? 0);
+      const balanceBefore =
+        typeof data.balanceBefore === 'number'
+          ? data.balanceBefore
+          : Math.max(0, newBalance - deltaAmount);
+      if (newBalance === balanceBefore + deltaAmount) {
+        notifyKobanReceipt({
+          recordId: String(data.ledgerId || `daily_claim_${auth.currentUser.uid}_day_${data.dayNumber || Date.now()}`),
+          studentUid: auth.currentUser.uid,
+          studentName: auth.currentUser.displayName || undefined,
+          studentEmail: auth.currentUser.email || undefined,
+          deltaAmount,
+          balanceBefore,
+          newBalance,
+          transactionId: String(data.ledgerId || `daily_${auth.currentUser.uid}_${data.pktDate || Date.now()}`),
+          reason: `Daily Check-In Claim (Day ${data.dayNumber || 1})`,
+          subType: 'daily_claim',
+        });
+      }
     }
     return data;
   } catch {
@@ -278,6 +288,7 @@ export async function claimMilestoneReward(milestoneId: string): Promise<{
   ok: boolean;
   milestoneId?: string;
   rewardAmount?: number;
+  balanceBefore?: number;
   newBalance?: number;
   error?: string;
   code?: string;
@@ -300,16 +311,26 @@ export async function claimMilestoneReward(milestoneId: string): Promise<{
       };
     }
     if (auth.currentUser && typeof data.rewardAmount === 'number') {
-      notifyKobanReceipt({
-        recordId: `milestone_${auth.currentUser.uid}_${milestoneId}`,
-        studentUid: auth.currentUser.uid,
-        studentName: auth.currentUser.displayName || undefined,
-        studentEmail: auth.currentUser.email || undefined,
-        deltaAmount: data.rewardAmount,
-        newBalance: Number(data.newBalance || 0),
-        reason: `MCQ Milestone Reward (${milestoneId})`,
-        subType: 'milestone_claim',
-      });
+      const deltaAmount = Number(data.delta ?? data.rewardAmount);
+      const newBalance = Number(data.balanceAfter ?? data.newBalance ?? 0);
+      const balanceBefore =
+        typeof data.balanceBefore === 'number'
+          ? data.balanceBefore
+          : Math.max(0, newBalance - deltaAmount);
+      if (newBalance === balanceBefore + deltaAmount) {
+        notifyKobanReceipt({
+          recordId: String(data.ledgerId || `milestone_${auth.currentUser.uid}_${milestoneId}`),
+          studentUid: auth.currentUser.uid,
+          studentName: auth.currentUser.displayName || undefined,
+          studentEmail: auth.currentUser.email || undefined,
+          deltaAmount,
+          balanceBefore,
+          newBalance,
+          transactionId: String(data.ledgerId || `milestone_${auth.currentUser.uid}_${milestoneId}`),
+          reason: `MCQ Milestone Reward (${milestoneId})`,
+          subType: 'milestone_claim',
+        });
+      }
     }
     return data;
   } catch {
@@ -412,8 +433,17 @@ export async function acceptPendingReferral(
           referrerUid: auth.currentUser.uid,
           referrerName: auth.currentUser.displayName || undefined,
           referrerKobans: Number(data.inviterReward || 5000),
+          referrerBalanceBefore:
+            typeof data.inviterBalanceBefore === 'number' ? data.inviterBalanceBefore : undefined,
+          referrerNewBalance:
+            typeof data.inviterBalanceAfter === 'number' ? data.inviterBalanceAfter : undefined,
           friendKobans: Number(data.inviteeReward || 1000),
+          friendBalanceBefore:
+            typeof data.inviteeBalanceBefore === 'number' ? data.inviteeBalanceBefore : undefined,
+          friendNewBalance:
+            typeof data.inviteeBalanceAfter === 'number' ? data.inviteeBalanceAfter : undefined,
           referralCode: normalizeReferralCode(enteredCode),
+          transactionId: String(data.referralId || referralId),
         });
       } else {
         notifyReferralConfirmed({

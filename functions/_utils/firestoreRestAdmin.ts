@@ -897,7 +897,14 @@ export async function creditKobansIdempotentInFirestore(params: {
     message: string;
     link?: string;
   };
-}): Promise<{ credited: boolean; alreadyCredited: boolean; balanceAfter: number }> {
+}): Promise<{
+  credited: boolean;
+  alreadyCredited: boolean;
+  balanceBefore: number;
+  delta: number;
+  balanceAfter: number;
+  ledgerId: string;
+}> {
   const { store, uid, ledgerId, type, amount, reason, extraLedgerFields, notification } = params;
   const safeAmount = Math.max(0, Math.floor(Number(amount) || 0));
   const ledgerPath = `wallets/${uid}/ledger/${ledgerId}`;
@@ -908,12 +915,21 @@ export async function creditKobansIdempotentInFirestore(params: {
       const walletDoc = await tx.getDoc(`wallets/${uid}`);
       const currentBal = Math.max(
         0,
-        Math.floor(Number(walletDoc?.balance ?? existingLedger.balanceAfter ?? 0))
+        Math.floor(Number(existingLedger.balanceAfter ?? existingLedger.balance_after ?? walletDoc?.balance ?? 0))
       );
+      const prevBal =
+        typeof existingLedger.balanceBefore === 'number'
+          ? Math.max(0, Math.floor(existingLedger.balanceBefore))
+          : typeof existingLedger.balance_before === 'number'
+          ? Math.max(0, Math.floor(existingLedger.balance_before))
+          : Math.max(0, currentBal - safeAmount);
       return {
         credited: true,
         alreadyCredited: true,
+        balanceBefore: prevBal,
+        delta: safeAmount,
         balanceAfter: currentBal,
+        ledgerId,
       };
     }
 
@@ -922,18 +938,26 @@ export async function creditKobansIdempotentInFirestore(params: {
       tx.getDoc(`users/${uid}`),
     ]);
 
-    const currentBalance = Math.max(
+    const walletBal =
+      typeof walletDoc?.balance === 'number' && Number.isFinite(walletDoc.balance)
+        ? Math.max(0, Math.floor(walletDoc.balance))
+        : 0;
+    const userBal = Math.max(
       0,
-      Math.floor(Number(walletDoc?.balance ?? userDoc?.kobans ?? userDoc?.kobanBalance ?? 0))
+      Math.floor(Number(userDoc?.kobans ?? userDoc?.kobanBalance ?? 0))
     );
+    const currentBalance = Math.max(walletBal, userBal);
     const newBalance = currentBalance + safeAmount;
 
-    // 1. Deterministic ledger document creation
+    // 1. Deterministic ledger document creation with balanceBefore and balanceAfter
     tx.createDoc(ledgerPath, {
       id: ledgerId,
       type,
       amount: safeAmount,
+      balanceBefore: currentBalance,
+      balance_before: currentBalance,
       balanceAfter: newBalance,
+      balance_after: newBalance,
       reason,
       ...(extraLedgerFields || {}),
       timestamp: SERVER_TIMESTAMP_SENTINEL,
@@ -984,7 +1008,10 @@ export async function creditKobansIdempotentInFirestore(params: {
     return {
       credited: true,
       alreadyCredited: false,
+      balanceBefore: currentBalance,
+      delta: safeAmount,
       balanceAfter: newBalance,
+      ledgerId,
     };
   });
 }

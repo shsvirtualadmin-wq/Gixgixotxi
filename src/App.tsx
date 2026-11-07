@@ -294,6 +294,8 @@ function AppInner() {
           <Route path="applications" element={<AdminApplicationsPage />} />
           <Route path="payments" element={<AdminPaymentsPage />} />
           <Route path="kobans" element={<AdminKobansPage />} />
+          <Route path="wallets" element={<AdminKobansPage />} />
+          <Route path="wallets/:uid" element={<AdminKobansPage />} />
           <Route path="announcements" element={<AdminAnnouncementsPage />} />
           <Route path="bots" element={<AdminBotsPage />} />
           <Route path="captains" element={<AdminCaptainsPage />} />

@@ -468,6 +468,10 @@ async function tryProcessConfirmedReferralPayout(params: {
   paidNow: boolean;
   inviterCreditedNow: boolean;
   inviteeCreditedNow: boolean;
+  inviterBalanceBefore?: number;
+  inviterBalanceAfter?: number;
+  inviteeBalanceBefore?: number;
+  inviteeBalanceAfter?: number;
   errorCode?: string;
   errorMessage?: string;
 }> {
@@ -570,6 +574,10 @@ async function tryProcessConfirmedReferralPayout(params: {
   let inviteeCreditedNow = false;
   let inviterStatus = String(refRow.inviter_credit_status || 'pending');
   let inviteeStatus = String(refRow.invitee_credit_status || 'pending');
+  let inviterBalanceBefore: number | undefined;
+  let inviterBalanceAfter: number | undefined;
+  let inviteeBalanceBefore: number | undefined;
+  let inviteeBalanceAfter: number | undefined;
 
   try {
     if (inviterStatus !== 'credited') {
@@ -595,6 +603,8 @@ async function tryProcessConfirmedReferralPayout(params: {
           .run();
         inviterStatus = 'credited';
         inviterCreditedNow = !inviterRes.alreadyCredited;
+        inviterBalanceBefore = inviterRes.balanceBefore;
+        inviterBalanceAfter = inviterRes.balanceAfter;
       }
     }
 
@@ -621,6 +631,8 @@ async function tryProcessConfirmedReferralPayout(params: {
           .run();
         inviteeStatus = 'credited';
         inviteeCreditedNow = !inviteeRes.alreadyCredited;
+        inviteeBalanceBefore = inviteeRes.balanceBefore;
+        inviteeBalanceAfter = inviteeRes.balanceAfter;
       }
     }
   } catch (creditErr: any) {
@@ -649,6 +661,10 @@ async function tryProcessConfirmedReferralPayout(params: {
       paidNow: inviterCreditedNow || inviteeCreditedNow,
       inviterCreditedNow,
       inviteeCreditedNow,
+      inviterBalanceBefore,
+      inviterBalanceAfter,
+      inviteeBalanceBefore,
+      inviteeBalanceAfter,
     };
   }
 
@@ -657,6 +673,10 @@ async function tryProcessConfirmedReferralPayout(params: {
     paidNow: false,
     inviterCreditedNow,
     inviteeCreditedNow,
+    inviterBalanceBefore,
+    inviterBalanceAfter,
+    inviteeBalanceBefore,
+    inviteeBalanceAfter,
   };
 }
 
@@ -1532,7 +1552,11 @@ export async function handleRewardsApiRequest(
           ok: true,
           dayNumber,
           rewardAmount,
+          delta: creditRes.delta,
+          balanceBefore: creditRes.balanceBefore,
           newBalance: creditRes.balanceAfter,
+          balanceAfter: creditRes.balanceAfter,
+          ledgerId: creditRes.ledgerId,
           pktDate,
           creditStatus: 'credited',
         },
@@ -1684,7 +1708,11 @@ export async function handleRewardsApiRequest(
           milestoneId,
           threshold: def.threshold,
           rewardAmount,
+          delta: creditRes.delta,
+          balanceBefore: creditRes.balanceBefore,
           newBalance: creditRes.balanceAfter,
+          balanceAfter: creditRes.balanceAfter,
+          ledgerId: creditRes.ledgerId,
           creditStatus: 'credited',
         },
         200
@@ -2080,7 +2108,11 @@ export async function handleRewardsApiRequest(
           inviteeAccepted: true,
           paid: true,
           inviterReward: config.referral.inviterReward,
+          inviterBalanceBefore: payoutRes.inviterBalanceBefore,
+          inviterBalanceAfter: payoutRes.inviterBalanceAfter,
           inviteeReward: config.referral.inviteeReward,
+          inviteeBalanceBefore: payoutRes.inviteeBalanceBefore,
+          inviteeBalanceAfter: payoutRes.inviteeBalanceAfter,
           message:
             'Both codes confirmed and 20+ MCQs completed! Referral rewards have been credited.',
         },

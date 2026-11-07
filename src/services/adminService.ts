@@ -2404,12 +2404,23 @@ export async function approvePaymentRequest(
       req.userEmail
     );
 
+    const [walletSnap, userSnap] = await Promise.all([
+      getDoc(doc(db, 'wallets', req.userId)),
+      getDoc(doc(db, 'users', req.userId)),
+    ]);
+    const walletBal = walletSnap.exists() ? Math.max(0, Math.floor(Number(walletSnap.data().balance) || 0)) : 0;
+    const userBal = userSnap.exists() ? Math.max(0, Math.floor(Number(userSnap.data().kobans ?? userSnap.data().kobanBalance) || 0)) : 0;
+    const currentBal = Math.max(walletBal, userBal);
+    const kobansAmount = Number(req.amount || 0) * 10;
+
     notifyKobanPurchaseApproved({
       requestId: req.id,
       studentUid: req.userId,
       studentName: req.userName,
       studentEmail: req.userEmail,
-      kobansAmount: Number(req.amount || 0) * 10,
+      kobansAmount,
+      balanceBefore: currentBal,
+      newBalance: currentBal + kobansAmount,
       transactionId: req.transactionId,
       adminEmail,
     });
@@ -2456,12 +2467,23 @@ export async function approvePaymentRequest(
     req.userEmail
   );
 
+  const [walletSnap, userSnap] = await Promise.all([
+    getDoc(doc(db, 'wallets', req.userId)),
+    getDoc(doc(db, 'users', req.userId)),
+  ]);
+  const walletBal = walletSnap.exists() ? Math.max(0, Math.floor(Number(walletSnap.data().balance) || 0)) : 0;
+  const userBal = userSnap.exists() ? Math.max(0, Math.floor(Number(userSnap.data().kobans ?? userSnap.data().kobanBalance) || 0)) : 0;
+  const currentBal = Math.max(walletBal, userBal);
+  const kobansAmount = Number(req.amount || 0) * 10;
+
   notifyKobanPurchaseApproved({
     requestId: req.id,
     studentUid: req.userId,
     studentName: req.userName,
     studentEmail: req.userEmail,
-    kobansAmount: Number(req.amount || 0) * 10,
+    kobansAmount,
+    balanceBefore: currentBal,
+    newBalance: currentBal + kobansAmount,
     transactionId: req.transactionId,
     adminEmail,
   });

@@ -288,9 +288,17 @@ export const StorePage: React.FC<StorePageProps> = ({
     }));
   }, [priceCeiling]);
 
+  const toastTimerRef = useRef<number | null>(null);
+
   const showToast = useCallback((type: 'success' | 'error', text: string) => {
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
     setToast({ type, text });
-    window.setTimeout(() => setToast(null), 3500);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, 2000);
   }, []);
 
   const displayName =
@@ -704,19 +712,34 @@ export const StorePage: React.FC<StorePageProps> = ({
         onComplete={() => setCoinBurstActive(false)}
       />
 
-      {/* Toast Notification */}
-      {toast && (
-        <div
-          className={`fixed top-4 right-4 z-[220] px-4 py-3 rounded-2xl shadow-2xl border backdrop-blur-lg flex items-center gap-2.5 text-xs sm:text-sm font-bold transition-all ${
-            toast.type === 'success'
-              ? 'bg-emerald-950/85 border-emerald-500/40 text-emerald-200'
-              : 'bg-red-950/85 border-[#E11D2A]/50 text-red-200'
-          }`}
-        >
-          <Sparkles className="w-4 h-4 shrink-0" />
-          <span>{toast.text}</span>
-        </div>
-      )}
+      {/* E. Toast Notification: top of screen, z-index above backdrop & drawer, 2s auto-dismiss, 1 line truncated, max-w 90vw, non-blocking */}
+      {toast &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              backgroundColor: toast.type === 'success' ? '#0D281E' : '#2A1215',
+              color: '#FFFFFF',
+              backdropFilter: 'none',
+              WebkitBackdropFilter: 'none',
+            }}
+            className={`fixed top-3 left-1/2 -translate-x-1/2 z-[1150] max-w-[90vw] px-3.5 py-2 rounded-full shadow-xl border pointer-events-none flex items-center gap-2 text-xs font-bold dark-surface-preserve ${
+              toast.type === 'success'
+                ? 'border-emerald-500/45 text-emerald-100'
+                : 'border-[#E11D2A]/55 text-red-100'
+            }`}
+          >
+            <Sparkles
+              className={`w-3.5 h-3.5 shrink-0 ${
+                toast.type === 'success' ? 'text-emerald-400' : 'text-[#FF6B75]'
+              }`}
+            />
+            <span className="truncate whitespace-nowrap">{toast.text}</span>
+          </div>,
+          document.body
+        )}
 
       {/* Sticky Top Store Header */}
       <header className="sticky top-0 z-30 glass-header border-b border-[var(--border)]">
@@ -1329,9 +1352,9 @@ export const StorePage: React.FC<StorePageProps> = ({
         )}
       </main>
 
-      {/* Sticky Multi-Select Bar (above floating bottom nav) */}
-      {selectionMode && (
-        <div className="fixed inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-lg bottom-[calc(86px+env(safe-area-inset-bottom,0px))] z-40 rounded-2xl bg-[var(--bg-card)]/95 backdrop-blur-lg border border-[#E11D2A]/50 shadow-2xl px-4 py-3 flex items-center justify-between gap-3">
+      {/* Sticky Multi-Select Bar (above floating bottom nav, hidden when cart drawer is open) */}
+      {selectionMode && !cartOpen && (
+        <div className="fixed inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-lg bottom-[calc(86px+env(safe-area-inset-bottom,0px))] z-40 rounded-2xl bg-[var(--bg-card)] border border-[#E11D2A]/50 shadow-2xl px-4 py-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs sm:text-sm font-black text-[var(--text-primary)] truncate">
               {selectedIds.length} selected ·{' '}
@@ -1367,8 +1390,8 @@ export const StorePage: React.FC<StorePageProps> = ({
         </div>
       )}
 
-      {/* Floating Cart Pill (bottom-right, above floating nav; hidden when cart is empty) */}
-      {cartItems.length > 0 && !selectionMode && (
+      {/* Floating Cart Pill (bottom-right, above floating nav; hidden when cart is empty or cart drawer is open) */}
+      {cartItems.length > 0 && !selectionMode && !cartOpen && (
         <button
           type="button"
           onClick={handleOpenCart}

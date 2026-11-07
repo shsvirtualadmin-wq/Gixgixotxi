@@ -208,8 +208,10 @@ export function notifyKobanPurchaseApproved(params: {
   studentName?: string;
   studentEmail?: string;
   kobansAmount: number;
-  newBalance?: number;
+  balanceBefore?: number;
+  newBalance: number;
   transactionId?: string;
+  ledgerId?: string;
   adminEmail: string;
 }): void {
   triggerTransactionalEmail('koban_purchase_approved', params.requestId, params);
@@ -240,11 +242,13 @@ export function notifyKobanReceipt(params: {
   studentName?: string;
   studentEmail?: string;
   deltaAmount: number; // +X received or -X spent
+  balanceBefore?: number;
   newBalance: number;
   reason: string;
   subType: KobanReceiptSubType;
   itemName?: string;
   items?: Array<{ id?: string; name: string; category?: string; priceKobans: number }>;
+  transactionId?: string;
   adminEmail?: string;
 }): void {
   triggerTransactionalEmail('koban_receipt', params.recordId, params);
@@ -394,8 +398,13 @@ export function notifyReferralRewardCredited(params: {
   friendUid?: string;
   friendName?: string;
   referrerKobans?: number;
+  referrerBalanceBefore?: number;
+  referrerNewBalance?: number;
   friendKobans?: number;
+  friendBalanceBefore?: number;
+  friendNewBalance?: number;
   referralCode?: string;
+  transactionId?: string;
 }): void {
   triggerTransactionalEmail('referral_reward_credited', params.referralId, params);
 }

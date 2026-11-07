@@ -253,6 +253,8 @@ export async function checkoutStoreCart(params: {
         return {
           alreadyProcessed: true,
           abortedForFlagged: false,
+          balanceBefore: currentBalance,
+          delta: 0,
           newBalance: currentBalance,
           totalPaid: 0,
           owned: currentOwned,
@@ -331,6 +333,8 @@ export async function checkoutStoreCart(params: {
         return {
           alreadyProcessed: false,
           abortedForFlagged: true,
+          balanceBefore: currentBalance,
+          delta: 0,
           newBalance: currentBalance,
           totalPaid: 0,
           owned: currentOwned,
@@ -433,7 +437,9 @@ export async function checkoutStoreCart(params: {
           type: 'purchase',
           amount: -itemCost,
           balanceBefore: runningBalance,
+          balance_before: runningBalance,
           balanceAfter: nextRunningBalance,
+          balance_after: nextRunningBalance,
           itemId: v.item.id,
           itemName: v.item.name,
           reason:
@@ -457,6 +463,8 @@ export async function checkoutStoreCart(params: {
       return {
         alreadyProcessed: false,
         abortedForFlagged: false,
+        balanceBefore: currentBalance,
+        delta: -totalToDeduct,
         newBalance: balanceAfterAll,
         totalPaid: totalToDeduct,
         owned: updatedOwned,
@@ -496,29 +504,42 @@ export async function checkoutStoreCart(params: {
 
     completedCheckoutCache.set(cacheKey, finalResult);
 
-    // Send ONE receipt email per checkout with the full itemized list
+    // Send ONE receipt email per checkout with the full itemized list (only after transaction committed)
     if (!txOutcome.alreadyProcessed && txOutcome.purchasedItems.length > 0) {
-      const count = txOutcome.purchasedItems.length;
-      const reasonLabel =
-        count === 1
-          ? `Store purchase: ${txOutcome.purchasedItems[0].name}`
-          : `Store checkout (${count} items)`;
+      if (txOutcome.newBalance !== txOutcome.balanceBefore + txOutcome.delta) {
+        console.error(
+          '[kobanService] checkoutStoreCart balance sanity check failed; skipping email:',
+          {
+            balanceBefore: txOutcome.balanceBefore,
+            delta: txOutcome.delta,
+            balanceAfter: txOutcome.newBalance,
+          }
+        );
+      } else {
+        const count = txOutcome.purchasedItems.length;
+        const reasonLabel =
+          count === 1
+            ? `Store purchase: ${txOutcome.purchasedItems[0].name}`
+            : `Store checkout (${count} items)`;
 
-      notifyKobanReceipt({
-        recordId: `store_chk_${userId}_${safeCheckoutKey}`,
-        studentUid: userId,
-        deltaAmount: -txOutcome.totalPaid,
-        newBalance: txOutcome.newBalance,
-        reason: reasonLabel,
-        subType: 'store_purchase',
-        itemName: txOutcome.purchasedItems.map((i) => i.name).join(', '),
-        items: txOutcome.purchasedItems.map((i) => ({
-          id: i.id,
-          name: i.name,
-          category: i.type,
-          priceKobans: i.pricePaid,
-        })),
-      });
+        notifyKobanReceipt({
+          recordId: `store_chk_${userId}_${safeCheckoutKey}`,
+          studentUid: userId,
+          deltaAmount: txOutcome.delta,
+          balanceBefore: txOutcome.balanceBefore,
+          newBalance: txOutcome.newBalance,
+          transactionId: safeCheckoutKey,
+          reason: reasonLabel,
+          subType: 'store_purchase',
+          itemName: txOutcome.purchasedItems.map((i) => i.name).join(', '),
+          items: txOutcome.purchasedItems.map((i) => ({
+            id: i.id,
+            name: i.name,
+            category: i.type,
+            priceKobans: i.pricePaid,
+          })),
+        });
+      }
     }
 
     return finalResult;
@@ -679,40 +700,69 @@ export async function approveKobanRequest(
   const userRef = doc(db, 'users', targetUserId);
   const reqRef = doc(db, 'kobanRequests', requestId);
 
-  await runTransaction(db, async (tx) => {
-    const [walletSnap, userSnap] = await Promise.all([
+  const txResult = await runTransaction(db, async (tx) => {
+    const [walletSnap, userSnap, reqSnap] = await Promise.all([
       tx.get(walletRef),
       tx.get(userRef),
+      tx.get(reqRef),
     ]);
-    let curBalance = 0;
-    let curOwned: string[] = [];
-    let curEquipped = { effect: null, frame: null, nameplate: null, avatar: null, banner: null };
 
-    if (walletSnap.exists()) {
-      const wData = walletSnap.data();
-      curBalance = typeof wData.balance === 'number' ? wData.balance : 0;
-      curOwned = Array.isArray(wData.owned) ? wData.owned : [];
-      curEquipped = wData.equipped || curEquipped;
-    } else if (userSnap.exists()) {
-      const uData = userSnap.data();
-      curBalance = typeof uData.kobans === 'number' ? uData.kobans : 0;
-    }
+    const walletBalance = walletSnap.exists()
+      ? Math.max(0, Math.floor(Number(walletSnap.data().balance) || 0))
+      : null;
+    const userDocBalance = userSnap.exists()
+      ? Math.max(
+          0,
+          Math.floor(Number(userSnap.data().kobans ?? userSnap.data().kobanBalance) || 0)
+        )
+      : 0;
 
-    const newBalance = curBalance + amount;
+    const balanceBefore =
+      walletBalance !== null && walletBalance > 0
+        ? Math.max(walletBalance, userDocBalance)
+        : Math.max(walletBalance ?? 0, userDocBalance);
+
+    const curOwned: string[] =
+      walletSnap.exists() && Array.isArray(walletSnap.data().owned)
+        ? walletSnap.data().owned
+        : [];
+    const curEquipped =
+      (walletSnap.exists() && walletSnap.data().equipped) || {
+        effect: null,
+        frame: null,
+        nameplate: null,
+        avatar: null,
+        banner: null,
+      };
+
+    const delta = amount;
+    const balanceAfter = balanceBefore + delta;
+
+    const reqData = reqSnap.exists() ? reqSnap.data() : {};
+    const uData = userSnap.exists() ? userSnap.data() : {};
+    const studentName = String(
+      reqData.userName || uData.name || uData.displayName || 'Student'
+    );
+    const studentEmail = String(reqData.userEmail || uData.email || '').trim() || undefined;
+    const resolvedTxId = String(txId || reqData.transactionId || requestId).trim();
 
     // 1. Update request status
-    tx.update(reqRef, {
-      status: 'approved',
-      grantedAmount: amount,
-      approvedAt: serverTimestamp(),
-      approvedBy: superadminEmail,
-    });
+    if (reqSnap.exists()) {
+      tx.update(reqRef, {
+        status: 'approved',
+        grantedAmount: delta,
+        balanceBefore,
+        balanceAfter,
+        approvedAt: serverTimestamp(),
+        approvedBy: superadminEmail,
+      });
+    }
 
     // 2. Credit wallet & sync users/{uid}.kobans
     tx.set(
       walletRef,
       {
-        balance: newBalance,
+        balance: balanceAfter,
         owned: curOwned,
         equipped: curEquipped,
         updatedAt: serverTimestamp(),
@@ -723,14 +773,14 @@ export async function approveKobanRequest(
     tx.set(
       userRef,
       {
-        kobans: newBalance,
-        kobanBalance: newBalance,
+        kobans: balanceAfter,
+        kobanBalance: balanceAfter,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
     );
 
-    // 3. Write ledger
+    // 3. Write ledger with balanceBefore and balanceAfter
     const ledgerRef = doc(
       collection(db, 'wallets', targetUserId, 'ledger'),
       `koban_req_${requestId}`
@@ -738,12 +788,25 @@ export async function approveKobanRequest(
     tx.set(ledgerRef, {
       id: ledgerRef.id,
       type: 'grant',
-      amount,
-      balanceAfter: newBalance,
-      reason: `Koban payment verified (Tx: ${txId || requestId})`,
+      amount: delta,
+      balanceBefore,
+      balance_before: balanceBefore,
+      balanceAfter,
+      balance_after: balanceAfter,
+      reason: `Koban payment verified (Tx: ${resolvedTxId})`,
       adminEmail: superadminEmail,
       timestamp: serverTimestamp(),
     });
+
+    return {
+      balanceBefore,
+      delta,
+      balanceAfter,
+      ledgerId: ledgerRef.id,
+      studentName,
+      studentEmail,
+      resolvedTxId,
+    };
   });
 
   // Create notification for student (deterministic ID prevents duplicates)
@@ -754,7 +817,7 @@ export async function approveKobanRequest(
         userId: targetUserId,
         type: 'reward',
         title: 'Kobans Credited!',
-        message: `Your payment was verified! +${amount.toLocaleString()} Kobans have been added to your balance. Head over to the Boardly Store to unlock custom frames, nameplates, and aura effects!`,
+        message: `Your payment was verified! +${txResult.delta.toLocaleString()} Kobans have been added to your balance (New balance: ${txResult.balanceAfter.toLocaleString()} Kobans). Head over to the Boardly Store to unlock custom frames, nameplates, and aura effects!`,
         link: '/dashboard/rewards',
         read: false,
         createdAt: serverTimestamp(),
@@ -768,15 +831,36 @@ export async function approveKobanRequest(
   await logAdminAction(
     superadminEmail,
     'approve_koban_request',
-    { requestId, targetUserId, amount, txId },
+    {
+      requestId,
+      targetUserId,
+      amount: txResult.delta,
+      balanceBefore: txResult.balanceBefore,
+      balanceAfter: txResult.balanceAfter,
+      txId: txResult.resolvedTxId,
+    },
     targetUserId
   );
+
+  // Sanity check before sending email: balance_after must equal balance_before + delta
+  if (txResult.balanceAfter !== txResult.balanceBefore + txResult.delta) {
+    console.error(
+      '[kobanService] approveKobanRequest balance sanity check failed; skipping email:',
+      txResult
+    );
+    return;
+  }
 
   notifyKobanPurchaseApproved({
     requestId,
     studentUid: targetUserId,
-    kobansAmount: amount,
-    transactionId: txId,
+    studentName: txResult.studentName,
+    studentEmail: txResult.studentEmail,
+    kobansAmount: txResult.delta,
+    balanceBefore: txResult.balanceBefore,
+    newBalance: txResult.balanceAfter,
+    transactionId: txResult.resolvedTxId,
+    ledgerId: txResult.ledgerId,
     adminEmail: superadminEmail,
   });
 }
@@ -851,32 +935,45 @@ export async function adminAdjustKobans(
   const walletRef = doc(db, 'wallets', targetUserId);
   const userRef = doc(db, 'users', targetUserId);
 
-  const newBalance = await runTransaction(db, async (tx) => {
+  const txResult = await runTransaction(db, async (tx) => {
     const [snap, userSnap] = await Promise.all([
       tx.get(walletRef),
       tx.get(userRef),
     ]);
-    let curBalance = 0;
-    let curOwned: string[] = [];
-    let curEquipped = { effect: null, frame: null, nameplate: null, avatar: null };
 
-    if (snap.exists()) {
-      const wData = snap.data();
-      curBalance = typeof wData.balance === 'number' ? wData.balance : 0;
-      curOwned = Array.isArray(wData.owned) ? wData.owned : [];
-      curEquipped = wData.equipped || curEquipped;
-    } else if (userSnap.exists()) {
-      const uData = userSnap.data();
-      curBalance = typeof uData.kobans === 'number' ? uData.kobans : 0;
-    }
+    const walletBalance = snap.exists()
+      ? Math.max(0, Math.floor(Number(snap.data().balance) || 0))
+      : null;
+    const userDocBalance = userSnap.exists()
+      ? Math.max(
+          0,
+          Math.floor(Number(userSnap.data().kobans ?? userSnap.data().kobanBalance) || 0)
+        )
+      : 0;
 
-    const calculated = curBalance + delta;
-    const finalBalance = Math.max(0, calculated);
+    const balanceBefore =
+      walletBalance !== null && walletBalance > 0
+        ? Math.max(walletBalance, userDocBalance)
+        : Math.max(walletBalance ?? 0, userDocBalance);
+
+    const curOwned: string[] =
+      snap.exists() && Array.isArray(snap.data().owned) ? snap.data().owned : [];
+    const curEquipped =
+      (snap.exists() && snap.data().equipped) || {
+        effect: null,
+        frame: null,
+        nameplate: null,
+        avatar: null,
+      };
+
+    const calculated = balanceBefore + delta;
+    const balanceAfter = Math.max(0, calculated);
+    const actualDelta = balanceAfter - balanceBefore;
 
     tx.set(
       walletRef,
       {
-        balance: finalBalance,
+        balance: balanceAfter,
         owned: curOwned,
         equipped: curEquipped,
         updatedAt: serverTimestamp(),
@@ -887,8 +984,8 @@ export async function adminAdjustKobans(
     tx.set(
       userRef,
       {
-        kobans: finalBalance,
-        kobanBalance: finalBalance,
+        kobans: balanceAfter,
+        kobanBalance: balanceAfter,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
@@ -901,37 +998,60 @@ export async function adminAdjustKobans(
 
     tx.set(ledgerRef, {
       id: ledgerRef.id,
-      type: delta > 0 ? 'grant' : 'deduction',
-      amount: delta,
-      balanceAfter: finalBalance,
-      reason: reason || (delta > 0 ? 'Superadmin grant' : 'Superadmin deduction'),
+      type: actualDelta >= 0 ? 'grant' : 'deduction',
+      amount: actualDelta,
+      balanceBefore,
+      balance_before: balanceBefore,
+      balanceAfter,
+      balance_after: balanceAfter,
+      reason: reason || (actualDelta >= 0 ? 'Superadmin grant' : 'Superadmin deduction'),
       adminEmail: superadminEmail,
       timestamp: serverTimestamp(),
     });
 
-    return finalBalance;
+    return {
+      balanceBefore,
+      delta: actualDelta,
+      balanceAfter,
+      ledgerId: ledgerRef.id,
+    };
   });
 
   await logAdminAction(
     superadminEmail,
     'admin_adjust_kobans',
-    { targetUserId, delta, newBalance, reason },
+    {
+      targetUserId,
+      delta: txResult.delta,
+      balanceBefore: txResult.balanceBefore,
+      newBalance: txResult.balanceAfter,
+      reason,
+    },
     targetUserId,
     targetUserEmail
   );
 
-  notifyKobanReceipt({
-    recordId: `admin_adj_${targetUserId}_${Date.now()}`,
-    studentUid: targetUserId,
-    studentEmail: targetUserEmail,
-    deltaAmount: delta,
-    newBalance,
-    reason: reason || (delta > 0 ? 'Superadmin grant' : 'Superadmin deduction'),
-    subType: 'admin_grant',
-    adminEmail: superadminEmail,
-  });
+  if (txResult.balanceAfter !== txResult.balanceBefore + txResult.delta) {
+    console.error(
+      '[kobanService] adminAdjustKobans balance sanity check failed; skipping email:',
+      txResult
+    );
+  } else {
+    notifyKobanReceipt({
+      recordId: txResult.ledgerId,
+      studentUid: targetUserId,
+      studentEmail: targetUserEmail,
+      deltaAmount: txResult.delta,
+      balanceBefore: txResult.balanceBefore,
+      newBalance: txResult.balanceAfter,
+      transactionId: txResult.ledgerId,
+      reason: reason || (txResult.delta >= 0 ? 'Superadmin grant' : 'Superadmin deduction'),
+      subType: 'admin_grant',
+      adminEmail: superadminEmail,
+    });
+  }
 
-  return { newBalance };
+  return { newBalance: txResult.balanceAfter };
 }
 
 /**
@@ -1034,7 +1154,7 @@ export async function grantCaptainMonthlyAllotment(
   const walletRef = doc(db, 'wallets', captainUid);
   const userRef = doc(db, 'users', captainUid);
 
-  const newBalance = await runTransaction(db, async (tx) => {
+  const txResult = await runTransaction(db, async (tx) => {
     // 1. Check if already granted
     const ledgerSnap = await tx.get(ledgerDocRef);
     if (ledgerSnap.exists()) {
@@ -1046,27 +1166,42 @@ export async function grantCaptainMonthlyAllotment(
       tx.get(walletRef),
       tx.get(userRef),
     ]);
-    let curBalance = 0;
-    let curOwned: string[] = [];
-    let curEquipped = { effect: null, frame: null, nameplate: null, avatar: null };
 
-    if (walletSnap.exists()) {
-      const wData = walletSnap.data();
-      curBalance = typeof wData.balance === 'number' ? wData.balance : 0;
-      curOwned = Array.isArray(wData.owned) ? wData.owned : [];
-      curEquipped = wData.equipped || curEquipped;
-    } else if (userSnap.exists()) {
-      const uData = userSnap.data();
-      curBalance = typeof uData.kobans === 'number' ? uData.kobans : 0;
-    }
+    const walletBalance = walletSnap.exists()
+      ? Math.max(0, Math.floor(Number(walletSnap.data().balance) || 0))
+      : null;
+    const userDocBalance = userSnap.exists()
+      ? Math.max(
+          0,
+          Math.floor(Number(userSnap.data().kobans ?? userSnap.data().kobanBalance) || 0)
+        )
+      : 0;
 
-    const finalBalance = curBalance + 5000;
+    const balanceBefore =
+      walletBalance !== null && walletBalance > 0
+        ? Math.max(walletBalance, userDocBalance)
+        : Math.max(walletBalance ?? 0, userDocBalance);
+
+    const curOwned: string[] =
+      walletSnap.exists() && Array.isArray(walletSnap.data().owned)
+        ? walletSnap.data().owned
+        : [];
+    const curEquipped =
+      (walletSnap.exists() && walletSnap.data().equipped) || {
+        effect: null,
+        frame: null,
+        nameplate: null,
+        avatar: null,
+      };
+
+    const delta = 5000;
+    const balanceAfter = balanceBefore + delta;
 
     // 3. Update wallet & sync users/{uid}.kobans
     tx.set(
       walletRef,
       {
-        balance: finalBalance,
+        balance: balanceAfter,
         owned: curOwned,
         equipped: curEquipped,
         updatedAt: serverTimestamp(),
@@ -1077,8 +1212,8 @@ export async function grantCaptainMonthlyAllotment(
     tx.set(
       userRef,
       {
-        kobans: finalBalance,
-        kobanBalance: finalBalance,
+        kobans: balanceAfter,
+        kobanBalance: balanceAfter,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
@@ -1088,15 +1223,23 @@ export async function grantCaptainMonthlyAllotment(
     tx.set(ledgerDocRef, {
       id: docId,
       type: 'captain_allotment',
-      amount: 5000,
-      balanceAfter: finalBalance,
+      amount: delta,
+      balanceBefore,
+      balance_before: balanceBefore,
+      balanceAfter,
+      balance_after: balanceAfter,
       monthKey,
       reason: `Nakama Captain Monthly Allotment (${monthLabel})`,
       adminEmail: superadminEmail,
       timestamp: serverTimestamp(),
     });
 
-    return finalBalance;
+    return {
+      balanceBefore,
+      delta,
+      balanceAfter,
+      ledgerId: docId,
+    };
   });
 
   // Notify captain (deterministic ID per captain + monthKey prevents duplicate allotments)
@@ -1121,24 +1264,40 @@ export async function grantCaptainMonthlyAllotment(
   await logAdminAction(
     superadminEmail,
     'grant_captain_monthly_allotment',
-    { captainUid, captainName, monthKey, amount: 5000 },
+    {
+      captainUid,
+      captainName,
+      monthKey,
+      amount: txResult.delta,
+      balanceBefore: txResult.balanceBefore,
+      balanceAfter: txResult.balanceAfter,
+    },
     captainUid,
     captainEmail
   );
 
-  notifyKobanReceipt({
-    recordId: docId,
-    studentUid: captainUid,
-    studentName: captainName,
-    studentEmail: captainEmail,
-    deltaAmount: 5000,
-    newBalance,
-    reason: `Nakama Captain Monthly Allotment (${monthLabel})`,
-    subType: 'captain_allotment',
-    adminEmail: superadminEmail,
-  });
+  if (txResult.balanceAfter !== txResult.balanceBefore + txResult.delta) {
+    console.error(
+      '[kobanService] grantCaptainMonthlyAllotment balance sanity check failed; skipping email:',
+      txResult
+    );
+  } else {
+    notifyKobanReceipt({
+      recordId: docId,
+      studentUid: captainUid,
+      studentName: captainName,
+      studentEmail: captainEmail,
+      deltaAmount: txResult.delta,
+      balanceBefore: txResult.balanceBefore,
+      newBalance: txResult.balanceAfter,
+      transactionId: docId,
+      reason: `Nakama Captain Monthly Allotment (${monthLabel})`,
+      subType: 'captain_allotment',
+      adminEmail: superadminEmail,
+    });
+  }
 
-  return { success: true, newBalance };
+  return { success: true, newBalance: txResult.balanceAfter };
 }
 
 /**
