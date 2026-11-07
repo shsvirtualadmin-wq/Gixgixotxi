@@ -655,10 +655,8 @@ export const AdminCertificatesPage: React.FC = () => {
       {/* TAB 3: SETTINGS > CERTIFICATE SIGNATURE */}
       {activeTab === 'signature' && (
         <SignatureUploader
-          onSignatureChanged={(sig) => {
-            setHasActiveSignature(Boolean(sig));
-            setActiveSignature(sig);
-          }}
+          initialActiveSignature={activeSignature}
+          onSignatureChanged={handleSignatureChanged}
         />
       )}
     </div>

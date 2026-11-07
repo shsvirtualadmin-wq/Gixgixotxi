@@ -217,13 +217,17 @@ function normalizeSignatureRecord(raw: any): AdminSignatureRecord {
   };
 }
 
+const PREVIEW_REQUEST_TIMEOUT_MS = 10_000;
+
 /**
  * Fetches an authenticated signature PNG from `/api/admin/signatures/:id/image`
- * and converts it into a `data:image/png;base64,...` data URI so inline `<svg><image>`
- * previews and `<img>` thumbnails never fail due to missing Bearer headers.
+ * with a 10-second `AbortController` timeout and converts it into a
+ * `data:image/png;base64,...` data URI so inline `<svg><image>` previews and
+ * `<img>` thumbnails never fail due to missing Bearer headers.
  */
 export async function fetchSignatureImageAsDataUrl(
-  signatureIdOrUrl: string
+  signatureIdOrUrl: string,
+  timeoutMs = PREVIEW_REQUEST_TIMEOUT_MS
 ): Promise<string | null> {
   if (!signatureIdOrUrl) return null;
   if (signatureIdOrUrl.startsWith('data:image/')) {
@@ -232,13 +236,19 @@ export async function fetchSignatureImageAsDataUrl(
   const endpoint = signatureIdOrUrl.startsWith('/')
     ? signatureIdOrUrl
     : `/api/admin/signatures/${encodeURIComponent(signatureIdOrUrl)}/image`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort(new Error(`Signature image request timed out after ${Math.round(timeoutMs / 1000)}s`));
+  }, timeoutMs);
+
   try {
     const token = await getIdToken();
     const headers: Record<string, string> = {};
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    const res = await fetch(endpoint, { headers });
+    const res = await fetch(endpoint, { headers, signal: controller.signal });
     if (!res.ok) return null;
     const contentType = res.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
@@ -259,11 +269,14 @@ export async function fetchSignatureImageAsDataUrl(
   } catch (err) {
     console.warn(`[CertificateService] Could not fetch signature image at ${endpoint}:`, err);
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
 /**
- * Admin only: Fetch active signature and version history (`GET /api/admin/signatures`).
+ * Admin only: Fetch active signature and version history (`GET /api/admin/signatures`)
+ * with a 10-second `AbortController` timeout.
  */
 export async function fetchAdminSignatures(): Promise<{
   hasActiveSignature: boolean;
@@ -272,7 +285,10 @@ export async function fetchAdminSignatures(): Promise<{
 }> {
   const endpoint = '/api/admin/signatures';
   try {
-    const res = await apiFetch<any>(endpoint, { requireAuth: true });
+    const res = await apiFetch<any>(endpoint, {
+      requireAuth: true,
+      timeoutMs: PREVIEW_REQUEST_TIMEOUT_MS,
+    });
     const history: AdminSignatureRecord[] = Array.isArray(res?.history)
       ? res.history.map(normalizeSignatureRecord)
       : [];
@@ -280,15 +296,15 @@ export async function fetchAdminSignatures(): Promise<{
       ? normalizeSignatureRecord(res.activeSignature)
       : history.find((h: AdminSignatureRecord) => h.active) || null;
 
-    // Ensure activeSignature and history items have a resolved data:image/... URI
-    // so SVG <image> tags and version history thumbnails render without needing auth headers on <img>/<image>
+    // Ensure activeSignature has a resolved data:image/... URI so SVG <image> tags render without needing auth headers
     if (
       activeSignature &&
       (!activeSignature.previewDataUrl ||
         !activeSignature.previewDataUrl.startsWith('data:image/'))
     ) {
       const dataUrl = await fetchSignatureImageAsDataUrl(
-        activeSignature.imageUrl || activeSignature.id
+        activeSignature.imageUrl || activeSignature.id,
+        PREVIEW_REQUEST_TIMEOUT_MS
       );
       if (dataUrl) {
         activeSignature = { ...activeSignature, previewDataUrl: dataUrl };
@@ -303,7 +319,10 @@ export async function fetchAdminSignatures(): Promise<{
         if (activeSignature && item.id === activeSignature.id && activeSignature.previewDataUrl) {
           return { ...item, previewDataUrl: activeSignature.previewDataUrl };
         }
-        const dataUrl = await fetchSignatureImageAsDataUrl(item.imageUrl || item.id);
+        const dataUrl = await fetchSignatureImageAsDataUrl(
+          item.imageUrl || item.id,
+          PREVIEW_REQUEST_TIMEOUT_MS
+        );
         return dataUrl ? { ...item, previewDataUrl: dataUrl } : item;
       })
     );
@@ -464,7 +483,10 @@ export async function fetchAdminCertificates(params?: {
   const queryStr = qs.toString();
   const endpoint = `/api/admin/certificates${queryStr ? `?${queryStr}` : ''}`;
   try {
-    const res = await apiFetch<any>(endpoint, { requireAuth: true });
+    const res = await apiFetch<any>(endpoint, {
+      requireAuth: true,
+      timeoutMs: PREVIEW_REQUEST_TIMEOUT_MS,
+    });
     let activeSignature: AdminSignatureRecord | null = res?.activeSignature
       ? normalizeSignatureRecord(res.activeSignature)
       : null;
@@ -474,7 +496,8 @@ export async function fetchAdminCertificates(params?: {
         !activeSignature.previewDataUrl.startsWith('data:image/'))
     ) {
       const dataUrl = await fetchSignatureImageAsDataUrl(
-        activeSignature.imageUrl || activeSignature.id
+        activeSignature.imageUrl || activeSignature.id,
+        PREVIEW_REQUEST_TIMEOUT_MS
       );
       if (dataUrl) {
         activeSignature = { ...activeSignature, previewDataUrl: dataUrl };

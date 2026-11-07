@@ -8511,6 +8511,53 @@ ${allUrls
     });
   });
 
+  // 10b. GET /api/admin/certificates/preview — Admin only: return sample certificate preview (JSON or SVG) with active signature
+  app.get('/api/admin/certificates/preview', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden: Admin access required.', code: 'FORBIDDEN' });
+    }
+
+    const format = String(req.query.format || 'json').trim().toLowerCase();
+    const themeId = String(req.query.themeId || 'default').trim() || 'default';
+    const { signatureRow: activeSig, dataUrl: activeSigDataUrl } = getActiveSignatureRecord(store);
+
+    const previewPayload = {
+      serial: 'BRD-PREVIEW',
+      studentName: String(req.query.studentName || 'Sample Student'),
+      grandLineId: 'default',
+      grandLineTitle: String(req.query.grandLineTitle || 'Grand Line Mock 1'),
+      editionLabel: 'EDITION #01 · GRAND LINE',
+      rank: 1,
+      score: 192,
+      totalQuestions: 200,
+      percentage: 96,
+      participantsCount: 512,
+      issuedAt: Number(activeSig?.created_at || Date.now()),
+      themeId,
+      signatoryName: activeSig?.signatory_name || 'Boardly Examination Council',
+      signatoryTitle: activeSig?.signatory_title || 'Founder, Boardly',
+      signatureVersion: Number(activeSig?.version || 1),
+      signatureDataUrl: activeSigDataUrl || null,
+    };
+
+    res.setHeader('Cache-Control', 'private, no-store');
+    if (format === 'svg') {
+      const svg = buildCertificateSvgMarkup(previewPayload);
+      res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+      return res.status(200).send(svg);
+    }
+
+    return res.status(200).json({
+      ok: true,
+      preview: previewPayload,
+    });
+  });
+
   // 11. GET /api/admin/certificates — Admin only: list all certificates, active signature status, and mocks
   app.get('/api/admin/certificates', async (req: Request, res: Response) => {
     const user = await verifyFirebaseJwtZeroFirestore(req);

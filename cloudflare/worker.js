@@ -3376,6 +3376,80 @@ export default {
           });
         }
 
+        if (path === '/api/admin/certificates/preview' && method === 'GET') {
+          const format = String(url.searchParams.get('format') || 'json').toLowerCase();
+          const requestedTheme = String(url.searchParams.get('themeId') || 'default').trim() || 'default';
+          const activeSig = await db
+            .prepare('SELECT * FROM certificate_signatures WHERE active = 1 ORDER BY version DESC LIMIT 1')
+            .first();
+          const previewDataUrl = activeSig
+            ? await loadSignatureDataUrlFromR2(env.R2_BUCKET, activeSig.r2_key)
+            : null;
+
+          const sampleRow = {
+            id: 'preview',
+            serial: 'BRD-PREVIEW',
+            student_uid: user.uid,
+            student_name: String(url.searchParams.get('studentName') || 'Sample Student'),
+            grand_line_id: 'default',
+            grand_line_title: String(url.searchParams.get('grandLineTitle') || 'Grand Line Mock 1'),
+            edition_label: 'EDITION #01 · GRAND LINE',
+            rank: 1,
+            score: 192,
+            total_questions: 200,
+            percentage: 96,
+            participants_count: 512,
+            theme_id: requestedTheme,
+            signature_version: Number(activeSig?.version || 1),
+            issued_at: Number(activeSig?.created_at || Date.now()),
+          };
+
+          if (format === 'png') {
+            const pngBytes = buildWorkerCertificatePngBytes(sampleRow, activeSig);
+            return new Response(pngBytes, {
+              status: 200,
+              headers: {
+                ...getCorsHeaders(request, env),
+                'Content-Type': 'image/png',
+                'Cache-Control': 'private, no-store',
+              },
+            });
+          }
+
+          if (format === 'pdf') {
+            const pdfBytes = buildWorkerCertificatePdfBytes(sampleRow, activeSig);
+            return new Response(pdfBytes, {
+              status: 200,
+              headers: {
+                ...getCorsHeaders(request, env),
+                'Content-Type': 'application/pdf',
+                'Cache-Control': 'private, no-store',
+              },
+            });
+          }
+
+          return jsonResponse(request, env, {
+            ok: true,
+            preview: {
+              serial: sampleRow.serial,
+              studentName: sampleRow.student_name,
+              grandLineId: sampleRow.grand_line_id,
+              grandLineTitle: sampleRow.grand_line_title,
+              editionLabel: sampleRow.edition_label,
+              rank: sampleRow.rank,
+              score: sampleRow.score,
+              totalQuestions: sampleRow.total_questions,
+              percentage: sampleRow.percentage,
+              participantsCount: sampleRow.participants_count,
+              themeId: sampleRow.theme_id,
+              signatoryName: activeSig?.signatory_name || 'Boardly Examination Council',
+              signatoryTitle: activeSig?.signatory_title || 'Founder, Boardly',
+              signatureVersion: sampleRow.signature_version,
+              signatureDataUrl: previewDataUrl,
+            },
+          });
+        }
+
         if (path === '/api/admin/certificates' && method === 'GET') {
           const { results } = await db
             .prepare('SELECT * FROM certificates ORDER BY issued_at DESC LIMIT 250')

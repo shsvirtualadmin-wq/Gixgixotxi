@@ -23,6 +23,7 @@ import {
 import { CertificateRenderer } from './CertificateRenderer';
 
 export interface SignatureUploaderProps {
+  initialActiveSignature?: AdminSignatureRecord | null;
   onSignatureChanged?: (activeSignature: AdminSignatureRecord | null) => void;
 }
 
@@ -135,18 +136,27 @@ async function processSignatureFileClientSide(fileOrDataUrl: File | string): Pro
  * live certificate preview, and version history.
  */
 export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
+  initialActiveSignature = null,
   onSignatureChanged,
 }) => {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialActiveSignature);
   const [saving, setSaving] = useState(false);
   const [regeneratingAll, setRegeneratingAll] = useState(false);
-  const [activeSignature, setActiveSignature] = useState<AdminSignatureRecord | null>(null);
+  const [activeSignature, setActiveSignature] = useState<AdminSignatureRecord | null>(
+    initialActiveSignature
+  );
   const [history, setHistory] = useState<AdminSignatureRecord[]>([]);
   const [inputMode, setInputMode] = useState<'upload' | 'draw'>('upload');
 
-  const [signatoryName, setSignatoryName] = useState('Boardly Examination Council');
-  const [signatoryTitle, setSignatoryTitle] = useState('Founder, Boardly');
-  const [stagedDataUrl, setStagedDataUrl] = useState<string | null>(null);
+  const [signatoryName, setSignatoryName] = useState(
+    initialActiveSignature?.signatoryName || 'Boardly Examination Council'
+  );
+  const [signatoryTitle, setSignatoryTitle] = useState(
+    initialActiveSignature?.signatoryTitle || 'Founder, Boardly'
+  );
+  const [stagedDataUrl, setStagedDataUrl] = useState<string | null>(
+    initialActiveSignature?.previewDataUrl || null
+  );
   const [previewThemeMode, setPreviewThemeMode] = useState<'dark' | 'light'>(() => {
     if (typeof document !== 'undefined') {
       const attr =
@@ -169,9 +179,18 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
   const isDrawingRef = useRef(false);
   const hasDrawnStrokesRef = useRef(false);
 
+  // Keep onSignatureChanged in a ref so parent re-renders NEVER re-trigger loadSignatures in an infinite loop
+  const onSignatureChangedRef = useRef(onSignatureChanged);
+  useEffect(() => {
+    onSignatureChangedRef.current = onSignatureChanged;
+  }, [onSignatureChanged]);
+
   const loadSignatures = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 10_000);
     try {
       const res = await fetchAdminSignatures();
       setActiveSignature(res.activeSignature || null);
@@ -183,15 +202,16 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
       } else {
         setStagedDataUrl(null);
       }
-      onSignatureChanged?.(res.activeSignature || null);
+      onSignatureChangedRef.current?.(res.activeSignature || null);
     } catch (err: any) {
       const message = err?.message || 'Unable to load certificate signature settings.';
       setLoadError(message);
       setErrorMsg(message);
     } finally {
+      clearTimeout(safetyTimer);
       setLoading(false);
     }
-  }, [onSignatureChanged]);
+  }, []);
 
   useEffect(() => {
     void loadSignatures();
@@ -738,7 +758,7 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
                 signatoryTitle || activeSignature?.signatoryTitle || 'Founder, Boardly'
               }
               signatureDataUrl={effectivePreviewSignatureUrl}
-              loading={loading}
+              loading={loading && !activeSignature && !stagedDataUrl}
               error={loadError}
               onRetry={() => void loadSignatures()}
             />

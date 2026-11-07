@@ -77,11 +77,17 @@ export async function getBearerToken(forceRefresh = false): Promise<string | nul
   try {
     let user = auth.currentUser;
     if (!user && typeof (auth as any).authStateReady === 'function') {
-      await (auth as any).authStateReady();
+      await Promise.race([
+        (auth as any).authStateReady(),
+        new Promise((resolve) => setTimeout(resolve, 4000)),
+      ]);
       user = auth.currentUser;
     }
     if (user) {
-      return await user.getIdToken(forceRefresh);
+      return await Promise.race([
+        user.getIdToken(forceRefresh),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
+      ]);
     }
   } catch {
     // ignore token lookup error
@@ -93,6 +99,7 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
   silentErrorToast?: boolean;
   requireAuth?: boolean;
+  timeoutMs?: number;
 }
 
 /**
@@ -109,6 +116,8 @@ export async function apiRequest<T = any>(
     headers: customHeaders,
     silentErrorToast = false,
     requireAuth = false,
+    timeoutMs = 15000,
+    signal: externalSignal,
     ...rest
   } = options;
 
@@ -145,17 +154,47 @@ export async function apiRequest<T = any>(
   }
 
   const url = resolveApiPath(path);
+  const controller = new AbortController();
+  const timeoutId =
+    timeoutMs > 0
+      ? setTimeout(() => {
+          controller.abort(new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s (${url})`));
+        }, timeoutMs)
+      : null;
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort(externalSignal.reason);
+    } else {
+      externalSignal.addEventListener('abort', () => controller.abort(externalSignal.reason), {
+        once: true,
+      });
+    }
+  }
+
   let response: Response;
   try {
     response = await fetch(url, {
       ...rest,
       headers,
       body: serializedBody,
+      signal: controller.signal,
     });
   } catch (networkErr: any) {
-    const msg = networkErr?.message || 'Network error while contacting server.';
+    const isAbort =
+      networkErr?.name === 'AbortError' ||
+      controller.signal.aborted ||
+      String(networkErr?.message || '').toLowerCase().includes('abort') ||
+      String(networkErr?.message || '').toLowerCase().includes('timed out');
+    const msg = isAbort
+      ? `Request timed out after ${Math.round(timeoutMs / 1000)}s (${url}). Please retry.`
+      : networkErr?.message || 'Network error while contacting server.';
+    const wrappedErr: ApiError = new Error(msg);
+    wrappedErr.code = isAbort ? 'REQUEST_TIMEOUT' : networkErr?.code || 'NETWORK_ERROR';
     if (!silentErrorToast) showApiToast(msg, 'error');
-    throw networkErr;
+    throw wrappedErr;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 
   const rawText = await response.text().catch(() => '');
