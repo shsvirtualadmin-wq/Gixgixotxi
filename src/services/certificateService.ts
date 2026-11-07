@@ -198,8 +198,10 @@ export async function verifyCertificateBySerial(
 }
 
 function normalizeSignatureRecord(raw: any): AdminSignatureRecord {
+  const id = String(raw.id || '');
+  const imageUrl = raw.imageUrl || (id ? `/api/admin/signatures/${encodeURIComponent(id)}/image` : undefined);
   return {
-    id: raw.id,
+    id,
     r2Key: raw.r2Key || raw.r2_key,
     signatoryName: raw.signatoryName ?? raw.signatory_name ?? '',
     signatoryTitle: raw.signatoryTitle ?? raw.signatory_title ?? '',
@@ -210,9 +212,54 @@ function normalizeSignatureRecord(raw: any): AdminSignatureRecord {
     createdAt: Number(raw.createdAt ?? raw.created_at ?? Date.now()),
     created_at: Number(raw.created_at ?? raw.createdAt ?? Date.now()),
     active: Boolean(raw.active ?? true),
-    imageUrl: raw.imageUrl || `/api/admin/signatures/${encodeURIComponent(raw.id)}/image`,
-    previewDataUrl: raw.previewDataUrl || raw.imageUrl || null,
+    imageUrl,
+    previewDataUrl: raw.previewDataUrl || imageUrl || null,
   };
+}
+
+/**
+ * Fetches an authenticated signature PNG from `/api/admin/signatures/:id/image`
+ * and converts it into a `data:image/png;base64,...` data URI so inline `<svg><image>`
+ * previews and `<img>` thumbnails never fail due to missing Bearer headers.
+ */
+export async function fetchSignatureImageAsDataUrl(
+  signatureIdOrUrl: string
+): Promise<string | null> {
+  if (!signatureIdOrUrl) return null;
+  if (signatureIdOrUrl.startsWith('data:image/')) {
+    return signatureIdOrUrl;
+  }
+  const endpoint = signatureIdOrUrl.startsWith('/')
+    ? signatureIdOrUrl
+    : `/api/admin/signatures/${encodeURIComponent(signatureIdOrUrl)}/image`;
+  try {
+    const token = await getIdToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetch(endpoint, { headers });
+    if (!res.ok) return null;
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const json = await res.json().catch(() => null);
+      if (json?.previewDataUrl && String(json.previewDataUrl).startsWith('data:image/')) {
+        return String(json.previewDataUrl);
+      }
+      return null;
+    }
+    const blob = await res.blob();
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () =>
+        resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch (err) {
+    console.warn(`[CertificateService] Could not fetch signature image at ${endpoint}:`, err);
+    return null;
+  }
 }
 
 /**
@@ -226,16 +273,45 @@ export async function fetchAdminSignatures(): Promise<{
   const endpoint = '/api/admin/signatures';
   try {
     const res = await apiFetch<any>(endpoint, { requireAuth: true });
-    const history = Array.isArray(res?.history)
+    const history: AdminSignatureRecord[] = Array.isArray(res?.history)
       ? res.history.map(normalizeSignatureRecord)
       : [];
-    const activeSignature = res?.activeSignature
+    let activeSignature: AdminSignatureRecord | null = res?.activeSignature
       ? normalizeSignatureRecord(res.activeSignature)
       : history.find((h: AdminSignatureRecord) => h.active) || null;
+
+    // Ensure activeSignature and history items have a resolved data:image/... URI
+    // so SVG <image> tags and version history thumbnails render without needing auth headers on <img>/<image>
+    if (
+      activeSignature &&
+      (!activeSignature.previewDataUrl ||
+        !activeSignature.previewDataUrl.startsWith('data:image/'))
+    ) {
+      const dataUrl = await fetchSignatureImageAsDataUrl(
+        activeSignature.imageUrl || activeSignature.id
+      );
+      if (dataUrl) {
+        activeSignature = { ...activeSignature, previewDataUrl: dataUrl };
+      }
+    }
+
+    const hydratedHistory = await Promise.all(
+      history.map(async (item) => {
+        if (item.previewDataUrl && item.previewDataUrl.startsWith('data:image/')) {
+          return item;
+        }
+        if (activeSignature && item.id === activeSignature.id && activeSignature.previewDataUrl) {
+          return { ...item, previewDataUrl: activeSignature.previewDataUrl };
+        }
+        const dataUrl = await fetchSignatureImageAsDataUrl(item.imageUrl || item.id);
+        return dataUrl ? { ...item, previewDataUrl: dataUrl } : item;
+      })
+    );
+
     return {
       hasActiveSignature: Boolean(activeSignature),
       activeSignature,
-      history,
+      history: hydratedHistory,
     };
   } catch (err: any) {
     console.error(`[CertificateService] Error (${err?.code || 'ADMIN_SIG_READ'}) at ${endpoint}:`, err);
@@ -388,7 +464,28 @@ export async function fetchAdminCertificates(params?: {
   const queryStr = qs.toString();
   const endpoint = `/api/admin/certificates${queryStr ? `?${queryStr}` : ''}`;
   try {
-    return await apiFetch(endpoint, { requireAuth: true });
+    const res = await apiFetch<any>(endpoint, { requireAuth: true });
+    let activeSignature: AdminSignatureRecord | null = res?.activeSignature
+      ? normalizeSignatureRecord(res.activeSignature)
+      : null;
+    if (
+      activeSignature &&
+      (!activeSignature.previewDataUrl ||
+        !activeSignature.previewDataUrl.startsWith('data:image/'))
+    ) {
+      const dataUrl = await fetchSignatureImageAsDataUrl(
+        activeSignature.imageUrl || activeSignature.id
+      );
+      if (dataUrl) {
+        activeSignature = { ...activeSignature, previewDataUrl: dataUrl };
+      }
+    }
+    return {
+      hasActiveSignature: Boolean(res?.hasActiveSignature ?? activeSignature),
+      activeSignature,
+      certificates: Array.isArray(res?.certificates) ? res.certificates : [],
+      mocks: Array.isArray(res?.mocks) ? res.mocks : [],
+    };
   } catch (err: any) {
     console.error(`[CertificateService] Error (${err?.code || 'ADMIN_CERTS_LIST'}) at ${endpoint}:`, err);
     throw err;

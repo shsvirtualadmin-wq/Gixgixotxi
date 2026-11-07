@@ -621,7 +621,33 @@ export const AdminCertificatesPage: React.FC = () => {
                   disabled={busyId === selectedMock.id}
                 />
               </div>
-            ) : null}
+            ) : (
+              <div className="p-4 sm:p-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-5">
+                <div className="border-b border-[var(--border)] pb-4">
+                  <div className="font-mono text-[10px] uppercase tracking-widest text-[var(--accent)]">
+                    BUILT-IN DEFAULT CERTIFICATE THEMES · SAMPLE PREVIEW
+                  </div>
+                  <h3 className="text-base sm:text-lg font-bold text-[var(--text)]">
+                    Grand Line Mock 1 (Default Preview)
+                  </h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    No Grand Line mocks exist yet, so this preview uses the built-in default certificate themes with your active signature.
+                  </p>
+                </div>
+
+                <ThemePicker
+                  grandLineId="default"
+                  grandLineTitle="Grand Line Mock 1"
+                  value="default"
+                  onChange={() => {}}
+                  signatoryName={
+                    activeSignature?.signatoryName || 'Boardly Examination Council'
+                  }
+                  signatoryTitle={activeSignature?.signatoryTitle || 'Founder, Boardly'}
+                  signatureDataUrl={activeSignature?.previewDataUrl || null}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}

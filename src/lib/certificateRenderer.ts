@@ -467,10 +467,15 @@ export function buildCertificateSvgMarkup(input: CertificateRenderInput): string
 
   const hasSignatureImg =
     typeof input.signatureDataUrl === 'string' &&
-    input.signatureDataUrl.startsWith('data:image/');
+    input.signatureDataUrl.trim().length > 0 &&
+    (input.signatureDataUrl.startsWith('data:image/') ||
+      input.signatureDataUrl.startsWith('blob:') ||
+      input.signatureDataUrl.startsWith('http://') ||
+      input.signatureDataUrl.startsWith('https://') ||
+      input.signatureDataUrl.startsWith('/'));
 
   const signatureBlockSvg = hasSignatureImg
-    ? `<image href="${input.signatureDataUrl}" x="795" y="592" width="190" height="54" preserveAspectRatio="xMidYMid contain" />`
+    ? `<image href="${escapeXml(input.signatureDataUrl!.trim())}" x="795" y="592" width="190" height="54" preserveAspectRatio="xMidYMid meet" />`
     : `<line x1="805" y1="638" x2="975" y2="638" stroke="${theme.mutedColor}" stroke-width="1.2" stroke-dasharray="4 4" stroke-opacity="0.65" />`;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CERTIFICATE_WIDTH} ${CERTIFICATE_HEIGHT}" width="${CERTIFICATE_WIDTH}" height="${CERTIFICATE_HEIGHT}">
@@ -669,22 +674,17 @@ export function buildCertificateHtmlDocument(input: CertificateRenderInput): str
       overflow: hidden;
       background: ${theme.backgroundColor};
     }
-    .certificate-frosted-overlay {
-      position: absolute;
-      left: 56px;
-      top: 48px;
-      width: 1011px;
-      height: 698px;
-      border-radius: 36px;
-      backdrop-filter: blur(28px) saturate(160%);
-      -webkit-backdrop-filter: blur(28px) saturate(160%);
-      pointer-events: none;
+    .certificate-stage svg {
+      position: relative;
+      z-index: 1;
+      display: block;
+      width: 1123px;
+      height: 794px;
     }
   </style>
 </head>
 <body>
   <div class="certificate-stage">
-    <div class="certificate-frosted-overlay"></div>
     ${svgMarkup}
   </div>
 </body>

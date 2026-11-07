@@ -2449,6 +2449,8 @@ export default {
       }
 
       const WORKER_CERT_THEMES = {
+        default: { bg: '#0A0A0D', ink: '#F8FAFC', muted: '#94A3B8', accent: '#EF4444' },
+        'default-light': { bg: '#F6F5F0', ink: '#0D1B3E', muted: '#475569', accent: '#EF4444' },
         'red-dark': { bg: '#0A0A0D', ink: '#F8FAFC', muted: '#94A3B8', accent: '#EF4444' },
         'light-red': { bg: '#F6F5F0', ink: '#0D1B3E', muted: '#475569', accent: '#EF4444' },
         'blue-dark': { bg: '#0D1B3E', ink: '#F8FAFC', muted: '#93C5FD', accent: '#1A6DFF' },

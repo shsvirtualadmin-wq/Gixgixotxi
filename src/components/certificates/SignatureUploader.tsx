@@ -147,7 +147,20 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
   const [signatoryName, setSignatoryName] = useState('Boardly Examination Council');
   const [signatoryTitle, setSignatoryTitle] = useState('Founder, Boardly');
   const [stagedDataUrl, setStagedDataUrl] = useState<string | null>(null);
+  const [previewThemeMode, setPreviewThemeMode] = useState<'dark' | 'light'>(() => {
+    if (typeof document !== 'undefined') {
+      const attr =
+        document.documentElement.getAttribute('data-theme') ||
+        document.body.getAttribute('data-theme') ||
+        '';
+      if (attr.toLowerCase() === 'light' || document.documentElement.classList.contains('light')) {
+        return 'light';
+      }
+    }
+    return 'dark';
+  });
 
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -158,7 +171,7 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
 
   const loadSignatures = useCallback(async () => {
     setLoading(true);
-    setErrorMsg(null);
+    setLoadError(null);
     try {
       const res = await fetchAdminSignatures();
       setActiveSignature(res.activeSignature || null);
@@ -172,7 +185,9 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
       }
       onSignatureChanged?.(res.activeSignature || null);
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Unable to load certificate signature settings.');
+      const message = err?.message || 'Unable to load certificate signature settings.';
+      setLoadError(message);
+      setErrorMsg(message);
     } finally {
       setLoading(false);
     }
@@ -273,6 +288,10 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
     try {
       const processedDataUrl = await processSignatureFileClientSide(file);
       setStagedDataUrl(processedDataUrl);
+      // Reset file input so selecting the same file again via "Replace" triggers onChange
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } catch (err: any) {
       setErrorMsg(err?.message || 'Could not process signature image.');
     }
@@ -299,6 +318,14 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
           signatoryName: signatoryName.trim(),
           signatoryTitle: signatoryTitle.trim(),
         });
+        const nextSig: AdminSignatureRecord = {
+          ...res.signature,
+          signatoryName: signatoryName.trim(),
+          signatoryTitle: signatoryTitle.trim(),
+          previewDataUrl: stagedDataUrl,
+        };
+        setActiveSignature(nextSig);
+        onSignatureChanged?.(nextSig);
         setSuccessMsg(
           `Saved signature v${res.signature.version} to private R2 (white background removed & margins trimmed).`
         );
@@ -307,6 +334,15 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
           signatoryName: signatoryName.trim(),
           signatoryTitle: signatoryTitle.trim(),
         });
+        const nextSig: AdminSignatureRecord = {
+          ...activeSignature,
+          ...res.signature,
+          signatoryName: signatoryName.trim(),
+          signatoryTitle: signatoryTitle.trim(),
+          previewDataUrl: stagedDataUrl || activeSignature.previewDataUrl || null,
+        };
+        setActiveSignature(nextSig);
+        onSignatureChanged?.(nextSig);
         setSuccessMsg(`Updated signatory details on v${res.signature.version}.`);
       } else {
         setErrorMsg('Please upload or draw a signature image before saving.');
@@ -329,6 +365,8 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
     try {
       await removeActiveAdminSignature();
       setStagedDataUrl(null);
+      setActiveSignature(null);
+      onSignatureChanged?.(null);
       setSuccessMsg(
         'Active signature removed. New certificates will use a blank signature line until a signature is set or restored.'
       );
@@ -380,6 +418,9 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
     }
   };
 
+  const effectivePreviewSignatureUrl =
+    stagedDataUrl || activeSignature?.previewDataUrl || null;
+
   return (
     <div className="space-y-6">
       {/* Warning Banner when no active signature is set */}
@@ -400,9 +441,20 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
       )}
 
       {errorMsg && (
-        <div className="p-3.5 rounded-xl border border-red-500/40 bg-red-500/10 text-xs text-red-400 flex items-center gap-2">
-          <AlertCircle size={15} className="shrink-0" />
-          <span>{errorMsg}</span>
+        <div className="p-3.5 rounded-xl border border-red-500/40 bg-red-500/10 text-xs text-red-400 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={15} className="shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+          {loadError && (
+            <button
+              type="button"
+              onClick={() => void loadSignatures()}
+              className="px-2.5 py-1 rounded-lg bg-red-500/20 border border-red-500/40 text-[11px] font-bold text-red-200 hover:bg-red-500/30 cursor-pointer shrink-0"
+            >
+              Retry
+            </button>
+          )}
         </div>
       )}
 
@@ -525,9 +577,9 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
                 <span className="font-mono text-[9px] uppercase tracking-wider text-slate-500 mb-1">
                   LIGHT THEME PREVIEW
                 </span>
-                {stagedDataUrl ? (
+                {effectivePreviewSignatureUrl ? (
                   <img
-                    src={stagedDataUrl}
+                    src={effectivePreviewSignatureUrl}
                     alt="Signature on light background"
                     className="max-h-12 w-auto object-contain"
                   />
@@ -541,11 +593,11 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
                 <span className="font-mono text-[9px] uppercase tracking-wider text-slate-400 mb-1">
                   DARK THEME PREVIEW
                 </span>
-                {stagedDataUrl ? (
+                {effectivePreviewSignatureUrl ? (
                   <img
-                    src={stagedDataUrl}
+                    src={effectivePreviewSignatureUrl}
                     alt="Signature on dark background"
-                    className="max-h-12 w-auto object-contain brightness-125 contrast-125"
+                    className="max-h-12 w-auto object-contain invert brightness-200 contrast-125"
                   />
                 ) : (
                   <span className="text-[11px] text-slate-600 italic">No signature loaded</span>
@@ -620,10 +672,37 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
         {/* Right Column: Live Full Certificate Preview + Version History */}
         <div className="lg:col-span-6 space-y-5">
           <div className="p-4 sm:p-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
-                LIVE CERTIFICATE APPEARANCE
-              </span>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
+                  LIVE CERTIFICATE APPEARANCE
+                </span>
+                <div className="inline-flex items-center rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewThemeMode('dark')}
+                    className={`px-2 py-0.5 rounded-md font-mono text-[10px] uppercase transition-colors cursor-pointer ${
+                      previewThemeMode === 'dark'
+                        ? 'bg-[var(--accent)] text-white font-bold'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    Dark
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewThemeMode('light')}
+                    className={`px-2 py-0.5 rounded-md font-mono text-[10px] uppercase transition-colors cursor-pointer ${
+                      previewThemeMode === 'light'
+                        ? 'bg-[var(--accent)] text-white font-bold'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    Light
+                  </button>
+                </div>
+              </div>
+
               <button
                 type="button"
                 onClick={handleRegenerateAllWithCurrent}
@@ -640,21 +719,28 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
             </div>
 
             <CertificateRenderer
-              serial="BDLY-GL01-0001"
-              studentName="Zainab Fatima Ali"
-              grandLineId="gl_mock_01"
-              grandLineTitle="NUST NET-1 Full Length Grand Line Mock"
-              editionLabel="EDITION #01 · ENGINEERING"
+              serial="BRD-PREVIEW"
+              studentName="Sample Student"
+              grandLineId="default"
+              grandLineTitle="Grand Line Mock 1"
+              editionLabel="EDITION #01 · GRAND LINE"
               rank={1}
               score={192}
               totalQuestions={200}
               percentage={96}
               participantsCount={512}
-              issuedAt={Date.now()}
-              themeId="red-dark"
-              signatoryName={signatoryName || 'Boardly Examination Council'}
-              signatoryTitle={signatoryTitle || 'Founder, Boardly'}
-              signatureDataUrl={stagedDataUrl}
+              issuedAt={activeSignature?.createdAt || Date.now()}
+              themeId={previewThemeMode === 'light' ? 'default-light' : 'default'}
+              signatoryName={
+                signatoryName || activeSignature?.signatoryName || 'Boardly Examination Council'
+              }
+              signatoryTitle={
+                signatoryTitle || activeSignature?.signatoryTitle || 'Founder, Boardly'
+              }
+              signatureDataUrl={effectivePreviewSignatureUrl}
+              loading={loading}
+              error={loadError}
+              onRetry={() => void loadSignatures()}
             />
           </div>
 
