@@ -8,6 +8,7 @@ import { Check, X, Shield } from 'lucide-react';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { FREE_DAILY_TESTS, FREE_DAILY_TOKEN_LIMIT, FREE_DAILY_ARENA_LIMIT } from '@/constants/limits';
 import { PAYMENT_METHODS as OFFICIAL_PAYMENT_METHODS } from '@/constants/branding';
+import { PLANS } from '@/config/plans';
 
 const COMPARISON_ROWS = [
   { feature: 'Daily Practice Tests & Sprints', free: `${FREE_DAILY_TESTS} / day`, pro: 'Unlimited' },
@@ -138,17 +139,18 @@ export function PricingPage() {
                     className="text-4xl sm:text-5xl font-bold text-[var(--text)] font-dot"
                     style={{ fontFamily: 'var(--font-dot)' }}
                   >
-                    199 PKR
+                    PKR {PLANS.pro_monthly.price_pkr}
                   </span>
+                  <span className="text-sm text-[var(--muted)] font-medium">/ month</span>
                 </div>
                 <p className="text-xs sm:text-sm text-[var(--muted)] mt-2">
-                  199 PKR for unlimited use across the platform.
+                  PKR {PLANS.pro_monthly.price_pkr} ({PLANS.pro_monthly.price_kobans.toLocaleString()} Kobans) for 30 days, or PKR {PLANS.pro_annual.price_pkr.toLocaleString()} for 365 days (Save 25%).
                 </p>
               </div>
 
               <div className="border-t border-white/10 dark:border-white/10 pt-5 space-y-3">
                 {[
-                  '199 PKR for unlimited use',
+                  `PKR ${PLANS.pro_monthly.price_pkr}/month or PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}/year`,
                   'Unlimited practice tests & sprint drills',
                   'Unlimited Boardy AI step derivations',
                   'Complete subject question banks unlocked',
@@ -167,14 +169,14 @@ export function PricingPage() {
             <div className="pt-8">
               {user ? (
                 <Link to="/dashboard/plans" className="btn-primary w-full" style={{ height: '52px' }}>
-                  Get Unlimited (199 PKR)
+                  Get Unlimited (PKR {PLANS.pro_monthly.price_pkr})
                 </Link>
               ) : (
                 <button
                   type="button"
                   onClick={() =>
                     requireAuth(
-                      'upgrade to the Unlimited plan (199 PKR)',
+                      `upgrade to the Unlimited plan (PKR ${PLANS.pro_monthly.price_pkr})`,
                       () => navigate('/dashboard/plans'),
                       '/dashboard/plans'
                     )
@@ -182,7 +184,7 @@ export function PricingPage() {
                   className="btn-primary w-full cursor-pointer"
                   style={{ height: '52px' }}
                 >
-                  Get Unlimited (199 PKR)
+                  Get Unlimited (PKR {PLANS.pro_monthly.price_pkr})
                 </button>
               )}
             </div>
@@ -253,7 +255,7 @@ export function PricingPage() {
                     <th className="p-4 sm:p-5 font-bold text-[var(--text)]">Feature</th>
                     <th className="p-4 sm:p-5 font-bold text-[var(--muted)] text-center">Free Starter</th>
                     <th className="p-4 sm:p-5 font-bold text-[var(--red)] text-center font-dot">
-                      Unlimited (199 PKR)
+                      Unlimited (PKR {PLANS.pro_monthly.price_pkr})
                     </th>
                   </tr>
                 </thead>
@@ -339,9 +341,9 @@ export function PricingPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
               <div className="p-4 rounded-2xl glass-row text-xs space-y-2">
-                <span className="font-bold text-[var(--red)]">1. Transfer PKR 199</span>
+                <span className="font-bold text-[var(--red)]">1. Transfer PKR {PLANS.pro_monthly.price_pkr}</span>
                 <p className="text-[var(--muted)]">
-                  Send PKR 199 via {OFFICIAL_PAYMENT_METHODS.jazzcash.displayName}, {OFFICIAL_PAYMENT_METHODS.opay.displayName}, SadaPay, or local bank transfer to the account details provided on your dashboard.
+                  Send PKR {PLANS.pro_monthly.price_pkr} (Monthly) or PKR {PLANS.pro_annual.price_pkr.toLocaleString()} (Annual) via {OFFICIAL_PAYMENT_METHODS.jazzcash.displayName} or {OFFICIAL_PAYMENT_METHODS.opay.displayName}, or pay instantly with Kobans.
                 </p>
               </div>
 

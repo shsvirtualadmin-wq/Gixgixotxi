@@ -23,6 +23,7 @@ import {
   PAYMENT_METHODS_PAIR_LABEL,
   formatPaymentMethodLabel,
 } from '../constants/branding';
+import { REFUND_POLICY_TEXT } from '../config/plans';
 
 export type EmailEventType =
   | 'welcome_onboarding'
@@ -30,6 +31,9 @@ export type EmailEventType =
   | 'koban_purchase_approved'
   | 'koban_purchase_rejected'
   | 'koban_receipt'
+  | 'pro_request_received'
+  | 'pro_activated'
+  | 'pro_request_rejected'
   | 'test_started'
   | 'test_completed'
   | 'daily_admin_digest'
@@ -112,6 +116,7 @@ export function verifyEmailBalanceSanity(params: {
 
 export type KobanReceiptSubType =
   | 'store_purchase'
+  | 'pro_pass_purchase'
   | 'daily_claim'
   | 'daily_checkin'
   | 'milestone_claim'
@@ -139,6 +144,10 @@ export function getEmailLogoUrl(appUrl = 'https://boardly.cfd'): string {
  */
 export const EMAIL_EVENT_LABELS: Record<string, string> = {
   STORE_PURCHASE: 'Store purchase',
+  PRO_PASS_PURCHASE: 'Pro pass purchase',
+  PRO_REQUEST_RECEIVED: 'Pro request received',
+  PRO_PASS_ACTIVATED: 'Pro pass activated',
+  PRO_REQUEST_REJECTED: 'Pro request rejected',
   KOBAN_PURCHASE_APPROVED: 'Koban purchase approved',
   KOBAN_PURCHASE_REJECTED: 'Koban purchase rejected',
   KOBAN_PURCHASE_REQUEST: 'Koban purchase request',
@@ -2061,4 +2070,461 @@ export function buildFirebaseEmailVerificationEmail(params: {
 
   return { subject, preheader, html, text };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. BOARDLY PRO PASS EMAILS (Request Received, Activated, Rejected + Admin Copies)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function buildProRequestReceivedStudentEmail(params: {
+  studentName: string;
+  planName: string;
+  durationDays: number;
+  amountPkr?: number;
+  pkrAmount?: number;
+  paymentMethod: string;
+  transactionId: string;
+  submittedAt?: Date | string | number;
+  appUrl?: string;
+}): RenderedEmailTemplate {
+  const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
+  const timeStr = formatPktDateTime(params.submittedAt);
+  const pkr = Number(params.pkrAmount ?? params.amountPkr ?? 199);
+  const methodDisplay = formatPaymentMethodLabel(params.paymentMethod);
+  const subject = `Pro request received: ${params.planName} — Boardly`;
+  const preheader = `We received your ${methodDisplay} payment reference (${params.transactionId}) for ${params.planName}.`;
+
+  const html = renderBaseHtmlLayout({
+    subject,
+    preheader,
+    badgeText: 'Pro Request Received',
+    badgeColor: 'gold',
+    heading: 'We received your Boardly Pro request',
+    introHtml: `<p style="margin:0;">Thank you, <strong>${escapeHtml(
+      params.studentName || 'Student'
+    )}</strong>! Your payment transfer reference for <strong>${escapeHtml(
+      params.planName
+    )}</strong> is in our verification queue. We will verify it within 2 hours and email you as soon as Pro is active.</p>`,
+    detailsRows: [
+      { label: 'Plan', value: `${params.planName} (${params.durationDays} days)` },
+      { label: 'Amount', value: `PKR ${pkr.toLocaleString()}`, highlightGold: true },
+      { label: 'Payment method', value: methodDisplay },
+      { label: 'Transaction ID (TID)', value: params.transactionId, mono: true },
+      { label: 'Status', value: 'Pending Verification' },
+      { label: 'Time (PKT)', value: timeStr },
+    ],
+    extraBodyHtml: `<p style="margin:14px 0 0 0;font-size:12px;color:#9CA3AF;">${escapeHtml(
+      REFUND_POLICY_TEXT
+    )}</p>`,
+    ctaLabel: 'View Plan Status',
+    ctaUrl: `${appUrl}/dashboard/plans`,
+    appUrl,
+  });
+
+  const text = [
+    `BOARDLY — Pro request received (${params.planName})`,
+    ``,
+    `Hi ${params.studentName || 'Student'},`,
+    `We received your payment request for ${params.planName} (${params.durationDays} days).`,
+    `Amount: PKR ${pkr.toLocaleString()}`,
+    `Payment method: ${methodDisplay}`,
+    `Transaction ID: ${params.transactionId}`,
+    `Time (PKT): ${timeStr}`,
+    ``,
+    REFUND_POLICY_TEXT,
+    `View status: ${appUrl}/dashboard/plans`,
+  ].join('\n');
+
+  return { subject, preheader, html, text };
+}
+
+export function buildProRequestReceivedAdminEmail(params: {
+  requestId: string;
+  studentUid: string;
+  studentName: string;
+  studentEmail: string;
+  planName: string;
+  durationDays: number;
+  amountPkr?: number;
+  pkrAmount?: number;
+  paymentMethod: string;
+  transactionId: string;
+  submittedAt?: Date | string | number;
+  appUrl?: string;
+}): RenderedEmailTemplate {
+  const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
+  const timeStr = formatPktDateTime(params.submittedAt);
+  const pkr = Number(params.pkrAmount ?? params.amountPkr ?? 199);
+  const methodDisplay = formatPaymentMethodLabel(params.paymentMethod);
+  const eventLabel = formatEmailEventLabel('PRO_REQUEST_RECEIVED');
+  const subject = `${eventLabel}: ${params.planName} (PKR ${pkr.toLocaleString()}) by ${params.studentName || 'Student'}`;
+  const preheader = `${params.studentName} (${params.studentEmail}) submitted TID ${params.transactionId} via ${methodDisplay}.`;
+  const reviewUrl = `${appUrl}/admin/payments?type=pro&request_id=${encodeURIComponent(params.requestId)}`;
+
+  const html = renderBaseHtmlLayout({
+    subject,
+    preheader,
+    badgeText: eventLabel,
+    badgeColor: 'red',
+    heading: `${eventLabel}: ${params.planName}`,
+    introHtml: `<p style="margin:0;">A student submitted a PKR payment transfer for Boardly Pro verification.</p>`,
+    studentIdentity: {
+      name: params.studentName || 'Student',
+      email: params.studentEmail,
+      uid: params.studentUid,
+      transactionId: params.transactionId || params.requestId,
+    },
+    detailsRows: [
+      { label: 'Event type', value: eventLabel },
+      { label: 'Plan', value: `${params.planName} (${params.durationDays} days)` },
+      { label: 'Amount (PKR)', value: `PKR ${pkr.toLocaleString()}`, highlightGold: true },
+      { label: 'Payment method', value: methodDisplay },
+      { label: 'Transaction ID (TID)', value: params.transactionId, mono: true },
+      { label: 'Time (PKT)', value: timeStr },
+    ],
+    ctaLabel: 'Review in Admin Payments',
+    ctaUrl: reviewUrl,
+    appUrl,
+    isAdminEmail: true,
+  });
+
+  const text = [
+    `BOARDLY ADMIN — ${subject}`,
+    ``,
+    `Student: ${params.studentName} (${params.studentEmail})`,
+    `User ID: ${params.studentUid}`,
+    `Plan: ${params.planName} (${params.durationDays} days)`,
+    `Amount: PKR ${pkr.toLocaleString()}`,
+    `Method: ${methodDisplay}`,
+    `TID: ${params.transactionId}`,
+    `Time (PKT): ${timeStr}`,
+    ``,
+    `Review: ${reviewUrl}`,
+    `Internal admin notification`,
+  ].join('\n');
+
+  return { subject, preheader, html, text };
+}
+
+export function buildProActivatedStudentEmail(params: {
+  studentName: string;
+  planName: string;
+  durationDays: number;
+  expiryFormatted?: string;
+  expiresAtLabel?: string;
+  wasExtension?: boolean;
+  previousExpiryLabel?: string | null;
+  paymentMethod?: string;
+  paidWith?: 'kobans' | 'pkr';
+  amountPkr?: number;
+  pkrAmount?: number;
+  kobansSpent?: number;
+  balanceBefore?: number;
+  newBalance?: number;
+  transactionId?: string;
+  activatedAt?: Date | string | number;
+  appUrl?: string;
+}): RenderedEmailTemplate {
+  const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
+  const timeStr = formatPktDateTime(params.activatedAt);
+  const expiryLabel = params.expiresAtLabel || params.expiryFormatted || 'Active';
+  const isKobanPayment =
+    params.paidWith === 'kobans' ||
+    (typeof params.kobansSpent === 'number' && params.kobansSpent > 0);
+  const spent = isKobanPayment ? Math.abs(Math.floor(params.kobansSpent || 0)) : 0;
+  const pkr = Number(params.pkrAmount ?? params.amountPkr ?? 199);
+  const methodLabel = isKobanPayment
+    ? 'Kobans Wallet'
+    : formatPaymentMethodLabel(params.paymentMethod || 'jazzcash');
+  const amountDisplay = isKobanPayment
+    ? `${spent.toLocaleString()} Kobans (PKR ${Math.round(spent / 10).toLocaleString()})`
+    : `PKR ${pkr.toLocaleString()}`;
+
+  const subject = `Pro activated: ${params.planName} active until ${expiryLabel} — Boardly`;
+  const preheader = `Your ${params.planName} is active until ${expiryLabel}. Start practicing with unlimited tests and AI derivations.`;
+
+  const html = renderBaseHtmlLayout({
+    subject,
+    preheader,
+    badgeText: params.wasExtension ? 'Pro Extended' : 'Pro Activated',
+    badgeColor: 'green',
+    heading: `Boardly Pro active until ${expiryLabel}!`,
+    introHtml: `<p style="margin:0;">Congratulations, <strong>${escapeHtml(
+      params.studentName || 'Student'
+    )}</strong>! Your <strong>${escapeHtml(
+      params.planName
+    )}</strong> is now active${
+      params.wasExtension && params.previousExpiryLabel
+        ? ` (extended from ${escapeHtml(params.previousExpiryLabel)} to ${escapeHtml(expiryLabel)})`
+        : ''
+    }. Enjoy unlimited practice tests, Arena National Mocks, and Boardy AI derivations.</p>`,
+    ...(isKobanPayment &&
+    typeof params.balanceBefore === 'number' &&
+    typeof params.newBalance === 'number'
+      ? {
+          kobanHighlight: {
+            label: 'Pro Pass Purchase',
+            amountText: `-${spent.toLocaleString()} Kobans`,
+            subtext: `Balance before: ${params.balanceBefore.toLocaleString()} Kobans  •  New Balance: ${params.newBalance.toLocaleString()} Kobans`,
+            isNegative: true,
+          },
+        }
+      : {}),
+    detailsRows: [
+      { label: 'Plan', value: `${params.planName} (${params.durationDays} days)` },
+      { label: 'Pro active until', value: expiryLabel, highlightGold: true },
+      { label: 'Payment method', value: methodLabel },
+      ...(isKobanPayment
+        ? [
+            {
+              label: 'Kobans spent',
+              value: `-${spent.toLocaleString()} Kobans`,
+              highlightRed: true,
+            },
+            ...(typeof params.balanceBefore === 'number'
+              ? [
+                  {
+                    label: 'Balance before',
+                    value: `${params.balanceBefore.toLocaleString()} Kobans`,
+                    mutedSmall: true,
+                  },
+                ]
+              : []),
+            ...(typeof params.newBalance === 'number'
+              ? [
+                  {
+                    label: 'New balance',
+                    value: `${params.newBalance.toLocaleString()} Kobans`,
+                    highlightGold: true,
+                  },
+                ]
+              : []),
+          ]
+        : [{ label: 'Amount paid', value: amountDisplay, highlightGold: true }]),
+      ...(params.transactionId
+        ? [{ label: 'Transaction ID', value: formatShortTxId(params.transactionId), mono: true }]
+        : []),
+      { label: 'Time (PKT)', value: timeStr },
+    ],
+    extraBodyHtml: `<p style="margin:14px 0 0 0;font-size:12px;color:#9CA3AF;">${escapeHtml(
+      REFUND_POLICY_TEXT
+    )}</p>`,
+    ctaLabel: 'Start Practicing Now',
+    ctaUrl: `${appUrl}/dashboard/practice`,
+    secondaryCtaLabel: 'View Plans & Status',
+    secondaryCtaUrl: `${appUrl}/dashboard/plans`,
+    appUrl,
+  });
+
+  const text = [
+    `BOARDLY PRO ACTIVATED — ${params.planName}`,
+    ``,
+    `Hi ${params.studentName || 'Student'},`,
+    `Your ${params.planName} (${params.durationDays} days) is now active until ${expiryLabel}!`,
+    `Payment method: ${methodLabel}`,
+    `Amount: ${amountDisplay}`,
+    ...(isKobanPayment && typeof params.balanceBefore === 'number'
+      ? [`Balance before: ${params.balanceBefore.toLocaleString()} Kobans`]
+      : []),
+    ...(isKobanPayment && typeof params.newBalance === 'number'
+      ? [`New balance: ${params.newBalance.toLocaleString()} Kobans`]
+      : []),
+    `Time (PKT): ${timeStr}`,
+    ``,
+    REFUND_POLICY_TEXT,
+    `Start practicing: ${appUrl}/dashboard/practice`,
+  ].join('\n');
+
+  return { subject, preheader, html, text };
+}
+
+export function buildProActivatedAdminEmail(params: {
+  studentUid: string;
+  studentName: string;
+  studentEmail?: string;
+  planName: string;
+  durationDays: number;
+  expiryFormatted?: string;
+  expiresAtLabel?: string;
+  paymentMethod?: string;
+  paidWith?: 'kobans' | 'pkr';
+  amountPkr?: number;
+  pkrAmount?: number;
+  kobansSpent?: number;
+  balanceBefore?: number;
+  newBalance?: number;
+  transactionId?: string;
+  adminEmail?: string;
+  activatedAt?: Date | string | number;
+  appUrl?: string;
+}): RenderedEmailTemplate {
+  const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
+  const timeStr = formatPktDateTime(params.activatedAt);
+  const expiryLabel = params.expiresAtLabel || params.expiryFormatted || 'Active';
+  const isKobanPayment =
+    params.paidWith === 'kobans' ||
+    (typeof params.kobansSpent === 'number' && params.kobansSpent > 0);
+  const spent = isKobanPayment ? Math.abs(Math.floor(params.kobansSpent || 0)) : 0;
+  const pkr = Number(params.pkrAmount ?? params.amountPkr ?? 199);
+  const eventLabel = formatEmailEventLabel(
+    isKobanPayment ? 'PRO_PASS_PURCHASE' : 'PRO_PASS_ACTIVATED'
+  );
+  const methodLabel = isKobanPayment
+    ? 'Kobans Wallet'
+    : formatPaymentMethodLabel(params.paymentMethod || 'jazzcash');
+  const txId = params.transactionId || `pro_${Date.now()}`;
+
+  const subject = isKobanPayment
+    ? `${eventLabel}: ${params.planName} (-${spent.toLocaleString()} Kobans) by ${params.studentName || 'Student'}`
+    : `${eventLabel}: ${params.planName} (PKR ${pkr.toLocaleString()}) by ${params.studentName || 'Student'}`;
+
+  const preheader = `${params.studentName} activated ${params.planName} until ${expiryLabel}.`;
+
+  const html = renderBaseHtmlLayout({
+    subject,
+    preheader,
+    badgeText: eventLabel,
+    badgeColor: 'green',
+    heading: `${eventLabel} · ${params.studentName || 'Student'}`,
+    introHtml: `<p style="margin:0;">Boardly Pro was activated via <strong>${escapeHtml(
+      methodLabel
+    )}</strong>${params.adminEmail ? ` (approved by ${escapeHtml(params.adminEmail)})` : ''}.</p>`,
+    studentIdentity: {
+      name: params.studentName || 'Student',
+      email: params.studentEmail || 'Not linked',
+      uid: params.studentUid,
+      transactionId: txId,
+    },
+    detailsRows: [
+      { label: 'Event type', value: eventLabel },
+      { label: 'Plan', value: `${params.planName} (${params.durationDays} days)` },
+      { label: 'Pro active until', value: expiryLabel, highlightGold: true },
+      { label: 'Payment method', value: methodLabel },
+      ...(isKobanPayment
+        ? [
+            ...(typeof params.balanceBefore === 'number'
+              ? [
+                  {
+                    label: 'Balance before',
+                    value: `${params.balanceBefore.toLocaleString()} Kobans`,
+                    mutedSmall: true,
+                  },
+                ]
+              : []),
+            {
+              label: 'Kobans spent',
+              value: `-${spent.toLocaleString()} Kobans`,
+              highlightRed: true,
+            },
+            ...(typeof params.newBalance === 'number'
+              ? [
+                  {
+                    label: 'New balance',
+                    value: `${params.newBalance.toLocaleString()} Kobans`,
+                    highlightGold: true,
+                  },
+                ]
+              : []),
+          ]
+        : [
+            {
+              label: 'Amount paid',
+              value: `PKR ${pkr.toLocaleString()}`,
+              highlightGold: true,
+            },
+          ]),
+      { label: 'Transaction ID', value: formatShortTxId(txId), mono: true },
+      { label: 'Time (PKT)', value: timeStr },
+    ],
+    ctaLabel: 'View this transaction',
+    ctaUrl: `${appUrl}/admin/wallets/${encodeURIComponent(params.studentUid)}?tx=${encodeURIComponent(txId)}`,
+    appUrl,
+    isAdminEmail: true,
+  });
+
+  const text = [
+    `BOARDLY ADMIN — ${subject}`,
+    ``,
+    `Student: ${params.studentName} (${params.studentEmail || 'Not linked'})`,
+    `User ID: ${params.studentUid}`,
+    `Plan: ${params.planName} (${params.durationDays} days)`,
+    `Active until: ${expiryLabel}`,
+    `Method: ${methodLabel}`,
+    ...(isKobanPayment && typeof params.balanceBefore === 'number'
+      ? [`Balance before: ${params.balanceBefore.toLocaleString()} Kobans`]
+      : []),
+    ...(isKobanPayment ? [`Kobans spent: -${spent.toLocaleString()} Kobans`] : []),
+    ...(isKobanPayment && typeof params.newBalance === 'number'
+      ? [`New balance: ${params.newBalance.toLocaleString()} Kobans`]
+      : []),
+    `Transaction ID: ${txId}`,
+    `Time (PKT): ${timeStr}`,
+    ``,
+    `View this transaction: ${appUrl}/admin/wallets/${encodeURIComponent(params.studentUid)}?tx=${encodeURIComponent(txId)}`,
+    `Internal admin notification`,
+  ].join('\n');
+
+  return { subject, preheader, html, text };
+}
+
+export function buildProRequestRejectedStudentEmail(params: {
+  studentName: string;
+  planName: string;
+  amountPkr?: number;
+  pkrAmount?: number;
+  paymentMethod?: string;
+  transactionId?: string;
+  reason: string;
+  rejectedAt?: Date | string | number;
+  appUrl?: string;
+}): RenderedEmailTemplate {
+  const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
+  const timeStr = formatPktDateTime(params.rejectedAt);
+  const pkr = Number(params.pkrAmount ?? params.amountPkr ?? 199);
+  const subject = `Pro request rejected: ${params.planName} — Boardly`;
+  const preheader = `We could not verify your payment reference for ${params.planName}. See details inside.`;
+
+  const html = renderBaseHtmlLayout({
+    subject,
+    preheader,
+    badgeText: 'Pro Request Rejected',
+    badgeColor: 'red',
+    heading: `We could not verify your ${params.planName} request`,
+    introHtml: `<p style="margin:0 0 10px 0;">Hi <strong>${escapeHtml(
+      params.studentName || 'Student'
+    )}</strong>, our team reviewed your payment request for <strong>${escapeHtml(
+      params.planName
+    )}</strong> but could not verify the transaction.</p>
+    <p style="margin:0;">Please double-check your ${PAYMENT_METHODS_PAIR_LABEL} Transaction ID (TID) and submit a new request from the Plans page or Boardly Store.</p>`,
+    detailsRows: [
+      { label: 'Plan', value: params.planName },
+      { label: 'Amount', value: `PKR ${pkr.toLocaleString()}` },
+      ...(params.transactionId
+        ? [{ label: 'Transaction ID (TID)', value: params.transactionId, mono: true }]
+        : []),
+      { label: 'Reason', value: params.reason || 'Transaction ID could not be verified.', highlightRed: true },
+      { label: 'Time (PKT)', value: timeStr },
+    ],
+    extraBodyHtml: `<p style="margin:14px 0 0 0;font-size:12px;color:#9CA3AF;">${escapeHtml(
+      REFUND_POLICY_TEXT
+    )}</p>`,
+    ctaLabel: 'Submit Corrected Request',
+    ctaUrl: `${appUrl}/dashboard/plans`,
+    appUrl,
+  });
+
+  const text = [
+    `BOARDLY — Pro request rejected (${params.planName})`,
+    ``,
+    `Hi ${params.studentName || 'Student'},`,
+    `We could not verify your payment request for ${params.planName} (PKR ${pkr.toLocaleString()}).`,
+    `Reason: ${params.reason || 'Transaction ID could not be verified.'}`,
+    `Time (PKT): ${timeStr}`,
+    ``,
+    REFUND_POLICY_TEXT,
+    `Submit a corrected request: ${appUrl}/dashboard/plans`,
+  ].join('\n');
+
+  return { subject, preheader, html, text };
+}
+
 

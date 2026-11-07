@@ -25,6 +25,11 @@ import {
   buildApplicationSubmittedAdminEmail,
   buildApplicationDecisionApplicantEmail,
   buildReferralEventEmail,
+  buildProRequestReceivedStudentEmail,
+  buildProRequestReceivedAdminEmail,
+  buildProActivatedStudentEmail,
+  buildProActivatedAdminEmail,
+  buildProRequestRejectedStudentEmail,
   buildAdminSampleTestEmail,
   verifyEmailBalanceSanity,
   type TransactionalEmailEventType,
@@ -119,6 +124,9 @@ const VALID_EVENT_TYPES = new Set<TransactionalEmailEventType>([
   'application_decision',
   'referral_confirmed',
   'referral_reward_credited',
+  'pro_request_received',
+  'pro_activated',
+  'pro_request_rejected',
   'admin_test_email',
 ]);
 
@@ -1634,6 +1642,213 @@ export async function handleSendEmailRequest(
         forceResend,
       });
       results.push({ role: 'admin', ...rAdminRef });
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // EVENT 7A: PRO PAYMENT REQUEST RECEIVED (PKR via JazzCash / Opay)
+  // ───────────────────────────────────────────────────────────────────────────
+  else if (eventType === 'pro_request_received') {
+    const planName = String(data.planName || 'Boardly Pro Pass');
+    const durationDays = Math.max(1, Number(data.durationDays || 30));
+    const pkrAmount = Math.max(1, Number(data.pkrAmount || 199));
+    const paymentMethod = String(data.paymentMethod || data.method || 'jazzcash');
+    const transactionId = String(data.transactionId || data.TID || '');
+
+    if (verifiedStudentEmail) {
+      const studentTpl = buildProRequestReceivedStudentEmail({
+        studentName: studentDisplayName,
+        planName,
+        durationDays,
+        pkrAmount,
+        paymentMethod,
+        transactionId,
+        appUrl,
+      });
+      const rStudent = await dispatchViaResendWithRetry({
+        env,
+        to: verifiedStudentEmail,
+        template: studentTpl,
+        idempotencyKey: `pro_request_received:${recordId}:student`,
+        eventType,
+        recipientRole: 'student',
+        recordId,
+        rawEventData: data,
+        forceResend,
+      });
+      results.push({ role: 'student', ...rStudent });
+    }
+
+    const adminTpl = buildProRequestReceivedAdminEmail({
+      requestId: recordId,
+      studentName: studentDisplayName,
+      studentEmail: verifiedStudentEmail || 'Not linked',
+      studentUid: targetStudentUid,
+      planName,
+      durationDays,
+      pkrAmount,
+      paymentMethod,
+      transactionId,
+      appUrl,
+    });
+    const rAdmin = await dispatchViaResendWithRetry({
+      env,
+      to: adminEmails,
+      template: adminTpl,
+      idempotencyKey: `pro_request_received:${recordId}:admin`,
+      eventType,
+      recipientRole: 'admin',
+      recordId,
+      rawEventData: data,
+      forceResend,
+    });
+    results.push({ role: 'admin', ...rAdmin });
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // EVENT 7B: PRO ACTIVATED OR EXTENDED (Kobans instant checkout OR Admin PKR approval)
+  // ───────────────────────────────────────────────────────────────────────────
+  else if (eventType === 'pro_activated') {
+    const planName = String(data.planName || 'Boardly Pro Pass');
+    const durationDays = Math.max(1, Number(data.durationDays || 30));
+    const expiresAtLabel = String(data.expiresAtLabel || 'Active');
+    const wasExtension = Boolean(data.wasExtension);
+    const previousExpiryLabel = data.previousExpiryLabel ? String(data.previousExpiryLabel) : null;
+    const paidWith: 'kobans' | 'pkr' = data.paidWith === 'pkr' ? 'pkr' : 'kobans';
+    const kobansSpent = data.kobansSpent !== undefined ? Math.max(0, Math.floor(Number(data.kobansSpent))) : undefined;
+    const pkrAmount = data.pkrAmount !== undefined ? Math.max(0, Number(data.pkrAmount)) : undefined;
+    const transactionId = data.transactionId ? String(data.transactionId) : recordId;
+
+    let balanceBefore = data.balanceBefore ?? data.balance_before;
+    let newBalance = data.newBalance ?? data.balanceAfter ?? data.balance_after;
+
+    if (paidWith === 'kobans' && kobansSpent !== undefined && kobansSpent > 0) {
+      if (balanceBefore === undefined || newBalance === undefined) {
+        const committedLedger = await fetchCommittedLedgerBalances(env, targetStudentUid, transactionId);
+        if (committedLedger) {
+          if (balanceBefore === undefined) balanceBefore = committedLedger.balanceBefore;
+          if (newBalance === undefined) newBalance = committedLedger.balanceAfter;
+        }
+      }
+      const sanity = verifyEmailBalanceSanity({
+        balanceBefore,
+        delta: -kobansSpent,
+        balanceAfter: newBalance,
+        context: `pro_activated:${recordId}`,
+      });
+      if (!sanity.valid) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            status: 'skipped',
+            eventType,
+            recordId,
+            error: sanity.error,
+          }),
+          { status: 200, headers: jsonHeaders }
+        );
+      }
+      balanceBefore = sanity.balanceBefore;
+      newBalance = sanity.balanceAfter;
+    }
+
+    if (verifiedStudentEmail) {
+      const studentTpl = buildProActivatedStudentEmail({
+        studentName: studentDisplayName,
+        planName,
+        durationDays,
+        expiresAtLabel,
+        wasExtension,
+        previousExpiryLabel,
+        paidWith,
+        kobansSpent,
+        balanceBefore: typeof balanceBefore === 'number' ? balanceBefore : undefined,
+        newBalance: typeof newBalance === 'number' ? newBalance : undefined,
+        pkrAmount,
+        transactionId,
+        appUrl,
+      });
+      const rStudent = await dispatchViaResendWithRetry({
+        env,
+        to: verifiedStudentEmail,
+        template: studentTpl,
+        idempotencyKey: `pro_activated:${recordId}:student`,
+        eventType,
+        recipientRole: 'student',
+        recordId,
+        rawEventData: data,
+        forceResend,
+      });
+      results.push({ role: 'student', ...rStudent });
+    }
+
+    const adminTpl = buildProActivatedAdminEmail({
+      studentName: studentDisplayName,
+      studentEmail: verifiedStudentEmail || undefined,
+      studentUid: targetStudentUid,
+      planName,
+      durationDays,
+      expiresAtLabel,
+      paidWith,
+      kobansSpent,
+      balanceBefore: typeof balanceBefore === 'number' ? balanceBefore : undefined,
+      newBalance: typeof newBalance === 'number' ? newBalance : undefined,
+      pkrAmount,
+      transactionId,
+      adminEmail: data.adminEmail ? String(data.adminEmail) : verifiedUser?.email || undefined,
+      appUrl,
+    });
+    const rAdmin = await dispatchViaResendWithRetry({
+      env,
+      to: adminEmails,
+      template: adminTpl,
+      idempotencyKey: `pro_activated:${recordId}:admin`,
+      eventType,
+      recipientRole: 'admin',
+      recordId,
+      rawEventData: data,
+      forceResend,
+    });
+    results.push({ role: 'admin', ...rAdmin });
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // EVENT 7C: PRO PAYMENT REQUEST REJECTED BY ADMIN
+  // ───────────────────────────────────────────────────────────────────────────
+  else if (eventType === 'pro_request_rejected') {
+    if (!callerIsAdmin) {
+      return new Response(
+        JSON.stringify({ ok: false, error: 'Only admins can send Pro request rejection emails.' }),
+        { status: 403, headers: jsonHeaders }
+      );
+    }
+
+    const planName = String(data.planName || 'Boardly Pro Pass');
+    const pkrAmount = Math.max(1, Number(data.pkrAmount || 199));
+    const reason = String(data.reason || 'Transaction ID could not be verified.');
+    const transactionId = data.transactionId ? String(data.transactionId) : undefined;
+
+    if (verifiedStudentEmail) {
+      const studentTpl = buildProRequestRejectedStudentEmail({
+        studentName: studentDisplayName,
+        planName,
+        pkrAmount,
+        reason,
+        transactionId,
+        appUrl,
+      });
+      const rStudent = await dispatchViaResendWithRetry({
+        env,
+        to: verifiedStudentEmail,
+        template: studentTpl,
+        idempotencyKey: `pro_request_rejected:${recordId}:student`,
+        eventType,
+        recipientRole: 'student',
+        recordId,
+        rawEventData: data,
+        forceResend,
+      });
+      results.push({ role: 'student', ...rStudent });
     }
   }
 

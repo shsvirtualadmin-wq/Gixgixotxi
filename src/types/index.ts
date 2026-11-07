@@ -347,23 +347,30 @@ export interface AuditLog {
 
 export interface PaymentRequest {
   id: string;
+  uid?: string;
   userId: string;
   userEmail?: string;
   displayName?: string;
   userName?: string;
+  requestType?: 'pro_pass' | 'koban_topup' | 'large_crew';
   amount: number;
-  plan: 'pro' | 'large_crew' | string;
+  amount_pkr?: number;
+  plan: 'pro' | 'pro_monthly' | 'pro_annual' | 'large_crew' | string;
+  planName?: string;
   crewId?: string | null;
   crewName?: string | null;
+  durationDays?: number;
   durationMonths?: number;
   method: 'jazzcash' | 'opay' | 'JazzCash' | 'Opay' | 'sadapay' | 'nayapay' | 'bank' | string;
+  TID?: string;
   transactionId: string;
   screenshotUrl?: string;
   status: 'pending' | 'approved' | 'rejected';
-  createdAt: Timestamp | { seconds: number };
-  approvedAt?: Timestamp | { seconds: number };
+  createdAt: Timestamp | { seconds: number } | string | null | unknown;
+  approvedAt?: Timestamp | { seconds: number } | string | null | unknown;
   approvedBy?: string;
   rejectionReason?: string;
+  newExpiryDate?: string;
 }
 
 export interface StudentReview {
@@ -420,7 +427,7 @@ export interface CrewApplication {
 
 export interface WalletLedgerEntry {
   id: string;
-  type: 'grant' | 'deduction' | 'purchase' | 'captain_allotment';
+  type: 'grant' | 'deduction' | 'purchase' | 'pro_purchase' | 'captain_allotment';
   amount: number;
   balanceBefore?: number;
   balance_before?: number;
@@ -429,6 +436,7 @@ export interface WalletLedgerEntry {
   reason?: string;
   itemId?: string;
   itemName?: string;
+  transactionId?: string;
   adminEmail?: string;
   monthKey?: string;
   timestamp: Timestamp | { seconds: number } | string | null | unknown;

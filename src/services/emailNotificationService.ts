@@ -409,6 +409,64 @@ export function notifyReferralRewardCredited(params: {
   triggerTransactionalEmail('referral_reward_credited', params.referralId, params);
 }
 
+/**
+ * 7A. Boardly Pro payment request received (PKR via JazzCash / Opay)
+ */
+export function notifyProRequestReceived(params: {
+  requestId: string;
+  studentUid: string;
+  studentName?: string;
+  studentEmail?: string;
+  planName: string;
+  durationDays: number;
+  pkrAmount: number;
+  paymentMethod: string;
+  transactionId: string;
+}): void {
+  triggerTransactionalEmail('pro_request_received', params.requestId, params);
+}
+
+/**
+ * 7B. Boardly Pro activated or extended (via Kobans instant checkout OR Admin PKR approval)
+ */
+export function notifyProActivated(params: {
+  recordId: string;
+  studentUid: string;
+  studentName?: string;
+  studentEmail?: string;
+  planName: string;
+  durationDays: number;
+  expiresAtLabel: string;
+  wasExtension?: boolean;
+  previousExpiryLabel?: string | null;
+  paidWith: 'kobans' | 'pkr';
+  kobansSpent?: number;
+  balanceBefore?: number;
+  newBalance?: number;
+  pkrAmount?: number;
+  transactionId?: string;
+  adminEmail?: string;
+}): void {
+  triggerTransactionalEmail('pro_activated', params.recordId, params);
+}
+
+/**
+ * 7C. Boardly Pro PKR payment request rejected by admin
+ */
+export function notifyProRequestRejected(params: {
+  requestId: string;
+  studentUid: string;
+  studentName?: string;
+  studentEmail?: string;
+  planName: string;
+  pkrAmount: number;
+  reason: string;
+  transactionId?: string;
+  adminEmail?: string;
+}): void {
+  triggerTransactionalEmail('pro_request_rejected', params.requestId, params);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN PANEL EMAIL LOGS, RETRY, SAMPLE TEST & DAILY DIGEST API HELPERS
 // ─────────────────────────────────────────────────────────────────────────────

@@ -46,10 +46,13 @@ import {
 import { normalizeCorrectAnswer } from './testEngine';
 import { recordCrewPaymentActionServer } from './crewBackend';
 import { formatPaymentMethodLabel } from '@/constants/branding';
+import { computeExtendedProExpiry, getProPlanById } from '@/config/plans';
 import {
   notifyApplicationDecision,
   notifyKobanPurchaseApproved,
   notifyKobanPurchaseRejected,
+  notifyProActivated,
+  notifyProRequestRejected,
 } from './emailNotificationService';
 import {
   ENABLE_MULTI_SOURCE_BANK,
@@ -2427,32 +2430,61 @@ export async function approvePaymentRequest(
     return;
   }
 
-  // Otherwise, personal Pro account upgrade: 30 days of Pro access from today
-  const durationDays = (req.durationMonths ?? 1) * 30;
-  const expiresAt = Timestamp.fromMillis(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+  // Otherwise, personal Pro account upgrade or extension:
+  // Read student's existing user doc so if they are already Pro, we EXTEND their current expiry
+  const userRef = doc(db, 'users', req.userId);
+  const userSnap = await getDoc(userRef);
+  const userData = userSnap.exists() ? userSnap.data() : null;
+  const currentExpiryRaw = userData?.planExpiresAt ?? userData?.premiumExpiresAt ?? null;
 
-  // 2. Upgrade student account
+  const isAnnual =
+    req.plan === 'pro_annual' ||
+    req.durationDays === 365 ||
+    (req.durationMonths !== undefined && req.durationMonths >= 12);
+  const resolvedPlan = getProPlanById(isAnnual ? 'pro_annual' : 'pro_monthly');
+  const durationDays =
+    typeof req.durationDays === 'number' && req.durationDays > 0
+      ? req.durationDays
+      : isAnnual
+      ? 365
+      : (req.durationMonths ?? 1) * 30;
+  const planName = req.planName || resolvedPlan.name;
+  const pkrAmount = Number(req.amount_pkr ?? req.amount ?? resolvedPlan.price_pkr);
+
+  const extension = computeExtendedProExpiry(currentExpiryRaw, durationDays);
+  const newExpiryIso = new Date(extension.newExpiryMs).toISOString();
+
+  // Record computed newExpiryDate on the paymentRequest doc as well
+  await updateDoc(doc(db, 'paymentRequests', req.id), {
+    newExpiryDate: newExpiryIso,
+  });
+
+  // 2. Upgrade or extend student account
   await setDoc(
-    doc(db, 'users', req.userId),
+    userRef,
     {
       plan: 'pro',
       isPremium: true,
+      proPlanId: resolvedPlan.id,
       premiumSource: req.method || 'payment_request',
-      premiumExpiresAt: expiresAt,
-      planExpiresAt: expiresAt,
+      premiumExpiresAt: extension.newExpiryMs,
+      planExpiresAt: newExpiryIso,
+      updatedAt: serverTimestamp(),
     },
     { merge: true }
   );
 
-  // 3. Send notification
+  // 3. Send in-app notification
   await setDoc(
     doc(db, 'notifications', `pro_payment_${req.id}`),
     {
       userId: req.userId,
       type: 'system',
-      title: 'Boardly Pro Activated!',
-      message: `Your payment of PKR ${req.amount} via ${methodDisplay} (TRX: ${req.transactionId}) was verified. You have full access until ${expiresAt.toDate().toLocaleDateString()}.`,
-      link: '/dashboard/settings',
+      title: extension.wasAlreadyActive ? 'Boardly Pro Extended!' : 'Boardly Pro Activated!',
+      message: `Your payment of PKR ${pkrAmount.toLocaleString()} via ${methodDisplay} (TID: ${
+        req.TID || req.transactionId
+      }) was verified. Your ${planName} is active until ${extension.newExpiryLabel}.`,
+      link: '/dashboard/plans',
       read: false,
       createdAt: serverTimestamp(),
     },
@@ -2462,29 +2494,33 @@ export async function approvePaymentRequest(
   await logAdminAction(
     adminEmail,
     'approve_payment_request',
-    { reqId: req.id, amount: req.amount, method: req.method, transactionId: req.transactionId },
+    {
+      reqId: req.id,
+      plan: resolvedPlan.id,
+      durationDays,
+      amount: pkrAmount,
+      method: req.method,
+      transactionId: req.TID || req.transactionId,
+      wasExtension: extension.wasAlreadyActive,
+      newExpiryIso,
+    },
     req.userId,
     req.userEmail
   );
 
-  const [walletSnap, userSnap] = await Promise.all([
-    getDoc(doc(db, 'wallets', req.userId)),
-    getDoc(doc(db, 'users', req.userId)),
-  ]);
-  const walletBal = walletSnap.exists() ? Math.max(0, Math.floor(Number(walletSnap.data().balance) || 0)) : 0;
-  const userBal = userSnap.exists() ? Math.max(0, Math.floor(Number(userSnap.data().kobans ?? userSnap.data().kobanBalance) || 0)) : 0;
-  const currentBal = Math.max(walletBal, userBal);
-  const kobansAmount = Number(req.amount || 0) * 10;
-
-  notifyKobanPurchaseApproved({
-    requestId: req.id,
+  notifyProActivated({
+    recordId: req.id,
     studentUid: req.userId,
-    studentName: req.userName,
-    studentEmail: req.userEmail,
-    kobansAmount,
-    balanceBefore: currentBal,
-    newBalance: currentBal + kobansAmount,
-    transactionId: req.transactionId,
+    studentName: req.userName || userData?.displayName || userData?.name || 'Student',
+    studentEmail: req.userEmail || userData?.email,
+    planName,
+    durationDays,
+    expiresAtLabel: extension.newExpiryLabel,
+    wasExtension: extension.wasAlreadyActive,
+    previousExpiryLabel: extension.previousExpiryLabel,
+    paidWith: 'pkr',
+    pkrAmount,
+    transactionId: req.TID || req.transactionId,
     adminEmail,
   });
 }
@@ -2496,27 +2532,65 @@ export async function rejectPaymentRequest(
   targetEmail: string,
   reason?: string
 ): Promise<void> {
-  await updateDoc(doc(db, 'paymentRequests', reqId), {
+  const reqRef = doc(db, 'paymentRequests', reqId);
+  const reqSnap = await getDoc(reqRef);
+  const reqData = reqSnap.exists() ? (reqSnap.data() as Partial<PaymentRequest>) : {};
+  const cleanReason = reason || 'Invalid transaction ID or payment could not be verified.';
+
+  await updateDoc(reqRef, {
     status: 'rejected',
-    rejectionReason: reason || 'Invalid transaction ID or payment not received.',
+    rejectionReason: cleanReason,
     reviewedAt: serverTimestamp(),
     reviewedBy: adminEmail,
   });
 
+  // Notify student in-app
+  try {
+    await setDoc(
+      doc(db, 'notifications', `pro_reject_${reqId}`),
+      {
+        userId: targetUid,
+        type: 'system',
+        title: 'Pro Pass Request Update',
+        message: `Your Boardly Pro payment request could not be verified: ${cleanReason}`,
+        link: '/dashboard/plans',
+        read: false,
+        createdAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch {
+    // Non-blocking
+  }
+
   await logAdminAction(
     adminEmail,
     'reject_payment_request',
-    { reqId, reason },
+    { reqId, reason: cleanReason },
     targetUid,
     targetEmail
   );
 
-  notifyKobanPurchaseRejected({
+  const isAnnual =
+    reqData.plan === 'pro_annual' ||
+    reqData.durationDays === 365 ||
+    (reqData.durationMonths !== undefined && reqData.durationMonths >= 12);
+  const resolvedPlan = getProPlanById(isAnnual ? 'pro_annual' : 'pro_monthly');
+  const planName =
+    reqData.plan === 'large_crew'
+      ? 'Large Crew Pass'
+      : reqData.planName || resolvedPlan.name;
+  const pkrAmount = Number(reqData.amount_pkr ?? reqData.amount ?? resolvedPlan.price_pkr);
+
+  notifyProRequestRejected({
     requestId: reqId,
     studentUid: targetUid,
-    studentEmail: targetEmail,
-    kobansAmount: 0,
-    reason: reason || 'Invalid transaction ID or payment not received.',
+    studentName: reqData.userName,
+    studentEmail: targetEmail || reqData.userEmail,
+    planName,
+    pkrAmount,
+    reason: cleanReason,
+    transactionId: reqData.TID || reqData.transactionId,
     adminEmail,
   });
 }

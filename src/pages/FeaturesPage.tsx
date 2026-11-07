@@ -12,6 +12,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { MAX_CREW_MEMBERS, FREE_DAILY_TESTS } from '@/constants/limits';
+import { PLANS } from '@/config/plans';
 
 const REAL_FEATURES = [
   {
@@ -82,7 +83,7 @@ const REAL_FEATURES = [
     icon: <Clock size={22} />,
     title: 'Midnight PKT Daily Allowances',
     badge: 'Predictable Access',
-    desc: `Generous free allowances (${FREE_DAILY_TESTS} tests/day, 3 Arena mocks, 5 AI derivations) refreshing daily at midnight Pakistan Standard Time (UTC+5). Unlimited access available on the Pro plan for PKR 199/month.`,
+    desc: `Generous free allowances (${FREE_DAILY_TESTS} tests/day, 3 Arena mocks, 5 AI derivations) refreshing daily at midnight Pakistan Standard Time (UTC+5). Unlimited access available on the Pro plan for PKR ${PLANS.pro_monthly.price_pkr}/month.`,
     link: '/pricing',
     linkText: 'See Plan Limits',
   },

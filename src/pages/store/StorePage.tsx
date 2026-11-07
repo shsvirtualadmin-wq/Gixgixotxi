@@ -21,11 +21,16 @@ import {
   RotateCcw,
   Sun,
   Moon,
+  Zap,
+  BarChart3,
+  BookOpen,
+  HelpCircle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWallet } from '@/hooks/useWallet';
 import { useStoreCart } from '@/hooks/useStoreCart';
 import { useTheme } from '@/hooks/useTheme';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import {
   COSMETICS_CATALOG,
   type CosmeticItem,
@@ -60,6 +65,20 @@ import {
   type StoreFilterState,
 } from '@/components/store/FilterSheet';
 import { CartDrawer } from '@/components/store/CartDrawer';
+import {
+  PLANS,
+  ANNUAL_SAVINGS_PERCENT,
+  REFUND_POLICY_TEXT,
+  PRO_HIGHLIGHT_BULLETS,
+  PRO_FAQ_ITEMS,
+  getProStatusSummary,
+  type ProPlanId,
+} from '@/config/plans';
+import { StatusBanner } from '@/components/plans/StatusBanner';
+import { PlanCard } from '@/components/plans/PlanCard';
+import { ProCheckoutSheet } from '@/components/plans/ProCheckoutSheet';
+import { fetchStudentProRequests } from '@/services/proSubscriptionService';
+import type { PaymentRequest } from '@/types';
 
 type StoreTab =
   | 'all'
@@ -183,6 +202,60 @@ export const StorePage: React.FC<StorePageProps> = ({
   const [getKobansInitialAmount, setGetKobansInitialAmount] = useState<
     number | undefined
   >(undefined);
+  const [proCheckoutOpen, setProCheckoutOpen] = useState(false);
+  const [proCheckoutPlanId, setProCheckoutPlanId] =
+    useState<ProPlanId>('pro_monthly');
+  const [studentProRequests, setStudentProRequests] = useState<PaymentRequest[]>(
+    []
+  );
+  const { isPro, source: planSource } = useEffectivePlan();
+  const isCrew = planSource === 'crew';
+
+  const rawProExpiresAt =
+    userProfile?.planExpiresAt ?? (userProfile as any)?.premiumExpiresAt ?? null;
+  const proStatusSummary = useMemo(
+    () => getProStatusSummary(rawProExpiresAt),
+    [rawProExpiresAt]
+  );
+  const effectiveIsPro = isPro || proStatusSummary.isActive;
+
+  const loadStudentProRequests = useCallback(async () => {
+    if (!user?.uid) return;
+    const list = await fetchStudentProRequests(user.uid);
+    setStudentProRequests(list);
+  }, [user?.uid]);
+
+  useEffect(() => {
+    loadStudentProRequests();
+  }, [loadStudentProRequests]);
+
+  const pendingProRequest = useMemo(
+    () =>
+      studentProRequests.find(
+        (r) => r.status === 'pending' && r.plan !== 'large_crew'
+      ) || null,
+    [studentProRequests]
+  );
+  const latestRejectedProRequest = useMemo(
+    () =>
+      studentProRequests.find(
+        (r) => r.status === 'rejected' && r.plan !== 'large_crew'
+      ) || null,
+    [studentProRequests]
+  );
+
+  const handleOpenProCheckout = useCallback(
+    (planId: ProPlanId) => {
+      if (!user) {
+        navigate('/login');
+        return;
+      }
+      setProCheckoutPlanId(planId);
+      setProCheckoutOpen(true);
+    },
+    [user, navigate]
+  );
+
   const [coinBurstActive, setCoinBurstActive] = useState(false);
   const [toast, setToast] = useState<{
     type: 'success' | 'error';
@@ -831,134 +904,192 @@ export const StorePage: React.FC<StorePageProps> = ({
             <button
               type="button"
               onClick={() => setMainView('membership')}
-              className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-extrabold flex items-center gap-1.5 transition-all ${
+              style={
                 mainView === 'membership'
-                  ? 'bg-gradient-to-r from-[#E11D2A] to-amber-500 text-white shadow-sm'
+                  ? {
+                      background:
+                        'linear-gradient(135deg, #E8342A 0%, #C8241B 55%, #B45309 100%)',
+                      color: '#FFFFFF',
+                    }
+                  : undefined
+              }
+              className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-heading font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                mainView === 'membership'
+                  ? 'text-[#FFFFFF] shadow-sm'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               }`}
             >
               <Crown className="w-3.5 h-3.5" />
               <span>Boardly Pro</span>
+              {effectiveIsPro && (
+                <span className="ml-1 px-1.5 py-0.2 rounded text-[9px] font-mono uppercase bg-white/20 text-[#FFFFFF]">
+                  Active
+                </span>
+              )}
             </button>
           </div>
 
-          <div className="text-[11px] font-semibold text-[var(--text-muted)] hidden sm:block">
-            10 Kobans = PKR 1 · Instant delivery
+          <div className="flex items-center gap-2">
+            {effectiveIsPro && proStatusSummary.statusText && (
+              <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 font-semibold hidden md:inline-flex items-center gap-1.5">
+                <Crown className="w-3 h-3" />
+                <span>{proStatusSummary.statusText}</span>
+              </span>
+            )}
+            <div className="text-[11px] font-semibold text-[var(--text-muted)] hidden sm:block">
+              10 Kobans = PKR 1 · Instant delivery
+            </div>
           </div>
         </div>
 
         {mainView === 'membership' ? (
-          /* Boardly Pro Membership View */
-          <section className="rounded-3xl border border-[var(--border)] bg-[var(--bg-card)] p-5 sm:p-8 space-y-6">
-            <div className="max-w-2xl space-y-2">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-500 text-[11px] font-black uppercase tracking-wider">
+          /* ─── BOARDLY PRO MEMBERSHIP VIEW (Un-nested pass cards, normal bold heading font, ProCheckoutSheet) ─── */
+          <div className="space-y-6 pb-20">
+            {/* Pro Status Banner (shown when student is already Pro or has a pending/rejected Pro request) */}
+            {(effectiveIsPro || pendingProRequest || latestRejectedProRequest) && (
+              <StatusBanner
+                planId={effectiveIsPro ? 'pro' : isCrew ? 'crew' : 'free'}
+                planExpiresAtRaw={rawProExpiresAt}
+                pendingProRequest={pendingProRequest}
+                latestRejectedProRequest={latestRejectedProRequest}
+                onUpgradeOrExtend={() => handleOpenProCheckout('pro_monthly')}
+              />
+            )}
+
+            {/* Header Block (Normal bold heading font, NOT pixel/mono font) */}
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#E8342A]/10 border border-[#E8342A]/30 text-[#E8342A] text-[11px] font-mono font-bold uppercase tracking-wider">
                 <Crown className="w-3.5 h-3.5" />
                 <span>Boardly Pro Scholar Pass</span>
               </div>
-              <h2 className="text-xl sm:text-3xl font-black tracking-tight">
+              <h2 className="font-heading font-extrabold text-2xl sm:text-3xl text-[var(--text-primary)] tracking-tight leading-tight">
                 Unlock Unlimited Mock Tests, Analytics &amp; Exclusive Perks
               </h2>
-              <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
-                Upgrade your preparation with full access to entry test banks, timed simulations, and priority verification.
+              <p className="font-body text-xs sm:text-sm text-[var(--text-secondary)] max-w-2xl leading-relaxed">
+                Pay instantly using your Koban wallet balance or via JazzCash / Opay.{' '}
+                {REFUND_POLICY_TEXT}
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-5 flex flex-col justify-between gap-5">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black uppercase tracking-wider text-[var(--text-muted)]">
-                      Monthly Pass
-                    </span>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[var(--bg-card)] border border-[var(--border)]">
-                      30 Days
-                    </span>
-                  </div>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-2xl sm:text-3xl font-black">PKR 500</span>
-                    <span className="text-xs text-[var(--text-muted)]">
-                      (5,000 Kobans)
-                    </span>
-                  </div>
-                  <ul className="space-y-2 text-xs text-[var(--text-secondary)]">
-                    <li className="flex items-center gap-2">
-                      <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span>Unlimited MDCAT, NET, ECAT &amp; FSc full-length mocks</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span>Detailed topic accuracy breakdown</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span>Pro Scholar badge across Commons &amp; leaderboards</span>
-                    </li>
-                  </ul>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!user) {
-                      navigate('/login');
-                      return;
-                    }
-                    setGetKobansInitialAmount(5000);
-                    setGetKobansOpen(true);
-                  }}
-                  className="w-full py-3 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white font-black text-xs sm:text-sm transition-colors"
-                >
-                  Get Monthly Pass — PKR 500
-                </button>
+            {/* "What you get with Pro" 4-bullet list above the pass cards */}
+            <div className="rounded-[22px] border border-[var(--border)] bg-[var(--bg-card)] p-4 sm:p-5 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-heading font-bold text-sm sm:text-base text-[var(--text-primary)]">
+                  What you get with Pro
+                </h3>
+                <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+                  Full Scholar Access
+                </span>
               </div>
-
-              <div className="rounded-2xl border-2 border-amber-500/50 bg-[var(--bg-elevated)] p-5 flex flex-col justify-between gap-5 relative">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black uppercase tracking-wider text-amber-500">
-                      Annual Pass · Best Value
-                    </span>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/15 text-amber-500 border border-amber-500/30">
-                      Save 25%
-                    </span>
-                  </div>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-2xl sm:text-3xl font-black">PKR 4,500</span>
-                    <span className="text-xs text-[var(--text-muted)]">
-                      (45,000 Kobans)
-                    </span>
-                  </div>
-                  <ul className="space-y-2 text-xs text-[var(--text-secondary)]">
-                    <li className="flex items-center gap-2">
-                      <Check className="w-4 h-4 text-amber-500 shrink-0" />
-                      <span>Everything in Monthly Pass for 365 days</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="w-4 h-4 text-amber-500 shrink-0" />
-                      <span>Priority support &amp; exam session archives</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Check className="w-4 h-4 text-amber-500 shrink-0" />
-                      <span>Golden Pro Scholar crown badge</span>
-                    </li>
-                  </ul>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!user) {
-                      navigate('/login');
-                      return;
-                    }
-                    setGetKobansInitialAmount(45000);
-                    setGetKobansOpen(true);
-                  }}
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-[#E11D2A] to-amber-500 text-white font-black text-xs sm:text-sm transition-opacity hover:opacity-95"
-                >
-                  Get Annual Pass — PKR 4,500
-                </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {PRO_HIGHLIGHT_BULLETS.map((item, idx) => {
+                  const icons = [
+                    <BookOpen key="b" className="w-4 h-4 text-[#E8342A]" />,
+                    <Sparkles key="s" className="w-4 h-4 text-[#E8342A]" />,
+                    <BarChart3 key="c" className="w-4 h-4 text-[#E8342A]" />,
+                    <Crown key="r" className="w-4 h-4 text-[#E8342A]" />,
+                  ];
+                  return (
+                    <div
+                      key={item.title}
+                      className="rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] p-3.5 space-y-1.5"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-[#E8342A]/10 border border-[#E8342A]/25 flex items-center justify-center shrink-0">
+                          {icons[idx % icons.length]}
+                        </div>
+                        <span className="font-heading font-bold text-xs sm:text-[13px] text-[var(--text-primary)] leading-snug">
+                          {item.title}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                        {item.description}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          </section>
+
+            {/* Pass Cards Placed Directly on the Page (No outer wrapper card box; 16px gap) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+              {/* Monthly Pass Card */}
+              <PlanCard
+                title="Monthly Pass"
+                subtitle="Full Pro access for 30 days"
+                durationBadge={`${PLANS.pro_monthly.duration_days} Days`}
+                icon={<Zap size={17} />}
+                pricePkr={PLANS.pro_monthly.price_pkr}
+                cadenceLabel={PLANS.pro_monthly.cadenceLabel}
+                priceKobans={PLANS.pro_monthly.price_kobans}
+                priceSubtext={PLANS.pro_monthly.description}
+                features={PLANS.pro_monthly.features}
+                featured={false}
+                ctaLabel={
+                  effectiveIsPro
+                    ? `Extend Pro — PKR ${PLANS.pro_monthly.price_pkr}`
+                    : `Get Monthly Pass, PKR ${PLANS.pro_monthly.price_pkr}`
+                }
+                ctaIcon={<Zap size={15} />}
+                ctaVariant="primary-red"
+                onCtaClick={() => handleOpenProCheckout('pro_monthly')}
+              />
+
+              {/* Annual Pass Card */}
+              <PlanCard
+                title="Annual Pass"
+                subtitle="Full year of uninterrupted exam prep"
+                durationBadge={`${PLANS.pro_annual.duration_days} Days`}
+                topRightBadge={`Best value · Save ${ANNUAL_SAVINGS_PERCENT}%`}
+                topRightBadgeTone="pro"
+                icon={<Crown size={17} />}
+                pricePkr={PLANS.pro_annual.price_pkr}
+                cadenceLabel={PLANS.pro_annual.cadenceLabel}
+                priceKobans={PLANS.pro_annual.price_kobans}
+                regularPricePkr={PLANS.pro_annual.regular_price_pkr}
+                priceSubtext={PLANS.pro_annual.description}
+                features={PLANS.pro_annual.features}
+                featured={true}
+                ctaLabel={
+                  effectiveIsPro
+                    ? `Extend Pro — PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}`
+                    : `Get Annual Pass, PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}`
+                }
+                ctaIcon={<Crown size={15} />}
+                ctaVariant="primary-gradient"
+                onCtaClick={() => handleOpenProCheckout('pro_annual')}
+              />
+            </div>
+
+            {/* Small FAQ at the bottom of Boardly Pro tab */}
+            <div className="rounded-[22px] border border-[var(--border)] bg-[var(--bg-card)] p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <HelpCircle className="w-4 h-4 text-[#E8342A]" />
+                <h3 className="font-heading font-bold text-sm sm:text-base text-[var(--text-primary)]">
+                  Frequently Asked Questions
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {PRO_FAQ_ITEMS.map((faq) => (
+                  <div
+                    key={faq.question}
+                    className="rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] p-4 space-y-1.5"
+                  >
+                    <h4 className="font-heading font-bold text-xs sm:text-sm text-[var(--text-primary)]">
+                      {faq.question}
+                    </h4>
+                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                      {faq.answer}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="pt-2 border-t border-[var(--border)] flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+                <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span>{REFUND_POLICY_TEXT}</span>
+              </div>
+            </div>
+          </div>
         ) : (
           <>
             {/* Compact Collapsible Active Loadout Card */}
@@ -1390,8 +1521,8 @@ export const StorePage: React.FC<StorePageProps> = ({
         </div>
       )}
 
-      {/* Floating Cart Pill (bottom-right, above floating nav; hidden when cart is empty or cart drawer is open) */}
-      {cartItems.length > 0 && !selectionMode && !cartOpen && (
+      {/* Floating Cart Pill (bottom-right, above floating nav; hidden when cart is empty or cart/pro drawer is open) */}
+      {cartItems.length > 0 && !selectionMode && !cartOpen && !proCheckoutOpen && (
         <button
           type="button"
           onClick={handleOpenCart}
@@ -1851,6 +1982,33 @@ export const StorePage: React.FC<StorePageProps> = ({
         }}
         onEquipPurchased={handleEquipPurchasedOrder}
         onViewCollection={handleViewCollectionAfterOrder}
+      />
+
+      {/* Dedicated Boardly Pro Checkout Sheet */}
+      <ProCheckoutSheet
+        open={proCheckoutOpen}
+        onClose={() => setProCheckoutOpen(false)}
+        initialPlanId={proCheckoutPlanId}
+        uid={user?.uid}
+        userEmail={user?.email || userProfile?.email}
+        userName={
+          userProfile?.displayName || userProfile?.name || user?.displayName
+        }
+        kobanBalance={balance}
+        currentProExpiresAt={rawProExpiresAt}
+        hasPendingProRequest={Boolean(pendingProRequest)}
+        onOpenGetKobans={(needed) => {
+          setProCheckoutOpen(false);
+          setGetKobansInitialAmount(needed);
+          setGetKobansOpen(true);
+        }}
+        onSuccess={({ mode }) => {
+          loadStudentProRequests();
+          if (mode === 'kobans') {
+            triggerCoinBurst();
+          }
+        }}
+        onStartPracticing={() => navigate('/practice')}
       />
 
       {/* Get Kobans Modal */}

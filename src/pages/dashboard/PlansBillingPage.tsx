@@ -1,680 +1,289 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, addDoc, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import {
+  Zap,
+  Users,
+  ShieldCheck,
+  Sparkles,
+  BookOpen,
+} from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
-import { useStudyCrew } from '@/hooks/useStudyCrew';
-import { DEFAULT_CREW_PRICING } from '@/config/crewPricing';
-import { isCrewPaidActive } from '@/services/crewBackend';
-import { GlassCard } from '@/components/ui/GlassCard';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { LineLoader } from '@/components/ui/LineLoader';
-import { Check, Zap, Users, Clock, Sparkles } from 'lucide-react';
-import { notifyKobanPurchaseRequestSubmitted } from '@/services/emailNotificationService';
+import { useWallet } from '@/hooks/useWallet';
 import {
-  PAYMENT_METHODS,
-  PAYMENT_METHODS_LIST,
-  formatPaymentMethodLabel,
-  type SupportedPaymentMethod,
-} from '@/constants/branding';
-
-interface PaymentRequestItem {
-  id: string;
-  status?: string;
-  planRequested?: string;
-  plan?: string;
-  amount?: number;
-  method?: string;
-  transactionId?: string;
-  createdAt?: { seconds: number; nanoseconds?: number } | null;
-}
+  PLANS,
+  REFUND_POLICY_TEXT,
+  ANNUAL_SAVINGS_PERCENT,
+  PLAN_COMPARISON_ROWS,
+  getProStatusSummary,
+  type ProPlanId,
+} from '@/config/plans';
+import { StatusBanner } from '@/components/plans/StatusBanner';
+import { PlanCard } from '@/components/plans/PlanCard';
+import { ProCheckoutSheet } from '@/components/plans/ProCheckoutSheet';
+import { GetKobansModal } from '@/components/koban/GetKobansModal';
+import { fetchStudentProRequests } from '@/services/proSubscriptionService';
+import type { PaymentRequest } from '@/types';
 
 export function PlansBillingPage() {
+  const { user } = useAuth();
   const navigate = useNavigate();
-  const { user, profile, loading: profileLoading } = useUserProfile();
-  const { crew } = useStudyCrew();
+  const { profile } = useUserProfile();
+  const { plan: currentPlan, isPro, source } = useEffectivePlan();
+  const isCrew = source === 'crew';
+  const { balance } = useWallet();
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [upgradeTarget, setUpgradeTarget] = useState<'pro' | 'crew'>('pro');
-  const [method, setMethod] = useState<SupportedPaymentMethod>('jazzcash');
-  const [transactionId, setTransactionId] = useState('');
-  const [senderName, setSenderName] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [submittedSuccess, setSubmittedSuccess] = useState(false);
-  const [pendingRequests, setPendingRequests] = useState<PaymentRequestItem[]>([]);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [selectedCheckoutPlan, setSelectedCheckoutPlan] = useState<ProPlanId>('pro_monthly');
+  const [proCardCycle, setProCardCycle] = useState<ProPlanId>('pro_monthly');
+
+  // Get Kobans modal (only opened when student clicks "Get Kobans" inside ProCheckoutSheet due to low balance)
+  const [getKobansOpen, setGetKobansOpen] = useState(false);
+  const [getKobansInitialAmount, setGetKobansInitialAmount] = useState<number | undefined>(
+    undefined
+  );
+
+  const [studentProRequests, setStudentProRequests] = useState<PaymentRequest[]>([]);
+
+  const loadProRequests = useCallback(async () => {
+    if (!user?.uid) return;
+    const list = await fetchStudentProRequests(user.uid);
+    setStudentProRequests(list);
+  }, [user?.uid]);
 
   useEffect(() => {
-    if (!user) return;
-    async function loadPaymentRequests() {
-      try {
-        const q = query(
-          collection(db, 'paymentRequests'),
-          where('userId', '==', user!.uid)
-        );
-        const snap = await getDocs(q);
-        setPendingRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      } catch (err) {
-        console.warn('[PlansBillingPage] Error loading requests:', err);
-      }
-    }
-    loadPaymentRequests();
-  }, [user, submittedSuccess]);
+    loadProRequests();
+  }, [loadProRequests]);
 
-  const handleUpgradeSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !transactionId.trim()) return;
+  const rawExpiresAt = profile?.planExpiresAt ?? (profile as any)?.premiumExpiresAt ?? null;
+  const proSummary = getProStatusSummary(rawExpiresAt);
+  const effectiveIsPro = isPro || proSummary.isActive;
 
-    setSubmitting(true);
-    try {
-      const isCrewUpgrade = upgradeTarget === 'crew';
-      const amount = isCrewUpgrade ? DEFAULT_CREW_PRICING.largeCrewPricePKR : 199;
-      const planName = isCrewUpgrade ? 'large_crew' : 'pro';
+  const pendingProRequest =
+    studentProRequests.find(
+      (r) => r.status === 'pending' && r.plan !== 'large_crew'
+    ) || null;
+  const latestRejectedProRequest =
+    studentProRequests.find(
+      (r) => r.status === 'rejected' && r.plan !== 'large_crew'
+    ) || null;
 
-      const activeMethodConfig = PAYMENT_METHODS[method];
-      const docRef = await addDoc(collection(db, 'paymentRequests'), {
-        userId: user.uid,
-        userEmail: user.email?.toLowerCase(),
-        displayName: senderName.trim() || user.displayName || user.email?.split('@')[0],
-        amount,
-        plan: planName,
-        crewId: isCrewUpgrade ? (crew?.id || null) : null,
-        crewName: isCrewUpgrade ? (crew?.name || null) : null,
-        durationMonths: 1,
-        method: activeMethodConfig.displayName,
-        transactionId: transactionId.trim().toUpperCase(),
-        status: 'pending',
-        createdAt: serverTimestamp(),
-      });
-
-      notifyKobanPurchaseRequestSubmitted({
-        requestId: docRef.id,
-        studentUid: user.uid,
-        studentName: senderName.trim() || user.displayName || undefined,
-        studentEmail: user.email || undefined,
-        kobansAmount: amount * 10,
-        pkrAmount: amount,
-        paymentMethod: activeMethodConfig.displayName,
-        transactionId: transactionId.trim().toUpperCase(),
-        packageName: isCrewUpgrade ? 'Large Crew Pass (30 Days)' : 'Boardly Pro Pass (30 Days)',
-      });
-
-      setSubmittedSuccess(true);
-      setModalOpen(false);
-      setTransactionId('');
-      setSenderName('');
-    } catch (err) {
-      console.error('[PlansBillingPage] Submit payment request error:', err);
-    } finally {
-      setSubmitting(false);
-    }
+  const openProCheckout = (plan: ProPlanId) => {
+    setSelectedCheckoutPlan(plan);
+    setCheckoutOpen(true);
   };
 
-  const effectivePlan = useEffectivePlan();
-  const isUnlimited = effectivePlan.isUnlimited;
-  const isSuperAdmin = effectivePlan.isSuperAdmin;
-  const isPro = isUnlimited;
-  const isCrew = profile?.role === 'crew' || profile?.isCrewMember;
+  const activeProOption = PLANS[proCardCycle];
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 28 }}>
-      <div>
-        <h1 className="font-display" style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em' }}>
-          Plans & Subscriptions
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-4 pb-28 sm:pb-24 space-y-6">
+      {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
+      <div className="space-y-1.5">
+        <div className="font-mono text-[11px] uppercase tracking-widest text-[var(--red)] font-semibold">
+          Account Subscription
+        </div>
+        <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-[var(--text)] tracking-tight">
+          Plans &amp; Billing
         </h1>
-        <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-          Transparent pricing for Pakistani entrance test preparation. 100% money-back guarantee.
+        <p className="text-xs sm:text-sm text-[var(--muted)] max-w-2xl leading-relaxed">
+          Upgrade your practice capacity with Boardly Pro or team up with classmates in a Nakama
+          Crew. {REFUND_POLICY_TEXT}
         </p>
       </div>
 
-      {/* Current Plan Banner */}
-      {profileLoading ? (
-        <LineLoader context="dashboard" variant="inline" />
-      ) : (
-        <GlassCard
-          style={{
-            padding: '20px 24px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 16,
-            borderLeft: `4px solid ${isPro ? '#D71921' : 'var(--border)'}`,
-          }}
-        >
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-              <span style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-faint)' }}>
-                Active Plan
-              </span>
-              <Badge color={isSuperAdmin || isPro ? 'brand' : 'default'}>
-                {isSuperAdmin
-                  ? 'SUPERADMIN · UNLIMITED'
-                  : effectivePlan.source === 'crew'
-                  ? `PRO VIA CREW (${effectivePlan.crewName || 'CREW'})`
-                  : isPro
-                  ? 'PRO ACCESS'
-                  : isCrew
-                  ? 'CREW PASS'
-                  : 'FREE TIER'}
-              </Badge>
-              {effectivePlan.source === 'crew' && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#D71921]/20 text-[#D71921] border border-[#D71921]/40 flex items-center gap-1">
-                  <Sparkles size={11} /> Pro via Crew
-                </span>
-              )}
-            </div>
-            <p style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
-              {isSuperAdmin
-                ? 'Superadmin Access: All Tests, Papers & Tools Unlimited'
-                : effectivePlan.source === 'crew'
-                ? `Unlimited Pro access shared from your squad (${effectivePlan.crewName || 'Study Crew'})`
-                : isPro
-                ? 'Unlimited Tests & Boardy AI Tutor Unlocked'
-                : '10 tests per day and 5 AI Tokens per Day'}
-            </p>
-          </div>
+      {/* ─── ACTIVE PLAN STATUS BANNER (Uniform 1px border, no left-edge curve artifact) ─── */}
+      <StatusBanner
+        planId={effectiveIsPro ? 'pro' : isCrew ? 'crew' : 'free'}
+        planExpiresAtRaw={rawExpiresAt}
+        pendingProRequest={pendingProRequest}
+        latestRejectedProRequest={latestRejectedProRequest}
+        onUpgradeOrExtend={() => openProCheckout('pro_monthly')}
+      />
 
-          {isSuperAdmin ? (
-            <div className="px-4 py-2 rounded-xl bg-[rgba(239,68,68,0.1)] border border-[#D71921] text-[#D71921] font-semibold text-xs font-heading">
-              Superadmin · Unlimited
-            </div>
-          ) : !isPro ? (
-            <Button
-              variant="primary"
-              size="md"
-              onClick={() => {
-                setUpgradeTarget('pro');
-                setModalOpen(true);
-              }}
-            >
-              <Zap size={15} /> Upgrade to Pro — PKR 199/mo
-            </Button>
-          ) : null}
-        </GlassCard>
-      )}
-
-      {/* Pending verification alert & student payment request history */}
-      {pendingRequests.length > 0 && (
-        <div
-          style={{
-            padding: '16px 20px',
-            borderRadius: 'var(--r-card)',
-            background: 'var(--surface)',
-            border: pendingRequests.some((r) => r.status === 'pending')
-              ? '1px solid #D71921'
-              : '1px solid var(--border)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 10,
-          }}
-        >
-          {pendingRequests.some((r) => r.status === 'pending') && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Clock size={20} className="text-[#D71921] flex-shrink-0" />
-              <div>
-                <h4 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
-                  Payment Verification In Progress
-                </h4>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Your transaction is being verified by admin. Pro access will activate automatically within 15–30 minutes.
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-faint)' }}>
-              Your Payment History
-            </span>
-            {pendingRequests.slice(0, 5).map((r) => (
-              <div
-                key={r.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 8,
-                  fontSize: 12,
-                  paddingTop: 6,
-                  borderTop: '1px solid var(--border)',
-                }}
-              >
-                <span style={{ color: 'var(--text)', fontFamily: 'monospace' }}>
-                  {r.amount ? `PKR ${r.amount} · ` : ''}via {formatPaymentMethodLabel(r.method)} (TRX: {r.transactionId})
-                </span>
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    color:
-                      r.status === 'approved'
-                        ? '#10b981'
-                        : r.status === 'rejected'
-                        ? '#ef4444'
-                        : '#f59e0b',
-                  }}
-                >
-                  {r.status || 'pending'}
-                </span>
-              </div>
-            ))}
-          </div>
+      {/* ─── COMPACT 3-COLUMN COMPARISON SUMMARY (Free vs Pro vs Crew) ──────── */}
+      <div className="rounded-[22px] bg-[var(--card)] border border-[var(--border)] overflow-hidden">
+        <div className="px-4 sm:px-5 py-3 border-b border-[var(--border)] flex items-center justify-between gap-2 bg-[var(--surface-2)]/60">
+          <span className="font-heading font-bold text-xs sm:text-sm text-[var(--text)]">
+            Quick Plan Comparison
+          </span>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--muted)]">
+            Key Limits &amp; Perks
+          </span>
         </div>
-      )}
 
-      {/* 3 Tier Grid */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: 20,
-        }}
-      >
-        {/* Tier 1: Free */}
-        <GlassCard
-          style={{
-            padding: '24px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 16,
-            borderRadius: 'var(--r-card)',
-          }}
-        >
-          <div>
-            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
-              Essential
-            </span>
-            <h3 className="font-display" style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', marginTop: 4 }}>
-              Free
-            </h3>
-            <div style={{ marginTop: 8 }}>
-              <span className="font-display tabular-nums" style={{ fontSize: 32, fontWeight: 800, color: 'var(--text)' }}>
-                PKR 0
-              </span>
-              <span style={{ fontSize: 13, color: 'var(--text-faint)' }}> / forever</span>
-            </div>
-          </div>
-
-          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13, color: 'var(--text-muted)' }}>
-            <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Check size={14} className="text-[#D71921]" /> 10 tests per day
-            </li>
-            <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Check size={14} className="text-[#D71921]" /> 3 Arena Grand Mocks / Day
-            </li>
-            <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Check size={14} className="text-[#D71921]" /> 5 Boardy AI Tutor Tokens / Day
-            </li>
-            <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Check size={14} className="text-[#D71921]" /> Basic Weak Chapter Tracking
-            </li>
-          </ul>
-
-          <div style={{ marginTop: 'auto' }}>
-            <Button variant="secondary" size="md" className="w-full" disabled={!isPro}>
-              {!isPro ? 'Current Plan' : 'Free Tier'}
-            </Button>
-          </div>
-        </GlassCard>
-
-        {/* Tier 2: Pro */}
-        <GlassCard
-          style={{
-            padding: '24px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 16,
-            borderRadius: 'var(--r-card)',
-            border: '1px solid #D71921',
-            position: 'relative',
-          }}
-        >
-          <div
-            style={{
-              position: 'absolute',
-              top: -10,
-              right: 20,
-              background: '#D71921',
-              color: 'white',
-              fontSize: 10,
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              padding: '2px 10px',
-              borderRadius: 999,
-            }}
-          >
-            POPULAR
-          </div>
-
-          <div>
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#D71921', textTransform: 'uppercase' }}>
-              Full Entrance Mastery
-            </span>
-            <h3 className="font-display" style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', marginTop: 4 }}>
-              Pro
-            </h3>
-            <div style={{ marginTop: 8 }}>
-              <span className="font-display tabular-nums" style={{ fontSize: 32, fontWeight: 800, color: 'var(--text)' }}>
-                PKR 199
-              </span>
-              <span style={{ fontSize: 13, color: 'var(--text-faint)' }}> / month</span>
-            </div>
-          </div>
-
-          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13, color: 'var(--text)' }}>
-            <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Check size={14} className="text-[#D71921]" /> Unlimited Practice Tests &amp; Sprints
-            </li>
-            <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Check size={14} className="text-[#D71921]" /> Unlimited Arena Grand National Mocks
-            </li>
-            <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Check size={14} className="text-[#D71921]" /> Unlimited Boardy AI Derivations
-            </li>
-            <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Check size={14} className="text-[#D71921]" /> FAST-NUCES Negative Marking Optimizer
-            </li>
-            <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Check size={14} className="text-[#D71921]" /> Comprehensive Mistakes Breakdown
-            </li>
-          </ul>
-
-          <div style={{ marginTop: 'auto' }}>
-            {isSuperAdmin ? (
-              <div className="text-center py-2.5 px-3 rounded-xl border border-[#D71921] bg-[rgba(239,68,68,0.1)] text-[#D71921] font-semibold text-xs font-heading">
-                Superadmin · Unlimited
-              </div>
-            ) : (
-              <Button
-                variant="primary"
-                size="md"
-                className="w-full"
-                onClick={() => {
-                  setUpgradeTarget('pro');
-                  setModalOpen(true);
-                }}
-                disabled={isPro}
-              >
-                {isPro ? (effectivePlan.source === 'crew' ? 'Pro Unlocked via Crew' : 'Active Pro Member') : 'Upgrade to Pro'}
-              </Button>
-            )}
-          </div>
-        </GlassCard>
-
-        {/* Tier 3: Crew Pass (Free up to 5 / Large Crew PKR 499) */}
-        {(() => {
-          const isLeader = Boolean(crew && user && crew.leaderId === user.uid);
-          const isPaidCrew = Boolean(crew?.tier === 'paid' && isCrewPaidActive(crew?.paid_until));
-          const isExpiredCrew = Boolean(crew?.tier === 'paid' && !isCrewPaidActive(crew?.paid_until));
-
-          return (
-            <GlassCard
-              style={{
-                padding: '24px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 16,
-                borderRadius: 'var(--r-card)',
-                border: isPaidCrew ? '1px solid #D71921' : '1px solid var(--border)',
-              }}
-            >
-              <div>
-                <div className="flex items-center justify-between">
-                  <span style={{ fontSize: 12, fontWeight: 700, color: isPaidCrew ? '#D71921' : 'var(--text-faint)', textTransform: 'uppercase' }}>
-                    Study Group Pass
-                  </span>
-                  {isPaidCrew && (
-                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-[#D71921]/20 border border-[#D71921]/40 text-[#D71921] flex items-center gap-1">
-                      <Sparkles size={10} /> Active Large Crew
-                    </span>
-                  )}
-                </div>
-                <h3 className="font-display" style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', marginTop: 4 }}>
-                  Crew Pass
-                </h3>
-                <div style={{ marginTop: 8 }}>
-                  <div className="flex items-baseline gap-1">
-                    <span className="font-display tabular-nums" style={{ fontSize: 32, fontWeight: 800, color: 'var(--text)' }}>
-                      PKR {DEFAULT_CREW_PRICING.largeCrewPricePKR}
-                    </span>
-                    <span style={{ fontSize: 13, color: 'var(--text-faint)' }}> / month</span>
-                  </div>
-                  <span className="text-xs text-[var(--muted)] block mt-0.5">
-                    Free up to 5 members · Large Crew (up to 30)
-                  </span>
-                </div>
-              </div>
-
-              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13, color: 'var(--text-muted)' }}>
-                <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Check size={14} className="text-[#D71921]" /> Free Crew: up to 5 members forever
-                </li>
-                <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Check size={14} className="text-[#D71921]" /> Large Crew: up to 30 members
-                </li>
-                <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Check size={14} className="text-[#D71921]" /> <strong>Pro sharing:</strong> Unlimited MCQs &amp; AI for all members
-                </li>
-                <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Check size={14} className="text-[#D71921]" /> Shared Crew Goal Ring &amp; National Leaderboards
-                </li>
-                <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Check size={14} className="text-[#D71921]" /> Aggregated Crew Weak Chapter Stats
-                </li>
-              </ul>
-
-              <div style={{ marginTop: 'auto' }}>
-                {!crew ? (
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    className="w-full"
-                    onClick={() => navigate('/crew/my')}
-                  >
-                    <Users size={14} /> Join or Create Crew
-                  </Button>
-                ) : isPaidCrew ? (
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    className="w-full"
-                    onClick={() => navigate('/crew/my')}
-                  >
-                    <Check size={14} className="text-emerald-400" /> Active Large Crew ({crew.name})
-                  </Button>
-                ) : isExpiredCrew && isLeader ? (
-                  <Button
-                    variant="primary"
-                    size="md"
-                    className="w-full"
-                    onClick={() => {
-                      setUpgradeTarget('crew');
-                      setModalOpen(true);
-                    }}
-                  >
-                    <Sparkles size={14} /> Renew Crew — PKR {DEFAULT_CREW_PRICING.largeCrewPricePKR}/mo
-                  </Button>
-                ) : isLeader ? (
-                  <Button
-                    variant="primary"
-                    size="md"
-                    className="w-full"
-                    onClick={() => {
-                      setUpgradeTarget('crew');
-                      setModalOpen(true);
-                    }}
-                  >
-                    <Sparkles size={14} /> Upgrade Crew — PKR {DEFAULT_CREW_PRICING.largeCrewPricePKR}/mo
-                  </Button>
-                ) : (
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    className="w-full"
-                    onClick={() => navigate('/crew/my')}
-                  >
-                    <Users size={14} /> Member of {crew.name}
-                  </Button>
-                )}
-              </div>
-            </GlassCard>
-          );
-        })()}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[320px]">
+            <thead>
+              <tr className="border-b border-[var(--border)] text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
+                <th className="py-2.5 px-3.5 sm:px-5 font-semibold">Feature</th>
+                <th className="py-2.5 px-2.5 sm:px-4 font-semibold text-center">Free</th>
+                <th className="py-2.5 px-2.5 sm:px-4 font-bold text-center text-[var(--red)] bg-[var(--red)]/[0.05]">
+                  Pro
+                </th>
+                <th className="py-2.5 px-2.5 sm:px-4 font-semibold text-center">Crew</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--border)] text-xs">
+              {PLAN_COMPARISON_ROWS.map((row) => (
+                <tr key={row.feature} className="hover:bg-[var(--surface-2)]/40 transition-colors">
+                  <td className="py-2.5 px-3.5 sm:px-5 font-medium text-[var(--text)]">
+                    {row.feature}
+                  </td>
+                  <td className="py-2.5 px-2.5 sm:px-4 text-center font-mono text-[11px] text-[var(--muted)]">
+                    {row.free}
+                  </td>
+                  <td className="py-2.5 px-2.5 sm:px-4 text-center font-mono text-[11px] font-bold text-[var(--text)] bg-[var(--red)]/[0.05]">
+                    {row.pro}
+                  </td>
+                  <td className="py-2.5 px-2.5 sm:px-4 text-center font-mono text-[11px] text-[var(--muted)]">
+                    {row.crew}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* Payment Modal */}
-      {modalOpen && (
-        <div
-          className="overlay-blur bg-black/60 backdrop-blur-md"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 100,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-          }}
-        >
-          <div
-            style={{
-              maxWidth: 480,
-              width: '100%',
-              padding: '24px',
-              borderRadius: 'var(--r-card)',
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 16,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <h3 className="font-display" style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>
-                  {upgradeTarget === 'crew' ? 'Upgrade Squad to Large Crew' : 'Upgrade to Boardly Pro'}
-                </h3>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  {upgradeTarget === 'crew'
-                    ? `PKR ${DEFAULT_CREW_PRICING.largeCrewPricePKR} for 30 days · Unlocks 30 member limit & Pro for all squad members`
-                    : 'PKR 199 for 30 days full unlimited access'}
-                </p>
-              </div>
+      {/* ─── THREE CONSISTENT PLAN CARDS (Free, Boardly Pro, Nakama Crew) ────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 items-stretch">
+        {/* 1. Free Tier Card */}
+        <PlanCard
+          title={PLANS.free.name}
+          subtitle={PLANS.free.shortName}
+          icon={<BookOpen size={17} />}
+          pricePkr={PLANS.free.price_pkr}
+          cadenceLabel={PLANS.free.cadenceLabel}
+          priceSubtext={PLANS.free.description}
+          features={PLANS.free.features}
+          featured={false}
+          ctaLabel={currentPlan === 'free' && !effectiveIsPro ? 'Current Plan' : 'Included Base Tier'}
+          ctaVariant="disabled-current"
+        />
+
+        {/* 2. Boardly Pro Card (Only card with red border & subtle red glow; POPULAR badge inside top-right) */}
+        <PlanCard
+          title="Boardly Pro"
+          subtitle={
+            proCardCycle === 'pro_annual'
+              ? `Annual Pass · Save ${ANNUAL_SAVINGS_PERCENT}%`
+              : 'Monthly Pass · Full Access'
+          }
+          durationBadge={`${activeProOption.duration_days} Days`}
+          topRightBadge="POPULAR"
+          topRightBadgeTone="pro"
+          icon={<Zap size={17} />}
+          pricePkr={activeProOption.price_pkr}
+          cadenceLabel={activeProOption.cadenceLabel}
+          priceKobans={activeProOption.price_kobans}
+          regularPricePkr={activeProOption.regular_price_pkr}
+          priceSubtext={activeProOption.description}
+          features={activeProOption.features}
+          featured={true}
+          ctaLabel={
+            effectiveIsPro
+              ? `Extend Pro — PKR ${activeProOption.price_pkr.toLocaleString()}`
+              : proCardCycle === 'pro_annual'
+              ? `Get Annual Pass, PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}`
+              : `Upgrade to Pro, PKR ${PLANS.pro_monthly.price_pkr}/mo`
+          }
+          ctaIcon={<Zap size={15} />}
+          ctaVariant="primary-red"
+          onCtaClick={() => openProCheckout(proCardCycle)}
+          footerSlot={
+            <div className="pt-1 flex items-center justify-between gap-2">
               <button
-                onClick={() => setModalOpen(false)}
-                style={{ fontSize: 18, color: 'var(--text-faint)', cursor: 'pointer' }}
+                type="button"
+                onClick={() =>
+                  setProCardCycle((prev) =>
+                    prev === 'pro_monthly' ? 'pro_annual' : 'pro_monthly'
+                  )
+                }
+                className="w-full min-h-[40px] px-3 py-1.5 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--border)]/40 border border-[var(--border)] text-xs font-heading font-semibold text-[var(--text)] flex items-center justify-between gap-2 transition-colors cursor-pointer"
               >
-                ✕
+                <span className="inline-flex items-center gap-1.5">
+                  <Sparkles size={13} className="text-[#E8342A]" />
+                  <span>
+                    {proCardCycle === 'pro_monthly'
+                      ? `Switch to Annual (PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}/yr)`
+                      : `Switch to Monthly (PKR ${PLANS.pro_monthly.price_pkr}/mo)`}
+                  </span>
+                </span>
+                <span className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-[#E8342A]/15 text-[#E8342A]">
+                  Save {ANNUAL_SAVINGS_PERCENT}%
+                </span>
               </button>
             </div>
+          }
+        />
 
-            {/* Payment Method Selector */}
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 8 }}>
-                Select Payment Account
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-                {PAYMENT_METHODS_LIST.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setMethod(m.id)}
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: 'var(--r-input)',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      border: method === m.id ? '1px solid #D71921' : '1px solid var(--border)',
-                      background: method === m.id ? 'rgba(215, 25, 33, 0.1)' : 'var(--surface)',
-                      color: method === m.id ? '#D71921' : 'var(--text)',
-                    }}
-                  >
-                    {m.displayName} ({m.number})
-                  </button>
-                ))}
-              </div>
-            </div>
+        {/* 3. Nakama Crew Card */}
+        <PlanCard
+          title={PLANS.crew.name}
+          subtitle={PLANS.crew.shortName}
+          icon={<Users size={17} />}
+          pricePkr={PLANS.crew.price_pkr}
+          cadenceLabel={PLANS.crew.cadenceLabel}
+          priceSubtext={PLANS.crew.description}
+          features={PLANS.crew.features}
+          featured={false}
+          ctaLabel={isCrew ? 'Manage Your Crew' : 'Join or Create Crew'}
+          ctaIcon={<Users size={15} />}
+          ctaVariant="outlined"
+          onCtaClick={() => navigate('/dashboard/crew')}
+        />
+      </div>
 
-            {/* Account Details (reads from shared PAYMENT_METHODS config) */}
-            <div
-              style={{
-                padding: '12px 14px',
-                borderRadius: 'var(--r-input)',
-                background: 'var(--surface-hover)',
-                fontSize: 12,
-                color: 'var(--text)',
-                lineHeight: 1.6,
-              }}
-            >
-              <p><strong>Account Title:</strong> {PAYMENT_METHODS[method].accountTitle}</p>
-              <p><strong>Account Number:</strong> {PAYMENT_METHODS[method].number}</p>
-              <p><strong>Amount:</strong> PKR {upgradeTarget === 'crew' ? DEFAULT_CREW_PRICING.largeCrewPricePKR : 199}</p>
-            </div>
-
-            <form onSubmit={handleUpgradeSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
-                  Transaction ID / TRX # *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. 8472910385"
-                  value={transactionId}
-                  onChange={(e) => setTransactionId(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: 'var(--r-input)',
-                    background: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    color: 'var(--text)',
-                    fontSize: 13,
-                    fontFamily: 'monospace',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
-                  Sender Account Holder Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Muhammad Ali"
-                  value={senderName}
-                  onChange={(e) => setSenderName(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: 'var(--r-input)',
-                    background: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    color: 'var(--text)',
-                    fontSize: 13,
-                  }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-                <Button variant="secondary" size="sm" type="button" onClick={() => setModalOpen(false)}>
-                  Cancel
-                </Button>
-                <Button variant="primary" size="sm" type="submit" loading={submitting}>
-                  Submit Payment Verification
-                </Button>
-              </div>
-            </form>
-          </div>
+      {/* ─── REFUND POLICY & PAYMENT NOTE FOOTER ────────────────────────────── */}
+      <div className="rounded-[20px] bg-[var(--card)] border border-[var(--border)] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[var(--muted)]">
+        <div className="flex items-center gap-2.5">
+          <ShieldCheck size={16} className="text-emerald-500 shrink-0" />
+          <span>
+            <strong className="text-[var(--text)]">Terms:</strong> {REFUND_POLICY_TEXT} Instant
+            activation when paying with Kobans, or within 2 hours via JazzCash / Opay.
+          </span>
         </div>
-      )}
+        <button
+          type="button"
+          onClick={() => openProCheckout('pro_annual')}
+          className="font-heading font-bold text-xs text-[var(--red)] hover:underline shrink-0 text-left sm:text-right cursor-pointer"
+        >
+          View Annual Pass (Save {ANNUAL_SAVINGS_PERCENT}%) →
+        </button>
+      </div>
+
+      {/* ─── DEDICATED PRO CHECKOUT SHEET ───────────────────────────────────── */}
+      <ProCheckoutSheet
+        open={checkoutOpen}
+        onClose={() => setCheckoutOpen(false)}
+        initialPlanId={selectedCheckoutPlan}
+        uid={user?.uid}
+        userEmail={user?.email || profile?.email}
+        userName={profile?.displayName || profile?.name || user?.displayName}
+        kobanBalance={balance}
+        currentProExpiresAt={rawExpiresAt}
+        hasPendingProRequest={Boolean(pendingProRequest)}
+        onOpenGetKobans={(needed) => {
+          setCheckoutOpen(false);
+          setGetKobansInitialAmount(needed);
+          setGetKobansOpen(true);
+        }}
+        onSuccess={() => {
+          loadProRequests();
+        }}
+        onStartPracticing={() => navigate('/practice')}
+      />
+
+      {/* ─── GET KOBANS MODAL (Only triggered when user clicks "Get Kobans" on low balance) ─── */}
+      <GetKobansModal
+        isOpen={getKobansOpen}
+        onClose={() => {
+          setGetKobansOpen(false);
+          setGetKobansInitialAmount(undefined);
+        }}
+        initialAmount={getKobansInitialAmount}
+      />
     </div>
   );
 }
-
-export default PlansBillingPage;

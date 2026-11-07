@@ -32,7 +32,15 @@ export function AdminPaymentsPage() {
   const { user } = useAuth();
   const superadminEmail = user?.email || 'shsvirtualadmin@gmail.com';
 
-  const [paymentType, setPaymentType] = useState<'plans' | 'kobans'>('plans');
+  const [paymentType, setPaymentType] = useState<'plans' | 'kobans'>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const t = params.get('type');
+      if (t === 'kobans') return 'kobans';
+      if (t === 'pro' || t === 'plans') return 'plans';
+    }
+    return 'plans';
+  });
   const [statusFilter, setStatusFilter] = useState('all');
   const [methodFilter, setMethodFilter] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -312,6 +320,13 @@ export function AdminPaymentsPage() {
                     <span className="font-heading font-bold text-sm text-[var(--text)]">
                       {req.userName || req.userEmail || 'Student'}
                     </span>
+                    <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-md border border-[var(--red)]/40 bg-[var(--red)]/10 text-[var(--red)] font-bold">
+                      {req.plan === 'large_crew'
+                        ? 'Large Crew Pass'
+                        : req.plan === 'pro_annual' || req.durationDays === 365 || (req.durationMonths ?? 1) >= 12
+                        ? 'Pro Pass · Annual (365d)'
+                        : 'Pro Pass · Monthly (30d)'}
+                    </span>
                     <span
                       className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border font-bold ${
                         req.status === 'approved'
@@ -324,12 +339,26 @@ export function AdminPaymentsPage() {
                       {req.status}
                     </span>
                     <span className="text-[11px] font-mono text-[var(--muted)]">
-                      PKR {req.amount} via {formatPaymentMethodLabel(req.method)}
+                      PKR {(req.amount_pkr ?? req.amount ?? 0).toLocaleString()} via {formatPaymentMethodLabel(req.method)}
                     </span>
                   </div>
 
-                  <div className="text-xs text-[var(--muted)] font-mono flex items-center gap-2 flex-wrap">
-                    <span>TRX: <strong className="text-[var(--text)]">{req.transactionId}</strong></span>
+                  <div className="text-xs text-[var(--muted)] font-mono flex items-center gap-3 flex-wrap pt-1">
+                    <div className="flex items-center gap-1.5 bg-[var(--surface-2)] px-2.5 py-1 rounded-lg border border-[var(--border)]">
+                      <span>TID:</span>
+                      <strong className="text-[var(--text)]">{req.TID || req.transactionId}</strong>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(req.TID || req.transactionId, req.id)}
+                        className="text-[var(--muted)] hover:text-[var(--text)]"
+                        title="Copy TID"
+                      >
+                        {copiedId === req.id ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                      </button>
+                    </div>
+                    {req.userEmail && (
+                      <span className="text-[11px] text-[var(--muted)]">{req.userEmail}</span>
+                    )}
                     {req.screenshotUrl && (
                       <a
                         href={req.screenshotUrl}
@@ -342,6 +371,9 @@ export function AdminPaymentsPage() {
                       </a>
                     )}
                   </div>
+                  {req.rejectionReason && (
+                    <p className="text-xs text-red-400 mt-1">Rejection reason: {req.rejectionReason}</p>
+                  )}
                 </div>
 
                 {req.status === 'pending' && (
@@ -393,6 +425,9 @@ export function AdminPaymentsPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-heading font-bold text-sm text-[var(--text)]">
                       {req.userName || 'Student'}
+                    </span>
+                    <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-md border border-[#FFD66B]/40 bg-[#FFD66B]/10 text-[#FFD66B] font-bold">
+                      Koban Top-Up
                     </span>
                     <span
                       className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border font-bold ${

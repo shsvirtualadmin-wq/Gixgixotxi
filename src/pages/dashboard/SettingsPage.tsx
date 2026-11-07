@@ -16,6 +16,7 @@ import { db, auth } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { PLANS } from '@/config/plans';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -463,7 +464,7 @@ export function SettingsPage() {
                   ? 'Full superadmin authority and unlimited access across Boardly.'
                   : isPro
                   ? 'You have unlimited practice tests, past papers, and AI tutor derivations.'
-                  : 'You are on the Free plan. Upgrade to Pro (PKR 199/month) for unlimited tests and AI derivations.'}
+                  : `You are on the Free plan. Upgrade to Pro (PKR ${PLANS.pro_monthly.price_pkr}/month) for unlimited tests and AI derivations.`}
               </p>
             </div>
 
