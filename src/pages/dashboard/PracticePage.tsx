@@ -38,7 +38,11 @@ import { MathText } from '@/components/ui/MathText';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
-import { startTestSessionWithLimit, DailyTestLimitError } from '@/services/testLimits';
+import {
+  startTestSessionWithLimit,
+  fetchDailyUsageFromServer,
+  DailyTestLimitError,
+} from '@/services/testLimits';
 import { DailyLimitBlockedSheet } from '@/components/test/DailyLimitBlockedSheet';
 import { DashboardErrorBoundary } from '@/components/dashboard/DashboardErrorBoundary';
 import { isQuotaExhaustedError } from '@/utils/quota';
@@ -154,16 +158,21 @@ export function PracticePage() {
   const isPro = effectivePlan.isUnlimited;
   const testsLeft = isPro ? 'Unlimited' : Math.max(0, FREE_DAILY_TESTS - todayAttempts);
 
-  // Fetch today's usage from Firestore
+  // Fetch today's usage from Server + read-only Firestore usage doc (request.auth.uid == user.uid)
   useEffect(() => {
     if (!user) return;
     const dateKey = getPKTDateKey();
-    getDoc(doc(db, 'users', user.uid, 'usage', dateKey))
-      .then((snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          setTodayAttempts(Number(data?.testsStarted ?? data?.practiceAttempts ?? 0));
-        }
+    Promise.all([
+      getDoc(doc(db, 'users', user.uid, 'usage', dateKey)).catch(() => null),
+      fetchDailyUsageFromServer(user.uid),
+    ])
+      .then(([snap, serverUsage]) => {
+        const fsData = snap && snap.exists() ? snap.data() : null;
+        const fsCount = Number(fsData?.testsStarted ?? fsData?.practiceAttempts ?? 0);
+        const srvCount = Number(
+          serverUsage?.testsStarted ?? serverUsage?.practiceAttempts ?? 0
+        );
+        setTodayAttempts(Math.max(fsCount, srvCount));
       })
       .catch((err) => {
         if (import.meta.env.DEV) {

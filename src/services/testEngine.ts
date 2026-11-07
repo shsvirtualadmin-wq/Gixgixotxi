@@ -983,13 +983,27 @@ export async function submitAttempt(
     console.warn('[testEngine] Failed to update chapterStats:', statErr);
   }
 
-  // 3. Update daily usage & questions in PKT timezone
+  // 3. Record daily usage server-side & non-limit activity stats in PKT timezone
   const pktDateKey = getPKTDateKey();
   try {
     const answeredCount = correctCount + wrongCount;
-    const usageRef = doc(db, 'users', uid, 'usage', pktDateKey);
+    const token = await auth.currentUser?.getIdToken().catch(() => null);
+    await fetch('/api/usage/daily/record', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        uid,
+        practiceAttemptsDelta: 1,
+        questionsSolvedDelta: answeredCount,
+      }),
+    }).catch(() => {});
+
+    const activityRef = doc(db, 'users', uid, 'activity', pktDateKey);
     await setDoc(
-      usageRef,
+      activityRef,
       {
         practiceAttempts: increment(1),
         questionsSolved: increment(answeredCount),
@@ -1001,7 +1015,7 @@ export async function submitAttempt(
       { merge: true }
     );
   } catch (err) {
-    console.warn('[testEngine] Failed to record daily usage:', err);
+    console.warn('[testEngine] Failed to record daily activity:', err);
   }
 
   // 4. Update user streak

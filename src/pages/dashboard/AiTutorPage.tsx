@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
-import { doc, getDoc, setDoc, increment } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { MathText } from '@/components/ui/MathText';
 import { Button } from '@/components/ui/Button';
@@ -46,16 +46,20 @@ export function AiTutorPage() {
 
   const dateKey = getPKTDateKey();
 
-  // Load today's token usage from Firestore
+  // Load today's token usage from server + read-only Firestore usage doc
   useEffect(() => {
     if (!user) return;
     const usageRef = doc(db, 'users', user.uid, 'usage', dateKey);
-    getDoc(usageRef)
-      .then((snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          setTokensUsed(data.aiTutorTokens ?? 0);
-        }
+    Promise.all([
+      getDoc(usageRef).catch(() => null),
+      fetch(`/api/usage/daily?uid=${encodeURIComponent(user.uid)}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ])
+      .then(([snap, srv]) => {
+        const fsTokens = snap && snap.exists() ? Number(snap.data()?.aiTutorTokens ?? 0) : 0;
+        const srvTokens = Number(srv?.aiTutorTokens ?? 0);
+        setTokensUsed(Math.max(fsTokens, srvTokens));
       })
       .catch((e) => console.warn('[AiTutor] Failed to fetch usage:', e));
   }, [user, dateKey]);
@@ -112,10 +116,17 @@ export function AiTutorPage() {
 
       setMessages((prev) => [...prev, botMsg]);
 
-      // Update Firestore usage counter
+      // Update usage counter server-side
       if (user) {
-        const usageRef = doc(db, 'users', user.uid, 'usage', dateKey);
-        await setDoc(usageRef, { aiTutorTokens: increment(1) }, { merge: true });
+        const token = await user.getIdToken().catch(() => null);
+        await fetch('/api/usage/daily/record', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ uid: user.uid, aiTutorTokensDelta: 1 }),
+        }).catch(() => {});
         setTokensUsed((c) => c + 1);
       }
     } catch (err) {

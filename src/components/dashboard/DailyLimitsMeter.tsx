@@ -6,6 +6,7 @@ import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useAuth } from '@/contexts/AuthContext';
 import { LineLoader } from '@/components/ui/LineLoader';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
+import { fetchDailyUsageFromServer } from '@/services/testLimits';
 
 interface UsageData {
   testsStarted?: number;
@@ -49,7 +50,7 @@ export const DailyLimitsMeter = memo(function DailyLimitsMeter({
       return;
     }
 
-    const effectiveUid = uid || user?.uid;
+    const effectiveUid = user?.uid || uid;
     if (!effectiveUid) {
       setHasError(true);
       setLoading(false);
@@ -61,13 +62,35 @@ export const DailyLimitsMeter = memo(function DailyLimitsMeter({
     setLoading(true);
     setHasError(false);
 
-    getDoc(doc(db, 'users', effectiveUid, 'usage', dateKey))
-      .then((snap) => {
+    // Only read Firestore usage doc when signed in as the owner (request.auth.uid == userId)
+    const firestorePromise =
+      user?.uid && user.uid === effectiveUid
+        ? getDoc(doc(db, 'users', effectiveUid, 'usage', dateKey)).catch(() => null)
+        : Promise.resolve(null);
+    const serverPromise = fetchDailyUsageFromServer(effectiveUid);
+
+    Promise.all([firestorePromise, serverPromise])
+      .then(([snap, serverUsage]) => {
         if (cancelled) return;
-        const u = snap.exists() ? (snap.data() as UsageData) : {};
-        setUsage(u);
-        const count = Number(u.questionsUsed ?? u.testsStarted ?? u.practiceAttempts ?? 0);
-        if (onUsageChangeRef.current) onUsageChangeRef.current(count);
+        const fsData = snap && snap.exists() ? (snap.data() as UsageData) : {};
+        const fsCount = Number(
+          fsData.questionsUsed ?? fsData.testsStarted ?? fsData.practiceAttempts ?? 0
+        );
+        const srvCount = Number(
+          serverUsage?.testsStarted ?? serverUsage?.practiceAttempts ?? 0
+        );
+        const mergedTestsStarted = Math.max(fsCount, srvCount);
+        const merged: UsageData = {
+          ...fsData,
+          testsStarted: mergedTestsStarted,
+          practiceAttempts: Math.max(
+            Number(fsData.practiceAttempts ?? 0),
+            Number(serverUsage?.practiceAttempts ?? mergedTestsStarted)
+          ),
+          questionsUsed: mergedTestsStarted,
+        };
+        setUsage(merged);
+        if (onUsageChangeRef.current) onUsageChangeRef.current(mergedTestsStarted);
         setLoading(false);
       })
       .catch((err) => {

@@ -4088,6 +4088,228 @@ export default {
         }
       }
 
+      // =======================================================================
+      // DAILY STARTER LIMIT SERVER-SIDE ENGINE (PKT Asia/Karachi UTC+5)
+      // =======================================================================
+      if (path.startsWith('/api/usage/daily')) {
+        const FREE_DAILY_STARTER_LIMIT = 10;
+        const computeWorkerPKTDateKey = (nowMs = Date.now()) => {
+          const pktMs = Number(nowMs) + 5 * 3600 * 1000;
+          const d = new Date(pktMs);
+          const y = d.getUTCFullYear();
+          const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+          const day = String(d.getUTCDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        };
+
+        await db
+          .prepare(
+            `CREATE TABLE IF NOT EXISTS daily_starter_usage (
+              uid TEXT NOT NULL,
+              pkt_date TEXT NOT NULL,
+              tests_started INTEGER NOT NULL DEFAULT 0,
+              practice_attempts INTEGER NOT NULL DEFAULT 0,
+              questions_solved INTEGER NOT NULL DEFAULT 0,
+              ai_tutor_tokens INTEGER NOT NULL DEFAULT 0,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (uid, pkt_date)
+            )`
+          )
+          .run();
+
+        if (path === '/api/usage/daily' && method === 'GET') {
+          const user = await authenticateRequest(request, env, false);
+          const requestedUid = String(url.searchParams.get('uid') || '').trim();
+          const uid = user?.uid || requestedUid;
+          if (!uid) {
+            return errorResponse(request, env, 'Authentication required.', 'UNAUTHENTICATED', 401);
+          }
+          if (user && requestedUid && requestedUid !== user.uid && !user.isAdminOrAbove) {
+            return errorResponse(request, env, 'Forbidden: Cannot read another user usage.', 'FORBIDDEN', 403);
+          }
+
+          const dateKey = computeWorkerPKTDateKey();
+          const row = await db
+            .prepare('SELECT * FROM daily_starter_usage WHERE uid = ?1 AND pkt_date = ?2')
+            .bind(uid, dateKey)
+            .first();
+
+          const testsStarted = Number(row?.tests_started ?? 0);
+          const practiceAttempts = Number(row?.practice_attempts ?? testsStarted);
+          const questionsSolved = Number(row?.questions_solved ?? 0);
+          const aiTutorTokens = Number(row?.ai_tutor_tokens ?? 0);
+
+          return jsonResponse(request, env, {
+            ok: true,
+            uid,
+            dateKey,
+            timezone: 'Asia/Karachi',
+            testsStarted,
+            practiceAttempts,
+            questionsUsed: testsStarted,
+            questionsSolved,
+            aiTutorTokens,
+            limit: FREE_DAILY_STARTER_LIMIT,
+          });
+        }
+
+        if (path === '/api/usage/daily/start-test' && method === 'POST') {
+          const user = await authenticateRequest(request, env, false);
+          const body = await request.json().catch(() => ({}));
+          const isHealthcheck = Boolean(body.healthcheck);
+          const requestedUid = String(body.uid || '').trim();
+
+          let effectiveUid = user?.uid || '';
+          if (isHealthcheck && requestedUid.startsWith('hc_dummy_')) {
+            effectiveUid = requestedUid;
+          } else if (!effectiveUid && requestedUid) {
+            effectiveUid = requestedUid;
+          }
+
+          if (!effectiveUid) {
+            return errorResponse(request, env, 'Authentication required.', 'UNAUTHENTICATED', 401);
+          }
+          if (!isHealthcheck && user && requestedUid && requestedUid !== user.uid) {
+            return errorResponse(request, env, 'UID mismatch.', 'FORBIDDEN', 403);
+          }
+
+          const dateKey = computeWorkerPKTDateKey();
+          const isSuper = Boolean(!isHealthcheck && user && user.isAdminOrAbove);
+          const isUnlimited = Boolean(body.isUnlimited) || isSuper;
+          const attemptId =
+            typeof body.customAttemptId === 'string' && body.customAttemptId.trim()
+              ? body.customAttemptId.trim()
+              : `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+          const existingRow = await db
+            .prepare('SELECT * FROM daily_starter_usage WHERE uid = ?1 AND pkt_date = ?2')
+            .bind(effectiveUid, dateKey)
+            .first();
+          const currentTestsStarted = Number(existingRow?.tests_started || 0);
+
+          if (isUnlimited) {
+            return jsonResponse(request, env, {
+              ok: true,
+              blocked: false,
+              attemptId,
+              uid: effectiveUid,
+              dateKey,
+              timezone: 'Asia/Karachi',
+              testsStarted: currentTestsStarted,
+              limit: FREE_DAILY_STARTER_LIMIT,
+            });
+          }
+
+          if (currentTestsStarted >= FREE_DAILY_STARTER_LIMIT) {
+            return jsonResponse(
+              request,
+              env,
+              {
+                ok: false,
+                blocked: true,
+                code: 'DAILY_TESTS_LIMIT_EXCEEDED',
+                error: `Daily test limit reached (${currentTestsStarted}/${FREE_DAILY_STARTER_LIMIT} tests). Upgrade or join a Study Crew to practice unlimited.`,
+                uid: effectiveUid,
+                dateKey,
+                timezone: 'Asia/Karachi',
+                testsStarted: currentTestsStarted,
+                limit: FREE_DAILY_STARTER_LIMIT,
+              },
+              429
+            );
+          }
+
+          const now = Date.now();
+          const nextTestsStarted = currentTestsStarted + 1;
+          await db
+            .prepare(
+              `INSERT INTO daily_starter_usage (uid, pkt_date, tests_started, practice_attempts, questions_solved, ai_tutor_tokens, updated_at)
+               VALUES (?1, ?2, 1, 1, 0, 0, ?3)
+               ON CONFLICT(uid, pkt_date) DO UPDATE SET
+                 tests_started = daily_starter_usage.tests_started + 1,
+                 practice_attempts = MAX(daily_starter_usage.practice_attempts + 1, daily_starter_usage.tests_started + 1),
+                 updated_at = excluded.updated_at`
+            )
+            .bind(effectiveUid, dateKey, now)
+            .run();
+
+          return jsonResponse(request, env, {
+            ok: true,
+            blocked: false,
+            attemptId,
+            uid: effectiveUid,
+            dateKey,
+            timezone: 'Asia/Karachi',
+            testsStarted: nextTestsStarted,
+            limit: FREE_DAILY_STARTER_LIMIT,
+          });
+        }
+
+        if (path === '/api/usage/daily/record' && method === 'POST') {
+          const user = await authenticateRequest(request, env, false);
+          const body = await request.json().catch(() => ({}));
+          const effectiveUid = user?.uid || String(body.uid || '').trim();
+          if (!effectiveUid) {
+            return errorResponse(request, env, 'Authentication required.', 'UNAUTHENTICATED', 401);
+          }
+          if (user && body.uid && String(body.uid).trim() !== user.uid) {
+            return errorResponse(request, env, 'UID mismatch.', 'FORBIDDEN', 403);
+          }
+
+          const dateKey = computeWorkerPKTDateKey();
+          const practiceDelta = Math.max(0, Math.floor(Number(body.practiceAttemptsDelta || 0)));
+          const solvedDelta = Math.max(0, Math.floor(Number(body.questionsSolvedDelta || 0)));
+          const aiDelta = Math.max(0, Math.floor(Number(body.aiTutorTokensDelta || 0)));
+          const now = Date.now();
+
+          await db
+            .prepare(
+              `INSERT INTO daily_starter_usage (uid, pkt_date, tests_started, practice_attempts, questions_solved, ai_tutor_tokens, updated_at)
+               VALUES (?1, ?2, 0, ?3, ?4, ?5, ?6)
+               ON CONFLICT(uid, pkt_date) DO UPDATE SET
+                 practice_attempts = daily_starter_usage.practice_attempts + ?3,
+                 questions_solved = daily_starter_usage.questions_solved + ?4,
+                 ai_tutor_tokens = daily_starter_usage.ai_tutor_tokens + ?5,
+                 updated_at = ?6`
+            )
+            .bind(effectiveUid, dateKey, practiceDelta, solvedDelta, aiDelta, now)
+            .run();
+
+          const updatedRow = await db
+            .prepare('SELECT * FROM daily_starter_usage WHERE uid = ?1 AND pkt_date = ?2')
+            .bind(effectiveUid, dateKey)
+            .first();
+
+          return jsonResponse(request, env, {
+            ok: true,
+            uid: effectiveUid,
+            dateKey,
+            timezone: 'Asia/Karachi',
+            testsStarted: Number(updatedRow?.tests_started || 0),
+            practiceAttempts: Number(updatedRow?.practice_attempts || 0),
+            questionsSolved: Number(updatedRow?.questions_solved || 0),
+            aiTutorTokens: Number(updatedRow?.ai_tutor_tokens || 0),
+          });
+        }
+
+        if (path === '/api/usage/daily/cleanup-healthcheck' && method === 'POST') {
+          const body = await request.json().catch(() => ({}));
+          const targetUid = String(body.uid || '').trim();
+          if (!targetUid || !targetUid.startsWith('hc_dummy_')) {
+            return errorResponse(request, env, 'Only hc_dummy_* test UIDs can be cleaned up.', 'INVALID_UID', 400);
+          }
+          await db
+            .prepare('DELETE FROM daily_starter_usage WHERE uid = ?1')
+            .bind(targetUid)
+            .run();
+          return jsonResponse(request, env, {
+            ok: true,
+            uid: targetUid,
+            dateKey: computeWorkerPKTDateKey(),
+          });
+        }
+      }
+
       return errorResponse(request, env, `Route not found: ${method} ${path}`, 'NOT_FOUND', 404);
     } catch (err) {
       const status = err.status || 500;

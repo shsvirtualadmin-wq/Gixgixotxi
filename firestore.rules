@@ -30,7 +30,8 @@ service cloud.firestore {
             'shsvirtualadmin@gmail.com',
             'support@boardly.cfd',
             'support@scholario.me',
-            'shs.academy.virtual@gmail.com'
+            'shs.academy.virtual@gmail.com',
+            'scholariosupport@gmail.com'
           ]
         ) ||
         request.auth.token.role == 'superadmin' ||
@@ -38,7 +39,7 @@ service cloud.firestore {
       );
     }
 
-    // Trusted Admin check: Super Admin, custom claims, or /admins/{uid} document.
+    // Trusted Admin check: Super Admin, custom claims, /admins/{uid} document, or locked /users/{uid}.role.
     // A regular user can never self-assign admin status because /admins is Super Admin write-only
     // and /users/{uid}.role is locked in unchanged() on client updates.
     function isAdmin() {
@@ -46,7 +47,15 @@ service cloud.firestore {
         isSuperAdmin() ||
         request.auth.token.admin == true ||
         request.auth.token.role == 'admin' ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'student') in [
+            'admin',
+            'superadmin',
+            'Super Admin'
+          ]
+        )
       );
     }
 
@@ -535,8 +544,11 @@ service cloud.firestore {
         allow delete: if isAdmin();
       }
 
+      // Daily limit counters are strictly read-only for clients (only when request.auth.uid == userId).
+      // All increments and daily limit verifications happen server-side.
       match /usage/{dateKey} {
-        allow read, write: if isOwner(userId) || isAdmin();
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if false;
       }
 
       match /activity/{dateKey} {

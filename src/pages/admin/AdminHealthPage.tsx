@@ -13,17 +13,20 @@ import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { resolveEffectivePlan, type PlanResolverInput } from '@/hooks/useEffectivePlan';
 import {
   startTestSessionWithLimit,
+  cleanupHealthcheckDailyUsage,
   DailyTestLimitError,
   FREE_DAILY_TESTS,
 } from '@/services/testLimits';
 import {
   doc,
+  getDoc,
   setDoc,
   deleteDoc,
   runTransaction,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
+import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { MAX_CREW_MEMBERS } from '@/constants/limits';
 
 export type HealthStatus = 'PASS' | 'WARN' | 'FAIL';
@@ -301,6 +304,12 @@ export function AdminHealthPage() {
         console.warn('[Healthcheck] Unlimited start failed:', e);
       }
 
+      // 4. If signed in, verify narrow Firestore read rule on caller's own usage doc (users/{auth.uid}/usage/{PKT})
+      const pktDateKey = getPKTDateKey();
+      if (auth.currentUser?.uid) {
+        await getDoc(doc(db, 'users', auth.currentUser.uid, 'usage', pktDateKey));
+      }
+
       const elapsedB = Math.round(performance.now() - tLimitsStart);
       const okLimits = allTenAllowed && eleventhBlocked && unlimitedSucceeded;
 
@@ -311,7 +320,7 @@ export function AdminHealthPage() {
         status: okLimits ? 'PASS' : 'FAIL',
         timeMs: elapsedB,
         message: okLimits
-          ? `Allowed exactly 10 test starts, atomically rejected 11th start with DailyTestLimitError, and verified unlimited accounts bypass counter.`
+          ? `Allowed exactly 10 test starts, atomically rejected 11th start with DailyTestLimitError, and verified unlimited accounts bypass counter (PKT ${pktDateKey}).`
           : `Failed: 10 allowed = ${allTenAllowed}, 11th blocked = ${eleventhBlocked}, unlimited pass = ${unlimitedSucceeded}.`,
       });
     } catch (err: unknown) {
@@ -325,17 +334,8 @@ export function AdminHealthPage() {
         message: (err as Error)?.message || 'Failed test limits transactional sequence.',
       });
     } finally {
-      // Clean up all temporary attempt docs and usage doc
-      for (const attId of createdAttemptIds) {
-        deleteDoc(doc(db, 'attempts', attId)).catch(() => {});
-      }
-      // Clean up usage counter doc
-      const now = new Date();
-      const pktYear = now.getUTCFullYear();
-      const pktMonth = String(now.getUTCMonth() + 1).padStart(2, '0');
-      const pktDay = String(now.getUTCDate()).padStart(2, '0');
-      deleteDoc(doc(db, 'users', dummyUid, 'usage', `${pktYear}-${pktMonth}-${pktDay}`)).catch(() => {});
-      deleteDoc(doc(db, 'users', dummyUid)).catch(() => {});
+      // Clean up server-side ephemeral healthcheck usage row for dummyUid (PKT date key)
+      await cleanupHealthcheckDailyUsage(dummyUid);
     }
 
     // ───────────────────────────────────────────────────────────────────────────
@@ -344,7 +344,7 @@ export function AdminHealthPage() {
     const tCrewStart = performance.now();
     const tempCrewId = `hc_crew_${Date.now()}`;
     const crewRef = doc(db, 'crews', tempCrewId);
-    const tempLeaderUid = `hc_leader_${Date.now()}`;
+    const tempLeaderUid = auth.currentUser?.uid || `hc_leader_${Date.now()}`;
 
     try {
       // 1. Create crew doc

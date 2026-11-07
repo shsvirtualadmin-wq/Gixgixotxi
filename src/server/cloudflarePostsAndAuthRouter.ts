@@ -8832,6 +8832,234 @@ ${allUrls
   };
   app.post('/api/admin/certificates/:id/revoke', handleRevokeOrRestoreCertificate);
   app.post('/api/admin/certificates/:id/status', handleRevokeOrRestoreCertificate);
+
+  // ===========================================================================
+  // DAILY STARTER LIMIT SERVER-SIDE ENGINE (PKT Asia/Karachi UTC+5 Day Boundary)
+  // ===========================================================================
+  const FREE_DAILY_STARTER_LIMIT = 10;
+
+  function computeServerPKTDateKey(nowMs: number = Date.now()): string {
+    const pktMs = Number(nowMs) + 5 * 3600 * 1000;
+    const d = new Date(pktMs);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function ensureDailyUsageStoreArray(store: any) {
+    if (!Array.isArray(store.daily_starter_usage)) {
+      store.daily_starter_usage = [];
+    }
+  }
+
+  function getOrCreateDailyUsageRow(store: any, uid: string, pktDate: string) {
+    ensureDailyUsageStoreArray(store);
+    let row = store.daily_starter_usage.find(
+      (r: any) => r.uid === uid && r.pkt_date === pktDate
+    );
+    if (!row) {
+      row = {
+        uid,
+        pkt_date: pktDate,
+        tests_started: 0,
+        practice_attempts: 0,
+        questions_solved: 0,
+        ai_tutor_tokens: 0,
+        updated_at: Date.now(),
+      };
+      store.daily_starter_usage.push(row);
+    }
+    return row;
+  }
+
+  // GET /api/usage/daily — Read current user's daily starter usage for today (PKT)
+  app.get('/api/usage/daily', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    const requestedUid = String(req.query.uid || '').trim();
+    const uid = user?.uid || requestedUid;
+    if (!uid) {
+      return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    }
+    if (user && requestedUid && requestedUid !== user.uid) {
+      const storeCheck = loadD1Store() as any;
+      const roleRow = resolveD1Role(storeCheck, user);
+      if (!['admin', 'superadmin'].includes(roleRow.role)) {
+        return res.status(403).json({ error: 'Forbidden: Cannot read another user usage.', code: 'FORBIDDEN' });
+      }
+    }
+
+    const dateKey = computeServerPKTDateKey();
+    const store = loadD1Store() as any;
+    ensureDailyUsageStoreArray(store);
+    const row = store.daily_starter_usage.find(
+      (r: any) => r.uid === uid && r.pkt_date === dateKey
+    );
+
+    const testsStarted = Number(row?.tests_started ?? 0);
+    const practiceAttempts = Number(row?.practice_attempts ?? testsStarted);
+    const questionsSolved = Number(row?.questions_solved ?? 0);
+    const aiTutorTokens = Number(row?.ai_tutor_tokens ?? 0);
+
+    return res.status(200).json({
+      ok: true,
+      uid,
+      dateKey,
+      timezone: 'Asia/Karachi',
+      testsStarted,
+      practiceAttempts,
+      questionsUsed: testsStarted,
+      questionsSolved,
+      aiTutorTokens,
+      limit: FREE_DAILY_STARTER_LIMIT,
+    });
+  });
+
+  // POST /api/usage/daily/start-test — Atomically verify and increment daily starter limit on the server
+  app.post('/api/usage/daily/start-test', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    const body = req.body || {};
+    const isHealthcheck = Boolean(body.healthcheck);
+    const requestedUid = String(body.uid || '').trim();
+
+    let effectiveUid = user?.uid || '';
+    if (isHealthcheck && requestedUid.startsWith('hc_dummy_')) {
+      effectiveUid = requestedUid;
+    } else if (!effectiveUid && requestedUid) {
+      effectiveUid = requestedUid;
+    }
+
+    if (!effectiveUid) {
+      return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    }
+
+    // Prevent a normal user from incrementing another user's counter
+    if (!isHealthcheck && user && requestedUid && requestedUid !== user.uid) {
+      return res.status(403).json({ error: 'UID mismatch.', code: 'FORBIDDEN' });
+    }
+
+    const dateKey = computeServerPKTDateKey();
+    const store = loadD1Store() as any;
+    ensureDailyUsageStoreArray(store);
+
+    let isSuper = false;
+    if (!isHealthcheck && user) {
+      const roleRow = resolveD1Role(store, user);
+      isSuper = roleRow.role === 'superadmin' || roleRow.role === 'admin';
+    }
+    const isUnlimited = Boolean(body.isUnlimited) || isSuper;
+    const attemptId =
+      typeof body.customAttemptId === 'string' && body.customAttemptId.trim()
+        ? body.customAttemptId.trim()
+        : `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    const row = getOrCreateDailyUsageRow(store, effectiveUid, dateKey);
+    const currentTestsStarted = Number(row.tests_started || 0);
+
+    if (isUnlimited) {
+      return res.status(200).json({
+        ok: true,
+        blocked: false,
+        attemptId,
+        uid: effectiveUid,
+        dateKey,
+        timezone: 'Asia/Karachi',
+        testsStarted: currentTestsStarted,
+        limit: FREE_DAILY_STARTER_LIMIT,
+      });
+    }
+
+    if (currentTestsStarted >= FREE_DAILY_STARTER_LIMIT) {
+      return res.status(429).json({
+        ok: false,
+        blocked: true,
+        code: 'DAILY_TESTS_LIMIT_EXCEEDED',
+        error: `Daily test limit reached (${currentTestsStarted}/${FREE_DAILY_STARTER_LIMIT} tests). Upgrade or join a Study Crew to practice unlimited.`,
+        uid: effectiveUid,
+        dateKey,
+        timezone: 'Asia/Karachi',
+        testsStarted: currentTestsStarted,
+        limit: FREE_DAILY_STARTER_LIMIT,
+      });
+    }
+
+    row.tests_started = currentTestsStarted + 1;
+    row.practice_attempts = Math.max(Number(row.practice_attempts || 0) + 1, row.tests_started);
+    row.updated_at = Date.now();
+    if (!isHealthcheck) {
+      saveD1Store(store);
+    }
+
+    return res.status(200).json({
+      ok: true,
+      blocked: false,
+      attemptId,
+      uid: effectiveUid,
+      dateKey,
+      timezone: 'Asia/Karachi',
+      testsStarted: row.tests_started,
+      limit: FREE_DAILY_STARTER_LIMIT,
+    });
+  });
+
+  // POST /api/usage/daily/record — Server-side recording of completed practice stats / AI tutor tokens
+  app.post('/api/usage/daily/record', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    const body = req.body || {};
+    const effectiveUid = user?.uid || String(body.uid || '').trim();
+    if (!effectiveUid) {
+      return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    }
+    if (user && body.uid && String(body.uid).trim() !== user.uid) {
+      return res.status(403).json({ error: 'UID mismatch.', code: 'FORBIDDEN' });
+    }
+
+    const dateKey = computeServerPKTDateKey();
+    const store = loadD1Store() as any;
+    const row = getOrCreateDailyUsageRow(store, effectiveUid, dateKey);
+
+    if (typeof body.practiceAttemptsDelta === 'number' && body.practiceAttemptsDelta > 0) {
+      row.practice_attempts = Number(row.practice_attempts || 0) + Math.floor(body.practiceAttemptsDelta);
+    }
+    if (typeof body.questionsSolvedDelta === 'number' && body.questionsSolvedDelta > 0) {
+      row.questions_solved = Number(row.questions_solved || 0) + Math.floor(body.questionsSolvedDelta);
+    }
+    if (typeof body.aiTutorTokensDelta === 'number' && body.aiTutorTokensDelta > 0) {
+      row.ai_tutor_tokens = Number(row.ai_tutor_tokens || 0) + Math.floor(body.aiTutorTokensDelta);
+    }
+    row.updated_at = Date.now();
+    saveD1Store(store);
+
+    return res.status(200).json({
+      ok: true,
+      uid: effectiveUid,
+      dateKey,
+      timezone: 'Asia/Karachi',
+      testsStarted: Number(row.tests_started || 0),
+      practiceAttempts: Number(row.practice_attempts || 0),
+      questionsSolved: Number(row.questions_solved || 0),
+      aiTutorTokens: Number(row.ai_tutor_tokens || 0),
+    });
+  });
+
+  // POST /api/usage/daily/cleanup-healthcheck — Remove ephemeral hc_dummy_* rows after verification
+  app.post('/api/usage/daily/cleanup-healthcheck', async (req: Request, res: Response) => {
+    const targetUid = String(req.body?.uid || '').trim();
+    if (!targetUid || !targetUid.startsWith('hc_dummy_')) {
+      return res.status(400).json({ error: 'Only hc_dummy_* test UIDs can be cleaned up.', code: 'INVALID_UID' });
+    }
+    const store = loadD1Store() as any;
+    ensureDailyUsageStoreArray(store);
+    const before = store.daily_starter_usage.length;
+    store.daily_starter_usage = store.daily_starter_usage.filter((r: any) => r.uid !== targetUid);
+    const removed = before - store.daily_starter_usage.length;
+    return res.status(200).json({
+      ok: true,
+      uid: targetUid,
+      removed,
+      dateKey: computeServerPKTDateKey(),
+    });
+  });
 }
 
 function escapeHtmlAttr(str: string): string {
@@ -9091,6 +9319,7 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
         pathname.startsWith('/api/certificates') ||
         pathname.startsWith('/api/verify') ||
         pathname.startsWith('/api/tests') ||
+        pathname.startsWith('/api/usage') ||
         pathname.startsWith('/api/signatures') ||
         pathname.startsWith('/api/announcements'))
     ) {

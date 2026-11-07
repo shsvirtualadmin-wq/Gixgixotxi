@@ -549,3 +549,84 @@ exports.cleanupOrphanProfiles = functions.https.onCall(async (_data, context) =>
   };
 });
 
+/**
+ * CALLABLE CLOUD FUNCTION: startTestSessionWithLimit
+ * Server-side atomic check & increment of daily starter limit (/users/{uid}/usage/{pktDateKey})
+ * using Firebase Admin SDK (since client writes to /users/{uid}/usage/{dateKey} are denied in firestore.rules).
+ */
+exports.startTestSessionWithLimit = functions.https.onCall(async (data, context) => {
+  const callerUid = context.auth ? context.auth.uid : null;
+  if (!callerUid) {
+    throw new functions.https.HttpsError('unauthenticated', 'Authentication required to start a test session.');
+  }
+
+  const isHealthcheck = Boolean(data?.healthcheck);
+  const requestedUid = typeof data?.uid === 'string' ? data.uid.trim() : '';
+  const effectiveUid =
+    isHealthcheck && requestedUid.startsWith('hc_dummy_') && isSuperAdminUser(context.auth)
+      ? requestedUid
+      : callerUid;
+
+  const pktMs = Date.now() + 5 * 3600 * 1000;
+  const pktDate = new Date(pktMs);
+  const dateKey = `${pktDate.getUTCFullYear()}-${String(pktDate.getUTCMonth() + 1).padStart(2, '0')}-${String(pktDate.getUTCDate()).padStart(2, '0')}`;
+
+  const FREE_DAILY_TESTS = 10;
+  const isSuper = !isHealthcheck && isSuperAdminUser(context.auth);
+  const bypassLimit = Boolean(data?.isUnlimited) || isSuper;
+
+  const usageRef = db.collection('users').doc(effectiveUid).collection('usage').doc(dateKey);
+  const customAttemptId = typeof data?.customAttemptId === 'string' && data.customAttemptId.trim() ? data.customAttemptId.trim() : null;
+  const attemptRef = customAttemptId ? db.collection('attempts').doc(customAttemptId) : db.collection('attempts').doc();
+  const attemptId = attemptRef.id;
+
+  return await db.runTransaction(async (tx) => {
+    const usageSnap = await tx.get(usageRef);
+    const currentTestsStarted = usageSnap.exists
+      ? Number(usageSnap.data()?.testsStarted ?? usageSnap.data()?.practiceAttempts ?? 0)
+      : 0;
+
+    if (!bypassLimit && currentTestsStarted >= FREE_DAILY_TESTS) {
+      throw new functions.https.HttpsError(
+        'resource-exhausted',
+        `Daily test limit reached (${currentTestsStarted}/${FREE_DAILY_TESTS} tests). Upgrade or join a Study Crew to practice unlimited.`,
+        { code: 'DAILY_TESTS_LIMIT_EXCEEDED', testsStarted: currentTestsStarted, limit: FREE_DAILY_TESTS, dateKey }
+      );
+    }
+
+    const nextTestsStarted = bypassLimit ? currentTestsStarted : currentTestsStarted + 1;
+    if (!bypassLimit) {
+      tx.set(
+        usageRef,
+        {
+          testsStarted: nextTestsStarted,
+          practiceAttempts: nextTestsStarted,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+
+    if (data?.attemptPayload && typeof data.attemptPayload === 'object' && !isHealthcheck) {
+      tx.set(attemptRef, {
+        ...data.attemptPayload,
+        id: attemptId,
+        userId: effectiveUid,
+        uid: effectiveUid,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+
+    return {
+      ok: true,
+      blocked: false,
+      attemptId,
+      dateKey,
+      timezone: 'Asia/Karachi',
+      testsStarted: nextTestsStarted,
+      limit: FREE_DAILY_TESTS,
+    };
+  });
+});
+
+

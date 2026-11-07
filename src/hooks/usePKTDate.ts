@@ -1,21 +1,10 @@
 /**
- * Returns the current date in PKT (Asia/Karachi, UTC+5) as a 'YYYY-MM-DD' string.
- * Used for daily usage document keys in Firestore: users/{uid}/usage/{YYYY-MM-DD}
+ * Returns the date in PKT (Asia/Karachi, UTC+5) as a 'YYYY-MM-DD' string.
+ * Pakistan Standard Time (Asia/Karachi) is fixed at UTC+05:00 year-round (no DST).
+ * Used consistently across client and server for daily usage keys (`users/{uid}/usage/{YYYY-MM-DD}`).
  */
-export function getPKTDateKey(): string {
-  try {
-    const s = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' });
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-    if (s.includes('/')) {
-      const parts = s.split('/');
-      if (parts.length === 3 && parts[0].length === 4) {
-        return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-      }
-    }
-  } catch {
-    // ignore
-  }
-  const pktMs = Date.now() + 5 * 3600 * 1000;
+export function getPKTDateKey(nowMs: number = Date.now()): string {
+  const pktMs = Number(nowMs) + 5 * 3600 * 1000;
   const d = new Date(pktMs);
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, '0');
