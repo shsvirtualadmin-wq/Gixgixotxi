@@ -128,12 +128,22 @@ async function verifyFirebaseIdToken(token, projectId) {
   const tokenName = String(payload.name || '').trim();
   const emailPrefix = emailStr.includes('@') ? emailStr.split('@')[0].trim() : emailStr;
 
+  let claimRole = null;
+  if (payload.role === 'superadmin' || payload.superadmin === true) {
+    claimRole = 'superadmin';
+  } else if (payload.role === 'admin' || payload.admin === true) {
+    claimRole = 'admin';
+  } else if (payload.role === 'captain' || payload.captain === true) {
+    claimRole = 'captain';
+  }
+
   return {
     uid,
     email: emailStr,
     name: tokenName || emailPrefix || 'Student',
     tokenName,
     picture: payload.picture || null,
+    claimRole,
   };
 }
 
@@ -361,6 +371,16 @@ async function checkWriteRateLimit(db, key, maxRequests = 60, windowMs = 60000) 
   return true;
 }
 
+const SUPERADMIN_UIDS = new Set([
+  'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+  'jJfb1nThG1X9phL8fFDZ0G0J7m33',
+]);
+const SUPERADMIN_EMAILS = new Set([
+  'shsvirtualadmin@gmail.com',
+  'support@boardly.cfd',
+  'scholariosupport@gmail.com',
+]);
+
 async function authenticateRequest(request, env, requireAuth = true) {
   const authHeader = request.headers.get('Authorization') || '';
   if (!authHeader.startsWith('Bearer ')) {
@@ -385,6 +405,21 @@ async function authenticateRequest(request, env, requireAuth = true) {
     throw err;
   }
 
+  const extraUids = String(env.SUPERADMIN_UIDS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const extraEmails = String(env.SUPERADMIN_EMAILS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+
+  const isHardcodedSuperAdmin =
+    SUPERADMIN_UIDS.has(decoded.uid) ||
+    extraUids.includes(decoded.uid) ||
+    (decoded.email && (SUPERADMIN_EMAILS.has(decoded.email.toLowerCase()) || extraEmails.includes(decoded.email.toLowerCase()))) ||
+    decoded.claimRole === 'superadmin';
+
   const roleRow = await env.DB.prepare(
     'SELECT uid, email, role, custom_role, is_posting_banned, updated_at, created_at FROM user_roles WHERE uid = ?1'
   )
@@ -398,19 +433,24 @@ async function authenticateRequest(request, env, requireAuth = true) {
         .first()
     );
 
-  let role = roleRow?.role || 'student';
-  if (!roleRow) {
+  let role = isHardcodedSuperAdmin
+    ? 'superadmin'
+    : roleRow?.role || decoded.claimRole || 'student';
+
+  if (!roleRow || (isHardcodedSuperAdmin && roleRow.role !== 'superadmin')) {
     const now = Date.now();
     await env.DB.prepare(
-      'INSERT OR IGNORE INTO user_roles (uid, email, role, custom_role, is_posting_banned, updated_at, created_at) VALUES (?1, ?2, ?3, NULL, 0, ?4, ?5)'
+      `INSERT INTO user_roles (uid, email, role, custom_role, is_posting_banned, updated_at, created_at)
+       VALUES (?1, ?2, ?3, NULL, 0, ?4, ?5)
+       ON CONFLICT(uid) DO UPDATE SET role = excluded.role, email = excluded.email, updated_at = excluded.updated_at`
     )
-      .bind(decoded.uid, decoded.email, 'student', now, now)
+      .bind(decoded.uid, decoded.email, role, now, now)
       .run()
       .catch(() =>
         env.DB.prepare(
           'INSERT OR IGNORE INTO user_roles (uid, email, role, custom_role, is_posting_banned, updated_at) VALUES (?1, ?2, ?3, NULL, 0, ?4)'
         )
-          .bind(decoded.uid, decoded.email, 'student', now)
+          .bind(decoded.uid, decoded.email, role, now)
           .run()
       );
   }
@@ -2299,10 +2339,10 @@ export default {
               r2_key TEXT NOT NULL,
               signatory_name TEXT NOT NULL,
               signatory_title TEXT NOT NULL,
-              version INTEGER NOT NULL UNIQUE,
+              version INTEGER NOT NULL,
               uploaded_by TEXT NOT NULL,
               created_at INTEGER NOT NULL,
-              active INTEGER NOT NULL DEFAULT 0
+              active INTEGER NOT NULL DEFAULT 1
             )`
           )
           .run();
@@ -2323,7 +2363,7 @@ export default {
               participants_count INTEGER NOT NULL DEFAULT 1,
               serial TEXT NOT NULL UNIQUE,
               theme_id TEXT NOT NULL,
-              signature_version INTEGER NOT NULL DEFAULT 0,
+              signature_version INTEGER NOT NULL DEFAULT 1,
               issued_at INTEGER NOT NULL,
               pdf_r2_key TEXT NOT NULL,
               png_r2_key TEXT NOT NULL,
@@ -2332,6 +2372,54 @@ export default {
             )`
           )
           .run();
+      }
+
+      function uint8ArrayToBase64(bytes) {
+        let binary = '';
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+        }
+        return btoa(binary);
+      }
+
+      function base64ToUint8Array(base64) {
+        const clean = String(base64 || '').replace(/\s+/g, '');
+        const raw = atob(clean);
+        const out = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) {
+          out[i] = raw.charCodeAt(i);
+        }
+        return out;
+      }
+
+      function isPngMagicBytes(bytes) {
+        return (
+          bytes &&
+          bytes.length >= 8 &&
+          bytes[0] === 0x89 &&
+          bytes[1] === 0x50 &&
+          bytes[2] === 0x4e &&
+          bytes[3] === 0x47 &&
+          bytes[4] === 0x0d &&
+          bytes[5] === 0x0a &&
+          bytes[6] === 0x1a &&
+          bytes[7] === 0x0a
+        );
+      }
+
+      async function loadSignatureDataUrlFromR2(r2Bucket, r2Key) {
+        if (!r2Bucket || !r2Key) return null;
+        try {
+          const obj = await r2Bucket.get(r2Key);
+          if (!obj) return null;
+          const ab = await obj.arrayBuffer();
+          const bytes = new Uint8Array(ab);
+          if (bytes.byteLength === 0) return null;
+          return `data:image/png;base64,${uint8ArrayToBase64(bytes)}`;
+        } catch {
+          return null;
+        }
       }
 
       async function signWorkerCertToken(certId, fmt, expMs) {
@@ -2396,12 +2484,12 @@ export default {
         }
 
         const isRevoked = cert.status === 'revoked';
-        return jsonResponse(request, env, {
-          valid: !isRevoked,
-          status: isRevoked ? 'revoked' : 'active',
+        const safeCertificate = {
           serial: cert.serial,
+          status: isRevoked ? 'revoked' : 'active',
           studentName: cert.student_name,
           mockTitle: cert.grand_line_title,
+          grandLineTitle: cert.grand_line_title,
           editionLabel: cert.edition_label,
           rank: Number(cert.rank || 1),
           score: Number(cert.score || 0),
@@ -2409,6 +2497,11 @@ export default {
           percentage: Number(cert.percentage || 0),
           participantsCount: Number(cert.participants_count || 1),
           issuedAt: Number(cert.issued_at),
+        };
+        return jsonResponse(request, env, {
+          valid: !isRevoked,
+          ...safeCertificate,
+          certificate: safeCertificate,
         });
       }
 
@@ -2454,6 +2547,35 @@ export default {
           });
         }
         return jsonResponse(request, env, { certificates: mapped });
+      }
+
+      // Certificate Share Link: POST /api/certificates/:id/share-link
+      const certShareMatch = path.match(/^\/api\/certificates\/([^/]+)\/share-link$/);
+      if (certShareMatch && method === 'POST') {
+        const user = await authenticateRequest(request, env, true);
+        await ensureCertificateD1Tables(db);
+        const certId = decodeURIComponent(certShareMatch[1]).trim();
+        const cert = await db
+          .prepare('SELECT * FROM certificates WHERE id = ?1 OR serial = ?1')
+          .bind(certId)
+          .first();
+        if (!cert) {
+          return errorResponse(request, env, 'Certificate not found.', 'NOT_FOUND', 404);
+        }
+        if (cert.student_uid !== user.uid && !user.isAdminOrAbove) {
+          return errorResponse(request, env, 'Forbidden', 'FORBIDDEN', 403);
+        }
+        const expMs = Date.now() + 1000 * 60 * 60 * 24;
+        const pngToken = await signWorkerCertToken(cert.id, 'png', expMs);
+        const pdfToken = await signWorkerCertToken(cert.id, 'pdf', expMs);
+        return jsonResponse(request, env, {
+          ok: true,
+          serial: cert.serial,
+          verifyUrl: `/verify/${encodeURIComponent(cert.serial)}`,
+          signedPngUrl: `/api/certificates/${encodeURIComponent(cert.id)}/download?format=png&token=${pngToken}&exp=${expMs}`,
+          signedPdfUrl: `/api/certificates/${encodeURIComponent(cert.id)}/download?format=pdf&token=${pdfToken}&exp=${expMs}`,
+          expiresAt: expMs,
+        });
       }
 
       // Certificate Download (Authenticated Owner, Admin, or Signed Token): GET /api/certificates/:id/download
@@ -2502,7 +2624,7 @@ export default {
             return new Response(obj.body, {
               status: 200,
               headers: {
-                ...buildCorsHeaders(request, env),
+                ...getCorsHeaders(request, env),
                 'Content-Type': format === 'png' ? 'image/png' : 'application/pdf',
                 'Cache-Control': 'private, no-store',
                 'Content-Disposition': `${isInline ? 'inline' : 'attachment'}; filename="${cert.serial}.${format}"`,
@@ -2513,26 +2635,266 @@ export default {
         return errorResponse(request, env, 'Certificate file not found in private R2.', 'NOT_FOUND', 404);
       }
 
-      // Admin Signatures & Admin Certificates (Admin Only)
+      // Admin Signatures & Admin Certificates (Superadmin / Admin Only)
       if (path.startsWith('/api/admin/signatures') || path.startsWith('/api/admin/certificates')) {
         const user = await authenticateRequest(request, env, true);
         requireRole(user, ['admin', 'superadmin']);
         await ensureCertificateD1Tables(db);
 
+        // 1. POST /api/admin/signatures (super admin / admin only)
+        if (path === '/api/admin/signatures' && method === 'POST') {
+          const MAX_SIG_BYTES = 2 * 1024 * 1024; // 2 MB
+          const contentType = String(request.headers.get('content-type') || '').toLowerCase();
+
+          let pngBytes = null;
+          let signatoryName = '';
+          let signatoryTitle = '';
+
+          if (contentType.includes('multipart/form-data')) {
+            const formData = await request.formData();
+            signatoryName = String(
+              formData.get('signatory_name') || formData.get('signatoryName') || ''
+            )
+              .trim()
+              .slice(0, 120);
+            signatoryTitle = String(
+              formData.get('signatory_title') || formData.get('signatoryTitle') || ''
+            )
+              .trim()
+              .slice(0, 140);
+
+            const imageField = formData.get('image') || formData.get('imageBase64') || formData.get('file');
+            if (!imageField) {
+              return errorResponse(
+                request,
+                env,
+                'Signature image is required.',
+                'MISSING_SIGNATURE_IMAGE',
+                400
+              );
+            }
+            if (typeof imageField === 'string') {
+              const dataUriMatch = /^data:image\/png;base64,(.+)$/i.exec(imageField.trim());
+              const b64 = dataUriMatch ? dataUriMatch[1] : imageField.trim();
+              try {
+                pngBytes = base64ToUint8Array(b64);
+              } catch {
+                return errorResponse(
+                  request,
+                  env,
+                  'Invalid base64 signature image data.',
+                  'INVALID_SIGNATURE_FORMAT',
+                  400
+                );
+              }
+            } else if (typeof imageField.arrayBuffer === 'function') {
+              const ab = await imageField.arrayBuffer();
+              pngBytes = new Uint8Array(ab);
+            }
+          } else {
+            const body = await request.json().catch(() => null);
+            if (!body || typeof body !== 'object') {
+              return errorResponse(request, env, 'Invalid JSON request body.', 'INVALID_JSON', 400);
+            }
+            const rawImage = String(body.imageBase64 || body.image || body.dataUrl || '').trim();
+            signatoryName = String(body.signatoryName ?? body.signatory_name ?? '')
+              .trim()
+              .slice(0, 120);
+            signatoryTitle = String(body.signatoryTitle ?? body.signatory_title ?? '')
+              .trim()
+              .slice(0, 140);
+
+            if (!rawImage) {
+              return errorResponse(
+                request,
+                env,
+                'Signature image is required (PNG format, max 2 MB).',
+                'MISSING_SIGNATURE_IMAGE',
+                400
+              );
+            }
+
+            let b64 = rawImage;
+            if (rawImage.startsWith('data:')) {
+              const match = /^data:([^;]+);base64,(.+)$/i.exec(rawImage);
+              if (!match) {
+                return errorResponse(
+                  request,
+                  env,
+                  'Malformed data URL for signature image.',
+                  'INVALID_SIGNATURE_FORMAT',
+                  400
+                );
+              }
+              const mime = match[1].toLowerCase();
+              if (mime !== 'image/png') {
+                return errorResponse(
+                  request,
+                  env,
+                  'Signature image must be a PNG file (image/png).',
+                  'INVALID_SIGNATURE_FORMAT',
+                  400
+                );
+              }
+              b64 = match[2];
+            }
+
+            try {
+              pngBytes = base64ToUint8Array(b64);
+            } catch {
+              return errorResponse(
+                request,
+                env,
+                'Invalid base64 encoding for signature image.',
+                'INVALID_SIGNATURE_FORMAT',
+                400
+              );
+            }
+          }
+
+          if (!signatoryName) {
+            return errorResponse(
+              request,
+              env,
+              'Signatory name is required.',
+              'MISSING_SIGNATORY_NAME',
+              400
+            );
+          }
+          if (!signatoryTitle) {
+            return errorResponse(
+              request,
+              env,
+              'Signatory title is required.',
+              'MISSING_SIGNATORY_TITLE',
+              400
+            );
+          }
+          if (!pngBytes || pngBytes.byteLength === 0) {
+            return errorResponse(
+              request,
+              env,
+              'Signature image is empty.',
+              'EMPTY_IMAGE',
+              400
+            );
+          }
+          if (pngBytes.byteLength > MAX_SIG_BYTES) {
+            return errorResponse(
+              request,
+              env,
+              'Signature image exceeds the maximum size of 2 MB.',
+              'FILE_TOO_LARGE',
+              413
+            );
+          }
+          if (!isPngMagicBytes(pngBytes)) {
+            return errorResponse(
+              request,
+              env,
+              'Invalid PNG file: signature image must be a valid PNG.',
+              'INVALID_SIGNATURE_FORMAT',
+              400
+            );
+          }
+
+          const maxRow = await db
+            .prepare('SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM certificate_signatures')
+            .first();
+          const version = Number(maxRow?.next_version || 1);
+          const now = Date.now();
+          const id = crypto.randomUUID();
+          const r2Key = `signatures/sig-v${version}-${now}.png`;
+          const uploadedBy = user.uid || user.email || 'admin';
+
+          if (!env.R2_BUCKET) {
+            return errorResponse(
+              request,
+              env,
+              'Private R2 bucket binding (R2_BUCKET) is not configured on this Worker.',
+              'R2_NOT_CONFIGURED',
+              500
+            );
+          }
+
+          await env.R2_BUCKET.put(r2Key, pngBytes, {
+            httpMetadata: {
+              contentType: 'image/png',
+              cacheControl: 'private, max-age=300',
+            },
+          });
+
+          try {
+            await db.batch([
+              db.prepare('SELECT COALESCE(MAX(version), 0) + 1 AS version FROM certificate_signatures'),
+              db.prepare('UPDATE certificate_signatures SET active = 0 WHERE active = 1'),
+              db
+                .prepare(
+                  `INSERT INTO certificate_signatures
+                   (id, r2_key, signatory_name, signatory_title, version, uploaded_by, created_at, active)
+                   VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1)`
+                )
+                .bind(id, r2Key, signatoryName, signatoryTitle, version, uploadedBy, now),
+            ]);
+          } catch (d1Err) {
+            await env.R2_BUCKET.delete(r2Key).catch(() => {});
+            throw d1Err;
+          }
+
+          const previewDataUrl = `data:image/png;base64,${uint8ArrayToBase64(pngBytes)}`;
+          return jsonResponse(
+            request,
+            env,
+            {
+              ok: true,
+              signature: {
+                id,
+                version,
+                signatory_name: signatoryName,
+                signatory_title: signatoryTitle,
+                created_at: now,
+                signatoryName,
+                signatoryTitle,
+                createdAt: now,
+                uploadedBy,
+                active: true,
+                imageUrl: `/api/admin/signatures/${encodeURIComponent(id)}/image`,
+                previewDataUrl,
+              },
+            },
+            201
+          );
+        }
+
+        // 2. GET /api/admin/signatures (super admin / admin only)
         if (path === '/api/admin/signatures' && method === 'GET') {
           const { results } = await db
-            .prepare('SELECT * FROM certificate_signatures ORDER BY version DESC')
+            .prepare(
+              'SELECT id, r2_key, signatory_name, signatory_title, version, uploaded_by, created_at, active FROM certificate_signatures ORDER BY version DESC'
+            )
             .all();
-          const history = (results || []).map((r) => ({
-            id: r.id,
-            r2Key: r.r2_key,
-            signatoryName: r.signatory_name,
-            signatoryTitle: r.signatory_title,
-            version: Number(r.version),
-            uploadedBy: r.uploaded_by,
-            createdAt: Number(r.created_at),
-            active: Boolean(r.active),
-          }));
+
+          const history = [];
+          for (const r of results || []) {
+            const previewDataUrl = await loadSignatureDataUrlFromR2(env.R2_BUCKET, r.r2_key);
+            const imageUrl = `/api/admin/signatures/${encodeURIComponent(r.id)}/image`;
+            history.push({
+              id: r.id,
+              version: Number(r.version),
+              signatory_name: r.signatory_name,
+              signatory_title: r.signatory_title,
+              created_at: Number(r.created_at),
+              uploaded_by: r.uploaded_by,
+              signatoryName: r.signatory_name,
+              signatoryTitle: r.signatory_title,
+              createdAt: Number(r.created_at),
+              uploadedBy: r.uploaded_by,
+              active: Boolean(r.active),
+              imageUrl,
+              previewDataUrl: previewDataUrl || imageUrl,
+            });
+          }
+
           const activeSignature = history.find((h) => h.active) || null;
           return jsonResponse(request, env, {
             ok: true,
@@ -2542,9 +2904,197 @@ export default {
           });
         }
 
-        if (path === '/api/admin/signatures/active' && method === 'DELETE') {
-          await db.prepare('UPDATE certificate_signatures SET active = 0').run();
-          return jsonResponse(request, env, { ok: true, hasActiveSignature: false });
+        // 3. GET /api/admin/signatures/:id/image (super admin / admin only)
+        const sigImageMatch = path.match(/^\/api\/admin\/signatures\/([^/]+)\/image$/);
+        if (sigImageMatch && method === 'GET') {
+          const sigId = decodeURIComponent(sigImageMatch[1]).trim();
+          const sigRow =
+            sigId === 'active'
+              ? await db
+                  .prepare(
+                    'SELECT id, r2_key FROM certificate_signatures WHERE active = 1 ORDER BY version DESC LIMIT 1'
+                  )
+                  .first()
+              : await db
+                  .prepare('SELECT id, r2_key FROM certificate_signatures WHERE id = ?1 OR CAST(version AS TEXT) = ?1')
+                  .bind(sigId)
+                  .first();
+
+          if (!sigRow || !sigRow.r2_key) {
+            return errorResponse(request, env, 'Signature not found.', 'NOT_FOUND', 404);
+          }
+          if (!env.R2_BUCKET) {
+            return errorResponse(request, env, 'R2_BUCKET binding is missing.', 'R2_NOT_CONFIGURED', 500);
+          }
+          const obj = await env.R2_BUCKET.get(sigRow.r2_key);
+          if (!obj) {
+            return errorResponse(request, env, 'Signature image object not found in R2.', 'NOT_FOUND', 404);
+          }
+
+          return new Response(obj.body, {
+            status: 200,
+            headers: {
+              ...getCorsHeaders(request, env),
+              'Content-Type': 'image/png',
+              'Cache-Control': 'private, max-age=300',
+            },
+          });
+        }
+
+        // PUT /api/admin/signatures/active — Update signatory name/title on active signature
+        if (path === '/api/admin/signatures/active' && method === 'PUT') {
+          const active = await db
+            .prepare('SELECT * FROM certificate_signatures WHERE active = 1 ORDER BY version DESC LIMIT 1')
+            .first();
+          if (!active) {
+            return errorResponse(request, env, 'No active signature found.', 'NOT_FOUND', 404);
+          }
+          const body = await request.json().catch(() => ({}));
+          const nextName =
+            body.signatoryName !== undefined || body.signatory_name !== undefined
+              ? String(body.signatoryName ?? body.signatory_name ?? '').trim().slice(0, 120) || active.signatory_name
+              : active.signatory_name;
+          const nextTitle =
+            body.signatoryTitle !== undefined || body.signatory_title !== undefined
+              ? String(body.signatoryTitle ?? body.signatory_title ?? '').trim().slice(0, 140)
+              : active.signatory_title;
+
+          await db
+            .prepare('UPDATE certificate_signatures SET signatory_name = ?1, signatory_title = ?2 WHERE id = ?3')
+            .bind(nextName, nextTitle, active.id)
+            .run();
+
+          const previewDataUrl = await loadSignatureDataUrlFromR2(env.R2_BUCKET, active.r2_key);
+          const imageUrl = `/api/admin/signatures/${encodeURIComponent(active.id)}/image`;
+          return jsonResponse(request, env, {
+            ok: true,
+            signature: {
+              id: active.id,
+              version: Number(active.version),
+              signatory_name: nextName,
+              signatory_title: nextTitle,
+              created_at: Number(active.created_at),
+              signatoryName: nextName,
+              signatoryTitle: nextTitle,
+              createdAt: Number(active.created_at),
+              uploadedBy: active.uploaded_by,
+              active: true,
+              imageUrl,
+              previewDataUrl: previewDataUrl || imageUrl,
+            },
+          });
+        }
+
+        // POST /api/admin/signatures/:version/restore — Restore a previous signature version
+        const sigRestoreMatch = path.match(/^\/api\/admin\/signatures\/([^/]+)\/restore$/);
+        if (sigRestoreMatch && method === 'POST') {
+          const targetParam = decodeURIComponent(sigRestoreMatch[1]).trim();
+          const targetRow = await db
+            .prepare('SELECT * FROM certificate_signatures WHERE version = ?1 OR id = ?2')
+            .bind(Number(targetParam), targetParam)
+            .first();
+          if (!targetRow) {
+            return errorResponse(request, env, 'Signature version not found.', 'NOT_FOUND', 404);
+          }
+
+          await db.batch([
+            db.prepare('UPDATE certificate_signatures SET active = 0 WHERE active = 1'),
+            db.prepare('UPDATE certificate_signatures SET active = 1 WHERE id = ?1').bind(targetRow.id),
+          ]);
+
+          const previewDataUrl = await loadSignatureDataUrlFromR2(env.R2_BUCKET, targetRow.r2_key);
+          const imageUrl = `/api/admin/signatures/${encodeURIComponent(targetRow.id)}/image`;
+          return jsonResponse(request, env, {
+            ok: true,
+            activeSignature: {
+              id: targetRow.id,
+              version: Number(targetRow.version),
+              signatory_name: targetRow.signatory_name,
+              signatory_title: targetRow.signatory_title,
+              created_at: Number(targetRow.created_at),
+              signatoryName: targetRow.signatory_name,
+              signatoryTitle: targetRow.signatory_title,
+              createdAt: Number(targetRow.created_at),
+              uploadedBy: targetRow.uploaded_by,
+              active: true,
+              imageUrl,
+              previewDataUrl: previewDataUrl || imageUrl,
+            },
+          });
+        }
+
+        // 4. DELETE /api/admin/signatures/:id (super admin / admin only)
+        const sigDeleteMatch = path.match(/^\/api\/admin\/signatures\/([^/]+)$/);
+        if (sigDeleteMatch && method === 'DELETE') {
+          const targetId = decodeURIComponent(sigDeleteMatch[1]).trim();
+          if (targetId === 'active') {
+            await db.prepare('UPDATE certificate_signatures SET active = 0 WHERE active = 1').run();
+            return jsonResponse(request, env, { ok: true, hasActiveSignature: false });
+          }
+
+          const sigRow = await db
+            .prepare('SELECT * FROM certificate_signatures WHERE id = ?1 OR CAST(version AS TEXT) = ?1')
+            .bind(targetId)
+            .first();
+          if (!sigRow) {
+            return errorResponse(request, env, 'Signature not found.', 'NOT_FOUND', 404);
+          }
+
+          const usedCheck = await db
+            .prepare('SELECT COUNT(*) AS cnt FROM certificates WHERE signature_version = ?1')
+            .bind(Number(sigRow.version))
+            .first();
+          const usedCount = Number(usedCheck?.cnt || 0);
+          if (usedCount > 0) {
+            return errorResponse(
+              request,
+              env,
+              `Cannot delete signature v${sigRow.version} because it is already used by ${usedCount} issued certificate(s).`,
+              'SIGNATURE_IN_USE',
+              409
+            );
+          }
+
+          const wasActive = Boolean(sigRow.active);
+          await db
+            .prepare('UPDATE certificate_signatures SET active = 0 WHERE id = ?1')
+            .bind(sigRow.id)
+            .run();
+
+          let reactivatedSignature = null;
+          if (wasActive) {
+            const prevRow = await db
+              .prepare(
+                'SELECT * FROM certificate_signatures WHERE id != ?1 ORDER BY version DESC LIMIT 1'
+              )
+              .bind(sigRow.id)
+              .first();
+            if (prevRow) {
+              await db
+                .prepare('UPDATE certificate_signatures SET active = 1 WHERE id = ?1')
+                .bind(prevRow.id)
+                .run();
+              reactivatedSignature = {
+                id: prevRow.id,
+                version: Number(prevRow.version),
+                signatory_name: prevRow.signatory_name,
+                signatory_title: prevRow.signatory_title,
+                created_at: Number(prevRow.created_at),
+                signatoryName: prevRow.signatory_name,
+                signatoryTitle: prevRow.signatory_title,
+                createdAt: Number(prevRow.created_at),
+                active: true,
+              };
+            }
+          }
+
+          return jsonResponse(request, env, {
+            ok: true,
+            deactivatedId: sigRow.id,
+            deactivatedVersion: Number(sigRow.version),
+            activeSignature: reactivatedSignature,
+            hasActiveSignature: Boolean(reactivatedSignature),
+          });
         }
 
         if (path === '/api/admin/certificates' && method === 'GET') {
@@ -2554,15 +3104,62 @@ export default {
           const activeSig = await db
             .prepare('SELECT * FROM certificate_signatures WHERE active = 1 ORDER BY version DESC LIMIT 1')
             .first();
+          let formattedActiveSig = null;
+          if (activeSig) {
+            const previewDataUrl = await loadSignatureDataUrlFromR2(env.R2_BUCKET, activeSig.r2_key);
+            const imageUrl = `/api/admin/signatures/${encodeURIComponent(activeSig.id)}/image`;
+            formattedActiveSig = {
+              id: activeSig.id,
+              version: Number(activeSig.version),
+              signatory_name: activeSig.signatory_name,
+              signatory_title: activeSig.signatory_title,
+              created_at: Number(activeSig.created_at),
+              signatoryName: activeSig.signatory_name,
+              signatoryTitle: activeSig.signatory_title,
+              createdAt: Number(activeSig.created_at),
+              active: true,
+              imageUrl,
+              previewDataUrl: previewDataUrl || imageUrl,
+            };
+          }
+          const exp = Date.now() + 1000 * 60 * 60 * 24 * 7;
+          const mappedCerts = [];
+          for (const c of results || []) {
+            const pngToken = await signWorkerCertToken(c.id, 'png', exp);
+            const pdfToken = await signWorkerCertToken(c.id, 'pdf', exp);
+            mappedCerts.push({
+              id: c.id,
+              serial: c.serial,
+              studentUid: c.student_uid,
+              studentName: c.student_name,
+              studentEmail: c.student_email,
+              grandLineId: c.grand_line_id,
+              grandLineTitle: c.grand_line_title,
+              editionLabel: c.edition_label,
+              rank: Number(c.rank || 1),
+              score: Number(c.score || 0),
+              totalQuestions: Number(c.total_questions || 0),
+              percentage: Number(c.percentage || 0),
+              participantsCount: Number(c.participants_count || 1),
+              themeId: c.theme_id,
+              signatureVersion: Number(c.signature_version || 0),
+              issuedAt: Number(c.issued_at),
+              status: c.status,
+              verifyUrl: `/verify/${encodeURIComponent(c.serial)}`,
+              previewPngUrl: `/api/certificates/${encodeURIComponent(c.id)}/download?format=png&inline=1&token=${pngToken}&exp=${exp}`,
+              downloadPngUrl: `/api/certificates/${encodeURIComponent(c.id)}/download?format=png&token=${pngToken}&exp=${exp}`,
+              downloadPdfUrl: `/api/certificates/${encodeURIComponent(c.id)}/download?format=pdf&token=${pdfToken}&exp=${exp}`,
+            });
+          }
           return jsonResponse(request, env, {
             ok: true,
-            hasActiveSignature: Boolean(activeSig),
-            activeSignature: activeSig || null,
-            certificates: results || [],
+            hasActiveSignature: Boolean(formattedActiveSig),
+            activeSignature: formattedActiveSig,
+            certificates: mappedCerts,
           });
         }
 
-        const revokeMatch = path.match(/^\/api\/admin\/certificates\/([^/]+)\/revoke$/);
+        const revokeMatch = path.match(/^\/api\/admin\/certificates\/([^/]+)\/(?:revoke|status)$/);
         if (revokeMatch && method === 'POST') {
           const certId = decodeURIComponent(revokeMatch[1]);
           const body = await request.json().catch(() => ({}));

@@ -36,13 +36,17 @@ export interface StudentCertificateRecord {
 
 export interface AdminSignatureRecord {
   id: string;
-  r2Key: string;
+  r2Key?: string;
   signatoryName: string;
   signatoryTitle: string;
+  signatory_name?: string;
+  signatory_title?: string;
   version: number;
-  uploadedBy: string;
+  uploadedBy?: string;
   createdAt: number;
+  created_at?: number;
   active: boolean;
+  imageUrl?: string;
   previewDataUrl?: string | null;
 }
 
@@ -193,6 +197,24 @@ export async function verifyCertificateBySerial(
   }
 }
 
+function normalizeSignatureRecord(raw: any): AdminSignatureRecord {
+  return {
+    id: raw.id,
+    r2Key: raw.r2Key || raw.r2_key,
+    signatoryName: raw.signatoryName ?? raw.signatory_name ?? '',
+    signatoryTitle: raw.signatoryTitle ?? raw.signatory_title ?? '',
+    signatory_name: raw.signatory_name ?? raw.signatoryName ?? '',
+    signatory_title: raw.signatory_title ?? raw.signatoryTitle ?? '',
+    version: Number(raw.version || 1),
+    uploadedBy: raw.uploadedBy ?? raw.uploaded_by ?? '',
+    createdAt: Number(raw.createdAt ?? raw.created_at ?? Date.now()),
+    created_at: Number(raw.created_at ?? raw.createdAt ?? Date.now()),
+    active: Boolean(raw.active ?? true),
+    imageUrl: raw.imageUrl || `/api/admin/signatures/${encodeURIComponent(raw.id)}/image`,
+    previewDataUrl: raw.previewDataUrl || raw.imageUrl || null,
+  };
+}
+
 /**
  * Admin only: Fetch active signature and version history (`GET /api/admin/signatures`).
  */
@@ -203,7 +225,18 @@ export async function fetchAdminSignatures(): Promise<{
 }> {
   const endpoint = '/api/admin/signatures';
   try {
-    return await apiFetch(endpoint, { requireAuth: true });
+    const res = await apiFetch<any>(endpoint, { requireAuth: true });
+    const history = Array.isArray(res?.history)
+      ? res.history.map(normalizeSignatureRecord)
+      : [];
+    const activeSignature = res?.activeSignature
+      ? normalizeSignatureRecord(res.activeSignature)
+      : history.find((h: AdminSignatureRecord) => h.active) || null;
+    return {
+      hasActiveSignature: Boolean(activeSignature),
+      activeSignature,
+      history,
+    };
   } catch (err: any) {
     console.error(`[CertificateService] Error (${err?.code || 'ADMIN_SIG_READ'}) at ${endpoint}:`, err);
     throw err;
@@ -220,11 +253,22 @@ export async function uploadAdminSignature(params: {
 }): Promise<{ ok: boolean; signature: AdminSignatureRecord }> {
   const endpoint = '/api/admin/signatures';
   try {
-    return await apiFetch(endpoint, {
+    const res = await apiFetch<any>(endpoint, {
       method: 'POST',
       requireAuth: true,
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        imageBase64: params.imageBase64,
+        image: params.imageBase64,
+        signatoryName: params.signatoryName,
+        signatory_name: params.signatoryName,
+        signatoryTitle: params.signatoryTitle,
+        signatory_title: params.signatoryTitle,
+      }),
     });
+    return {
+      ok: Boolean(res?.ok),
+      signature: normalizeSignatureRecord(res?.signature || {}),
+    };
   } catch (err: any) {
     console.error(`[CertificateService] Error (${err?.code || 'ADMIN_SIG_UPLOAD'}) at ${endpoint}:`, err);
     throw err;
@@ -240,11 +284,20 @@ export async function updateActiveSignatureMeta(params: {
 }): Promise<{ ok: boolean; signature: AdminSignatureRecord }> {
   const endpoint = '/api/admin/signatures/active';
   try {
-    return await apiFetch(endpoint, {
+    const res = await apiFetch<any>(endpoint, {
       method: 'PUT',
       requireAuth: true,
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        signatoryName: params.signatoryName,
+        signatory_name: params.signatoryName,
+        signatoryTitle: params.signatoryTitle,
+        signatory_title: params.signatoryTitle,
+      }),
     });
+    return {
+      ok: Boolean(res?.ok),
+      signature: normalizeSignatureRecord(res?.signature || {}),
+    };
   } catch (err: any) {
     console.error(`[CertificateService] Error (${err?.code || 'ADMIN_SIG_META'}) at ${endpoint}:`, err);
     throw err;
@@ -260,10 +313,14 @@ export async function restoreAdminSignatureVersion(version: number): Promise<{
 }> {
   const endpoint = `/api/admin/signatures/${encodeURIComponent(String(version))}/restore`;
   try {
-    return await apiFetch(endpoint, {
+    const res = await apiFetch<any>(endpoint, {
       method: 'POST',
       requireAuth: true,
     });
+    return {
+      ok: Boolean(res?.ok),
+      activeSignature: normalizeSignatureRecord(res?.activeSignature || {}),
+    };
   } catch (err: any) {
     console.error(`[CertificateService] Error (${err?.code || 'ADMIN_SIG_RESTORE'}) at ${endpoint}:`, err);
     throw err;
@@ -285,6 +342,28 @@ export async function removeActiveAdminSignature(): Promise<{
     });
   } catch (err: any) {
     console.error(`[CertificateService] Error (${err?.code || 'ADMIN_SIG_REMOVE'}) at ${endpoint}:`, err);
+    throw err;
+  }
+}
+
+/**
+ * Admin only: Delete/deactivate a specific signature by ID (`DELETE /api/admin/signatures/:id`).
+ */
+export async function deleteAdminSignature(id: string): Promise<{
+  ok: boolean;
+  deactivatedId: string;
+  deactivatedVersion: number;
+  activeSignature: AdminSignatureRecord | null;
+  hasActiveSignature: boolean;
+}> {
+  const endpoint = `/api/admin/signatures/${encodeURIComponent(id)}`;
+  try {
+    return await apiFetch(endpoint, {
+      method: 'DELETE',
+      requireAuth: true,
+    });
+  } catch (err: any) {
+    console.error(`[CertificateService] Error (${err?.code || 'ADMIN_SIG_DELETE'}) at ${endpoint}:`, err);
     throw err;
   }
 }

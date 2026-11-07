@@ -7,6 +7,10 @@ binding = "DB"
 database_name = "boardly-posts-db"
 database_id = "e37a41ff-c73c-4ab7-9784-6e635205cdf7"
 
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "boardly-commons-r2"
+
 [vars]
 FIREBASE_PROJECT_ID = "gen-lang-client-0365509316"
 ALLOWED_ORIGIN = "https://boardly.cfd"

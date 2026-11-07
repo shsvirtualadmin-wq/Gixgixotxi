@@ -7848,16 +7848,21 @@ ${allUrls
       .sort((a: any, b: any) => Number(b.version || 0) - Number(a.version || 0))
       .map((row: any) => {
         const { dataUrl } = getSignatureDataUrlForVersion(store, Number(row.version));
+        const imageUrl = `/api/admin/signatures/${encodeURIComponent(row.id)}/image`;
         return {
           id: row.id,
-          r2Key: row.r2_key,
+          version: Number(row.version),
+          signatory_name: row.signatory_name,
+          signatory_title: row.signatory_title,
+          created_at: Number(row.created_at),
+          uploaded_by: row.uploaded_by,
           signatoryName: row.signatory_name,
           signatoryTitle: row.signatory_title,
-          version: Number(row.version),
-          uploadedBy: row.uploaded_by,
           createdAt: Number(row.created_at),
+          uploadedBy: row.uploaded_by,
           active: Boolean(row.active),
-          previewDataUrl: dataUrl,
+          imageUrl,
+          previewDataUrl: dataUrl || imageUrl,
         };
       });
 
@@ -7888,9 +7893,13 @@ ${allUrls
 
     try {
       const body = req.body || {};
-      const rawImage = String(body.imageBase64 || body.dataUrl || '').trim();
-      const signatoryName = String(body.signatoryName || 'Founder').trim().slice(0, 120);
-      const signatoryTitle = String(body.signatoryTitle || 'Founder, Boardly').trim().slice(0, 140);
+      const rawImage = String(body.imageBase64 || body.image || body.dataUrl || '').trim();
+      const signatoryName = String(body.signatoryName ?? body.signatory_name ?? '')
+        .trim()
+        .slice(0, 120);
+      const signatoryTitle = String(body.signatoryTitle ?? body.signatory_title ?? '')
+        .trim()
+        .slice(0, 140);
 
       if (!rawImage) {
         return res.status(400).json({
@@ -7902,6 +7911,12 @@ ${allUrls
         return res.status(400).json({
           error: 'Signatory name is required.',
           code: 'MISSING_SIGNATORY_NAME',
+        });
+      }
+      if (!signatoryTitle) {
+        return res.status(400).json({
+          error: 'Signatory title is required.',
+          code: 'MISSING_SIGNATORY_TITLE',
         });
       }
 
@@ -7922,7 +7937,7 @@ ${allUrls
         return res.status(400).json({ error: 'Uploaded signature image is empty.', code: 'EMPTY_IMAGE' });
       }
       if (rawBuffer.byteLength > MAX_SIGNATURE_BYTES) {
-        return res.status(400).json({
+        return res.status(413).json({
           error: 'Signature image exceeds the maximum allowed size of 2 MB.',
           code: 'FILE_TOO_LARGE',
         });
@@ -7936,54 +7951,103 @@ ${allUrls
         0
       );
       const nextVersion = maxVersion + 1;
-      const sigId = `sig_v${nextVersion}_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
-      const r2Key = `signatures/sig_v${nextVersion}_${sigId}.png`;
+      const now = Date.now();
+      const sigId = crypto.randomUUID();
+      const r2Key = `signatures/sig-v${nextVersion}-${now}.png`;
 
       // Store processed transparent PNG in private R2
       writePrivateR2File(r2Key, processed.pngBuffer);
 
-      // Deactivate previous signatures (preserving version history for existing certificates)
-      for (const s of store.certificateSignatures) {
-        s.active = 0;
+      try {
+        // Deactivate previous signatures (preserving version history for existing certificates)
+        for (const s of store.certificateSignatures) {
+          s.active = 0;
+        }
+
+        const newRecord = {
+          id: sigId,
+          r2_key: r2Key,
+          signatory_name: signatoryName,
+          signatory_title: signatoryTitle,
+          version: nextVersion,
+          uploaded_by: user.uid || user.email || 'admin',
+          created_at: now,
+          active: 1,
+        };
+
+        store.certificateSignatures.unshift(newRecord);
+        saveD1Store(store);
+
+        const imageUrl = `/api/admin/signatures/${encodeURIComponent(newRecord.id)}/image`;
+        return res.status(201).json({
+          ok: true,
+          signature: {
+            id: newRecord.id,
+            version: newRecord.version,
+            signatory_name: newRecord.signatory_name,
+            signatory_title: newRecord.signatory_title,
+            created_at: newRecord.created_at,
+            signatoryName: newRecord.signatory_name,
+            signatoryTitle: newRecord.signatory_title,
+            createdAt: newRecord.created_at,
+            uploadedBy: newRecord.uploaded_by,
+            active: true,
+            width: processed.width,
+            height: processed.height,
+            imageUrl,
+            previewDataUrl: processed.dataUrl,
+          },
+        });
+      } catch (d1Err: any) {
+        // Delete orphaned R2 file if D1 write fails
+        try {
+          const orphanPath = resolvePrivateR2Path(r2Key);
+          if (fs.existsSync(orphanPath)) fs.unlinkSync(orphanPath);
+        } catch {
+          // ignore cleanup failure
+        }
+        throw d1Err;
       }
-
-      const now = Date.now();
-      const newRecord = {
-        id: sigId,
-        r2_key: r2Key,
-        signatory_name: signatoryName,
-        signatory_title: signatoryTitle,
-        version: nextVersion,
-        uploaded_by: user.uid,
-        created_at: now,
-        active: 1,
-      };
-
-      store.certificateSignatures.unshift(newRecord);
-      saveD1Store(store);
-
-      return res.status(201).json({
-        ok: true,
-        signature: {
-          id: newRecord.id,
-          r2Key: newRecord.r2_key,
-          signatoryName: newRecord.signatory_name,
-          signatoryTitle: newRecord.signatory_title,
-          version: newRecord.version,
-          uploadedBy: newRecord.uploaded_by,
-          createdAt: newRecord.created_at,
-          active: true,
-          width: processed.width,
-          height: processed.height,
-          previewDataUrl: processed.dataUrl,
-        },
-      });
     } catch (err: any) {
       return res.status(400).json({
         error: err?.message || 'Failed to process signature image.',
         code: 'SIGNATURE_PROCESS_FAILED',
       });
     }
+  });
+
+  // 2b. GET /api/admin/signatures/:id/image — Admin only: stream signature PNG from private R2
+  app.get('/api/admin/signatures/:id/image', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+
+    const sigId = decodeURIComponent(String(req.params.id || '')).trim();
+    const sigRow =
+      sigId === 'active'
+        ? store.certificateSignatures.find((s: any) => Number(s.active) === 1)
+        : store.certificateSignatures.find(
+            (s: any) => s.id === sigId || String(s.version) === sigId
+          );
+
+    if (!sigRow || !sigRow.r2_key) {
+      return res.status(404).json({ error: 'Signature not found.', code: 'NOT_FOUND' });
+    }
+
+    const buf = readPrivateR2File(sigRow.r2_key);
+    if (!buf) {
+      return res.status(404).json({ error: 'Signature image not found in private R2.', code: 'NOT_FOUND' });
+    }
+
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('Content-Length', String(buf.byteLength));
+    return res.status(200).send(buf);
   });
 
   // 3. PUT /api/admin/signatures/active — Admin only: update signatory name/title on active signature
@@ -8003,27 +8067,35 @@ ${allUrls
     }
 
     const body = req.body || {};
-    if (body.signatoryName !== undefined) {
-      active.signatory_name = String(body.signatoryName || '').trim().slice(0, 120) || active.signatory_name;
+    if (body.signatoryName !== undefined || body.signatory_name !== undefined) {
+      active.signatory_name =
+        String(body.signatoryName ?? body.signatory_name ?? '').trim().slice(0, 120) ||
+        active.signatory_name;
     }
-    if (body.signatoryTitle !== undefined) {
-      active.signatory_title = String(body.signatoryTitle || '').trim().slice(0, 140);
+    if (body.signatoryTitle !== undefined || body.signatory_title !== undefined) {
+      active.signatory_title = String(body.signatoryTitle ?? body.signatory_title ?? '')
+        .trim()
+        .slice(0, 140);
     }
     saveD1Store(store);
 
     const { dataUrl } = getSignatureDataUrlForVersion(store, Number(active.version));
+    const imageUrl = `/api/admin/signatures/${encodeURIComponent(active.id)}/image`;
     return res.status(200).json({
       ok: true,
       signature: {
         id: active.id,
-        r2Key: active.r2_key,
+        version: Number(active.version),
+        signatory_name: active.signatory_name,
+        signatory_title: active.signatory_title,
+        created_at: Number(active.created_at),
         signatoryName: active.signatory_name,
         signatoryTitle: active.signatory_title,
-        version: Number(active.version),
-        uploadedBy: active.uploaded_by,
         createdAt: Number(active.created_at),
+        uploadedBy: active.uploaded_by,
         active: true,
-        previewDataUrl: dataUrl,
+        imageUrl,
+        previewDataUrl: dataUrl || imageUrl,
       },
     });
   });
@@ -8039,32 +8111,37 @@ ${allUrls
       return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
     }
 
-    const targetVersion = Number(req.params.version);
+    const targetParam = decodeURIComponent(String(req.params.version || '')).trim();
+    const targetVersion = Number(targetParam);
     const targetRow = store.certificateSignatures.find(
-      (s: any) => Number(s.version) === targetVersion
+      (s: any) => Number(s.version) === targetVersion || s.id === targetParam
     );
     if (!targetRow) {
       return res.status(404).json({ error: 'Signature version not found.', code: 'NOT_FOUND' });
     }
 
     for (const s of store.certificateSignatures) {
-      s.active = Number(s.version) === targetVersion ? 1 : 0;
+      s.active = s.id === targetRow.id ? 1 : 0;
     }
     saveD1Store(store);
 
-    const { dataUrl } = getSignatureDataUrlForVersion(store, targetVersion);
+    const { dataUrl } = getSignatureDataUrlForVersion(store, Number(targetRow.version));
+    const imageUrl = `/api/admin/signatures/${encodeURIComponent(targetRow.id)}/image`;
     return res.status(200).json({
       ok: true,
       activeSignature: {
         id: targetRow.id,
-        r2Key: targetRow.r2_key,
+        version: Number(targetRow.version),
+        signatory_name: targetRow.signatory_name,
+        signatory_title: targetRow.signatory_title,
+        created_at: Number(targetRow.created_at),
         signatoryName: targetRow.signatory_name,
         signatoryTitle: targetRow.signatory_title,
-        version: Number(targetRow.version),
-        uploadedBy: targetRow.uploaded_by,
         createdAt: Number(targetRow.created_at),
+        uploadedBy: targetRow.uploaded_by,
         active: true,
-        previewDataUrl: dataUrl,
+        imageUrl,
+        previewDataUrl: dataUrl || imageUrl,
       },
     });
   });
@@ -8085,6 +8162,82 @@ ${allUrls
     }
     saveD1Store(store);
     return res.status(200).json({ ok: true, hasActiveSignature: false });
+  });
+
+  // 5b. DELETE /api/admin/signatures/:id — Admin only: block deleting signature used by issued certificate; otherwise deactivate and re-activate previous version
+  app.delete('/api/admin/signatures/:id', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    ensureCertificateStoreArrays(store);
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+
+    const targetId = decodeURIComponent(String(req.params.id || '')).trim();
+    if (targetId === 'active') {
+      for (const s of store.certificateSignatures) {
+        s.active = 0;
+      }
+      saveD1Store(store);
+      return res.status(200).json({ ok: true, hasActiveSignature: false });
+    }
+
+    const sigRow = store.certificateSignatures.find(
+      (s: any) => s.id === targetId || String(s.version) === targetId
+    );
+    if (!sigRow) {
+      return res.status(404).json({ error: 'Signature not found.', code: 'NOT_FOUND' });
+    }
+
+    const usedCount = store.certificates.filter(
+      (c: any) => Number(c.signature_version) === Number(sigRow.version)
+    ).length;
+    if (usedCount > 0) {
+      return res.status(409).json({
+        error: `Cannot delete signature v${sigRow.version} because it is already used by ${usedCount} issued certificate(s).`,
+        code: 'SIGNATURE_IN_USE',
+      });
+    }
+
+    const wasActive = Boolean(sigRow.active);
+    sigRow.active = 0;
+
+    let reactivatedSignature: any = null;
+    if (wasActive) {
+      const remaining = [...store.certificateSignatures]
+        .filter((s: any) => s.id !== sigRow.id)
+        .sort((a: any, b: any) => Number(b.version || 0) - Number(a.version || 0));
+      const prevRow = remaining[0];
+      if (prevRow) {
+        prevRow.active = 1;
+        const { dataUrl } = getSignatureDataUrlForVersion(store, Number(prevRow.version));
+        const imageUrl = `/api/admin/signatures/${encodeURIComponent(prevRow.id)}/image`;
+        reactivatedSignature = {
+          id: prevRow.id,
+          version: Number(prevRow.version),
+          signatory_name: prevRow.signatory_name,
+          signatory_title: prevRow.signatory_title,
+          created_at: Number(prevRow.created_at),
+          signatoryName: prevRow.signatory_name,
+          signatoryTitle: prevRow.signatory_title,
+          createdAt: Number(prevRow.created_at),
+          active: true,
+          imageUrl,
+          previewDataUrl: dataUrl || imageUrl,
+        };
+      }
+    }
+
+    saveD1Store(store);
+    return res.status(200).json({
+      ok: true,
+      deactivatedId: sigRow.id,
+      deactivatedVersion: Number(sigRow.version),
+      activeSignature: reactivatedSignature,
+      hasActiveSignature: Boolean(reactivatedSignature),
+    });
   });
 
   // 6. POST /api/tests/:id/finalise — Finalise Grand Line mock results & issue 1st-position certificate(s)
