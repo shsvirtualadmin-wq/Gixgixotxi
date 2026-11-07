@@ -46,6 +46,11 @@ import {
 import { normalizeCorrectAnswer } from './testEngine';
 import { recordCrewPaymentActionServer } from './crewBackend';
 import {
+  notifyApplicationDecision,
+  notifyKobanPurchaseApproved,
+  notifyKobanPurchaseRejected,
+} from './emailNotificationService';
+import {
   ENABLE_MULTI_SOURCE_BANK,
   USE_FIRESTORE_QUESTION_READER,
   clearMultiSourceCache,
@@ -2220,6 +2225,17 @@ export async function approveCaptainApplication(
   );
 
   await logAdminAction(adminEmail, 'approve_captain_application', { appId: app.id, captainCode }, app.userId, app.email);
+
+  notifyApplicationDecision({
+    applicationId: app.id,
+    studentUid: app.userId,
+    applicantName: safeCaptainName || app.email?.split('@')[0] || 'Nakama Captain',
+    studentEmail: app.email,
+    programName: 'Nakama Campus Captain',
+    decision: 'approved',
+    codeOrBadge: captainCode,
+    ctaPath: '/dashboard/captain',
+  });
 }
 
 export async function approveCrewApplication(
@@ -2277,6 +2293,17 @@ export async function approveCrewApplication(
   );
 
   await logAdminAction(adminEmail, 'approve_crew_application', { appId: app.id, crewCode }, app.userId, app.email);
+
+  notifyApplicationDecision({
+    applicationId: app.id,
+    studentUid: app.userId,
+    applicantName: safeCrewName || app.email?.split('@')[0] || 'Crew Member',
+    studentEmail: app.email,
+    programName: 'Boardly Study Crew Ambassador',
+    decision: 'approved',
+    codeOrBadge: crewCode,
+    ctaPath: '/dashboard/crew',
+  });
 }
 
 export async function rejectApplication(
@@ -2302,6 +2329,17 @@ export async function rejectApplication(
     targetUid,
     targetEmail
   );
+
+  notifyApplicationDecision({
+    applicationId: appId,
+    studentUid: targetUid,
+    applicantName: targetEmail ? targetEmail.split('@')[0] : 'Applicant',
+    studentEmail: targetEmail,
+    programName: type === 'captain' ? 'Nakama Campus Captain' : 'Boardly Study Crew Ambassador',
+    decision: 'rejected',
+    reason: reason || 'Application criteria not met at this time.',
+    ctaPath: '/dashboard',
+  });
 }
 
 // ─── PAYMENT UPGRADE REQUESTS ────────────────────────────────────────────────
@@ -2362,6 +2400,16 @@ export async function approvePaymentRequest(
       req.userId,
       req.userEmail
     );
+
+    notifyKobanPurchaseApproved({
+      requestId: req.id,
+      studentUid: req.userId,
+      studentName: req.userName,
+      studentEmail: req.userEmail,
+      kobansAmount: Number(req.amount || 0) * 10,
+      transactionId: req.transactionId,
+      adminEmail,
+    });
     return;
   }
 
@@ -2404,6 +2452,16 @@ export async function approvePaymentRequest(
     req.userId,
     req.userEmail
   );
+
+  notifyKobanPurchaseApproved({
+    requestId: req.id,
+    studentUid: req.userId,
+    studentName: req.userName,
+    studentEmail: req.userEmail,
+    kobansAmount: Number(req.amount || 0) * 10,
+    transactionId: req.transactionId,
+    adminEmail,
+  });
 }
 
 export async function rejectPaymentRequest(
@@ -2427,6 +2485,15 @@ export async function rejectPaymentRequest(
     targetUid,
     targetEmail
   );
+
+  notifyKobanPurchaseRejected({
+    requestId: reqId,
+    studentUid: targetUid,
+    studentEmail: targetEmail,
+    kobansAmount: 0,
+    reason: reason || 'Invalid transaction ID or payment not received.',
+    adminEmail,
+  });
 }
 
 // ─── REVIEW MODERATION ───────────────────────────────────────────────────────

@@ -42,6 +42,11 @@ import {
   useDragonHiddenPreference,
   DRAGON_COMPANION_NAME,
 } from '@/components/dashboard/DragonCompanion';
+import {
+  getEmailNotificationPreferences,
+  saveEmailNotificationPreferences,
+  type EmailNotificationPreferences,
+} from '@/services/emailNotificationService';
 
 const SELECTABLE_USER_ROLES = [
   'Student',
@@ -85,6 +90,14 @@ export function SettingsPage() {
   const [passwordSavedMsg, setPasswordSavedMsg] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
+  // Email Notification Preferences state (for optional emails)
+  const [emailPrefs, setEmailPrefs] = useState<EmailNotificationPreferences>({
+    testStarted: false,
+    smallKobanReceipts: true,
+  });
+  const [savingEmailPrefs, setSavingEmailPrefs] = useState(false);
+  const [emailPrefsSaved, setEmailPrefsSaved] = useState(false);
+
   const isPro = effectivePlan.isUnlimited;
 
   // Detect whether current Firebase Auth user already has a 'password' provider linked
@@ -110,6 +123,12 @@ export function SettingsPage() {
       (r) => r.toLowerCase() === rawRole.toLowerCase()
     );
     setSelectedRole(matchedSelectable || (rawRole.toLowerCase() === 'student' ? 'Student' : rawRole));
+    setEmailPrefs(
+      getEmailNotificationPreferences(
+        user?.uid,
+        (profile as { emailPreferences?: Partial<EmailNotificationPreferences> } | null)?.emailPreferences
+      )
+    );
   }, [
     profile?.displayName,
     profile?.nickname,
@@ -121,7 +140,28 @@ export function SettingsPage() {
     user?.displayName,
     user?.email,
     user?.uid,
+    profile,
   ]);
+
+  const handleToggleEmailPref = async (key: keyof EmailNotificationPreferences) => {
+    if (!user) return;
+    const nextPrefs: EmailNotificationPreferences = {
+      ...emailPrefs,
+      [key]: !emailPrefs[key],
+    };
+    setEmailPrefs(nextPrefs);
+    setSavingEmailPrefs(true);
+    setEmailPrefsSaved(false);
+    try {
+      await saveEmailNotificationPreferences(user.uid, nextPrefs);
+      setEmailPrefsSaved(true);
+      setTimeout(() => setEmailPrefsSaved(false), 2500);
+    } catch (err) {
+      console.warn('[SettingsPage] Could not save email preferences:', err);
+    } finally {
+      setSavingEmailPrefs(false);
+    }
+  };
 
   const handleSaveName = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -471,6 +511,93 @@ export function SettingsPage() {
           <p className="text-[11px] text-[var(--muted)]">
             Your email is kept strictly private and is never shown on your public profile or in Commons.
           </p>
+        </section>
+
+        {/* ── 2b. Email Notification Preferences (Optional vs Transactional) ── */}
+        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Mail size={16} className="text-[var(--red)]" />
+              <h2 className="text-base font-bold text-[var(--text)] font-heading">
+                Email Notifications
+              </h2>
+            </div>
+            {emailPrefsSaved && (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400">
+                <Check size={13} />
+                <span>Preferences saved</span>
+              </span>
+            )}
+          </div>
+
+          <p className="text-xs text-[var(--muted)] leading-relaxed">
+            Critical transactional emails — including <strong>Koban purchase confirmations</strong>,{' '}
+            <strong>official test result reports</strong>, and <strong>application status updates</strong> — are always sent to your verified account email. You can customize optional activity emails below:
+          </p>
+
+          <div className="divide-y divide-[var(--border)] rounded-xl bg-[var(--surface-2)] border border-[var(--border)] px-4">
+            {/* Optional Toggle 1: Small Koban Receipts */}
+            <div className="py-3.5 flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <div className="text-xs sm:text-sm font-heading font-semibold text-[var(--text)]">
+                  Daily &amp; milestone Koban receipts
+                </div>
+                <p className="text-[11px] text-[var(--muted)]">
+                  Receive a short email receipt when you claim daily check-in or MCQ milestone Kobans.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                disabled={savingEmailPrefs}
+                aria-checked={emailPrefs.smallKobanReceipts}
+                onClick={() => handleToggleEmailPref('smallKobanReceipts')}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  emailPrefs.smallKobanReceipts
+                    ? 'bg-[var(--red)]'
+                    : 'bg-[var(--card)] border-[var(--border)]'
+                }`}
+              >
+                <span className="sr-only">Toggle small Koban receipts</span>
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    emailPrefs.smallKobanReceipts ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Optional Toggle 2: Test Started Email */}
+            <div className="py-3.5 flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <div className="text-xs sm:text-sm font-heading font-semibold text-[var(--text)]">
+                  Test start notifications
+                </div>
+                <p className="text-[11px] text-[var(--muted)]">
+                  Send a quick email when a new timed test session starts (test completion results are always sent).
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                disabled={savingEmailPrefs}
+                aria-checked={emailPrefs.testStarted}
+                onClick={() => handleToggleEmailPref('testStarted')}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  emailPrefs.testStarted
+                    ? 'bg-[var(--red)]'
+                    : 'bg-[var(--card)] border-[var(--border)]'
+                }`}
+              >
+                <span className="sr-only">Toggle test start notifications</span>
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    emailPrefs.testStarted ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
         </section>
 
         {/* ── 3. Display Name Section (with Reserved Name Admin Request) ─── */}

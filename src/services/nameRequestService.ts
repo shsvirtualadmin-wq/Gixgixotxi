@@ -13,6 +13,10 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { syncPublicProfile } from '@/services/publicProfileService';
+import {
+  notifyApplicationSubmitted,
+  notifyApplicationDecision,
+} from '@/services/emailNotificationService';
 
 export interface NameRequestDoc {
   id: string;
@@ -52,6 +56,15 @@ export async function submitNameRequest(params: {
   };
 
   await setDoc(requestRef, data);
+
+  notifyApplicationSubmitted({
+    applicationId: requestRef.id,
+    programName: `Reserved Display Name ("${cleanRequested}")`,
+    applicantName: params.currentDisplayName || cleanRequested,
+    applicantEmail: params.userEmail || undefined,
+    statement: `Requested official display name: ${cleanRequested}`,
+    reviewPath: '/admin/users',
+  });
 
   return { success: true, id: requestRef.id };
 }
@@ -135,6 +148,16 @@ export async function approveNameRequest(
   } catch (err) {
     console.warn('[nameRequestService] sync public profile error:', err);
   }
+
+  notifyApplicationDecision({
+    applicationId: requestId,
+    studentUid: uid,
+    applicantName: approvedName,
+    programName: `Display Name Request ("${approvedName}")`,
+    decision: 'approved',
+    codeOrBadge: approvedName,
+    ctaPath: '/dashboard/settings',
+  });
 
   return { success: true };
 }

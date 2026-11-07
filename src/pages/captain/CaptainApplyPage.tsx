@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
+import { notifyApplicationSubmitted } from '@/services/emailNotificationService';
 
 interface FieldErrors {
   studentName?: string;
@@ -174,6 +175,18 @@ export function CaptainApplyPage() {
       } catch (mirrorErr) {
         console.warn('[CaptainApply] Mirror to applications collection warning:', mirrorErr);
       }
+
+      notifyApplicationSubmitted({
+        applicationId: user.uid,
+        programName: 'Nakama Campus Captain',
+        applicantName: studentName.trim(),
+        applicantEmail: email.trim().toLowerCase(),
+        applicantPhone: phone.trim(),
+        institution: institution.trim(),
+        city: city.trim(),
+        statement: statement.trim(),
+        reviewPath: '/admin/applications',
+      });
 
       setSubmitted(true);
     } catch (err: unknown) {

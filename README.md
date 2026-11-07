@@ -60,3 +60,52 @@ To safely issue an SSL certificate for an auth domain:
 5. Wait until Firebase Hosting displays the status as **Connected** with an active SSL certificate.
 6. Once connected, update `VITE_FIREBASE_AUTH_DOMAIN` in your deployment environment variables.
 7. In Google Cloud Console (**APIs & Services → Credentials → OAuth 2.0 Client IDs**), add the authorized redirect URI: `https://<YOUR_AUTH_DOMAIN>/__/auth/handler`.
+
+---
+
+## Transactional Email Notifications (Resend API) & Cloudflare Email Routing
+
+Boardly dispatches transactional emails through a protected server-side endpoint (`/api/send-email`) powered by the **Resend API** (`https://api.resend.com/emails`), while inbound admin addresses (`admin@boardly.cfd`, `superadmin@boardly.cfd`) are handled by **Cloudflare Email Routing**.
+
+### 1. Required Server-Side Secrets & Environment Variables
+Never expose `RESEND_API_KEY` or `INTERNAL_EMAIL_SECRET` in client `VITE_` variables. Configure these in Cloudflare Pages (**Settings → Environment variables**) or via Wrangler:
+
+```env
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxx
+EMAIL_FROM="Boardly <no-reply@boardly.cfd>"
+ADMIN_EMAILS=admin@boardly.cfd,superadmin@boardly.cfd
+APP_URL=https://boardly.cfd
+KOBAN_ALERT_THRESHOLD=1000
+ENABLE_TEST_START_EMAIL=false
+INTERNAL_EMAIL_SECRET=your_random_32_byte_secret
+```
+
+### 2. DNS Configuration (Coexisting Resend Outbound + Cloudflare Email Routing Inbound)
+Because **Cloudflare Email Routing** owns the root `@` (`boardly.cfd`) `MX` records for inbound forwarding (`admin@boardly.cfd` and `superadmin@boardly.cfd`), configure **Resend** to use a dedicated sending subdomain (default in Resend: `send.boardly.cfd`) for outbound `MX`/bounce handling while signing `boardly.cfd` with DKIM:
+
+1. **In Resend Dashboard (`Domains → Add Domain`)**:
+   - Add `boardly.cfd` (keep the custom Return-Path subdomain as `send` so outbound `MX` and `SPF` live on `send.boardly.cfd`).
+2. **In Cloudflare DNS (`boardly.cfd`)**, add the records provided by Resend:
+   - **DKIM (`TXT`)**:
+     - Name: `resend._domainkey`
+     - Content: `p=MIGfMA0GCSqGSIb3DQEBAQUAA4...` (from Resend dashboard)
+     - Proxy status: **DNS only**
+   - **Outbound Return-Path SPF (`TXT` on `send.boardly.cfd`)**:
+     - Name: `send`
+     - Content: `v=spf1 include:amazonses.com ~all`
+     - Proxy status: **DNS only**
+   - **Outbound Bounce MX (`MX` on `send.boardly.cfd`)**:
+     - Name: `send`
+     - Mail server: `feedback-smtp.<region>.amazonses.com` (from Resend dashboard, priority `10`)
+     - Proxy status: **DNS only**
+   - **Root SPF (`TXT` on `@` / `boardly.cfd`)**:
+     - Merge Cloudflare Email Routing and Resend/SES into a single root SPF TXT record (never create two separate `v=spf1` records on `@`):
+       ```txt
+       v=spf1 include:_spf.mx.cloudflare.net include:amazonses.com ~all
+       ```
+   - **DMARC (`TXT` on `_dmarc.boardly.cfd`)**:
+     - Name: `_dmarc`
+     - Content: `v=DMARC1; p=none; rua=mailto:admin@boardly.cfd`
+3. **Keep Cloudflare Email Routing MX Records on `@` (`boardly.cfd`) intact**:
+   - Do **not** delete Cloudflare's root `MX` records (`route1.mx.cloudflare.net`, `route2.mx.cloudflare.net`, `route3.mx.cloudflare.net`), so inbound emails to `admin@boardly.cfd` and `superadmin@boardly.cfd` continue forwarding to your verified destination inbox(es).
+

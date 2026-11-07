@@ -19,6 +19,7 @@ import { exportTestToPdf } from '@/utils/testPdfExporter';
 import { getUniversityRulesSummary } from '@/constants/universityCriteria';
 import { Sparkles, Lock, X, AlertCircle, Check } from 'lucide-react';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
+import { notifyTestStarted } from '@/services/emailNotificationService';
 
 export function TestRunnerPage() {
   const { attemptId } = useParams<{ attemptId: string }>();
@@ -154,6 +155,21 @@ export function TestRunnerPage() {
           currentAttempt.endsAt = endsAt;
           currentAttempt.status = 'in_progress';
           currentAttempt.questions = testQuestions;
+
+          notifyTestStarted({
+            attemptId: attemptId!,
+            studentName: user.displayName || undefined,
+            testName:
+              currentAttempt.title ||
+              [currentAttempt.subject, currentAttempt.university].filter(Boolean).join(' — ') ||
+              'Boardly Practice Test',
+            universityPattern: currentAttempt.university || 'Standard Drill',
+            subjectScope: currentAttempt.subject || 'All Subjects',
+            totalQuestions: testQuestions.length,
+            durationMinutes: currentAttempt.durationSeconds
+              ? Math.round(currentAttempt.durationSeconds / 60)
+              : undefined,
+          });
         }
 
         setAttempt(currentAttempt);

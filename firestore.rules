@@ -1795,6 +1795,21 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Transactional Email Dispatch Logs (Resend): readable and updatable (retry status) by Admin;
+    // creatable by Admin or the authenticated actor whose userId matches the dispatch log.
+    match /email_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() || (
+        isSignedIn() &&
+        request.resource.data.get('userId', '') == request.auth.uid &&
+        request.resource.data.get('eventType', '') is string &&
+        request.resource.data.get('eventType', '').size() <= 80 &&
+        request.resource.data.get('status', 'sent') in ['sent', 'failed', 'skipped']
+      );
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
     // =========================================================================
     // 12. CATALOG, SESSIONS, MISSIONS, REWARDS & CERTIFICATES
     // =========================================================================

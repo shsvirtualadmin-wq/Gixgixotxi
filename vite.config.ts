@@ -1324,6 +1324,71 @@ RULES:
         }
       });
 
+      // ─── TRANSACTIONAL EMAIL NOTIFICATIONS API (/api/send-email) ──────────
+      server.middlewares.use('/api/send-email', async (req: any, res: any) => {
+        try {
+          const rawBody = await new Promise<string>((resolve) => {
+            if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+              resolve('');
+              return;
+            }
+            let data = '';
+            req.on('data', (chunk: any) => {
+              data += chunk;
+            });
+            req.on('end', () => resolve(data));
+          });
+
+          const fullUrl = `http://localhost:3000/api/send-email${req.url || ''}`;
+          const headers = new Headers();
+          for (const [k, v] of Object.entries(req.headers || {})) {
+            if (typeof v === 'string') headers.set(k, v);
+            else if (Array.isArray(v)) headers.set(k, v.join(', '));
+          }
+
+          const webReq = new Request(fullUrl, {
+            method: req.method || 'POST',
+            headers,
+            body:
+              req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS'
+                ? rawBody
+                : undefined,
+          });
+
+          const mod = await import('./functions/api/send-email.ts');
+          const webRes = await mod.handleSendEmailRequest(webReq, {
+            RESEND_API_KEY: process.env.RESEND_API_KEY,
+            EMAIL_FROM: process.env.EMAIL_FROM,
+            ADMIN_EMAILS: process.env.ADMIN_EMAILS,
+            APP_URL: process.env.APP_URL,
+            KOBAN_ALERT_THRESHOLD: process.env.KOBAN_ALERT_THRESHOLD,
+            ENABLE_TEST_START_EMAIL: process.env.ENABLE_TEST_START_EMAIL,
+            INTERNAL_EMAIL_SECRET: process.env.INTERNAL_EMAIL_SECRET,
+            FIREBASE_SERVICE_ACCOUNT: process.env.FIREBASE_SERVICE_ACCOUNT,
+            GOOGLE_SERVICE_ACCOUNT_KEY: process.env.GOOGLE_SERVICE_ACCOUNT_KEY,
+            FIREBASE_PROJECT_ID:
+              process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID,
+            FIREBASE_DATABASE_ID:
+              process.env.FIREBASE_DATABASE_ID ||
+              process.env.VITE_FIREBASE_DATABASE_ID ||
+              process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID,
+          });
+
+          const outHeaders: Record<string, string> = {};
+          webRes.headers.forEach((v, k) => {
+            outHeaders[k] = v;
+          });
+          res.writeHead(webRes.status, outHeaders);
+          const text = await webRes.text();
+          res.end(text);
+        } catch (err: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({ ok: false, error: err?.message || 'Send email middleware error' })
+          );
+        }
+      });
+
       server.middlewares.use('/assets/store', (req: any, res: any, next: any) => {
         const cleanRel = decodeURIComponent((req.url || '').split('?')[0]).replace(/^\/+/, '');
         const fullPath = path.join(__dirname, 'public', 'assets', 'store', cleanRel);

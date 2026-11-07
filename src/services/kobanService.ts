@@ -16,6 +16,12 @@ import { db } from '@/lib/firebase';
 import type { CosmeticItem } from '@/data/cosmeticsCatalog';
 import type { KobanRequest, WalletLedgerEntry } from '@/types';
 import { logAdminAction } from './adminService';
+import {
+  notifyKobanPurchaseRequestSubmitted,
+  notifyKobanPurchaseApproved,
+  notifyKobanPurchaseRejected,
+  notifyKobanReceipt,
+} from './emailNotificationService';
 
 export interface WalletData {
   balance: number;
@@ -254,7 +260,17 @@ export async function purchaseCosmeticItem(
         timestamp: serverTimestamp(),
       });
 
-      return { newBalance: balanceAfter, owned: updatedOwned };
+      return { newBalance: balanceAfter, owned: updatedOwned, pricePaid: priceToDeduct };
+    });
+
+    notifyKobanReceipt({
+      recordId: `store_${userId}_${item.id}_${Date.now()}`,
+      studentUid: userId,
+      deltaAmount: -result.pricePaid,
+      newBalance: result.newBalance,
+      reason: `Store purchase: ${item.name}`,
+      subType: 'store_purchase',
+      itemName: item.name,
     });
 
     return { success: true, newBalance: result.newBalance, owned: result.owned };
@@ -313,6 +329,18 @@ export async function submitKobanRequest(params: {
     note: params.note || '',
     status: 'pending',
     createdAt: serverTimestamp(),
+  });
+
+  notifyKobanPurchaseRequestSubmitted({
+    requestId: docRef.id,
+    studentUid: params.userId,
+    studentName: params.userName,
+    studentEmail: params.userEmail,
+    kobansAmount: amount,
+    pkrAmount,
+    paymentMethod: params.paymentMethod,
+    transactionId: params.transactionId.trim(),
+    note: params.note,
   });
 
   return docRef.id;
@@ -457,6 +485,14 @@ export async function approveKobanRequest(
     { requestId, targetUserId, amount, txId },
     targetUserId
   );
+
+  notifyKobanPurchaseApproved({
+    requestId,
+    studentUid: targetUserId,
+    kobansAmount: amount,
+    transactionId: txId,
+    adminEmail: superadminEmail,
+  });
 }
 
 /**
@@ -501,6 +537,14 @@ export async function rejectKobanRequest(
     { requestId, targetUserId, reason },
     targetUserId
   );
+
+  notifyKobanPurchaseRejected({
+    requestId,
+    studentUid: targetUserId,
+    kobansAmount: 0,
+    reason: reason || 'Transaction could not be verified on mobile banking portal.',
+    adminEmail: superadminEmail,
+  });
 }
 
 /**
@@ -589,6 +633,17 @@ export async function adminAdjustKobans(
     targetUserId,
     targetUserEmail
   );
+
+  notifyKobanReceipt({
+    recordId: `admin_adj_${targetUserId}_${Date.now()}`,
+    studentUid: targetUserId,
+    studentEmail: targetUserEmail,
+    deltaAmount: delta,
+    newBalance,
+    reason: reason || (delta > 0 ? 'Superadmin grant' : 'Superadmin deduction'),
+    subType: 'admin_grant',
+    adminEmail: superadminEmail,
+  });
 
   return { newBalance };
 }
@@ -784,6 +839,18 @@ export async function grantCaptainMonthlyAllotment(
     captainUid,
     captainEmail
   );
+
+  notifyKobanReceipt({
+    recordId: docId,
+    studentUid: captainUid,
+    studentName: captainName,
+    studentEmail: captainEmail,
+    deltaAmount: 5000,
+    newBalance,
+    reason: `Nakama Captain Monthly Allotment (${monthLabel})`,
+    subType: 'captain_allotment',
+    adminEmail: superadminEmail,
+  });
 
   return { success: true, newBalance };
 }

@@ -29,6 +29,10 @@ import {
   fetchMultiSourceQuestionKey,
 } from './multiSourceQuestionBank';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
+import {
+  notifyTestCompleted,
+  computeSubjectBreakdownFromQuestions,
+} from './emailNotificationService';
 
 /**
  * University marking configurations for official entrance exams.
@@ -1040,6 +1044,43 @@ export async function submitAttempt(
     }
   } catch (seenErr) {
     console.warn('[testEngine] Seen questions write notice:', seenErr);
+  }
+
+  // 6. Non-blocking transactional test result email to student
+  try {
+    const testTitle =
+      attempt.title ||
+      [
+        attempt.subject && attempt.subject !== 'Any' ? attempt.subject : 'Practice Drill',
+        attempt.university && attempt.university !== 'Any' ? `(${attempt.university})` : '',
+      ]
+        .filter(Boolean)
+        .join(' ') ||
+      'Boardly Practice Test';
+
+    const subjectBreakdown = computeSubjectBreakdownFromQuestions(
+      enrichedQuestions,
+      userAnswers
+    );
+
+    notifyTestCompleted({
+      attemptId,
+      testName: testTitle,
+      universityPattern: attempt.university || 'Standard Entrance Drill',
+      subjectScope: attempt.subject || 'All Subjects',
+      durationSeconds: timeTakenSeconds,
+      totalQuestions,
+      attempted: correctCount + wrongCount,
+      correct: correctCount,
+      wrong: wrongCount,
+      score,
+      maxMarks,
+      percentage,
+      subjectBreakdown,
+      reviewPath: `/test/${attemptId}/result`,
+    });
+  } catch (emailErr) {
+    console.warn('[testEngine] Non-blocking test result email notice:', emailErr);
   }
 
   return {

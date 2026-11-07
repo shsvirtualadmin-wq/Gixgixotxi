@@ -1,10 +1,11 @@
 import d1Worker from '../../cloudflare/worker.js';
 import mainWorker, { Env } from '../../cloudflare/worker';
 import { handleRewardsApiRequest } from './rewards/[[path]]';
+import { handleSendEmailRequest } from './send-email';
 
 /**
  * Catch-all Cloudflare Pages Function for `/api/*` routes on the same site
- * (`/api/rewards/*`, `/api/tests`, `/api/tests/:id/publish`, `/api/tests/:id/questions`,
+ * (`/api/rewards/*`, `/api/send-email`, `/api/tests`, `/api/tests/:id/publish`, `/api/tests/:id/questions`,
  * `/api/crews`, `/api/me/role`, `/api/attempts/mine`, `/api/leaderboard/grand-line`,
  * `/api/notifications`, `/api/admin/roles`, `/api/mcq-bank`, etc.).
  */
@@ -16,6 +17,11 @@ export async function onRequest(context: {
   const { request, env } = context;
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
+
+  // Delegate transactional email notifications to /api/send-email handler
+  if (path === '/api/send-email' || path.startsWith('/api/send-email/')) {
+    return handleSendEmailRequest(request, (env || {}) as any);
+  }
 
   // Delegate Boardly Rewards endpoints to server-side transactional rewards handler
   if (path === '/api/rewards' || path.startsWith('/api/rewards/')) {

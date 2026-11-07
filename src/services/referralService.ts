@@ -15,6 +15,7 @@ import {
 import { db } from '@/lib/firebase';
 import { getStoredReferralCode } from '@/hooks/useReferral';
 import type { UserProfile } from '@/types/index';
+import { notifyReferralConfirmed } from './emailNotificationService';
 
 export interface AmbassadorReferralItem {
   id: string;
@@ -171,6 +172,15 @@ export async function processAmbassadorReferralOnSignup(params: {
       },
       { merge: true }
     );
+
+    notifyReferralConfirmed({
+      referralId: `amb_ref_${ambassadorUid}_${newUid}`,
+      referrerUid: ambassadorUid,
+      referrerName: ambassadorData.displayName || ambassadorData.name || 'Boardly Ambassador',
+      friendUid: newUid,
+      friendName: safeNewName,
+      referralCode: refCode,
+    });
   } catch (err) {
     console.warn('[referralService] Processing referral warning:', err);
   }

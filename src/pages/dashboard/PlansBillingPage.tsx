@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { LineLoader } from '@/components/ui/LineLoader';
 import { Check, Zap, Users, Clock, Sparkles } from 'lucide-react';
+import { notifyKobanPurchaseRequestSubmitted } from '@/services/emailNotificationService';
 
 interface PaymentRequestItem {
   id: string;
@@ -63,7 +64,7 @@ export function PlansBillingPage() {
       const amount = isCrewUpgrade ? DEFAULT_CREW_PRICING.largeCrewPricePKR : 199;
       const planName = isCrewUpgrade ? 'large_crew' : 'pro';
 
-      await addDoc(collection(db, 'paymentRequests'), {
+      const docRef = await addDoc(collection(db, 'paymentRequests'), {
         userId: user.uid,
         userEmail: user.email?.toLowerCase(),
         displayName: senderName.trim() || user.displayName || user.email?.split('@')[0],
@@ -77,6 +78,19 @@ export function PlansBillingPage() {
         status: 'pending',
         createdAt: serverTimestamp(),
       });
+
+      notifyKobanPurchaseRequestSubmitted({
+        requestId: docRef.id,
+        studentUid: user.uid,
+        studentName: senderName.trim() || user.displayName || undefined,
+        studentEmail: user.email || undefined,
+        kobansAmount: amount * 10,
+        pkrAmount: amount,
+        paymentMethod: method,
+        transactionId: transactionId.trim().toUpperCase(),
+        packageName: isCrewUpgrade ? 'Large Crew Pass (30 Days)' : 'Boardly Pro Pass (30 Days)',
+      });
+
       setSubmittedSuccess(true);
       setModalOpen(false);
       setTransactionId('');

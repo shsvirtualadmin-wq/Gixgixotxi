@@ -18,6 +18,11 @@ import {
   type RewardsMode,
   type RewardsStateResponse,
 } from '@/lib/rewardsEngine';
+import {
+  notifyKobanReceipt,
+  notifyReferralConfirmed,
+  notifyReferralRewardCredited,
+} from './emailNotificationService';
 
 export const REWARD_REF_LS_KEY = 'boardly_ref_code';
 export const REWARD_REF_COOKIE_NAME = 'boardly_ref_code';
@@ -245,6 +250,18 @@ export async function claimDailyReward(): Promise<{
         ...safe,
       };
     }
+    if (auth.currentUser && typeof data.rewardAmount === 'number') {
+      notifyKobanReceipt({
+        recordId: `daily_claim_${auth.currentUser.uid}_day_${data.dayNumber || Date.now()}`,
+        studentUid: auth.currentUser.uid,
+        studentName: auth.currentUser.displayName || undefined,
+        studentEmail: auth.currentUser.email || undefined,
+        deltaAmount: data.rewardAmount,
+        newBalance: Number(data.newBalance || 0),
+        reason: `Daily Check-In Claim (Day ${data.dayNumber || 1})`,
+        subType: 'daily_claim',
+      });
+    }
     return data;
   } catch {
     return {
@@ -282,6 +299,18 @@ export async function claimMilestoneReward(milestoneId: string): Promise<{
         ...safe,
       };
     }
+    if (auth.currentUser && typeof data.rewardAmount === 'number') {
+      notifyKobanReceipt({
+        recordId: `milestone_${auth.currentUser.uid}_${milestoneId}`,
+        studentUid: auth.currentUser.uid,
+        studentName: auth.currentUser.displayName || undefined,
+        studentEmail: auth.currentUser.email || undefined,
+        deltaAmount: data.rewardAmount,
+        newBalance: Number(data.newBalance || 0),
+        reason: `MCQ Milestone Reward (${milestoneId})`,
+        subType: 'milestone_claim',
+      });
+    }
     return data;
   } catch {
     return {
@@ -318,6 +347,15 @@ export async function attachReferralCode(code: string): Promise<{
         ok: false,
         ...safe,
       };
+    }
+    if (auth.currentUser) {
+      notifyReferralConfirmed({
+        referralId: String(data.referralId || `${auth.currentUser.uid}_${normalizeReferralCode(code)}`),
+        friendUid: auth.currentUser.uid,
+        friendName: auth.currentUser.displayName || undefined,
+        referrerName: data.inviterDisplayName || 'Boardly Classmate',
+        referralCode: normalizeReferralCode(code),
+      });
     }
     return data;
   } catch {
@@ -366,6 +404,25 @@ export async function acceptPendingReferral(
         ok: false,
         ...safe,
       };
+    }
+    if (auth.currentUser) {
+      if (data.paid) {
+        notifyReferralRewardCredited({
+          referralId: String(data.referralId || referralId),
+          referrerUid: auth.currentUser.uid,
+          referrerName: auth.currentUser.displayName || undefined,
+          referrerKobans: Number(data.inviterReward || 5000),
+          friendKobans: Number(data.inviteeReward || 1000),
+          referralCode: normalizeReferralCode(enteredCode),
+        });
+      } else {
+        notifyReferralConfirmed({
+          referralId: String(data.referralId || referralId),
+          referrerUid: auth.currentUser.uid,
+          referrerName: auth.currentUser.displayName || undefined,
+          referralCode: normalizeReferralCode(enteredCode),
+        });
+      }
     }
     return data;
   } catch {

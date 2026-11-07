@@ -33,6 +33,11 @@ import { routes } from '@/utils/routes';
 import { showApiToast } from '@/lib/api';
 import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
 import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import {
+  notifyTestStarted,
+  notifyTestCompleted,
+  computeSubjectBreakdownFromQuestions,
+} from '@/services/emailNotificationService';
 
 const DEFAULT_ALREADY_ATTEMPTED_MSG =
   'Each Grand Line test can only be attempted once.';
@@ -233,6 +238,16 @@ export function GrandLineTestRunnerPage() {
         setTest(res);
         setTimeLeftSec((res.durationMinutes || 20) * 60);
         startTimeRef.current = Date.now();
+
+        notifyTestStarted({
+          attemptId: res.id,
+          studentName: resolveStudentProfileName(),
+          testName: res.title || 'Grand Line Captain Drill',
+          universityPattern: res.crewName ? `Grand Line · ${res.crewName}` : 'Grand Line Drill',
+          subjectScope: res.subject || 'General',
+          totalQuestions: res.questions?.length || res.questionCount || 10,
+          durationMinutes: res.durationMinutes || 20,
+        });
       })
       .catch((err: any) => {
         if (!active) return;
@@ -304,6 +319,43 @@ export function GrandLineTestRunnerPage() {
           })),
       });
       setSubmitted(true);
+
+      const gradedList =
+        attempt.gradedQuestions ||
+        test.questions.map((q, idx) => ({
+          id: q.id,
+          position: idx,
+          question: q.question,
+          options: q.options,
+          selectedIndex: answers[idx] ?? -1,
+          correctIndex: q.correctIndex ?? 0,
+          isCorrect: (answers[idx] ?? -1) === (q.correctIndex ?? 0),
+          explanation: q.explanation,
+          subject: test.subject || 'General',
+        }));
+
+      const totalQ = attempt.totalQuestions || test.questions.length;
+      const attemptedCount = answerArray.filter((a) => a >= 0).length;
+      const correctCount = gradedList.filter((g) => g.isCorrect).length;
+      const wrongCount = Math.max(0, attemptedCount - correctCount);
+
+      notifyTestCompleted({
+        attemptId: attempt.id || test.id,
+        studentName: attempt.userName || attempt.studentName || studentName,
+        testName: attempt.testTitle || test.title || 'Grand Line Drill',
+        universityPattern: test.crewName ? `Grand Line · ${test.crewName}` : 'Grand Line Captain Test',
+        subjectScope: attempt.subject || test.subject || 'General',
+        durationSeconds: attempt.timeTakenSeconds || elapsedSec,
+        totalQuestions: totalQ,
+        attempted: attemptedCount,
+        correct: correctCount,
+        wrong: wrongCount,
+        score: attempt.score,
+        maxMarks: totalQ,
+        percentage: attempt.percentage,
+        subjectBreakdown: computeSubjectBreakdownFromQuestions(gradedList as any),
+        reviewPath: `/grand-line/test/${encodeURIComponent(test.id)}?mode=result`,
+      });
     } catch (err: any) {
       if (err?.status === 409 || err?.code === 'ALREADY_ATTEMPTED') {
         setAlreadyAttemptedInfo({

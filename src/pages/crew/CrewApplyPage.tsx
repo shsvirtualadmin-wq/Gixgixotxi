@@ -6,6 +6,7 @@ import { CheckCircle2, ArrowLeft } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 import { NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
+import { notifyApplicationSubmitted } from '@/services/emailNotificationService';
 
 export function CrewApplyPage() {
   const { user } = useAuth();
@@ -47,10 +48,23 @@ export function CrewApplyPage() {
 
     try {
       // Save to unified applications collection and crewApplications
-      await Promise.all([
+      const [, crewDocRef] = await Promise.all([
         addDoc(collection(db, 'applications'), payload),
         addDoc(collection(db, 'crewApplications'), payload),
       ]);
+
+      notifyApplicationSubmitted({
+        applicationId: crewDocRef.id,
+        programName: 'Boardly Study Crew Ambassador',
+        applicantName: fullName.trim(),
+        applicantEmail: email.trim().toLowerCase(),
+        applicantPhone: phone.trim(),
+        institution: institution.trim(),
+        city: city.trim(),
+        statement: promotionPlan.trim(),
+        reviewPath: '/admin/applications',
+      });
+
       setSubmitted(true);
     } catch (err: unknown) {
       const e = err as { message?: string };
