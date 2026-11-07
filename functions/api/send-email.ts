@@ -1006,6 +1006,14 @@ export async function handleSendEmailRequest(
     const subType = (data.subType || 'daily_claim') as KobanReceiptSubType;
     const reason = String(data.reason || 'Wallet activity');
     const isSmallClaim = subType === 'daily_claim' || subType === 'milestone_claim';
+    const items = Array.isArray(data.items)
+      ? data.items.map((it: any) => ({
+          id: it?.id ? String(it.id) : undefined,
+          name: String(it?.name || 'Cosmetic Item'),
+          category: it?.category ? String(it.category) : undefined,
+          priceKobans: Math.max(0, Math.floor(Number(it?.priceKobans) || 0)),
+        }))
+      : undefined;
 
     // 3A. To Student (respects smallKobanReceipts preference for daily/milestone claims)
     if (verifiedStudentEmail && (!isSmallClaim || emailPrefs.smallKobanReceipts)) {
@@ -1016,6 +1024,7 @@ export async function handleSendEmailRequest(
         reason,
         subType,
         itemName: data.itemName ? String(data.itemName) : undefined,
+        items,
         appUrl,
       });
       const rStudent = await dispatchViaResendWithRetry({
@@ -1050,6 +1059,7 @@ export async function handleSendEmailRequest(
         newBalance,
         reason,
         subType,
+        items,
         adminEmail: data.adminEmail ? String(data.adminEmail) : undefined,
         appUrl,
       });

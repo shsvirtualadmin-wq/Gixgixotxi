@@ -2311,7 +2311,7 @@ body,
   [class*="bg-[rgba(14,14,19,0.78)]"],
   [class*="bg-[rgba(14,14,19,0.82)]"],
   [class*="bg-[rgba(24,24,32,0.92)]"]
-):not(nav):not(header *) {
+):not(nav):not(header *):not(.dark-surface-preserve):not(.dark-surface-preserve *) {
   background: var(--glass-surface) !important;
   background-color: var(--card) !important;
   border-color: var(--glass-border) !important;

@@ -327,6 +327,133 @@ export function useWallet() {
     [user?.uid, isSuperAdminUser]
   );
 
+  /**
+   * Purchases a batch of cosmetic items atomically via checkoutStoreCart.
+   */
+  const purchaseCosmeticBatch = useCallback(
+    async (
+      items: import('@/data/cosmeticsCatalog').CosmeticItem[],
+      idempotencyKey?: string
+    ) => {
+      if (!user?.uid) throw new Error('Must be logged in to purchase cosmetics');
+      const { checkoutStoreCart } = await import('@/services/kobanService');
+      const result = await checkoutStoreCart({
+        userId: user.uid,
+        items,
+        idempotencyKey: idempotencyKey || `chk_${Date.now()}`,
+        isSuperAdmin: isSuperAdminUser,
+      });
+      if (result.flaggedItems.length === 0 && result.purchasedItems.length > 0) {
+        const updated: WalletDoc = {
+          ...walletRef.current,
+          balance: result.newBalance,
+          owned: result.owned,
+        };
+        sessionWalletCache[user.uid] = updated;
+        setWallet(updated);
+      } else if (result.flaggedItems.length > 0) {
+        const updated: WalletDoc = {
+          ...walletRef.current,
+          balance: result.newBalance,
+          owned: result.owned,
+        };
+        sessionWalletCache[user.uid] = updated;
+        setWallet(updated);
+      }
+      return result;
+    },
+    [user?.uid, isSuperAdminUser]
+  );
+
+  /**
+   * Equips multiple cosmetic slots at once (e.g. "Equip now" after multi-buy checkout).
+   * If multiple items shared a category, the caller passes the newest item per slot.
+   */
+  const equipMultipleCosmetics = useCallback(
+    async (
+      slotUpdates: Partial<
+        Record<'effect' | 'frame' | 'nameplate' | 'avatar' | 'banner', string | null>
+      >
+    ) => {
+      if (!user?.uid) throw new Error('Must be logged in to equip cosmetics');
+      const current = walletRef.current;
+
+      const updatedEquipped: EquippedCosmetics = {
+        ...current.equipped,
+        ...slotUpdates,
+      };
+
+      const walletDocRef = doc(db, 'wallets', user.uid);
+
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(walletDocRef);
+        const curData = snap.exists() ? (snap.data() as WalletDoc) : current;
+        const ownedList = Array.isArray(curData.owned) ? curData.owned : current.owned;
+        if (snap.exists()) {
+          tx.update(walletDocRef, {
+            equipped: updatedEquipped,
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          tx.set(
+            walletDocRef,
+            {
+              balance: typeof curData.balance === 'number' ? curData.balance : current.balance,
+              owned: ownedList,
+              equipped: updatedEquipped,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
+      });
+
+      const topLevelFields: Record<string, unknown> = {};
+      if ('effect' in slotUpdates) topLevelFields.effectId = slotUpdates.effect ?? null;
+      if ('frame' in slotUpdates) {
+        topLevelFields.frame = slotUpdates.frame ?? null;
+        topLevelFields.equippedFrame = slotUpdates.frame ?? null;
+      }
+      if ('avatar' in slotUpdates) {
+        topLevelFields.avatar = slotUpdates.avatar ?? null;
+        topLevelFields.equippedAvatar = slotUpdates.avatar ?? null;
+      }
+      if ('banner' in slotUpdates) {
+        topLevelFields.banner = slotUpdates.banner ?? null;
+        topLevelFields.equippedBanner = slotUpdates.banner ?? null;
+      }
+      if ('nameplate' in slotUpdates) {
+        topLevelFields.nameplate = slotUpdates.nameplate ?? null;
+        topLevelFields.equippedNameplate = slotUpdates.nameplate ?? null;
+      }
+
+      await setDoc(
+        doc(db, 'users', user.uid),
+        {
+          equipped: updatedEquipped,
+          ...topLevelFields,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch((err: any) => {
+        console.error('[useWallet] Failed to mirror multi-equip to users doc:', err);
+      });
+
+      await syncPublicProfile(user.uid, {
+        equipped: updatedEquipped,
+        ...topLevelFields,
+      });
+
+      const updated: WalletDoc = {
+        ...walletRef.current,
+        equipped: updatedEquipped,
+      };
+      sessionWalletCache[user.uid] = updated;
+      setWallet(updated);
+    },
+    [user?.uid]
+  );
+
   const refreshWallet = useCallback(async () => {
     if (user?.uid) {
       await fetchWallet(user.uid, true);
@@ -341,7 +468,9 @@ export function useWallet() {
     loading,
     isSuperAdmin: isSuperAdminUser,
     equipCosmetic,
+    equipMultipleCosmetics,
     purchaseCosmetic,
+    purchaseCosmeticBatch,
     refreshWallet,
   };
 }

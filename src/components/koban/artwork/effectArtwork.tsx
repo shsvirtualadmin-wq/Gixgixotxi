@@ -692,22 +692,28 @@ export const ProfileEffectCardPreview: React.FC<{
 
   return (
     <div
-      className={`relative w-full h-full rounded-xl overflow-hidden bg-gradient-to-br from-[#141418] via-[#0E0E12] to-[#08080B] border border-white/10 p-3 flex flex-col justify-center items-center shadow-inner select-none ${className}`}
+      className={`dark-surface-preserve relative w-full h-full rounded-xl overflow-hidden bg-gradient-to-br from-[#141418] via-[#0E0E12] to-[#08080B] border border-white/15 p-2.5 flex flex-col justify-center items-center shadow-inner select-none ${className}`}
       style={{ overflow: 'hidden', contain: 'paint' }}
     >
       {/* Subtle Top Banner Strip Inside Mini Profile Card */}
-      <div className="absolute inset-x-0 top-0 h-9 bg-gradient-to-r from-[#2A080C] via-[#1E1B4B] to-[#0F172A] opacity-80 pointer-events-none" />
+      <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-r from-[#2A080C] via-[#1E1B4B] to-[#0F172A] opacity-85 pointer-events-none" />
 
-      {/* Centered Mini Profile Avatar + Name Line */}
+      {/* Centered Mini Profile Avatar + Glass Username Pill */}
       <div className="relative z-10 flex flex-col items-center gap-1.5 text-center max-w-full px-1">
-        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#DC2626] to-[#F59E0B] p-0.5 shrink-0 shadow-md">
-          <div className="w-full h-full rounded-full bg-[#121216] flex items-center justify-center p-2 text-[#F59E0B]">
+        <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#DC2626] to-[#F59E0B] p-0.5 shrink-0 shadow-md">
+          <div className="w-full h-full rounded-full bg-[#121216] flex items-center justify-center p-1.5 text-[#F59E0B]">
             <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full">
               <path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" />
             </svg>
           </div>
         </div>
-        <span className="text-[11px] font-heading font-semibold text-white/90 leading-tight line-clamp-1 max-w-full px-2 py-0.5 rounded-md bg-black/45 border border-white/10">
+        <span
+          className="text-[11px] font-heading font-semibold text-white leading-tight line-clamp-1 max-w-full px-2.5 py-0.5 rounded-full bg-white/12 backdrop-blur-sm border border-white/20 shadow-sm"
+          style={{
+            color: '#FFFFFF',
+            textShadow: '0 1px 3px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.65)',
+          }}
+        >
           {resolvedName}
         </span>
       </div>

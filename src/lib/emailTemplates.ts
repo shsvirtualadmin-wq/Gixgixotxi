@@ -601,6 +601,13 @@ export function buildKobanPurchaseDecisionAdminCopyEmail(params: {
 // 3. KOBANS RECEIVED OR SPENT FOR ANY REASON (Student Receipt + Selective Admin Alert)
 // ─────────────────────────────────────────────────────────────────────────────
 
+export interface KobanReceiptLineItem {
+  id?: string;
+  name: string;
+  category?: string;
+  priceKobans: number;
+}
+
 export function buildKobanReceiptStudentEmail(params: {
   studentName: string;
   deltaAmount: number; // positive = received, negative = spent
@@ -608,6 +615,7 @@ export function buildKobanReceiptStudentEmail(params: {
   reason: string;
   subType: KobanReceiptSubType;
   itemName?: string;
+  items?: KobanReceiptLineItem[];
   timestamp?: Date | string | number;
   appUrl?: string;
 }): RenderedEmailTemplate {
@@ -621,8 +629,63 @@ export function buildKobanReceiptStudentEmail(params: {
   const isSmallOptional =
     params.subType === 'daily_claim' || params.subType === 'milestone_claim';
 
+  const lineItems = Array.isArray(params.items)
+    ? params.items.filter((it) => it && typeof it.name === 'string')
+    : [];
+
   const subject = `${amountSignText} (${params.reason}) — Boardly`;
   const preheader = `${amountSignText} · New wallet balance: ${params.newBalance.toLocaleString()} Kobans.`;
+
+  const itemizedTableHtml =
+    lineItems.length > 0
+      ? `<div style="margin:18px 0 6px 0;">
+           <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#9CA3AF;margin-bottom:8px;">
+             Itemized Store Receipt (${lineItems.length} ${lineItems.length === 1 ? 'Item' : 'Items'})
+           </div>
+           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#121218;border:1px solid #23232F;border-radius:14px;overflow:hidden;">
+             <tr style="background-color:#181822;">
+               <th align="left" style="padding:10px 14px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#9CA3AF;border-bottom:1px solid #23232F;">
+                 Item
+               </th>
+               <th align="right" style="padding:10px 14px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#9CA3AF;border-bottom:1px solid #23232F;">
+                 Price
+               </th>
+             </tr>
+             ${lineItems
+               .map(
+                 (it, idx) => `
+               <tr>
+                 <td style="padding:10px 14px;border-bottom:${
+                   idx === lineItems.length - 1 ? '1px solid #23232F' : '1px solid #1E1E28'
+                 };font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;color:#F3F4F6;font-weight:600;">
+                   ${escapeHtml(it.name)}
+                   ${
+                     it.category
+                       ? `<div style="font-size:11px;color:#9CA3AF;font-weight:400;text-transform:capitalize;margin-top:2px;">${escapeHtml(
+                           it.category
+                         )}</div>`
+                       : ''
+                   }
+                 </td>
+                 <td align="right" style="padding:10px 14px;border-bottom:${
+                   idx === lineItems.length - 1 ? '1px solid #23232F' : '1px solid #1E1E28'
+                 };font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;font-weight:700;color:#F5B301;white-space:nowrap;">
+                   ${Math.max(0, Math.floor(Number(it.priceKobans) || 0)).toLocaleString()} Kobans
+                 </td>
+               </tr>`
+               )
+               .join('')}
+             <tr style="background-color:#15130E;">
+               <td style="padding:11px 14px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;font-weight:700;color:#FFFFFF;">
+                 Total Spent
+               </td>
+               <td align="right" style="padding:11px 14px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:14px;font-weight:800;color:#F5B301;white-space:nowrap;">
+                 ${absAmount.toLocaleString()} Kobans
+               </td>
+             </tr>
+           </table>
+         </div>`
+      : '';
 
   const html = renderBaseHtmlLayout({
     subject,
@@ -638,11 +701,12 @@ export function buildKobanReceiptStudentEmail(params: {
       amountText: isPositive ? `+${absAmount.toLocaleString()} Kobans` : `-${absAmount.toLocaleString()} Kobans`,
       subtext: `New Balance: ${params.newBalance.toLocaleString()} Kobans`,
     },
+    extraBodyHtml: itemizedTableHtml,
     detailsRows: [
       { label: 'Activity', value: params.reason },
-      ...(params.itemName ? [{ label: 'Item', value: params.itemName }] : []),
+      ...(params.itemName && lineItems.length === 0 ? [{ label: 'Item', value: params.itemName }] : []),
       {
-        label: isPositive ? 'Amount Received' : 'Amount Spent',
+        label: isPositive ? 'Amount Received' : 'Total Spent',
         value: `${isPositive ? '+' : '-'}${absAmount.toLocaleString()} Kobans`,
         highlightGold: true,
       },
@@ -650,16 +714,33 @@ export function buildKobanReceiptStudentEmail(params: {
       { label: 'Time (PKT)', value: timeStr },
     ],
     ctaLabel: params.subType === 'store_purchase' ? 'View Cosmetics in Store' : 'Open Student Rewards',
-    ctaUrl: params.subType === 'store_purchase' ? `${appUrl}/dashboard/store` : `${appUrl}/dashboard/rewards`,
+    ctaUrl: params.subType === 'store_purchase' ? `${appUrl}/store` : `${appUrl}/dashboard/rewards`,
     appUrl,
     isOptionalEmail: isSmallOptional,
   });
+
+  const itemizedTextLines =
+    lineItems.length > 0
+      ? [
+          ``,
+          `ITEMIZED RECEIPT:`,
+          ...lineItems.map(
+            (it) =>
+              `- ${it.name}${it.category ? ` (${it.category})` : ''}: ${Math.max(
+                0,
+                Math.floor(Number(it.priceKobans) || 0)
+              ).toLocaleString()} Kobans`
+          ),
+          `Total: ${absAmount.toLocaleString()} Kobans`,
+        ]
+      : [];
 
   const text = [
     `BOARDLY WALLET RECEIPT — ${amountSignText}`,
     ``,
     `Hi ${params.studentName || 'Student'},`,
     `Reason: ${params.reason}`,
+    ...itemizedTextLines,
     `Change: ${isPositive ? '+' : '-'}${absAmount.toLocaleString()} Kobans`,
     `New Balance: ${params.newBalance.toLocaleString()} Kobans`,
     `Time: ${timeStr}`,
@@ -685,6 +766,7 @@ export function buildKobanActivityAdminAlertEmail(params: {
   newBalance: number;
   reason: string;
   subType: KobanReceiptSubType;
+  items?: KobanReceiptLineItem[];
   adminEmail?: string;
   timestamp?: Date | string | number;
   appUrl?: string;
@@ -693,6 +775,16 @@ export function buildKobanActivityAdminAlertEmail(params: {
   const isPositive = params.deltaAmount >= 0;
   const absAmount = Math.abs(Math.floor(params.deltaAmount));
   const timeStr = formatPktDateTime(params.timestamp);
+  const lineItems = Array.isArray(params.items)
+    ? params.items.filter((it) => it && typeof it.name === 'string')
+    : [];
+  const itemsSummary =
+    lineItems.length > 0
+      ? lineItems
+          .map((it) => `${it.name} (${Math.max(0, Math.floor(Number(it.priceKobans) || 0)).toLocaleString()} K)`)
+          .join(', ')
+      : undefined;
+
   const subject = `[Admin Wallet Alert] ${isPositive ? '+' : '-'}${absAmount.toLocaleString()} Kobans (${params.reason}) — ${params.studentName}`;
   const preheader = `${params.studentName} (${params.subType}): ${isPositive ? '+' : '-'}${absAmount.toLocaleString()} Kobans. New balance: ${params.newBalance.toLocaleString()} Kobans.`;
 
@@ -707,6 +799,7 @@ export function buildKobanActivityAdminAlertEmail(params: {
       { label: 'Student', value: `${params.studentName} (${params.studentEmail || params.studentUid})` },
       { label: 'Event Type', value: params.subType.toUpperCase(), mono: true },
       { label: 'Reason', value: params.reason },
+      ...(itemsSummary ? [{ label: `Items (${lineItems.length})`, value: itemsSummary }] : []),
       {
         label: 'Kobans Delta',
         value: `${isPositive ? '+' : '-'}${absAmount.toLocaleString()} Kobans`,
@@ -725,6 +818,7 @@ export function buildKobanActivityAdminAlertEmail(params: {
     `BOARDLY ADMIN WALLET ALERT`,
     `Student: ${params.studentName} (${params.studentEmail || params.studentUid})`,
     `Event: ${params.subType} — ${params.reason}`,
+    ...(itemsSummary ? [`Items: ${itemsSummary}`] : []),
     `Amount: ${isPositive ? '+' : '-'}${absAmount.toLocaleString()} Kobans`,
     `New Balance: ${params.newBalance.toLocaleString()} Kobans`,
     `Time: ${timeStr}`,

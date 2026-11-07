@@ -27,6 +27,9 @@ export function PublicLayout() {
     return <Navigate to="/dashboard/commons" replace />;
   }
 
+  const isStoreMainPage =
+    location.pathname === '/store' || location.pathname === '/store/get-kobans';
+
   const isStoreOrKobans =
     location.pathname.startsWith('/store') ||
     location.pathname === '/kobans' ||
@@ -34,6 +37,20 @@ export function PublicLayout() {
 
   const isContact = location.pathname === '/contact';
   const isCommonsFeed = location.pathname === '/commons';
+
+  if (isStoreMainPage) {
+    return (
+      <div className="relative min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)] antialiased overflow-x-hidden">
+        <BackgroundCanvas />
+        <main className="flex-1 w-full flex flex-col">
+          <BoardlySuspenseBoundary variant="page">
+            <Outlet />
+          </BoardlySuspenseBoundary>
+        </main>
+        {isAuthenticated && <DashboardBottomNav />}
+      </div>
+    );
+  }
 
   const isDashboardAppRoute =
     isCommonsFeed || Boolean(user && (isStoreOrKobans || isContact));

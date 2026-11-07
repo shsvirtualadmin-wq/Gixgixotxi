@@ -17,12 +17,18 @@ import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWallet } from '@/hooks/useWallet';
 import { useAuthGate } from '@/contexts/AuthGateContext';
+import { useStoreCart } from '@/hooks/useStoreCart';
+import { Plus } from 'lucide-react';
 
 export const StoreItemDetailPage: React.FC = () => {
   const { item: itemParam = '' } = useParams<{ item: string }>();
   const { user } = useAuth();
   const { owned, equipped, purchaseCosmetic, equipCosmetic } = useWallet();
   const { requireAuth } = useAuthGate();
+  const { isInCart, toggleCartItem } = useStoreCart({
+    uid: user?.uid,
+    owned,
+  });
 
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -40,6 +46,7 @@ export const StoreItemDetailPage: React.FC = () => {
   }
 
   const isOwned = Boolean(user && owned.includes(cosmetic.id));
+  const inCart = isInCart(cosmetic.id);
   const isEquipped = Boolean(
     user &&
       ((cosmetic.type === 'avatar' && equipped.avatar === cosmetic.id) ||
@@ -98,7 +105,7 @@ export const StoreItemDetailPage: React.FC = () => {
   ).slice(0, 4);
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6">
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-32 px-4 sm:px-6">
       <PageMeta
         title={`${cosmetic.name} — ${cosmetic.rarity.toUpperCase()} ${cosmetic.type} | Boardly Store`}
         description={`${cosmetic.description} Unlock ${cosmetic.name} for ${cosmetic.priceKobans} Kobans in the Boardly Store.`}
@@ -116,7 +123,7 @@ export const StoreItemDetailPage: React.FC = () => {
 
         <section className="glass-panel p-7 sm:p-10 mb-8 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
           {/* Live Artwork Preview Box */}
-          <div className="rounded-2xl bg-[#121216] border border-white/10 p-6 flex flex-col items-center justify-center min-h-[260px] relative overflow-hidden">
+          <div className="rounded-2xl bg-[#121216] dark-surface-preserve border border-white/10 p-6 flex flex-col items-center justify-center min-h-[260px] relative overflow-hidden">
             {cosmetic.type === 'avatar' && (
               <AvatarPicture avatarId={cosmetic.id} size={136} animated={cosmetic.animated} />
             )}
@@ -195,6 +202,28 @@ export const StoreItemDetailPage: React.FC = () => {
             )}
 
             <div className="flex flex-wrap items-center gap-3">
+              {!isOwned && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const action = toggleCartItem(cosmetic.id);
+                    setFeedback(
+                      action === 'added'
+                        ? 'Added to your cart!'
+                        : 'Removed from your cart.'
+                    );
+                  }}
+                  className={`py-3 px-4 rounded-xl text-xs sm:text-sm font-bold inline-flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                    inCart
+                      ? 'bg-[#E11D2A]/15 text-[#E11D2A] border-[#E11D2A]/50'
+                      : 'bg-[var(--bg-elevated)] text-[var(--text-primary)] border-[var(--border)] hover:border-[#E11D2A]/50'
+                  }`}
+                >
+                  {inCart ? <Check size={15} /> : <Plus size={15} />}
+                  <span>{inCart ? 'In cart' : 'Add to cart'}</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={handleAction}
@@ -216,7 +245,7 @@ export const StoreItemDetailPage: React.FC = () => {
                 ) : (
                   <>
                     <ShoppingBag size={15} />
-                    <span>Unlock for {cosmetic.priceKobans} Kobans</span>
+                    <span>Buy for {cosmetic.priceKobans} Kobans</span>
                   </>
                 )}
               </button>

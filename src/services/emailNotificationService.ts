@@ -244,6 +244,7 @@ export function notifyKobanReceipt(params: {
   reason: string;
   subType: KobanReceiptSubType;
   itemName?: string;
+  items?: Array<{ id?: string; name: string; category?: string; priceKobans: number }>;
   adminEmail?: string;
 }): void {
   triggerTransactionalEmail('koban_receipt', params.recordId, params);
