@@ -68,6 +68,11 @@ export const AdminCertificatesPage: React.FC = () => {
     null
   );
 
+  const handleSignatureChanged = useCallback((sig: AdminSignatureRecord | null) => {
+    setHasActiveSignature(Boolean(sig));
+    setActiveSignature(sig);
+  }, []);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -80,8 +85,8 @@ export const AdminCertificatesPage: React.FC = () => {
       setCertificates(Array.isArray(res.certificates) ? res.certificates : []);
       const mockList = Array.isArray(res.mocks) ? res.mocks : [];
       setMocks(mockList);
-      if (!selectedMockId && mockList.length > 0) {
-        setSelectedMockId(mockList[0].id);
+      if (mockList.length > 0) {
+        setSelectedMockId((prev) => prev || mockList[0].id);
       }
     } catch (err: any) {
       setNotice({
@@ -91,7 +96,7 @@ export const AdminCertificatesPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, statusFilter, selectedMockId]);
+  }, [searchQuery, statusFilter]);
 
   useEffect(() => {
     void loadData();
