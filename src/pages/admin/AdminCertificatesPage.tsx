@@ -127,9 +127,15 @@ export const AdminCertificatesPage: React.FC = () => {
     setNotice(null);
     try {
       const res = await regenerateAllCertificates();
+      const count = res.regenerated ?? res.regeneratedCount ?? 0;
       setNotice({
         type: 'success',
-        text: `Regenerated ${res.regeneratedCount} certificate(s) with signature v${res.signatureVersion}.`,
+        text:
+          res.total === 0 && count === 0
+            ? `0 certificates needed regeneration (all active certificates already use signature v${res.signatureVersion || activeSignature?.version || 1}).`
+            : `Regenerated ${count} of ${res.total} certificate(s) with signature v${res.signatureVersion || activeSignature?.version || 1}${
+                res.failed ? ` (${res.failed} failed)` : ''
+              }.`,
       });
       await loadData();
     } catch (err: any) {

@@ -419,20 +419,69 @@ export async function regenerateCertificateById(
 }
 
 /**
- * Admin only: Regenerate all certificates (or all for a mock) with the current active signature.
+ * Admin only: Regenerate all active certificates needing the current active signature (`POST /api/admin/certificates/regenerate-all`).
+ * Automatically iterates through batches (10 at a time) if `hasMore` is returned.
  */
 export async function regenerateAllCertificates(grandLineId?: string): Promise<{
   ok: boolean;
+  total: number;
+  regenerated: number;
   regeneratedCount: number;
+  failed: number;
+  errors: Array<{ id: string; serial: string; error: string }>;
   signatureVersion: number;
 }> {
   const endpoint = '/api/admin/certificates/regenerate-all';
   try {
-    return await apiFetch(endpoint, {
-      method: 'POST',
-      requireAuth: true,
-      body: JSON.stringify({ grandLineId }),
-    });
+    let cursor: string | null = null;
+    let total = 0;
+    let regenerated = 0;
+    let failed = 0;
+    let signatureVersion = 1;
+    const errors: Array<{ id: string; serial: string; error: string }> = [];
+    let safetyBatches = 0;
+
+    while (safetyBatches < 50) {
+      safetyBatches += 1;
+      const batchRes: any = await apiFetch(endpoint, {
+        method: 'POST',
+        requireAuth: true,
+        body: JSON.stringify({
+          ...(grandLineId ? { grandLineId } : {}),
+          ...(cursor ? { cursor } : {}),
+          limit: 10,
+        }),
+      });
+
+      if (safetyBatches === 1) {
+        total = Number(batchRes?.total ?? batchRes?.regenerated ?? batchRes?.regeneratedCount ?? 0);
+      }
+      const batchRegen = Number(batchRes?.regenerated ?? batchRes?.regeneratedCount ?? 0);
+      const batchFailed = Number(batchRes?.failed ?? 0);
+      regenerated += batchRegen;
+      failed += batchFailed;
+      if (batchRes?.signatureVersion !== undefined) {
+        signatureVersion = Number(batchRes.signatureVersion);
+      }
+      if (Array.isArray(batchRes?.errors)) {
+        errors.push(...batchRes.errors);
+      }
+
+      if (!batchRes?.hasMore || !batchRes?.nextCursor || batchRegen + batchFailed === 0) {
+        break;
+      }
+      cursor = String(batchRes.nextCursor);
+    }
+
+    return {
+      ok: true,
+      total: Math.max(total, regenerated + failed),
+      regenerated,
+      regeneratedCount: regenerated,
+      failed,
+      errors,
+      signatureVersion,
+    };
   } catch (err: any) {
     console.error(`[CertificateService] Error (${err?.code || 'ADMIN_CERT_REGEN_ALL'}) at ${endpoint}:`, err);
     throw err;

@@ -6111,6 +6111,16 @@
   "crewJoinRequests": [],
   "certificateSignatures": [
     {
+      "id": "329a2347-94f7-4d8e-89e4-7b05448a8bf6",
+      "r2_key": "signatures/sig-v2-1794062154446.png",
+      "signatory_name": "Syed H. Shah",
+      "signatory_title": "Founder, Boardly",
+      "version": 2,
+      "uploaded_by": "A5YMRimdHRcmeDWutxtUGt2e4hf2",
+      "created_at": 1794062154446,
+      "active": 1
+    },
+    {
       "id": "347cd59c-e777-4282-9b62-def699159577",
       "r2_key": "signatures/sig-v1-1794061211137.png",
       "signatory_name": "Syed H. Shah",

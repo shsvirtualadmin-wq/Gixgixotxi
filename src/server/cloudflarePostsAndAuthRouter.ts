@@ -8616,12 +8616,25 @@ ${allUrls
       return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
     }
 
+    const { signatureRow: activeSig } = getActiveSignatureRecord(store);
+    if (!activeSig) {
+      return res.status(400).json({
+        error: 'No active certificate signature found. Please upload or activate a signature first.',
+        code: 'NO_ACTIVE_SIGNATURE',
+      });
+    }
+
     const certId = decodeURIComponent(String(req.params.id || '')).trim();
     const cert = store.certificates.find((c: any) => c.id === certId || c.serial === certId);
     if (!cert) return res.status(404).json({ error: 'Certificate not found.', code: 'NOT_FOUND' });
+    if (cert.status === 'revoked') {
+      return res.status(400).json({
+        error: 'Cannot regenerate a revoked certificate.',
+        code: 'CERTIFICATE_REVOKED',
+      });
+    }
 
-    const { signatureRow: activeSig } = getActiveSignatureRecord(store);
-    cert.signature_version = activeSig ? Number(activeSig.version) : 0;
+    cert.signature_version = Number(activeSig.version);
 
     const test = store.captainTests.find((t: any) => t.id === cert.grand_line_id);
     const preferredTheme =
@@ -8645,7 +8658,7 @@ ${allUrls
     });
   });
 
-  // 13. POST /api/admin/certificates/regenerate-all — Admin only: regenerate all certificates with current active signature
+  // 13. POST /api/admin/certificates/regenerate-all — Admin only: regenerate all active certificates needing the current active signature in small batches
   app.post('/api/admin/certificates/regenerate-all', async (req: Request, res: Response) => {
     const user = await verifyFirebaseJwtZeroFirestore(req);
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
@@ -8657,26 +8670,86 @@ ${allUrls
     }
 
     const { signatureRow: activeSig } = getActiveSignatureRecord(store);
-    const activeVersion = activeSig ? Number(activeSig.version) : 0;
-    const targetGrandLineId = req.body?.grandLineId ? String(req.body.grandLineId).trim() : '';
+    if (!activeSig) {
+      return res.status(400).json({
+        error: 'No active certificate signature found. Please upload or activate a signature first.',
+        code: 'NO_ACTIVE_SIGNATURE',
+      });
+    }
 
-    let regeneratedCount = 0;
-    for (const cert of store.certificates) {
-      if (targetGrandLineId && cert.grand_line_id !== targetGrandLineId) continue;
-      cert.signature_version = activeVersion;
-      const test = store.captainTests.find((t: any) => t.id === cert.grand_line_id);
-      const preferredTheme = test?.certificateThemeId ?? test?.certificate_theme_id ?? cert.theme_id;
-      const resolvedTheme = resolveCertificateTheme(cert.grand_line_id, preferredTheme);
-      cert.theme_id = preferredTheme && preferredTheme !== 'auto' ? preferredTheme : resolvedTheme.id;
-      await renderAndPersistCertificateRow(store, cert);
-      regeneratedCount += 1;
+    const activeVersion = Number(activeSig.version);
+    const targetGrandLineId = req.body?.grandLineId ? String(req.body.grandLineId).trim() : '';
+    const cursor = String(req.body?.cursor || req.query?.cursor || '').trim();
+    const batchSize = Math.min(25, Math.max(1, Number(req.body?.limit || req.query?.limit || 10)));
+
+    // Select all certificates WHERE status = 'active' AND signature_version != activeVersion
+    const allMatching = [...store.certificates]
+      .filter((c: any) => {
+        if (c.status !== 'active') return false;
+        if (Number(c.signature_version) === activeVersion) return false;
+        if (targetGrandLineId && c.grand_line_id !== targetGrandLineId) return false;
+        return true;
+      })
+      .sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)));
+
+    const totalPending = allMatching.length;
+    if (totalPending === 0) {
+      return res.status(200).json({
+        ok: true,
+        total: 0,
+        regenerated: 0,
+        regeneratedCount: 0,
+        failed: 0,
+        errors: [],
+        signatureVersion: activeVersion,
+        hasMore: false,
+        nextCursor: null,
+      });
+    }
+
+    const filteredAfterCursor = cursor
+      ? allMatching.filter((c: any) => String(c.id).localeCompare(cursor) > 0)
+      : allMatching;
+    const batch = filteredAfterCursor.slice(0, batchSize);
+
+    let regenerated = 0;
+    let failed = 0;
+    const errors: Array<{ id: string; serial: string; error: string }> = [];
+    let lastId: string | null = null;
+
+    for (const cert of batch) {
+      lastId = cert.id;
+      if (cert.status !== 'active') continue;
+      try {
+        // Keep serial and issued_at unchanged; overwrite existing pdf_r2_key and png_r2_key
+        cert.signature_version = activeVersion;
+        await renderAndPersistCertificateRow(store, cert);
+        regenerated += 1;
+      } catch (err: any) {
+        failed += 1;
+        errors.push({
+          id: cert.id,
+          serial: cert.serial,
+          error: err?.message || 'Failed to regenerate certificate',
+        });
+      }
     }
 
     saveD1Store(store);
+    const remainingAfter = Math.max(0, totalPending - regenerated - failed);
+    const hasMore = remainingAfter > 0 && batch.length === batchSize;
+
     return res.status(200).json({
       ok: true,
-      regeneratedCount,
+      total: totalPending,
+      regenerated,
+      regeneratedCount: regenerated,
+      failed,
+      errors,
       signatureVersion: activeVersion,
+      hasMore,
+      nextCursor: hasMore ? lastId : null,
+      remaining: remainingAfter,
     });
   });
 

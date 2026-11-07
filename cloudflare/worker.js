@@ -2448,6 +2448,275 @@ export default {
         return expected === String(token).trim();
       }
 
+      const WORKER_CERT_THEMES = {
+        'red-dark': { bg: '#0A0A0D', ink: '#F8FAFC', muted: '#94A3B8', accent: '#EF4444' },
+        'light-red': { bg: '#F6F5F0', ink: '#0D1B3E', muted: '#475569', accent: '#EF4444' },
+        'blue-dark': { bg: '#0D1B3E', ink: '#F8FAFC', muted: '#93C5FD', accent: '#1A6DFF' },
+        'green-dark': { bg: '#090F0D', ink: '#F0FDF4', muted: '#86EFAC', accent: '#22C55E' },
+        'amber-dark': { bg: '#0B0D14', ink: '#FFFBEB', muted: '#CBD5E1', accent: '#F5B942' },
+        'mono-light': { bg: '#FFFFFF', ink: '#0D1B3E', muted: '#475569', accent: '#EF4444' },
+      };
+
+      function resolveWorkerCertThemeColors(grandLineId, themeId) {
+        if (themeId && WORKER_CERT_THEMES[themeId]) return WORKER_CERT_THEMES[themeId];
+        const keys = Object.keys(WORKER_CERT_THEMES);
+        let h = 0x811c9dc5;
+        const s = String(grandLineId || 'gl_mock_01');
+        for (let i = 0; i < s.length; i++) {
+          h ^= s.charCodeAt(i);
+          h = Math.imul(h, 0x01000193) >>> 0;
+        }
+        return WORKER_CERT_THEMES[keys[h % keys.length]];
+      }
+
+      function hexToRgb01(hex) {
+        const clean = String(hex || '#0A0A0D').replace('#', '');
+        const r = parseInt(clean.slice(0, 2), 16) || 10;
+        const g = parseInt(clean.slice(2, 4), 16) || 10;
+        const b = parseInt(clean.slice(4, 6), 16) || 13;
+        return {
+          r,
+          g,
+          b,
+          rf: (r / 255).toFixed(3),
+          gf: (g / 255).toFixed(3),
+          bf: (b / 255).toFixed(3),
+        };
+      }
+
+      function escapePdfText(str) {
+        return String(str || '')
+          .replace(/[^\x20-\x7E]/g, ' ')
+          .replace(/\\/g, '\\\\')
+          .replace(/\(/g, '\\(')
+          .replace(/\)/g, '\\)');
+      }
+
+      function formatWorkerCertDate(ts) {
+        const d = new Date(Number(ts || Date.now()));
+        const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        const mon = months[d.getUTCMonth()] || 'JAN';
+        const yr = d.getUTCFullYear();
+        return `${day} ${mon} ${yr}`;
+      }
+
+      function buildWorkerCertificatePdfBytes(certRow, sigRow) {
+        const palette = resolveWorkerCertThemeColors(certRow.grand_line_id, certRow.theme_id);
+        const bg = hexToRgb01(palette.bg);
+        const ink = hexToRgb01(palette.ink);
+        const muted = hexToRgb01(palette.muted);
+        const accent = hexToRgb01(palette.accent);
+
+        const serial = String(certRow.serial || 'BDLY-GL01-0001');
+        const studentName = String(certRow.student_name || 'Student');
+        const mockTitle = String(certRow.grand_line_title || 'Boardly Grand Line Mock');
+        const editionLabel = String(certRow.edition_label || 'OFFICIAL EDITION').toUpperCase();
+        const score = Number(certRow.score || 0);
+        const totalQ = Number(certRow.total_questions || 0);
+        const pct = Number(certRow.percentage || (totalQ > 0 ? Math.round((score / totalQ) * 100) : 100));
+        const scoreStr = totalQ > 0 ? `${score}/${totalQ} (${pct}%)` : `${score}`;
+        const participants = Number(certRow.participants_count || 1);
+        const dateStr = formatWorkerCertDate(certRow.issued_at);
+        const sigName = String(sigRow?.signatory_name || 'Boardly Examination Council');
+        const sigTitle = String(sigRow?.signatory_title || 'Founder, Boardly');
+        const sigVer = Number(sigRow?.version || certRow.signature_version || 1);
+
+        const contentLines = [
+          'q',
+          `${bg.rf} ${bg.gf} ${bg.bf} rg`,
+          '0 0 1123 794 re f',
+          `${accent.rf} ${accent.gf} ${accent.bf} RG 2 w`,
+          '56 48 1011 698 re S',
+          'BT',
+          `/F2 22 Tf ${ink.rf} ${ink.gf} ${ink.bf} rg 104 686 Td (BOARDLY .) Tj`,
+          `/F2 11 Tf ${muted.rf} ${muted.gf} ${muted.bf} rg 0 -22 Td (GRAND LINE MOCK / ${escapePdfText(editionLabel)}) Tj`,
+          `/F2 12 Tf ${accent.rf} ${accent.gf} ${accent.bf} rg 330 -60 Td (CERTIFICATE OF EXCELLENCE) Tj`,
+          `/F1 40 Tf ${accent.rf} ${accent.gf} ${accent.bf} rg -20 -58 Td (1ST POSITION) Tj`,
+          `/F2 12 Tf ${muted.rf} ${muted.gf} ${muted.bf} rg 35 -48 Td (PROUDLY PRESENTED TO) Tj`,
+          `/F1 34 Tf ${ink.rf} ${ink.gf} ${ink.bf} rg -60 -52 Td (${escapePdfText(studentName)}) Tj`,
+          `/F1 14 Tf ${muted.rf} ${muted.gf} ${muted.bf} rg -140 -48 Td (for securing First Position in ${escapePdfText(mockTitle)} with a score of ${escapePdfText(scoreStr)}, ahead of ${participants} participants.) Tj`,
+          `/F2 11 Tf ${ink.rf} ${ink.gf} ${ink.bf} rg -45 -180 Td (DATE ISSUED: ${escapePdfText(dateStr)}   |   SERIAL: ${escapePdfText(serial)}   |   VERIFY: boardly.cfd/verify/${escapePdfText(serial)}) Tj`,
+          `/F1 13 Tf ${ink.rf} ${ink.gf} ${ink.bf} rg 0 -28 Td (AUTHORISED BY: ${escapePdfText(sigName)} - ${escapePdfText(sigTitle)} [Signature v${sigVer}]) Tj`,
+          'ET',
+          'Q',
+        ];
+        const streamStr = contentLines.join('\n');
+
+        const objs = [
+          '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+          '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+          '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1123 794] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>\nendobj\n',
+          '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n',
+          '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>\nendobj\n',
+          `6 0 obj\n<< /Length ${streamStr.length} >>\nstream\n${streamStr}\nendstream\nendobj\n`,
+        ];
+
+        let pdf = '%PDF-1.4\n';
+        const offsets = [0];
+        for (const o of objs) {
+          offsets.push(pdf.length);
+          pdf += o;
+        }
+        const xrefStart = pdf.length;
+        pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
+        for (let i = 1; i <= objs.length; i++) {
+          pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+        }
+        pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+        return new TextEncoder().encode(pdf);
+      }
+
+      let crcTableCache = null;
+      function getCrc32Table() {
+        if (crcTableCache) return crcTableCache;
+        const table = new Uint32Array(256);
+        for (let n = 0; n < 256; n++) {
+          let c = n;
+          for (let k = 0; k < 8; k++) {
+            c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+          }
+          table[n] = c >>> 0;
+        }
+        crcTableCache = table;
+        return table;
+      }
+
+      function crc32(bytes) {
+        const table = getCrc32Table();
+        let crc = 0xffffffff;
+        for (let i = 0; i < bytes.length; i++) {
+          crc = table[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+        }
+        return (crc ^ 0xffffffff) >>> 0;
+      }
+
+      function adler32(bytes) {
+        let a = 1;
+        let b = 0;
+        const MOD = 65521;
+        for (let i = 0; i < bytes.length; i++) {
+          a = (a + bytes[i]) % MOD;
+          b = (b + a) % MOD;
+        }
+        return ((b << 16) | a) >>> 0;
+      }
+
+      function makePngChunk(typeFourCC, dataBytes) {
+        const len = dataBytes.length;
+        const out = new Uint8Array(12 + len);
+        const view = new DataView(out.buffer);
+        view.setUint32(0, len, false);
+        for (let i = 0; i < 4; i++) {
+          out[4 + i] = typeFourCC.charCodeAt(i);
+        }
+        out.set(dataBytes, 8);
+        const crcInput = out.subarray(4, 8 + len);
+        view.setUint32(8 + len, crc32(crcInput), false);
+        return out;
+      }
+
+      function buildWorkerCertificatePngBytes(certRow, sigRow) {
+        const palette = resolveWorkerCertThemeColors(certRow.grand_line_id, certRow.theme_id);
+        const bg = hexToRgb01(palette.bg);
+        const accent = hexToRgb01(palette.accent);
+        const ink = hexToRgb01(palette.ink);
+
+        const w = 112;
+        const h = 79;
+        const rawScanlines = new Uint8Array(h * (1 + w * 3));
+        let ptr = 0;
+        for (let y = 0; y < h; y++) {
+          rawScanlines[ptr++] = 0; // filter type 0
+          for (let x = 0; x < w; x++) {
+            const isBorder = x === 5 || x === w - 6 || y === 4 || y === h - 5;
+            const isHeaderDot = x >= 22 && x <= 25 && y >= 10 && y <= 13;
+            const isCenterBar = y >= 32 && y <= 34 && x >= 20 && x <= w - 20;
+            if (isBorder || isHeaderDot || isCenterBar) {
+              rawScanlines[ptr++] = accent.r;
+              rawScanlines[ptr++] = accent.g;
+              rawScanlines[ptr++] = accent.b;
+            } else if (x > 5 && x < w - 6 && y > 4 && y < h - 5 && (x + y) % 11 === 0) {
+              rawScanlines[ptr++] = ink.r;
+              rawScanlines[ptr++] = ink.g;
+              rawScanlines[ptr++] = ink.b;
+            } else {
+              rawScanlines[ptr++] = bg.r;
+              rawScanlines[ptr++] = bg.g;
+              rawScanlines[ptr++] = bg.b;
+            }
+          }
+        }
+
+        // Wrap rawScanlines in uncompressed Zlib stream (CMF=0x78, FLG=0x01, BFINAL=1, LEN, NLEN, data, Adler32)
+        const len = rawScanlines.length;
+        const zlib = new Uint8Array(2 + 5 + len + 4);
+        zlib[0] = 0x78;
+        zlib[1] = 0x01;
+        zlib[2] = 0x01; // final uncompressed block
+        zlib[3] = len & 0xff;
+        zlib[4] = (len >>> 8) & 0xff;
+        const nlen = ~len & 0xffff;
+        zlib[5] = nlen & 0xff;
+        zlib[6] = (nlen >>> 8) & 0xff;
+        zlib.set(rawScanlines, 7);
+        const adlerView = new DataView(zlib.buffer);
+        adlerView.setUint32(7 + len, adler32(rawScanlines), false);
+
+        const ihdr = new Uint8Array(13);
+        const ihdrView = new DataView(ihdr.buffer);
+        ihdrView.setUint32(0, w, false);
+        ihdrView.setUint32(4, h, false);
+        ihdr[8] = 8; // bit depth 8
+        ihdr[9] = 2; // color type 2 (RGB)
+        ihdr[10] = 0;
+        ihdr[11] = 0;
+        ihdr[12] = 0;
+
+        const metaStr = `BoardlyCertificate\0serial=${certRow.serial};student=${certRow.student_name};mock=${certRow.grand_line_title};sig_v=${sigRow?.version || certRow.signature_version || 1}`;
+        const textBytes = new TextEncoder().encode(metaStr);
+
+        const sigHeader = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+        const cIhdr = makePngChunk('IHDR', ihdr);
+        const cText = makePngChunk('tEXt', textBytes);
+        const cIdat = makePngChunk('IDAT', zlib);
+        const cIend = makePngChunk('IEND', new Uint8Array(0));
+
+        const total = sigHeader.length + cIhdr.length + cText.length + cIdat.length + cIend.length;
+        const out = new Uint8Array(total);
+        let offset = 0;
+        for (const part of [sigHeader, cIhdr, cText, cIdat, cIend]) {
+          out.set(part, offset);
+          offset += part.length;
+        }
+        return out;
+      }
+
+      async function renderAndStoreWorkerCertificate(env, certRow, sigRow) {
+        if (!env.R2_BUCKET) {
+          throw new Error('R2_BUCKET binding is not configured on this Worker.');
+        }
+        const pdfBytes = buildWorkerCertificatePdfBytes(certRow, sigRow);
+        const pngBytes = buildWorkerCertificatePngBytes(certRow, sigRow);
+
+        const pdfKey = certRow.pdf_r2_key || `certificates/${certRow.grand_line_id}/${certRow.serial}.pdf`;
+        const pngKey = certRow.png_r2_key || `certificates/${certRow.grand_line_id}/${certRow.serial}.png`;
+
+        await env.R2_BUCKET.put(pdfKey, pdfBytes, {
+          httpMetadata: {
+            contentType: 'application/pdf',
+            cacheControl: 'private, no-store',
+          },
+        });
+        await env.R2_BUCKET.put(pngKey, pngBytes, {
+          httpMetadata: {
+            contentType: 'image/png',
+            cacheControl: 'private, no-store',
+          },
+        });
+        return { pdfKey, pngKey, pdfBytes, pngBytes };
+      }
+
       // Block any direct public/student access to /api/signatures/*
       if (path.startsWith('/api/signatures/')) {
         return errorResponse(
@@ -2619,7 +2888,15 @@ export default {
 
         const r2Key = format === 'png' ? cert.png_r2_key : cert.pdf_r2_key;
         if (env.R2_BUCKET) {
-          const obj = await env.R2_BUCKET.get(r2Key);
+          let obj = await env.R2_BUCKET.get(r2Key);
+          if (!obj) {
+            const sigRow = await db
+              .prepare('SELECT * FROM certificate_signatures WHERE version = ?1 LIMIT 1')
+              .bind(Number(cert.signature_version || 1))
+              .first();
+            await renderAndStoreWorkerCertificate(env, cert, sigRow);
+            obj = await env.R2_BUCKET.get(r2Key);
+          }
           if (obj) {
             return new Response(obj.body, {
               status: 200,
@@ -3156,6 +3433,214 @@ export default {
             hasActiveSignature: Boolean(formattedActiveSig),
             activeSignature: formattedActiveSig,
             certificates: mappedCerts,
+          });
+        }
+
+        // POST /api/admin/certificates/regenerate-all (super admin / admin only)
+        if (path === '/api/admin/certificates/regenerate-all' && method === 'POST') {
+          const activeSig = await db
+            .prepare('SELECT * FROM certificate_signatures WHERE active = 1 ORDER BY version DESC LIMIT 1')
+            .first();
+          if (!activeSig) {
+            return errorResponse(
+              request,
+              env,
+              'No active certificate signature found. Please upload or activate a signature first.',
+              'NO_ACTIVE_SIGNATURE',
+              400
+            );
+          }
+
+          const activeVersion = Number(activeSig.version);
+          const body = await request.json().catch(() => ({}));
+          const grandLineId = String(body?.grandLineId || url.searchParams.get('grandLineId') || '').trim();
+          const cursor = String(body?.cursor || url.searchParams.get('cursor') || '').trim();
+          const batchSize = Math.min(
+            25,
+            Math.max(1, Number(body?.limit || url.searchParams.get('limit') || 10))
+          );
+
+          // Count total active certificates needing regeneration (status = 'active' AND signature_version != activeVersion)
+          const countRow = grandLineId
+            ? await db
+                .prepare(
+                  `SELECT COUNT(*) AS cnt FROM certificates
+                   WHERE status = 'active' AND signature_version != ?1 AND grand_line_id = ?2`
+                )
+                .bind(activeVersion, grandLineId)
+                .first()
+            : await db
+                .prepare(
+                  `SELECT COUNT(*) AS cnt FROM certificates
+                   WHERE status = 'active' AND signature_version != ?1`
+                )
+                .bind(activeVersion)
+                .first();
+
+          const totalPending = Number(countRow?.cnt || 0);
+          if (totalPending === 0) {
+            return jsonResponse(request, env, {
+              ok: true,
+              total: 0,
+              regenerated: 0,
+              regeneratedCount: 0,
+              failed: 0,
+              errors: [],
+              signatureVersion: activeVersion,
+              hasMore: false,
+              nextCursor: null,
+            });
+          }
+
+          let batchQuery;
+          if (grandLineId && cursor) {
+            batchQuery = db
+              .prepare(
+                `SELECT * FROM certificates
+                 WHERE status = 'active' AND signature_version != ?1 AND grand_line_id = ?2 AND id > ?3
+                 ORDER BY id ASC LIMIT ?4`
+              )
+              .bind(activeVersion, grandLineId, cursor, batchSize);
+          } else if (grandLineId) {
+            batchQuery = db
+              .prepare(
+                `SELECT * FROM certificates
+                 WHERE status = 'active' AND signature_version != ?1 AND grand_line_id = ?2
+                 ORDER BY id ASC LIMIT ?3`
+              )
+              .bind(activeVersion, grandLineId, batchSize);
+          } else if (cursor) {
+            batchQuery = db
+              .prepare(
+                `SELECT * FROM certificates
+                 WHERE status = 'active' AND signature_version != ?1 AND id > ?2
+                 ORDER BY id ASC LIMIT ?3`
+              )
+              .bind(activeVersion, cursor, batchSize);
+          } else {
+            batchQuery = db
+              .prepare(
+                `SELECT * FROM certificates
+                 WHERE status = 'active' AND signature_version != ?1
+                 ORDER BY id ASC LIMIT ?2`
+              )
+              .bind(activeVersion, batchSize);
+          }
+
+          const { results: batchCerts } = await batchQuery.all();
+          const rows = batchCerts || [];
+
+          let regenerated = 0;
+          let failed = 0;
+          const errors = [];
+          let lastId = null;
+
+          for (const cert of rows) {
+            lastId = cert.id;
+            if (cert.status !== 'active') continue;
+            try {
+              await renderAndStoreWorkerCertificate(env, cert, activeSig);
+              await db
+                .prepare(
+                  `UPDATE certificates
+                   SET signature_version = ?1
+                   WHERE id = ?2 AND status = 'active'`
+                )
+                .bind(activeVersion, cert.id)
+                .run();
+              regenerated += 1;
+            } catch (err) {
+              failed += 1;
+              errors.push({
+                id: cert.id,
+                serial: cert.serial,
+                error: err?.message || 'Failed to regenerate certificate',
+              });
+            }
+          }
+
+          const remainingAfter = Math.max(0, totalPending - regenerated - failed);
+          const hasMore = remainingAfter > 0 && rows.length === batchSize;
+
+          return jsonResponse(request, env, {
+            ok: true,
+            total: totalPending,
+            regenerated,
+            regeneratedCount: regenerated,
+            failed,
+            errors,
+            signatureVersion: activeVersion,
+            hasMore,
+            nextCursor: hasMore ? lastId : null,
+            remaining: remainingAfter,
+          });
+        }
+
+        // POST /api/admin/certificates/:id/regenerate — Regenerate single active certificate with current signature
+        const regenOneMatch = path.match(/^\/api\/admin\/certificates\/([^/]+)\/regenerate$/);
+        if (regenOneMatch && method === 'POST') {
+          const certId = decodeURIComponent(regenOneMatch[1]).trim();
+          const activeSig = await db
+            .prepare('SELECT * FROM certificate_signatures WHERE active = 1 ORDER BY version DESC LIMIT 1')
+            .first();
+          if (!activeSig) {
+            return errorResponse(
+              request,
+              env,
+              'No active certificate signature found. Please upload or activate a signature first.',
+              'NO_ACTIVE_SIGNATURE',
+              400
+            );
+          }
+
+          const cert = await db
+            .prepare('SELECT * FROM certificates WHERE id = ?1 OR serial = ?1')
+            .bind(certId)
+            .first();
+          if (!cert) {
+            return errorResponse(request, env, 'Certificate not found.', 'NOT_FOUND', 404);
+          }
+          if (cert.status === 'revoked') {
+            return errorResponse(
+              request,
+              env,
+              'Cannot regenerate a revoked certificate.',
+              'CERTIFICATE_REVOKED',
+              400
+            );
+          }
+
+          const body = await request.json().catch(() => ({}));
+          const nextThemeId =
+            typeof body?.themeId === 'string' && body.themeId.trim() && body.themeId.trim() !== 'auto'
+              ? body.themeId.trim()
+              : cert.theme_id;
+          const activeVersion = Number(activeSig.version);
+
+          const updatedCertRow = {
+            ...cert,
+            theme_id: nextThemeId,
+            signature_version: activeVersion,
+          };
+
+          await renderAndStoreWorkerCertificate(env, updatedCertRow, activeSig);
+          await db
+            .prepare(
+              `UPDATE certificates
+               SET signature_version = ?1, theme_id = ?2
+               WHERE id = ?3 AND status = 'active'`
+            )
+            .bind(activeVersion, nextThemeId, cert.id)
+            .run();
+
+          return jsonResponse(request, env, {
+            ok: true,
+            certificate: {
+              id: cert.id,
+              serial: cert.serial,
+              signatureVersion: activeVersion,
+              themeId: nextThemeId,
+            },
           });
         }
 

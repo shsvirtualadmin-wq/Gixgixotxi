@@ -361,9 +361,18 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
     setRegeneratingAll(true);
     try {
       const res = await regenerateAllCertificates();
-      setSuccessMsg(
-        `Regenerated ${res.regeneratedCount} certificate(s) with signature v${res.signatureVersion}.`
-      );
+      const count = res.regenerated ?? res.regeneratedCount ?? 0;
+      if (res.total === 0 && count === 0) {
+        setSuccessMsg(
+          `0 certificates needed regeneration (all active certificates already use signature v${res.signatureVersion || activeSignature?.version || 1}, or none have been issued yet).`
+        );
+      } else {
+        setSuccessMsg(
+          `Regenerated ${count} of ${res.total} certificate(s) with signature v${res.signatureVersion || activeSignature?.version || 1}${
+            res.failed ? ` (${res.failed} failed)` : ''
+          }.`
+        );
+      }
     } catch (err: any) {
       setErrorMsg(err?.message || 'Failed to regenerate certificates.');
     } finally {
