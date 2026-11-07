@@ -60,6 +60,8 @@ import {
   getCachedPublicProfile,
   type PublicUserProfileSummary,
 } from '@/services/publicProfileService';
+import { ThemePicker } from '@/components/certificate/ThemePicker';
+import { finalizeMockCertificates } from '@/services/certificateService';
 import { isAdminAccount } from '@/constants/superAdmin';
 
 const SUBJECT_OPTIONS = [
@@ -112,6 +114,8 @@ export function AmbassadorDashboardPage() {
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [savingTest, setSavingTest] = useState(false);
+  const [certificateThemeId, setCertificateThemeId] = useState<string>('auto');
+  const [finalizingTestId, setFinalizingTestId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const clampQuestionCount = (raw: string): number => {
@@ -242,6 +246,7 @@ export function AmbassadorDashboardPage() {
     setSubject('Physics');
     setTargetQuestionCount('20');
     setVisibility('public');
+    setCertificateThemeId('auto');
     setCsvText('');
     setParsedQuestions([]);
     setParseErrors([]);
@@ -255,6 +260,7 @@ export function AmbassadorDashboardPage() {
     setSubject(testItem.subject);
     setTargetQuestionCount(String(Math.max(1, Math.min(200, testItem.questionCount || 20))));
     setVisibility(testItem.visibility || 'public');
+    setCertificateThemeId(testItem.certificateThemeId || testItem.certificate_theme_id || 'auto');
     setCsvText('');
     setParseErrors([]);
     setSubmitError(null);
@@ -266,6 +272,9 @@ export function AmbassadorDashboardPage() {
       if (fullTest && fullTest.questions.length > 0) {
         setParsedQuestions(fullTest.questions);
         setTargetQuestionCount(String(Math.max(1, Math.min(200, fullTest.questions.length))));
+        if (fullTest.certificateThemeId || fullTest.certificate_theme_id) {
+          setCertificateThemeId(fullTest.certificateThemeId || fullTest.certificate_theme_id || 'auto');
+        }
       }
     } catch {
       // keep existing metadata
@@ -329,6 +338,7 @@ export function AmbassadorDashboardPage() {
           visibility,
           status: 'published',
           questions: questionsToSave,
+          certificateThemeId,
         });
         showApiToast('Test updated successfully.', 'success');
       } else {
@@ -341,6 +351,7 @@ export function AmbassadorDashboardPage() {
           captainUid: user.uid,
           captainName,
           crewName: crewNameDisplay,
+          certificateThemeId,
         });
         showApiToast(
           `Published "${title.trim()}" (${questionsToSave.length} questions)!`,
@@ -358,6 +369,23 @@ export function AmbassadorDashboardPage() {
       setSubmitError(errorMsg);
     } finally {
       setSavingTest(false);
+    }
+  };
+
+  const handleFinalizeCertificates = async (testItem: AmbassadorCustomTest) => {
+    setFinalizingTestId(testItem.id);
+    try {
+      const res = await finalizeMockCertificates(testItem.id);
+      if (res.success) {
+        showApiToast(res.message || `Certificates issued for ${res.issuedCount} winner(s)!`, 'success');
+        await loadCaptainWorkspace();
+      } else {
+        showApiToast(res.message || 'Could not finalize certificates.', 'error');
+      }
+    } catch (err: any) {
+      showApiToast(err?.message || 'Error finalizing certificates', 'error');
+    } finally {
+      setFinalizingTestId(null);
     }
   };
 
@@ -738,6 +766,23 @@ export function AmbassadorDashboardPage() {
                       >
                         <BarChart3 size={13} />
                         <span>Results</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleFinalizeCertificates(t)}
+                        disabled={finalizingTestId === t.id}
+                        className="captain-glass-card captain-glass-card--interactive min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-semibold text-[var(--text)] inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+                        title="Finalize results and award official 1st Position Certificates to top scorers"
+                      >
+                        <Award size={13} className={t.resultsFinalized ? 'text-amber-400' : 'text-[#D71921]'} />
+                        <span>
+                          {finalizingTestId === t.id
+                            ? 'Issuing...'
+                            : t.resultsFinalized
+                            ? 'Certificates'
+                            : 'Certificates'}
+                        </span>
                       </button>
 
                       <button
@@ -1211,6 +1256,16 @@ export function AmbassadorDashboardPage() {
                       </button>
                     </div>
                   </div>
+                </div>
+
+                {/* Certificate Design Theme Picker */}
+                <div className="pt-1">
+                  <ThemePicker
+                    selectedThemeId={certificateThemeId}
+                    mockId={editingTestId || 'preview-mock-id'}
+                    mockName={title.trim() || 'Grand Line Mock Examination'}
+                    onChange={setCertificateThemeId}
+                  />
                 </div>
 
                 {/* CSV Upload or Paste */}

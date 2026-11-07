@@ -43,6 +43,7 @@ export type EmailEventType =
   | 'application_decision'
   | 'referral_confirmed'
   | 'referral_reward_credited'
+  | 'certificate_awarded'
   | 'admin_sample_test'
   | 'admin_test_email';
 
@@ -2526,5 +2527,84 @@ export function buildProRequestRejectedStudentEmail(params: {
 
   return { subject, preheader, html, text };
 }
+
+export function buildCertificateAwardedStudentEmail(params: {
+  studentName: string;
+  mockName: string; // Exact mock name character-for-character
+  score: number | string;
+  totalQuestions?: number | string;
+  participantsCount: number | string;
+  serial: string;
+  issuedAt?: Date | string | number;
+  appUrl?: string;
+}): RenderedEmailTemplate {
+  const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
+  const timeStr = formatPktDateTime(params.issuedAt);
+  const scoreStr = params.totalQuestions ? `${params.score}/${params.totalQuestions}` : `${params.score}`;
+
+  const subject = `🏆 1st Position Award: Certificate of Excellence in ${params.mockName} — Boardly`;
+  const preheader = `Congratulations ${params.studentName}! You took 1st Position in ${params.mockName} with a score of ${scoreStr} ahead of ${params.participantsCount} participants.`;
+
+  const html = buildBaseEmailLayout({
+    subject,
+    preheader,
+    badgeText: '🏆 1ST POSITION AWARD',
+    badgeColor: 'gold',
+    heading: 'Certificate of Excellence',
+    introHtml: `<p style="margin:0 0 14px 0;font-size:15px;line-height:1.6;color:#F4F4F6;">
+      Congratulations <strong style="color:#FFFFFF;">${escapeHtml(params.studentName)}</strong>!
+      You took <strong style="color:#F5B301;">1st Position</strong> in the official Grand Line mock
+      <strong style="color:#FFFFFF;">${escapeHtml(params.mockName)}</strong>.
+    </p>
+    <p style="margin:0 0 16px 0;font-size:14px;line-height:1.6;color:#A0A0B0;">
+      Your official Certificate of Excellence has been issued and cryptographically registered under serial
+      <code style="font-family:'Courier New',Courier,monospace;color:#E11D2A;background:#1C1C26;padding:2px 6px;border-radius:4px;">${escapeHtml(params.serial)}</code>.
+    </p>`,
+    detailsRows: [
+      { label: 'Event', value: 'Grand Line Mock Examination' },
+      { label: 'Mock Name', value: params.mockName },
+      { label: 'Position', value: '1st Position (Gold Winner)', highlightGold: true },
+      { label: 'Final Score', value: scoreStr, highlightGreen: true },
+      { label: 'Competitors', value: `Ahead of ${params.participantsCount} participants` },
+      { label: 'Certificate Serial', value: params.serial, mono: true, highlightRed: true },
+      { label: 'Issue Date (PKT)', value: timeStr },
+    ],
+    extraBodyHtml: `
+      <div style="margin:20px 0 0 0;padding:16px;background-color:#111118;border:1px solid #262635;border-radius:12px;text-align:center;">
+        <div style="font-family:'Courier New',Courier,monospace;font-size:11px;color:#A0A0B0;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px;">
+          PUBLIC VERIFICATION AVAILABLE
+        </div>
+        <div style="font-size:12px;color:#D1D5DB;line-height:1.5;">
+          Anyone can independently verify the authenticity of your award at
+          <a href="${escapeHtml(appUrl)}/verify/${escapeHtml(params.serial)}" target="_blank" style="color:#E11D2A;text-decoration:none;font-weight:700;">
+            boardly.cfd/verify/${escapeHtml(params.serial)}
+          </a>
+        </div>
+      </div>
+    `,
+    ctaLabel: 'View & Download Certificate',
+    ctaUrl: `${appUrl}/dashboard/certificates`,
+    secondaryCtaLabel: 'Public Verification Page',
+    secondaryCtaUrl: `${appUrl}/verify/${params.serial}`,
+    footerNoteHtml: `This certificate is authenticated by Boardly and SHS Virtual Academy. Serials are immutable and tamper-resistant.`,
+    appUrl,
+  });
+
+  const text = [
+    `BOARDLY — CERTIFICATE OF EXCELLENCE (1st Position)`,
+    ``,
+    `Congratulations ${params.studentName}!`,
+    `You secured 1st Position in ${params.mockName} with a score of ${scoreStr}, ahead of ${params.participantsCount} participants.`,
+    ``,
+    `Certificate Serial: ${params.serial}`,
+    `Date (PKT): ${timeStr}`,
+    ``,
+    `View & Download: ${appUrl}/dashboard/certificates`,
+    `Public Verification: ${appUrl}/verify/${params.serial}`,
+  ].join('\n');
+
+  return { subject, preheader, html, text };
+}
+
 
 

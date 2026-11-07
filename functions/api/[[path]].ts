@@ -2,6 +2,7 @@ import d1Worker from '../../cloudflare/worker.js';
 import mainWorker, { Env } from '../../cloudflare/worker';
 import { handleRewardsApiRequest } from './rewards/[[path]]';
 import { handleSendEmailRequest } from './send-email';
+import { handleCertificateApiRequest } from './certificates';
 
 /**
  * Catch-all Cloudflare Pages Function for `/api/*` routes on the same site
@@ -17,6 +18,16 @@ export async function onRequest(context: {
   const { request, env } = context;
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
+
+  // Delegate certificate system endpoints
+  if (
+    path.startsWith('/api/certificates') ||
+    path.startsWith('/api/admin/certificates') ||
+    path.startsWith('/api/admin/signature') ||
+    path.includes('/finalize-certificates')
+  ) {
+    return handleCertificateApiRequest(request, env || ({} as any));
+  }
 
   // Delegate transactional email notifications to /api/send-email handler
   if (path === '/api/send-email' || path.startsWith('/api/send-email/')) {

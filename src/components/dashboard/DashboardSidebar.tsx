@@ -136,6 +136,22 @@ export function DashboardSidebar() {
           <span>Arena</span>
         </NavLink>
 
+        {/* Certificates */}
+        <NavLink
+          to="/dashboard/certificates"
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+              isActive
+                ? 'bg-[var(--text)] text-[var(--bg)] font-bold'
+                : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)]'
+            }`
+          }
+          style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+        >
+          <Award size={18} />
+          <span>Certificates</span>
+        </NavLink>
+
         {/* Profile */}
         {profile?.profileCompleted || profile?.onboardingCompleted ? (
           <NavLink

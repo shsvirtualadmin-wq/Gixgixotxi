@@ -31,6 +31,7 @@ import {
   buildProActivatedAdminEmail,
   buildProRequestRejectedStudentEmail,
   buildAdminSampleTestEmail,
+  buildCertificateAwardedStudentEmail,
   verifyEmailBalanceSanity,
   type TransactionalEmailEventType,
   type KobanReceiptSubType,
@@ -1326,6 +1327,43 @@ export async function handleSendEmailRequest(
       });
       results.push({ role: 'student', ...rStudent });
     }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // EVENT: CERTIFICATE OF EXCELLENCE AWARDED (1st Position)
+  // ───────────────────────────────────────────────────────────────────────────
+  else if (eventType === 'certificate_awarded') {
+    const targetEmail = cleanEmail(body.recipientEmail || data.studentEmail || verifiedStudentEmail);
+    if (!targetEmail) {
+      return new Response(
+        JSON.stringify({ ok: false, error: 'Recipient email required for certificate dispatch.' }),
+        { status: 400, headers: jsonHeaders }
+      );
+    }
+
+    const tpl = buildCertificateAwardedStudentEmail({
+      studentName: String(data.studentName || studentDisplayName || 'Student'),
+      mockName: String(data.mockName || 'Grand Line Examination'),
+      score: data.score ?? 0,
+      totalQuestions: data.totalQuestions,
+      participantsCount: data.participantsCount ?? 1,
+      serial: String(data.serial || recordId || 'BDLY-CERT'),
+      issuedAt: data.issuedAt,
+      appUrl,
+    });
+
+    const rStudent = await dispatchViaResendWithRetry({
+      env,
+      to: [targetEmail],
+      template: tpl,
+      idempotencyKey: `certificate_awarded:${recordId || data.serial}:student`,
+      eventType,
+      recipientRole: 'student',
+      recordId: String(recordId || data.serial),
+      rawEventData: data,
+      forceResend,
+    });
+    results.push({ role: 'student', ...rStudent });
   }
 
   // ───────────────────────────────────────────────────────────────────────────

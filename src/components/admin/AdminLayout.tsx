@@ -22,6 +22,7 @@ import {
   Tag,
   Megaphone,
   Bot,
+  PenTool,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { LineLoader } from '@/components/ui/LineLoader';
@@ -44,10 +45,12 @@ const PRIMARY_NAV: AdminNavItem[] = [
   { to: '/admin/bots', label: 'Bots', icon: Bot },
   { to: '/admin/crews', label: 'Crews', icon: Shield },
   { to: '/admin/captains', label: NAKAMA_CAPTAINS_NAME, icon: Award },
+  { to: '/admin/certificates', label: 'Certificates', icon: Award },
   { to: '/admin/questions', label: 'Questions', icon: Database },
 ];
 
 const SECONDARY_NAV: AdminNavItem[] = [
+  { to: '/admin/settings/signature', label: 'Signature', icon: PenTool },
   { to: '/admin/pricing', label: 'Store Pricing', icon: Tag },
   { to: '/admin/kobans', label: 'Kobans', icon: Coins },
   { to: '/admin/applications', label: 'Applications', icon: FileCheck2 },

@@ -226,6 +226,16 @@ const AdminBotsPage = lazyWithRetry(() =>
 const AdminPricingPage = lazyWithRetry(() =>
   import('./pages/admin/AdminPricingPage').then(m => ({ default: m.AdminPricingPage }))
 );
+const AdminCertificatesPage = lazyWithRetry(() =>
+  import('./pages/admin/AdminCertificatesPage').then(m => ({ default: m.AdminCertificatesPage }))
+);
+const AdminSignaturePage = lazyWithRetry(() =>
+  import('./pages/admin/AdminSignaturePage').then(m => ({ default: m.AdminSignaturePage }))
+);
+const MyCertificatesPage = lazyWithRetry(() =>
+  import('./pages/dashboard/MyCertificatesPage').then(m => ({ default: m.MyCertificatesPage }))
+);
+const VerifyCertificatePage = lazyWithRetry(() => import('./pages/VerifyCertificatePage'));
 
 // Boardly Commons
 const CommonsFeedPage = lazyWithRetry(() =>
@@ -304,12 +314,15 @@ function AppInner() {
           <Route path="commons" element={<AdminCommonsPage />} />
           <Route path="reviews" element={<AdminCommonsPage />} />
           <Route path="health" element={<AdminHealthPage />} />
+          <Route path="certificates" element={<AdminCertificatesPage />} />
+          <Route path="settings/signature" element={<AdminSignaturePage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
 
         {/* Dashboard shell (Student Portal) — Login-only, noindex */}
         <Route path="/dashboard" element={<DashboardShell />}>
           <Route index element={<OverviewPage />} />
+          <Route path="certificates" element={<MyCertificatesPage />} />
           <Route path="commons" element={<CommonsFeedPage />} />
           <Route path="practice" element={<PracticePage />} />
           <Route path="notifications" element={<NotificationsPage />} />
@@ -374,7 +387,12 @@ function AppInner() {
         {/* Global shortcuts for plans and profile */}
         <Route path="/plans" element={<Navigate to="/dashboard/plans" replace />} />
         <Route path="/profile" element={<Navigate to="/dashboard/profile" replace />} />
+        <Route path="/certificates" element={<Navigate to="/dashboard/certificates" replace />} />
         <Route path="/commons/contact" element={<Navigate to="/contact" replace />} />
+
+        {/* Public Certificate Verification (standalone, no public Navbar/Footer) */}
+        <Route path="/verify/:serial" element={<VerifyCertificatePage />} />
+        <Route path="/verify" element={<Navigate to="/grand-line" replace />} />
 
         {/* Auth routes ONLY (use AuthLayout ONLY, NO public Navbar or Footer) */}
         <Route path="/login" element={<LoginPage />} />

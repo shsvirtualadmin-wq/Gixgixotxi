@@ -1389,6 +1389,65 @@ RULES:
         }
       });
 
+      // ─── CERTIFICATE SYSTEM API (/api/certificates, /api/admin/certificates, /api/admin/signature) ───
+      server.middlewares.use(async (req: any, res: any, next: any) => {
+        const rawUrl = String(req.url || '');
+        if (
+          !rawUrl.startsWith('/api/certificates') &&
+          !rawUrl.startsWith('/api/admin/certificates') &&
+          !rawUrl.startsWith('/api/admin/signature') &&
+          !rawUrl.includes('/finalize-certificates')
+        ) {
+          return next();
+        }
+
+        try {
+          const rawBody = await new Promise<string>((resolve) => {
+            if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS' || req.method === 'DELETE') {
+              resolve('');
+              return;
+            }
+            let data = '';
+            req.on('data', (chunk: any) => {
+              data += chunk;
+            });
+            req.on('end', () => resolve(data));
+          });
+
+          const fullUrl = `http://localhost:3000${req.url || ''}`;
+          const headers = new Headers();
+          for (const [k, v] of Object.entries(req.headers || {})) {
+            if (typeof v === 'string') headers.set(k, v);
+            else if (Array.isArray(v)) headers.set(k, v.join(', '));
+          }
+
+          const webReq = new Request(fullUrl, {
+            method: req.method || 'GET',
+            headers,
+            body:
+              req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS' && req.method !== 'DELETE' && rawBody
+                ? rawBody
+                : undefined,
+          });
+
+          const mod = await import('./functions/api/certificates.ts');
+          const webRes = await mod.handleCertificateApiRequest(webReq, {});
+
+          const outHeaders: Record<string, string> = {};
+          webRes.headers.forEach((v, k) => {
+            outHeaders[k] = v;
+          });
+          res.writeHead(webRes.status, outHeaders);
+          const text = await webRes.text();
+          res.end(text);
+        } catch (err: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({ ok: false, error: err?.message || 'Certificate middleware error' })
+          );
+        }
+      });
+
       server.middlewares.use('/assets/store', (req: any, res: any, next: any) => {
         const cleanRel = decodeURIComponent((req.url || '').split('?')[0]).replace(/^\/+/, '');
         const fullPath = path.join(__dirname, 'public', 'assets', 'store', cleanRel);
