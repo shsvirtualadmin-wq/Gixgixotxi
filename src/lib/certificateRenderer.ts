@@ -31,6 +31,10 @@ export interface CertificateRenderInput {
   participantsCount: number;
   issuedAt: number | string | Date;
   themeId?: string | null;
+  /** Optional explicit CertificateTheme object; when provided, overrides themeId lookup */
+  theme?: CertificateTheme | null;
+  /** Optional unique instance key for scoping inline SVG <defs> IDs when multiple certificates render on one page */
+  instanceId?: string;
   signatoryName?: string;
   signatoryTitle?: string;
   /** Data URI `data:image/png;base64,...` embedded server-side from private R2; null/empty renders blank line */
@@ -407,10 +411,25 @@ export function renderDotMatrixBannerSvg(
 
 /**
  * Builds the complete 1123x794 SVG markup for the Certificate of Excellence.
- * Used both for server-side PNG/PDF rasterization (`sharp` / Worker) and inside the HTML renderer.
+ * Used for the live preview, miniature theme thumbnails, and server-side PNG/PDF rasterization.
  */
 export function buildCertificateSvgMarkup(input: CertificateRenderInput): string {
-  const theme: CertificateTheme = resolveCertificateTheme(input.grandLineId, input.themeId);
+  const theme: CertificateTheme = resolveCertificateTheme(
+    input.grandLineId,
+    input.themeId,
+    input.studentName,
+    input.theme
+  );
+  const rawUid = String(input.instanceId || `${theme.id}-${input.serial || 'cert'}`).replace(
+    /[^a-zA-Z0-9_-]/g,
+    '_'
+  );
+  const dotGridId = `dotGrid_${rawUid}`;
+  const glowBlurId = `glowBlur_${rawUid}`;
+  const panelShadowId = `panelShadow_${rawUid}`;
+  const glassClipId = `glassClip_${rawUid}`;
+  const sigInkId = `sigInk_${rawUid}`;
+
   const edition = (input.editionLabel || 'OFFICIAL MOCK EDITION').trim().toUpperCase();
   const mockTitle = (input.grandLineTitle || 'Boardly Grand Line Mock').trim();
   const scoreLabel = formatCertificateScoreText(input);
@@ -424,8 +443,14 @@ export function buildCertificateSvgMarkup(input: CertificateRenderInput): string
 
   const nameLayout = layoutStudentName(input.studentName);
   const glassBaseRgb = theme.mode === 'dark' ? '15, 18, 28' : '255, 255, 255';
-  const glassFill = `rgba(${glassBaseRgb}, ${theme.glassOpacity})`;
-  const qrBg = theme.mode === 'dark' ? '#080B12' : '#FFFFFF';
+  const glassFill =
+    theme.cardSurfaceColor || `rgba(${glassBaseRgb}, ${theme.glassOpacity})`;
+  const qrFg = theme.qrFgColor || theme.inkColor;
+  const qrBg = theme.qrBgColor || (theme.mode === 'dark' ? '#080B12' : '#FFFFFF');
+  const ringPrimary = theme.dotRingPrimaryColor || theme.accentColor;
+  const ringSecondary = theme.dotRingSecondaryColor || theme.secondaryAccentColor;
+  const sigInkColor =
+    theme.signatureInkColor || (theme.mode === 'dark' ? '#F8FAFC' : '#0D1B3E');
 
   const citationLine = `for securing First Position in ${mockTitle} with a score of ${scoreLabel}, ahead of ${participantsCount.toLocaleString()} ${
     participantsCount === 1 ? 'participant' : 'participants'
@@ -475,71 +500,103 @@ export function buildCertificateSvgMarkup(input: CertificateRenderInput): string
       input.signatureDataUrl.startsWith('/'));
 
   const signatureBlockSvg = hasSignatureImg
-    ? `<image href="${escapeXml(input.signatureDataUrl!.trim())}" x="795" y="592" width="190" height="54" preserveAspectRatio="xMidYMid meet" />`
+    ? `<image href="${escapeXml(input.signatureDataUrl!.trim())}" x="790" y="594" width="200" height="52" preserveAspectRatio="xMidYMid meet" filter="url(#${sigInkId})" />
+       <line x1="778" y1="644" x2="995" y2="644" stroke="${theme.glassBorderColor}" stroke-width="1" />`
     : `<line x1="805" y1="638" x2="975" y2="638" stroke="${theme.mutedColor}" stroke-width="1.2" stroke-dasharray="4 4" stroke-opacity="0.65" />`;
+
+  // Title style framing for CERTIFICATE OF EXCELLENCE badge
+  const overlineBadgeSvg =
+    theme.titleStyle === 'gold-trim'
+      ? `<g>
+          <rect x="398" y="168" width="327" height="34" rx="17" fill="${theme.tileBgColor}" stroke="${theme.accentColor}" stroke-width="1.5" />
+          <circle cx="420" cy="185" r="4" fill="${theme.accentColor}" />
+          <circle cx="703" cy="185" r="4" fill="${theme.accentColor}" />
+          <text x="561.5" y="189.5" text-anchor="middle" fill="${theme.accentColor}" font-family="'Space Mono', 'JetBrains Mono', 'Courier New', monospace" font-size="12" font-weight="700" letter-spacing="0.2em">CERTIFICATE OF EXCELLENCE</text>
+        </g>`
+      : theme.titleStyle === 'mono-bracket'
+      ? `<g>
+          <rect x="394" y="170" width="335" height="30" rx="8" fill="${theme.tileBgColor}" stroke="${theme.accentColor}" stroke-width="1.2" />
+          <text x="561.5" y="189.5" text-anchor="middle" fill="${theme.inkColor}" font-family="'Space Mono', 'JetBrains Mono', 'Courier New', monospace" font-size="12" font-weight="700" letter-spacing="0.18em">[ CERTIFICATE OF EXCELLENCE ]</text>
+        </g>`
+      : theme.titleStyle === 'double-dot'
+      ? `<g>
+          <rect x="400" y="170" width="323" height="30" rx="15" fill="${theme.tileBgColor}" stroke="${theme.glassBorderColor}" stroke-width="1.2" />
+          <circle cx="420" cy="185" r="4" fill="${theme.accentColor}" />
+          <circle cx="703" cy="185" r="4" fill="${theme.secondaryAccentColor}" />
+          <text x="561.5" y="189.5" text-anchor="middle" fill="${theme.inkColor}" font-family="'Space Mono', 'JetBrains Mono', 'Courier New', monospace" font-size="12" font-weight="700" letter-spacing="0.2em">CERTIFICATE OF EXCELLENCE</text>
+        </g>`
+      : `<g>
+          <rect x="406" y="170" width="311" height="30" rx="15" fill="${theme.tileBgColor}" stroke="${theme.glassBorderColor}" stroke-width="1" />
+          <circle cx="426" cy="185" r="4" fill="${theme.accentColor}" />
+          <text x="568" y="189.5" text-anchor="middle" fill="${theme.inkColor}" font-family="'Space Mono', 'JetBrains Mono', 'Courier New', monospace" font-size="12" font-weight="700" letter-spacing="0.2em">CERTIFICATE OF EXCELLENCE</text>
+        </g>`;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CERTIFICATE_WIDTH} ${CERTIFICATE_HEIGHT}" width="${CERTIFICATE_WIDTH}" height="${CERTIFICATE_HEIGHT}">
   <defs>
-    <pattern id="dotGrid" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
-      <circle cx="12" cy="12" r="1.35" fill="${theme.dotColor}" />
+    <pattern id="${dotGridId}" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1.4" fill="${theme.dotColor}" />
     </pattern>
-    <filter id="glowBlur" x="-40%" y="-40%" width="180%" height="180%">
+    <filter id="${glowBlurId}" x="-40%" y="-40%" width="180%" height="180%">
       <feGaussianBlur stdDeviation="68" />
     </filter>
-    <filter id="panelShadow" x="-10%" y="-10%" width="120%" height="120%">
+    <filter id="${panelShadowId}" x="-10%" y="-10%" width="120%" height="120%">
       <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#000000" flood-opacity="${
         theme.mode === 'dark' ? '0.48' : '0.10'
       }" />
     </filter>
-    <clipPath id="glassClip">
+    <filter id="${sigInkId}" color-interpolation-filters="sRGB">
+      <feFlood flood-color="${sigInkColor}" flood-opacity="1" result="sigTint" />
+      <feComposite in="sigTint" in2="SourceAlpha" operator="in" />
+    </filter>
+    <clipPath id="${glassClipId}">
       <rect x="56" y="48" width="1011" height="698" rx="36" />
     </clipPath>
   </defs>
 
   <!-- 1. Solid Theme Canvas + Dot-Matrix Grid -->
   <rect width="${CERTIFICATE_WIDTH}" height="${CERTIFICATE_HEIGHT}" fill="${theme.backgroundColor}" />
-  <rect width="${CERTIFICATE_WIDTH}" height="${CERTIFICATE_HEIGHT}" fill="url(#dotGrid)" />
+  <rect width="${CERTIFICATE_WIDTH}" height="${CERTIFICATE_HEIGHT}" fill="url(#${dotGridId})" />
 
   <!-- 2. Two Soft Blurred Colour Glows Behind Glass Panel -->
-  <g filter="url(#glowBlur)">
+  <g filter="url(#${glowBlurId})">
     <circle cx="${theme.glow1.x}" cy="${theme.glow1.y}" r="${theme.glow1.radius}" fill="${theme.glow1.color}" fill-opacity="${
-    theme.mode === 'dark' ? '0.34' : '0.22'
+    theme.mode === 'dark' ? '0.38' : '0.24'
   }" />
     <circle cx="${theme.glow2.x}" cy="${theme.glow2.y}" r="${theme.glow2.radius}" fill="${theme.glow2.color}" fill-opacity="${
-    theme.mode === 'dark' ? '0.30' : '0.18'
+    theme.mode === 'dark' ? '0.34' : '0.20'
   }" />
   </g>
 
-  <!-- 3. Frosted Glass Panel (36px radius, 1px light border, pre-blurred glow backdrop) -->
-  <g filter="url(#panelShadow)">
-    <rect x="56" y="48" width="1011" height="698" rx="36" fill="${glassFill}" stroke="${theme.glassBorderColor}" stroke-width="1.25" />
+  <!-- 3. Frosted Glass Panel (36px radius, 1.5px border, pre-blurred glow backdrop) -->
+  <g filter="url(#${panelShadowId})">
+    <rect x="56" y="48" width="1011" height="698" rx="36" fill="${glassFill}" stroke="${theme.glassBorderColor}" stroke-width="1.5" />
   </g>
 
   <!-- Clipped Inner Elements inside Glass Panel -->
-  <g clip-path="url(#glassClip)">
+  <g clip-path="url(#${glassClipId})">
     <!-- Top Accent Hairline -->
-    <rect x="440" y="48" width="243" height="3" rx="1.5" fill="${theme.accentColor}" />
+    <rect x="420" y="48" width="283" height="3.5" rx="1.75" fill="${theme.accentColor}" />
 
     <!-- Decorative Nothing OS Dot Motif Widget (Top Right & Bottom Left subtle echo) -->
     ${renderMotifSvgMarkup(
       theme.motif,
       948,
       148,
-      theme.accentColor,
-      theme.secondaryAccentColor
+      ringPrimary,
+      ringSecondary
     )}
     ${renderMotifSvgMarkup(
       theme.motif,
       168,
       415,
-      theme.secondaryAccentColor,
-      theme.accentColor
+      ringSecondary,
+      ringPrimary
     )}
 
-    <!-- Top-Left Brand Header: BOARDLY wordmark with Red Dot -->
+    <!-- Top-Left Brand Header: BOARDLY wordmark with Accent Dot -->
     <g transform="translate(104, 108)">
       <text x="0" y="0" fill="${theme.inkColor}" font-family="'Space Mono', 'JetBrains Mono', 'Courier New', monospace" font-size="24" font-weight="700" letter-spacing="0.22em">BOARDLY</text>
-      <circle cx="152" cy="-8" r="5.5" fill="#EF4444" />
+      <circle cx="152" cy="-8" r="5.5" fill="${theme.accentColor}" />
       <text x="0" y="24" fill="${theme.mutedColor}" font-family="'Space Mono', 'JetBrains Mono', 'Courier New', monospace" font-size="11.5" font-weight="600" letter-spacing="0.18em">GRAND LINE MOCK  /  ${escapeXml(
         edition
       )}</text>
@@ -554,11 +611,7 @@ export function buildCertificateSvgMarkup(input: CertificateRenderInput): string
     </g>
 
     <!-- Center Overline: CERTIFICATE OF EXCELLENCE -->
-    <g>
-      <rect x="406" y="170" width="311" height="30" rx="15" fill="${theme.tileBgColor}" stroke="${theme.glassBorderColor}" stroke-width="1" />
-      <circle cx="426" cy="185" r="4" fill="${theme.accentColor}" />
-      <text x="568" y="189.5" text-anchor="middle" fill="${theme.inkColor}" font-family="'Space Mono', 'JetBrains Mono', 'Courier New', monospace" font-size="12" font-weight="700" letter-spacing="0.2em">CERTIFICATE OF EXCELLENCE</text>
-    </g>
+    ${overlineBadgeSvg}
 
     <!-- Big Dot-Matrix "1ST POSITION" -->
     ${renderDotMatrixBannerSvg(
@@ -610,7 +663,7 @@ export function buildCertificateSvgMarkup(input: CertificateRenderInput): string
         632,
         586,
         86,
-        theme.inkColor,
+        qrFg,
         qrBg,
         theme.glassBorderColor
       )}
@@ -638,8 +691,13 @@ export function buildCertificateSvgMarkup(input: CertificateRenderInput): string
  * so headless browsers and server renderers produce the exact same visual output.
  */
 export function buildCertificateHtmlDocument(input: CertificateRenderInput): string {
-  const theme = resolveCertificateTheme(input.grandLineId, input.themeId);
-  const svgMarkup = buildCertificateSvgMarkup(input);
+  const theme = resolveCertificateTheme(
+    input.grandLineId,
+    input.themeId,
+    input.studentName,
+    input.theme
+  );
+  const svgMarkup = buildCertificateSvgMarkup({ ...input, theme });
   const title = `Boardly Certificate — ${input.serial} — ${input.studentName}`;
 
   return `<!DOCTYPE html>

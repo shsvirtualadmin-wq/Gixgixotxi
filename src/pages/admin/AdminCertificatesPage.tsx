@@ -62,6 +62,7 @@ export const AdminCertificatesPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'revoked'>('all');
   const [selectedMockId, setSelectedMockId] = useState<string>('');
+  const [defaultPreviewThemeId, setDefaultPreviewThemeId] = useState<string | null>('default');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [regeneratingAll, setRegeneratingAll] = useState(false);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(
@@ -175,24 +176,24 @@ export const AdminCertificatesPage: React.FC = () => {
   };
 
   const handleMockThemeChange = async (mockId: string, themeId: string | null) => {
-    setBusyId(mockId);
+    const previousMocks = mocks;
+    // Optimistically update UI immediately so big preview and checkmark switch in 0ms
+    setMocks((prev) =>
+      prev.map((m) => (m.id === mockId ? { ...m, certificateThemeId: themeId } : m))
+    );
     setNotice(null);
     try {
       await updateGrandLineCertificateTheme(mockId, themeId);
-      setMocks((prev) =>
-        prev.map((m) => (m.id === mockId ? { ...m, certificateThemeId: themeId } : m))
-      );
       setNotice({
         type: 'success',
-        text: `Saved certificate theme "${themeId || 'Auto (Deterministic)'}" for mock.`,
+        text: `Saved certificate theme "${themeId || 'Auto (Unique per student)'}" for mock.`,
       });
     } catch (err: any) {
+      setMocks(previousMocks);
       setNotice({
         type: 'error',
         text: err?.message || 'Failed to update mock certificate theme.',
       });
-    } finally {
-      setBusyId(null);
     }
   };
 
@@ -537,123 +538,130 @@ export const AdminCertificatesPage: React.FC = () => {
 
       {/* TAB 2: GRAND LINE MOCK CERTIFICATE DESIGN PICKER & FINALISE RESULTS */}
       {activeTab === 'themes' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Mock Selector List */}
-          <div className="lg:col-span-4 space-y-2.5">
-            <div className="font-mono text-[11px] uppercase tracking-wider text-[var(--text-muted)] px-1">
-              SELECT GRAND LINE MOCK ({mocks.length})
+        <div className="space-y-5">
+          {/* Mock Selector Strip */}
+          <div className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="font-mono text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
+                SELECT GRAND LINE MOCK ({mocks.length})
+              </div>
+              {mocks.length === 0 && (
+                <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--accent)]">
+                  INTERACTIVE 9-THEME DESIGN PREVIEW MODE
+                </span>
+              )}
             </div>
+
             {mocks.length === 0 ? (
-              <div className="p-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] text-xs text-[var(--text-muted)]">
-                No Grand Line mocks created yet.
+              <div className="text-xs text-[var(--text-muted)]">
+                No Grand Line mocks have been created yet. You can preview all 9 certificate themes below with your active signature; once a Grand Line mock is created, select it here to save its theme to <code className="font-mono text-[var(--text)]">captain_tests.certificate_theme_id</code>.
               </div>
             ) : (
-              mocks.map((mock) => {
-                const isSelected = selectedMock?.id === mock.id;
-                return (
-                  <div
-                    key={mock.id}
-                    onClick={() => setSelectedMockId(mock.id)}
-                    className={`p-3.5 rounded-2xl border transition-colors cursor-pointer space-y-2 ${
-                      isSelected
-                        ? 'border-[var(--accent)] bg-[var(--surface-2)]'
-                        : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--text-muted)]'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="text-xs sm:text-sm font-bold text-[var(--text)]">
-                        {mock.title}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {mocks.map((mock) => {
+                  const isSelected = selectedMock?.id === mock.id;
+                  return (
+                    <div
+                      key={mock.id}
+                      onClick={() => setSelectedMockId(mock.id)}
+                      className={`p-3.5 rounded-xl border transition-colors cursor-pointer space-y-1.5 ${
+                        isSelected
+                          ? 'border-[var(--accent)] bg-[var(--surface-2)]'
+                          : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--text-muted)]'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="text-xs sm:text-sm font-bold text-[var(--text)] line-clamp-1">
+                          {mock.title}
+                        </div>
+                        <span className="px-2 py-0.5 rounded font-mono text-[10px] bg-[var(--surface)] border border-[var(--border)] text-[var(--text-muted)] shrink-0">
+                          GL#{String(mock.mockNumber).padStart(2, '0')}
+                        </span>
                       </div>
-                      <span className="px-2 py-0.5 rounded font-mono text-[10px] bg-[var(--surface)] border border-[var(--border)] text-[var(--text-muted)] shrink-0">
-                        GL#{String(mock.mockNumber).padStart(2, '0')}
-                      </span>
+                      <div className="flex items-center justify-between gap-2 text-[11px] font-mono text-[var(--text-muted)]">
+                        <span>Theme: {mock.certificateThemeId || 'Auto (Unique)'}</span>
+                        <span>{mock.resultsFinalised ? 'Finalised' : 'Open'}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between gap-2 text-[11px] font-mono text-[var(--text-muted)]">
-                      <span>Theme: {mock.certificateThemeId || 'Auto (Unique)'}</span>
-                      <span>
-                        {mock.resultsFinalised ? 'Finalised' : 'Open'}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })
+                  );
+                })}
+              </div>
             )}
           </div>
 
-          {/* ThemePicker & Publish/Finalise Action for Selected Mock */}
-          <div className="lg:col-span-8">
-            {selectedMock ? (
-              <div className="p-4 sm:p-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-5">
-                <div className="flex items-start justify-between gap-3 flex-wrap border-b border-[var(--border)] pb-4">
-                  <div>
-                    <div className="font-mono text-[10px] uppercase tracking-widest text-[var(--accent)]">
-                      GRAND LINE MOCK #{String(selectedMock.mockNumber).padStart(2, '0')} · {selectedMock.subject}
-                    </div>
-                    <h3 className="text-base sm:text-lg font-bold text-[var(--text)]">
-                      {selectedMock.title}
-                    </h3>
-                  </div>
-
-                  <button
-                    type="button"
-                    disabled={busyId === selectedMock.id}
-                    onClick={() => void handleFinaliseMock(selectedMock)}
-                    className="min-h-[44px] px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white text-xs font-bold hover:opacity-90 inline-flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    <Sparkles size={14} />
-                    <span>
-                      {busyId === selectedMock.id
-                        ? 'Finalising & Issuing...'
-                        : selectedMock.resultsFinalised
-                        ? 'Re-check & Issue 1st Position Certificates'
-                        : 'Publish Results & Issue 1st Position Certificate'}
-                    </span>
-                  </button>
-                </div>
-
-                <ThemePicker
-                  grandLineId={selectedMock.id}
-                  grandLineTitle={selectedMock.title}
-                  value={selectedMock.certificateThemeId}
-                  onChange={(nextThemeId) =>
-                    void handleMockThemeChange(selectedMock.id, nextThemeId)
-                  }
-                  signatoryName={
-                    activeSignature?.signatoryName || 'Boardly Examination Council'
-                  }
-                  signatoryTitle={activeSignature?.signatoryTitle || 'Founder, Boardly'}
-                  signatureDataUrl={activeSignature?.previewDataUrl || null}
-                  disabled={busyId === selectedMock.id}
-                />
-              </div>
-            ) : (
-              <div className="p-4 sm:p-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-5">
-                <div className="border-b border-[var(--border)] pb-4">
+          {/* ThemePicker & Publish/Finalise Action */}
+          {selectedMock ? (
+            <div className="p-4 sm:p-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-5">
+              <div className="flex items-start justify-between gap-3 flex-wrap border-b border-[var(--border)] pb-4">
+                <div>
                   <div className="font-mono text-[10px] uppercase tracking-widest text-[var(--accent)]">
-                    BUILT-IN DEFAULT CERTIFICATE THEMES · SAMPLE PREVIEW
+                    GRAND LINE MOCK #{String(selectedMock.mockNumber).padStart(2, '0')} · {selectedMock.subject}
                   </div>
                   <h3 className="text-base sm:text-lg font-bold text-[var(--text)]">
-                    Grand Line Mock 1 (Default Preview)
+                    {selectedMock.title}
                   </h3>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">
-                    No Grand Line mocks exist yet, so this preview uses the built-in default certificate themes with your active signature.
-                  </p>
                 </div>
 
-                <ThemePicker
-                  grandLineId="default"
-                  grandLineTitle="Grand Line Mock 1"
-                  value="default"
-                  onChange={() => {}}
-                  signatoryName={
-                    activeSignature?.signatoryName || 'Boardly Examination Council'
-                  }
-                  signatoryTitle={activeSignature?.signatoryTitle || 'Founder, Boardly'}
-                  signatureDataUrl={activeSignature?.previewDataUrl || null}
-                />
+                <button
+                  type="button"
+                  disabled={busyId === selectedMock.id}
+                  onClick={() => void handleFinaliseMock(selectedMock)}
+                  className="min-h-[44px] px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white text-xs font-bold hover:opacity-90 inline-flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <Sparkles size={14} />
+                  <span>
+                    {busyId === selectedMock.id
+                      ? 'Finalising & Issuing...'
+                      : selectedMock.resultsFinalised
+                      ? 'Re-check & Issue 1st Position Certificates'
+                      : 'Publish Results & Issue 1st Position Certificate'}
+                  </span>
+                </button>
               </div>
-            )}
-          </div>
+
+              <ThemePicker
+                grandLineId={selectedMock.id}
+                grandLineTitle={selectedMock.title}
+                value={selectedMock.certificateThemeId}
+                onChange={(nextThemeId) =>
+                  void handleMockThemeChange(selectedMock.id, nextThemeId)
+                }
+                signatoryName={
+                  activeSignature?.signatoryName || 'Boardly Examination Council'
+                }
+                signatoryTitle={activeSignature?.signatoryTitle || 'Founder, Boardly'}
+                signatureDataUrl={activeSignature?.previewDataUrl || null}
+              />
+            </div>
+          ) : (
+            <div className="p-4 sm:p-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-5">
+              <div className="border-b border-[var(--border)] pb-4 flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="font-mono text-[10px] uppercase tracking-widest text-[var(--accent)]">
+                    ALL 9 CERTIFICATE THEMES · LIVE INTERACTIVE PREVIEW
+                  </div>
+                  <h3 className="text-base sm:text-lg font-bold text-[var(--text)]">
+                    Boardly Grand Line Mock (Theme Gallery &amp; Live Preview)
+                  </h3>
+                </div>
+                <span className="px-2.5 py-1 rounded-md font-mono text-[10px] uppercase tracking-wider bg-[var(--surface-2)] text-[var(--text)] border border-[var(--border)]">
+                  SELECTED: {defaultPreviewThemeId || 'auto (unique per student)'}
+                </span>
+              </div>
+
+              <ThemePicker
+                grandLineId="gl_mock_01"
+                grandLineTitle="Boardly Grand Line Mock"
+                value={defaultPreviewThemeId}
+                onChange={(nextThemeId) => setDefaultPreviewThemeId(nextThemeId)}
+                signatoryName={
+                  activeSignature?.signatoryName || 'Boardly Examination Council'
+                }
+                signatoryTitle={activeSignature?.signatoryTitle || 'Founder, Boardly'}
+                signatureDataUrl={activeSignature?.previewDataUrl || null}
+              />
+            </div>
+          )}
         </div>
       )}
 

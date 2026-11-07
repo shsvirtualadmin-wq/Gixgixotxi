@@ -39,6 +39,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
   participantsCount,
   issuedAt,
   themeId,
+  theme: themeProp,
+  instanceId,
   signatoryName,
   signatoryTitle,
   signatureDataUrl,
@@ -49,8 +51,14 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
   onRetry,
 }) => {
   const theme = useMemo(
-    () => resolveCertificateTheme(grandLineId || 'default', themeId || 'default'),
-    [grandLineId, themeId]
+    () =>
+      resolveCertificateTheme(
+        grandLineId || 'default',
+        themeId === undefined ? 'default' : themeId,
+        studentName,
+        themeProp
+      ),
+    [grandLineId, themeId, studentName, themeProp]
   );
 
   const svgMarkup = useMemo(
@@ -68,6 +76,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
         participantsCount,
         issuedAt,
         themeId: theme.id,
+        theme,
+        instanceId: instanceId || `${theme.id}-${serial}`,
         signatoryName,
         signatoryTitle,
         signatureDataUrl,
@@ -85,7 +95,8 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
       percentage,
       participantsCount,
       issuedAt,
-      theme.id,
+      theme,
+      instanceId,
       signatoryName,
       signatoryTitle,
       signatureDataUrl,

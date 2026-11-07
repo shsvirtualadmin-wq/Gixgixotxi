@@ -1045,6 +1045,7 @@ export default {
           if (!isOwnerOrAdmin) {
             return errorResponse(request, env, 'Only the test owner or an admin can edit this test.', 'FORBIDDEN', 403);
           }
+          await ensureCertificateD1Tables(db);
           const body = await request.json();
           const title = cleanStr(body.title ?? testRow.title, MAX_TITLE_LEN);
           const description = cleanStr(body.description ?? testRow.description, 1000);
@@ -1053,6 +1054,18 @@ export default {
           const status = body.status && ['draft', 'published', 'unpublished'].includes(body.status) ? body.status : testRow.status;
           const durationMinutes = Math.max(1, Math.min(240, Number(body.durationMinutes ?? testRow.durationMinutes) || 20));
           const now = Date.now();
+
+          const rawThemeInput =
+            body.certificateThemeId !== undefined
+              ? body.certificateThemeId
+              : body.certificate_theme_id !== undefined
+              ? body.certificate_theme_id
+              : undefined;
+          const hasThemeUpdate = rawThemeInput !== undefined;
+          const normalizedThemeId =
+            rawThemeInput === null || rawThemeInput === '' || rawThemeInput === 'auto'
+              ? null
+              : String(rawThemeInput).trim();
 
           const stmts = [
             db
@@ -1064,6 +1077,14 @@ export default {
               )
               .bind(title, description, subject, visibility, status, durationMinutes, now, testId),
           ];
+
+          if (hasThemeUpdate) {
+            stmts.push(
+              db
+                .prepare('UPDATE captain_tests SET certificate_theme_id = ?1 WHERE id = ?2')
+                .bind(normalizedThemeId, testId)
+            );
+          }
 
           if (Array.isArray(body.questions)) {
             if (body.questions.length > MAX_QUESTIONS_PER_TEST) {
@@ -1115,7 +1136,11 @@ export default {
           }
 
           await db.batch(stmts);
-          return jsonResponse(request, env, { ok: true, id: testId });
+          return jsonResponse(request, env, {
+            ok: true,
+            id: testId,
+            certificateThemeId: hasThemeUpdate ? normalizedThemeId : undefined,
+          });
         }
 
         if (method === 'DELETE') {
@@ -1162,6 +1187,180 @@ export default {
           .run();
 
         return jsonResponse(request, env, { ok: true, id: testId, status: nextStatus, visibility: nextVisibility });
+      }
+
+      // Finalise Grand Line mock & issue 1st position certificate(s): POST /api/tests/:id/finalise
+      const finaliseMatch = path.match(/^\/api\/tests\/([^/]+)\/finalise$/);
+      if (finaliseMatch && method === 'POST') {
+        const testId = decodeURIComponent(finaliseMatch[1]);
+        const user = await authenticateRequest(request, env, true);
+        if (!user.isAdminOrAbove) {
+          return errorResponse(request, env, 'Only admins can finalise Grand Line results and issue certificates.', 'FORBIDDEN', 403);
+        }
+        await ensureCertificateD1Tables(db);
+        const testRow = await db
+          .prepare('SELECT * FROM captain_tests WHERE id = ?1')
+          .bind(testId)
+          .first();
+        if (!testRow) {
+          return errorResponse(request, env, 'Grand Line mock not found.', 'NOT_FOUND', 404);
+        }
+        const activeSig = await db
+          .prepare('SELECT * FROM certificate_signatures WHERE active = 1 ORDER BY version DESC LIMIT 1')
+          .first();
+        if (!activeSig) {
+          return errorResponse(
+            request,
+            env,
+            'Cannot issue certificates: No active admin signature configured. Upload a signature in Admin > Certificates first.',
+            'NO_ACTIVE_SIGNATURE',
+            400
+          );
+        }
+
+        const { results: attemptRows } = await db
+          .prepare(
+            `SELECT * FROM test_attempts
+             WHERE test_id = ?1
+             ORDER BY score DESC, percentage DESC, time_taken_seconds ASC, created_at ASC`
+          )
+          .bind(testId)
+          .all();
+
+        const attempts = attemptRows || [];
+        if (attempts.length === 0) {
+          return errorResponse(request, env, 'No verified student attempts found for this Grand Line mock.', 'NO_ATTEMPTS', 400);
+        }
+
+        // Deduplicate best attempt per student
+        const seenStudents = new Set();
+        const bestAttempts = [];
+        for (const a of attempts) {
+          const uid = String(a.user_uid || '').trim();
+          if (!uid || seenStudents.has(uid)) continue;
+          seenStudents.add(uid);
+          bestAttempts.push(a);
+        }
+
+        const topAttempt = bestAttempts[0];
+        const winners = bestAttempts.filter(
+          (a) =>
+            Number(a.score) === Number(topAttempt.score) &&
+            Number(a.time_taken_seconds || 0) === Number(topAttempt.time_taken_seconds || 0)
+        );
+
+        const countMocksRow = await db
+          .prepare('SELECT COUNT(*) AS cnt FROM captain_tests WHERE created_at <= ?1')
+          .bind(Number(testRow.created_at || Date.now()))
+          .first();
+        const mockNumber = Math.max(1, Number(countMocksRow?.cnt || 1));
+        const glPad = String(mockNumber).padStart(2, '0');
+        const configuredThemeId = testRow.certificate_theme_id ? String(testRow.certificate_theme_id).trim() : null;
+
+        const existingSerialsRes = await db
+          .prepare('SELECT serial FROM certificates WHERE grand_line_id = ?1')
+          .bind(testId)
+          .all();
+        let nextSeq = (existingSerialsRes?.results?.length || 0) + 1;
+
+        const issued = [];
+        const skipped = [];
+        const now = Date.now();
+
+        for (const w of winners) {
+          const studentUid = String(w.user_uid);
+          const existingCert = await db
+            .prepare('SELECT * FROM certificates WHERE student_uid = ?1 AND grand_line_id = ?2')
+            .bind(studentUid, testId)
+            .first();
+          if (existingCert) {
+            skipped.push({ studentUid, serial: existingCert.serial, reason: 'already_issued' });
+            continue;
+          }
+
+          const seqPad = String(nextSeq++).padStart(4, '0');
+          const serial = `BDLY-GL${glPad}-${seqPad}`;
+          const resolvedThemeObj = resolveWorkerCertThemeColors(testId, configuredThemeId, studentUid);
+          const certRow = {
+            id: `cert_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`,
+            student_uid: studentUid,
+            student_name: resolveLeaderboardRowName(w.user_name, ''),
+            student_email: null,
+            grand_line_id: testId,
+            grand_line_title: String(testRow.title || 'Boardly Grand Line Mock'),
+            edition_label: `${String(testRow.subject || 'OFFICIAL').toUpperCase()} · GRAND LINE #${glPad}`,
+            rank: 1,
+            score: Number(w.score || 0),
+            total_questions: Number(w.total_questions || testRow.question_count || 0),
+            percentage: Number(w.percentage || 100),
+            participants_count: bestAttempts.length,
+            serial,
+            theme_id: resolvedThemeObj.id || configuredThemeId || 'default',
+            signature_version: Number(activeSig.version),
+            issued_at: now,
+            pdf_r2_key: `certificates/${testId}/${serial}.pdf`,
+            png_r2_key: `certificates/${testId}/${serial}.png`,
+            status: 'active',
+          };
+
+          await renderAndStoreWorkerCertificate(env, certRow, activeSig);
+          await db
+            .prepare(
+              `INSERT INTO certificates (
+                id, student_uid, student_name, student_email, grand_line_id, grand_line_title,
+                edition_label, rank, score, total_questions, percentage, participants_count,
+                serial, theme_id, signature_version, issued_at, pdf_r2_key, png_r2_key, status
+              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)`
+            )
+            .bind(
+              certRow.id,
+              certRow.student_uid,
+              certRow.student_name,
+              certRow.student_email,
+              certRow.grand_line_id,
+              certRow.grand_line_title,
+              certRow.edition_label,
+              certRow.rank,
+              certRow.score,
+              certRow.total_questions,
+              certRow.percentage,
+              certRow.participants_count,
+              certRow.serial,
+              certRow.theme_id,
+              certRow.signature_version,
+              certRow.issued_at,
+              certRow.pdf_r2_key,
+              certRow.png_r2_key,
+              certRow.status
+            )
+            .run();
+
+          issued.push({
+            id: certRow.id,
+            serial: certRow.serial,
+            studentUid: certRow.student_uid,
+            studentName: certRow.student_name,
+            score: certRow.score,
+            totalQuestions: certRow.total_questions,
+            percentage: certRow.percentage,
+            themeId: certRow.theme_id,
+          });
+        }
+
+        await db
+          .prepare('UPDATE captain_tests SET results_finalised = 1, finalised_at = ?1 WHERE id = ?2')
+          .bind(now, testId)
+          .run()
+          .catch(() => {});
+
+        return jsonResponse(request, env, {
+          ok: true,
+          grandLineId: testId,
+          participantsCount: bestAttempts.length,
+          issuedCount: issued.length,
+          issued,
+          skipped,
+        });
       }
 
       // Bulk insert questions: POST /api/tests/:id/questions
@@ -2372,6 +2571,19 @@ export default {
             )`
           )
           .run();
+
+        await db
+          .prepare('ALTER TABLE captain_tests ADD COLUMN certificate_theme_id TEXT DEFAULT NULL')
+          .run()
+          .catch(() => {});
+        await db
+          .prepare('ALTER TABLE captain_tests ADD COLUMN results_finalised INTEGER DEFAULT 0')
+          .run()
+          .catch(() => {});
+        await db
+          .prepare('ALTER TABLE captain_tests ADD COLUMN finalised_at INTEGER DEFAULT NULL')
+          .run()
+          .catch(() => {});
       }
 
       function uint8ArrayToBase64(bytes) {
@@ -2449,26 +2661,123 @@ export default {
       }
 
       const WORKER_CERT_THEMES = {
-        default: { bg: '#0A0A0D', ink: '#F8FAFC', muted: '#94A3B8', accent: '#EF4444' },
-        'default-light': { bg: '#F6F5F0', ink: '#0D1B3E', muted: '#475569', accent: '#EF4444' },
-        'red-dark': { bg: '#0A0A0D', ink: '#F8FAFC', muted: '#94A3B8', accent: '#EF4444' },
-        'light-red': { bg: '#F6F5F0', ink: '#0D1B3E', muted: '#475569', accent: '#EF4444' },
-        'blue-dark': { bg: '#0D1B3E', ink: '#F8FAFC', muted: '#93C5FD', accent: '#1A6DFF' },
-        'green-dark': { bg: '#090F0D', ink: '#F0FDF4', muted: '#86EFAC', accent: '#22C55E' },
-        'amber-dark': { bg: '#0B0D14', ink: '#FFFBEB', muted: '#CBD5E1', accent: '#F5B942' },
-        'mono-light': { bg: '#FFFFFF', ink: '#0D1B3E', muted: '#475569', accent: '#EF4444' },
+        default: {
+          id: 'default',
+          bg: '#09090B',
+          cardSurface: '#121216',
+          border: '#EF4444',
+          ink: '#FAFAFA',
+          muted: '#A1A1AA',
+          accent: '#EF4444',
+          secondary: '#E4E4E7',
+          sigInk: '#FAFAFA',
+        },
+        'default-light': {
+          id: 'default-light',
+          bg: '#F4F4F0',
+          cardSurface: '#FFFFFF',
+          border: '#09090B',
+          ink: '#09090B',
+          muted: '#52525B',
+          accent: '#DC2626',
+          secondary: '#18181B',
+          sigInk: '#09090B',
+        },
+        'red-dark': {
+          id: 'red-dark',
+          bg: '#160709',
+          cardSurface: '#240B0F',
+          border: '#F43F5E',
+          ink: '#FFF1F2',
+          muted: '#FDA4AF',
+          accent: '#F43F5E',
+          secondary: '#FB923C',
+          sigInk: '#FFE4E6',
+        },
+        'light-red': {
+          id: 'light-red',
+          bg: '#FAF6F0',
+          cardSurface: '#FFFDF9',
+          border: '#E11D48',
+          ink: '#1C1917',
+          muted: '#57534E',
+          accent: '#E11D48',
+          secondary: '#9F1239',
+          sigInk: '#1C1917',
+        },
+        'blue-dark': {
+          id: 'blue-dark',
+          bg: '#061024',
+          cardSurface: '#0C1D3D',
+          border: '#38BDF8',
+          ink: '#F0F9FF',
+          muted: '#93C5FD',
+          accent: '#38BDF8',
+          secondary: '#818CF8',
+          sigInk: '#E0F2FE',
+        },
+        'green-dark': {
+          id: 'green-dark',
+          bg: '#051812',
+          cardSurface: '#0A291F',
+          border: '#10B981',
+          ink: '#ECFDF5',
+          muted: '#6EE7B7',
+          accent: '#10B981',
+          secondary: '#2DD4BF',
+          sigInk: '#D1FAE5',
+        },
+        'amber-dark': {
+          id: 'amber-dark',
+          bg: '#140E05',
+          cardSurface: '#211708',
+          border: '#F59E0B',
+          ink: '#FFFBEB',
+          muted: '#FCD34D',
+          accent: '#F59E0B',
+          secondary: '#FDE047',
+          sigInk: '#FEF08A',
+        },
+        'mono-light': {
+          id: 'mono-light',
+          bg: '#FFFFFF',
+          cardSurface: '#F8FAFC',
+          border: '#0F172A',
+          ink: '#0F172A',
+          muted: '#475569',
+          accent: '#0F172A',
+          secondary: '#DC2626',
+          sigInk: '#0F172A',
+        },
       };
 
-      function resolveWorkerCertThemeColors(grandLineId, themeId) {
+      const WORKER_AUTO_THEMES = [
+        {
+          id: 'auto-violet-dark',
+          bg: '#0F0720',
+          cardSurface: '#190D33',
+          border: '#A855F7',
+          ink: '#FAF5FF',
+          muted: '#D8B4FE',
+          accent: '#A855F7',
+          secondary: '#EC4899',
+          sigInk: '#F3E8FF',
+        },
+        ...Object.values(WORKER_CERT_THEMES),
+      ];
+
+      function resolveWorkerCertThemeColors(grandLineId, themeId, studentSeed) {
         if (themeId && WORKER_CERT_THEMES[themeId]) return WORKER_CERT_THEMES[themeId];
-        const keys = Object.keys(WORKER_CERT_THEMES);
+        if (!studentSeed && (!themeId || themeId === 'auto')) {
+          return WORKER_AUTO_THEMES[0];
+        }
         let h = 0x811c9dc5;
-        const s = String(grandLineId || 'gl_mock_01');
+        const s = `${grandLineId || 'gl_mock_01'}::${studentSeed || 'sample'}`;
         for (let i = 0; i < s.length; i++) {
           h ^= s.charCodeAt(i);
           h = Math.imul(h, 0x01000193) >>> 0;
         }
-        return WORKER_CERT_THEMES[keys[h % keys.length]];
+        return WORKER_AUTO_THEMES[h % WORKER_AUTO_THEMES.length];
       }
 
       function hexToRgb01(hex) {
@@ -2504,11 +2813,14 @@ export default {
       }
 
       function buildWorkerCertificatePdfBytes(certRow, sigRow) {
-        const palette = resolveWorkerCertThemeColors(certRow.grand_line_id, certRow.theme_id);
+        const palette = resolveWorkerCertThemeColors(certRow.grand_line_id, certRow.theme_id, certRow.student_uid || certRow.serial);
         const bg = hexToRgb01(palette.bg);
+        const cardSurface = hexToRgb01(palette.cardSurface || palette.bg);
+        const border = hexToRgb01(palette.border || palette.accent);
         const ink = hexToRgb01(palette.ink);
         const muted = hexToRgb01(palette.muted);
         const accent = hexToRgb01(palette.accent);
+        const sigInk = hexToRgb01(palette.sigInk || palette.ink);
 
         const serial = String(certRow.serial || 'BDLY-GL01-0001');
         const studentName = String(certRow.student_name || 'Student');
@@ -2528,7 +2840,9 @@ export default {
           'q',
           `${bg.rf} ${bg.gf} ${bg.bf} rg`,
           '0 0 1123 794 re f',
-          `${accent.rf} ${accent.gf} ${accent.bf} RG 2 w`,
+          `${cardSurface.rf} ${cardSurface.gf} ${cardSurface.bf} rg`,
+          '56 48 1011 698 re f',
+          `${border.rf} ${border.gf} ${border.bf} RG 2 w`,
           '56 48 1011 698 re S',
           'BT',
           `/F2 22 Tf ${ink.rf} ${ink.gf} ${ink.bf} rg 104 686 Td (BOARDLY .) Tj`,
@@ -2539,7 +2853,7 @@ export default {
           `/F1 34 Tf ${ink.rf} ${ink.gf} ${ink.bf} rg -60 -52 Td (${escapePdfText(studentName)}) Tj`,
           `/F1 14 Tf ${muted.rf} ${muted.gf} ${muted.bf} rg -140 -48 Td (for securing First Position in ${escapePdfText(mockTitle)} with a score of ${escapePdfText(scoreStr)}, ahead of ${participants} participants.) Tj`,
           `/F2 11 Tf ${ink.rf} ${ink.gf} ${ink.bf} rg -45 -180 Td (DATE ISSUED: ${escapePdfText(dateStr)}   |   SERIAL: ${escapePdfText(serial)}   |   VERIFY: boardly.cfd/verify/${escapePdfText(serial)}) Tj`,
-          `/F1 13 Tf ${ink.rf} ${ink.gf} ${ink.bf} rg 0 -28 Td (AUTHORISED BY: ${escapePdfText(sigName)} - ${escapePdfText(sigTitle)} [Signature v${sigVer}]) Tj`,
+          `/F1 13 Tf ${sigInk.rf} ${sigInk.gf} ${sigInk.bf} rg 0 -28 Td (AUTHORISED BY: ${escapePdfText(sigName)} - ${escapePdfText(sigTitle)} [Signature v${sigVer}]) Tj`,
           'ET',
           'Q',
         ];
@@ -2619,8 +2933,9 @@ export default {
       }
 
       function buildWorkerCertificatePngBytes(certRow, sigRow) {
-        const palette = resolveWorkerCertThemeColors(certRow.grand_line_id, certRow.theme_id);
+        const palette = resolveWorkerCertThemeColors(certRow.grand_line_id, certRow.theme_id, certRow.student_uid || certRow.serial);
         const bg = hexToRgb01(palette.bg);
+        const cardSurface = hexToRgb01(palette.cardSurface || palette.bg);
         const accent = hexToRgb01(palette.accent);
         const ink = hexToRgb01(palette.ink);
 
@@ -2634,14 +2949,19 @@ export default {
             const isBorder = x === 5 || x === w - 6 || y === 4 || y === h - 5;
             const isHeaderDot = x >= 22 && x <= 25 && y >= 10 && y <= 13;
             const isCenterBar = y >= 32 && y <= 34 && x >= 20 && x <= w - 20;
+            const isInsideCard = x > 5 && x < w - 6 && y > 4 && y < h - 5;
             if (isBorder || isHeaderDot || isCenterBar) {
               rawScanlines[ptr++] = accent.r;
               rawScanlines[ptr++] = accent.g;
               rawScanlines[ptr++] = accent.b;
-            } else if (x > 5 && x < w - 6 && y > 4 && y < h - 5 && (x + y) % 11 === 0) {
+            } else if (isInsideCard && (x + y) % 11 === 0) {
               rawScanlines[ptr++] = ink.r;
               rawScanlines[ptr++] = ink.g;
               rawScanlines[ptr++] = ink.b;
+            } else if (isInsideCard) {
+              rawScanlines[ptr++] = cardSurface.r;
+              rawScanlines[ptr++] = cardSurface.g;
+              rawScanlines[ptr++] = cardSurface.b;
             } else {
               rawScanlines[ptr++] = bg.r;
               rawScanlines[ptr++] = bg.g;
@@ -3504,11 +3824,36 @@ export default {
               downloadPdfUrl: `/api/certificates/${encodeURIComponent(c.id)}/download?format=pdf&token=${pdfToken}&exp=${exp}`,
             });
           }
+          const { results: rawMocks } = await db
+            .prepare(
+              `SELECT id, title, subject, status, visibility, question_count, attempts_count,
+                      certificate_theme_id, results_finalised, finalised_at, created_at
+               FROM captain_tests
+               ORDER BY created_at ASC`
+            )
+            .all()
+            .catch(() => ({ results: [] }));
+
+          const mocks = (rawMocks || []).map((m, idx) => ({
+            id: m.id,
+            title: m.title || `Grand Line Mock #${idx + 1}`,
+            subject: m.subject || 'General',
+            status: m.status || 'published',
+            visibility: m.visibility || 'public',
+            questionCount: Number(m.question_count || 0),
+            attemptsCount: Number(m.attempts_count || 0),
+            certificateThemeId: m.certificate_theme_id || null,
+            resultsFinalised: Boolean(m.results_finalised),
+            finalisedAt: m.finalised_at ? Number(m.finalised_at) : null,
+            mockNumber: idx + 1,
+          }));
+
           return jsonResponse(request, env, {
             ok: true,
             hasActiveSignature: Boolean(formattedActiveSig),
             activeSignature: formattedActiveSig,
             certificates: mappedCerts,
+            mocks,
           });
         }
 
