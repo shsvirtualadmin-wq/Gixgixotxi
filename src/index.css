@@ -8272,3 +8272,397 @@ button.rs-day-cell:active {
   }
 }
 
+/* ==========================================================================
+   CHOOSE YOUR USERNAME POPUP RESTYLE (.cum-*) — DARK & LIGHT THEMES
+   ========================================================================== */
+
+:root,
+.dark,
+[data-theme="dark"] {
+  --cum-backdrop: rgba(0, 0, 0, 0.62);
+  --cum-dialog-bg: rgba(24, 24, 29, 0.94);
+  --cum-dialog-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.22), inset 0 1.5px 1px -1px rgba(255, 255, 255, 0.42), 0 30px 60px -20px rgba(0, 0, 0, 0.55);
+  --cum-text: #f4f4f5;
+  --cum-muted: #a4a4ad;
+  --cum-input-bg: #1b1b20;
+  --cum-line: rgba(255, 255, 255, 0.12);
+  --cum-red: #e11d2e;
+  --cum-red-text: #ff4d5c;
+  --cum-green: #3ddc84;
+  --cum-btn-fill: color-mix(in srgb, #e11d2e 72%, transparent);
+  --cum-btn-fill-fallback: rgba(225, 29, 46, 0.72);
+}
+
+.light,
+[data-theme="light"] {
+  --cum-backdrop: rgba(30, 26, 28, 0.45);
+  --cum-dialog-bg: rgba(255, 255, 255, 0.96);
+  --cum-dialog-edge: inset 0 0 0 1px rgba(20, 20, 24, 0.16), inset 0 1.5px 1px -1px rgba(255, 255, 255, 0.9), 0 30px 60px -20px rgba(0, 0, 0, 0.55);
+  --cum-text: #16161a;
+  --cum-muted: #5d5d66;
+  --cum-input-bg: #f1eeec;
+  --cum-line: rgba(20, 20, 24, 0.14);
+  --cum-red: #d4142a;
+  --cum-red-text: #c10f24;
+  --cum-green: #128c4a;
+  --cum-btn-fill: color-mix(in srgb, #d4142a 74%, transparent);
+  --cum-btn-fill-fallback: rgba(212, 20, 42, 0.74);
+}
+
+@keyframes cum-spring-scale {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.cum-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  padding-top: max(16px, env(safe-area-inset-top, 16px));
+  padding-bottom: max(16px, env(safe-area-inset-bottom, 16px));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--cum-backdrop) !important;
+  background-color: var(--cum-backdrop) !important;
+  background-image: none !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+.cum-dialog {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: auto;
+  border-radius: 32px;
+  padding: 26px;
+  background: var(--cum-dialog-bg) !important;
+  background-color: var(--cum-dialog-bg) !important;
+  background-image: none !important;
+  color: var(--cum-text) !important;
+  -webkit-text-fill-color: var(--cum-text);
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-backdrop-filter: blur(24px) saturate(1.5) !important;
+  backdrop-filter: blur(24px) saturate(1.5) !important;
+  border: none !important;
+  box-shadow: var(--cum-dialog-edge) !important;
+  animation: cum-spring-scale 0.34s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.cum-badge {
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  min-height: 52px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(225, 29, 46, 0.14);
+  background-color: color-mix(in srgb, var(--cum-red) 14%, transparent);
+  border: 1px solid rgba(225, 29, 46, 0.36);
+  border: 1px solid color-mix(in srgb, var(--cum-red) 36%, transparent);
+  color: var(--cum-red) !important;
+  -webkit-text-fill-color: var(--cum-red);
+}
+
+.cum-title {
+  font-family: 'Doto', var(--font-dot), system-ui, sans-serif !important;
+  font-weight: 800 !important;
+  font-size: 26px !important;
+  line-height: 1.15 !important;
+  letter-spacing: 0.01em !important;
+  color: var(--cum-text) !important;
+  -webkit-text-fill-color: var(--cum-text) !important;
+  margin: 0;
+}
+
+.cum-desc {
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.48;
+  color: var(--cum-muted) !important;
+  -webkit-text-fill-color: var(--cum-muted) !important;
+  margin: 0;
+}
+
+.cum-label {
+  display: block;
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cum-muted) !important;
+  -webkit-text-fill-color: var(--cum-muted) !important;
+  margin-bottom: 8px;
+}
+
+.cum-input-wrap {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.cum-prefix {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--cum-muted) !important;
+  -webkit-text-fill-color: var(--cum-muted) !important;
+  pointer-events: none;
+  user-select: none;
+  z-index: 2;
+}
+
+.cum-input {
+  width: 100%;
+  height: 52px;
+  box-sizing: border-box;
+  border-radius: 18px !important;
+  padding: 0 42px 0 36px !important;
+  background-color: var(--cum-input-bg) !important;
+  background-image: none !important;
+  color: var(--cum-text) !important;
+  -webkit-text-fill-color: var(--cum-text) !important;
+  caret-color: var(--cum-red) !important;
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+  border: 1px solid var(--cum-line) !important;
+  box-shadow: none !important;
+  outline: none !important;
+  transition: border-color 0.16s ease, border-width 0.1s ease;
+}
+
+.cum-input::placeholder {
+  color: var(--cum-muted) !important;
+  -webkit-text-fill-color: var(--cum-muted) !important;
+  opacity: 1 !important;
+  font-weight: 500 !important;
+}
+
+.cum-input::-webkit-input-placeholder {
+  color: var(--cum-muted) !important;
+  -webkit-text-fill-color: var(--cum-muted) !important;
+  opacity: 1 !important;
+  font-weight: 500 !important;
+}
+
+.cum-input:-webkit-autofill,
+.cum-input:-webkit-autofill:hover,
+.cum-input:-webkit-autofill:focus,
+.cum-input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--cum-input-bg) inset !important;
+  box-shadow: 0 0 0 1000px var(--cum-input-bg) inset !important;
+  -webkit-text-fill-color: var(--cum-text) !important;
+  color: var(--cum-text) !important;
+  caret-color: var(--cum-red) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+.cum-input:focus,
+.cum-input:focus-visible {
+  outline: none !important;
+  border: 2px solid var(--cum-red) !important;
+  box-shadow: none !important;
+}
+
+.cum-input--available,
+.cum-input--available:focus,
+.cum-input--available:focus-visible {
+  border: 2px solid var(--cum-green) !important;
+}
+
+.cum-input--error,
+.cum-input--error:focus,
+.cum-input--error:focus-visible {
+  border: 2px solid var(--cum-red-text) !important;
+}
+
+.cum-status {
+  margin-top: 8px;
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.cum-status--muted {
+  color: var(--cum-muted) !important;
+  -webkit-text-fill-color: var(--cum-muted) !important;
+}
+
+.cum-status--available {
+  color: var(--cum-green) !important;
+  -webkit-text-fill-color: var(--cum-green) !important;
+}
+
+.cum-status--error {
+  color: var(--cum-red-text) !important;
+  -webkit-text-fill-color: var(--cum-red-text) !important;
+}
+
+.cum-rules-box {
+  border-radius: 18px;
+  padding: 12px 14px;
+  background-color: var(--cum-input-bg) !important;
+  border: 1px solid var(--cum-line) !important;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cum-rules-title {
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cum-text) !important;
+  -webkit-text-fill-color: var(--cum-text) !important;
+}
+
+.cum-rules-text {
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--cum-muted) !important;
+  -webkit-text-fill-color: var(--cum-muted) !important;
+  margin: 0;
+}
+
+.cum-submit-error {
+  border-radius: 16px;
+  padding: 10px 14px;
+  background-color: color-mix(in srgb, var(--cum-red) 12%, var(--cum-input-bg)) !important;
+  border: 1px solid color-mix(in srgb, var(--cum-red-text) 38%, transparent) !important;
+  color: var(--cum-red-text) !important;
+  -webkit-text-fill-color: var(--cum-red-text) !important;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cum-btn-continue {
+  width: 100%;
+  height: 50px;
+  border-radius: 999px !important;
+  padding: 0 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--cum-btn-fill-fallback) !important;
+  background: var(--cum-btn-fill) !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  border: none !important;
+  -webkit-backdrop-filter: blur(2px) saturate(1.5);
+  backdrop-filter: blur(2px) saturate(1.5);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.24),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.6),
+    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.3),
+    0 6px 18px -4px rgba(0, 0, 0, 0.35) !important;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.18s ease;
+}
+
+.cum-btn-continue:not(:disabled):active {
+  transform: scale(1.05);
+}
+
+.cum-btn-continue:disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.cum-btn-skip {
+  width: 100%;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: transparent !important;
+  color: var(--cum-muted) !important;
+  -webkit-text-fill-color: var(--cum-muted) !important;
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.cum-btn-skip:hover:not(:disabled) {
+  color: var(--cum-text) !important;
+  -webkit-text-fill-color: var(--cum-text) !important;
+}
+
+.cum-close-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--cum-input-bg) !important;
+  border: 1px solid var(--cum-line) !important;
+  color: var(--cum-muted) !important;
+  -webkit-text-fill-color: var(--cum-muted) !important;
+  cursor: pointer;
+  transition: color 0.15s ease, transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.cum-close-btn:hover:not(:disabled) {
+  color: var(--cum-text) !important;
+  -webkit-text-fill-color: var(--cum-text) !important;
+}
+
+.cum-close-btn:active:not(:disabled) {
+  transform: scale(1.05);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cum-dialog,
+  .cum-btn-continue,
+  .cum-btn-continue:not(:disabled):active,
+  .cum-close-btn,
+  .cum-close-btn:active:not(:disabled),
+  .cum-input {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+

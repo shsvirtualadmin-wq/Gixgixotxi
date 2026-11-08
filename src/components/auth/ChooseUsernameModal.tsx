@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, AlertCircle, Loader2, AtSign, X } from 'lucide-react';
+import { Check, Loader2, User, X } from 'lucide-react';
 import { validateUsernameFormat } from '@/utils/usernameValidation';
 
 interface ChooseUsernameModalProps {
@@ -94,54 +94,57 @@ export const ChooseUsernameModal: React.FC<ChooseUsernameModalProps> = ({
     }
   };
 
+  const inputStateClass =
+    status === 'available'
+      ? 'cum-input--available'
+      : status === 'taken' || status === 'invalid'
+      ? 'cum-input--error'
+      : '';
+
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in"
+      className="cum-backdrop"
       role="dialog"
       aria-modal="true"
       aria-labelledby="choose-username-modal-title"
       data-testid="choose-username-modal"
     >
-      <div className="relative w-full max-w-md rounded-2xl border border-white/15 bg-[#121214] p-6 text-white shadow-2xl">
+      <div className="cum-dialog">
         {allowSkip && onSkip && (
           <button
             type="button"
             onClick={onSkip}
             disabled={saving}
             aria-label="Skip for now"
-            className="absolute right-4 top-4 rounded-lg p-1.5 text-white/50 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+            className="cum-close-btn"
           >
             <X className="w-4 h-4" />
           </button>
         )}
 
-        <div className="flex items-center gap-3 mb-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#D71921]/15 border border-[#D71921]/40 text-[#D71921]">
-            <AtSign className="w-5 h-5" />
+        <div className="flex flex-col items-start gap-3.5 mb-5">
+          <div className="cum-badge">
+            <User className="w-6 h-6" strokeWidth={2.2} />
           </div>
-          <div>
-            <h2
-              id="choose-username-modal-title"
-              className="text-base sm:text-lg font-bold tracking-tight text-white"
-            >
+          <div className="space-y-1.5">
+            <h2 id="choose-username-modal-title" className="cum-title">
               Choose your Boardly username
             </h2>
-            <p className="text-xs text-white/60">
+            <p className="cum-desc">
               Your unique @username lets you sign in with username or email.
             </p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-[10px] font-mono uppercase tracking-[0.14em] text-white/60 mb-1.5">
+            <label htmlFor="choose-username-field" className="cum-label">
               Username
             </label>
-            <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40 font-mono text-sm select-none">
-                @
-              </span>
+            <div className="cum-input-wrap">
+              <span className="cum-prefix">@</span>
               <input
+                id="choose-username-field"
                 type="text"
                 data-testid="choose-username-input"
                 value={username}
@@ -152,43 +155,62 @@ export const ChooseUsernameModal: React.FC<ChooseUsernameModalProps> = ({
                 placeholder="e.g. ayesha_khan"
                 maxLength={20}
                 autoFocus
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 disabled={saving}
-                className="w-full pl-8 pr-9 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.12] text-white placeholder-white/30 text-sm focus:outline-none focus:border-white/35 transition-all"
+                className={`cum-input ${inputStateClass}`}
               />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center">
+              <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
                 {status === 'checking' && (
-                  <Loader2 className="w-4 h-4 text-white/50 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--cum-muted)' }} />
                 )}
                 {status === 'available' && (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <Check className="w-4 h-4" strokeWidth={2.6} style={{ color: 'var(--cum-green)' }} />
                 )}
                 {(status === 'taken' || status === 'invalid') && (
-                  <AlertCircle className="w-4 h-4 text-[#D71921]" />
+                  <X className="w-4 h-4" strokeWidth={2.6} style={{ color: 'var(--cum-red-text)' }} />
                 )}
               </div>
             </div>
 
-            {message && (
-              <p
-                data-testid="choose-username-status"
-                className={`mt-1.5 text-[11px] font-medium ${
-                  status === 'available'
-                    ? 'text-emerald-400'
-                    : status === 'checking'
-                    ? 'text-white/50'
-                    : 'text-[#ff8085]'
-                }`}
-              >
-                {message}
-              </p>
-            )}
-            <p className="mt-1 text-[11px] text-white/45">
+            <div aria-live="polite">
+              {message && (
+                <p
+                  data-testid="choose-username-status"
+                  className={`cum-status ${
+                    status === 'available'
+                      ? 'cum-status--available'
+                      : status === 'checking' || status === 'idle'
+                      ? 'cum-status--muted'
+                      : 'cum-status--error'
+                  }`}
+                >
+                  {status === 'checking' && (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  )}
+                  {status === 'available' && (
+                    <Check className="w-3.5 h-3.5 shrink-0" strokeWidth={2.6} />
+                  )}
+                  {(status === 'taken' || status === 'invalid') && (
+                    <X className="w-3.5 h-3.5 shrink-0" strokeWidth={2.6} />
+                  )}
+                  <span>{message}</span>
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="cum-rules-box">
+            <span className="cum-rules-title">Rules</span>
+            <p className="cum-rules-text">
               3–20 characters: letters, numbers, dots (.) and underscores (_) only.
             </p>
           </div>
 
           {submitError && (
-            <div className="p-2.5 rounded-xl bg-[#D71921]/10 border border-[#D71921]/30 text-[#ff8085] text-xs">
+            <div className="cum-submit-error" role="alert">
               {submitError}
             </div>
           )}
@@ -198,7 +220,7 @@ export const ChooseUsernameModal: React.FC<ChooseUsernameModalProps> = ({
               type="submit"
               data-testid="choose-username-submit-btn"
               disabled={saving || status !== 'available'}
-              className="w-full py-2.5 px-4 rounded-xl bg-[#D71921] hover:bg-[#b8141b] text-white font-semibold text-sm transition-colors cursor-pointer disabled:opacity-50"
+              className="cum-btn-continue"
             >
               {saving ? 'Saving username...' : 'Save username'}
             </button>
@@ -209,7 +231,7 @@ export const ChooseUsernameModal: React.FC<ChooseUsernameModalProps> = ({
                 data-testid="choose-username-skip-btn"
                 disabled={saving}
                 onClick={onSkip}
-                className="w-full py-2 px-4 rounded-xl text-white/55 hover:text-white text-xs font-medium transition-colors cursor-pointer"
+                className="cum-btn-skip"
               >
                 Set later in Profile / Settings
               </button>
@@ -220,3 +242,4 @@ export const ChooseUsernameModal: React.FC<ChooseUsernameModalProps> = ({
     </div>
   );
 };
+
