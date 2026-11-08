@@ -839,6 +839,31 @@ export async function verifyFirebaseJwtZeroFirestore(
 
     const uid = payload.sub;
     const email = String(payload.email || '').trim().toLowerCase();
+    const signInProvider = payload.firebase?.sign_in_provider
+      ? String(payload.firebase.sign_in_provider)
+      : undefined;
+    const authTimeSec = Number(payload.auth_time || payload.iat || 0);
+
+    if (signInProvider !== 'google.com') {
+      try {
+        const { getSharedLocalD1Database, isD1UserSessionVerified } = await import(
+          '../../functions/_utils/firestoreRestAdmin'
+        );
+        const sessionVerified = await isD1UserSessionVerified(getSharedLocalD1Database(), {
+          uid,
+          email,
+          emailVerified: Boolean(payload.email_verified),
+          authTime: authTimeSec,
+          iat: Number(payload.iat || 0),
+          signInProvider,
+        });
+        if (!sessionVerified) {
+          return null;
+        }
+      } catch {
+        // Fallback if local D1 helper cannot be loaded
+      }
+    }
 
     const store = loadD1Store();
     const roleRow = store.userRoles.find(

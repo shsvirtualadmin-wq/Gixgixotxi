@@ -3,11 +3,19 @@ import { Mail, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function VerificationBanner() {
-  const { user, sendVerificationEmail } = useAuth();
+  const { user, profile, isSessionVerified, sendVerificationEmail } = useAuth();
   const [sent, setSent] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
-  if (!user || user.emailVerified || dismissed) return null;
+  if (
+    !user ||
+    user.emailVerified ||
+    isSessionVerified ||
+    (profile as any)?.emailVerified ||
+    dismissed
+  ) {
+    return null;
+  }
 
   const handleResend = async () => {
     try {

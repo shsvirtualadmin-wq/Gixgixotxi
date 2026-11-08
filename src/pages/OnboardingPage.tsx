@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useAuth } from '@/contexts/AuthContext';
 import { OnboardingShell } from '@/components/onboarding/OnboardingShell';
 import { StepSubjects } from '@/components/onboarding/StepSubjects';
 import { StepSummary } from '@/components/onboarding/StepSummary';
+import { LineLoader } from '@/components/ui/LineLoader';
 import { logRedirect } from '@/utils/debugTracker';
 import { ArrowLeft, AlertCircle, RefreshCw } from 'lucide-react';
 
 export function OnboardingPage() {
   const { user, profile, loading: profileLoading, error: profileError, retryFetch } = useUserProfile();
+  const { isSessionVerified, otpVerificationState } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [subjects, setSubjects] = useState<string[]>([]);
@@ -41,6 +44,14 @@ export function OnboardingPage() {
       navigate('/login', { replace: true });
     }
   }, [user, profileLoading, navigate]);
+
+  if (user && otpVerificationState.status === 'checking') {
+    return <LineLoader context="onboarding" variant="page" />;
+  }
+
+  if (user && !isSessionVerified) {
+    return <Navigate to="/verify-email" replace />;
+  }
 
   const handleComplete = () => {
     const storedRedirect = sessionStorage.getItem('boardly_post_login_redirect');

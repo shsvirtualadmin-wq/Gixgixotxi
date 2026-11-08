@@ -12,7 +12,7 @@ import { useEffect } from 'react';
 import { ensureWelcomeNotificationForUser } from '@/services/notificationService';
 
 export function DashboardShell() {
-  const { user, profileLoading } = useAuth();
+  const { user, profileLoading, isSessionVerified, otpVerificationState } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const isAuthenticated = isUserAuthenticated(user, profileLoading);
@@ -26,10 +26,10 @@ export function DashboardShell() {
     location.pathname === '/saved';
 
   useEffect(() => {
-    if (user?.uid) {
+    if (user?.uid && isSessionVerified) {
       void ensureWelcomeNotificationForUser(user.uid);
     }
-  }, [user?.uid]);
+  }, [user?.uid, isSessionVerified]);
 
   useEffect(() => {
     if (!isAuthenticated && !profileLoading && !user) {
@@ -43,7 +43,10 @@ export function DashboardShell() {
     }
   }, [isAuthenticated, user, profileLoading, navigate, location.pathname, location.search, location.hash]);
 
-  if (profileLoading && !user && !isAuthenticated) {
+  if (
+    (profileLoading && !user && !isAuthenticated) ||
+    (user && otpVerificationState.status === 'checking')
+  ) {
     return <LineLoader context="dashboard" variant="page" />;
   }
 
@@ -51,6 +54,21 @@ export function DashboardShell() {
   if (!isAuthenticated && !profileLoading && !user) {
     const target = `${location.pathname}${location.search}${location.hash}`;
     return <Navigate to={`/login?redirect=${encodeURIComponent(target)}`} replace />;
+  }
+
+  // Route guard: Signed-in users who have NOT completed the 6-digit verification code step
+  if (user && !isSessionVerified) {
+    const target = `${location.pathname}${location.search}${location.hash}`;
+    try {
+      sessionStorage.setItem('boardly_post_login_redirect', target);
+    } catch {
+      // ignore storage errors
+    }
+    const verifyDest =
+      otpVerificationState.purpose === 'signup'
+        ? '/verify-email'
+        : `/login?redirect=${encodeURIComponent(target)}`;
+    return <Navigate to={verifyDest} replace />;
   }
 
   // NEVER return null or blank screen — always render shell and bottom nav immediately

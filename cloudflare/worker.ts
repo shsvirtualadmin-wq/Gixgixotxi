@@ -617,6 +617,35 @@ export async function verifyFirebaseIdToken(
 
     const uid = payload.sub;
     const email = String(payload.email || '').toLowerCase();
+    const signInProvider = payload.firebase?.sign_in_provider
+      ? String(payload.firebase.sign_in_provider)
+      : undefined;
+    const authTimeSec = Number(payload.auth_time || payload.iat || 0);
+
+    if (signInProvider !== 'google.com' && env.DB) {
+      let sessionVerified = false;
+      try {
+        const sessionRow = await env.DB.prepare(
+          'SELECT user_id, email_verified, verified_auth_time FROM email_verification_sessions WHERE user_id = ?1 LIMIT 1'
+        )
+          .bind(uid)
+          .first<{ user_id: string; email_verified: number; verified_auth_time: number }>();
+
+        if (sessionRow && Number(sessionRow.email_verified) === 1) {
+          sessionVerified =
+            authTimeSec > 0
+              ? Number(sessionRow.verified_auth_time || 0) + 5 >= authTimeSec
+              : true;
+        }
+      } catch {
+        // Table may not exist yet
+      }
+
+      if (!sessionVerified && (payload.email_verified === false || signInProvider === 'password')) {
+        return null;
+      }
+    }
+
     const superUids = (
       env.SUPERADMIN_UIDS || BOARDLY_CLOUDFLARE_CONFIG.superadminUids.join(',')
     )

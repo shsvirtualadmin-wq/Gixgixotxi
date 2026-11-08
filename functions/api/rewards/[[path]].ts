@@ -955,6 +955,17 @@ async function handleRewardsApiRequestInner(
     );
   }
 
+  if (!d1User.sessionVerified) {
+    return jsonResponse(
+      {
+        ok: false,
+        error: 'Email verification required before accessing this resource.',
+        code: 'EMAIL_VERIFICATION_REQUIRED',
+      },
+      403
+    );
+  }
+
   const uid = d1User.uid;
 
   // ─── ENDPOINT 7: GET /api/rewards/health (Super Admin Only, Part A5) ───────

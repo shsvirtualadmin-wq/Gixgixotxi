@@ -144,6 +144,12 @@ async function verifyFirebaseIdToken(token, projectId) {
     tokenName,
     picture: payload.picture || null,
     claimRole,
+    emailVerified: Boolean(payload.email_verified),
+    authTime: Number(payload.auth_time || payload.iat || 0),
+    signInProvider:
+      payload.firebase && payload.firebase.sign_in_provider
+        ? String(payload.firebase.sign_in_provider)
+        : undefined,
   };
 }
 
@@ -403,6 +409,32 @@ async function authenticateRequest(request, env, requireAuth = true) {
     err.status = 401;
     err.code = 'INVALID_TOKEN';
     throw err;
+  }
+
+  if (decoded.signInProvider !== 'google.com' && env.DB) {
+    let sessionVerified = false;
+    try {
+      const sessionRow = await env.DB.prepare(
+        'SELECT user_id, email_verified, verified_auth_time FROM email_verification_sessions WHERE user_id = ?1 LIMIT 1'
+      )
+        .bind(decoded.uid)
+        .first();
+      if (sessionRow && Number(sessionRow.email_verified) === 1) {
+        sessionVerified =
+          decoded.authTime > 0
+            ? Number(sessionRow.verified_auth_time || 0) + 5 >= decoded.authTime
+            : true;
+      }
+    } catch {
+      // Table may not exist yet
+    }
+    if (!sessionVerified && (decoded.emailVerified === false || decoded.signInProvider === 'password')) {
+      if (!requireAuth) return null;
+      const err = new Error('Email verification required before accessing this resource.');
+      err.status = 403;
+      err.code = 'EMAIL_VERIFICATION_REQUIRED';
+      throw err;
+    }
   }
 
   const extraUids = String(env.SUPERADMIN_UIDS || '')

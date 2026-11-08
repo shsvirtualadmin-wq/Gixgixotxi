@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, User, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { logRedirect } from '@/utils/debugTracker';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
+import { OtpVerificationCard } from './OtpVerificationCard';
 
 interface AuthCardProps {
   initialMode?: 'signin' | 'signup';
@@ -20,11 +21,15 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     signIn,
     signUp,
     signInWithGoogle,
+    signOutUser,
     authError,
     clearAuthError,
     profileError,
     clearProfileError,
-    sendVerificationEmail,
+    isSessionVerified,
+    otpVerificationState,
+    requestOtpCode,
+    verifyOtpCode,
     user,
     profile,
     profileLoading,
@@ -45,11 +50,6 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [generalError, setGeneralError] = useState('');
-
-  // Signup Verification Confirmation State
-  const [signupSuccess, setSignupSuccess] = useState(false);
-  const [resendCooldown, setResendCooldown] = useState(0);
-  const [resendSuccess, setResendSuccess] = useState(false);
   const [emailAlreadyInUse, setEmailAlreadyInUse] = useState(false);
 
   // Sync mode with props if prop changes
@@ -78,6 +78,9 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     }
     if (pendingCrew) {
       return `/join/${pendingCrew}`;
+    }
+    if (profile && !profile.onboardingCompleted && profile.role === 'student') {
+      return '/onboarding';
     }
     return profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
   }, [profile, getRoleRedirectUrl]);
@@ -108,26 +111,16 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     navigate('/');
   }, [navigate]);
 
-  // Navigate after successful auth (immediate fallback navigation if user is logged in)
+  // Navigate ONLY after session has completed 6-digit verification (or Google sign-in)
   useEffect(() => {
-    if (user && !signupSuccess) {
-      // Do not block navigation if Firestore profile sync is slow/offline
+    if (user && isSessionVerified) {
       if (!profileLoading || profile) {
         const dest = getDestinationUrl();
-        logRedirect('/login', dest, 'AuthCard.tsx (user authenticated -> send to target)');
+        logRedirect('/login', dest, 'AuthCard.tsx (user authenticated & verified -> send to target)');
         navigate(dest, { replace: true });
       }
     }
-  }, [user, profile, profileLoading, signupSuccess, navigate, getDestinationUrl]);
-
-  // Resend countdown timer
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const interval = setInterval(() => {
-      setResendCooldown((c) => c - 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [resendCooldown]);
+  }, [user, isSessionVerified, profile, profileLoading, navigate, getDestinationUrl]);
 
   const handleGoogleSignIn = async () => {
     setGeneralError('');
@@ -140,7 +133,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
       // ONLY signInWithPopup on user click
       const loggedInUser = await signInWithGoogle();
       if (loggedInUser) {
-        // Immediate explicit navigation to destination
+        // Immediate explicit navigation to destination (Google sign-in needs no 6-digit code)
         const dest = getDestinationUrl();
         logRedirect('/login', dest, 'AuthCard.tsx (Google sign in explicit)');
         navigate(dest, { replace: true });
@@ -158,18 +151,6 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     } finally {
       // ALWAYS reset google loading state so button never gets stuck in infinite spinner
       setGoogleLoading(false);
-    }
-  };
-
-  const handleResendEmail = async () => {
-    if (resendCooldown > 0) return;
-    try {
-      await sendVerificationEmail();
-      setResendSuccess(true);
-      setResendCooldown(60);
-      setTimeout(() => setResendSuccess(false), 5000);
-    } catch {
-      setGeneralError('Failed to resend verification email. Please try again shortly.');
     }
   };
 
@@ -221,7 +202,6 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           }
         }
         await signUp(email.trim(), password, displayName.trim());
-        navigate('/onboarding', { replace: true });
       }
     } catch (err: unknown) {
       if (import.meta.env.DEV) {
@@ -260,60 +240,30 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     }
   };
 
-  // ── "Check Your Inbox" Screen after Sign Up ───────────────────────────────
-  if (signupSuccess) {
+  // ── 6-Digit Email Verification Code Step (Login 2FA & Sign Up Verification) ──
+  if (user && otpVerificationState.status === 'pending') {
+    const activePurpose =
+      otpVerificationState.purpose || (mode === 'signup' ? 'signup' : 'login');
     return (
-      <div
-        className="w-full rounded-[28px] border border-[var(--border)] p-7 sm:p-8 flex flex-col items-center text-center gap-5"
-        style={{ backgroundColor: 'var(--card)' }}
-      >
-        <div className="w-14 h-14 rounded-full bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center text-[var(--red)]">
-          <Mail size={28} />
-        </div>
-
-        <div>
-          <h2
-            className="text-2xl font-bold text-[var(--text)] tracking-tight"
-            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
-          >
-            Check your inbox
-          </h2>
-          <p className="text-sm text-[var(--muted)] mt-2 leading-relaxed">
-            We sent a verification link to <strong className="text-[var(--text)]">{email}</strong>.
-            Click the link in the email to verify your student account.
-          </p>
-        </div>
-
-        {resendSuccess && (
-          <div className="w-full p-3 rounded-xl bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center gap-2 text-xs text-[#FFFFFF]">
-            <CheckCircle2 size={16} className="text-[var(--red)]" />
-            <span>Verification email resent successfully.</span>
-          </div>
-        )}
-
-        <div className="w-full flex flex-col gap-3 pt-2">
-          <button
-            onClick={handleResendEmail}
-            disabled={resendCooldown > 0}
-            className="btn-outline w-full cursor-pointer disabled:opacity-50"
-            style={{ height: '52px' }}
-          >
-            {resendCooldown > 0 ? `Resend email (${resendCooldown}s)` : 'Resend verification email'}
-          </button>
-
-          <button
-            onClick={() => {
-              setSignupSuccess(false);
-              const dest = getRoleRedirectUrl(profile?.role);
-              navigate(dest, { replace: true });
-            }}
-            className="btn-red w-full cursor-pointer"
-            style={{ height: '52px' }}
-          >
-            Continue to Dashboard
-          </button>
-        </div>
-      </div>
+      <OtpVerificationCard
+        purpose={activePurpose}
+        maskedEmail={otpVerificationState.maskedEmail}
+        initialCooldownSeconds={otpVerificationState.cooldownSeconds}
+        initialError={otpVerificationState.error}
+        onVerifyCode={verifyOtpCode}
+        onResendCode={() =>
+          requestOtpCode({
+            purpose: activePurpose,
+            forceResend: true,
+          })
+        }
+        onUseDifferentAccount={async () => {
+          await signOutUser();
+          setPassword('');
+          setConfirmPassword('');
+          setGeneralError('');
+        }}
+      />
     );
   }
 

@@ -1,11 +1,12 @@
 import d1Worker from '../../cloudflare/worker.js';
 import mainWorker, { Env } from '../../cloudflare/worker';
+import { handleAuthApiRequest } from './auth/[[path]]';
 import { handleRewardsApiRequest } from './rewards/[[path]]';
 import { handleSendEmailRequest } from './send-email';
 
 /**
  * Catch-all Cloudflare Pages Function for `/api/*` routes on the same site
- * (`/api/rewards/*`, `/api/send-email`, `/api/tests`, `/api/tests/:id/publish`, `/api/tests/:id/questions`,
+ * (`/api/auth/*`, `/api/rewards/*`, `/api/send-email`, `/api/tests`, `/api/tests/:id/publish`, `/api/tests/:id/questions`,
  * `/api/crews`, `/api/me/role`, `/api/attempts/mine`, `/api/leaderboard/grand-line`,
  * `/api/notifications`, `/api/admin/roles`, `/api/mcq-bank`, etc.).
  */
@@ -17,6 +18,19 @@ export async function onRequest(context: {
   const { request, env } = context;
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
+
+  // Delegate 6-digit email verification & login 2FA endpoints to /api/auth handler
+  if (
+    path === '/api/auth/verification-status' ||
+    path === '/api/auth/send-code' ||
+    path === '/api/auth/verify-code' ||
+    path === '/api/auth/verify-link'
+  ) {
+    return handleAuthApiRequest({
+      request,
+      env: (env || {}) as any,
+    });
+  }
 
   // Delegate transactional email notifications to /api/send-email handler
   if (path === '/api/send-email' || path.startsWith('/api/send-email/')) {

@@ -8,12 +8,19 @@ import { PageMeta } from '@/components/ui/PageMeta';
 import { LineLoader } from '@/components/ui/LineLoader';
 
 export function LoginPage() {
-  const { user, profile, profileLoading, getRoleRedirectUrl } = useAuth();
+  const {
+    user,
+    profile,
+    profileLoading,
+    isSessionVerified,
+    otpVerificationState,
+    getRoleRedirectUrl,
+  } = useAuth();
   const navigate = useNavigate();
 
-  // If already logged in, redirect to intended target or dashboard
+  // Only redirect to intended target or dashboard once session is verified
   useEffect(() => {
-    if (user && !profileLoading) {
+    if (user && !profileLoading && isSessionVerified) {
       const searchParams = new URLSearchParams(window.location.search);
       const redirectParam = searchParams.get('redirect');
       const storedRedirect = sessionStorage.getItem('boardly_post_login_redirect');
@@ -26,13 +33,15 @@ export function LoginPage() {
         dest = storedRedirect;
       } else if (pendingCrew) {
         dest = `/join/${pendingCrew}`;
+      } else if (profile && !profile.onboardingCompleted && profile.role === 'student') {
+        dest = '/onboarding';
       }
 
       sessionStorage.removeItem('boardly_post_login_redirect');
-      logRedirect('/login', dest, 'LoginPage.tsx (authenticated)');
+      logRedirect('/login', dest, 'LoginPage.tsx (authenticated & verified)');
       navigate(dest, { replace: true });
     }
-  }, [user, profile, profileLoading, navigate, getRoleRedirectUrl]);
+  }, [user, profile, profileLoading, isSessionVerified, navigate, getRoleRedirectUrl]);
 
   return (
     <AuthLayout>
@@ -41,7 +50,7 @@ export function LoginPage() {
         description="Sign in to your Boardly account to practice timed MCQs, download study material, join Study Crews, and participate in Boardly Commons."
         canonicalPath="/login"
       />
-      {user ? (
+      {user && (isSessionVerified || otpVerificationState.status === 'checking') ? (
         <LineLoader context="login" variant="section" />
       ) : (
         <AuthCard initialMode="signin" />

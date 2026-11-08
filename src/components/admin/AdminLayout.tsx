@@ -64,7 +64,8 @@ const ALL_SIDEBAR_NAV: AdminNavItem[] = [
 ];
 
 export function AdminLayout() {
-  const { user, profileLoading, isAdmin, signOutUser } = useAuth();
+  const { user, profileLoading, isAdmin, isSessionVerified, otpVerificationState, signOutUser } =
+    useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -210,9 +211,9 @@ export function AdminLayout() {
 
       {/* ─── MAIN CONTENT VIEWPORT ─────────────────────────────────────────── */}
       <main className="flex-1 md:ml-[240px] min-w-0 min-h-[calc(100vh-3.5rem)] md:min-h-screen p-4 sm:p-6 md:p-8 pb-32 sm:pb-36 md:pb-8 max-w-[1400px] w-full mx-auto overflow-x-hidden">
-        {profileLoading ? (
+        {profileLoading || otpVerificationState.status === 'checking' ? (
           <LineLoader context="admin" variant="section" />
-        ) : !user ? (
+        ) : !user || !isSessionVerified ? (
           <Navigate to="/login?redirect=/admin" replace />
         ) : !isAdmin ? (
           <div className="flex items-center justify-center py-12 px-4">

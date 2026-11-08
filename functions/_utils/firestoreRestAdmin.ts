@@ -31,6 +31,9 @@ export interface VerifiedFirebaseToken {
   emailVerified?: boolean;
   role?: string;
   admin?: boolean;
+  authTime?: number;
+  iat?: number;
+  signInProvider?: string;
 }
 
 export interface AuthenticatedD1User {
@@ -44,6 +47,9 @@ export interface AuthenticatedD1User {
   isSuperAdmin: boolean;
   isAdminOrAbove: boolean;
   emailVerified: boolean;
+  sessionVerified: boolean;
+  signInProvider?: string;
+  authTime?: number;
   d1CreatedAtMs: number;
 }
 
@@ -161,6 +167,7 @@ export async function verifyFirebaseIdToken(
     const payload = JSON.parse(payloadJson) as {
       exp?: number;
       iat?: number;
+      auth_time?: number;
       aud?: string;
       iss?: string;
       sub?: string;
@@ -170,6 +177,9 @@ export async function verifyFirebaseIdToken(
       email_verified?: boolean;
       role?: string;
       admin?: boolean;
+      firebase?: {
+        sign_in_provider?: string;
+      };
     };
 
     if (header.alg !== 'RS256' || !header.kid) return null;
@@ -204,6 +214,12 @@ export async function verifyFirebaseIdToken(
     );
     if (!isValid) return null;
 
+    const iatSec = Number(payload.iat || 0);
+    const authTimeSec = Number(payload.auth_time || iatSec || 0);
+    const signInProvider = payload.firebase?.sign_in_provider
+      ? String(payload.firebase.sign_in_provider)
+      : undefined;
+
     return {
       uid: payload.sub,
       email: payload.email,
@@ -212,10 +228,60 @@ export async function verifyFirebaseIdToken(
       emailVerified: Boolean(payload.email_verified),
       role: payload.role,
       admin: Boolean(payload.admin),
+      authTime: authTimeSec,
+      iat: iatSec,
+      signInProvider,
     };
   } catch {
     return null;
   }
+}
+
+/**
+ * Checks whether the user's current login/signup session has completed 6-digit email verification in D1.
+ * - Google sign-in (`signInProvider === 'google.com'`) is verified by Google and needs no extra code.
+ * - Email + password (`signInProvider === 'password'`) or any unverified email (`emailVerified === false`)
+ *   must have a row in `email_verification_sessions` with `email_verified = 1` and
+ *   `verified_auth_time + 5 >= authTime`.
+ */
+export async function isD1UserSessionVerified(
+  db: RewardsD1Database,
+  verified: VerifiedFirebaseToken
+): Promise<boolean> {
+  if (!verified || !verified.uid) return false;
+  if (verified.signInProvider === 'google.com') {
+    return true;
+  }
+
+  try {
+    const sessionRow = await db
+      .prepare(
+        'SELECT user_id, email_verified, verified_auth_time FROM email_verification_sessions WHERE user_id = ?1 LIMIT 1'
+      )
+      .bind(verified.uid)
+      .first<{ user_id: string; email_verified: number; verified_auth_time: number }>();
+
+    if (sessionRow) {
+      if (Number(sessionRow.email_verified) !== 1) {
+        return false;
+      }
+      const tokenAuthTime = Number(verified.authTime || verified.iat || 0);
+      if (tokenAuthTime > 0) {
+        return Number(sessionRow.verified_auth_time || 0) + 5 >= tokenAuthTime;
+      }
+      return true;
+    }
+  } catch {
+    // Table may not exist yet before first migration run
+  }
+
+  if (verified.emailVerified === false) {
+    return false;
+  }
+  if (verified.signInProvider === 'password') {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -306,6 +372,8 @@ export async function authenticateD1RewardsUser(params: {
       ? email.split('@')[0] || 'Student'
       : 'Student';
 
+  const sessionVerified = await isD1UserSessionVerified(db, verified);
+
   return {
     uid,
     email,
@@ -316,7 +384,10 @@ export async function authenticateD1RewardsUser(params: {
     isPostingBanned,
     isSuperAdmin,
     isAdminOrAbove,
-    emailVerified: Boolean(verified.emailVerified),
+    emailVerified: Boolean(verified.emailVerified) || sessionVerified,
+    sessionVerified,
+    signInProvider: verified.signInProvider,
+    authTime: verified.authTime,
     d1CreatedAtMs: Number(roleRow?.created_at || 0),
   };
 }
@@ -1101,6 +1172,45 @@ export interface InMemoryD1Tables {
       created_at: number;
     }
   >;
+  email_verification_codes: Map<
+    string,
+    {
+      id: string;
+      user_id: string;
+      email_hash: string;
+      purpose: 'login' | 'signup';
+      code_hash: string;
+      link_token_hash: string | null;
+      auth_time: number;
+      expires_at: number;
+      attempt_count: number;
+      used: number;
+      created_at: number;
+      ip_hash: string;
+    }
+  >;
+  email_verification_sessions: Map<
+    string,
+    {
+      user_id: string;
+      email_hash: string;
+      email_verified: number;
+      verified_auth_time: number;
+      verified_at: number;
+      updated_at: number;
+    }
+  >;
+  email_verification_send_logs: Map<
+    string,
+    {
+      id: string;
+      user_id: string;
+      email_hash: string;
+      ip_hash: string;
+      purpose: 'login' | 'signup';
+      created_at: number;
+    }
+  >;
 }
 
 export class InMemoryD1Database implements RewardsD1Database {
@@ -1113,6 +1223,9 @@ export class InMemoryD1Database implements RewardsD1Database {
     user_roles: new Map(),
     test_attempts: new Map(),
     attempt_answers: new Map(),
+    email_verification_codes: new Map(),
+    email_verification_sessions: new Map(),
+    email_verification_send_logs: new Map(),
   };
 
   prepare(query: string): RewardsD1PreparedStatement {
@@ -1304,6 +1417,82 @@ export class InMemoryD1Database implements RewardsD1Database {
       });
     }
 
+    // 9. email_verification_sessions
+    if (upper.includes('FROM EMAIL_VERIFICATION_SESSIONS')) {
+      const userId = String(args[0] ?? '');
+      const row = this.tables.email_verification_sessions.get(userId);
+      return row ? [{ ...row }] : [];
+    }
+
+    // 10. email_verification_codes
+    if (upper.includes('FROM EMAIL_VERIFICATION_CODES')) {
+      const all = Array.from(this.tables.email_verification_codes.values());
+      if (upper.includes('WHERE LINK_TOKEN_HASH =')) {
+        const tokenHash = String(args[0] ?? '');
+        const matches = all
+          .filter((r) => r.link_token_hash === tokenHash)
+          .sort((a, b) => b.created_at - a.created_at);
+        return matches.map((r) => ({ ...r }));
+      }
+      if (upper.includes('WHERE USER_ID =') && upper.includes('AND PURPOSE =')) {
+        const userId = String(args[0] ?? '');
+        const purpose = String(args[1] ?? '');
+        let matches = all.filter((r) => r.user_id === userId && r.purpose === purpose);
+        if (upper.includes('AND USED = 0')) {
+          matches = matches.filter((r) => r.used === 0);
+        }
+        matches.sort((a, b) => b.created_at - a.created_at);
+        return matches.map((r) => ({ ...r }));
+      }
+      if (upper.includes('WHERE USER_ID =')) {
+        const userId = String(args[0] ?? '');
+        let matches = all.filter((r) => r.user_id === userId);
+        if (upper.includes('AND USED = 0')) {
+          matches = matches.filter((r) => r.used === 0);
+        }
+        matches.sort((a, b) => b.created_at - a.created_at);
+        return matches.map((r) => ({ ...r }));
+      }
+      if (upper.includes('WHERE ID =')) {
+        const id = String(args[0] ?? '');
+        const row = this.tables.email_verification_codes.get(id);
+        return row ? [{ ...row }] : [];
+      }
+      return all.map((r) => ({ ...r }));
+    }
+
+    // 11. email_verification_send_logs
+    if (upper.includes('FROM EMAIL_VERIFICATION_SEND_LOGS')) {
+      const all = Array.from(this.tables.email_verification_send_logs.values());
+      if (upper.includes('COUNT(*)') && upper.includes('WHERE EMAIL_HASH =')) {
+        const emailHash = String(args[0] ?? '');
+        const sinceMs = Number(args[1] ?? 0);
+        const cnt = all.filter((r) => r.email_hash === emailHash && r.created_at >= sinceMs).length;
+        return [{ cnt }];
+      }
+      if (upper.includes('COUNT(*)') && upper.includes('WHERE IP_HASH =')) {
+        const ipHash = String(args[0] ?? '');
+        const sinceMs = Number(args[1] ?? 0);
+        const cnt = all.filter((r) => r.ip_hash === ipHash && r.created_at >= sinceMs).length;
+        return [{ cnt }];
+      }
+      if (upper.includes('WHERE EMAIL_HASH =')) {
+        const emailHash = String(args[0] ?? '');
+        const matches = all
+          .filter((r) => r.email_hash === emailHash)
+          .sort((a, b) => b.created_at - a.created_at);
+        return matches.map((r) => ({ ...r }));
+      }
+      if (upper.includes('WHERE USER_ID =')) {
+        const userId = String(args[0] ?? '');
+        const matches = all
+          .filter((r) => r.user_id === userId)
+          .sort((a, b) => b.created_at - a.created_at);
+        return matches.map((r) => ({ ...r }));
+      }
+      return all.map((r) => ({ ...r }));
+    }
+
     return [];
   }
 
@@ -1312,6 +1501,125 @@ export class InMemoryD1Database implements RewardsD1Database {
 
     if (upper.startsWith('CREATE TABLE') || upper.startsWith('CREATE INDEX')) {
       return 0;
+    }
+
+    // 0a. email_verification_codes
+    if (upper.includes('INTO EMAIL_VERIFICATION_CODES')) {
+      const id = String(args[0]);
+      const user_id = String(args[1]);
+      const email_hash = String(args[2]);
+      const purpose = (String(args[3]) === 'signup' ? 'signup' : 'login') as 'login' | 'signup';
+      const code_hash = String(args[4]);
+      const link_token_hash = args[5] != null ? String(args[5]) : null;
+      const auth_time = Number(args[6] ?? 0);
+      const expires_at = Number(args[7] ?? 0);
+      const hasExplicitCounters = args.length >= 12;
+      const attempt_count = hasExplicitCounters ? Number(args[8] ?? 0) : 0;
+      const used = hasExplicitCounters ? Number(args[9] ?? 0) : 0;
+      const created_at = Number((hasExplicitCounters ? args[10] : args[8]) ?? Date.now());
+      const ip_hash = String((hasExplicitCounters ? args[11] : args[9]) ?? '');
+
+      this.tables.email_verification_codes.set(id, {
+        id,
+        user_id,
+        email_hash,
+        purpose,
+        code_hash,
+        link_token_hash,
+        auth_time,
+        expires_at,
+        attempt_count,
+        used,
+        created_at,
+        ip_hash,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('UPDATE EMAIL_VERIFICATION_CODES')) {
+      if (
+        upper.includes('SET USED = 1') &&
+        upper.includes('WHERE USER_ID =') &&
+        upper.includes('AND PURPOSE =')
+      ) {
+        const userId = String(args[0]);
+        const purpose = String(args[1]);
+        let changes = 0;
+        for (const row of this.tables.email_verification_codes.values()) {
+          if (row.user_id === userId && row.purpose === purpose && row.used === 0) {
+            row.used = 1;
+            changes += 1;
+          }
+        }
+        return changes;
+      }
+      if (upper.includes('SET USED = 1') && upper.includes('WHERE USER_ID =')) {
+        const userId = String(args[0]);
+        let changes = 0;
+        for (const row of this.tables.email_verification_codes.values()) {
+          if (row.user_id === userId && row.used === 0) {
+            row.used = 1;
+            changes += 1;
+          }
+        }
+        return changes;
+      }
+      if (upper.includes('SET ATTEMPT_COUNT =') && upper.includes('USED =')) {
+        const attemptCount = Number(args[0]);
+        const used = Number(args[1]);
+        const id = String(args[2]);
+        const row = this.tables.email_verification_codes.get(id);
+        if (!row) return 0;
+        row.attempt_count = attemptCount;
+        row.used = used;
+        return 1;
+      }
+      if (upper.includes('SET USED = 1') && upper.includes('WHERE ID =')) {
+        const id = String(args[0]);
+        const row = this.tables.email_verification_codes.get(id);
+        if (!row) return 0;
+        row.used = 1;
+        return 1;
+      }
+    }
+
+    // 0b. email_verification_sessions
+    if (upper.includes('INTO EMAIL_VERIFICATION_SESSIONS')) {
+      const user_id = String(args[0]);
+      const email_hash = String(args[1] ?? '');
+      const hasExplicitVerified = args.length >= 6;
+      const email_verified = hasExplicitVerified ? Number(args[2] ?? 1) : 1;
+      const verified_auth_time = Number((hasExplicitVerified ? args[3] : args[2]) ?? 0);
+      const verified_at = Number((hasExplicitVerified ? args[4] : args[3]) ?? Date.now());
+      const updated_at = Number((hasExplicitVerified ? args[5] : args[4]) ?? Date.now());
+      this.tables.email_verification_sessions.set(user_id, {
+        user_id,
+        email_hash,
+        email_verified,
+        verified_auth_time,
+        verified_at,
+        updated_at,
+      });
+      return 1;
+    }
+
+    // 0c. email_verification_send_logs
+    if (upper.includes('INTO EMAIL_VERIFICATION_SEND_LOGS')) {
+      const id = String(args[0]);
+      const user_id = String(args[1]);
+      const email_hash = String(args[2]);
+      const ip_hash = String(args[3]);
+      const purpose = (String(args[4]) === 'signup' ? 'signup' : 'login') as 'login' | 'signup';
+      const created_at = Number(args[5] ?? Date.now());
+      this.tables.email_verification_send_logs.set(id, {
+        id,
+        user_id,
+        email_hash,
+        ip_hash,
+        purpose,
+        created_at,
+      });
+      return 1;
     }
 
     // 1. reward_settings (key TEXT PRIMARY KEY)

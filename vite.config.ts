@@ -1267,6 +1267,80 @@ RULES:
         }
       });
 
+      // ─── EMAIL VERIFICATION & LOGIN 2FA API (/api/auth/*) ─────────────────
+      server.middlewares.use('/api/auth', async (req: any, res: any, next: () => void) => {
+        const subPath = String(req.url || '').split('?')[0];
+        if (
+          subPath !== '/verification-status' &&
+          subPath !== '/send-code' &&
+          subPath !== '/verify-code' &&
+          subPath !== '/verify-link'
+        ) {
+          return next();
+        }
+        try {
+          const rawBody = await new Promise<string>((resolve) => {
+            if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+              resolve('');
+              return;
+            }
+            let data = '';
+            req.on('data', (chunk: any) => {
+              data += chunk;
+            });
+            req.on('end', () => resolve(data));
+          });
+
+          const fullUrl = `http://localhost:3000/api/auth${req.url || ''}`;
+          const headers = new Headers();
+          for (const [k, v] of Object.entries(req.headers || {})) {
+            if (typeof v === 'string') headers.set(k, v);
+            else if (Array.isArray(v)) headers.set(k, v.join(', '));
+          }
+
+          const webReq = new Request(fullUrl, {
+            method: req.method || 'GET',
+            headers,
+            body:
+              req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS'
+                ? rawBody
+                : undefined,
+          });
+
+          const mod = await import('./functions/api/auth/[[path]].ts');
+          const webRes = await mod.handleAuthApiRequest({
+            request: webReq,
+            env: {
+              OTP_HMAC_SECRET: process.env.OTP_HMAC_SECRET,
+              EMAIL_VERIFICATION_SECRET: process.env.EMAIL_VERIFICATION_SECRET,
+              INTERNAL_EMAIL_SECRET: process.env.INTERNAL_EMAIL_SECRET,
+              RESEND_API_KEY: process.env.RESEND_API_KEY,
+              EMAIL_FROM: process.env.EMAIL_FROM,
+              APP_URL: process.env.APP_URL,
+              FIREBASE_SERVICE_ACCOUNT: process.env.FIREBASE_SERVICE_ACCOUNT,
+              GOOGLE_SERVICE_ACCOUNT_KEY: process.env.GOOGLE_SERVICE_ACCOUNT_KEY,
+              FIREBASE_PROJECT_ID:
+                process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID,
+              FIREBASE_DATABASE_ID:
+                process.env.FIREBASE_DATABASE_ID ||
+                process.env.VITE_FIREBASE_DATABASE_ID ||
+                process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID,
+            },
+          });
+
+          const outHeaders: Record<string, string> = {};
+          webRes.headers.forEach((v, k) => {
+            outHeaders[k] = v;
+          });
+          res.writeHead(webRes.status, outHeaders);
+          const text = await webRes.text();
+          res.end(text);
+        } catch (err: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: err?.message || 'Auth middleware error' }));
+        }
+      });
+
       server.middlewares.use('/api/rewards', async (req: any, res: any) => {
         try {
           const rawBody = await new Promise<string>((resolve) => {

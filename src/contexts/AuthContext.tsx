@@ -62,6 +62,30 @@ function withTimeout<T>(
   ]);
 }
 
+export interface OtpVerificationState {
+  status: 'idle' | 'checking' | 'pending' | 'verified';
+  purpose: 'login' | 'signup' | null;
+  email: string;
+  maskedEmail: string;
+  cooldownSeconds: number;
+  error: string | null;
+}
+
+function maskEmailClient(email: string): string {
+  const clean = (email || '').trim().toLowerCase();
+  const atIdx = clean.indexOf('@');
+  if (atIdx <= 0) return '***@***';
+  return `${clean[0] || '*'}***@${clean.slice(atIdx + 1)}`;
+}
+
+function isGoogleProviderUser(firebaseUser: User | null): boolean {
+  if (!firebaseUser) return false;
+  return (
+    Array.isArray(firebaseUser.providerData) &&
+    firebaseUser.providerData.some((p) => p?.providerId === 'google.com')
+  );
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface AuthContextValue {
   user: User | null;
@@ -72,6 +96,22 @@ interface AuthContextValue {
   clearAuthError: () => void;
   clearProfileError: () => void;
   isAdmin: boolean;
+  isSessionVerified: boolean;
+  otpVerificationState: OtpVerificationState;
+  requestOtpCode: (opts?: {
+    purpose?: 'login' | 'signup';
+    forceResend?: boolean;
+  }) => Promise<{ ok: boolean; maskedEmail?: string; cooldownSeconds?: number; error?: string }>;
+  verifyOtpCode: (code: string) => Promise<{
+    ok: boolean;
+    error?: string;
+    locked?: boolean;
+    attemptsRemaining?: number;
+  }>;
+  verifyFallbackEmailLink: (
+    token: string,
+    uid?: string
+  ) => Promise<{ ok: boolean; error?: string }>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signInWithGoogle: () => Promise<User | null>;
@@ -94,23 +134,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileError, setProfileError] = useState<{ code?: string; message: string; path?: string } | null>(null);
   const [authError, setAuthError] = useState<{ code?: string; message: string } | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [otpVerificationState, setOtpVerificationState] = useState<OtpVerificationState>({
+    status: 'idle',
+    purpose: null,
+    email: '',
+    maskedEmail: '',
+    cooldownSeconds: 0,
+    error: null,
+  });
+
+  const isSessionVerified = otpVerificationState.status === 'verified';
 
   const isAdmin = !!(
-    (user?.uid && user.uid === SUPER_ADMIN_UID) ||
-    (user?.email && (
-      user.email.toLowerCase() === SUPER_ADMIN_EMAIL ||
-      user.email.toLowerCase() === SUPER_ADMIN_EMAIL_SUPPORT ||
-      user.email.toLowerCase() === SUPER_ADMIN_EMAIL_SCHOLARIO
-    )) ||
-    (profile?.uid && profile.uid === SUPER_ADMIN_UID) ||
-    (profile?.email && (
-      profile.email.toLowerCase() === SUPER_ADMIN_EMAIL ||
-      profile.email.toLowerCase() === SUPER_ADMIN_EMAIL_SUPPORT ||
-      profile.email.toLowerCase() === SUPER_ADMIN_EMAIL_SCHOLARIO
-    )) ||
-    profile?.role === 'admin' ||
-    profile?.role === 'superadmin' ||
-    (profile as any)?.isSuperAdmin === true
+    isSessionVerified &&
+    ((user?.uid && user.uid === SUPER_ADMIN_UID) ||
+      (user?.email &&
+        (user.email.toLowerCase() === SUPER_ADMIN_EMAIL ||
+          user.email.toLowerCase() === SUPER_ADMIN_EMAIL_SUPPORT ||
+          user.email.toLowerCase() === SUPER_ADMIN_EMAIL_SCHOLARIO)) ||
+      (profile?.uid && profile.uid === SUPER_ADMIN_UID) ||
+      (profile?.email &&
+        (profile.email.toLowerCase() === SUPER_ADMIN_EMAIL ||
+          profile.email.toLowerCase() === SUPER_ADMIN_EMAIL_SUPPORT ||
+          profile.email.toLowerCase() === SUPER_ADMIN_EMAIL_SCHOLARIO)) ||
+      profile?.role === 'admin' ||
+      profile?.role === 'superadmin' ||
+      (profile as any)?.isSuperAdmin === true)
   );
 
   // ── Helper to determine target dashboard URL by role ─────────────────────
@@ -284,6 +333,225 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [createReferralDoc]);
 
+  // ── Request 6-digit OTP code from Worker (`/api/auth/send-code`) ─────────
+  const requestOtpCodeForUser = useCallback(
+    async (
+      firebaseUser: User,
+      opts?: { purpose?: 'login' | 'signup'; forceResend?: boolean }
+    ): Promise<{ ok: boolean; maskedEmail?: string; cooldownSeconds?: number; error?: string }> => {
+      try {
+        const idToken = await firebaseUser.getIdToken();
+        const res = await fetch('/api/auth/send-code', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            purpose: opts?.purpose,
+            forceResend: Boolean(opts?.forceResend),
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          purpose?: 'login' | 'signup';
+          maskedEmail?: string;
+          cooldownSeconds?: number;
+          retryAfterSeconds?: number;
+          error?: string;
+        };
+
+        const masked = data.maskedEmail || maskEmailClient(firebaseUser.email || '');
+        const cooldown = Number(data.cooldownSeconds ?? data.retryAfterSeconds ?? 0);
+
+        if (!res.ok || !data.ok) {
+          const errMsg = data.error || 'Could not send verification code. Please try again.';
+          setOtpVerificationState((prev) => ({
+            ...prev,
+            status: 'pending',
+            purpose: opts?.purpose || prev.purpose || 'login',
+            email: firebaseUser.email || prev.email,
+            maskedEmail: masked,
+            cooldownSeconds: cooldown > 0 ? cooldown : prev.cooldownSeconds,
+            error: errMsg,
+          }));
+          return {
+            ok: false,
+            maskedEmail: masked,
+            cooldownSeconds: cooldown,
+            error: errMsg,
+          };
+        }
+
+        setOtpVerificationState({
+          status: 'pending',
+          purpose: data.purpose || opts?.purpose || 'login',
+          email: firebaseUser.email || '',
+          maskedEmail: masked,
+          cooldownSeconds: cooldown || 60,
+          error: null,
+        });
+
+        return {
+          ok: true,
+          maskedEmail: masked,
+          cooldownSeconds: cooldown || 60,
+        };
+      } catch {
+        const errMsg = 'Network error while sending verification code.';
+        setOtpVerificationState((prev) => ({
+          ...prev,
+          status: 'pending',
+          error: errMsg,
+        }));
+        return { ok: false, error: errMsg };
+      }
+    },
+    []
+  );
+
+  const requestOtpCode = useCallback(
+    async (opts?: { purpose?: 'login' | 'signup'; forceResend?: boolean }) => {
+      const targetUser = auth.currentUser || user;
+      if (!targetUser) {
+        return { ok: false, error: 'Please sign in first.' };
+      }
+      return requestOtpCodeForUser(targetUser, opts);
+    },
+    [user, requestOtpCodeForUser]
+  );
+
+  // ── Verify 6-digit OTP code via Worker (`/api/auth/verify-code`) ─────────
+  const verifyOtpCode = useCallback(
+    async (
+      code: string
+    ): Promise<{
+      ok: boolean;
+      error?: string;
+      locked?: boolean;
+      attemptsRemaining?: number;
+    }> => {
+      const targetUser = auth.currentUser || user;
+      if (!targetUser) {
+        return { ok: false, error: 'Session expired. Please sign in again.' };
+      }
+
+      try {
+        const idToken = await targetUser.getIdToken();
+        const res = await fetch('/api/auth/verify-code', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            code: code.trim(),
+            purpose: otpVerificationState.purpose || undefined,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          verified?: boolean;
+          error?: string;
+          locked?: boolean;
+          attemptsRemaining?: number;
+        };
+
+        if (!res.ok || !data.ok) {
+          return {
+            ok: false,
+            error: data.error || 'Invalid or expired code',
+            locked: Boolean(data.locked),
+            attemptsRemaining: data.attemptsRemaining,
+          };
+        }
+
+        try {
+          localStorage.setItem('boardly_user_authenticated', 'true');
+        } catch {
+          // Ignore storage errors
+        }
+
+        setOtpVerificationState((prev) => ({
+          ...prev,
+          status: 'verified',
+          purpose: null,
+          cooldownSeconds: 0,
+          error: null,
+        }));
+
+        try {
+          await targetUser.reload();
+          await loadProfile(targetUser);
+        } catch {
+          // Ignore reload error
+        }
+
+        return { ok: true };
+      } catch {
+        return { ok: false, error: 'Invalid or expired code' };
+      }
+    },
+    [user, otpVerificationState.purpose, loadProfile]
+  );
+
+  // ── Verify Fallback Email Link (`/api/auth/verify-link`) ─────────────────
+  const verifyFallbackEmailLink = useCallback(
+    async (token: string, uid?: string): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const targetUser = auth.currentUser || user;
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (targetUser) {
+          const idToken = await targetUser.getIdToken().catch(() => '');
+          if (idToken) headers.Authorization = `Bearer ${idToken}`;
+        }
+
+        const res = await fetch('/api/auth/verify-link', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ token, uid }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          error?: string;
+        };
+
+        if (!res.ok || !data.ok) {
+          return {
+            ok: false,
+            error: data.error || 'Invalid or expired verification link.',
+          };
+        }
+
+        if (targetUser) {
+          try {
+            localStorage.setItem('boardly_user_authenticated', 'true');
+          } catch {
+            // Ignore storage errors
+          }
+          setOtpVerificationState((prev) => ({
+            ...prev,
+            status: 'verified',
+            purpose: null,
+            cooldownSeconds: 0,
+            error: null,
+          }));
+          try {
+            await targetUser.reload();
+            await loadProfile(targetUser);
+          } catch {
+            // Ignore reload error
+          }
+        }
+
+        return { ok: true };
+      } catch {
+        return { ok: false, error: 'Invalid or expired verification link.' };
+      }
+    },
+    [user, loadProfile]
+  );
+
   // Clean up any legacy redirect session markers on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -309,11 +577,114 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
-        try {
-          localStorage.setItem('boardly_user_authenticated', 'true');
-        } catch {
-          // Ignore storage errors in restricted contexts
+        if (isGoogleProviderUser(firebaseUser)) {
+          try {
+            localStorage.setItem('boardly_user_authenticated', 'true');
+          } catch {
+            // Ignore storage errors
+          }
+          setOtpVerificationState({
+            status: 'verified',
+            purpose: null,
+            email: firebaseUser.email || '',
+            maskedEmail: maskEmailClient(firebaseUser.email || ''),
+            cooldownSeconds: 0,
+            error: null,
+          });
+        } else {
+          // Check server-side D1 verification status for this email + password session
+          setOtpVerificationState((prev) =>
+            prev.status === 'pending' && prev.email === (firebaseUser.email || '')
+              ? prev
+              : {
+                  status: 'checking',
+                  purpose: prev.purpose,
+                  email: firebaseUser.email || '',
+                  maskedEmail: maskEmailClient(firebaseUser.email || ''),
+                  cooldownSeconds: prev.cooldownSeconds,
+                  error: null,
+                }
+          );
+
+          try {
+            const idToken = await firebaseUser.getIdToken();
+            const statusRes = await fetch('/api/auth/verification-status', {
+              headers: {
+                Authorization: `Bearer ${idToken}`,
+              },
+            });
+            const statusData = (await statusRes.json().catch(() => ({}))) as {
+              ok?: boolean;
+              verified?: boolean;
+              requiredPurpose?: 'login' | 'signup' | null;
+              hasActiveCode?: boolean;
+              maskedEmail?: string;
+              cooldownSeconds?: number;
+            };
+
+            if (statusRes.ok && statusData.verified) {
+              try {
+                localStorage.setItem('boardly_user_authenticated', 'true');
+              } catch {
+                // Ignore storage errors
+              }
+              setOtpVerificationState({
+                status: 'verified',
+                purpose: null,
+                email: firebaseUser.email || '',
+                maskedEmail:
+                  statusData.maskedEmail || maskEmailClient(firebaseUser.email || ''),
+                cooldownSeconds: 0,
+                error: null,
+              });
+            } else {
+              try {
+                localStorage.removeItem('boardly_user_authenticated');
+              } catch {
+                // Ignore storage errors
+              }
+              const requiredPurpose =
+                statusData.requiredPurpose ||
+                (firebaseUser.emailVerified ? 'login' : 'signup');
+
+              setOtpVerificationState({
+                status: 'pending',
+                purpose: requiredPurpose,
+                email: firebaseUser.email || '',
+                maskedEmail:
+                  statusData.maskedEmail || maskEmailClient(firebaseUser.email || ''),
+                cooldownSeconds: Number(statusData.cooldownSeconds || 0),
+                error: null,
+              });
+
+              if (
+                !statusData.hasActiveCode &&
+                (!statusData.cooldownSeconds || statusData.cooldownSeconds <= 0)
+              ) {
+                void requestOtpCodeForUser(firebaseUser, {
+                  purpose: requiredPurpose,
+                  forceResend: false,
+                });
+              }
+            }
+          } catch {
+            // If server verification status cannot be reached, fail closed (pending verification)
+            try {
+              localStorage.removeItem('boardly_user_authenticated');
+            } catch {
+              // Ignore storage errors
+            }
+            setOtpVerificationState((prev) => ({
+              status: 'pending',
+              purpose: prev.purpose || (firebaseUser.emailVerified ? 'login' : 'signup'),
+              email: firebaseUser.email || '',
+              maskedEmail: maskEmailClient(firebaseUser.email || ''),
+              cooldownSeconds: prev.cooldownSeconds,
+              error: prev.error,
+            }));
+          }
         }
+
         // Warm-up read of config/{any} right after sign-in so the first connection is opened early
         getDoc(doc(db, 'config', 'app')).catch(() => {});
 
@@ -321,19 +692,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.warn('[Boardly Auth] onAuthStateChanged profile load error:', err);
         });
       } else {
+        try {
+          localStorage.removeItem('boardly_user_authenticated');
+        } catch {
+          // Ignore storage errors
+        }
+        setOtpVerificationState({
+          status: 'idle',
+          purpose: null,
+          email: '',
+          maskedEmail: '',
+          cooldownSeconds: 0,
+          error: null,
+        });
         setProfile(null);
         setProfileLoading(false);
         setProfileError(null);
       }
     });
     return unsubscribe;
-  }, [loadProfile, retryCount]);
+  }, [loadProfile, retryCount, requestOtpCodeForUser]);
 
   // ── Auth actions ─────────────────────────────────────────────────────────
-  const signIn = useCallback(async (email: string, password: string) => {
-    setAuthError(null);
-    await signInWithEmailAndPassword(auth, email, password);
-  }, []);
+  const signIn = useCallback(
+    async (email: string, password: string) => {
+      setAuthError(null);
+      const cleanEmail = email.trim().toLowerCase();
+      const credential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      const loggedInUser = credential.user;
+
+      try {
+        localStorage.removeItem('boardly_user_authenticated');
+      } catch {
+        // Ignore storage errors
+      }
+
+      const purpose: 'login' | 'signup' = loggedInUser.emailVerified ? 'login' : 'signup';
+      setOtpVerificationState({
+        status: 'pending',
+        purpose,
+        email: loggedInUser.email || cleanEmail,
+        maskedEmail: maskEmailClient(loggedInUser.email || cleanEmail),
+        cooldownSeconds: 60,
+        error: null,
+      });
+
+      await requestOtpCodeForUser(loggedInUser, {
+        purpose,
+        forceResend: false,
+      });
+    },
+    [requestOtpCodeForUser]
+  );
 
   const signUp = useCallback(
     async (email: string, password: string, displayName: string) => {
@@ -341,6 +751,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const cleanEmail = email.trim().toLowerCase();
       const credential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
       const { user: newUser } = credential;
+
+      try {
+        localStorage.removeItem('boardly_user_authenticated');
+      } catch {
+        // Ignore storage errors
+      }
+
+      setOtpVerificationState({
+        status: 'pending',
+        purpose: 'signup',
+        email: cleanEmail,
+        maskedEmail: maskEmailClient(cleanEmail),
+        cooldownSeconds: 60,
+        error: null,
+      });
 
       // Resolve and save displayName immediately
       const resolvedName =
@@ -370,7 +795,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Non-fatal orphan cleanup
       }
 
-      // Always write/overwrite the user document for the new Auth user (overwriting any orphan doc)
+      // Write the initial user document with emailVerified: false
       const userDocRef = doc(db, 'users', newUser.uid);
       await withTimeout(
         setDoc(
@@ -385,6 +810,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             plan: 'free',
             status: 'active',
             deleted: false,
+            emailVerified: false,
             onboardingCompleted: false,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
@@ -394,16 +820,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         6000
       );
 
-      // Send email verification
-      try {
-        await sendEmailVerification(newUser);
-      } catch (e) {
-        console.warn('Verification email send issue:', e);
-      }
+      // Send 6-digit verification code + fallback link via Worker + Resend
+      await requestOtpCodeForUser(newUser, {
+        purpose: 'signup',
+        forceResend: false,
+      });
 
       createReferralDoc(newUser.uid, cleanEmail).catch(() => {});
     },
-    [createReferralDoc]
+    [createReferralDoc, requestOtpCodeForUser]
   );
 
   // ── Pure popup-only Google sign-in (no redirects, no device branching) ───
@@ -417,6 +842,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const credential = await signInWithPopup(auth, provider);
       if (credential?.user) {
         setUser(credential.user);
+        try {
+          localStorage.setItem('boardly_user_authenticated', 'true');
+        } catch {
+          // Ignore storage errors
+        }
+        setOtpVerificationState({
+          status: 'verified',
+          purpose: null,
+          email: credential.user.email || '',
+          maskedEmail: maskEmailClient(credential.user.email || ''),
+          cooldownSeconds: 0,
+          error: null,
+        });
         // Load profile with timeout; non-fatal if Firestore rules are slow
         try {
           await loadProfile(credential.user);
@@ -465,12 +903,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ignore storage errors
     }
+    setOtpVerificationState({
+      status: 'idle',
+      purpose: null,
+      email: '',
+      maskedEmail: '',
+      cooldownSeconds: 0,
+      error: null,
+    });
     await firebaseSignOut(auth);
   }, []);
 
   const sendVerificationEmail = useCallback(async () => {
-    if (user) await sendEmailVerification(user);
-  }, [user]);
+    if (user) {
+      await requestOtpCodeForUser(user, {
+        purpose: 'signup',
+        forceResend: true,
+      });
+    }
+  }, [user, requestOtpCodeForUser]);
 
   const resetPassword = useCallback(async (email: string) => {
     setAuthError(null);
@@ -567,6 +1018,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearAuthError,
       clearProfileError,
       isAdmin,
+      isSessionVerified,
+      otpVerificationState,
+      requestOtpCode,
+      verifyOtpCode,
+      verifyFallbackEmailLink,
       signIn,
       signUp,
       signInWithGoogle,
@@ -587,6 +1043,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearAuthError,
       clearProfileError,
       isAdmin,
+      isSessionVerified,
+      otpVerificationState,
+      requestOtpCode,
+      verifyOtpCode,
+      verifyFallbackEmailLink,
       signIn,
       signUp,
       signInWithGoogle,

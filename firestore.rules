@@ -466,6 +466,10 @@ service cloud.firestore {
         request.resource.data.get('isAdmin', false) == false &&
         request.resource.data.get('isSuperAdmin', false) == false &&
         request.resource.data.get('isVerified', false) == false &&
+        (
+          request.resource.data.get('emailVerified', false) == false ||
+          request.auth.token.email_verified == true
+        ) &&
         request.resource.data.get('isBanned', false) == false &&
         request.resource.data.get('isSuspended', false) == false &&
         request.resource.data.get('suspended', false) == false &&
@@ -480,6 +484,7 @@ service cloud.firestore {
 
       allow update: if isAdmin() || (
         isOwner(userId) &&
+        isVerified() &&
         unchanged([
           'uid',
           'role',
@@ -491,6 +496,7 @@ service cloud.firestore {
           'subscriptionStatus',
           'isVerified',
           'verified',
+          'emailVerified',
           'isBanned',
           'isSuspended',
           'suspended',

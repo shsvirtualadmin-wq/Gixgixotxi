@@ -7,12 +7,19 @@ import { PageMeta } from '@/components/ui/PageMeta';
 import { LineLoader } from '@/components/ui/LineLoader';
 
 export function SignupPage() {
-  const { user, profile, profileLoading, getRoleRedirectUrl } = useAuth();
+  const {
+    user,
+    profile,
+    profileLoading,
+    isSessionVerified,
+    otpVerificationState,
+    getRoleRedirectUrl,
+  } = useAuth();
   const navigate = useNavigate();
 
-  // If already logged in, redirect appropriately
+  // Only redirect once the 6-digit verification code has been verified
   useEffect(() => {
-    if (user && !profileLoading) {
+    if (user && !profileLoading && isSessionVerified) {
       if (profile && !profile.onboardingCompleted && profile.role === 'student') {
         navigate('/onboarding', { replace: true });
         return;
@@ -29,7 +36,7 @@ export function SignupPage() {
       sessionStorage.removeItem('boardly_post_login_redirect');
       navigate(dest, { replace: true });
     }
-  }, [user, profile, profileLoading, navigate, getRoleRedirectUrl]);
+  }, [user, profile, profileLoading, isSessionVerified, navigate, getRoleRedirectUrl]);
 
   return (
     <AuthLayout>
@@ -38,7 +45,7 @@ export function SignupPage() {
         description="Join Boardly for free to practice Class 11 & 12 board and university entrance exam MCQs, download notes, and study with your campus crew."
         canonicalPath="/signup"
       />
-      {user ? (
+      {user && (isSessionVerified || otpVerificationState.status === 'checking') ? (
         <LineLoader context="signup" variant="section" />
       ) : (
         <AuthCard initialMode="signup" />
