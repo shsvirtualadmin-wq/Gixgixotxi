@@ -387,9 +387,115 @@ const SUPERADMIN_EMAILS = new Set([
   'scholariosupport@gmail.com',
 ]);
 
+function extractWorkerGuestToken(request) {
+  const headerToken = (request.headers.get('X-Guest-Session') || '').trim();
+  if (headerToken) {
+    return headerToken.startsWith('guest_guest_') ? headerToken.slice('guest_'.length) : headerToken;
+  }
+  const authHeader = (request.headers.get('Authorization') || '').trim();
+  if (authHeader.startsWith('Bearer guest_')) {
+    const raw = authHeader.slice('Bearer '.length).trim();
+    return raw.startsWith('guest_guest_') ? raw.slice('guest_'.length) : raw;
+  }
+  const cookieHeader = request.headers.get('Cookie') || request.headers.get('cookie') || '';
+  if (cookieHeader) {
+    const match = cookieHeader.match(/(?:^|;\s*)boardly_guest_session=([^;]+)/);
+    if (match && match[1]) {
+      try {
+        return decodeURIComponent(match[1].trim());
+      } catch {
+        return match[1].trim();
+      }
+    }
+  }
+  return null;
+}
+
+async function computeWorkerGuestTokenHmac(rawToken, env) {
+  const secret =
+    (env && (env.OTP_HMAC_SECRET || env.EMAIL_VERIFICATION_SECRET || env.INTERNAL_EMAIL_SECRET)) ||
+    'boardly-default-otp-hmac-secret-v1-do-not-expose';
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(String(secret).trim()),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(`guest_session:v1:${rawToken}`));
+  return Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function resolveWorkerGuestUser(request, env) {
+  if (!env || !env.DB) return null;
+  const rawToken = extractWorkerGuestToken(request);
+  if (!rawToken || rawToken.length < 16) return null;
+  try {
+    const tokenHash = await computeWorkerGuestTokenHmac(rawToken, env);
+    const now = Date.now();
+    const sess = await env.DB.prepare(
+      'SELECT session_id, uid, expires_at, revoked FROM guest_sessions WHERE token_hash = ?1 LIMIT 1'
+    )
+      .bind(tokenHash)
+      .first();
+    if (!sess || Number(sess.revoked) === 1 || Number(sess.expires_at) <= now) {
+      return null;
+    }
+    const gRow = await env.DB.prepare('SELECT * FROM guest_accounts WHERE uid = ?1 LIMIT 1')
+      .bind(sess.uid)
+      .first();
+    if (
+      !gRow ||
+      Number(gRow.is_guest) !== 1 ||
+      Boolean(gRow.upgraded_to_uid) ||
+      Number(gRow.is_suspended) === 1
+    ) {
+      return null;
+    }
+    const newExpiresAt = now + 30 * 24 * 60 * 60 * 1000;
+    await env.DB.prepare(
+      'UPDATE guest_sessions SET last_active_at = ?1, expires_at = ?2 WHERE session_id = ?3'
+    )
+      .bind(now, newExpiresAt, sess.session_id)
+      .run()
+      .catch(() => {});
+    await env.DB.prepare('UPDATE guest_accounts SET last_active_at = ?1 WHERE uid = ?2')
+      .bind(now, gRow.uid)
+      .run()
+      .catch(() => {});
+    const cleanUsername = String(gRow.username || '').trim();
+    const cleanName = String(gRow.display_name || cleanUsername || 'Guest').trim();
+    return {
+      uid: String(gRow.uid),
+      email: '',
+      name: cleanName,
+      displayName: cleanName,
+      username: cleanUsername,
+      tokenName: cleanName,
+      picture: null,
+      accountType: 'guest',
+      plan: 'free',
+      role: 'student',
+      customRole: 'Guest',
+      isGuest: true,
+      isPostingBanned: Boolean(gRow.is_suspended),
+      isCaptainOrAbove: false,
+      isAdminOrAbove: false,
+      isSuperAdmin: false,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function authenticateRequest(request, env, requireAuth = true) {
   const authHeader = request.headers.get('Authorization') || '';
-  if (!authHeader.startsWith('Bearer ')) {
+  if (!authHeader.startsWith('Bearer ') || authHeader.startsWith('Bearer guest_')) {
+    const guestUser = await resolveWorkerGuestUser(request, env);
+    if (guestUser) return guestUser;
     if (!requireAuth) return null;
     const err = new Error('Authentication required. Please sign in.');
     err.status = 401;
@@ -404,6 +510,8 @@ async function authenticateRequest(request, env, requireAuth = true) {
   try {
     decoded = await verifyFirebaseIdToken(token, projectId);
   } catch (e) {
+    const guestUser = await resolveWorkerGuestUser(request, env);
+    if (guestUser) return guestUser;
     if (!requireAuth) return null;
     const err = new Error(e.message || 'Invalid or expired authentication token.');
     err.status = 401;

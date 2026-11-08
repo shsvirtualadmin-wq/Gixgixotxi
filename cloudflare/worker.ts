@@ -620,6 +620,97 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
   }
 }
 
+async function verifyD1GuestSessionForWorker(
+  req: Request,
+  env: Env
+): Promise<VerifiedFirebaseUser | null> {
+  if (!env?.DB) return null;
+  let rawToken: string | null = null;
+  const headerToken = (req.headers.get('X-Guest-Session') || '').trim();
+  if (headerToken) {
+    rawToken = headerToken.startsWith('guest_guest_') ? headerToken.slice('guest_'.length) : headerToken;
+  }
+  const authHeader = (req.headers.get('Authorization') || '').trim();
+  if (!rawToken && authHeader.startsWith('Bearer guest_')) {
+    const raw = authHeader.slice('Bearer '.length).trim();
+    rawToken = raw.startsWith('guest_guest_') ? raw.slice('guest_'.length) : raw;
+  }
+  const cookieHeader = req.headers.get('Cookie') || req.headers.get('cookie') || '';
+  if (!rawToken && cookieHeader) {
+    const match = cookieHeader.match(/(?:^|;\s*)boardly_guest_session=([^;]+)/);
+    if (match?.[1]) {
+      try {
+        rawToken = decodeURIComponent(match[1].trim());
+      } catch {
+        rawToken = match[1].trim();
+      }
+    }
+  }
+  if (!rawToken || rawToken.length < 16) return null;
+
+  try {
+    const secret =
+      ((env as any).OTP_HMAC_SECRET ||
+        (env as any).EMAIL_VERIFICATION_SECRET ||
+        (env as any).INTERNAL_EMAIL_SECRET ||
+        'boardly-default-otp-hmac-secret-v1-do-not-expose') as string;
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      enc.encode(String(secret).trim()),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    const sig = await crypto.subtle.sign('HMAC', key, enc.encode(`guest_session:v1:${rawToken}`));
+    const tokenHash = Array.from(new Uint8Array(sig))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+    const now = Date.now();
+    const sess = await env.DB.prepare(
+      'SELECT session_id, uid, expires_at, revoked FROM guest_sessions WHERE token_hash = ?1 LIMIT 1'
+    )
+      .bind(tokenHash)
+      .first<{ session_id: string; uid: string; expires_at: number; revoked: number }>();
+    if (!sess || Number(sess.revoked) === 1 || Number(sess.expires_at) <= now) {
+      return null;
+    }
+    const gRow = await env.DB.prepare('SELECT * FROM guest_accounts WHERE uid = ?1 LIMIT 1')
+      .bind(sess.uid)
+      .first<Record<string, any>>();
+    if (
+      !gRow ||
+      Number(gRow.is_guest) !== 1 ||
+      Boolean(gRow.upgraded_to_uid) ||
+      Number(gRow.is_suspended) === 1
+    ) {
+      return null;
+    }
+    const newExpiresAt = now + 30 * 24 * 60 * 60 * 1000;
+    await env.DB.prepare(
+      'UPDATE guest_sessions SET last_active_at = ?1, expires_at = ?2 WHERE session_id = ?3'
+    )
+      .bind(now, newExpiresAt, sess.session_id)
+      .run()
+      .catch(() => {});
+    await env.DB.prepare('UPDATE guest_accounts SET last_active_at = ?1 WHERE uid = ?2')
+      .bind(now, String(gRow.uid))
+      .run()
+      .catch(() => {});
+    const cleanName = String(gRow.display_name || gRow.username || 'Guest').trim();
+    return {
+      uid: String(gRow.uid),
+      email: '',
+      name: cleanName,
+      picture: '',
+      role: 'student',
+      customRole: 'Guest',
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Verifies a Firebase Auth ID token using WebCrypto RS256 and Google's JWK keys.
  */
@@ -628,12 +719,14 @@ export async function verifyFirebaseIdToken(
   env: Env
 ): Promise<VerifiedFirebaseUser | null> {
   const authHeader = req.headers.get('Authorization') || '';
-  if (!authHeader.startsWith('Bearer ')) return null;
+  if (!authHeader.startsWith('Bearer ') || authHeader.startsWith('Bearer guest_')) {
+    return verifyD1GuestSessionForWorker(req, env);
+  }
   const token = authHeader.slice(7).trim();
-  if (!token) return null;
+  if (!token) return verifyD1GuestSessionForWorker(req, env);
 
   const parts = token.split('.');
-  if (parts.length !== 3) return null;
+  if (parts.length !== 3) return verifyD1GuestSessionForWorker(req, env);
 
   try {
     const header = decodeJwtPayload(parts[0]);

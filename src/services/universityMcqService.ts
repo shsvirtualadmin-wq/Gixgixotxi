@@ -142,6 +142,14 @@ async function getD1RequestHeaders(): Promise<Record<string, string>> {
       return headers;
     }
     if (typeof window !== 'undefined' && window.localStorage) {
+      const guestToken =
+        window.localStorage.getItem('boardly_guest_session_token') ||
+        window.localStorage.getItem('boardly_guest_session_backup_v1');
+      if (guestToken) {
+        headers['X-Guest-Session'] = guestToken;
+        headers['Authorization'] = `Bearer guest_${guestToken}`;
+        return headers;
+      }
       const localToken =
         window.localStorage.getItem('boardly_session_token') ||
         window.localStorage.getItem('boardly_cf_token');
@@ -1593,6 +1601,37 @@ export function saveD1UniversityAttempt(
     } catch {
       // Non-fatal
     }
+  }
+  if (typeof window !== 'undefined' && (!auth.currentUser || (uid && uid.startsWith('guest_')))) {
+    const savedGuestToken =
+      window.localStorage?.getItem('boardly_guest_session_token') ||
+      window.localStorage?.getItem('boardly_guest_session_backup_v1') ||
+      '';
+    fetch('/api/auth/guest/attempts', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(savedGuestToken ? { 'X-Guest-Session': savedGuestToken } : {}),
+      },
+      body: JSON.stringify({
+        action: 'submit',
+        attempt: {
+          ...record,
+          uid: uid || 'guest',
+          userId: uid || 'guest',
+          status: 'completed',
+          university: record.universityName,
+          percentage: record.accuracy,
+          correctAnswers: record.correctCount,
+          wrongAnswers: record.wrongCount,
+          unanswered: Math.max(0, record.totalQuestions - record.answeredCount),
+          timeTakenSeconds: record.durationSeconds,
+          submittedAt: record.createdAt,
+        },
+        questionsSolvedDelta: record.answeredCount,
+      }),
+    }).catch(() => {});
   }
   return record;
 }

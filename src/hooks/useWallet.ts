@@ -59,6 +59,13 @@ export function useWallet() {
   );
 
   const fetchWallet = useCallback(async (uid: string, forceRefresh = false) => {
+    if (!uid || uid.startsWith('guest_')) {
+      sessionWalletCache[uid] = DEFAULT_WALLET;
+      setWallet(DEFAULT_WALLET);
+      setLoading(false);
+      return DEFAULT_WALLET;
+    }
+
     if (!forceRefresh && sessionWalletCache[uid]) {
       setWallet(sessionWalletCache[uid]);
       setLoading(false);

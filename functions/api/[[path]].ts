@@ -19,13 +19,8 @@ export async function onRequest(context: {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
 
-  // Delegate 6-digit email verification & login 2FA endpoints to /api/auth handler
-  if (
-    path === '/api/auth/verification-status' ||
-    path === '/api/auth/send-code' ||
-    path === '/api/auth/verify-code' ||
-    path === '/api/auth/verify-link'
-  ) {
+  // Delegate all /api/auth/* endpoints (guest mode, me, username checks, 6-digit OTP) to /api/auth handler
+  if (path === '/api/auth' || path.startsWith('/api/auth/')) {
     return handleAuthApiRequest({
       request,
       env: (env || {}) as any,
@@ -45,7 +40,7 @@ export async function onRequest(context: {
     });
   }
 
-  // Delegate Nakama Captain tests, crews, roles, attempts, leaderboards, and mcq-bank to worker.js
+  // Delegate Nakama Captain tests, crews, roles, attempts, leaderboards, usage, and mcq-bank to worker.js
   if (
     path.startsWith('/api/tests') ||
     path.startsWith('/api/crews') ||
@@ -58,7 +53,8 @@ export async function onRequest(context: {
     path.startsWith('/api/signatures') ||
     path.startsWith('/api/admin/certificates') ||
     path.startsWith('/api/admin/signatures') ||
-    path.startsWith('/api/mcq-bank')
+    path.startsWith('/api/mcq-bank') ||
+    path.startsWith('/api/usage/daily')
   ) {
     return (d1Worker as any).fetch(request, env || ({} as Env), context as any);
   }

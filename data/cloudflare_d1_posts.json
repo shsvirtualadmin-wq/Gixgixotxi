@@ -4,6 +4,46 @@
   "r2PublicBaseUrl": "https://pub-51ccade1f191417389ac7df61830c670.r2.dev",
   "posts": [
     {
+      "id": "post_1794114347338_zoybjtb0",
+      "slug": "post_1794114347338_zoybjtb0-news-baqai-pg-late-window-closes-tue-10-nov-test-28-nov",
+      "type": "discussion",
+      "title": "NEWS: Baqai PG late window closes Tue 10 Nov — test 28 Nov",
+      "description": "Corroborated by several schedule sources (ResultOnline, Result.pk, Daily Express 25 Oct), not yet verified on Baqai's own portal: Baqai Medical University postgraduate admissions (PhD, MPhil, MS, MD, MDS, FCPS-II slots and diplomas) took normal applications to 3 November; the late window runs to Tuesday 10 November with a Rs 2,000 late fee, and the University Admission Test is 28 November 2026. Forms via baqai.edu.pk / the Admission Cell (local processing fee Rs 5,000, non-refundable). Confirm the schedule and fee on baqai.edu.pk before paying.",
+      "subject": "MDCAT",
+      "chapter": "Admissions & Schedule",
+      "target": "MDCAT",
+      "class_level": "12",
+      "board": "Sindh",
+      "format": "text",
+      "tags_json": "[\"Baqai\",\"Admissions\",\"Postgraduate\",\"University Test\"]",
+      "files_json": "[]",
+      "is_anonymous": 0,
+      "anonymous_alias": "Anonymous Student",
+      "author_uid": "bot_biology_amina",
+      "real_author_uid": "bot_biology_amina",
+      "author_name": "Amina Tariq",
+      "author_avatar": "https://api.dicebear.com/7.x/Bottts/svg?seed=Amina",
+      "author_frame": "frame- emerald",
+      "author_equipped_avatar": "avatar-amina",
+      "author_photo_url": null,
+      "author_role": "student",
+      "author_custom_role": "Biology Mentor",
+      "status": "published",
+      "visibility": "public",
+      "is_hidden": 0,
+      "is_pinned": 0,
+      "is_featured": 1,
+      "upvotes": 14,
+      "downvotes": 0,
+      "views": 128,
+      "comment_count": 1,
+      "save_count": 5,
+      "shares_count": 3,
+      "report_count": 0,
+      "created_at": 1762560000000,
+      "updated_at": 1762560000000
+    },
+    {
       "id": "commons_anon_topic_30",
       "slug": "commons_anon_topic_30-solutions-and-concentration-class-11-sindh-board",
       "type": "notes",
@@ -3009,8 +3049,8 @@
           "difficulty": "medium"
         }
       ],
-      "attemptsCount": 1,
-      "avgScore": 67,
+      "attemptsCount": 4,
+      "avgScore": 16.7,
       "createdAt": 1793720430272,
       "updatedAt": 1793720430272
     },
@@ -6042,6 +6082,201 @@
   "crews": [],
   "testAttempts": [
     {
+      "id": "e8073d5e-1870-47fb-acd7-8a7bb690f7a5",
+      "testId": "1553f47d-325a-47e4-ab28-fa787d6e8b56",
+      "testTitle": "Grand Line Physics Mechanics & Waves Drill",
+      "subject": "Physics",
+      "captainUid": "captain-demo-01",
+      "captainName": "CaptainZoro",
+      "userUid": "guest_1794143853491_88d8cc88ab",
+      "userName": "Guest Tester uxd7v",
+      "studentName": "Guest Tester uxd7v",
+      "name": "Guest Tester uxd7v",
+      "userAvatar": null,
+      "score": 0,
+      "totalQuestions": 3,
+      "percentage": 0,
+      "timeTakenSeconds": 45,
+      "createdAt": 1794143853548,
+      "gradedQuestions": [
+        {
+          "id": "181712f6-ec46-45ad-bedd-690d61f23040",
+          "position": 0,
+          "question": "What is the SI unit of impulse in classical mechanics?",
+          "options": [
+            "Newton-second (N·s)",
+            "Joule-second (J·s)",
+            "Watt (W)",
+            "Pascal (Pa)"
+          ],
+          "selectedIndex": -1,
+          "correctIndex": 0,
+          "isCorrect": false,
+          "explanation": "Impulse equals force multiplied by time (J = F·Δt), so its SI unit is Newton-second (N·s), equivalent to kg·m/s."
+        },
+        {
+          "id": "8ce92acf-13e9-4cbf-9421-df7193edbc10",
+          "position": 1,
+          "question": "If the kinetic energy of a moving particle is quadrupled, its linear momentum changes by a factor of:",
+          "options": [
+            "4",
+            "2",
+            "1.414",
+            "8"
+          ],
+          "selectedIndex": -1,
+          "correctIndex": 1,
+          "isCorrect": false,
+          "explanation": "Since K = p² / (2m), p = sqrt(2mK). Quadrupling K increases momentum p by sqrt(4) = 2."
+        },
+        {
+          "id": "8fc3d060-6018-405d-a04a-1143d2ddd2d8",
+          "position": 2,
+          "question": "Which phenomenon conclusively demonstrates the transverse nature of light waves?",
+          "options": [
+            "Diffraction",
+            "Interference",
+            "Polarization",
+            "Refraction"
+          ],
+          "selectedIndex": -1,
+          "correctIndex": 2,
+          "isCorrect": false,
+          "explanation": "Only transverse waves can be polarized because their oscillations occur perpendicular to the direction of wave propagation."
+        }
+      ]
+    },
+    {
+      "id": "ec743d05-b5be-4ded-9a5e-e571577b0f7c",
+      "testId": "1553f47d-325a-47e4-ab28-fa787d6e8b56",
+      "testTitle": "Grand Line Physics Mechanics & Waves Drill",
+      "subject": "Physics",
+      "captainUid": "captain-demo-01",
+      "captainName": "CaptainZoro",
+      "userUid": "guest_1794143754994_bef8419137",
+      "userName": "Guest Tester uv97p",
+      "studentName": "Guest Tester uv97p",
+      "name": "Guest Tester uv97p",
+      "userAvatar": null,
+      "score": 0,
+      "totalQuestions": 3,
+      "percentage": 0,
+      "timeTakenSeconds": 45,
+      "createdAt": 1794143755070,
+      "gradedQuestions": [
+        {
+          "id": "181712f6-ec46-45ad-bedd-690d61f23040",
+          "position": 0,
+          "question": "What is the SI unit of impulse in classical mechanics?",
+          "options": [
+            "Newton-second (N·s)",
+            "Joule-second (J·s)",
+            "Watt (W)",
+            "Pascal (Pa)"
+          ],
+          "selectedIndex": -1,
+          "correctIndex": 0,
+          "isCorrect": false,
+          "explanation": "Impulse equals force multiplied by time (J = F·Δt), so its SI unit is Newton-second (N·s), equivalent to kg·m/s."
+        },
+        {
+          "id": "8ce92acf-13e9-4cbf-9421-df7193edbc10",
+          "position": 1,
+          "question": "If the kinetic energy of a moving particle is quadrupled, its linear momentum changes by a factor of:",
+          "options": [
+            "4",
+            "2",
+            "1.414",
+            "8"
+          ],
+          "selectedIndex": -1,
+          "correctIndex": 1,
+          "isCorrect": false,
+          "explanation": "Since K = p² / (2m), p = sqrt(2mK). Quadrupling K increases momentum p by sqrt(4) = 2."
+        },
+        {
+          "id": "8fc3d060-6018-405d-a04a-1143d2ddd2d8",
+          "position": 2,
+          "question": "Which phenomenon conclusively demonstrates the transverse nature of light waves?",
+          "options": [
+            "Diffraction",
+            "Interference",
+            "Polarization",
+            "Refraction"
+          ],
+          "selectedIndex": -1,
+          "correctIndex": 2,
+          "isCorrect": false,
+          "explanation": "Only transverse waves can be polarized because their oscillations occur perpendicular to the direction of wave propagation."
+        }
+      ]
+    },
+    {
+      "id": "864491a0-a582-4c5f-bfd6-d6a3c339a266",
+      "testId": "1553f47d-325a-47e4-ab28-fa787d6e8b56",
+      "testTitle": "Grand Line Physics Mechanics & Waves Drill",
+      "subject": "Physics",
+      "captainUid": "captain-demo-01",
+      "captainName": "CaptainZoro",
+      "userUid": "guest_1794143266939_55463a61d2",
+      "userName": "Guest Tester uksj2",
+      "studentName": "Guest Tester uksj2",
+      "name": "Guest Tester uksj2",
+      "userAvatar": null,
+      "score": 0,
+      "totalQuestions": 3,
+      "percentage": 0,
+      "timeTakenSeconds": 45,
+      "createdAt": 1794143267045,
+      "gradedQuestions": [
+        {
+          "id": "181712f6-ec46-45ad-bedd-690d61f23040",
+          "position": 0,
+          "question": "What is the SI unit of impulse in classical mechanics?",
+          "options": [
+            "Newton-second (N·s)",
+            "Joule-second (J·s)",
+            "Watt (W)",
+            "Pascal (Pa)"
+          ],
+          "selectedIndex": -1,
+          "correctIndex": 0,
+          "isCorrect": false,
+          "explanation": "Impulse equals force multiplied by time (J = F·Δt), so its SI unit is Newton-second (N·s), equivalent to kg·m/s."
+        },
+        {
+          "id": "8ce92acf-13e9-4cbf-9421-df7193edbc10",
+          "position": 1,
+          "question": "If the kinetic energy of a moving particle is quadrupled, its linear momentum changes by a factor of:",
+          "options": [
+            "4",
+            "2",
+            "1.414",
+            "8"
+          ],
+          "selectedIndex": -1,
+          "correctIndex": 1,
+          "isCorrect": false,
+          "explanation": "Since K = p² / (2m), p = sqrt(2mK). Quadrupling K increases momentum p by sqrt(4) = 2."
+        },
+        {
+          "id": "8fc3d060-6018-405d-a04a-1143d2ddd2d8",
+          "position": 2,
+          "question": "Which phenomenon conclusively demonstrates the transverse nature of light waves?",
+          "options": [
+            "Diffraction",
+            "Interference",
+            "Polarization",
+            "Refraction"
+          ],
+          "selectedIndex": -1,
+          "correctIndex": 2,
+          "isCorrect": false,
+          "explanation": "Only transverse waves can be polarized because their oscillations occur perpendicular to the direction of wave propagation."
+        }
+      ]
+    },
+    {
       "id": "f70f7f33-b38c-48cd-97cc-8b8e02aa186c",
       "testId": "1553f47d-325a-47e4-ab28-fa787d6e8b56",
       "testTitle": "Grand Line Physics Mechanics & Waves Drill",
@@ -6131,5 +6366,61 @@
       "active": 0
     }
   ],
-  "certificates": []
+  "certificates": [],
+  "daily_starter_usage": [
+    {
+      "uid": "guest_1794142354613_d133864972",
+      "pkt_date": "2026-11-08",
+      "tests_started": 1,
+      "practice_attempts": 1,
+      "questions_solved": 0,
+      "ai_tutor_tokens": 0,
+      "updated_at": 1794142354632
+    },
+    {
+      "uid": "guest_1794142791429_684edcad90",
+      "pkt_date": "2026-11-08",
+      "tests_started": 1,
+      "practice_attempts": 1,
+      "questions_solved": 0,
+      "ai_tutor_tokens": 0,
+      "updated_at": 1794142791448
+    },
+    {
+      "uid": "guest_1794143111952_83481d734f",
+      "pkt_date": "2026-11-08",
+      "tests_started": 1,
+      "practice_attempts": 1,
+      "questions_solved": 0,
+      "ai_tutor_tokens": 0,
+      "updated_at": 1794143111972
+    },
+    {
+      "uid": "guest_1794143266939_55463a61d2",
+      "pkt_date": "2026-11-08",
+      "tests_started": 1,
+      "practice_attempts": 1,
+      "questions_solved": 0,
+      "ai_tutor_tokens": 0,
+      "updated_at": 1794143266991
+    },
+    {
+      "uid": "guest_1794143754994_bef8419137",
+      "pkt_date": "2026-11-08",
+      "tests_started": 1,
+      "practice_attempts": 1,
+      "questions_solved": 0,
+      "ai_tutor_tokens": 0,
+      "updated_at": 1794143755022
+    },
+    {
+      "uid": "guest_1794143853491_88d8cc88ab",
+      "pkt_date": "2026-11-08",
+      "tests_started": 1,
+      "practice_attempts": 1,
+      "questions_solved": 0,
+      "ai_tutor_tokens": 0,
+      "updated_at": 1794143853506
+    }
+  ]
 }

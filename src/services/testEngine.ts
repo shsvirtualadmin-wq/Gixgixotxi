@@ -9,7 +9,8 @@ import {
   arrayUnion,
   Timestamp,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
+import { getStoredGuestSessionToken } from '@/lib/api';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { robustSaveDoc } from '@/lib/robustSave';
 import {
@@ -170,17 +171,56 @@ export function normalizeCorrectAnswer(
   return null;
 }
 
+function buildGuestAttemptHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  const guestToken = getStoredGuestSessionToken();
+  if (guestToken) {
+    headers['X-Guest-Session'] = guestToken;
+  }
+  return headers;
+}
+
 /**
  * Loads an existing attempt document by ID with fallback for deleted/unavailable questions.
+ * For guest accounts (no Firebase currentUser), reads from D1 via `/api/auth/guest/attempts/:attemptId`.
  */
 export async function getAttempt(attemptId: string): Promise<AttemptDoc> {
-  const docRef = doc(db, 'attempts', attemptId);
-  const snap = await getDoc(docRef);
-  if (!snap.exists()) {
-    throw new Error(`Attempt ${attemptId} not found`);
+  let data: Record<string, any> | null = null;
+  let resolvedId = attemptId;
+
+  if (auth.currentUser) {
+    const docRef = doc(db, 'attempts', attemptId);
+    const snap = await getDoc(docRef).catch(() => null);
+    if (snap && snap.exists()) {
+      data = snap.data() as Record<string, any>;
+      resolvedId = snap.id;
+    }
   }
 
-  const data = snap.data();
+  if (!data) {
+    const res = await fetch(`/api/auth/guest/attempts/${encodeURIComponent(attemptId)}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: buildGuestAttemptHeaders(),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body?.ok && body?.attempt) {
+      data = body.attempt as Record<string, any>;
+      resolvedId = String(data.id || attemptId);
+    } else if (!auth.currentUser) {
+      console.error(`[API Error] GET /api/auth/guest/attempts/${attemptId} -> HTTP ${res.status}:`, body);
+      throw new Error(
+        res.status === 401
+          ? body?.error || 'Your guest session expired, please choose your username again.'
+          : body?.error || `Attempt ${attemptId} not found`
+      );
+    } else {
+      throw new Error(`Attempt ${attemptId} not found`);
+    }
+  }
+
   // Safe normalization: ensure questions array handles deleted questions gracefully
   const rawQuestions = Array.isArray(data.questions) ? data.questions : [];
   const normalizedQuestions: AttemptQuestion[] = rawQuestions.map((item: unknown, i: number) => {
@@ -203,9 +243,23 @@ export async function getAttempt(attemptId: string): Promise<AttemptDoc> {
     };
   });
 
+  // Normalize endsAt if stored as plain JSON `{ seconds, nanoseconds }` or ISO string
+  let normalizedEndsAt = data.endsAt;
+  if (normalizedEndsAt && typeof normalizedEndsAt === 'object' && typeof normalizedEndsAt.toMillis !== 'function') {
+    if (typeof normalizedEndsAt.seconds === 'number') {
+      normalizedEndsAt = Timestamp.fromMillis(normalizedEndsAt.seconds * 1000);
+    }
+  } else if (typeof normalizedEndsAt === 'string') {
+    const parsed = Date.parse(normalizedEndsAt);
+    if (!Number.isNaN(parsed)) {
+      normalizedEndsAt = Timestamp.fromMillis(parsed);
+    }
+  }
+
   return {
-    id: snap.id,
+    id: resolvedId,
     ...data,
+    endsAt: normalizedEndsAt,
     questions: normalizedQuestions,
   } as AttemptDoc;
 }
@@ -286,7 +340,7 @@ export function resetStudentSeenQuestions(studentId: string, subjectSlug: string
 }
 
 export async function persistSeenQuestionsToFirestore(studentId: string, subjectSlug: string, seenIds: string[]): Promise<void> {
-  if (!studentId || studentId === 'guest' || !seenIds.length) return;
+  if (!studentId || studentId === 'guest' || studentId.startsWith('guest_') || !auth.currentUser || !seenIds.length) return;
   try {
     const userRef = doc(db, 'users', studentId);
     await setDoc(
@@ -639,6 +693,33 @@ export async function startAttempt(
     ? Timestamp.fromMillis(Date.now() + durationSeconds * 1000)
     : null;
 
+  if (!auth.currentUser) {
+    const res = await fetch('/api/auth/guest/attempts', {
+      method: 'POST',
+      credentials: 'include',
+      headers: buildGuestAttemptHeaders(),
+      body: JSON.stringify({
+        action: 'start',
+        attempt: {
+          id: attemptId,
+          status: 'in_progress',
+          questions,
+          totalQuestions: questions.length,
+          startedAt: new Date().toISOString(),
+          endsAt: endsAt ? { seconds: endsAt.seconds, nanoseconds: endsAt.nanoseconds } : null,
+        },
+      }),
+    });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      console.error(`[API Error] POST /api/auth/guest/attempts (start) -> HTTP ${res.status}:`, errBody);
+      throw new Error(
+        errBody?.error || 'Your guest session expired, please choose your username again.'
+      );
+    }
+    return { endsAt };
+  }
+
   const docRef = doc(db, 'attempts', attemptId);
   await updateDoc(docRef, {
     status: 'in_progress',
@@ -660,6 +741,23 @@ export async function saveAttemptProgress(
   flagged: number[]
 ): Promise<void> {
   try {
+    if (!auth.currentUser) {
+      await fetch('/api/auth/guest/attempts', {
+        method: 'POST',
+        credentials: 'include',
+        headers: buildGuestAttemptHeaders(),
+        body: JSON.stringify({
+          action: 'progress',
+          attempt: {
+            id: attemptId,
+            userAnswers,
+            flagged,
+          },
+        }),
+      });
+      return;
+    }
+
     const docRef = doc(db, 'attempts', attemptId);
     await updateDoc(docRef, {
       userAnswers,
@@ -698,6 +796,7 @@ export async function submitAttempt(
 ): Promise<AttemptResultMetrics> {
   const questions = attempt.questions ?? [];
   const totalQuestions = questions.length;
+  const isGuestSession = !auth.currentUser || !uid || uid === 'guest' || uid.startsWith('guest_');
 
   // 1. Fetch secret answer keys from Cloudflare D1 (`/api/mcqs/verify` & `/api/questions/verify`)
   const questionKeyMap = new Map<string, { correct: unknown; explain?: string }>();
@@ -706,6 +805,7 @@ export async function submitAttempt(
     try {
       const mcqVerifyResp = await fetch('/api/mcqs/verify', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           questionIds: questions.map((q) => q.id),
@@ -736,6 +836,7 @@ export async function submitAttempt(
     try {
       const resp = await fetch('/api/questions/verify', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           answers: questions.map((q, idx) => ({
@@ -944,7 +1045,73 @@ export async function submitAttempt(
   const percentage =
     maxMarks > 0 ? Math.max(0, Math.min(100, Math.round((earnedMarks / maxMarks) * 100))) : 0;
 
-  // Save completed attempt document
+  const pktDateKey = getPKTDateKey();
+  const answeredCount = correctCount + wrongCount;
+
+  if (isGuestSession) {
+    // Guest accounts persist attempts, chapterStats, streak, and progress in D1 via `/api/auth/guest/attempts`
+    const submitRes = await fetch('/api/auth/guest/attempts', {
+      method: 'POST',
+      credentials: 'include',
+      headers: buildGuestAttemptHeaders(),
+      body: JSON.stringify({
+        action: 'submit',
+        attempt: {
+          ...attempt,
+          id: attemptId,
+          uid,
+          userId: uid,
+          status: 'completed',
+          questions: enrichedQuestions,
+          userAnswers,
+          score,
+          maxMarks,
+          earnedMarks,
+          totalQuestions,
+          correctAnswers: correctCount,
+          wrongAnswers: wrongCount,
+          unanswered: unansweredCount,
+          percentage,
+          timeTakenSeconds,
+          submittedAt: new Date().toISOString(),
+        },
+        chapterStats: chapterAcc,
+        pktDateKey,
+        questionsSolvedDelta: answeredCount,
+      }),
+    });
+
+    if (!submitRes.ok) {
+      const errBody = await submitRes.json().catch(() => ({}));
+      console.error(`[API Error] POST /api/auth/guest/attempts (submit) -> HTTP ${submitRes.status}:`, errBody);
+      throw new Error(
+        errBody?.error || 'Your guest session expired, please choose your username again.'
+      );
+    }
+
+    await fetch('/api/usage/daily/record', {
+      method: 'POST',
+      credentials: 'include',
+      headers: buildGuestAttemptHeaders(),
+      body: JSON.stringify({
+        uid,
+        practiceAttemptsDelta: 1,
+        questionsSolvedDelta: answeredCount,
+      }),
+    }).catch(() => {});
+
+    return {
+      score,
+      totalQuestions,
+      correctAnswers: correctCount,
+      wrongAnswers: wrongCount,
+      unanswered: unansweredCount,
+      percentage,
+      timeTakenSeconds,
+    };
+  }
+
+  // Save completed attempt document for registered users in Firestore
   const docRef = doc(db, 'attempts', attemptId);
   await updateDoc(docRef, {
     status: 'completed',
@@ -984,12 +1151,11 @@ export async function submitAttempt(
   }
 
   // 3. Record daily usage server-side & non-limit activity stats in PKT timezone
-  const pktDateKey = getPKTDateKey();
   try {
-    const answeredCount = correctCount + wrongCount;
     const token = await auth.currentUser?.getIdToken().catch(() => null);
     await fetch('/api/usage/daily/record', {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -1044,7 +1210,7 @@ export async function submitAttempt(
 
   // 5. Compact write for seen questions to Firestore at test completion
   try {
-    if (uid && uid !== 'guest') {
+    if (uid && uid !== 'guest' && !uid.startsWith('guest_')) {
       const bySubject: Record<string, string[]> = {};
       for (const q of questions) {
         if (!q.id) continue;

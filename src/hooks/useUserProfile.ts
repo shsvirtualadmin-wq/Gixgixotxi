@@ -96,6 +96,47 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
     teardownTimeout = null;
   }
 
+  // Guest accounts live in D1 and AuthContext — never query Firestore `users/guest_*`
+  if (uid.startsWith('guest_') || authProfileFallback?.isGuest || authProfileFallback?.accountType === 'guest') {
+    if (activeUnsub) {
+      activeUnsub();
+      activeUnsub = null;
+    }
+    if (activeTimeoutTimer) {
+      clearTimeout(activeTimeoutTimer);
+      activeTimeoutTimer = null;
+    }
+    activeUid = uid;
+    const guestProfile: UserProfile = authProfileFallback || getLocalCachedProfile(uid) || {
+      uid,
+      email: '',
+      displayName: uid.replace(/^guest_/, ''),
+      name: uid.replace(/^guest_/, ''),
+      username: uid.replace(/^guest_/, ''),
+      shortId: 'GUEST',
+      role: 'student',
+      customRole: 'Guest',
+      plan: 'free',
+      status: 'active',
+      isGuest: true,
+      accountType: 'guest',
+      profileCompleted: true,
+      onboardingCompleted: true,
+      streak: 0,
+    };
+    sharedState = {
+      profile: guestProfile,
+      docExists: true,
+      fetchStatus: 'success',
+      fetchDurationMs: 0,
+      error: null,
+      hasReceivedSnapshot: true,
+    };
+    setLocalCachedProfile(uid, guestProfile);
+    broadcastState();
+    return;
+  }
+
   if (activeUid === uid && activeUnsub) {
     return;
   }
@@ -230,7 +271,7 @@ function releaseSubscription() {
  * Prevents re-render cascades and ensures instant cache-first availability.
  */
 export function useUserProfile(): UserProfileHookResult {
-  const { user, profile: authProfile, profileLoading: authLoading, updateLocalProfile } = useAuth();
+  const { user, profile: authProfile, profileLoading: authLoading, updateLocalProfile, syncGuestProgress, isGuest } = useAuth();
   const [, setTick] = useState(0);
 
   const updateLocalProfileRef = useRef(updateLocalProfile);
@@ -281,12 +322,16 @@ export function useUserProfile(): UserProfileHookResult {
     }
   }, [user?.uid, authProfile]);
 
-  const profile = sharedState.profile || (user?.uid ? getLocalCachedProfile(user.uid) : null);
-  const hasReceivedSnapshot = sharedState.hasReceivedSnapshot;
-  const docExists = sharedState.docExists;
-  const fetchStatus = sharedState.fetchStatus;
+  const profile =
+    (isGuest && authProfile ? authProfile : null) ||
+    sharedState.profile ||
+    authProfile ||
+    (user?.uid ? getLocalCachedProfile(user.uid) : null);
+  const hasReceivedSnapshot = isGuest ? true : sharedState.hasReceivedSnapshot;
+  const docExists = isGuest ? true : sharedState.docExists;
+  const fetchStatus = isGuest ? 'success' : sharedState.fetchStatus;
   const fetchDurationMs = sharedState.fetchDurationMs;
-  const error = sharedState.error;
+  const error = isGuest ? null : sharedState.error;
 
   const retryFetch = useCallback(() => {
     if (user?.uid) {
@@ -364,6 +409,17 @@ export function useUserProfile(): UserProfileHookResult {
       }
       broadcastState();
 
+      if (isGuest || user.uid.startsWith('guest_')) {
+        await syncGuestProgress({
+          stats: {
+            ...(updates.subjects ? { subjects: updates.subjects } : {}),
+            ...(updates.avatarKey ? { avatarKey: updates.avatarKey } : {}),
+            ...(updates.avatarVariant ? { avatarVariant: updates.avatarVariant } : {}),
+          },
+        });
+        return;
+      }
+
       // 2. Perform merge write to Firestore
       await setDoc(doc(db, 'users', user.uid), safePayload, { merge: true });
 
@@ -377,7 +433,7 @@ export function useUserProfile(): UserProfileHookResult {
 
       console.log(`[useUserProfile] Wrote profile update to ${path}:`, safePayload);
     },
-    [user?.uid, profile]
+    [user?.uid, profile, isGuest, syncGuestProgress]
   );
 
   const streak = Math.max(

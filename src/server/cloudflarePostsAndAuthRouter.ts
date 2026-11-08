@@ -845,10 +845,13 @@ export interface VerifiedWorkerUser {
   uid: string;
   email: string;
   name: string;
+  displayName?: string;
   tokenName?: string;
   picture: string;
   role: 'student' | 'captain' | 'superadmin';
   customRole: string | null;
+  accountType?: 'guest' | 'registered';
+  plan?: 'free' | 'pro';
   isGuest?: boolean;
   username?: string;
 }
@@ -860,12 +863,14 @@ export async function verifyFirebaseJwtZeroFirestore(
   const guestSessionHeader = String(req.headers['x-guest-session'] || '').trim();
   const cookieHeader = String(req.headers.cookie || '');
 
-  // Support guest sessions (cookie `boardly_guest_session`, header `X-Guest-Session`, or `Authorization: Bearer guest_...`)
-  if (
-    guestSessionHeader ||
-    authHeader.startsWith('Bearer guest_') ||
-    (!authHeader.startsWith('Bearer ') && cookieHeader.includes('boardly_guest_session='))
-  ) {
+  const tryResolveGuestFromD1 = async (): Promise<VerifiedWorkerUser | null> => {
+    if (
+      !guestSessionHeader &&
+      !authHeader.startsWith('Bearer guest_') &&
+      !cookieHeader.includes('boardly_guest_session=')
+    ) {
+      return null;
+    }
     try {
       const { getSharedLocalD1Database, authenticateD1GuestSession } = await import(
         '../../functions/_utils/firestoreRestAdmin'
@@ -880,24 +885,35 @@ export async function verifyFirebaseJwtZeroFirestore(
         if (guestUser.isPostingBanned) {
           throw new Error('POSTING_BANNED');
         }
+        const resolvedName = guestUser.displayName || guestUser.username || guestUser.name || 'Guest';
         return {
           uid: guestUser.uid,
           email: '',
-          name: guestUser.username || guestUser.name || 'Guest',
-          tokenName: guestUser.username || guestUser.name || 'Guest',
+          name: resolvedName,
+          displayName: resolvedName,
+          tokenName: resolvedName,
           picture: '',
           role: 'student',
           customRole: 'Guest',
+          accountType: 'guest',
+          plan: 'free',
           isGuest: true,
-          username: guestUser.username,
+          username: guestUser.username || resolvedName,
         };
       }
     } catch (gErr: any) {
       if (gErr?.message === 'POSTING_BANNED') throw gErr;
     }
-    if (!authHeader.startsWith('Bearer ') || authHeader.startsWith('Bearer guest_')) {
-      return null;
-    }
+    return null;
+  };
+
+  // Support guest sessions (cookie `boardly_guest_session`, header `X-Guest-Session`, or `Authorization: Bearer guest_...`)
+  if (
+    guestSessionHeader ||
+    authHeader.startsWith('Bearer guest_') ||
+    !authHeader.startsWith('Bearer ')
+  ) {
+    return await tryResolveGuestFromD1();
   }
 
   if (!authHeader.startsWith('Bearer ')) return null;
@@ -999,15 +1015,18 @@ export async function verifyFirebaseJwtZeroFirestore(
       uid,
       email,
       name: tokenName || emailPrefix || 'Student',
+      displayName: tokenName || emailPrefix || 'Student',
       tokenName,
       picture: payload.picture || '',
       role,
       customRole,
+      accountType: 'registered',
+      plan: role === 'superadmin' || role === 'captain' ? 'pro' : 'free',
       isGuest: false,
     };
   } catch (err: any) {
     if (err?.message === 'POSTING_BANNED') throw err;
-    return null;
+    return await tryResolveGuestFromD1();
   }
 }
 
@@ -6666,7 +6685,20 @@ ${entries
   });
 
   // ── D1 User Roles ──────────────────────────────────────────────────────────
-  const resolveD1Role = (store: any, user: { uid: string; email: string }) => {
+  const resolveD1Role = (
+    store: any,
+    user: { uid: string; email: string; isGuest?: boolean; username?: string; name?: string }
+  ) => {
+    if (user.isGuest || String(user.uid || '').startsWith('guest_')) {
+      return {
+        uid: user.uid,
+        email: '',
+        role: 'student',
+        custom_role: 'Guest',
+        is_posting_banned: 0,
+        updated_at: Date.now(),
+      };
+    }
     if (!Array.isArray(store.userRoles)) store.userRoles = [];
     let row = store.userRoles.find((r: any) => r.uid === user.uid);
     const isSuper =
@@ -6697,6 +6729,11 @@ ${entries
     return res.status(200).json({
       uid: user.uid,
       email: user.email,
+      username: user.username || user.name,
+      displayName: user.displayName || user.username || user.name,
+      accountType: user.isGuest ? 'guest' : 'registered',
+      isGuest: Boolean(user.isGuest),
+      plan: user.plan || 'free',
       role: roleRow.role,
       customRole: roleRow.custom_role,
       isPostingBanned: Boolean(roleRow.is_posting_banned),
@@ -6874,6 +6911,12 @@ ${entries
   app.post('/api/tests', async (req: Request, res: Response) => {
     const user = await verifyFirebaseJwtZeroFirestore(req);
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    if (user.isGuest || String(user.uid || '').startsWith('guest_')) {
+      return res.status(403).json({
+        error: "You can't create Captain tests as a guest. Please upgrade to a full account.",
+        code: 'GUEST_FORBIDDEN',
+      });
+    }
     const store = loadD1Store() as any;
     if (!Array.isArray(store.captainTests)) store.captainTests = [];
     if (!Array.isArray(store.crews)) store.crews = [];
@@ -7418,6 +7461,63 @@ ${entries
       test.avgScore = Math.round(((prevAvg * prevAttempts + percentage) / test.attemptsCount) * 10) / 10;
       saveD1Store(store);
 
+      // If caller is a guest, also persist this attempt and updated stats into D1 `guest_accounts`
+      if (user.isGuest || String(user.uid || '').startsWith('guest_')) {
+        try {
+          const { getSharedLocalD1Database } = await import('../../functions/_utils/firestoreRestAdmin');
+          const d1 = getSharedLocalD1Database();
+          const gRow = await d1
+            .prepare('SELECT * FROM guest_accounts WHERE uid = ?1 LIMIT 1')
+            .bind(user.uid)
+            .first<Record<string, any>>();
+          if (gRow) {
+            let gAttempts: any[] = [];
+            let gStats: Record<string, any> = {};
+            try {
+              gAttempts = JSON.parse(String(gRow.attempts_json || '[]'));
+              if (!Array.isArray(gAttempts)) gAttempts = [];
+            } catch {
+              gAttempts = [];
+            }
+            try {
+              gStats = JSON.parse(String(gRow.stats_json || '{}'));
+            } catch {
+              gStats = {};
+            }
+            gAttempts = [
+              attempt,
+              ...gAttempts.filter((a: any) => String(a?.id || '') !== attempt.id),
+            ].slice(0, 100);
+            const nextTests = Number(gRow.tests_completed || 0) + 1;
+            const nextSolved = Number(gRow.total_questions_solved || 0) + totalQuestions;
+            const nextStreak = Math.max(1, Number(gRow.streak || 0));
+            gStats.testsCompleted = nextTests;
+            gStats.totalQuestionsSolved = nextSolved;
+            gStats.correctAnswers = Number(gStats.correctAnswers || 0) + score;
+            await d1
+              .prepare(
+                `UPDATE guest_accounts
+                 SET tests_completed = ?1, total_questions_solved = ?2, streak = ?3,
+                     target_university = ?4, stats_json = ?5, attempts_json = ?6, last_active_at = ?7
+                 WHERE uid = ?8`
+              )
+              .bind(
+                nextTests,
+                nextSolved,
+                nextStreak,
+                String(gRow.target_university || 'General Prep'),
+                JSON.stringify(gStats),
+                JSON.stringify(gAttempts),
+                Date.now(),
+                user.uid
+              )
+              .run();
+          }
+        } catch {
+          // Non-fatal
+        }
+      }
+
       return res.status(201).json({ attempt });
     } finally {
       inFlightAttemptSubmissions.delete(lockKey);
@@ -7428,7 +7528,7 @@ ${entries
     const user = await verifyFirebaseJwtZeroFirestore(req);
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
-    const attempts = (store.testAttempts || [])
+    const storeAttempts = (store.testAttempts || [])
       .filter((a: any) => String(a.userUid || a.user_uid || '') === user.uid)
       .sort((a: any, b: any) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
       .map((a: any) => {
@@ -7442,7 +7542,39 @@ ${entries
           name: resolvedName,
         };
       });
-    return res.status(200).json({ attempts });
+
+    if (user.isGuest || String(user.uid || '').startsWith('guest_')) {
+      try {
+        const { getSharedLocalD1Database } = await import('../../functions/_utils/firestoreRestAdmin');
+        const d1 = getSharedLocalD1Database();
+        const gRow = await d1
+          .prepare('SELECT attempts_json, username, display_name FROM guest_accounts WHERE uid = ?1 LIMIT 1')
+          .bind(user.uid)
+          .first<{ attempts_json: string; username: string; display_name: string }>();
+        if (gRow?.attempts_json) {
+          const parsed = JSON.parse(String(gRow.attempts_json || '[]'));
+          if (Array.isArray(parsed)) {
+            const seenIds = new Set(storeAttempts.map((a: any) => String(a.id)));
+            for (const ga of parsed) {
+              if (ga && ga.id && !seenIds.has(String(ga.id))) {
+                seenIds.add(String(ga.id));
+                storeAttempts.push({
+                  ...ga,
+                  userUid: user.uid,
+                  userName: gRow.username || user.name,
+                  studentName: gRow.display_name || gRow.username || user.name,
+                  name: gRow.display_name || gRow.username || user.name,
+                });
+              }
+            }
+          }
+        }
+      } catch {
+        // Non-fatal
+      }
+    }
+
+    return res.status(200).json({ attempts: storeAttempts });
   });
 
   const handleTestResultsOrLeaderboard = async (req: Request, res: Response) => {

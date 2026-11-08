@@ -24,6 +24,7 @@ import {
   getSharedLocalD1Database,
   isD1UserSessionVerified,
   parseServiceAccountFromEnv,
+  resolveCurrentUser,
   resolveTargetFirestoreDatabaseId,
   resolveTargetFirestoreProjectId,
   verifyFirebaseIdToken,
@@ -667,7 +668,7 @@ export async function handleAuthApiRequest(
 
   // ─── A. GET / POST /api/auth/username-check (Live & Server-Side Availability Check) ───
   if (subPath === 'username-check' && (request.method === 'GET' || request.method === 'POST')) {
-    let rawUsername = url.searchParams.get('username') || '';
+    let rawUsername = url.searchParams.get('username') || url.searchParams.get('u') || '';
     let excludeUid = url.searchParams.get('excludeUid') || '';
     if (request.method === 'POST') {
       try {
@@ -697,10 +698,11 @@ export async function handleAuthApiRequest(
 
   // ─── B. POST /api/auth/guest (Create Guest Account & Session Atomically) ───
   if ((subPath === 'guest' || subPath === 'guest/create') && request.method === 'POST') {
-    let body: { username?: string; deviceId?: string; targetUniversity?: string } = {};
+    let body: { username?: string; displayName?: string; deviceId?: string; targetUniversity?: string } = {};
     try {
       body = (await request.json()) as {
         username?: string;
+        displayName?: string;
         deviceId?: string;
         targetUniversity?: string;
       };
@@ -788,6 +790,7 @@ export async function handleAuthApiRequest(
     const shortId = randomHex.slice(10, 16).toUpperCase();
     const cleanUsername = availability.clean;
     const normalizedUsername = availability.normalized;
+    const resolvedDisplayName = String(body.displayName || '').trim() || cleanUsername;
     const targetUniversity = String(body.targetUniversity || 'General Prep').trim() || 'General Prep';
 
     // Atomic D1 UNIQUE insert into `user_usernames` and `guest_accounts`
@@ -812,7 +815,7 @@ export async function handleAuthApiRequest(
           guestUid,
           cleanUsername,
           normalizedUsername,
-          cleanUsername,
+          resolvedDisplayName,
           shortId,
           'guest',
           1,
@@ -891,7 +894,7 @@ export async function handleAuthApiRequest(
         guest: {
           uid: guestUid,
           username: cleanUsername,
-          displayName: cleanUsername,
+          displayName: resolvedDisplayName,
           shortId,
           accountType: 'guest',
           isGuest: true,
@@ -915,7 +918,101 @@ export async function handleAuthApiRequest(
     );
   }
 
-  // ─── C. GET /api/auth/guest/session (Verify & Restore Guest Session) ───
+  // ─── C0. GET /api/auth/me (Unified "Who Is The Current User" Endpoint) ───
+  if (subPath === 'me' && request.method === 'GET') {
+    const resolved = await resolveCurrentUser({
+      request,
+      env,
+      db,
+      secret,
+      tokenVerifierOverride: opts.tokenVerifierOverride,
+    });
+
+    if (!resolved) {
+      return jsonResponse(
+        {
+          ok: true,
+          authenticated: false,
+          user: null,
+          guest: null,
+        },
+        200
+      );
+    }
+
+    if (resolved.isGuest) {
+      const refreshHeaders: Record<string, string> = {};
+      if (resolved.sessionToken) {
+        refreshHeaders['Set-Cookie'] = buildGuestSessionCookieHeader(
+          resolved.sessionToken,
+          isHttps,
+          false
+        );
+      }
+      const guestPayload = {
+        uid: resolved.uid,
+        username: resolved.username,
+        displayName: resolved.displayName || resolved.username,
+        shortId: resolved.shortId || 'GUEST',
+        accountType: 'guest' as const,
+        isGuest: true,
+        email: '',
+        plan: 'free' as const,
+        role: 'student' as const,
+        targetUniversity: resolved.targetUniversity || 'General Prep',
+        testsCompleted: Number(resolved.testsCompleted || 0),
+        totalQuestionsSolved: Number(resolved.totalQuestionsSolved || 0),
+        streak: Number(resolved.streak || 0),
+        stats: resolved.stats || {},
+        attempts: resolved.attempts || [],
+        isSuspended: Boolean(resolved.isPostingBanned),
+        createdAt: Number(resolved.d1CreatedAtMs || nowMs),
+        lastActiveAt: nowMs,
+        expiresAt: Number(resolved.sessionExpiresAt || nowMs + GUEST_SESSION_TTL_MS),
+      };
+      return jsonResponse(
+        {
+          ok: true,
+          authenticated: true,
+          accountType: 'guest',
+          user: guestPayload,
+          guest: guestPayload,
+          sessionToken: resolved.sessionToken || null,
+        },
+        200,
+        refreshHeaders
+      );
+    }
+
+    const regPayload = {
+      uid: resolved.uid,
+      username: resolved.username,
+      displayName: resolved.displayName || resolved.name,
+      name: resolved.name,
+      email: resolved.email,
+      picture: resolved.picture,
+      accountType: 'registered' as const,
+      isGuest: false,
+      plan: resolved.plan,
+      role: resolved.role,
+      customRole: resolved.customRole,
+      emailVerified: resolved.emailVerified,
+      sessionVerified: resolved.sessionVerified,
+    };
+
+    return jsonResponse(
+      {
+        ok: true,
+        authenticated: true,
+        accountType: 'registered',
+        user: regPayload,
+        guest: null,
+      },
+      200
+    );
+  }
+
+  // ─── C. GET /api/auth/guest/session (Verify & Restore Guest Session + Sliding Refresh) ───
   if (subPath === 'guest/session' && request.method === 'GET') {
     const guestUser = await authenticateD1GuestSession(request, db, secret);
     if (!guestUser) {
@@ -927,7 +1024,7 @@ export async function handleAuthApiRequest(
       .bind(guestUser.uid)
       .first<Record<string, any>>();
 
-    if (!row || Number(row.is_guest) !== 1) {
+    if (!row || Number(row.is_guest) !== 1 || row.upgraded_to_uid || Number(row.is_suspended) === 1) {
       return jsonResponse({ ok: true, authenticated: false, guest: null }, 200);
     }
 
@@ -944,30 +1041,285 @@ export async function handleAuthApiRequest(
       parsedAttempts = [];
     }
 
-    return jsonResponse({
-      ok: true,
-      authenticated: true,
-      guest: {
-        uid: String(row.uid),
-        username: String(row.username),
-        displayName: String(row.display_name || row.username),
-        shortId: String(row.short_id || 'GUEST'),
-        accountType: 'guest',
-        isGuest: true,
-        email: '',
-        plan: 'free',
-        role: 'student',
-        targetUniversity: String(row.target_university || 'General Prep'),
-        testsCompleted: Number(row.tests_completed || 0),
-        totalQuestionsSolved: Number(row.total_questions_solved || 0),
-        streak: Number(row.streak || 0),
+    const refreshHeaders: Record<string, string> = {};
+    if (guestUser.sessionToken) {
+      refreshHeaders['Set-Cookie'] = buildGuestSessionCookieHeader(
+        guestUser.sessionToken,
+        isHttps,
+        false
+      );
+    }
+
+    const cleanUsername = String(row.username || guestUser.username || '').trim();
+    const cleanDisplayName = String(row.display_name || cleanUsername || 'Guest').trim();
+
+    return jsonResponse(
+      {
+        ok: true,
+        authenticated: true,
+        sessionToken: guestUser.sessionToken || null,
+        guest: {
+          uid: String(row.uid),
+          username: cleanUsername,
+          displayName: cleanDisplayName,
+          shortId: String(row.short_id || 'GUEST'),
+          accountType: 'guest',
+          isGuest: true,
+          email: '',
+          plan: 'free',
+          role: 'student',
+          targetUniversity: String(row.target_university || 'General Prep'),
+          testsCompleted: Number(row.tests_completed || 0),
+          totalQuestionsSolved: Number(row.total_questions_solved || 0),
+          streak: Number(row.streak || 0),
+          stats: parsedStats,
+          attempts: parsedAttempts,
+          isSuspended: Boolean(row.is_suspended),
+          createdAt: Number(row.created_at || nowMs),
+          lastActiveAt: nowMs,
+          expiresAt: Number(guestUser.sessionExpiresAt || nowMs + GUEST_SESSION_TTL_MS),
+        },
+      },
+      200,
+      refreshHeaders
+    );
+  }
+
+  // ─── C2. GET & POST /api/auth/guest/attempts (Server-Side D1 Guest Test Attempts & Stats) ───
+  if (
+    (subPath === 'guest/attempts' || subPath.startsWith('guest/attempts/')) &&
+    (request.method === 'GET' || request.method === 'POST')
+  ) {
+    const guestUser = await authenticateD1GuestSession(request, db, secret);
+    if (!guestUser) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'Your guest session expired, please choose your username again.',
+          code: 'GUEST_SESSION_EXPIRED',
+        },
+        401
+      );
+    }
+
+    const currentRow = await db
+      .prepare('SELECT * FROM guest_accounts WHERE uid = ?1 LIMIT 1')
+      .bind(guestUser.uid)
+      .first<Record<string, any>>();
+
+    if (!currentRow) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'Guest account not found. Please choose your username again.',
+          code: 'GUEST_NOT_FOUND',
+        },
+        404
+      );
+    }
+
+    let parsedStats: Record<string, any> = {};
+    let parsedAttempts: any[] = [];
+    try {
+      parsedStats = JSON.parse(String(currentRow.stats_json || '{}'));
+    } catch {
+      parsedStats = {};
+    }
+    try {
+      parsedAttempts = JSON.parse(String(currentRow.attempts_json || '[]'));
+      if (!Array.isArray(parsedAttempts)) parsedAttempts = [];
+    } catch {
+      parsedAttempts = [];
+    }
+
+    const pathAttemptId = subPath.startsWith('guest/attempts/')
+      ? decodeURIComponent(subPath.slice('guest/attempts/'.length).trim())
+      : url.searchParams.get('attemptId') || '';
+
+    if (request.method === 'GET') {
+      if (pathAttemptId) {
+        const found = parsedAttempts.find(
+          (a: any) => String(a?.id || a?.attemptId || '') === pathAttemptId
+        );
+        if (!found) {
+          return jsonResponse(
+            { ok: false, error: 'Guest test attempt not found.', code: 'ATTEMPT_NOT_FOUND' },
+            404
+          );
+        }
+        return jsonResponse({ ok: true, attempt: found, stats: parsedStats });
+      }
+      return jsonResponse({
+        ok: true,
+        uid: guestUser.uid,
+        username: guestUser.username,
+        testsCompleted: Number(currentRow.tests_completed || 0),
+        totalQuestionsSolved: Number(currentRow.total_questions_solved || 0),
+        streak: Number(currentRow.streak || 0),
         stats: parsedStats,
         attempts: parsedAttempts,
-        isSuspended: Boolean(row.is_suspended),
-        createdAt: Number(row.created_at || nowMs),
-        lastActiveAt: Number(row.last_active_at || nowMs),
+      });
+    }
+
+    // POST /api/auth/guest/attempts — Create, save progress, or submit a guest test attempt in D1
+    let body: {
+      action?: 'start' | 'progress' | 'submit';
+      attemptId?: string;
+      attempt?: Record<string, any>;
+      statsDelta?: {
+        testsCompletedDelta?: number;
+        questionsSolvedDelta?: number;
+        correctAnswersDelta?: number;
+        subject?: string;
+        chapterBreakdown?: Record<string, { total: number; correct: number }>;
+        dateStr?: string;
+      };
+    } = {};
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return jsonResponse({ ok: false, error: 'Invalid JSON body.', code: 'INVALID_JSON' }, 400);
+    }
+
+    const incomingAttempt = body.attempt || {};
+    const { action: _act, attempt: _att, statsDelta: _sd, ...topLevelFields } = body as Record<string, any>;
+    const targetAttemptId = String(
+      body.attemptId || incomingAttempt.id || pathAttemptId || `gatt_${nowMs}`
+    ).trim();
+
+    const existingIdx = parsedAttempts.findIndex(
+      (a: any) => String(a?.id || a?.attemptId || '') === targetAttemptId
+    );
+
+    const existingObj = existingIdx >= 0 ? parsedAttempts[existingIdx] : {};
+    const mergedAttempt: Record<string, any> = {
+      ...existingObj,
+      ...topLevelFields,
+      ...incomingAttempt,
+      id: targetAttemptId,
+      uid: guestUser.uid,
+      userName: guestUser.username,
+      displayName: guestUser.displayName || guestUser.username,
+      status:
+        body.action === 'submit'
+          ? 'completed'
+          : incomingAttempt.status || existingObj?.status || 'in-progress',
+      updatedAt: nowMs,
+      createdAt: existingObj?.createdAt || incomingAttempt.createdAt || nowMs,
+    };
+
+    const wasAlreadyCompleted = existingObj?.status === 'completed';
+    if (existingIdx >= 0) {
+      parsedAttempts[existingIdx] = mergedAttempt;
+    } else {
+      parsedAttempts.unshift(mergedAttempt);
+    }
+
+    let nextTests = Number(currentRow.tests_completed || 0);
+    let nextSolved = Number(currentRow.total_questions_solved || 0);
+    let nextStreak = Number(currentRow.streak || 0);
+    const nextUni = String(currentRow.target_university || 'General Prep');
+
+    if (
+      (body.action === 'submit' || mergedAttempt.status === 'completed') &&
+      !wasAlreadyCompleted
+    ) {
+      const solvedDelta = Math.max(
+        0,
+        Number(
+          body.statsDelta?.questionsSolvedDelta ??
+            mergedAttempt.totalQuestions ??
+            (Array.isArray(mergedAttempt.questionIds) ? mergedAttempt.questionIds.length : 0)
+        )
+      );
+      nextTests += 1;
+      nextSolved += solvedDelta;
+      if (nextStreak === 0) nextStreak = 1;
+
+      const correctDelta = Math.max(
+        0,
+        Number(body.statsDelta?.correctAnswersDelta ?? mergedAttempt.correctAnswers ?? mergedAttempt.score ?? 0)
+      );
+      parsedStats.testsCompleted = nextTests;
+      parsedStats.totalQuestionsSolved = nextSolved;
+      parsedStats.correctAnswers = Number(parsedStats.correctAnswers || 0) + correctDelta;
+      const totalAccuracyDenom = Math.max(1, nextSolved);
+      parsedStats.overallAccuracy = Math.round(
+        (Number(parsedStats.correctAnswers || 0) / totalAccuracyDenom) * 100
+      );
+
+      if (body.statsDelta?.subject && body.statsDelta?.chapterBreakdown) {
+        if (!parsedStats.chapterStats || typeof parsedStats.chapterStats !== 'object') {
+          parsedStats.chapterStats = {};
+        }
+        const subj = body.statsDelta.subject;
+        for (const [chap, cStats] of Object.entries(body.statsDelta.chapterBreakdown)) {
+          const key = `${subj}_${chap}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const prevChap = parsedStats.chapterStats[key] || {
+            subject: subj,
+            chapter: chap,
+            attempts: 0,
+            correct: 0,
+            accuracy: 0,
+          };
+          const newTotal = Number(prevChap.attempts || 0) + Number(cStats.total || 0);
+          const newCorr = Number(prevChap.correct || 0) + Number(cStats.correct || 0);
+          parsedStats.chapterStats[key] = {
+            subject: subj,
+            chapter: chap,
+            attempts: newTotal,
+            correct: newCorr,
+            accuracy: newTotal > 0 ? Math.round((newCorr / newTotal) * 100) : 0,
+            lastUpdated: nowMs,
+          };
+        }
+      }
+    }
+
+    const nextStatsJson = JSON.stringify(parsedStats);
+    const nextAttemptsJson = JSON.stringify(parsedAttempts.slice(0, 100));
+
+    await db
+      .prepare(
+        `UPDATE guest_accounts
+         SET tests_completed = ?1, total_questions_solved = ?2, streak = ?3,
+             target_university = ?4, stats_json = ?5, attempts_json = ?6, last_active_at = ?7
+         WHERE uid = ?8`
+      )
+      .bind(
+        nextTests,
+        nextSolved,
+        nextStreak,
+        nextUni,
+        nextStatsJson,
+        nextAttemptsJson,
+        nowMs,
+        guestUser.uid
+      )
+      .run();
+
+    const refreshHeaders: Record<string, string> = {};
+    if (guestUser.sessionToken) {
+      refreshHeaders['Set-Cookie'] = buildGuestSessionCookieHeader(
+        guestUser.sessionToken,
+        isHttps,
+        false
+      );
+    }
+
+    return jsonResponse(
+      {
+        ok: true,
+        uid: guestUser.uid,
+        attempt: mergedAttempt,
+        testsCompleted: nextTests,
+        totalQuestionsSolved: nextSolved,
+        streak: nextStreak,
+        stats: parsedStats,
       },
-    });
+      200,
+      refreshHeaders
+    );
   }
 
   // ─── D. POST /api/auth/guest/sync (Save Guest Progress, Attempts & Stats) ───
@@ -975,7 +1327,11 @@ export async function handleAuthApiRequest(
     const guestUser = await authenticateD1GuestSession(request, db, secret);
     if (!guestUser) {
       return jsonResponse(
-        { ok: false, error: 'Valid guest session required.', code: 'UNAUTHENTICATED' },
+        {
+          ok: false,
+          error: 'Your guest session expired, please choose your username again.',
+          code: 'UNAUTHENTICATED',
+        },
         401
       );
     }
@@ -1049,15 +1405,28 @@ export async function handleAuthApiRequest(
       )
       .run();
 
-    return jsonResponse({
-      ok: true,
-      uid: guestUser.uid,
-      testsCompleted: nextTests,
-      totalQuestionsSolved: nextSolved,
-      streak: nextStreak,
-      targetUniversity: nextUni,
-      lastActiveAt: nowMs,
-    });
+    const refreshHeaders: Record<string, string> = {};
+    if (guestUser.sessionToken) {
+      refreshHeaders['Set-Cookie'] = buildGuestSessionCookieHeader(
+        guestUser.sessionToken,
+        isHttps,
+        false
+      );
+    }
+
+    return jsonResponse(
+      {
+        ok: true,
+        uid: guestUser.uid,
+        testsCompleted: nextTests,
+        totalQuestionsSolved: nextSolved,
+        streak: nextStreak,
+        targetUniversity: nextUni,
+        lastActiveAt: nowMs,
+      },
+      200,
+      refreshHeaders
+    );
   }
 
   // ─── E. POST /api/auth/guest/logout (Revoke Guest Session & Clear Cookie) ───

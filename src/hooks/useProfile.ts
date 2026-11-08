@@ -1,6 +1,7 @@
 import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase';
+import { useAuth } from '@/contexts/AuthContext';
 import { isQuotaExhaustedError } from '@/utils/quota';
 import type { UserProfile } from '@/types/index';
 
@@ -11,14 +12,19 @@ interface ProfileState {
 }
 
 export function useProfile(uid: string | null): ProfileState {
+  const { profile: authProfile, isGuest } = useAuth();
   const [state, setState] = useState<ProfileState>(() => {
     let cached: UserProfile | null = null;
     if (uid) {
-      try {
-        const raw = localStorage.getItem(`cached_profile_${uid}`);
-        if (raw) cached = JSON.parse(raw);
-      } catch {
-        // Ignore storage read errors
+      if (authProfile && authProfile.uid === uid) {
+        cached = authProfile;
+      } else {
+        try {
+          const raw = localStorage.getItem(`cached_profile_${uid}`);
+          if (raw) cached = JSON.parse(raw);
+        } catch {
+          // Ignore storage read errors
+        }
       }
     }
     return {
@@ -31,6 +37,24 @@ export function useProfile(uid: string | null): ProfileState {
   useEffect(() => {
     if (!uid) {
       setState({ profile: null, loading: false, error: null });
+      return;
+    }
+
+    if (uid.startsWith('guest_') || (isGuest && authProfile?.uid === uid)) {
+      let fallback = authProfile?.uid === uid ? authProfile : null;
+      if (!fallback) {
+        try {
+          const raw = localStorage.getItem(`cached_profile_${uid}`);
+          if (raw) fallback = JSON.parse(raw);
+        } catch {
+          // Ignore storage read errors
+        }
+      }
+      setState({
+        profile: fallback,
+        loading: false,
+        error: null,
+      });
       return;
     }
 
@@ -49,7 +73,7 @@ export function useProfile(uid: string | null): ProfileState {
           }
           setState({ profile: profileData, loading: false, error: null });
         } else {
-          setState({ profile: null, loading: false, error: null });
+          setState({ profile: authProfile?.uid === uid ? authProfile : null, loading: false, error: null });
         }
       })
       .catch((err) => {
@@ -61,12 +85,14 @@ export function useProfile(uid: string | null): ProfileState {
           console.error(`[useProfile] Failed to read ${path}:`, err.code, err.message);
         }
 
-        let fallback: UserProfile | null = null;
-        try {
-          const raw = localStorage.getItem(`cached_profile_${uid}`);
-          if (raw) fallback = JSON.parse(raw);
-        } catch {
-          // Ignore storage read errors
+        let fallback: UserProfile | null = authProfile?.uid === uid ? authProfile : null;
+        if (!fallback) {
+          try {
+            const raw = localStorage.getItem(`cached_profile_${uid}`);
+            if (raw) fallback = JSON.parse(raw);
+          } catch {
+            // Ignore storage read errors
+          }
         }
 
         setState({
@@ -79,7 +105,7 @@ export function useProfile(uid: string | null): ProfileState {
     return () => {
       cancelled = true;
     };
-  }, [uid]);
+  }, [uid, authProfile, isGuest]);
 
   return state;
 }

@@ -40,7 +40,11 @@ export interface AuthenticatedD1User {
   uid: string;
   email: string;
   name: string;
-  username?: string;
+  displayName: string;
+  username: string;
+  shortId?: string;
+  accountType: 'guest' | 'registered';
+  plan: 'free' | 'pro';
   picture: string | null;
   role: 'student' | 'captain' | 'admin' | 'superadmin';
   customRole: string | null;
@@ -49,10 +53,18 @@ export interface AuthenticatedD1User {
   isAdminOrAbove: boolean;
   emailVerified: boolean;
   sessionVerified: boolean;
-  isGuest?: boolean;
+  isGuest: boolean;
   signInProvider?: string;
   authTime?: number;
   d1CreatedAtMs: number;
+  targetUniversity?: string;
+  testsCompleted?: number;
+  totalQuestionsSolved?: number;
+  streak?: number;
+  stats?: Record<string, any>;
+  attempts?: any[];
+  sessionToken?: string;
+  sessionExpiresAt?: number;
 }
 
 export interface ServiceAccountCredentials {
@@ -331,6 +343,8 @@ export async function computeGuestTokenSha256Hex(rawToken: string, secret = 'boa
     .join('');
 }
 
+export const SLIDING_GUEST_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
 export async function authenticateD1GuestSession(
   request: Request,
   db: RewardsD1Database,
@@ -360,34 +374,58 @@ export async function authenticateD1GuestSession(
     }
 
     const guestRow = await db
-      .prepare(
-        'SELECT uid, username, display_name, account_type, is_guest, is_suspended, created_at FROM guest_accounts WHERE uid = ?1 LIMIT 1'
-      )
+      .prepare('SELECT * FROM guest_accounts WHERE uid = ?1 LIMIT 1')
       .bind(sessionRow.uid)
-      .first<{
-        uid: string;
-        username: string;
-        display_name: string;
-        account_type: string;
-        is_guest: number;
-        is_suspended: number;
-        created_at: number;
-      }>();
+      .first<Record<string, any>>();
 
-    if (!guestRow) return null;
+    if (
+      !guestRow ||
+      Number(guestRow.is_guest) !== 1 ||
+      Boolean(guestRow.upgraded_to_uid) ||
+      Number(guestRow.is_suspended) === 1
+    ) {
+      return null;
+    }
 
-    // Touch last_active_at asynchronously
+    // Sliding session: extend expires_at and touch last_active_at on activity
+    const newExpiresAt = now + SLIDING_GUEST_SESSION_TTL_MS;
     await db
-      .prepare('UPDATE guest_accounts SET last_active_at = ?1 WHERE uid = ?2')
-      .bind(now, guestRow.uid)
+      .prepare('UPDATE guest_sessions SET last_active_at = ?1, expires_at = ?2 WHERE session_id = ?3')
+      .bind(now, newExpiresAt, sessionRow.session_id)
       .run()
       .catch(() => {});
 
+    await db
+      .prepare('UPDATE guest_accounts SET last_active_at = ?1 WHERE uid = ?2')
+      .bind(now, String(guestRow.uid))
+      .run()
+      .catch(() => {});
+
+    let parsedStats: Record<string, any> = {};
+    let parsedAttempts: any[] = [];
+    try {
+      parsedStats = JSON.parse(String(guestRow.stats_json || '{}'));
+    } catch {
+      parsedStats = {};
+    }
+    try {
+      parsedAttempts = JSON.parse(String(guestRow.attempts_json || '[]'));
+    } catch {
+      parsedAttempts = [];
+    }
+
+    const cleanUsername = String(guestRow.username || '').trim();
+    const cleanDisplayName = String(guestRow.display_name || cleanUsername || 'Guest').trim();
+
     return {
-      uid: guestRow.uid,
+      uid: String(guestRow.uid),
       email: '',
-      name: guestRow.display_name || guestRow.username,
-      username: guestRow.username,
+      name: cleanDisplayName,
+      displayName: cleanDisplayName,
+      username: cleanUsername,
+      shortId: String(guestRow.short_id || 'GUEST'),
+      accountType: 'guest',
+      plan: 'free',
       picture: null,
       role: 'student',
       customRole: 'Guest',
@@ -396,14 +434,167 @@ export async function authenticateD1GuestSession(
       isAdminOrAbove: false,
       emailVerified: true,
       sessionVerified: true,
-      isGuest: Number(guestRow.is_guest) === 1 || guestRow.account_type === 'guest',
+      isGuest: true,
       signInProvider: 'guest',
       authTime: Math.floor(Number(guestRow.created_at || now) / 1000),
       d1CreatedAtMs: Number(guestRow.created_at || now),
+      targetUniversity: String(guestRow.target_university || 'General Prep'),
+      testsCompleted: Number(guestRow.tests_completed || 0),
+      totalQuestionsSolved: Number(guestRow.total_questions_solved || 0),
+      streak: Number(guestRow.streak || 0),
+      stats: parsedStats,
+      attempts: parsedAttempts,
+      sessionToken: rawToken,
+      sessionExpiresAt: newExpiresAt,
     };
   } catch {
     return null;
   }
+}
+
+/**
+ * Single server-side source of truth for resolving "who is the current user".
+ * Resolves either:
+ * 1. A registered user (valid Firebase ID token in `Authorization: Bearer <token>`)
+ * 2. A guest user (valid, non-revoked, non-expired, non-suspended session cookie / token)
+ * Returns uid, username, displayName, accountType, plan, and role.
+ */
+export async function resolveCurrentUser(params: {
+  request: Request;
+  env?: RewardsEnv;
+  db?: RewardsD1Database;
+  secret?: string;
+  tokenVerifierOverride?: (authHeader: string | null | undefined) => Promise<VerifiedFirebaseToken | null>;
+}): Promise<AuthenticatedD1User | null> {
+  const { request, env, secret, tokenVerifierOverride } = params;
+  const db: RewardsD1Database = params.db || env?.DB || getSharedLocalD1Database();
+  const authHeader = request.headers.get('Authorization');
+
+  // 1. If a non-guest Bearer token is provided, verify it as a Firebase ID token first
+  if (authHeader && authHeader.startsWith('Bearer ') && !authHeader.startsWith('Bearer guest_')) {
+    const projectId =
+      env?.FIREBASE_PROJECT_ID || env?.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID;
+    const verifyFn = tokenVerifierOverride || ((hdr) => verifyFirebaseIdToken(hdr, projectId));
+    const verified = await verifyFn(authHeader);
+
+    if (verified && verified.uid) {
+      const uid = verified.uid;
+      const email = String(verified.email || '').trim().toLowerCase();
+
+      const superUids = new Set(
+        (env?.SUPERADMIN_UIDS || DEFAULT_SUPERADMIN_UIDS.join(','))
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      );
+      const superEmails = new Set(
+        (env?.SUPERADMIN_EMAILS || DEFAULT_SUPERADMIN_EMAILS.join(','))
+          .split(',')
+          .map((s) => s.trim().toLowerCase())
+          .filter(Boolean)
+      );
+
+      let roleRow: {
+        uid?: string;
+        email?: string;
+        role?: string;
+        custom_role?: string | null;
+        is_posting_banned?: number;
+        updated_at?: number;
+        created_at?: number;
+      } | null = null;
+
+      let usernameRow: {
+        username_lower?: string;
+        username_display?: string;
+        username?: string;
+      } | null = null;
+
+      try {
+        [roleRow, usernameRow] = await Promise.all([
+          db
+            .prepare(
+              'SELECT uid, email, role, custom_role, is_posting_banned, updated_at, created_at FROM user_roles WHERE uid = ?1 LIMIT 1'
+            )
+            .bind(uid)
+            .first(),
+          db
+            .prepare(
+              'SELECT username_lower, username_display, uid FROM user_usernames WHERE uid = ?1 LIMIT 1'
+            )
+            .bind(uid)
+            .first(),
+        ]);
+      } catch {
+        // Non-fatal if tables not initialized
+      }
+
+      const isHardcodedSuperAdmin =
+        superUids.has(uid) ||
+        (email.length > 0 && superEmails.has(email)) ||
+        verified.role === 'superadmin' ||
+        verified.admin === true;
+
+      let role: 'student' | 'captain' | 'admin' | 'superadmin' = 'student';
+      if (isHardcodedSuperAdmin || roleRow?.role === 'superadmin') {
+        role = 'superadmin';
+      } else if (roleRow?.role === 'admin' || verified.role === 'admin') {
+        role = 'admin';
+      } else if (roleRow?.role === 'captain' || verified.role === 'captain') {
+        role = 'captain';
+      }
+
+      const isSuperAdmin = role === 'superadmin';
+      const isAdminOrAbove = role === 'superadmin' || role === 'admin';
+      const isPostingBanned = Boolean(roleRow?.is_posting_banned);
+
+      const resolvedUsername = String(
+        usernameRow?.username_display || usernameRow?.username || usernameRow?.username_lower || ''
+      ).trim();
+
+      const rawName = String(verified.name || '').trim();
+      const safeName =
+        rawName && !rawName.includes('@')
+          ? rawName
+          : resolvedUsername
+          ? resolvedUsername
+          : email
+          ? email.split('@')[0] || 'Student'
+          : 'Student';
+
+      const sessionVerified = await isD1UserSessionVerified(db, verified);
+
+      return {
+        uid,
+        email,
+        name: safeName,
+        displayName: safeName,
+        username: resolvedUsername || safeName,
+        accountType: 'registered',
+        plan: isAdminOrAbove || role === 'captain' ? 'pro' : 'free',
+        picture: verified.picture || null,
+        role,
+        customRole: roleRow?.custom_role || null,
+        isPostingBanned,
+        isSuperAdmin,
+        isAdminOrAbove,
+        emailVerified: Boolean(verified.emailVerified) || sessionVerified,
+        sessionVerified,
+        isGuest: false,
+        signInProvider: verified.signInProvider,
+        authTime: verified.authTime,
+        d1CreatedAtMs: Number(roleRow?.created_at || 0),
+      };
+    }
+  }
+
+  // 2. Otherwise (or if Bearer token was absent/guest), resolve from D1 guest session cookie / header
+  const guestUser = await authenticateD1GuestSession(request, db, secret);
+  if (guestUser) {
+    return guestUser;
+  }
+
+  return null;
 }
 
 export async function authenticateD1RewardsUser(params: {
@@ -412,108 +603,7 @@ export async function authenticateD1RewardsUser(params: {
   db: RewardsD1Database;
   tokenVerifierOverride?: (authHeader: string | null | undefined) => Promise<VerifiedFirebaseToken | null>;
 }): Promise<AuthenticatedD1User | null> {
-  const { request, env, db, tokenVerifierOverride } = params;
-  const authHeader = request.headers.get('Authorization');
-
-  // Check if this is a guest session first when no standard Firebase JWT is provided
-  if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.startsWith('Bearer guest_')) {
-    const guestUser = await authenticateD1GuestSession(request, db);
-    if (guestUser) return guestUser;
-    return null;
-  }
-
-  const projectId =
-    env?.FIREBASE_PROJECT_ID || env?.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID;
-  const verifyFn = tokenVerifierOverride || ((hdr) => verifyFirebaseIdToken(hdr, projectId));
-  const verified = await verifyFn(authHeader);
-  if (!verified || !verified.uid) {
-    const guestUser = await authenticateD1GuestSession(request, db);
-    if (guestUser) return guestUser;
-    return null;
-  }
-
-  const uid = verified.uid;
-  const email = String(verified.email || '').trim().toLowerCase();
-
-  const superUids = new Set(
-    (env?.SUPERADMIN_UIDS || DEFAULT_SUPERADMIN_UIDS.join(','))
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-  );
-  const superEmails = new Set(
-    (env?.SUPERADMIN_EMAILS || DEFAULT_SUPERADMIN_EMAILS.join(','))
-      .split(',')
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean)
-  );
-
-  let roleRow: {
-    uid?: string;
-    email?: string;
-    role?: string;
-    custom_role?: string | null;
-    is_posting_banned?: number;
-    updated_at?: number;
-    created_at?: number;
-  } | null = null;
-
-  try {
-    roleRow = await db
-      .prepare(
-        'SELECT uid, email, role, custom_role, is_posting_banned, updated_at, created_at FROM user_roles WHERE uid = ?1 LIMIT 1'
-      )
-      .bind(uid)
-      .first();
-  } catch {
-    roleRow = null;
-  }
-
-  const isHardcodedSuperAdmin =
-    superUids.has(uid) ||
-    (email.length > 0 && superEmails.has(email)) ||
-    verified.role === 'superadmin' ||
-    verified.admin === true;
-
-  let role: 'student' | 'captain' | 'admin' | 'superadmin' = 'student';
-  if (isHardcodedSuperAdmin || roleRow?.role === 'superadmin') {
-    role = 'superadmin';
-  } else if (roleRow?.role === 'admin' || verified.role === 'admin') {
-    role = 'admin';
-  } else if (roleRow?.role === 'captain' || verified.role === 'captain') {
-    role = 'captain';
-  }
-
-  const isSuperAdmin = role === 'superadmin';
-  const isAdminOrAbove = role === 'superadmin' || role === 'admin';
-  const isPostingBanned = Boolean(roleRow?.is_posting_banned);
-
-  const rawName = String(verified.name || '').trim();
-  const safeName =
-    rawName && !rawName.includes('@')
-      ? rawName
-      : email
-      ? email.split('@')[0] || 'Student'
-      : 'Student';
-
-  const sessionVerified = await isD1UserSessionVerified(db, verified);
-
-  return {
-    uid,
-    email,
-    name: safeName,
-    picture: verified.picture || null,
-    role,
-    customRole: roleRow?.custom_role || null,
-    isPostingBanned,
-    isSuperAdmin,
-    isAdminOrAbove,
-    emailVerified: Boolean(verified.emailVerified) || sessionVerified,
-    sessionVerified,
-    signInProvider: verified.signInProvider,
-    authTime: verified.authTime,
-    d1CreatedAtMs: Number(roleRow?.created_at || 0),
-  };
+  return resolveCurrentUser(params);
 }
 
 // ─── Service Account Parsing & OAuth2 Token Exchange ──────────────────────────
@@ -1340,6 +1430,7 @@ export interface InMemoryD1Tables {
     {
       username_lower: string;
       username: string;
+      username_display: string;
       normalized_lookalike: string;
       uid: string;
       account_type: string;
@@ -1418,6 +1509,81 @@ export class InMemoryD1Database implements RewardsD1Database {
     guest_creation_rate_limits: [],
   };
 
+  constructor() {
+    this.loadFromDisk();
+  }
+
+  private getDiskPath(): string | null {
+    try {
+      if (typeof process !== 'undefined' && process.cwd) {
+        return `${process.cwd()}/data/d1_auth_guest_tables.json`;
+      }
+    } catch {
+      // Ignore in edge runtime
+    }
+    return null;
+  }
+
+  private loadFromDisk(): void {
+    try {
+      const diskPath = this.getDiskPath();
+      if (!diskPath || typeof process === 'undefined') return;
+      const req = typeof require !== 'undefined' ? require : null;
+      const fsMod = req ? req('fs') : null;
+      if (!fsMod || !fsMod.existsSync(diskPath)) return;
+      const raw = JSON.parse(fsMod.readFileSync(diskPath, 'utf8'));
+      if (Array.isArray(raw.user_usernames)) {
+        for (const r of raw.user_usernames) {
+          if (r && r.username_lower) {
+            this.tables.user_usernames.set(String(r.username_lower), {
+              ...r,
+              username: r.username || r.username_display || r.username_lower,
+              username_display: r.username_display || r.username || r.username_lower,
+            });
+          }
+        }
+      }
+      if (Array.isArray(raw.guest_accounts)) {
+        for (const r of raw.guest_accounts) {
+          if (r && r.uid) this.tables.guest_accounts.set(String(r.uid), r);
+        }
+      }
+      if (Array.isArray(raw.guest_sessions)) {
+        for (const r of raw.guest_sessions) {
+          if (r && r.session_id) this.tables.guest_sessions.set(String(r.session_id), r);
+        }
+      }
+      if (Array.isArray(raw.email_verification_sessions)) {
+        for (const r of raw.email_verification_sessions) {
+          if (r && r.user_id) this.tables.email_verification_sessions.set(String(r.user_id), r);
+        }
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  private saveToDisk(): void {
+    try {
+      const diskPath = this.getDiskPath();
+      if (!diskPath || typeof process === 'undefined') return;
+      const req = typeof require !== 'undefined' ? require : null;
+      const fsMod = req ? req('fs') : null;
+      const pathMod = req ? req('path') : null;
+      if (!fsMod || !pathMod) return;
+      fsMod.mkdirSync(pathMod.dirname(diskPath), { recursive: true });
+      const payload = {
+        user_usernames: Array.from(this.tables.user_usernames.values()),
+        guest_accounts: Array.from(this.tables.guest_accounts.values()),
+        guest_sessions: Array.from(this.tables.guest_sessions.values()),
+        email_verification_sessions: Array.from(this.tables.email_verification_sessions.values()),
+      };
+      fsMod.writeFileSync(diskPath, JSON.stringify(payload, null, 2), 'utf8');
+    } catch {
+      // Non-fatal
+    }
+  }
+
   prepare(query: string): RewardsD1PreparedStatement {
     const db = this;
     const normalized = query.replace(/\s+/g, ' ').trim();
@@ -1441,6 +1607,9 @@ export class InMemoryD1Database implements RewardsD1Database {
       },
       async run(): Promise<{ success: boolean; meta?: { changes?: number } }> {
         const changes = db.executeMutation(normalized, boundArgs);
+        if (changes > 0) {
+          db.saveToDisk();
+        }
         return { success: true, meta: { changes } };
       },
     };
@@ -1724,19 +1893,34 @@ export class InMemoryD1Database implements RewardsD1Database {
       return all.sort((a, b) => b.created_at - a.created_at).map((r) => ({ ...r }));
     }
 
-    // 14. guest_sessions
+    // 14. guest_sessions (including optional JOIN guest_accounts)
     if (upper.includes('FROM GUEST_SESSIONS')) {
       const all = Array.from(this.tables.guest_sessions.values());
-      if (upper.includes('WHERE TOKEN_HASH =')) {
+      const joinGuestAccount = (sess: any) => {
+        if (!upper.includes('JOIN GUEST_ACCOUNTS')) {
+          return { ...sess };
+        }
+        const g = this.tables.guest_accounts.get(sess.uid);
+        if (!g) return null;
+        return { ...g, ...sess };
+      };
+      if (upper.includes('WHERE TOKEN_HASH =') || upper.includes('WHERE S.TOKEN_HASH =')) {
         const th = String(args[0] ?? '');
-        const found = all.find((r) => r.token_hash === th);
-        return found ? [{ ...found }] : [];
+        const found = all.find(
+          (r) => r.token_hash === th && (!upper.includes('REVOKED = 0') || Number(r.revoked) === 0)
+        );
+        if (!found) return [];
+        const joined = joinGuestAccount(found);
+        return joined ? [joined] : [];
       }
-      if (upper.includes('WHERE UID =')) {
+      if (upper.includes('WHERE UID =') || upper.includes('WHERE S.UID =')) {
         const uid = String(args[0] ?? '');
-        return all.filter((r) => r.uid === uid).map((r) => ({ ...r }));
+        return all
+          .filter((r) => r.uid === uid)
+          .map(joinGuestAccount)
+          .filter(Boolean);
       }
-      return all.map((r) => ({ ...r }));
+      return all.map(joinGuestAccount).filter(Boolean);
     }
 
     // 15. guest_creation_rate_limits
@@ -2115,15 +2299,18 @@ export class InMemoryD1Database implements RewardsD1Database {
     }
 
     // 6. user_usernames (username_lower PRIMARY KEY, uid UNIQUE)
+    // Supports both 6-arg `(username_lower, username_display, uid, account_type, created_at, updated_at)`
+    // and 7-arg `(username_lower, username, normalized_lookalike, uid, account_type, created_at, updated_at)`
     if (upper.includes('INTO USER_USERNAMES')) {
       const isReplace = upper.includes('OR REPLACE') || upper.includes('ON CONFLICT');
+      const hasLookalikeCol = upper.includes('NORMALIZED_LOOKALIKE') || args.length >= 7;
       const username_lower = String(args[0] ?? '').toLowerCase();
-      const username = String(args[1] ?? '');
-      const normalized_lookalike = String(args[2] ?? '');
-      const uid = String(args[3] ?? '');
-      const account_type = String(args[4] ?? 'guest');
-      const created_at = Number(args[5] ?? Date.now());
-      const updated_at = Number(args[6] ?? created_at);
+      const usernameDisplay = String(args[1] ?? '');
+      const normalized_lookalike = hasLookalikeCol ? String(args[2] ?? '') : username_lower;
+      const uid = String((hasLookalikeCol ? args[3] : args[2]) ?? '');
+      const account_type = String((hasLookalikeCol ? args[4] : args[3]) ?? 'guest');
+      const created_at = Number((hasLookalikeCol ? args[5] : args[4]) ?? Date.now());
+      const updated_at = Number((hasLookalikeCol ? args[6] : args[5]) ?? created_at);
 
       const existingByLower = this.tables.user_usernames.get(username_lower);
       if (existingByLower && existingByLower.uid !== uid) {
@@ -2142,7 +2329,8 @@ export class InMemoryD1Database implements RewardsD1Database {
 
       this.tables.user_usernames.set(username_lower, {
         username_lower,
-        username,
+        username: usernameDisplay,
+        username_display: usernameDisplay,
         normalized_lookalike,
         uid,
         account_type,
@@ -2300,6 +2488,16 @@ export class InMemoryD1Database implements RewardsD1Database {
     }
 
     if (upper.startsWith('UPDATE GUEST_SESSIONS')) {
+      if (upper.includes('SET LAST_ACTIVE_AT =') && upper.includes('EXPIRES_AT =')) {
+        const lastActive = Number(args[0] ?? Date.now());
+        const expiresAt = Number(args[1] ?? lastActive + 30 * 86400 * 1000);
+        const sessionId = String(args[2] ?? '');
+        const row = this.tables.guest_sessions.get(sessionId);
+        if (!row) return 0;
+        row.last_active_at = lastActive;
+        row.expires_at = expiresAt;
+        return 1;
+      }
       if (upper.includes('SET REVOKED = 1') && upper.includes('WHERE TOKEN_HASH =')) {
         const th = String(args[0] ?? '');
         let changes = 0;

@@ -23,7 +23,7 @@ import { notifyTestStarted } from '@/services/emailNotificationService';
 
 export function TestRunnerPage() {
   const { attemptId } = useParams<{ attemptId: string }>();
-  const { user } = useAuth();
+  const { user, isGuest, profile, updateLocalProfile } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -156,20 +156,22 @@ export function TestRunnerPage() {
           currentAttempt.status = 'in_progress';
           currentAttempt.questions = testQuestions;
 
-          notifyTestStarted({
-            attemptId: attemptId!,
-            studentName: user.displayName || undefined,
-            testName:
-              currentAttempt.title ||
-              [currentAttempt.subject, currentAttempt.university].filter(Boolean).join(' — ') ||
-              'Boardly Practice Test',
-            universityPattern: currentAttempt.university || 'Standard Drill',
-            subjectScope: currentAttempt.subject || 'All Subjects',
-            totalQuestions: testQuestions.length,
-            durationMinutes: currentAttempt.durationSeconds
-              ? Math.round(currentAttempt.durationSeconds / 60)
-              : undefined,
-          });
+          if (!isGuest && !user.uid.startsWith('guest_')) {
+            notifyTestStarted({
+              attemptId: attemptId!,
+              studentName: user.displayName || undefined,
+              testName:
+                currentAttempt.title ||
+                [currentAttempt.subject, currentAttempt.university].filter(Boolean).join(' — ') ||
+                'Boardly Practice Test',
+              universityPattern: currentAttempt.university || 'Standard Drill',
+              subjectScope: currentAttempt.subject || 'All Subjects',
+              totalQuestions: testQuestions.length,
+              durationMinutes: currentAttempt.durationSeconds
+                ? Math.round(currentAttempt.durationSeconds / 60)
+                : undefined,
+            });
+          }
         }
 
         setAttempt(currentAttempt);
@@ -210,7 +212,7 @@ export function TestRunnerPage() {
       isMounted = false;
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [attemptId, user, navigate, location.state, retryCount]);
+  }, [attemptId, user, isGuest, navigate, location.state, retryCount]);
 
   // 2. Submission Handler
   const handleFinalSubmit = useCallback(async () => {
@@ -221,7 +223,15 @@ export function TestRunnerPage() {
         1,
         Math.floor((Date.now() - startTimeRef.current) / 1000)
       );
-      await submitAttempt(attemptId, attempt, userAnswers, timeTakenSeconds, user.uid);
+      const resultMetrics = await submitAttempt(attemptId, attempt, userAnswers, timeTakenSeconds, user.uid);
+      if (isGuest || user.uid.startsWith('guest_')) {
+        const solvedDelta = resultMetrics.correctAnswers + resultMetrics.wrongAnswers;
+        updateLocalProfile({
+          testsCompleted: Number(profile?.testsCompleted || 0) + 1,
+          totalQuestionsSolved: Number(profile?.totalQuestionsSolved || 0) + solvedDelta,
+          streak: Math.max(1, Number(profile?.streak || 0)),
+        });
+      }
       navigate(`/test/${attemptId}/result`, { replace: true });
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
@@ -233,7 +243,7 @@ export function TestRunnerPage() {
       setSubmitting(false);
       setConfirmModalOpen(false);
     }
-  }, [attempt, attemptId, user, submitting, userAnswers, navigate]);
+  }, [attempt, attemptId, user, isGuest, profile, updateLocalProfile, submitting, userAnswers, navigate]);
 
   // 3. Timer Countdown & Auto-Submit
   useEffect(() => {

@@ -5,6 +5,7 @@ import {
   useState,
   useCallback,
   useMemo,
+  useRef,
   type ReactNode,
 } from 'react';
 import {
@@ -32,6 +33,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
+import { setStoredGuestSessionToken } from '@/lib/api';
 import type { UserProfile } from '@/types';
 import { debugTracker } from '@/utils/debugTracker';
 import { deriveFallbackShortId, ensureUserShortId } from '@/utils/shortId';
@@ -665,19 +667,149 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // ── Hard 3-second timeout on initial profileLoading to prevent stuck states ─
+  // Keep refs to current user/profile so Firebase onAuthStateChanged(null) never clears an active guest session prematurely
+  const userRef = useRef<User | null>(user);
+  const profileRef = useRef<UserProfile | null>(profile);
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setProfileLoading(false);
-    }, 3000);
-    return () => clearTimeout(timer);
+    userRef.current = user;
+  }, [user]);
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
+
+  const loadProfileRef = useRef(loadProfile);
+  useEffect(() => {
+    loadProfileRef.current = loadProfile;
+  }, [loadProfile]);
+
+  const requestOtpCodeForUserRef = useRef(requestOtpCodeForUser);
+  useEffect(() => {
+    requestOtpCodeForUserRef.current = requestOtpCodeForUser;
+  }, [requestOtpCodeForUser]);
+
+  // Helper to resolve current user/guest from the unified `/api/auth/me` endpoint
+  const resolveServerGuestSession = useCallback(async (): Promise<boolean> => {
+    try {
+      const savedGuestToken = localStorage.getItem(GUEST_TOKEN_LS_KEY) || '';
+      const headers: Record<string, string> = {};
+      if (savedGuestToken) {
+        headers['X-Guest-Session'] = savedGuestToken;
+      }
+      const meRes = await fetch('/api/auth/me', {
+        method: 'GET',
+        credentials: 'include',
+        headers,
+      });
+      const meData = (await meRes.json().catch(() => ({}))) as {
+        ok?: boolean;
+        authenticated?: boolean;
+        user?: {
+          uid: string;
+          username: string | null;
+          displayName: string;
+          accountType: 'guest' | 'registered';
+          plan: string;
+          role: string;
+          customRole?: string;
+          isGuest?: boolean;
+          shortId?: string;
+          targetUniversity?: string;
+          testsCompleted?: number;
+          totalQuestionsSolved?: number;
+          streak?: number;
+        } | null;
+        guest?: {
+          uid: string;
+          username: string;
+          displayName: string;
+          shortId: string;
+          targetUniversity?: string;
+          testsCompleted?: number;
+          totalQuestionsSolved?: number;
+          streak?: number;
+          createdAt?: number;
+          lastActiveAt?: number;
+        } | null;
+      };
+
+      const g = meData.guest || (meData.user?.accountType === 'guest' ? meData.user : null);
+      if (meRes.ok && meData.authenticated && g && g.uid) {
+        const guestUsername = g.username || g.displayName || 'Guest';
+        const guestDisplayName = g.displayName || guestUsername;
+        const effectiveToken = savedGuestToken || `${g.uid}.cookie_session`;
+        setStoredGuestSessionToken(effectiveToken);
+        try {
+          localStorage.setItem('boardly_user_authenticated', 'true');
+        } catch {
+          // Ignore storage error
+        }
+        const synthUser = buildSyntheticGuestUser(g.uid, guestUsername, effectiveToken);
+        const guestProfile: UserProfile = {
+          uid: g.uid,
+          email: '',
+          displayName: guestDisplayName,
+          name: guestDisplayName,
+          username: guestUsername,
+          shortId: g.shortId || 'GUEST',
+          role: 'student',
+          customRole: 'Guest',
+          plan: 'free',
+          status: 'active',
+          isGuest: true,
+          accountType: 'guest',
+          profileCompleted: true,
+          onboardingCompleted: true,
+          targetUniversity: g.targetUniversity || 'General Prep',
+          testsCompleted: Number(g.testsCompleted || 0),
+          totalQuestionsSolved: Number(g.totalQuestionsSolved || 0),
+          streak: Number(g.streak || 0),
+          lastActiveAt: (g as any).lastActiveAt || Date.now(),
+        };
+        setGuestSessionToken(effectiveToken);
+        setUser(synthUser);
+        setProfile(guestProfile);
+        setOtpVerificationState({
+          status: 'verified',
+          purpose: null,
+          email: '',
+          maskedEmail: `@${guestUsername}`,
+          cooldownSeconds: 0,
+          error: null,
+        });
+        setProfileLoading(false);
+        setProfileError(null);
+        return true;
+      }
+
+      // Only clear guest state if server explicitly responded that there is no valid guest session
+      if (meRes.ok && meData.authenticated === false) {
+        return false;
+      }
+
+      // On transient server error, keep any existing in-memory guest session alive
+      if (userRef.current && (userRef.current as any).isGuest) {
+        setProfileLoading(false);
+        return true;
+      }
+      return false;
+    } catch {
+      // Network failure: do not destroy an already-loaded guest session
+      if (userRef.current && (userRef.current as any).isGuest) {
+        setProfileLoading(false);
+        return true;
+      }
+      return false;
+    }
   }, []);
 
-  // ── Auth state listener ──────────────────────────────────────────────────
+  // ── Auth state listener (Single Source of Truth with `/api/auth/me`) ─────
   useEffect(() => {
+    let isMounted = true;
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
+      if (!isMounted) return;
+
       if (firebaseUser) {
+        setUser(firebaseUser);
         if (isGoogleProviderUser(firebaseUser)) {
           try {
             localStorage.setItem('boardly_user_authenticated', 'true');
@@ -710,6 +842,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             const idToken = await firebaseUser.getIdToken();
             const statusRes = await fetch('/api/auth/verification-status', {
+              credentials: 'include',
               headers: {
                 Authorization: `Bearer ${idToken}`,
               },
@@ -762,14 +895,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 !statusData.hasActiveCode &&
                 (!statusData.cooldownSeconds || statusData.cooldownSeconds <= 0)
               ) {
-                void requestOtpCodeForUser(firebaseUser, {
+                void requestOtpCodeForUserRef.current(firebaseUser, {
                   purpose: requiredPurpose,
                   forceResend: false,
                 });
               }
             }
           } catch {
-            // If server verification status cannot be reached, fail closed (pending verification)
             try {
               localStorage.removeItem('boardly_user_authenticated');
             } catch {
@@ -789,89 +921,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Warm-up read of config/{any} right after sign-in so the first connection is opened early
         getDoc(doc(db, 'config', 'app')).catch(() => {});
 
-        loadProfile(firebaseUser).catch((err) => {
+        await loadProfileRef.current(firebaseUser).catch((err) => {
           console.warn('[Boardly Auth] onAuthStateChanged profile load error:', err);
         });
-      } else {
-        // Check if an active Guest session exists on this device (via HttpOnly cookie or local token)
+
+        // Also sync server-side username from `/api/auth/me` if registered user has one in D1
         try {
-          const savedGuestToken = localStorage.getItem(GUEST_TOKEN_LS_KEY) || '';
-          const headers: Record<string, string> = {};
-          if (savedGuestToken) {
-            headers['X-Guest-Session'] = savedGuestToken;
-          }
-          const guestRes = await fetch('/api/auth/guest/session', {
+          const idToken = await firebaseUser.getIdToken();
+          const meRes = await fetch('/api/auth/me', {
             method: 'GET',
             credentials: 'include',
-            headers,
+            headers: { Authorization: `Bearer ${idToken}` },
           });
-          const guestData = (await guestRes.json().catch(() => ({}))) as {
-            ok?: boolean;
-            authenticated?: boolean;
-            guest?: {
-              uid: string;
-              username: string;
-              displayName: string;
-              shortId: string;
-              targetUniversity?: string;
-              testsCompleted?: number;
-              totalQuestionsSolved?: number;
-              streak?: number;
-              createdAt?: number;
-              lastActiveAt?: number;
-            } | null;
-          };
-
-          if (guestRes.ok && guestData.authenticated && guestData.guest) {
-            const g = guestData.guest;
-            const effectiveToken = savedGuestToken || `${g.uid}.cookie_session`;
-            const synthUser = buildSyntheticGuestUser(g.uid, g.username, effectiveToken);
-            const guestProfile: UserProfile = {
-              uid: g.uid,
-              email: '',
-              displayName: g.username,
-              name: g.username,
-              username: g.username,
-              shortId: g.shortId || 'GUEST',
-              role: 'student',
-              customRole: 'Guest',
-              plan: 'free',
-              status: 'active',
-              isGuest: true,
-              accountType: 'guest',
-              profileCompleted: true,
-              onboardingCompleted: true,
-              targetUniversity: g.targetUniversity || 'General Prep',
-              testsCompleted: Number(g.testsCompleted || 0),
-              totalQuestionsSolved: Number(g.totalQuestionsSolved || 0),
-              streak: Number(g.streak || 0),
-              lastActiveAt: g.lastActiveAt || Date.now(),
-            };
-            setGuestSessionToken(effectiveToken);
-            setUser(synthUser);
-            setProfile(guestProfile);
-            setOtpVerificationState({
-              status: 'verified',
-              purpose: null,
-              email: '',
-              maskedEmail: `@${g.username}`,
-              cooldownSeconds: 0,
-              error: null,
-            });
-            setProfileLoading(false);
-            setProfileError(null);
-            return;
+          const meData = await meRes.json().catch(() => ({}));
+          if (meRes.ok && meData?.user?.username) {
+            setProfile((prev) =>
+              prev && !prev.username ? { ...prev, username: meData.user.username } : prev
+            );
           }
         } catch {
-          // Ignore guest session check failure
+          // Non-fatal
+        }
+      } else {
+        // Firebase emitted "no user". NEVER clear user/profile before checking `/api/auth/me`!
+        const hasValidGuest = await resolveServerGuestSession();
+        if (!isMounted) return;
+        if (hasValidGuest) {
+          return;
         }
 
+        // Confirmed: neither a Firebase user nor an active guest session
         try {
           localStorage.removeItem('boardly_user_authenticated');
           localStorage.removeItem(GUEST_TOKEN_LS_KEY);
         } catch {
           // Ignore storage errors
         }
+        setStoredGuestSessionToken(null);
         setGuestSessionToken(null);
         setOtpVerificationState({
           status: 'idle',
@@ -881,13 +967,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           cooldownSeconds: 0,
           error: null,
         });
+        setUser(null);
         setProfile(null);
         setProfileLoading(false);
         setProfileError(null);
       }
     });
-    return unsubscribe;
-  }, [loadProfile, retryCount, requestOtpCodeForUser]);
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [retryCount, resolveServerGuestSession]);
+
+  // ── Sliding Guest Session Keep-Alive (tab focus + periodic refresh) ──────
+  useEffect(() => {
+    if (!isGuest) return;
+
+    const refreshGuestSession = () => {
+      void resolveServerGuestSession();
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshGuestSession();
+      }
+    };
+
+    const interval = setInterval(refreshGuestSession, 4 * 60 * 1000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [isGuest, resolveServerGuestSession]);
 
   // ── Guest Mode Actions ───────────────────────────────────────────────────
   const checkUsernameAvailability = useCallback(async (rawUsername: string) => {
@@ -952,14 +1064,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         // Ignore storage error
       }
+      setStoredGuestSessionToken(sessionToken || `${g.uid}.cookie_session`);
 
       setGuestSessionToken(sessionToken);
       const synthUser = buildSyntheticGuestUser(g.uid, g.username, sessionToken);
       const guestProfile: UserProfile = {
         uid: g.uid,
         email: '',
-        displayName: g.username,
-        name: g.username,
+        displayName: g.displayName || g.username,
+        name: g.displayName || g.username,
         username: g.username,
         shortId: g.shortId || 'GUEST',
         role: 'student',
@@ -1083,6 +1196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // 3. Migrate Commons posts, comments, likes, saves & attempts in D1 store
         await fetch('/api/posts/migrate-guest', {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             guestUid,
@@ -1151,12 +1265,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           { merge: true }
         ).catch(() => {});
 
+        // Carry over guest test attempts into Firestore attempts/{attemptId} for the new registered UID
+        if (Array.isArray(upgData.attempts)) {
+          for (const rawAtt of upgData.attempts) {
+            if (rawAtt && typeof rawAtt === 'object') {
+              const attId = String(rawAtt.id || rawAtt.attemptId || '');
+              if (attId) {
+                await setDoc(
+                  doc(db, 'attempts', attId),
+                  {
+                    ...rawAtt,
+                    id: attId,
+                    uid: newFirebaseUser.uid,
+                    userId: newFirebaseUser.uid,
+                    upgradedFromGuestUid: guestUid,
+                    updatedAt: serverTimestamp(),
+                  },
+                  { merge: true }
+                ).catch(() => {});
+              }
+            }
+          }
+        }
+
         try {
           localStorage.removeItem(GUEST_TOKEN_LS_KEY);
           localStorage.setItem('boardly_user_authenticated', 'true');
         } catch {
           // Ignore
         }
+        setStoredGuestSessionToken(null);
         setGuestSessionToken(null);
         setUser(newFirebaseUser);
         setProfile(upgradedProfileDoc);
@@ -1282,6 +1420,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       await fetch('/api/posts/migrate-guest', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           guestUid,
@@ -1346,12 +1485,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         { merge: true }
       ).catch(() => {});
 
+      if (Array.isArray(upgData?.attempts)) {
+        for (const rawAtt of upgData.attempts) {
+          if (rawAtt && typeof rawAtt === 'object') {
+            const attId = String(rawAtt.id || rawAtt.attemptId || '');
+            if (attId) {
+              await setDoc(
+                doc(db, 'attempts', attId),
+                {
+                  ...rawAtt,
+                  id: attId,
+                  uid: googleUser.uid,
+                  userId: googleUser.uid,
+                  upgradedFromGuestUid: guestUid,
+                  updatedAt: serverTimestamp(),
+                },
+                { merge: true }
+              ).catch(() => {});
+            }
+          }
+        }
+      }
+
       try {
         localStorage.removeItem(GUEST_TOKEN_LS_KEY);
         localStorage.setItem('boardly_user_authenticated', 'true');
       } catch {
         // Ignore
       }
+      setStoredGuestSessionToken(null);
       setGuestSessionToken(null);
       setUser(googleUser);
       setProfile(upgradedProfileDoc);
@@ -1382,6 +1544,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         // Ignore storage errors
       }
+      setStoredGuestSessionToken(null);
       setGuestSessionToken(null);
       fetch('/api/auth/guest/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
 
@@ -1421,6 +1584,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         // Ignore storage errors
       }
+      setStoredGuestSessionToken(null);
       setGuestSessionToken(null);
       fetch('/api/auth/guest/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
 
@@ -1515,6 +1679,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ignore storage errors
     }
+    setStoredGuestSessionToken(null);
     setGuestSessionToken(null);
     fetch('/api/auth/guest/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
 
@@ -1589,6 +1754,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ignore storage errors
     }
+    setStoredGuestSessionToken(null);
     setGuestSessionToken(null);
     if (savedGuestToken || isGuest) {
       fetch('/api/auth/guest/logout', {

@@ -73,13 +73,48 @@ function resolveApiPath(path: string): string {
   return `/api${withLeadingSlash}`;
 }
 
+const GUEST_SESSION_STORAGE_KEY = 'boardly_guest_session_backup_v1';
+
+export function getStoredGuestSessionToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const fromLocal = window.localStorage.getItem(GUEST_SESSION_STORAGE_KEY);
+    if (fromLocal && fromLocal.trim()) return fromLocal.trim();
+  } catch {
+    // Ignore storage error
+  }
+  try {
+    const fromSession = window.sessionStorage.getItem(GUEST_SESSION_STORAGE_KEY);
+    if (fromSession && fromSession.trim()) return fromSession.trim();
+  } catch {
+    // Ignore storage error
+  }
+  return null;
+}
+
+export function setStoredGuestSessionToken(token: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (token && token.trim()) {
+      window.localStorage.setItem(GUEST_SESSION_STORAGE_KEY, token.trim());
+      window.sessionStorage.setItem(GUEST_SESSION_STORAGE_KEY, token.trim());
+    } else {
+      window.localStorage.removeItem(GUEST_SESSION_STORAGE_KEY);
+      window.sessionStorage.removeItem(GUEST_SESSION_STORAGE_KEY);
+    }
+  } catch {
+    // Ignore storage error
+  }
+}
+
 export async function getBearerToken(forceRefresh = false): Promise<string | null> {
   try {
     let user = auth.currentUser;
-    if (!user && typeof (auth as any).authStateReady === 'function') {
+    const guestToken = getStoredGuestSessionToken();
+    if (!user && !guestToken && typeof (auth as any).authStateReady === 'function') {
       await Promise.race([
         (auth as any).authStateReady(),
-        new Promise((resolve) => setTimeout(resolve, 4000)),
+        new Promise((resolve) => setTimeout(resolve, 1500)),
       ]);
       user = auth.currentUser;
     }
@@ -88,6 +123,9 @@ export async function getBearerToken(forceRefresh = false): Promise<string | nul
         user.getIdToken(forceRefresh),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
       ]);
+    }
+    if (guestToken) {
+      return guestToken.startsWith('guest_') ? guestToken : `guest_${guestToken}`;
     }
   } catch {
     // ignore token lookup error
@@ -104,8 +142,9 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
 
 /**
  * Shared REST API helper using relative `/api/...` paths on the same site.
- * Sends `Authorization: Bearer <Firebase ID token>` and `Content-Type: application/json`
- * on every request, and surfaces `{ error, code }` from the response body in a toast on failure.
+ * Always sends `credentials: 'include'` (so the HttpOnly `boardly_guest_session` cookie is sent),
+ * plus `Authorization: Bearer <token>` and `X-Guest-Session` when available,
+ * logs failed status codes and response bodies to console.error, and shows actionable error messages.
  */
 export async function apiRequest<T = any>(
   path: string,
@@ -115,28 +154,25 @@ export async function apiRequest<T = any>(
     body,
     headers: customHeaders,
     silentErrorToast = false,
-    requireAuth = false,
+    requireAuth: _requireAuth = false,
     timeoutMs = 15000,
     signal: externalSignal,
     ...rest
   } = options;
 
   const token = await getBearerToken(false);
-  if (requireAuth && !token) {
-    const err: ApiError = new Error('Authentication required. Please sign in.');
-    err.status = 401;
-    err.code = 'UNAUTHENTICATED';
-    if (!silentErrorToast) showApiToast(`${err.message} [UNAUTHENTICATED]`, 'error');
-    throw err;
-  }
+  const guestSessionToken = getStoredGuestSessionToken();
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(customHeaders as Record<string, string>),
   };
 
-  if (token) {
+  if (token && !headers['Authorization']) {
     headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (guestSessionToken && !headers['X-Guest-Session']) {
+    headers['X-Guest-Session'] = guestSessionToken;
   }
 
   let serializedBody: BodyInit | undefined;
@@ -154,6 +190,7 @@ export async function apiRequest<T = any>(
   }
 
   const url = resolveApiPath(path);
+  const method = String(rest.method || 'GET').toUpperCase();
   const controller = new AbortController();
   const timeoutId =
     timeoutMs > 0
@@ -176,6 +213,7 @@ export async function apiRequest<T = any>(
   try {
     response = await fetch(url, {
       ...rest,
+      credentials: 'include',
       headers,
       body: serializedBody,
       signal: controller.signal,
@@ -189,6 +227,7 @@ export async function apiRequest<T = any>(
     const msg = isAbort
       ? `Request timed out after ${Math.round(timeoutMs / 1000)}s (${url}). Please retry.`
       : networkErr?.message || 'Network error while contacting server.';
+    console.error(`[API Network Error] ${method} ${url}:`, msg, networkErr);
     const wrappedErr: ApiError = new Error(msg);
     wrappedErr.code = isAbort ? 'REQUEST_TIMEOUT' : networkErr?.code || 'NETWORK_ERROR';
     if (!silentErrorToast) showApiToast(msg, 'error');
@@ -208,7 +247,9 @@ export async function apiRequest<T = any>(
   }
 
   if (!response.ok) {
-    const serverError =
+    console.error(`[API Error] ${method} ${url} -> HTTP ${response.status}:`, rawText || data);
+
+    const rawServerError =
       typeof data?.error === 'string' && data.error.trim()
         ? data.error.trim()
         : typeof data?.message === 'string' && data.message.trim()
@@ -216,6 +257,19 @@ export async function apiRequest<T = any>(
         : `HTTP ${response.status} ${response.statusText || ''}`.trim();
     const serverCode =
       typeof data?.code === 'string' && data.code.trim() ? data.code.trim() : undefined;
+
+    let serverError = rawServerError;
+    if (
+      response.status === 401 &&
+      (serverCode === 'GUEST_SESSION_EXPIRED' ||
+        Boolean(guestSessionToken) ||
+        /^unauthorized$/i.test(rawServerError) ||
+        (!auth.currentUser && rawServerError.toLowerCase().includes('authentication required')))
+    ) {
+      serverError = 'Your guest session expired, please choose your username again.';
+    } else if (/^unauthorized$/i.test(rawServerError)) {
+      serverError = 'Your session has expired or you are not signed in. Please sign in to continue.';
+    }
 
     const fullMessage = serverCode ? `${serverError} (${serverCode})` : serverError;
     const err: ApiError = new Error(fullMessage);

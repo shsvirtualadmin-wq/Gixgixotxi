@@ -51,7 +51,7 @@ function formatDurationLabel(seconds: number): string {
 }
 
 export function ResultsListPage() {
-  const { user, profile, isAdmin } = useAuth();
+  const { user, profile, isAdmin, isGuest } = useAuth();
   const navigate = useNavigate();
 
   const [attempts, setAttempts] = useState<AttemptDoc[]>([]);
@@ -65,6 +65,7 @@ export function ResultsListPage() {
 
   const studentFallbackName =
     profile?.displayName?.trim() ||
+    profile?.username?.trim() ||
     user?.displayName?.trim() ||
     (user?.email ? user.email.split('@')[0] : '') ||
     'Student';
@@ -75,6 +76,31 @@ export function ResultsListPage() {
     setError(null);
     try {
       const grandLinePromise = getMyTestAttempts().catch(() => [] as AmbassadorTestAttempt[]);
+
+      if (isGuest || user.uid.startsWith('guest_')) {
+        const [guestAttemptsRes, glList] = await Promise.all([
+          fetch('/api/auth/guest/attempts', {
+            method: 'GET',
+            credentials: 'include',
+          })
+            .then((r) => r.json())
+            .catch(() => ({ ok: false, attempts: [] })),
+          grandLinePromise,
+        ]);
+        setGrandLineAttempts(glList);
+        const guestPracticeAttempts = Array.isArray(guestAttemptsRes?.attempts)
+          ? (guestAttemptsRes.attempts as AttemptDoc[]).filter(
+              (a) =>
+                (a.status === 'completed' || a.score !== undefined) &&
+                !(a as any).testId
+            )
+          : [];
+        setAttempts(guestPracticeAttempts);
+        setLastDoc(null);
+        setHasMore(false);
+        return;
+      }
+
       // Query attempts matching user ID with limit 20
       const q = query(
         collection(db, 'attempts'),
@@ -117,7 +143,7 @@ export function ResultsListPage() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, isGuest]);
 
   const handleLoadMore = useCallback(async () => {
     if (!user || !lastDoc || loadingMore) return;

@@ -1,6 +1,6 @@
 import { doc, collection, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
-import { getBearerToken } from '@/lib/api';
+import { getBearerToken, getStoredGuestSessionToken } from '@/lib/api';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
 import { isSuperAdminEmailOrRole } from '@/hooks/useEffectivePlan';
@@ -48,6 +48,10 @@ async function buildAuthHeaders(): Promise<Record<string, string>> {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+  const guestToken = getStoredGuestSessionToken();
+  if (guestToken && !auth.currentUser) {
+    headers['X-Guest-Session'] = guestToken;
+  }
   return headers;
 }
 
@@ -57,6 +61,7 @@ export async function fetchDailyUsageFromServer(uid?: string): Promise<ServerDai
     const qs = uid ? `?uid=${encodeURIComponent(uid)}` : '';
     const res = await fetch(`/api/usage/daily${qs}`, {
       method: 'GET',
+      credentials: 'include',
       headers,
     });
     if (!res.ok) return null;
@@ -76,6 +81,7 @@ export async function recordDailyUsageOnServer(params: {
     const headers = await buildAuthHeaders();
     const res = await fetch('/api/usage/daily/record', {
       method: 'POST',
+      credentials: 'include',
       headers,
       body: JSON.stringify(params),
     });
@@ -92,6 +98,7 @@ export async function cleanupHealthcheckDailyUsage(uid: string): Promise<void> {
     const headers = await buildAuthHeaders();
     await fetch('/api/usage/daily/cleanup-healthcheck', {
       method: 'POST',
+      credentials: 'include',
       headers,
       body: JSON.stringify({ uid, dateKey: getPKTDateKey() }),
     });
@@ -131,6 +138,7 @@ export async function startTestSessionWithLimit(params: {
   const headers = await buildAuthHeaders();
   const res = await fetch('/api/usage/daily/start-test', {
     method: 'POST',
+    credentials: 'include',
     headers,
     body: JSON.stringify({
       uid,
@@ -154,27 +162,63 @@ export async function startTestSessionWithLimit(params: {
   }
 
   if (!res.ok) {
+    console.error(`[API Error] POST /api/usage/daily/start-test -> HTTP ${res.status}:`, data);
+    if (res.status === 401 && (uid.startsWith('guest_') || !auth.currentUser)) {
+      throw new Error(
+        data?.error && !/^(unauthorized|authentication required)$/i.test(String(data.error).trim())
+          ? data.error
+          : 'Your guest session expired, please choose your username again.'
+      );
+    }
     throw new Error(data?.error || `Failed to verify daily starter limit (HTTP ${res.status}).`);
   }
 
-  // Create the student's attempt document in Firestore ONLY for real authenticated user sessions
-  // where request.auth.uid matches the student's uid.
-  if (!isHealthcheck && auth.currentUser && auth.currentUser.uid === uid) {
+  const resolvedAttemptId = String(data?.attemptId || attemptId);
+
+  // Create the student's attempt document:
+  // - Registered Firebase users: in Firestore `attempts/{attemptId}`
+  // - Guest users: on the server in D1 `guest_accounts.attempts_json` via `/api/auth/guest/attempts`
+  if (!isHealthcheck && auth.currentUser && auth.currentUser.uid === uid && !uid.startsWith('guest_')) {
     const finalAttemptPayload = {
       ...attemptPayload,
-      id: attemptId,
+      id: resolvedAttemptId,
       userId: uid,
       uid,
       createdAt: serverTimestamp(),
     };
     await setDoc(attemptRef, finalAttemptPayload);
+  } else if (!isHealthcheck && (uid.startsWith('guest_') || !auth.currentUser)) {
+    const guestAttemptPayload = {
+      ...attemptPayload,
+      id: resolvedAttemptId,
+      userId: uid,
+      uid,
+      createdAt: new Date().toISOString(),
+    };
+    const guestSaveRes = await fetch('/api/auth/guest/attempts', {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify({
+        action: 'start',
+        attempt: guestAttemptPayload,
+      }),
+    });
+    if (!guestSaveRes.ok) {
+      const errBody = await guestSaveRes.json().catch(() => ({}));
+      console.error(`[API Error] POST /api/auth/guest/attempts -> HTTP ${guestSaveRes.status}:`, errBody);
+      throw new Error(
+        errBody?.error || 'Your guest session expired, please choose your username again.'
+      );
+    }
   }
 
   return {
-    attemptId: String(data?.attemptId || attemptId),
+    attemptId: resolvedAttemptId,
     testsStarted: Number(data?.testsStarted ?? 0),
     blocked: false,
     dateKey: String(data?.dateKey || dateKey),
   };
 }
+
 

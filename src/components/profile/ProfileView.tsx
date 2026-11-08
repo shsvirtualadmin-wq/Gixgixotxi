@@ -43,6 +43,7 @@ const profileMemoryCache = new Map<string, { profile: PublicProfile; timestamp: 
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
+import { GuestUpgradeModal } from '@/components/auth/GuestUpgradeModal';
 import { WalletModal } from './WalletModal';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
@@ -101,7 +102,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   initialPreviewAsPublic = false,
 }) => {
   const navigate = useNavigate();
-  const { user: authUser, isAdmin, signOutUser } = useAuth();
+  const { user: authUser, profile: authProfile, isAdmin, isGuest, signOutUser } = useAuth();
   const { requireAuth } = useAuthGate();
   const { openProfile } = useProfileModal();
   const {
@@ -119,7 +120,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const effectivePlan = useEffectivePlan();
 
   // Determine true mode
-  const currentUid = authUser?.uid || null;
+  const currentUid = authUser?.uid || authProfile?.uid || null;
   const isViewingSelf = !targetUid || targetUid === currentUid;
 
   // Toggle for "View as others" (preview public mode while being owner)
@@ -173,16 +174,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [chatRequestWorking, setChatRequestWorking] = useState(false);
   const [incomingRequestsCount, setIncomingRequestsCount] = useState(0);
 
-  // Subscribe to incoming chat requests count for signed-in user
+  const [guestUpgradeModalOpen, setGuestUpgradeModalOpen] = useState(false);
+
+  // Subscribe to incoming chat requests count for signed-in non-guest user
   useEffect(() => {
-    if (!currentUid) {
+    if (!currentUid || isGuest || currentUid.startsWith('guest_')) {
       setIncomingRequestsCount(0);
       return;
     }
     return subscribeIncomingChatRequests(currentUid, (reqs) => {
       setIncomingRequestsCount(reqs.length);
     });
-  }, [currentUid]);
+  }, [currentUid, isGuest]);
 
   // Open chat/requests modal automatically if navigated from notification (?chat=requests or ?chat=open)
   useEffect(() => {
@@ -202,6 +205,73 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     const resolvedUid = targetUid || currentUid;
     if (!resolvedUid) {
       setLoading(false);
+      return;
+    }
+
+    // For a guest viewing their own profile, build the profile directly from the shared AuthContext state (never query Firestore)
+    const activeGuestSource = ownProfile || authProfile;
+    if (
+      (isViewingSelf && (isGuest || resolvedUid.startsWith('guest_'))) ||
+      resolvedUid.startsWith('guest_')
+    ) {
+      const guestUsername =
+        activeGuestSource?.username ||
+        activeGuestSource?.displayName ||
+        authUser?.displayName ||
+        resolvedUid.replace(/^guest_/, '');
+      const guestDisplayName =
+        activeGuestSource?.displayName ||
+        activeGuestSource?.name ||
+        guestUsername;
+      const guestShortId = activeGuestSource?.shortId || 'GUEST';
+
+      const guestPublicProfile: PublicProfile & { username?: string; isGuest?: boolean; accountType?: string } = {
+        uid: resolvedUid,
+        displayName: guestDisplayName,
+        username: guestUsername,
+        studentId: guestShortId,
+        shortId: guestShortId,
+        avatar: activeGuestSource?.avatarKey || null,
+        banner: null,
+        frame: null,
+        nameplate: null,
+        effectId: null,
+        badges: [],
+        bio: activeGuestSource?.bio || '',
+        status: 'active',
+        accent: '#D71921',
+        memberSince: null,
+        crewName: null,
+        stats: {
+          streak: Number(activeGuestSource?.streak ?? 0),
+          longestStreak: Number(activeGuestSource?.streak ?? 0),
+          mcqs: Number(activeGuestSource?.totalQuestionsSolved ?? 0),
+          accuracy: 0,
+        },
+        followersCount: 0,
+        followingCount: 0,
+        lastActiveAt: activeGuestSource?.lastActiveAt || Date.now(),
+        role: 'student',
+        customRole: 'Guest',
+        isGuest: true,
+        accountType: 'guest',
+        equipped: {
+          effect: null,
+          frame: null,
+          nameplate: null,
+          avatar: null,
+          banner: null,
+        },
+        avatarUrl: null,
+        photoURL: null,
+        avatarKey: activeGuestSource?.avatarKey || null,
+        avatarVariant: activeGuestSource?.avatarVariant || null,
+      };
+
+      setProfile(guestPublicProfile);
+      profileMemoryCache.set(resolvedUid, { profile: guestPublicProfile, timestamp: Date.now() });
+      setLoading(false);
+      setFetchError(null);
       return;
     }
 
@@ -264,7 +334,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           uData?.name ||
           pubData?.displayName ||
           pubData?.username ||
+          (uid === currentUid ? ownProfile?.displayName || ownProfile?.username || authProfile?.displayName || authProfile?.username || authUser?.displayName : null) ||
           postAuthorName;
+        const candidateUsername =
+          uData?.username ||
+          pubData?.username ||
+          (uid === currentUid ? ownProfile?.username || authProfile?.username : null) ||
+          null;
         const candidateEmail = uData?.email || pubData?.email || (uid === currentUid ? authUser?.email : null);
 
         const isAdminAccountUser =
@@ -311,7 +387,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           ...(pubData?.equipped || {}),
           ...(uData?.equipped || {}),
         };
-        // Avatar priority: 1. equipped store avatar, 2. custom uploaded/chosen avatar, 3. Google photo only if nothing set, 4. default placeholder
         const rawEquippedAvatar =
           (mergedEquipped?.avatar as string) ||
           (uData?.equippedAvatar as string) ||
@@ -402,9 +477,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             ? pubData.badges
             : [];
 
-        const resolvedProfile: PublicProfile = {
+        const resolvedProfile: PublicProfile & { username?: string } = {
           uid,
           displayName: cleanName,
+          ...(candidateUsername ? { username: candidateUsername } : {}),
           studentId: shortCode,
           shortId: shortCode,
           avatar,
@@ -471,17 +547,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [targetUid, currentUid, isAdmin, authUser?.email]);
+  }, [targetUid, currentUid, isAdmin, isGuest, isViewingSelf, ownProfile, authProfile, authUser?.displayName, authUser?.email]);
 
   // When viewing self in own mode, safely merge ownProfile/ownEquipped without wiping loaded cosmetics or follower counts
   useEffect(() => {
-    if (isViewingSelf && ownProfile && !previewAsPublic && !walletLoading) {
-      const op = ownProfile as any;
-      const isAdminAccountUser = isAdmin || isAdminAccount(currentUid) || op.role === 'admin' || isAdminAccount(authUser?.email);
-      const shortCode = op.studentId || op.shortId || deriveFallbackShortId(currentUid || '0');
+    if (isViewingSelf && (ownProfile || authProfile) && !previewAsPublic && (!walletLoading || isGuest)) {
+      const op = (ownProfile || authProfile) as any;
+      const isAdminAccountUser = !isGuest && (isAdmin || isAdminAccount(currentUid) || op.role === 'admin' || isAdminAccount(authUser?.email));
+      const shortCode = op.studentId || op.shortId || (isGuest ? 'GUEST' : deriveFallbackShortId(currentUid || '0'));
+      const rawDisplayName = op.displayName || op.username || authProfile?.displayName || authProfile?.username || authUser?.displayName;
       const cleanName = isAdminAccountUser
         ? 'SHS Virtual Academy'
-        : sanitizeStudentDisplayName(op.displayName || authUser?.displayName, shortCode);
+        : isGuest
+        ? (rawDisplayName || 'Guest')
+        : sanitizeStudentDisplayName(rawDisplayName, shortCode);
+      const resolvedUsername = op.username || authProfile?.username || (isGuest ? cleanName : undefined);
 
       setProfile((prev) => {
         const candidateAvatar =
@@ -531,9 +611,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           cachedSelf?.followingCount ??
           (typeof op.followingCount === 'number' ? op.followingCount : 0);
 
-        const nextProfile: PublicProfile = {
+        const nextProfile: PublicProfile & { username?: string; isGuest?: boolean; accountType?: string } = {
           uid: currentUid || 'guest',
           displayName: cleanName,
+          ...(resolvedUsername ? { username: resolvedUsername } : {}),
           studentId: shortCode,
           shortId: shortCode,
           avatar: resolvedAvatar,
@@ -557,7 +638,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           followingCount: resolvedFollowingCount,
           lastActiveAt: op.lastActiveDate || prev?.lastActiveAt || null,
           role: isAdminAccountUser ? 'admin' : (op.role || prev?.role || 'student'),
-          customRole: op.customRole || prev?.customRole || undefined,
+          customRole: isGuest ? 'Guest' : (op.customRole || prev?.customRole || undefined),
+          ...(isGuest ? { isGuest: true, accountType: 'guest' } : {}),
           equipped: {
             effect: resolvedEffectId,
             frame: resolvedFrame,
@@ -573,25 +655,27 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         if (currentUid) {
           profileMemoryCache.set(currentUid, { profile: nextProfile, timestamp: Date.now() });
-          void syncPublicProfile(currentUid, {
-            ...op,
-            displayName: cleanName,
-            shortId: shortCode,
-            avatar: resolvedAvatar,
-            banner: resolvedBanner,
-            frame: resolvedFrame,
-            nameplate: resolvedNameplate,
-            effectId: resolvedEffectId,
-            equipped: nextProfile.equipped,
-            followersCount: resolvedFollowersCount,
-            followingCount: resolvedFollowingCount,
-          }).catch(() => {});
+          if (!isGuest && !currentUid.startsWith('guest_')) {
+            void syncPublicProfile(currentUid, {
+              ...op,
+              displayName: cleanName,
+              shortId: shortCode,
+              avatar: resolvedAvatar,
+              banner: resolvedBanner,
+              frame: resolvedFrame,
+              nameplate: resolvedNameplate,
+              effectId: resolvedEffectId,
+              equipped: nextProfile.equipped,
+              followersCount: resolvedFollowersCount,
+              followingCount: resolvedFollowingCount,
+            }).catch(() => {});
+          }
         }
 
         return nextProfile;
       });
     }
-  }, [isViewingSelf, ownProfile, ownEquipped, walletLoading, previewAsPublic, currentUid, authUser?.displayName, authUser?.email, isAdmin]);
+  }, [isViewingSelf, ownProfile, authProfile, ownEquipped, walletLoading, previewAsPublic, currentUid, authUser?.displayName, authUser?.email, isAdmin, isGuest]);
 
   // Rank title computation
   const rank = useMemo(() => {
@@ -803,10 +887,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   }) => {
     if (!currentUid) return;
     await updateProfileData(updates);
-    await syncPublicProfile(currentUid, {
-      ...ownProfile,
-      ...updates,
-    });
+    if (!isGuest && !currentUid.startsWith('guest_')) {
+      await syncPublicProfile(currentUid, {
+        ...ownProfile,
+        ...updates,
+      });
+    }
     setProfile((prev) => (prev ? { ...prev, ...updates } : null));
   };
 
@@ -898,8 +984,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         ? [...prev.slice(1), id]
         : [...prev, id];
 
-      setDoc(doc(db, 'users', currentUid), { pinnedStamps: next }, { merge: true }).catch(() => {});
-      setDoc(doc(db, 'publicProfiles', currentUid), { uid: currentUid, pinnedStamps: next }, { merge: true }).catch(() => {});
+      if (!isGuest && !currentUid.startsWith('guest_')) {
+        setDoc(doc(db, 'users', currentUid), { pinnedStamps: next }, { merge: true }).catch(() => {});
+        setDoc(doc(db, 'publicProfiles', currentUid), { uid: currentUid, pinnedStamps: next }, { merge: true }).catch(() => {});
+      }
       return next;
     });
   };
@@ -1059,16 +1147,38 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               {profile?.nameplate ? (
                 <Nameplate
                   itemId={profile.nameplate}
-                  name={profile?.displayName || 'Student'}
+                  name={
+                    profile?.displayName ||
+                    (isViewingSelf ? ownProfile?.displayName || authProfile?.displayName || ownProfile?.username || authProfile?.username : null) ||
+                    'Student'
+                  }
                   shortId={profile?.studentId || profile?.shortId || deriveFallbackShortId(profile?.uid || '0')}
                 />
               ) : (
                 <h1 className="font-heading font-bold text-lg sm:text-xl text-[var(--text)] truncate flex items-center gap-1.5">
-                  <span>{profile?.displayName || 'Student'}</span>
+                  <span>
+                    {profile?.displayName ||
+                      (isViewingSelf ? ownProfile?.displayName || authProfile?.displayName || ownProfile?.username || authProfile?.username : null) ||
+                      'Student'}
+                  </span>
                   <span className="font-mono text-xs font-normal text-[var(--muted)]">
                     #{profile?.studentId || profile?.shortId || deriveFallbackShortId(profile?.uid || '0')}
                   </span>
                 </h1>
+              )}
+
+              {/* Username pill / handle */}
+              {((profile as any)?.username || (isViewingSelf && (ownProfile?.username || authProfile?.username))) && (
+                <span className="font-mono text-xs text-[var(--muted)]">
+                  @{(profile as any)?.username || ownProfile?.username || authProfile?.username}
+                </span>
+              )}
+
+              {/* Explicit Guest badge when account is a guest */}
+              {((isViewingSelf && isGuest) || (profile as any)?.isGuest || profile?.uid?.startsWith('guest_')) && (
+                <span className="font-mono text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-500">
+                  Guest
+                </span>
               )}
 
               {/* Public mode: Follows you tag */}
@@ -1083,7 +1193,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <div className="flex items-center gap-2 flex-wrap text-xs mt-0.5">
               <RoleBadge
                 role={profile?.role || (isViewingSelf ? ownProfile?.role : 'Student')}
-                customRole={profile?.customRole || (isViewingSelf ? ownProfile?.customRole : undefined)}
+                customRole={
+                  ((isViewingSelf && isGuest) || (profile as any)?.isGuest)
+                    ? 'Guest'
+                    : profile?.customRole || (isViewingSelf ? ownProfile?.customRole : undefined)
+                }
                 isSuperAdmin={
                   isAdminAccount(profile?.uid) ||
                   (isViewingSelf && isAdmin) ||
@@ -1238,6 +1352,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             {isViewingSelf && !isPublicMode ? (
               // ── OWN MODE ACTIONS ──
               <>
+                {isGuest && (
+                  <button
+                    type="button"
+                    onClick={() => setGuestUpgradeModalOpen(true)}
+                    className="h-11 px-4 rounded-lg bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                  >
+                    <UserPlus size={14} />
+                    <span>Upgrade to a full account</span>
+                  </button>
+                )}
+
                 <button
                   onClick={() => setEditSheetOpen(true)}
                   className="h-11 px-4 rounded-lg bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
@@ -2313,6 +2438,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         isOpen={walletModalOpen}
         onClose={() => setWalletModalOpen(false)}
         balance={kobanBalance}
+      />
+
+      {/* ── Guest Upgrade Modal ── */}
+      <GuestUpgradeModal
+        isOpen={guestUpgradeModalOpen}
+        onClose={() => setGuestUpgradeModalOpen(false)}
       />
 
       {/* ── 1-on-1 Direct Message & Chat Requests Modal ── */}
