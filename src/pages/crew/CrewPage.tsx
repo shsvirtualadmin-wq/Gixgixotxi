@@ -6,10 +6,10 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { PublicLeaderboard } from '@/components/crew/PublicLeaderboard';
 import {
-  CrewStickyHeader,
   CrewBottomDock,
   getCrewBtnHandlers,
 } from '@/components/crew/CrewGlassPrimitives';
+import { DashboardTopBar } from '@/components/dashboard/DashboardTopBar';
 import {
   Users,
   Trophy,
@@ -130,17 +130,17 @@ export function CrewPage() {
   };
 
   return (
-    <div className="cw-screen-root min-h-screen w-full flex flex-col justify-between overflow-x-hidden transition-colors duration-150">
+    <div className="cw-screen-root min-h-screen w-full flex flex-col justify-between overflow-x-clip transition-colors duration-150">
       <PageMeta
         title="Study Crew & Campus Squads — Boardly"
         description={`Study together in squads of up to ${MAX_CREW_MEMBERS} students. Take practice tests, track leaderboards, and build consistent daily preparation habits.`}
       />
 
-      {/* Sticky Glass Header Pill */}
-      <CrewStickyHeader showProChip={false} />
+      {/* Shared Dashboard Sticky Glass Header Pill */}
+      <DashboardTopBar />
 
       <div
-        className="mx-auto w-full max-w-3xl px-4 pt-6 space-y-6 flex-1"
+        className="mx-auto w-full max-w-5xl px-3.5 sm:px-6 lg:px-8 pt-6 space-y-6 flex-1"
         style={{
           paddingBottom: isLoggedIn
             ? 'calc(110px + env(safe-area-inset-bottom, 0px))'

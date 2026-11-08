@@ -209,7 +209,7 @@ export async function purchaseProWithKobans(params: {
           balanceAfter: Number(lData?.balanceAfter ?? lData?.balance_after ?? currentBalance),
           wasExtension: Boolean(lData?.wasExtension),
           previousExpiryLabel: lData?.previousExpiryLabel || null,
-          newExpiryMs,
+          newExpiryMs: existingExpiryMs,
           newExpiryIso: existingExpiryIso,
           newExpiryLabel:
             lData?.newExpiryLabel ||
@@ -502,7 +502,7 @@ export async function submitProPaymentRequest(params: {
     query(collection(db, 'paymentRequests'), where('userId', '==', params.uid), limit(25))
   );
   const existingStudentPending = studentReqsSnap.docs
-    .map((d) => ({ id: d.id, ...(d.data() as Record<string, any>) }))
+    .map((d) => ({ id: d.id, ...(d.data() as { status?: string }) }))
     .filter((r) => r.status === 'pending');
 
   // 2. Check for duplicate TID in paymentRequests and kobanRequests (case-insensitive check on trimmed & uppercase)

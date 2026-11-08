@@ -284,7 +284,7 @@ function computeLifetimeCorrectMcqs(uid?: string | null): number {
   try {
     const effectiveUid = resolveEffectiveUid(uid);
     const sumAttempts = (targetUid?: string | null) => {
-      const attempts = loadD1UniversityAttempts(targetUid);
+      const attempts = loadD1UniversityAttempts(targetUid || undefined);
       if (!Array.isArray(attempts) || attempts.length === 0) return 0;
       let totalCorrect = 0;
       for (const att of attempts) {

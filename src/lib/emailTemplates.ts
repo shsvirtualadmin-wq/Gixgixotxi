@@ -306,6 +306,7 @@ interface BaseEmailLayoutOptions {
   secondaryCtaLabel?: string;
   secondaryCtaUrl?: string;
   footerNoteHtml?: string;
+  footerNote?: string;
   appUrl?: string;
   isOptionalEmail?: boolean;
   isAdminEmail?: boolean;
@@ -565,9 +566,9 @@ function renderBaseHtmlLayout(opts: BaseEmailLayoutOptions): string {
               ${ctaHtml}
 
               ${
-                opts.footerNoteHtml
+                opts.footerNoteHtml || opts.footerNote
                   ? `<div style="margin-top:20px;padding-top:16px;border-top:1px solid #222230;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.6;color:#9CA3AF;">
-                       ${opts.footerNoteHtml}
+                       ${opts.footerNoteHtml || escapeHtml(opts.footerNote || '')}
                      </div>`
                   : ''
               }

@@ -116,7 +116,7 @@ export const StorePage: React.FC<StorePageProps> = ({
   defaultOpenGetKobans = false,
 }) => {
   const navigate = useNavigate();
-  const { user, userProfile, isGuest } = useAuth();
+  const { user, profile: userProfile, isGuest } = useAuth();
   const { isDark, toggle: toggleTheme } = useTheme();
   const {
     balance,

@@ -249,13 +249,16 @@ export const KobanChip: React.FC<KobanChipProps> = ({
   const content = (
     <>
       <KobanIcon size={18} />
-      <span className="font-mono tabular-nums text-xs font-bold text-[#FFD66B]">
+      <span
+        className="font-mono tabular-nums text-xs font-bold"
+        style={{ color: 'var(--cw-gold, #f5c542)' }}
+      >
         {loading ? '0' : safeBalance.toLocaleString('en-US')}
       </span>
     </>
   );
 
-  const baseStyles = `inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--surface-2)] border border-[rgba(232,163,23,0.35)] text-white shadow-sm ${className}`;
+  const baseStyles = `inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--cw-glass-fill)] border border-[rgba(232,163,23,0.35)] shadow-xs ${className}`;
 
   if (onClick || as === 'button') {
     return (

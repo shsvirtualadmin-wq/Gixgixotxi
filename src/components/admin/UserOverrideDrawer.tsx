@@ -106,7 +106,7 @@ export function UserOverrideDrawer({
 
   useEffect(() => {
     if (user) {
-      setRole(user.role || 'student');
+      setRole((user.role as UserRole) || 'student');
       setPlan(user.plan || 'free');
       setExtendMonths(0);
       setIsSuspended(!!(user.suspended || user.isSuspended));

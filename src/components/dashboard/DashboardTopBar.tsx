@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
-import { Sun, Moon, Shield, Bell } from 'lucide-react';
+import { Sun, Moon, Bell } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
-import { Logo } from '@/components/ui/Logo';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useTheme } from '@/hooks/useTheme';
 import { useWallet } from '@/hooks/useWallet';
@@ -122,6 +121,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   const effectivePlan = useEffectivePlan();
   const { balance: kobanBalance, loading: walletLoading, equipped } = useWallet();
   const isPro = !isGuest && effectivePlan.isUnlimited;
+  const hasEquippedFrame = Boolean(equipped?.frame && equipped.frame !== 'none');
 
   if (isSigningOut) {
     return <LineLoader context="login" variant="page" immediate />;
@@ -129,65 +129,64 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
 
   return (
     <>
-      <header className="sticky top-0 z-[70] w-full max-w-full px-3 sm:px-6 pt-3 pb-1 shrink-0 pointer-events-none box-border">
+      <header
+        className="sticky z-[70] w-full max-w-5xl mx-auto px-3.5 sm:px-6 lg:px-8 pb-1 shrink-0 pointer-events-none box-border select-none"
+        style={{
+          top: 'calc(12px + env(safe-area-inset-top, 0px))',
+          marginTop: 'calc(12px + env(safe-area-inset-top, 0px))',
+        }}
+      >
         <div
-          className="w-full max-w-5xl min-w-0 box-border mx-auto h-14 sm:h-16 px-3 sm:px-5 rounded-full glass dashboard-glass-bar allow-backdrop-blur border flex items-center justify-between gap-2 pointer-events-auto transition-all duration-200"
+          className="w-full min-w-0 box-border h-14 sm:h-[60px] px-3.5 sm:px-5 rounded-full dashboard-glass-bar allow-backdrop-blur flex items-center justify-between gap-2 pointer-events-auto transition-all duration-200"
         >
-          {/* Left side: Brand logo, PRO/FREE/GUEST badge, and Admin Portal label */}
-          <div className="flex items-center gap-2 min-w-0 shrink">
+          {/* Left side: Boardly Doto logo, Admin Portal label, and conditional PRO chip */}
+          <div className="flex items-center gap-2.5 min-w-0 shrink">
             <div className="flex flex-col justify-center min-w-0 shrink-0">
-              <Link to="/dashboard" className="flex items-center shrink-0" aria-label="Boardly Dashboard">
-                <Logo
-                  size="navbar"
-                  className="!h-[26px] min-[400px]:!h-[30px] sm:!h-[40px] md:!h-[44px] w-auto shrink-0"
-                />
+              <Link
+                to="/dashboard"
+                className="inline-flex items-center shrink-0 select-none leading-none tracking-tight hover:opacity-90 transition-opacity"
+                style={{
+                  fontFamily: "'Doto', var(--font-dot), sans-serif",
+                  fontWeight: 800,
+                  fontSize: '22px',
+                  color: 'var(--cw-red-text)',
+                }}
+                aria-label="Boardly Dashboard"
+              >
+                Boardly
               </Link>
               {isAdmin && (
                 <button
                   type="button"
                   onClick={() => navigate('/admin')}
-                  className="hidden min-[400px]:inline-flex sm:hidden items-center text-[9px] leading-none font-bold text-[var(--red)] hover:underline tracking-tight mt-0.5 text-left cursor-pointer w-fit"
-                  style={{ fontFamily: 'var(--font-heading)' }}
+                  className="inline-flex items-center text-[9px] leading-none font-bold hover:underline tracking-tight mt-0.5 text-left cursor-pointer w-fit"
+                  style={{
+                    fontFamily: 'var(--font-heading)',
+                    color: 'var(--cw-red-text)',
+                  }}
                 >
                   Admin Portal
                 </button>
               )}
             </div>
 
-            <span
-              className={`inline-flex items-center text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 rounded-full shrink-0 whitespace-nowrap ${
-                isPro ? 'badge-pill-red' : 'glass-pill text-[var(--text-muted)]'
-              }`}
-            >
-              {isGuest ? 'GUEST' : isPro ? 'PRO' : 'FREE'}
-            </span>
-
-            {isAdmin && (
-              <button
-                type="button"
-                onClick={() => navigate('/admin')}
-                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold glass-pill border border-[var(--red)]/50 text-[var(--red)] hover:bg-[var(--red)] hover:text-white transition-colors cursor-pointer shrink-0 whitespace-nowrap"
-                style={{ fontFamily: 'var(--font-heading)' }}
+            {isPro && (
+              <span
+                className="inline-flex items-center text-[11px] font-bold px-2.5 py-0.5 rounded-full shrink-0 whitespace-nowrap"
+                style={{
+                  backgroundColor: 'color-mix(in srgb, var(--cw-red) 16%, transparent)',
+                  color: 'var(--cw-red-text)',
+                  boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--cw-red) 38%, transparent)',
+                }}
               >
-                <Shield size={13} strokeWidth={1.75} className="shrink-0" />
-                <span>Admin Portal</span>
-              </button>
+                PRO
+              </span>
             )}
           </div>
 
-          {/* Right side: Upgrade button (never shown to guests), Kobans wallet chip, Notification bell, Theme toggle, Avatar trigger */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 ml-auto">
-            {!isGuest && !isPro && !isAdmin && (
-              <Link
-                to="/dashboard/plans"
-                className="hidden md:inline-flex btn-primary text-xs py-1.5 px-3.5 rounded-full items-center shrink-0 whitespace-nowrap"
-                style={{ height: '34px', fontSize: '12px' }}
-              >
-                Upgrade to Pro
-              </Link>
-            )}
-
-            {/* Kobans Wallet Chip — single source of coin balance when navbar is visible */}
+          {/* Right side: Gold Kobans balance chip, Notification bell, Theme toggle (40px), Profile avatar (36px) */}
+          <div className="flex items-center gap-2 shrink-0 ml-auto">
+            {/* Kobans Wallet Chip */}
             <Link
               to="/store"
               title="Boardly Store & Kobans Wallet"
@@ -196,52 +195,53 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
               <KobanChip balance={kobanBalance} loading={walletLoading} />
             </Link>
 
-            {/* Notification Bell */}
+            {/* Notification Bell (40px round glass icon button) */}
             <Link
               to="/dashboard/notifications"
               aria-label="Notifications"
               title="Notifications"
-              className="relative w-9 h-9 rounded-full glass-pill flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer shrink-0"
+              className="relative w-10 h-10 min-w-[40px] min-h-[40px] rounded-full dashboard-topbar-icon-btn flex items-center justify-center hover:opacity-90 transition-opacity cursor-pointer shrink-0"
             >
-              <Bell size={16} strokeWidth={1.75} />
+              <Bell size={17} strokeWidth={1.85} />
               {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-[#D71921] text-white text-[9px] font-bold flex items-center justify-center leading-none border border-black/30 shadow-sm tabular-nums">
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-[#D71921] text-white text-[9px] font-bold flex items-center justify-center leading-none border border-black/30 shadow-sm tabular-nums">
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
             </Link>
 
-            {/* Theme Toggle */}
+            {/* Theme Toggle (40px round glass icon button) */}
             <button
               type="button"
               onClick={toggleTheme}
               aria-label="Toggle theme"
               title="Toggle theme"
-              className="w-9 h-9 rounded-full glass-pill flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer shrink-0"
+              className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-full dashboard-topbar-icon-btn flex items-center justify-center hover:opacity-90 transition-opacity cursor-pointer shrink-0"
             >
               {theme === 'dark' ? (
-                <Sun size={16} strokeWidth={1.75} />
+                <Sun size={17} strokeWidth={1.85} />
               ) : (
-                <Moon size={16} strokeWidth={1.75} />
+                <Moon size={17} strokeWidth={1.85} />
               )}
             </button>
 
-            {/* Avatar Trigger Button (min 44px touch target) */}
+            {/* Profile Avatar (36px circle with ring) */}
             <button
               ref={avatarBtnRef}
               type="button"
               onClick={() => setMenuOpen((prev) => !prev)}
               aria-label="User profile menu"
               aria-expanded={menuOpen}
-              className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full overflow-hidden shrink-0 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
+              className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-full overflow-hidden shrink-0 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity ring-1 ring-white/25 dark:ring-white/20"
+              style={{ boxShadow: 'inset 0 0 0 1px var(--cw-line)' }}
             >
-              <AvatarFrame itemId={equipped?.frame || 'none'} size={40}>
+              <AvatarFrame itemId={equipped?.frame || 'none'} size={36}>
                 <AvatarPicture
                   avatarId={equipped?.avatar}
                   avatarKey={profile?.avatarKey}
                   variant={profile?.avatarVariant}
                   seed={user?.uid}
-                  size={28}
+                  size={hasEquippedFrame ? 26 : 36}
                 />
               </AvatarFrame>
             </button>

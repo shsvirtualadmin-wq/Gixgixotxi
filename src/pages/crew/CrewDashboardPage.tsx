@@ -5,8 +5,6 @@ import { useStudyCrew, type CrewMember } from '@/hooks/useStudyCrew';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { InAppLeaderboard } from '@/components/crew/InAppLeaderboard';
 import {
-  CrewStickyHeader,
-  CrewBottomDock,
   CrewGlassSlider,
   getCrewBtnHandlers,
   type CrewSliderOption,
@@ -456,7 +454,7 @@ export function CrewDashboardPage() {
   }, [weakChapters]);
 
   return (
-    <div className="cw-screen-root min-h-screen w-full flex flex-col justify-between overflow-x-hidden transition-colors duration-150">
+    <div className="ncd-root w-full max-w-full min-w-0 flex flex-col justify-between transition-colors duration-150">
       {/* ─── TOP TOAST PILL (Slides down, auto-hides in ~1.8s) ──────────── */}
       {toastMessage && (
         <div role="status" className="cw-top-toast">
@@ -465,16 +463,8 @@ export function CrewDashboardPage() {
         </div>
       )}
 
-      {/* ─── STICKY GLASS PILL HEADER ───────────────────────────────────── */}
-      <CrewStickyHeader showProChip={crewHasActivePro} />
-
       {/* ─── MAIN SCREEN CONTENT ────────────────────────────────────────── */}
-      <div
-        className="mx-auto w-full max-w-3xl px-4 pt-6 flex-1 space-y-5"
-        style={{
-          paddingBottom: 'calc(110px + env(safe-area-inset-bottom, 0px))',
-        }}
-      >
+      <div className="w-full pt-2 sm:pt-3 flex-1 space-y-5">
         {loading ? (
           <div className="py-12">
             <LineLoader context="dashboard" variant="section" />
@@ -1167,9 +1157,6 @@ export function CrewDashboardPage() {
           </div>
         )}
       </div>
-
-      {/* ─── FLOATING 6-ICON BOTTOM DOCK ────────────────────────────────── */}
-      <CrewBottomDock />
 
       {/* ─── DIALOG: LEAVE CREW (Radius 32px Glass Card over Blurred Backdrop) ─ */}
       {leaveConfirmOpen && (

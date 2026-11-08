@@ -97,11 +97,11 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
     try {
       const res = await fetchCrewLeaderboard({
         search: debouncedSearch,
-        page,
+        offset: (page - 1) * limit,
         limit,
       });
       setCrews(res.crews);
-      setTotalCount(res.totalCount);
+      setTotalCount(res.total);
     } catch (err) {
       console.warn('[InAppLeaderboard] Failed to load crews:', err);
     } finally {
@@ -299,12 +299,11 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
         <div className="space-y-2.5">
           {filteredCrews.map((c, idx) => {
             const isUserCrew = currentUser.crewId === c.id;
-            const eligibilityResult = evaluateUserEligibility(c, {
+            const eligibility = evaluateUserEligibility(c, {
               uid: currentUser.uid,
               streak: currentUser.streak,
               crewId: currentUser.crewId,
             });
-            const eligibility = eligibilityResult.state;
             const isActionLoading = actionLoadingId === c.id;
             const displayRank = c.rank || idx + 1;
             const solvedCount = c.questionsSolved ?? c.score ?? 0;

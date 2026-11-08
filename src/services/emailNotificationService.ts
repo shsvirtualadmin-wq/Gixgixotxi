@@ -273,7 +273,7 @@ export function notifyTestStarted(params: {
  * Helper to compute a compact per-subject breakdown table from graded questions.
  */
 export function computeSubjectBreakdownFromQuestions(
-  questions: Array<Partial<AttemptQuestion> & { selectedIndex?: number }>,
+  questions: Array<Partial<AttemptQuestion> & { selectedIndex?: number; isCorrect?: boolean }>,
   userAnswers?: Record<string, number>
 ): SubjectBreakdownRow[] {
   const bySubject = new Map<

@@ -1,13 +1,5 @@
 import React, { useState, useRef, useLayoutEffect, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  Sun,
-  Moon,
-} from 'lucide-react';
-import { useTheme } from '@/hooks/useTheme';
-import { useWallet } from '@/hooks/useWallet';
-import { useAuth } from '@/contexts/AuthContext';
-import { getHomeUrl } from '@/utils/homeUrl';
+import { DashboardTopBar } from '@/components/dashboard/DashboardTopBar';
 import { DashboardBottomNav } from '@/components/dashboard/DashboardBottomNav';
 
 function prefersReducedMotion(): boolean {
@@ -84,75 +76,9 @@ export function CrewGoldCoinIcon({ size = 15 }: { size?: number }) {
   );
 }
 
-/* ─── Sticky Glass Header Pill ─────────────────────────────────────────── */
-export function CrewStickyHeader({
-  showProChip = false,
-}: {
-  showProChip?: boolean;
-}) {
-  const { isDark, toggle: toggleTheme } = useTheme();
-  const { balance: kobanBalance } = useWallet();
-  const { user, profileLoading } = useAuth();
-  const homeUrl = getHomeUrl(user, profileLoading);
-
-  return (
-    <header
-      className="sticky z-40 w-full pointer-events-none select-none"
-      style={{
-        top: 'calc(10px + env(safe-area-inset-top, 0px))',
-      }}
-    >
-      <div className="mx-auto w-full max-w-3xl px-4">
-        <div className="cw-glass-heavy pointer-events-auto w-full h-14 sm:h-[60px] px-4 sm:px-5 rounded-full flex items-center justify-between gap-3">
-          {/* Left: Boardly Logo in Doto (red-text) + conditional PRO chip */}
-          <div className="flex items-center gap-2.5 min-w-0">
-            <Link
-              to={homeUrl}
-              {...getCrewBtnHandlers()}
-              className="cw-btn !p-0 !bg-transparent !shadow-none cw-font-doto text-2xl sm:text-[26px] font-extrabold tracking-tight shrink-0"
-              style={{ color: 'var(--cw-red-text)' }}
-              aria-label="Boardly Home"
-            >
-              Boardly
-            </Link>
-
-            {showProChip && (
-              <span className="cw-chip cw-chip-pro">PRO</span>
-            )}
-          </div>
-
-          {/* Right: Gold Coin Balance Chip + Theme Toggle 42x42 Circle */}
-          <div className="flex items-center gap-2 shrink-0">
-            <Link
-              to="/store"
-              {...getCrewBtnHandlers()}
-              className="cw-btn !py-1.5 !px-3.5 cw-chip cw-chip-gold cw-font-doto text-xs sm:text-sm font-extrabold tabular-nums"
-              title="Kobans Balance"
-              aria-label={`${(kobanBalance || 0).toLocaleString()} Kobans`}
-            >
-              <CrewGoldCoinIcon size={15} />
-              <span>{(kobanBalance || 0).toLocaleString()}</span>
-            </Link>
-
-            <button
-              type="button"
-              onClick={toggleTheme}
-              {...getCrewBtnHandlers()}
-              className="cw-btn cw-icon-btn cw-btn-glass"
-              aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-              title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-            >
-              {isDark ? (
-                <Sun size={18} strokeWidth={2} />
-              ) : (
-                <Moon size={18} strokeWidth={2} />
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-    </header>
-  );
+/* ─── Sticky Glass Header Pill (Delegates to Shared DashboardTopBar) ───── */
+export function CrewStickyHeader(_props?: { showProChip?: boolean }) {
+  return <DashboardTopBar />;
 }
 
 /* ─── Interactive Stretching & Sliding Glass Pill Slider ───────────────── */

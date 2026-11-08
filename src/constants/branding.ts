@@ -41,6 +41,7 @@ export const PAYMENT_METHODS: Record<'jazzcash' | 'opay', PaymentMethodConfig> =
 } as const;
 
 export type SupportedPaymentMethod = keyof typeof PAYMENT_METHODS;
+export type PaymentMethodId = SupportedPaymentMethod;
 
 export const PAYMENT_METHODS_LIST: readonly PaymentMethodConfig[] = [
   PAYMENT_METHODS.jazzcash,

@@ -22,7 +22,6 @@ export function DashboardShell() {
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
 
   const isProfileRoute = location.pathname.startsWith('/dashboard/profile');
-  const isCrewRoute = location.pathname.startsWith('/dashboard/crew');
   const isCommonsRoute =
     location.pathname.startsWith('/dashboard/commons') ||
     location.pathname.startsWith('/commons') ||
@@ -78,7 +77,7 @@ export function DashboardShell() {
   // NEVER return null or blank screen — always render shell and bottom nav immediately
   return (
     <div
-      className="min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)] antialiased overflow-x-hidden"
+      className="min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)] antialiased overflow-x-clip"
     >
       <PageMeta
         title="Student Cockpit — Boardly"
@@ -86,7 +85,7 @@ export function DashboardShell() {
         noindex={true}
       />
       {!isGuest && <VerificationBanner />}
-      {!isProfileRoute && !isCommonsRoute && !isCrewRoute && <DashboardTopBar />}
+      {!isProfileRoute && !isCommonsRoute && <DashboardTopBar />}
 
       {/* Small non-blocking note for guests (Part B Rule 3) */}
       {isGuest && !guestNoteDismissed && (
@@ -120,9 +119,7 @@ export function DashboardShell() {
       {/* Main Content Container */}
       <main
         className={`flex-1 w-full min-w-0 box-border overflow-x-hidden mx-auto flex flex-col transition-all duration-200 ${
-          isCrewRoute
-            ? 'max-w-none p-0'
-            : isProfileRoute
+          isProfileRoute
             ? 'max-w-5xl px-0 sm:px-4 md:px-6 pt-0 sm:pt-4 pb-[calc(24px+env(safe-area-inset-bottom,0px))]'
             : 'max-w-5xl px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-[calc(112px+env(safe-area-inset-bottom,0px))]'
         }`}
@@ -135,7 +132,7 @@ export function DashboardShell() {
       </main>
 
       {/* Unified Student Pill Navigation */}
-      {!isCrewRoute && <DashboardBottomNav />}
+      <DashboardBottomNav />
 
       <GuestUpgradeModal
         isOpen={upgradeModalOpen}

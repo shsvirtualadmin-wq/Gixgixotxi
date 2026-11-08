@@ -403,8 +403,12 @@ function AppInner() {
 
         {/* Crew Standalone Portal */}
         <Route path="/crew" element={<CrewPage />} />
-        <Route path="/crew/my" element={<CrewDashboardPage />} />
-        <Route path="/crew/dashboard" element={<CrewDashboardPage />} />
+        <Route path="/crew/my" element={<DashboardShell />}>
+          <Route index element={<CrewDashboardPage />} />
+        </Route>
+        <Route path="/crew/dashboard" element={<DashboardShell />}>
+          <Route index element={<CrewDashboardPage />} />
+        </Route>
         <Route path="/crews" element={<Navigate to="/crew" replace />} />
         <Route path="/crew/apply" element={<CrewApplyPage />} />
         <Route path="/join/:code" element={<JoinCrewPage />} />

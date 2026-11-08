@@ -538,17 +538,19 @@ export function AdminUsersPage() {
 
             const studentId = formatStudentId(u);
             const qSolved = u.totalQuestionsSolved ?? ((u.testsCompleted || 0) * 15);
-            const joinedDate = u.createdAt?.toDate
-              ? u.createdAt.toDate().toLocaleDateString('en-GB')
-              : u.createdAt?.seconds
-              ? new Date(u.createdAt.seconds * 1000).toLocaleDateString('en-GB')
-              : typeof u.createdAt === 'number'
-              ? new Date(u.createdAt).toLocaleDateString('en-GB')
+            const createdRaw = u.createdAt as any;
+            const joinedDate = createdRaw?.toDate
+              ? createdRaw.toDate().toLocaleDateString('en-GB')
+              : createdRaw?.seconds
+              ? new Date(createdRaw.seconds * 1000).toLocaleDateString('en-GB')
+              : typeof createdRaw === 'number'
+              ? new Date(createdRaw).toLocaleDateString('en-GB')
               : 'Recent';
-            const lastActiveDate = typeof u.lastActiveAt === 'number'
-              ? new Date(u.lastActiveAt).toLocaleDateString('en-GB')
-              : u.lastActiveAt?.toDate
-              ? u.lastActiveAt.toDate().toLocaleDateString('en-GB')
+            const lastActiveRaw = u.lastActiveAt as any;
+            const lastActiveDate = typeof lastActiveRaw === 'number'
+              ? new Date(lastActiveRaw).toLocaleDateString('en-GB')
+              : lastActiveRaw?.toDate
+              ? lastActiveRaw.toDate().toLocaleDateString('en-GB')
               : null;
 
             return (
@@ -690,17 +692,19 @@ export function AdminUsersPage() {
                   const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
                   const studentId = formatStudentId(u);
                   const qSolved = u.totalQuestionsSolved ?? ((u.testsCompleted || 0) * 15);
-                  const joinedDate = u.createdAt?.toDate
-                    ? u.createdAt.toDate().toLocaleDateString('en-GB')
-                    : u.createdAt?.seconds
-                    ? new Date(u.createdAt.seconds * 1000).toLocaleDateString('en-GB')
-                    : typeof u.createdAt === 'number'
-                    ? new Date(u.createdAt).toLocaleDateString('en-GB')
+                  const createdRaw = u.createdAt as any;
+                  const joinedDate = createdRaw?.toDate
+                    ? createdRaw.toDate().toLocaleDateString('en-GB')
+                    : createdRaw?.seconds
+                    ? new Date(createdRaw.seconds * 1000).toLocaleDateString('en-GB')
+                    : typeof createdRaw === 'number'
+                    ? new Date(createdRaw).toLocaleDateString('en-GB')
                     : 'Recent';
-                  const lastActiveDate = typeof u.lastActiveAt === 'number'
-                    ? new Date(u.lastActiveAt).toLocaleDateString('en-GB')
-                    : u.lastActiveAt?.toDate
-                    ? u.lastActiveAt.toDate().toLocaleDateString('en-GB')
+                  const lastActiveRaw = u.lastActiveAt as any;
+                  const lastActiveDate = typeof lastActiveRaw === 'number'
+                    ? new Date(lastActiveRaw).toLocaleDateString('en-GB')
+                    : lastActiveRaw?.toDate
+                    ? lastActiveRaw.toDate().toLocaleDateString('en-GB')
                     : null;
 
                   return (

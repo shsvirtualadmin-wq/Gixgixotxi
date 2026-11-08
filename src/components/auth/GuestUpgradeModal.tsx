@@ -10,6 +10,7 @@ export interface GuestUpgradeModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpgraded?: () => void;
+  defaultReason?: string;
 }
 
 export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({

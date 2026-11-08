@@ -11,6 +11,7 @@ import { CertificateRenderer } from './CertificateRenderer';
 export interface ThemePickerProps {
   grandLineId: string;
   grandLineTitle?: string;
+  mockTitle?: string;
   value: string | null | undefined;
   onChange: (themeId: string | null) => void;
   signatoryName?: string;
@@ -31,7 +32,8 @@ const SAMPLE_ISSUED_AT = new Date('2026-11-07T00:00:00Z').getTime();
  */
 export const ThemePicker: React.FC<ThemePickerProps> = ({
   grandLineId,
-  grandLineTitle = 'Boardly Grand Line Mock',
+  grandLineTitle,
+  mockTitle,
   value,
   onChange,
   signatoryName = 'Boardly Examination Council',
@@ -40,6 +42,7 @@ export const ThemePicker: React.FC<ThemePickerProps> = ({
   disabled = false,
   compact = false,
 }) => {
+  const resolvedGrandLineTitle = grandLineTitle || mockTitle || 'Boardly Grand Line Mock';
   // Local optimistic state ensures the big preview and checkmark update in 0ms on click
   // even while the parent persists `certificate_theme_id` asynchronously.
   const [selectedValue, setSelectedValue] = useState<string | null>(() => {
@@ -126,7 +129,7 @@ export const ThemePicker: React.FC<ThemePickerProps> = ({
           serial="BDLY-GL01-0001"
           studentName="Ayesha Rahman Khan"
           grandLineId={grandLineId || 'grand_line_preview'}
-          grandLineTitle={grandLineTitle || 'Boardly Grand Line Mock'}
+          grandLineTitle={resolvedGrandLineTitle}
           editionLabel="OFFICIAL GRAND LINE EDITION"
           rank={1}
           score={194}
@@ -195,7 +198,7 @@ export const ThemePicker: React.FC<ThemePickerProps> = ({
                 serial="BDLY-GL01-0001"
                 studentName="Ayesha Rahman Khan"
                 grandLineId={grandLineId || 'grand_line_preview'}
-                grandLineTitle={grandLineTitle || 'Boardly Grand Line Mock'}
+                grandLineTitle={resolvedGrandLineTitle}
                 editionLabel="OFFICIAL GRAND LINE EDITION"
                 rank={1}
                 score={194}
@@ -252,7 +255,7 @@ export const ThemePicker: React.FC<ThemePickerProps> = ({
                     serial="BDLY-GL01-0001"
                     studentName="Ayesha Rahman Khan"
                     grandLineId={grandLineId || 'grand_line_preview'}
-                    grandLineTitle={grandLineTitle || 'Boardly Grand Line Mock'}
+                    grandLineTitle={resolvedGrandLineTitle}
                     editionLabel="OFFICIAL GRAND LINE EDITION"
                     rank={1}
                     score={194}

@@ -67,12 +67,12 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
       try {
         const result = await fetchCrewLeaderboard({
           search: debouncedSearch,
-          page,
+          offset: (page - 1) * limit,
           limit,
         });
         if (active) {
           setCrews(result.crews);
-          setTotalCount(result.totalCount);
+          setTotalCount(result.total);
         }
       } catch (err) {
         console.warn('[PublicLeaderboard] Load error:', err);

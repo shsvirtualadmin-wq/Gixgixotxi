@@ -156,7 +156,7 @@ export function TestRunnerPage() {
           currentAttempt.status = 'in_progress';
           currentAttempt.questions = testQuestions;
 
-          if (!isGuest && !user.uid.startsWith('guest_')) {
+          if (!isGuest && user && !user.uid.startsWith('guest_')) {
             notifyTestStarted({
               attemptId: attemptId!,
               studentName: user.displayName || undefined,

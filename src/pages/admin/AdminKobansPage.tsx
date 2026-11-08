@@ -401,26 +401,42 @@ export function AdminKobansPage() {
           includeInactive: true,
         });
         if (cancelled) return;
+        const fallbackStudent: KobanStudentSearchResult = {
+          id: deepLinkUid,
+          uid: deepLinkUid,
+          name: 'Student',
+          displayName: 'Student',
+          handle: '',
+          email: '',
+          avatar: null,
+          shortId: deepLinkUid.slice(0, 8),
+          plan: 'free',
+          role: 'student',
+          kobans: 0,
+          hasWallet: true,
+          status: 'active' as KobanStudentStatus,
+        };
         const matched =
           res.users.find((u) => u.uid === deepLinkUid) ||
-          res.users[0] || {
-            uid: deepLinkUid,
-            displayName: 'Student',
-            email: '',
-            kobans: 0,
-            hasWallet: true,
-            status: 'active' as KobanStudentStatus,
-          };
+          res.users[0] ||
+          fallbackStudent;
         await handleSelectUser(matched);
       } catch {
         if (cancelled) return;
         await handleSelectUser({
+          id: deepLinkUid,
           uid: deepLinkUid,
+          name: 'Student',
           displayName: 'Student',
+          handle: '',
           email: '',
+          avatar: null,
+          shortId: deepLinkUid.slice(0, 8),
+          plan: 'free',
+          role: 'student',
           kobans: 0,
           hasWallet: true,
-          status: 'active',
+          status: 'active' as KobanStudentStatus,
         });
       }
     })();

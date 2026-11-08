@@ -1,4 +1,5 @@
 import type { CosmeticType, CosmeticRarity } from '@/types';
+export type { CosmeticType, CosmeticRarity };
 
 /**
  * Single configuration constant for Koban-to-PKR conversion (10 Kobans = PKR 1).

@@ -301,7 +301,7 @@ export function CommonsCommentsDrawer({
                         )}
                       </div>
                       <div className="boardly-post-content text-[13px] text-secondary leading-relaxed whitespace-pre-wrap min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
-                        <MathText text={maskPublicUserText(comment.text || comment.body)} block />
+                        <MathText text={maskPublicUserText(comment.text || (comment as any).body)} block />
                       </div>
                     </div>
 

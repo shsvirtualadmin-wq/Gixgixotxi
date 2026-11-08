@@ -10,6 +10,9 @@ export type LineLoaderContext =
   | 'results'
   | 'admin'
   | 'import'
+  | 'onboarding'
+  | 'verify-email'
+  | 'general'
   | 'generic';
 
 export const LINE_LOADER_POOLS: Record<LineLoaderContext, readonly string[]> = {
@@ -54,6 +57,21 @@ export const LINE_LOADER_POOLS: Record<LineLoaderContext, readonly string[]> = {
     'Importing MCQs...',
     'Processing your sheet...',
     'Saving to the bank...',
+  ],
+  onboarding: [
+    'Setting up your profile...',
+    'Personalizing your subjects...',
+    'Almost ready...',
+  ],
+  'verify-email': [
+    'Verifying your email...',
+    'Confirming your token...',
+    'One moment...',
+  ],
+  general: [
+    'Thinking...',
+    'Processing...',
+    'Almost ready...',
   ],
   generic: [
     'Loading...',

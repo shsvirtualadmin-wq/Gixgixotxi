@@ -250,7 +250,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         },
         followersCount: 0,
         followingCount: 0,
-        lastActiveAt: activeGuestSource?.lastActiveAt || Date.now(),
+        lastActiveAt: activeGuestSource?.lastActiveAt ? String(activeGuestSource.lastActiveAt) : new Date().toISOString(),
         role: 'student',
         customRole: 'Guest',
         isGuest: true,
