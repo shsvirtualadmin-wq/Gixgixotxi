@@ -135,11 +135,33 @@ export function AdminUsersPage() {
     }
   };
 
+  const [user2faMap, setUser2faMap] = useState<
+    Record<string, { twoFactorEnabled: boolean; totpEnabled: boolean; email2faEnabled: boolean }>
+  >({});
+
+  const load2faStatusMap = useCallback(async () => {
+    if (!user) return;
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch('/api/auth/admin/2fa-status', {
+        credentials: 'include',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.ok && data?.statusByUid) {
+        setUser2faMap(data.statusByUid);
+      }
+    } catch {
+      // Non-fatal
+    }
+  }, [user]);
+
   useEffect(() => {
     if (user) {
       loadUsers();
+      void load2faStatusMap();
     }
-  }, [user, loadUsers]);
+  }, [user, loadUsers, load2faStatusMap]);
 
   // Orphan profile cleanup state
   const [cleaningOrphans, setCleaningOrphans] = useState(false);
@@ -632,6 +654,15 @@ export function AdminUsersPage() {
                           <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
                             {isPro ? 'Pro' : 'Free'}
                           </span>
+                          <span
+                            className={`text-[10px] font-heading px-2 py-0.5 rounded-full border ${
+                              user2faMap[u.uid]?.twoFactorEnabled
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-semibold'
+                                : 'border-[var(--border)] text-[var(--muted)]'
+                            }`}
+                          >
+                            {user2faMap[u.uid]?.twoFactorEnabled ? '2FA On' : '2FA Off'}
+                          </span>
                         </>
                       )}
                     </div>
@@ -653,6 +684,7 @@ export function AdminUsersPage() {
                 <th className="py-3 px-4 font-medium">University Track</th>
                 <th className="py-3 px-4 font-medium">Questions Solved</th>
                 <th className="py-3 px-4 font-medium">Streak</th>
+                <th className="py-3 px-4 font-medium">2FA</th>
                 <th className="py-3 px-4 font-medium">Created / Active</th>
                 <th className="py-3 px-5 text-right font-medium">Action</th>
               </tr>
@@ -660,13 +692,13 @@ export function AdminUsersPage() {
             <tbody className="divide-y divide-[var(--border)] text-[13px] font-heading">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="py-10 px-5">
+                  <td colSpan={9} className="py-10 px-5">
                     <LineLoader context="admin" message="Loading registered users..." />
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 px-5 text-center text-[var(--muted)]">
+                  <td colSpan={9} className="py-12 px-5 text-center text-[var(--muted)]">
                     <p className="font-heading text-[14px] mb-2">No users match your filters or search criteria.</p>
                     {(search || roleFilter !== 'all' || planFilter !== 'all' || statusFilter !== 'all' || accountTypeFilter !== 'all') && (
                       <button
@@ -759,6 +791,23 @@ export function AdminUsersPage() {
                         🔥 {u.streak || 0}d
                       </td>
 
+                      {/* 6b. 2FA Status (On / Off only, never any secret) */}
+                      <td className="py-3.5 px-4 text-[12px]">
+                        {isGuestUser ? (
+                          <span className="text-[11px] text-[var(--text-faint)]">—</span>
+                        ) : (
+                          <span
+                            className={`text-[11px] font-mono px-2 py-0.5 rounded-full border ${
+                              user2faMap[u.uid]?.twoFactorEnabled
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-semibold'
+                                : 'border-[var(--border)] text-[var(--muted)]'
+                            }`}
+                          >
+                            {user2faMap[u.uid]?.twoFactorEnabled ? 'On' : 'Off'}
+                          </span>
+                        )}
+                      </td>
+
                       {/* 7. Created & Last Active Date */}
                       <td className="py-3.5 px-4 text-[12px] font-mono text-[var(--text-faint)]">
                         <div>{joinedDate}</div>
@@ -803,7 +852,10 @@ export function AdminUsersPage() {
           user={selectedUser}
           adminEmail={user?.email || ''}
           onClose={() => setSelectedUser(null)}
-          onSuccess={loadUsers}
+          onSuccess={() => {
+            void loadUsers();
+            void load2faStatusMap();
+          }}
         />
       )}
     </div>

@@ -74,6 +74,31 @@ function resolveApiPath(path: string): string {
 }
 
 const GUEST_SESSION_STORAGE_KEY = 'boardly_guest_session_backup_v1';
+const TRUSTED_DEVICE_STORAGE_KEY = 'boardly_trusted_device_token';
+
+export function getStoredTrustedDeviceToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const fromLocal = window.localStorage.getItem(TRUSTED_DEVICE_STORAGE_KEY);
+    if (fromLocal && fromLocal.trim()) return fromLocal.trim();
+  } catch {
+    // Ignore storage error
+  }
+  return null;
+}
+
+export function setStoredTrustedDeviceToken(token: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (token && token.trim()) {
+      window.localStorage.setItem(TRUSTED_DEVICE_STORAGE_KEY, token.trim());
+    } else {
+      window.localStorage.removeItem(TRUSTED_DEVICE_STORAGE_KEY);
+    }
+  } catch {
+    // Ignore storage error
+  }
+}
 
 export function getStoredGuestSessionToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -162,6 +187,7 @@ export async function apiRequest<T = any>(
 
   const token = await getBearerToken(false);
   const guestSessionToken = getStoredGuestSessionToken();
+  const trustedDeviceToken = getStoredTrustedDeviceToken();
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -173,6 +199,9 @@ export async function apiRequest<T = any>(
   }
   if (guestSessionToken && !headers['X-Guest-Session']) {
     headers['X-Guest-Session'] = guestSessionToken;
+  }
+  if (trustedDeviceToken && !headers['X-Trusted-Device']) {
+    headers['X-Trusted-Device'] = trustedDeviceToken;
   }
 
   let serializedBody: BodyInit | undefined;

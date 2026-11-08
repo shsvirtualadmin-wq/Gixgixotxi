@@ -48,6 +48,7 @@ import {
   saveEmailNotificationPreferences,
   type EmailNotificationPreferences,
 } from '@/services/emailNotificationService';
+import { SecuritySettingsSection } from '@/components/profile/SecuritySettingsSection';
 
 const SELECTABLE_USER_ROLES = [
   'Student',
@@ -862,6 +863,9 @@ export function SettingsPage() {
             </div>
           </form>
         </section>
+
+        {/* ── 5b. Security & Optional Two-Step Verification ──────────────── */}
+        <SecuritySettingsSection />
 
         {/* ── 6. Smooth Mode (Performance & Battery) ─────────────────────── */}
         <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap">

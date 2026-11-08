@@ -155,6 +155,8 @@ export function VerifyEmailPage() {
         maskedEmail={otpVerificationState.maskedEmail}
         initialCooldownSeconds={otpVerificationState.cooldownSeconds}
         initialError={linkError || otpVerificationState.error}
+        twoFactorMethods={otpVerificationState.twoFactorMethods}
+        recoveryDisableAt={otpVerificationState.recoveryDisableAt}
         onVerifyCode={verifyOtpCode}
         onResendCode={() =>
           requestOtpCode({

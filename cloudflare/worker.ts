@@ -39,6 +39,8 @@ import {
 } from '../src/constants/d1Universities';
 
 
+import { isD1UserSessionVerified } from '../functions/_utils/firestoreRestAdmin';
+
 export interface Env {
   DB?: D1Database;
   R2_BUCKET?: R2Bucket;
@@ -52,6 +54,8 @@ export interface Env {
   GEMINI_MODEL?: string;
   GEMINI_FALLBACK_MODEL?: string;
   BOT_RUN_SECRET?: string;
+  OTP_HMAC_SECRET?: string;
+  TOTP_ENCRYPTION_KEY?: string;
 }
 
 export interface VerifiedFirebaseUser {
@@ -770,26 +774,24 @@ export async function verifyFirebaseIdToken(
       : undefined;
     const authTimeSec = Number(payload.auth_time || payload.iat || 0);
 
-    if (signInProvider !== 'google.com' && env.DB) {
-      let sessionVerified = false;
-      try {
-        const sessionRow = await env.DB.prepare(
-          'SELECT user_id, email_verified, verified_auth_time FROM email_verification_sessions WHERE user_id = ?1 LIMIT 1'
-        )
-          .bind(uid)
-          .first<{ user_id: string; email_verified: number; verified_auth_time: number }>();
-
-        if (sessionRow && Number(sessionRow.email_verified) === 1) {
-          sessionVerified =
-            authTimeSec > 0
-              ? Number(sessionRow.verified_auth_time || 0) + 5 >= authTimeSec
-              : true;
+    if (env.DB) {
+      const sessionVerified = await isD1UserSessionVerified(
+        env.DB as any,
+        {
+          uid,
+          email,
+          emailVerified: Boolean(payload.email_verified),
+          authTime: authTimeSec,
+          iat: Number(payload.iat || 0),
+          signInProvider,
+        },
+        {
+          request: req,
+          hmacSecret: env.OTP_HMAC_SECRET,
         }
-      } catch {
-        // Table may not exist yet
-      }
+      );
 
-      if (!sessionVerified && (payload.email_verified === false || signInProvider === 'password')) {
+      if (!sessionVerified) {
         return null;
       }
     }

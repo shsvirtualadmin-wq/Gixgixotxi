@@ -11,6 +11,10 @@
  */
 
 import type { RewardLedgerEntryType } from '../../src/lib/rewardsEngine';
+import {
+  extractTrustedDeviceTokenFromRequest,
+  hashTrustedDeviceToken,
+} from './twoFactorCrypto';
 
 export const DEFAULT_FIREBASE_PROJECT_ID = 'gen-lang-client-0365509316';
 export const DEFAULT_FIRESTORE_DATABASE_ID =
@@ -97,6 +101,9 @@ export interface RewardsEnv {
   VITE_FIREBASE_FIRESTORE_DATABASE_ID?: string;
   SUPERADMIN_UIDS?: string;
   SUPERADMIN_EMAILS?: string;
+  OTP_HMAC_SECRET?: string;
+  TOTP_ENCRYPTION_KEY?: string;
+  RESEND_API_KEY?: string;
 }
 
 // ─── Base64URL & PEM Helpers ──────────────────────────────────────────────────
@@ -252,49 +259,191 @@ export async function verifyFirebaseIdToken(
 }
 
 /**
- * Checks whether the user's current login/signup session has completed 6-digit email verification in D1.
- * - Google sign-in (`signInProvider === 'google.com'`) is verified by Google and needs no extra code.
- * - Email + password (`signInProvider === 'password'`) or any unverified email (`emailVerified === false`)
- *   must have a row in `email_verification_sessions` with `email_verified = 1` and
- *   `verified_auth_time + 5 >= authTime`.
+ * Server-side source of truth for whether a registered user's current session is verified:
+ * 1. Email Verification at Sign Up (required once):
+ *    - Google sign-in (`signInProvider === 'google.com'`) is already verified by Google.
+ *    - Otherwise, user must have `email_verification_sessions.email_verified = 1` or `verified.emailVerified === true`.
+ *    - If unverified, returns `false` (blocks dashboard & protected APIs).
+ * 2. Optional Two-Step Verification (Settings > Security):
+ *    - If user does NOT have 2FA enabled (`totp_enabled = 0` and `email_2fa_enabled = 0`, or 24h recovery timer expired),
+ *      returns `true` immediately once email is verified (normal login does NOT ask for any code).
+ *    - If 2FA IS enabled (for password, username, OR Google sign-in), user must EITHER:
+ *      (a) have a valid, non-revoked, non-expired trusted device cookie/header (`trusted_devices`), OR
+ *      (b) have completed 2FA for this login (`email_verification_sessions.verified_auth_time >= tokenAuthTime`
+ *          and no active unverified `pending_2fa_challenges` row).
  */
 export async function isD1UserSessionVerified(
   db: RewardsD1Database,
-  verified: VerifiedFirebaseToken
+  verified: VerifiedFirebaseToken,
+  options?: {
+    request?: Request | null;
+    hmacSecret?: string;
+    nowMs?: number;
+  }
 ): Promise<boolean> {
   if (!verified || !verified.uid) return false;
-  if (verified.signInProvider === 'google.com') {
-    return true;
-  }
+  const nowMs = options?.nowMs ?? Date.now();
+
+  let sessionRow: {
+    user_id: string;
+    email_verified: number;
+    verified_auth_time: number;
+    verified_at?: number;
+  } | null = null;
 
   try {
-    const sessionRow = await db
+    sessionRow = await db
       .prepare(
-        'SELECT user_id, email_verified, verified_auth_time FROM email_verification_sessions WHERE user_id = ?1 LIMIT 1'
+        'SELECT user_id, email_verified, verified_auth_time, verified_at FROM email_verification_sessions WHERE user_id = ?1 LIMIT 1'
       )
       .bind(verified.uid)
-      .first<{ user_id: string; email_verified: number; verified_auth_time: number }>();
-
-    if (sessionRow) {
-      if (Number(sessionRow.email_verified) !== 1) {
-        return false;
-      }
-      const tokenAuthTime = Number(verified.authTime || verified.iat || 0);
-      if (tokenAuthTime > 0) {
-        return Number(sessionRow.verified_auth_time || 0) + 5 >= tokenAuthTime;
-      }
-      return true;
-    }
+      .first<{
+        user_id: string;
+        email_verified: number;
+        verified_auth_time: number;
+        verified_at?: number;
+      }>();
   } catch {
     // Table may not exist yet before first migration run
   }
 
-  if (verified.emailVerified === false) {
+  // Step 1: Check one-time email verification
+  const isGoogleUser = verified.signInProvider === 'google.com';
+  const isEmailVerifiedInD1 = Boolean(sessionRow && Number(sessionRow.email_verified) === 1);
+  const isEmailVerifiedInToken =
+    verified.emailVerified === true && (!sessionRow || Number(sessionRow.email_verified) !== 0);
+
+  const isEmailVerified = isGoogleUser || isEmailVerifiedInD1 || isEmailVerifiedInToken;
+  if (!isEmailVerified) {
     return false;
   }
-  if (verified.signInProvider === 'password') {
+
+  // Step 2: Check optional Two-Step Verification (user_2fa)
+  let twoFaRow: {
+    user_id: string;
+    totp_enabled: number;
+    email_2fa_enabled: number;
+    recovery_disable_at: number | null;
+  } | null = null;
+
+  try {
+    twoFaRow = await db
+      .prepare(
+        'SELECT user_id, totp_enabled, email_2fa_enabled, recovery_disable_at FROM user_2fa WHERE user_id = ?1 LIMIT 1'
+      )
+      .bind(verified.uid)
+      .first<{
+        user_id: string;
+        totp_enabled: number;
+        email_2fa_enabled: number;
+        recovery_disable_at: number | null;
+      }>();
+  } catch {
+    // user_2fa table may not exist yet
+  }
+
+  if (
+    twoFaRow &&
+    twoFaRow.recovery_disable_at != null &&
+    Number(twoFaRow.recovery_disable_at) > 0 &&
+    nowMs >= Number(twoFaRow.recovery_disable_at)
+  ) {
+    // 24-hour recovery cooling-off period has elapsed -> automatically turn off 2FA
+    try {
+      await db
+        .prepare(
+          'UPDATE user_2fa SET totp_enabled = 0, email_2fa_enabled = 0, encrypted_secret = NULL, pending_encrypted_secret = NULL, recovery_requested_at = NULL, recovery_disable_at = NULL, updated_at = ?1 WHERE user_id = ?2'
+        )
+        .bind(nowMs, verified.uid)
+        .run();
+      await db
+        .prepare('DELETE FROM user_2fa_backup_codes WHERE user_id = ?1')
+        .bind(verified.uid)
+        .run();
+    } catch {
+      // Non-fatal
+    }
+    twoFaRow = {
+      ...twoFaRow,
+      totp_enabled: 0,
+      email_2fa_enabled: 0,
+      recovery_disable_at: null,
+    };
+  }
+
+  const has2fa = Boolean(
+    twoFaRow &&
+      (Number(twoFaRow.totp_enabled) === 1 || Number(twoFaRow.email_2fa_enabled) === 1)
+  );
+
+  if (!has2fa) {
+    // Normal login: email is verified and 2FA is OFF -> verified immediately without any code!
+    return true;
+  }
+
+  // Step 3: 2FA is ON. Check if request carries a valid 30-day trusted device token
+  const rawDeviceToken = extractTrustedDeviceTokenFromRequest(options?.request);
+  if (rawDeviceToken) {
+    try {
+      const hmacSecret =
+        (options?.hmacSecret || '').trim() ||
+        'boardly-default-otp-hmac-secret-v1-do-not-expose';
+      const tokenHash = await hashTrustedDeviceToken(rawDeviceToken, hmacSecret);
+      const trustedRow = await db
+        .prepare(
+          'SELECT id, user_id, expires_at, revoked FROM trusted_devices WHERE token_hash = ?1 AND revoked = 0 LIMIT 1'
+        )
+        .bind(tokenHash)
+        .first<{ id: string; user_id: string; expires_at: number; revoked: number }>();
+
+      if (
+        trustedRow &&
+        trustedRow.user_id === verified.uid &&
+        Number(trustedRow.revoked) === 0 &&
+        Number(trustedRow.expires_at) > nowMs
+      ) {
+        return true;
+      }
+    } catch {
+      // Ignore trusted device lookup error
+    }
+  }
+
+  // Step 4: Check if there is an active unverified pending 2FA challenge
+  try {
+    const pendingChallenge = await db
+      .prepare(
+        'SELECT challenge_id, auth_time, expires_at, verified FROM pending_2fa_challenges WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 1'
+      )
+      .bind(verified.uid)
+      .first<{
+        challenge_id: string;
+        auth_time: number;
+        expires_at: number;
+        verified: number;
+      }>();
+
+    if (pendingChallenge && Number(pendingChallenge.verified) === 0) {
+      return false;
+    }
+  } catch {
+    // Table may not exist yet
+  }
+
+  // Step 5: Verify that `email_verification_sessions.verified_auth_time` covers this token's `authTime`
+  if (!sessionRow || Number(sessionRow.email_verified) !== 1) {
     return false;
   }
+
+  const tokenAuthTime = Number(verified.authTime || verified.iat || 0);
+  const verifiedAuthTime = Number(sessionRow.verified_auth_time || 0);
+  if (verifiedAuthTime <= 0) {
+    return false;
+  }
+  if (tokenAuthTime > 0 && verifiedAuthTime < tokenAuthTime) {
+    return false;
+  }
+
   return true;
 }
 
@@ -622,7 +771,10 @@ export async function resolveCurrentUser(params: {
           ? email.split('@')[0] || 'Student'
           : 'Student';
 
-      const sessionVerified = await isD1UserSessionVerified(db, verified);
+      const sessionVerified = await isD1UserSessionVerified(db, verified, {
+        request,
+        hmacSecret: secret || env?.OTP_HMAC_SECRET,
+      });
 
       return {
         uid,
@@ -1446,123 +1598,188 @@ export interface InMemoryD1Tables {
       created_at: number;
     }
   >;
-  email_verification_codes: Map<
-    string,
-    {
-      id: string;
-      user_id: string;
-      email_hash: string;
-      purpose: 'login' | 'signup';
-      code_hash: string;
-      link_token_hash: string | null;
-      auth_time: number;
-      expires_at: number;
-      attempt_count: number;
-      used: number;
-      created_at: number;
-      ip_hash: string;
-    }
-  >;
-  email_verification_sessions: Map<
-    string,
-    {
-      user_id: string;
-      email_hash: string;
-      email_verified: number;
-      verified_auth_time: number;
-      verified_at: number;
-      updated_at: number;
-    }
-  >;
-  email_verification_send_logs: Map<
-    string,
-    {
-      id: string;
-      user_id: string;
-      email_hash: string;
-      ip_hash: string;
-      purpose: 'login' | 'signup';
-      created_at: number;
-    }
-  >;
-  user_usernames: Map<
-    string,
-    {
-      username_lower: string;
-      username: string;
-      username_display: string;
-      normalized_lookalike: string;
+    email_verification_codes: Map<
+      string,
+      {
+        id: string;
+        user_id: string;
+        email_hash: string;
+        purpose: string;
+        code_hash: string;
+        link_token_hash: string | null;
+        auth_time: number;
+        expires_at: number;
+        attempt_count: number;
+        used: number;
+        created_at: number;
+        ip_hash: string;
+      }
+    >;
+    email_verification_sessions: Map<
+      string,
+      {
+        user_id: string;
+        email_hash: string;
+        email_verified: number;
+        verified_auth_time: number;
+        verified_at: number;
+        updated_at: number;
+      }
+    >;
+    email_verification_send_logs: Map<
+      string,
+      {
+        id: string;
+        user_id: string;
+        email_hash: string;
+        ip_hash: string;
+        purpose: string;
+        created_at: number;
+      }
+    >;
+    user_usernames: Map<
+      string,
+      {
+        username_lower: string;
+        username: string;
+        username_display: string;
+        normalized_lookalike: string;
+        uid: string;
+        account_type: string;
+        email?: string;
+        created_at: number;
+        updated_at: number;
+      }
+    >;
+    guest_accounts: Map<
+      string,
+      {
+        uid: string;
+        username: string;
+        username_lower: string;
+        display_name: string;
+        short_id: string;
+        account_type: string;
+        is_guest: number;
+        email: string;
+        plan: string;
+        role: string;
+        status?: string;
+        abandoned_at?: number | null;
+        purge_after?: number | null;
+        upgraded_to_uid: string | null;
+        upgraded_at: number | null;
+        target_university: string;
+        tests_completed: number;
+        total_questions_solved: number;
+        streak: number;
+        stats_json: string;
+        attempts_json: string;
+        ip_hash: string;
+        device_id_hash: string;
+        is_suspended: number;
+        created_at: number;
+        last_active_at: number;
+      }
+    >;
+    guest_sessions: Map<
+      string,
+      {
+        session_id: string;
+        token_hash: string;
+        uid: string;
+        ip_hash: string;
+        device_id_hash: string;
+        user_agent: string;
+        created_at: number;
+        last_active_at: number;
+        expires_at: number;
+        revoked: number;
+      }
+    >;
+    guest_creation_rate_limits: Array<{
+      id: number;
+      identifier_hash: string;
+      identifier_type: string;
       uid: string;
-      account_type: string;
-      email?: string;
       created_at: number;
-      updated_at: number;
-    }
-  >;
-  guest_accounts: Map<
-    string,
-    {
-      uid: string;
-      username: string;
-      username_lower: string;
-      display_name: string;
-      short_id: string;
-      account_type: string;
-      is_guest: number;
-      email: string;
-      plan: string;
-      role: string;
-      status?: string;
-      abandoned_at?: number | null;
-      purge_after?: number | null;
-      upgraded_to_uid: string | null;
-      upgraded_at: number | null;
-      target_university: string;
-      tests_completed: number;
-      total_questions_solved: number;
-      streak: number;
-      stats_json: string;
-      attempts_json: string;
-      ip_hash: string;
-      device_id_hash: string;
-      is_suspended: number;
-      created_at: number;
-      last_active_at: number;
-    }
-  >;
-  guest_sessions: Map<
-    string,
-    {
-      session_id: string;
-      token_hash: string;
-      uid: string;
-      ip_hash: string;
-      device_id_hash: string;
-      user_agent: string;
-      created_at: number;
-      last_active_at: number;
-      expires_at: number;
-      revoked: number;
-    }
-  >;
-  guest_creation_rate_limits: Array<{
-    id: number;
-    identifier_hash: string;
-    identifier_type: string;
-    uid: string;
-    created_at: number;
-  }>;
-  login_rate_limits: Map<
-    string,
-    {
-      rate_key: string;
-      attempts: number;
-      window_start_ms: number;
-      blocked_until_ms: number | null;
-      updated_at_ms: number;
-    }
-  >;
-}
+    }>;
+    login_rate_limits: Map<
+      string,
+      {
+        rate_key: string;
+        attempts: number;
+        window_start_ms: number;
+        blocked_until_ms: number | null;
+        updated_at_ms: number;
+      }
+    >;
+    user_2fa: Map<
+      string,
+      {
+        user_id: string;
+        email: string;
+        totp_enabled: number;
+        email_2fa_enabled: number;
+        encrypted_secret: string | null;
+        pending_encrypted_secret: string | null;
+        last_used_step: number;
+        recovery_requested_at: number | null;
+        recovery_disable_at: number | null;
+        updated_at: number;
+        created_at: number;
+      }
+    >;
+    user_2fa_backup_codes: Map<
+      string,
+      {
+        id: string;
+        user_id: string;
+        code_hash: string;
+        used: number;
+        used_at: number | null;
+        created_at: number;
+      }
+    >;
+    trusted_devices: Map<
+      string,
+      {
+        id: string;
+        user_id: string;
+        token_hash: string;
+        user_agent: string;
+        ip_hash: string;
+        created_at: number;
+        last_used_at: number;
+        expires_at: number;
+        revoked: number;
+      }
+    >;
+    pending_2fa_challenges: Map<
+      string,
+      {
+        challenge_id: string;
+        user_id: string;
+        auth_time: number;
+        expires_at: number;
+        attempt_count: number;
+        verified: number;
+        created_at: number;
+      }
+    >;
+    security_audit_logs: Map<
+      string,
+      {
+        id: string;
+        user_id: string;
+        actor_id: string;
+        event_type: string;
+        ip_hash: string;
+        details_json: string;
+        created_at: number;
+      }
+    >;
+  }
 
 export class InMemoryD1Database implements RewardsD1Database {
   public tables: InMemoryD1Tables = {
@@ -1582,6 +1799,11 @@ export class InMemoryD1Database implements RewardsD1Database {
     guest_sessions: new Map(),
     guest_creation_rate_limits: [],
     login_rate_limits: new Map(),
+    user_2fa: new Map(),
+    user_2fa_backup_codes: new Map(),
+    trusted_devices: new Map(),
+    pending_2fa_challenges: new Map(),
+    security_audit_logs: new Map(),
   };
 
   constructor() {
@@ -2033,7 +2255,120 @@ export class InMemoryD1Database implements RewardsD1Database {
     if (upper.includes('FROM LOGIN_RATE_LIMITS')) {
       const key = String(args[0] ?? '');
       const row = this.tables.login_rate_limits.get(key);
-      return row ? [{ ...row }] : [];
+      return row
+        ? [
+            {
+              ...row,
+              attempt_count: row.attempts,
+              window_start: row.window_start_ms,
+              locked_until: row.blocked_until_ms,
+              updated_at: row.updated_at_ms,
+            },
+          ]
+        : [];
+    }
+
+    // 17. user_2fa
+    if (upper.includes('FROM USER_2FA') && !upper.includes('FROM USER_2FA_BACKUP_CODES')) {
+      const all = Array.from(this.tables.user_2fa.values());
+      if (upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        const row = this.tables.user_2fa.get(uid);
+        return row ? [{ ...row }] : [];
+      }
+      return all.map((r) => ({ ...r }));
+    }
+
+    // 18. user_2fa_backup_codes
+    if (upper.includes('FROM USER_2FA_BACKUP_CODES')) {
+      const all = Array.from(this.tables.user_2fa_backup_codes.values());
+      if (upper.includes('COUNT(*)') && upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        const onlyUnused = upper.includes('AND USED = 0');
+        const cnt = all.filter(
+          (r) => r.user_id === uid && (!onlyUnused || Number(r.used) === 0)
+        ).length;
+        return [{ cnt }];
+      }
+      if (upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        let rows = all.filter((r) => r.user_id === uid);
+        if (upper.includes('AND USED = 0')) {
+          rows = rows.filter((r) => Number(r.used) === 0);
+        }
+        return rows.map((r) => ({ ...r }));
+      }
+      return all.map((r) => ({ ...r }));
+    }
+
+    // 19. trusted_devices
+    if (upper.includes('FROM TRUSTED_DEVICES')) {
+      const all = Array.from(this.tables.trusted_devices.values());
+      if (upper.includes('WHERE TOKEN_HASH =')) {
+        const th = String(args[0] ?? '');
+        const onlyActive = upper.includes('REVOKED = 0');
+        const found = all.find(
+          (r) => r.token_hash === th && (!onlyActive || Number(r.revoked) === 0)
+        );
+        return found ? [{ ...found }] : [];
+      }
+      if (upper.includes('COUNT(*)') && upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        const nowMs = args.length > 1 ? Number(args[1] ?? 0) : 0;
+        const cnt = all.filter(
+          (r) =>
+            r.user_id === uid &&
+            Number(r.revoked) === 0 &&
+            (nowMs <= 0 || Number(r.expires_at) > nowMs)
+        ).length;
+        return [{ cnt }];
+      }
+      if (upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        return all
+          .filter((r) => r.user_id === uid && (!upper.includes('REVOKED = 0') || Number(r.revoked) === 0))
+          .map((r) => ({ ...r }));
+      }
+      return all.map((r) => ({ ...r }));
+    }
+
+    // 20. pending_2fa_challenges
+    if (upper.includes('FROM PENDING_2FA_CHALLENGES')) {
+      const all = Array.from(this.tables.pending_2fa_challenges.values());
+      if (upper.includes('WHERE CHALLENGE_ID =')) {
+        const cid = String(args[0] ?? '');
+        const row = this.tables.pending_2fa_challenges.get(cid);
+        return row ? [{ ...row }] : [];
+      }
+      if (upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        let rows = all.filter((r) => r.user_id === uid);
+        if (upper.includes('AND VERIFIED = 0')) {
+          rows = rows.filter((r) => Number(r.verified) === 0);
+        }
+        rows.sort((a, b) => b.created_at - a.created_at);
+        return rows.map((r) => ({ ...r }));
+      }
+      return all.map((r) => ({ ...r }));
+    }
+
+    // 21. security_audit_logs
+    if (upper.includes('FROM SECURITY_AUDIT_LOGS')) {
+      const all = Array.from(this.tables.security_audit_logs.values());
+      if (upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        const limit = args.length > 1 ? Number(args[1] ?? 50) : 50;
+        return all
+          .filter((r) => r.user_id === uid)
+          .sort((a, b) => b.created_at - a.created_at)
+          .slice(0, limit)
+          .map((r) => ({ ...r }));
+      }
+      const limit = args.length > 0 ? Number(args[0] ?? 100) : 100;
+      return all
+        .sort((a, b) => b.created_at - a.created_at)
+        .slice(0, limit)
+        .map((r) => ({ ...r }));
     }
 
     return [];
@@ -2055,7 +2390,7 @@ export class InMemoryD1Database implements RewardsD1Database {
       const id = String(args[0]);
       const user_id = String(args[1]);
       const email_hash = String(args[2]);
-      const purpose = (String(args[3]) === 'signup' ? 'signup' : 'login') as 'login' | 'signup';
+      const purpose = String(args[3] || 'signup');
       const code_hash = String(args[4]);
       const link_token_hash = args[5] != null ? String(args[5]) : null;
       const auth_time = Number(args[6] ?? 0);
@@ -2150,13 +2485,26 @@ export class InMemoryD1Database implements RewardsD1Database {
       return 1;
     }
 
+    if (upper.startsWith('UPDATE EMAIL_VERIFICATION_SESSIONS')) {
+      if (upper.includes('SET VERIFIED_AUTH_TIME =')) {
+        const verified_auth_time = Number(args[0] ?? 0);
+        const updated_at = Number(args[1] ?? Date.now());
+        const user_id = String(args[2] ?? '');
+        const existing = this.tables.email_verification_sessions.get(user_id);
+        if (!existing) return 0;
+        existing.verified_auth_time = verified_auth_time;
+        existing.updated_at = updated_at;
+        return 1;
+      }
+    }
+
     // 0c. email_verification_send_logs
     if (upper.includes('INTO EMAIL_VERIFICATION_SEND_LOGS')) {
       const id = String(args[0]);
       const user_id = String(args[1]);
       const email_hash = String(args[2]);
       const ip_hash = String(args[3]);
-      const purpose = (String(args[4]) === 'signup' ? 'signup' : 'login') as 'login' | 'signup';
+      const purpose = String(args[4] || 'signup');
       const created_at = Number(args[5] ?? Date.now());
       this.tables.email_verification_send_logs.set(id, {
         id,
@@ -2764,6 +3112,260 @@ export class InMemoryD1Database implements RewardsD1Database {
     if (upper.startsWith('DELETE FROM LOGIN_RATE_LIMITS')) {
       const key = String(args[0] ?? '');
       return this.tables.login_rate_limits.delete(key) ? 1 : 0;
+    }
+
+    // 11. user_2fa
+    if (upper.includes('INTO USER_2FA') && !upper.includes('INTO USER_2FA_BACKUP_CODES')) {
+      const user_id = String(args[0]);
+      const email = String(args[1] ?? '');
+      const totp_enabled = Number(args[2] ?? 0);
+      const email_2fa_enabled = Number(args[3] ?? 0);
+      const encrypted_secret = args[4] != null ? String(args[4]) : null;
+      const pending_encrypted_secret = args[5] != null ? String(args[5]) : null;
+      const last_used_step = Number(args[6] ?? 0);
+      const recovery_requested_at = args[7] != null ? Number(args[7]) : null;
+      const recovery_disable_at = args[8] != null ? Number(args[8]) : null;
+      const updated_at = Number(args[9] ?? Date.now());
+      const created_at = Number(args[10] ?? updated_at);
+      this.tables.user_2fa.set(user_id, {
+        user_id,
+        email,
+        totp_enabled,
+        email_2fa_enabled,
+        encrypted_secret,
+        pending_encrypted_secret,
+        last_used_step,
+        recovery_requested_at,
+        recovery_disable_at,
+        updated_at,
+        created_at,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('UPDATE USER_2FA')) {
+      if (
+        upper.includes('SET TOTP_ENABLED = 0') &&
+        upper.includes('EMAIL_2FA_ENABLED = 0')
+      ) {
+        const updated_at = Number(args[0] ?? Date.now());
+        const user_id = String(args[1] ?? '');
+        const row = this.tables.user_2fa.get(user_id);
+        if (!row) return 0;
+        row.totp_enabled = 0;
+        row.email_2fa_enabled = 0;
+        row.encrypted_secret = null;
+        row.pending_encrypted_secret = null;
+        row.recovery_requested_at = null;
+        row.recovery_disable_at = null;
+        row.updated_at = updated_at;
+        return 1;
+      }
+      if (upper.includes('SET LAST_USED_STEP =')) {
+        const last_used_step = Number(args[0] ?? 0);
+        const updated_at = Number(args[1] ?? Date.now());
+        const user_id = String(args[2] ?? '');
+        const row = this.tables.user_2fa.get(user_id);
+        if (!row) return 0;
+        row.last_used_step = last_used_step;
+        row.updated_at = updated_at;
+        return 1;
+      }
+      if (upper.includes('SET RECOVERY_REQUESTED_AT =') && upper.includes('RECOVERY_DISABLE_AT =')) {
+        const reqAt = args[0] != null ? Number(args[0]) : null;
+        const disAt = args[1] != null ? Number(args[1]) : null;
+        const updated_at = Number(args[2] ?? Date.now());
+        const user_id = String(args[3] ?? '');
+        const row = this.tables.user_2fa.get(user_id);
+        if (!row) return 0;
+        row.recovery_requested_at = reqAt;
+        row.recovery_disable_at = disAt;
+        row.updated_at = updated_at;
+        return 1;
+      }
+    }
+
+    if (upper.startsWith('DELETE FROM USER_2FA') && !upper.includes('USER_2FA_BACKUP_CODES')) {
+      const uid = String(args[0] ?? '');
+      return this.tables.user_2fa.delete(uid) ? 1 : 0;
+    }
+
+    // 12. user_2fa_backup_codes
+    if (upper.includes('INTO USER_2FA_BACKUP_CODES')) {
+      const id = String(args[0]);
+      const user_id = String(args[1]);
+      const code_hash = String(args[2]);
+      const used = Number(args[3] ?? 0);
+      const used_at = args[4] != null ? Number(args[4]) : null;
+      const created_at = Number(args[5] ?? Date.now());
+      this.tables.user_2fa_backup_codes.set(id, {
+        id,
+        user_id,
+        code_hash,
+        used,
+        used_at,
+        created_at,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('UPDATE USER_2FA_BACKUP_CODES')) {
+      if (upper.includes('SET USED = 1')) {
+        const used_at = Number(args[0] ?? Date.now());
+        const id = String(args[1] ?? '');
+        const row = this.tables.user_2fa_backup_codes.get(id);
+        if (!row) return 0;
+        row.used = 1;
+        row.used_at = used_at;
+        return 1;
+      }
+    }
+
+    if (upper.startsWith('DELETE FROM USER_2FA_BACKUP_CODES')) {
+      const uid = String(args[0] ?? '');
+      let changes = 0;
+      for (const [id, r] of this.tables.user_2fa_backup_codes.entries()) {
+        if (r.user_id === uid) {
+          this.tables.user_2fa_backup_codes.delete(id);
+          changes++;
+        }
+      }
+      return changes;
+    }
+
+    // 13. trusted_devices
+    if (upper.includes('INTO TRUSTED_DEVICES')) {
+      const id = String(args[0]);
+      const user_id = String(args[1]);
+      const token_hash = String(args[2]);
+      const user_agent = String(args[3] ?? '');
+      const ip_hash = String(args[4] ?? '');
+      const created_at = Number(args[5] ?? Date.now());
+      const last_used_at = Number(args[6] ?? created_at);
+      const expires_at = Number(args[7] ?? created_at + 30 * 86400 * 1000);
+      const revoked = Number(args[8] ?? 0);
+      this.tables.trusted_devices.set(id, {
+        id,
+        user_id,
+        token_hash,
+        user_agent,
+        ip_hash,
+        created_at,
+        last_used_at,
+        expires_at,
+        revoked,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('UPDATE TRUSTED_DEVICES')) {
+      if (upper.includes('SET REVOKED = 1') && upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        let changes = 0;
+        for (const r of this.tables.trusted_devices.values()) {
+          if (r.user_id === uid && r.revoked === 0) {
+            r.revoked = 1;
+            changes++;
+          }
+        }
+        return changes;
+      }
+      if (upper.includes('SET LAST_USED_AT =') && upper.includes('WHERE ID =')) {
+        const lastUsed = Number(args[0] ?? Date.now());
+        const id = String(args[1] ?? '');
+        const row = this.tables.trusted_devices.get(id);
+        if (!row) return 0;
+        row.last_used_at = lastUsed;
+        return 1;
+      }
+    }
+
+    if (upper.startsWith('DELETE FROM TRUSTED_DEVICES')) {
+      const uid = String(args[0] ?? '');
+      let changes = 0;
+      for (const [id, r] of this.tables.trusted_devices.entries()) {
+        if (r.user_id === uid) {
+          this.tables.trusted_devices.delete(id);
+          changes++;
+        }
+      }
+      return changes;
+    }
+
+    // 14. pending_2fa_challenges
+    if (upper.includes('INTO PENDING_2FA_CHALLENGES')) {
+      const challenge_id = String(args[0]);
+      const user_id = String(args[1]);
+      const auth_time = Number(args[2] ?? 0);
+      const expires_at = Number(args[3] ?? Date.now() + 5 * 60 * 1000);
+      const attempt_count = Number(args[4] ?? 0);
+      const verified = Number(args[5] ?? 0);
+      const created_at = Number(args[6] ?? Date.now());
+      this.tables.pending_2fa_challenges.set(challenge_id, {
+        challenge_id,
+        user_id,
+        auth_time,
+        expires_at,
+        attempt_count,
+        verified,
+        created_at,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('UPDATE PENDING_2FA_CHALLENGES')) {
+      if (upper.includes('SET VERIFIED = 1') && upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        let changes = 0;
+        for (const r of this.tables.pending_2fa_challenges.values()) {
+          if (r.user_id === uid && r.verified === 0) {
+            r.verified = 1;
+            changes++;
+          }
+        }
+        return changes;
+      }
+      if (upper.includes('SET ATTEMPT_COUNT =') && upper.includes('WHERE CHALLENGE_ID =')) {
+        const att = Number(args[0] ?? 0);
+        const cid = String(args[1] ?? '');
+        const row = this.tables.pending_2fa_challenges.get(cid);
+        if (!row) return 0;
+        row.attempt_count = att;
+        return 1;
+      }
+    }
+
+    if (upper.startsWith('DELETE FROM PENDING_2FA_CHALLENGES')) {
+      const uid = String(args[0] ?? '');
+      let changes = 0;
+      for (const [cid, r] of this.tables.pending_2fa_challenges.entries()) {
+        if (r.user_id === uid) {
+          this.tables.pending_2fa_challenges.delete(cid);
+          changes++;
+        }
+      }
+      return changes;
+    }
+
+    // 15. security_audit_logs
+    if (upper.includes('INTO SECURITY_AUDIT_LOGS')) {
+      const id = String(args[0]);
+      const user_id = String(args[1] ?? '');
+      const actor_id = String(args[2] ?? user_id);
+      const event_type = String(args[3] ?? '');
+      const ip_hash = String(args[4] ?? '');
+      const details_json = String(args[5] ?? '{}');
+      const created_at = Number(args[6] ?? Date.now());
+      this.tables.security_audit_logs.set(id, {
+        id,
+        user_id,
+        actor_id,
+        event_type,
+        ip_hash,
+        details_json,
+        created_at,
+      });
+      return 1;
     }
 
     return 0;

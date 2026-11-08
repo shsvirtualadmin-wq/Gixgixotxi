@@ -23,6 +23,7 @@ import { isCrewPaidActive } from '@/services/crewBackend';
 import { maskEmail } from '@/utils/privacy';
 import type { CrewDoc } from '@/types/crew';
 import { Timestamp } from 'firebase/firestore';
+import { auth } from '@/lib/firebase';
 import { LineLoader } from '@/components/ui/LineLoader';
 
 interface RecentAttemptItem {
@@ -138,6 +139,71 @@ export function UserOverrideDrawer({
   const [loadingCrew, setLoadingCrew] = useState(false);
   const [removingFromCrew, setRemovingFromCrew] = useState(false);
   const [verifiedNotice, setVerifiedNotice] = useState<string | null>(null);
+
+  // Two-Step Verification status & Super Admin Reset 2FA
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState<boolean>(false);
+  const [resetting2fa, setResetting2fa] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!user || user.isGuest || user.accountType === 'guest') {
+      setTwoFactorEnabled(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const idToken = auth.currentUser ? await auth.currentUser.getIdToken() : '';
+        if (!idToken) return;
+        const res = await fetch(`/api/auth/admin/2fa-status?uid=${encodeURIComponent(user.uid)}`, {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok && data?.ok) {
+          setTwoFactorEnabled(Boolean(data.twoFactorEnabled));
+        }
+      } catch {
+        // Ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const handleResetUser2fa = async () => {
+    if (!user || !isSuperAdmin || resetting2fa) return;
+    setResetting2fa(true);
+    setError(null);
+    setVerifiedNotice(null);
+    try {
+      const idToken = auth.currentUser ? await auth.currentUser.getIdToken() : '';
+      const res = await fetch('/api/auth/admin/reset-2fa', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          targetUid: user.uid,
+          reason: 'Super Admin Reset 2FA via Admin Portal',
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        setError(data?.error || 'Could not reset user 2FA.');
+      } else {
+        setTwoFactorEnabled(false);
+        setVerifiedNotice('Two-step verification reset for this user (logged in audit table & emailed user).');
+        onSuccess();
+      }
+    } catch {
+      setError('Network error resetting user 2FA.');
+    } finally {
+      setResetting2fa(false);
+    }
+  };
 
   if (!user) return null;
 
@@ -656,6 +722,33 @@ export function UserOverrideDrawer({
             <label className="block text-[12px] font-heading text-[var(--muted)]">
               Account actions
             </label>
+
+            {/* Two-Step Verification Status & Superadmin Reset 2FA */}
+            {!user.isGuest && user.accountType !== 'guest' && (
+              <div className="p-3 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-[12px] font-heading">
+                  <Shield size={14} className="text-[var(--muted)]" />
+                  <span className="text-[var(--text)]">Two-step verification:</span>
+                  <span
+                    className={`font-mono font-bold ${
+                      twoFactorEnabled ? 'text-emerald-400' : 'text-[var(--muted)]'
+                    }`}
+                  >
+                    {twoFactorEnabled ? 'On' : 'Off'}
+                  </span>
+                </div>
+                {isSuperAdmin && twoFactorEnabled && (
+                  <button
+                    type="button"
+                    disabled={resetting2fa}
+                    onClick={handleResetUser2fa}
+                    className="px-3 py-1.5 rounded-[10px] border border-[var(--red)]/50 text-[var(--red)] hover:bg-[var(--card)] text-[11px] font-heading font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {resetting2fa ? 'Resetting...' : 'Reset 2FA'}
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Suspend / Unsuspend */}
             <button

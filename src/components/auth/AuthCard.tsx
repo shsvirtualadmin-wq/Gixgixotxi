@@ -253,13 +253,9 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
 
     try {
       // ONLY signInWithPopup on user click
-      const loggedInUser = await signInWithGoogle();
-      if (loggedInUser) {
-        // Immediate explicit navigation to destination (Google sign-in needs no 6-digit code)
-        const dest = getDestinationUrl();
-        logRedirect('/login', dest, 'AuthCard.tsx (Google sign in explicit)');
-        navigate(dest, { replace: true });
-      }
+      await signInWithGoogle();
+      // Navigation is handled by the useEffect above once isSessionVerified is true
+      // (immediate for Google users without 2FA; after 2FA code for Google users with 2FA enabled).
     } catch (err: unknown) {
       const fe = err as { code?: string; message?: string };
       if (
@@ -407,13 +403,15 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
   // ── 6-Digit Email Verification Code Step (Login 2FA & Sign Up Verification) ──
   if (user && otpVerificationState.status === 'pending') {
     const activePurpose =
-      otpVerificationState.purpose || (mode === 'signup' ? 'signup' : 'login');
+      otpVerificationState.purpose || (mode === 'signup' ? 'signup' : '2fa');
     return (
       <OtpVerificationCard
         purpose={activePurpose}
         maskedEmail={otpVerificationState.maskedEmail}
         initialCooldownSeconds={otpVerificationState.cooldownSeconds}
         initialError={otpVerificationState.error}
+        twoFactorMethods={otpVerificationState.twoFactorMethods}
+        recoveryDisableAt={otpVerificationState.recoveryDisableAt}
         onVerifyCode={verifyOtpCode}
         onResendCode={() =>
           requestOtpCode({

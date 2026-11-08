@@ -35,7 +35,11 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { setStoredGuestSessionToken } from '@/lib/api';
+import {
+  setStoredGuestSessionToken,
+  getStoredTrustedDeviceToken,
+  setStoredTrustedDeviceToken,
+} from '@/lib/api';
 import type { UserProfile } from '@/types';
 import { debugTracker } from '@/utils/debugTracker';
 import { deriveFallbackShortId, ensureUserShortId } from '@/utils/shortId';
@@ -72,11 +76,17 @@ function withTimeout<T>(
 
 export interface OtpVerificationState {
   status: 'idle' | 'checking' | 'pending' | 'verified';
-  purpose: 'login' | 'signup' | null;
+  purpose: 'login' | 'signup' | '2fa' | null;
   email: string;
   maskedEmail: string;
   cooldownSeconds: number;
   error: string | null;
+  twoFactorMethods?: {
+    totp: boolean;
+    email: boolean;
+  };
+  pendingExpiresAt?: number | null;
+  recoveryDisableAt?: number | null;
 }
 
 function maskEmailClient(email: string): string {
@@ -169,10 +179,13 @@ interface AuthContextValue {
   isSessionVerified: boolean;
   otpVerificationState: OtpVerificationState;
   requestOtpCode: (opts?: {
-    purpose?: 'login' | 'signup';
+    purpose?: 'login' | 'signup' | '2fa';
     forceResend?: boolean;
   }) => Promise<{ ok: boolean; maskedEmail?: string; cooldownSeconds?: number; error?: string }>;
-  verifyOtpCode: (code: string) => Promise<{
+  verifyOtpCode: (
+    code: string,
+    opts?: { method?: 'totp' | 'email' | 'backup'; rememberDevice?: boolean }
+  ) => Promise<{
     ok: boolean;
     error?: string;
     locked?: boolean;
@@ -459,18 +472,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const requestOtpCodeForUser = useCallback(
     async (
       firebaseUser: User,
-      opts?: { purpose?: 'login' | 'signup'; forceResend?: boolean }
+      opts?: { purpose?: 'login' | 'signup' | '2fa'; forceResend?: boolean }
     ): Promise<{ ok: boolean; maskedEmail?: string; cooldownSeconds?: number; error?: string }> => {
       try {
         const idToken = await firebaseUser.getIdToken();
+        const sendPurpose = opts?.purpose === '2fa' ? 'login' : opts?.purpose;
         const res = await fetch('/api/auth/send-code', {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${idToken}`,
           },
           body: JSON.stringify({
-            purpose: opts?.purpose,
+            purpose: sendPurpose,
             forceResend: Boolean(opts?.forceResend),
           }),
         });
@@ -505,14 +520,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           };
         }
 
-        setOtpVerificationState({
+        setOtpVerificationState((prev) => ({
+          ...prev,
           status: 'pending',
-          purpose: data.purpose || opts?.purpose || 'login',
+          purpose: opts?.purpose || prev.purpose || data.purpose || 'login',
           email: firebaseUser.email || '',
           maskedEmail: masked,
           cooldownSeconds: cooldown || 60,
           error: null,
-        });
+        }));
 
         return {
           ok: true,
@@ -533,7 +549,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const requestOtpCode = useCallback(
-    async (opts?: { purpose?: 'login' | 'signup'; forceResend?: boolean }) => {
+    async (opts?: { purpose?: 'login' | 'signup' | '2fa'; forceResend?: boolean }) => {
       const targetUser = auth.currentUser || user;
       if (!targetUser) {
         return { ok: false, error: 'Please sign in first.' };
@@ -543,10 +559,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user, requestOtpCodeForUser]
   );
 
-  // ── Verify 6-digit OTP code via Worker (`/api/auth/verify-code`) ─────────
+  // ── Verify 6-digit OTP or 2FA code via Worker (`/api/auth/verify-code` or `/api/auth/2fa/verify`) ──
   const verifyOtpCode = useCallback(
     async (
-      code: string
+      code: string,
+      opts?: { method?: 'totp' | 'email' | 'backup'; rememberDevice?: boolean }
     ): Promise<{
       ok: boolean;
       error?: string;
@@ -560,20 +577,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       try {
         const idToken = await targetUser.getIdToken();
-        const res = await fetch('/api/auth/verify-code', {
+        const isTwoFactorStep =
+          otpVerificationState.purpose === '2fa' || Boolean(opts?.method);
+        const endpoint = isTwoFactorStep ? '/api/auth/2fa/verify' : '/api/auth/verify-code';
+
+        const res = await fetch(endpoint, {
           method: 'POST',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${idToken}`,
           },
           body: JSON.stringify({
             code: code.trim(),
-            purpose: otpVerificationState.purpose || undefined,
+            purpose:
+              otpVerificationState.purpose === '2fa'
+                ? 'login'
+                : otpVerificationState.purpose || undefined,
+            method: opts?.method,
+            rememberDevice: Boolean(opts?.rememberDevice),
           }),
         });
         const data = (await res.json().catch(() => ({}))) as {
           ok?: boolean;
           verified?: boolean;
+          trustedDeviceToken?: string | null;
           error?: string;
           locked?: boolean;
           attemptsRemaining?: number;
@@ -586,6 +614,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             locked: Boolean(data.locked),
             attemptsRemaining: data.attemptsRemaining,
           };
+        }
+
+        if (data.trustedDeviceToken) {
+          setStoredTrustedDeviceToken(data.trustedDeviceToken);
         }
 
         try {
@@ -821,15 +853,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // ── Auth state listener (Single Source of Truth with `/api/auth/me`) ─────
-  useEffect(() => {
-    let isMounted = true;
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (!isMounted) return;
+  // Helper to evaluate server-side verification gate (`/api/auth/verification-status`)
+  const evaluateUserVerificationGate = useCallback(
+    async (firebaseUser: User, isFreshLogin = false): Promise<boolean> => {
+      setOtpVerificationState((prev) =>
+        prev.status === 'pending' && prev.email === (firebaseUser.email || '')
+          ? prev
+          : {
+              status: 'checking',
+              purpose: prev.purpose,
+              email: firebaseUser.email || '',
+              maskedEmail: maskEmailClient(firebaseUser.email || ''),
+              cooldownSeconds: prev.cooldownSeconds,
+              error: null,
+            }
+      );
 
-      if (firebaseUser) {
-        setUser(firebaseUser);
-        if (isGoogleProviderUser(firebaseUser)) {
+      try {
+        const idToken = await firebaseUser.getIdToken();
+        const savedTrustedDevice = getStoredTrustedDeviceToken();
+        const headers: Record<string, string> = {
+          Authorization: `Bearer ${idToken}`,
+        };
+        if (savedTrustedDevice) {
+          headers['X-Trusted-Device'] = savedTrustedDevice;
+        }
+
+        const statusRes = await fetch(
+          `/api/auth/verification-status${isFreshLogin ? '?login=1' : ''}`,
+          {
+            credentials: 'include',
+            headers,
+          }
+        );
+        const statusData = (await statusRes.json().catch(() => ({}))) as {
+          ok?: boolean;
+          verified?: boolean;
+          emailVerified?: boolean;
+          twoFactorEnabled?: boolean;
+          totpEnabled?: boolean;
+          email2faEnabled?: boolean;
+          deviceTrusted?: boolean;
+          requiredPurpose?: 'login' | 'signup' | '2fa' | null;
+          pendingExpiresAt?: number | null;
+          recoveryDisableAt?: number | null;
+          hasActiveCode?: boolean;
+          maskedEmail?: string;
+          cooldownSeconds?: number;
+        };
+
+        if (statusRes.ok && statusData.verified) {
           try {
             localStorage.setItem('boardly_user_authenticated', 'true');
           } catch {
@@ -839,103 +912,98 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             status: 'verified',
             purpose: null,
             email: firebaseUser.email || '',
+            maskedEmail: statusData.maskedEmail || maskEmailClient(firebaseUser.email || ''),
+            cooldownSeconds: 0,
+            error: null,
+          });
+          return true;
+        }
+
+        try {
+          localStorage.removeItem('boardly_user_authenticated');
+        } catch {
+          // Ignore storage errors
+        }
+
+        const requiredPurpose: 'login' | 'signup' | '2fa' =
+          statusData.requiredPurpose ||
+          (statusData.twoFactorEnabled
+            ? '2fa'
+            : firebaseUser.emailVerified
+            ? 'login'
+            : 'signup');
+
+        const totpEnabled = Boolean(statusData.totpEnabled);
+        const email2faEnabled = Boolean(statusData.email2faEnabled);
+
+        setOtpVerificationState({
+          status: 'pending',
+          purpose: requiredPurpose,
+          email: firebaseUser.email || '',
+          maskedEmail: statusData.maskedEmail || maskEmailClient(firebaseUser.email || ''),
+          cooldownSeconds: Number(statusData.cooldownSeconds || 0),
+          error: null,
+          twoFactorMethods: {
+            totp: totpEnabled,
+            email: email2faEnabled,
+          },
+          pendingExpiresAt: statusData.pendingExpiresAt || null,
+          recoveryDisableAt: statusData.recoveryDisableAt || null,
+        });
+
+        // Automatically send email code when required for one-time signup verification
+        // OR when 2FA is active with email 2FA enabled and no TOTP-only preference
+        const shouldAutoSendEmail =
+          requiredPurpose === 'signup' ||
+          (requiredPurpose === '2fa' && email2faEnabled && !totpEnabled);
+
+        if (
+          shouldAutoSendEmail &&
+          !statusData.hasActiveCode &&
+          (!statusData.cooldownSeconds || statusData.cooldownSeconds <= 0)
+        ) {
+          void requestOtpCodeForUserRef.current(firebaseUser, {
+            purpose: requiredPurpose,
+            forceResend: false,
+          });
+        }
+        return false;
+      } catch {
+        // Fallback if network fails
+        if (isGoogleProviderUser(firebaseUser) || firebaseUser.emailVerified) {
+          setOtpVerificationState({
+            status: 'verified',
+            purpose: null,
+            email: firebaseUser.email || '',
             maskedEmail: maskEmailClient(firebaseUser.email || ''),
             cooldownSeconds: 0,
             error: null,
           });
-        } else {
-          // Check server-side D1 verification status for this email + password session
-          setOtpVerificationState((prev) =>
-            prev.status === 'pending' && prev.email === (firebaseUser.email || '')
-              ? prev
-              : {
-                  status: 'checking',
-                  purpose: prev.purpose,
-                  email: firebaseUser.email || '',
-                  maskedEmail: maskEmailClient(firebaseUser.email || ''),
-                  cooldownSeconds: prev.cooldownSeconds,
-                  error: null,
-                }
-          );
-
-          try {
-            const idToken = await firebaseUser.getIdToken();
-            const statusRes = await fetch('/api/auth/verification-status', {
-              credentials: 'include',
-              headers: {
-                Authorization: `Bearer ${idToken}`,
-              },
-            });
-            const statusData = (await statusRes.json().catch(() => ({}))) as {
-              ok?: boolean;
-              verified?: boolean;
-              requiredPurpose?: 'login' | 'signup' | null;
-              hasActiveCode?: boolean;
-              maskedEmail?: string;
-              cooldownSeconds?: number;
-            };
-
-            if (statusRes.ok && statusData.verified) {
-              try {
-                localStorage.setItem('boardly_user_authenticated', 'true');
-              } catch {
-                // Ignore storage errors
-              }
-              setOtpVerificationState({
-                status: 'verified',
-                purpose: null,
-                email: firebaseUser.email || '',
-                maskedEmail:
-                  statusData.maskedEmail || maskEmailClient(firebaseUser.email || ''),
-                cooldownSeconds: 0,
-                error: null,
-              });
-            } else {
-              try {
-                localStorage.removeItem('boardly_user_authenticated');
-              } catch {
-                // Ignore storage errors
-              }
-              const requiredPurpose =
-                statusData.requiredPurpose ||
-                (firebaseUser.emailVerified ? 'login' : 'signup');
-
-              setOtpVerificationState({
-                status: 'pending',
-                purpose: requiredPurpose,
-                email: firebaseUser.email || '',
-                maskedEmail:
-                  statusData.maskedEmail || maskEmailClient(firebaseUser.email || ''),
-                cooldownSeconds: Number(statusData.cooldownSeconds || 0),
-                error: null,
-              });
-
-              if (
-                !statusData.hasActiveCode &&
-                (!statusData.cooldownSeconds || statusData.cooldownSeconds <= 0)
-              ) {
-                void requestOtpCodeForUserRef.current(firebaseUser, {
-                  purpose: requiredPurpose,
-                  forceResend: false,
-                });
-              }
-            }
-          } catch {
-            try {
-              localStorage.removeItem('boardly_user_authenticated');
-            } catch {
-              // Ignore storage errors
-            }
-            setOtpVerificationState((prev) => ({
-              status: 'pending',
-              purpose: prev.purpose || (firebaseUser.emailVerified ? 'login' : 'signup'),
-              email: firebaseUser.email || '',
-              maskedEmail: maskEmailClient(firebaseUser.email || ''),
-              cooldownSeconds: prev.cooldownSeconds,
-              error: prev.error,
-            }));
-          }
+          return true;
         }
+        setOtpVerificationState((prev) => ({
+          status: 'pending',
+          purpose: prev.purpose || 'signup',
+          email: firebaseUser.email || '',
+          maskedEmail: maskEmailClient(firebaseUser.email || ''),
+          cooldownSeconds: prev.cooldownSeconds,
+          error: prev.error,
+        }));
+        return false;
+      }
+    },
+    []
+  );
+
+  // ── Auth state listener (Single Source of Truth with `/api/auth/me`) ─────
+  useEffect(() => {
+    let isMounted = true;
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!isMounted) return;
+
+      if (firebaseUser) {
+        setUser(firebaseUser);
+        await evaluateUserVerificationGate(firebaseUser, false);
 
         // Warm-up read of config/{any} right after sign-in so the first connection is opened early
         getDoc(doc(db, 'config', 'app')).catch(() => {});
@@ -1064,7 +1132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isMounted = false;
       unsubscribe();
     };
-  }, [retryCount, resolveServerGuestSession]);
+  }, [retryCount, resolveServerGuestSession, evaluateUserVerificationGate]);
 
   // ── Sliding Guest Session Keep-Alive (tab focus + periodic refresh) ──────
   useEffect(() => {
@@ -1702,28 +1770,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      try {
-        localStorage.removeItem('boardly_user_authenticated');
-      } catch {
-        // Ignore storage errors
-      }
-
-      const purpose: 'login' | 'signup' = loggedInUser.emailVerified ? 'login' : 'signup';
-      setOtpVerificationState({
-        status: 'pending',
-        purpose,
-        email: loggedInUser.email || '',
-        maskedEmail: maskEmailClient(loggedInUser.email || ''),
-        cooldownSeconds: 60,
-        error: null,
-      });
-
-      await requestOtpCodeForUser(loggedInUser, {
-        purpose,
-        forceResend: false,
-      });
+      await evaluateUserVerificationGate(loggedInUser, true);
     },
-    [requestOtpCodeForUser]
+    [evaluateUserVerificationGate]
   );
 
   const signUp = useCallback(
@@ -1904,19 +1953,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const credential = await signInWithPopup(auth, provider);
       if (credential?.user) {
         setUser(credential.user);
-        try {
-          localStorage.setItem('boardly_user_authenticated', 'true');
-        } catch {
-          // Ignore storage errors
-        }
-        setOtpVerificationState({
-          status: 'verified',
-          purpose: null,
-          email: credential.user.email || '',
-          maskedEmail: maskEmailClient(credential.user.email || ''),
-          cooldownSeconds: 0,
-          error: null,
-        });
+        await evaluateUserVerificationGate(credential.user, true);
         // Load profile with timeout; non-fatal if Firestore rules are slow
         try {
           await loadProfile(credential.user);
@@ -1956,7 +1993,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthError(errPayload);
       throw popupErr;
     }
-  }, [loadProfile]);
+  }, [loadProfile, evaluateUserVerificationGate]);
 
   const executeForceSignOut = useCallback(async () => {
     setAuthError(null);
