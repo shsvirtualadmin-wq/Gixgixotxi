@@ -14,16 +14,17 @@ import {
   LayoutDashboard,
   Flame,
   Bell,
+  MessageCircle,
   Users,
   Menu,
   Compass,
-  Award,
 } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
+import { useUnreadMessagesCount } from '@/hooks/useUnreadMessagesCount';
 import { getHomeUrl, isUserAuthenticated } from '@/utils/homeUrl';
 
 const LazyHamburgerMenuSheet = lazy(() =>
@@ -51,6 +52,7 @@ function DashboardBottomNavComponent() {
   const { requireAuth } = useAuthGate();
   const { isOpen: isProfileModalOpen } = useProfileModal();
   const unreadCount = useUnreadNotificationsCount();
+  const unreadMessagesCount = useUnreadMessagesCount();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -125,7 +127,7 @@ function DashboardBottomNavComponent() {
       ? '/commons'
       : '/dashboard/commons';
 
-  // Unified Student Nav: Commons, Home, Notifications, Streaks, Squad, [Captain], Menu
+  // Unified 7-Tab Student Nav: Commons, Home, Notifications, Messages, Streaks, Squad, Menu
   const navItems: DockTabItem[] = useMemo(
     () => [
       {
@@ -157,6 +159,20 @@ function DashboardBottomNavComponent() {
           },
       isAuthenticated
         ? {
+            id: 'messages',
+            to: '/dashboard/messages',
+            label: 'Messages',
+            icon: <MessageCircle size={18} strokeWidth={2} />,
+            badge: unreadMessagesCount > 0 ? unreadMessagesCount : undefined,
+          }
+        : {
+            id: 'messages',
+            label: 'Messages',
+            icon: <MessageCircle size={18} strokeWidth={2} />,
+            onClick: () => requireAuth('view your messages'),
+          },
+      isAuthenticated
+        ? {
             id: 'streaks',
             to: '/dashboard/streaks',
             label: 'Streaks',
@@ -174,16 +190,6 @@ function DashboardBottomNavComponent() {
         label: 'Squad',
         icon: <Users size={18} strokeWidth={2} />,
       },
-      ...(isApprovedCaptain
-        ? [
-            {
-              id: 'captain',
-              to: '/dashboard/captain',
-              label: 'Captain',
-              icon: <Award size={18} strokeWidth={2} />,
-            },
-          ]
-        : []),
       {
         id: 'menu',
         label: 'Menu',
@@ -194,20 +200,20 @@ function DashboardBottomNavComponent() {
         },
       },
     ],
-    [isAuthenticated, homeUrl, commonsLink, unreadCount, crewLink, isApprovedCaptain, requireAuth]
+    [isAuthenticated, homeUrl, commonsLink, unreadCount, unreadMessagesCount, crewLink, requireAuth]
   );
 
   // Determine active tab from current route / state
   const activeTabId = useMemo(() => {
     const p = location.pathname;
-    if (isMenuOpen || p.startsWith('/store') || p === '/contact') {
-      return 'menu';
-    }
     if (
-      isApprovedCaptain &&
-      (p.startsWith('/dashboard/captain') || p.startsWith('/dashboard/ambassador'))
+      isMenuOpen ||
+      p.startsWith('/store') ||
+      p === '/contact' ||
+      (isApprovedCaptain &&
+        (p.startsWith('/dashboard/captain') || p.startsWith('/dashboard/ambassador')))
     ) {
-      return 'captain';
+      return 'menu';
     }
     if (p.startsWith('/dashboard/crew') || p.startsWith('/crew')) {
       return 'crew';
@@ -215,13 +221,15 @@ function DashboardBottomNavComponent() {
     if (p.startsWith('/dashboard/streaks')) {
       return 'streaks';
     }
-    if (p.startsWith('/dashboard/notifications')) {
+    if (p.startsWith('/dashboard/messages') || p === '/messages') {
+      return 'messages';
+    }
+    if (p.startsWith('/dashboard/notifications') || p === '/notifications') {
       return 'notifications';
     }
     if (
       p.startsWith('/dashboard/commons') ||
       p.startsWith('/commons') ||
-      p === '/messages' ||
       p === '/saved'
     ) {
       return 'commons';
@@ -533,7 +541,7 @@ function DashboardBottomNavComponent() {
     <>
       {/* ─── FIXED UNIFIED PILL BOTTOM NAVIGATION ────────────────────────────── */}
       <div
-        className={`fixed bottom-[calc(14px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[520px] z-40 ${
+        className={`fixed bottom-[calc(14px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[336px] z-40 ${
           shouldHideBottomNav
             ? 'opacity-0 pointer-events-none invisible'
             : 'pointer-events-auto'

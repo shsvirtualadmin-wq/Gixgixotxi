@@ -136,6 +136,9 @@ const ArenaDashboardPage = lazyWithRetry(() =>
 const NotificationsPage = lazyWithRetry(() =>
   import('./pages/dashboard/NotificationsPage').then(m => ({ default: m.NotificationsPage }))
 );
+const MessagesPage = lazyWithRetry(() =>
+  import('./pages/dashboard/MessagesPage').then(m => ({ default: m.MessagesPage }))
+);
 const StreaksPage = lazyWithRetry(() =>
   import('./pages/dashboard/StreaksPage').then(m => ({ default: m.StreaksPage }))
 );
@@ -325,6 +328,7 @@ function AppInner() {
           <Route path="commons" element={<CommonsFeedPage />} />
           <Route path="practice" element={<PracticePage />} />
           <Route path="notifications" element={<NotificationsPage />} />
+          <Route path="messages" element={<MessagesPage />} />
           <Route path="weak-chapters" element={<Navigate to="/dashboard/notifications" replace />} />
           <Route path="streaks" element={<StreaksPage />} />
           <Route path="history" element={<ResultsListPage />} />
@@ -366,7 +370,7 @@ function AppInner() {
           <Route index element={<CommonsFeedPage initialCompose={true} />} />
         </Route>
         <Route path="/messages" element={<DashboardShell />}>
-          <Route index element={<CommonsFeedPage />} />
+          <Route index element={<MessagesPage />} />
         </Route>
         <Route path="/notifications" element={<DashboardShell />}>
           <Route index element={<NotificationsPage />} />

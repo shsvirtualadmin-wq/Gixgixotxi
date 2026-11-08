@@ -113,10 +113,12 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         user?.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2')
   );
 
+  const role = profile?.role || 'student';
   const isApprovedCaptain = Boolean(
-    !profileLoading &&
-      user &&
-      (confirmedRole === 'captain' ||
+    user &&
+      (role === 'captain' ||
+        role === 'ambassador' ||
+        confirmedRole === 'captain' ||
         confirmedRole === 'ambassador' ||
         profile?.isCaptain ||
         profile?.isAmbassador)
@@ -163,6 +165,9 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
     pathname.startsWith('/rewards') || pathname.startsWith('/dashboard/rewards');
   const isSettingsActive =
     pathname.startsWith('/settings') || pathname.startsWith('/dashboard/settings');
+  const isCaptainActive =
+    pathname.startsWith('/dashboard/captain') ||
+    pathname.startsWith('/dashboard/ambassador');
   const isAdminActive = pathname.startsWith('/admin');
 
   return (
@@ -351,11 +356,41 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         </button>
       </div>
 
-      {/* 3. Settings & Admin/Superadmin Portal (Full-width rows with chevrons, uniform height & padding) */}
+      {/* 3. Settings, Captain Deck & Admin/Superadmin Portal (Full-width rows with chevrons, uniform height & padding) */}
       <div
         className="more-glass-card overflow-hidden divide-y"
         style={{ borderColor: 'var(--glass-menu-item-border)' }}
       >
+        {/* Captain Deck Row (for approved Nakama Captains) */}
+        {isApprovedCaptain && (
+          <button
+            type="button"
+            onClick={() => onNavigate('/dashboard/captain')}
+            className={`more-glass-row ${
+              isCaptainActive ? 'more-glass-row--active' : ''
+            }`}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span
+                className={`more-icon-circle ${
+                  isCaptainActive ? 'more-icon-circle--accent' : ''
+                }`}
+              >
+                <Award size={17} strokeWidth={1.75} />
+              </span>
+              <span className="text-[13px] font-medium leading-tight truncate">
+                Captain Deck
+              </span>
+            </div>
+            <ChevronRight
+              size={16}
+              strokeWidth={1.75}
+              style={{ color: 'var(--text-muted)' }}
+              className="shrink-0"
+            />
+          </button>
+        )}
+
         {/* Settings Row */}
         <button
           type="button"
@@ -363,6 +398,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
           className={`more-glass-row ${
             isSettingsActive ? 'more-glass-row--active' : ''
           }`}
+          style={isApprovedCaptain ? { borderTopColor: 'var(--glass-menu-divider)' } : undefined}
         >
           <div className="flex items-center gap-2.5 min-w-0">
             <span

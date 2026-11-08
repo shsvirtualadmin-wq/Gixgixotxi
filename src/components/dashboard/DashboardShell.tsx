@@ -25,7 +25,6 @@ export function DashboardShell() {
   const isCommonsRoute =
     location.pathname.startsWith('/dashboard/commons') ||
     location.pathname.startsWith('/commons') ||
-    location.pathname === '/messages' ||
     location.pathname === '/saved';
 
   useEffect(() => {
