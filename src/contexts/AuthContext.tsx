@@ -195,6 +195,7 @@ interface AuthContextValue {
     token: string,
     uid?: string
   ) => Promise<{ ok: boolean; error?: string }>;
+  refreshVerificationStatus: (opts?: { syncPasswordLink?: boolean }) => Promise<boolean>;
   checkUsernameAvailability: (username: string) => Promise<{
     available: boolean;
     username: string;
@@ -855,7 +856,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Helper to evaluate server-side verification gate (`/api/auth/verification-status`)
   const evaluateUserVerificationGate = useCallback(
-    async (firebaseUser: User, isFreshLogin = false): Promise<boolean> => {
+    async (
+      firebaseUser: User,
+      isFreshLogin = false,
+      syncPasswordLink = false
+    ): Promise<boolean> => {
       setOtpVerificationState((prev) =>
         prev.status === 'pending' && prev.email === (firebaseUser.email || '')
           ? prev
@@ -870,7 +875,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
 
       try {
-        const idToken = await firebaseUser.getIdToken();
+        const idToken = await firebaseUser.getIdToken(syncPasswordLink);
         const savedTrustedDevice = getStoredTrustedDeviceToken();
         const headers: Record<string, string> = {
           Authorization: `Bearer ${idToken}`,
@@ -879,13 +884,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           headers['X-Trusted-Device'] = savedTrustedDevice;
         }
 
-        const statusRes = await fetch(
-          `/api/auth/verification-status${isFreshLogin ? '?login=1' : ''}`,
-          {
-            credentials: 'include',
-            headers,
-          }
-        );
+        const queryParts: string[] = [];
+        if (isFreshLogin) queryParts.push('login=1');
+        if (syncPasswordLink) queryParts.push('syncPasswordLink=1');
+        const queryString = queryParts.length > 0 ? `?${queryParts.join('&')}` : '';
+
+        const statusRes = await fetch(`/api/auth/verification-status${queryString}`, {
+          credentials: 'include',
+          headers,
+        });
         const statusData = (await statusRes.json().catch(() => ({}))) as {
           ok?: boolean;
           verified?: boolean;
@@ -993,6 +1000,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     },
     []
+  );
+
+  const refreshVerificationStatus = useCallback(
+    async (opts?: { syncPasswordLink?: boolean }): Promise<boolean> => {
+      const targetUser = auth.currentUser || userRef.current;
+      if (!targetUser || (targetUser as any).isGuest) return true;
+      const ok = await evaluateUserVerificationGate(
+        targetUser,
+        false,
+        Boolean(opts?.syncPasswordLink)
+      );
+      if (opts?.syncPasswordLink) {
+        await targetUser.getIdToken(true).catch(() => {});
+      }
+      return ok;
+    },
+    [evaluateUserVerificationGate]
   );
 
   // ── Auth state listener (Single Source of Truth with `/api/auth/me`) ─────
@@ -2294,6 +2318,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestOtpCode,
       verifyOtpCode,
       verifyFallbackEmailLink,
+      refreshVerificationStatus,
       checkUsernameAvailability,
       signInAsGuest,
       syncGuestProgress,
@@ -2326,6 +2351,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestOtpCode,
       verifyOtpCode,
       verifyFallbackEmailLink,
+      refreshVerificationStatus,
       checkUsernameAvailability,
       signInAsGuest,
       syncGuestProgress,

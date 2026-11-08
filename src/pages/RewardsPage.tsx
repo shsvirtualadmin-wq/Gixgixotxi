@@ -18,6 +18,10 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { GuestUpgradeModal } from '@/components/auth/GuestUpgradeModal';
+import {
+  EmailVerificationRequiredCard,
+  isEmailVerificationRequiredError,
+} from '@/components/auth/EmailVerificationRequiredCard';
 import { useWallet } from '@/hooks/useWallet';
 import { useTheme } from '@/hooks/useTheme';
 import { useHomeUrl } from '@/utils/homeUrl';
@@ -862,7 +866,16 @@ export function RewardsPage() {
           </p>
 
           {/* Action Feedback Notice */}
-          {bannerNotice && (
+          {bannerNotice && isEmailVerificationRequiredError(bannerNotice.text) ? (
+            <div className="w-full text-left">
+              <EmailVerificationRequiredCard
+                onVerified={() => {
+                  setBannerNotice(null);
+                  void loadState(false);
+                }}
+              />
+            </div>
+          ) : bannerNotice ? (
             <div
               role="status"
               className="w-full flex items-center gap-2.5 rounded-full border px-4 py-2.5 text-xs sm:text-sm font-semibold text-left"
@@ -902,7 +915,7 @@ export function RewardsPage() {
                 </button>
               )}
             </div>
-          )}
+          ) : null}
         </GlassCard>
 
         {/* ─── 2. LIQUID GLASS TAB SWITCHER ───────────────────────────────── */}

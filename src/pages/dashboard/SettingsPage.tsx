@@ -62,7 +62,7 @@ const SELECTABLE_USER_ROLES = [
 ] as const;
 
 export function SettingsPage() {
-  const { user, signOutUser, updateLocalProfile, isAdmin } = useAuth();
+  const { user, signOutUser, updateLocalProfile, isAdmin, refreshVerificationStatus } = useAuth();
   const { profile, loading } = useUserProfile();
   const effectivePlan = useEffectivePlan();
   const { smoothMode, setSmoothMode } = useSmoothMode();
@@ -391,6 +391,9 @@ export function SettingsPage() {
         // Google-only user setting a password for the first time
         const credential = EmailAuthProvider.credential(currentUser.email, newPassword);
         await linkWithCredential(currentUser, credential);
+        // Refresh token and sync session so Google-verified status carries over without resetting verification
+        await currentUser.getIdToken(true).catch(() => {});
+        await refreshVerificationStatus({ syncPasswordLink: true }).catch(() => {});
         setPasswordSavedMsg(
           'Password set! You can now sign in using either Google or your email and password.'
         );
@@ -404,6 +407,8 @@ export function SettingsPage() {
         const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
         await reauthenticateWithCredential(currentUser, credential);
         await updatePassword(currentUser, newPassword);
+        await currentUser.getIdToken(true).catch(() => {});
+        await refreshVerificationStatus({ syncPasswordLink: true }).catch(() => {});
         setPasswordSavedMsg('Your password has been updated.');
       }
       setCurrentPassword('');

@@ -137,6 +137,25 @@ async function verifyFirebaseIdToken(token, projectId) {
     claimRole = 'captain';
   }
 
+  const signInProvider =
+    payload.firebase && payload.firebase.sign_in_provider
+      ? String(payload.firebase.sign_in_provider)
+      : undefined;
+  const identityProviders =
+    payload.firebase &&
+    payload.firebase.identities &&
+    typeof payload.firebase.identities === 'object'
+      ? Object.keys(payload.firebase.identities).filter((k) => {
+          const val = payload.firebase.identities[k];
+          return Array.isArray(val) ? val.length > 0 : Boolean(val);
+        })
+      : [];
+  const signInProviders = Array.from(
+    new Set([...(signInProvider ? [signInProvider] : []), ...identityProviders])
+  );
+  const hasGoogleProvider =
+    signInProvider === 'google.com' || signInProviders.includes('google.com');
+
   return {
     uid,
     email: emailStr,
@@ -146,10 +165,9 @@ async function verifyFirebaseIdToken(token, projectId) {
     claimRole,
     emailVerified: Boolean(payload.email_verified),
     authTime: Number(payload.auth_time || payload.iat || 0),
-    signInProvider:
-      payload.firebase && payload.firebase.sign_in_provider
-        ? String(payload.firebase.sign_in_provider)
-        : undefined,
+    signInProvider,
+    signInProviders,
+    hasGoogleProvider,
   };
 }
 
@@ -519,26 +537,53 @@ async function authenticateRequest(request, env, requireAuth = true) {
     throw err;
   }
 
-  if (decoded.signInProvider !== 'google.com' && env.DB) {
-    let sessionVerified = false;
+  if (env.DB) {
+    let sessionRow = null;
     try {
-      const sessionRow = await env.DB.prepare(
-        'SELECT user_id, email_verified, verified_auth_time FROM email_verification_sessions WHERE user_id = ?1 LIMIT 1'
+      sessionRow = await env.DB.prepare(
+        'SELECT user_id, email_hash, email_verified, verified_auth_time, verified_at FROM email_verification_sessions WHERE user_id = ?1 LIMIT 1'
       )
         .bind(decoded.uid)
         .first();
-      if (sessionRow && Number(sessionRow.email_verified) === 1) {
-        sessionVerified =
-          decoded.authTime > 0
-            ? Number(sessionRow.verified_auth_time || 0) + 5 >= decoded.authTime
-            : true;
-      }
     } catch {
       // Table may not exist yet
     }
-    if (!sessionVerified && (decoded.emailVerified === false || decoded.signInProvider === 'password')) {
+
+    const isGoogleUser =
+      decoded.signInProvider === 'google.com' || Boolean(decoded.hasGoogleProvider);
+    const isEmailVerifiedInD1 = Boolean(sessionRow && Number(sessionRow.email_verified) === 1);
+    const isEmailVerifiedInToken =
+      decoded.emailVerified === true && (!sessionRow || Number(sessionRow.email_verified) !== 0);
+    const isEmailVerified = isGoogleUser || isEmailVerifiedInD1 || isEmailVerifiedInToken;
+
+    if (
+      (isGoogleUser || isEmailVerifiedInToken) &&
+      (!sessionRow || Number(sessionRow.email_verified) !== 1)
+    ) {
+      const nowMs = Date.now();
+      const emailHashVal =
+        (sessionRow && sessionRow.email_hash) || decoded.email || 'google_verified';
+      const verifiedAtVal = (sessionRow && sessionRow.verified_at) || nowMs;
+      try {
+        await env.DB.prepare(
+          `INSERT INTO email_verification_sessions (user_id, email_hash, email_verified, verified_auth_time, verified_at, updated_at)
+           VALUES (?1, ?2, 1, ?3, ?4, ?5)
+           ON CONFLICT(user_id) DO UPDATE SET
+             email_verified = 1,
+             verified_auth_time = CASE WHEN excluded.verified_auth_time > email_verification_sessions.verified_auth_time THEN excluded.verified_auth_time ELSE email_verification_sessions.verified_auth_time END,
+             verified_at = COALESCE(email_verification_sessions.verified_at, excluded.verified_at),
+             updated_at = excluded.updated_at`
+        )
+          .bind(decoded.uid, emailHashVal, decoded.authTime || 0, verifiedAtVal, nowMs)
+          .run();
+      } catch {
+        // Non-fatal
+      }
+    }
+
+    if (!isEmailVerified) {
       if (!requireAuth) return null;
-      const err = new Error('Email verification required before accessing this resource.');
+      const err = new Error('Please verify your email to continue.');
       err.status = 403;
       err.code = 'EMAIL_VERIFICATION_REQUIRED';
       throw err;

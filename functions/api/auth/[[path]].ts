@@ -548,6 +548,7 @@ async function defaultResendEmailSender(
   ).trim();
 
   if (!apiKey) {
+    console.error('[Auth OTP Resend Error] Missing RESEND_API_KEY in Worker environment.');
     return {
       ok: false,
       error: 'Email service is not configured on this server (missing RESEND_API_KEY).',
@@ -570,17 +571,30 @@ async function defaultResendEmailSender(
       }),
     });
 
+    const rawText = await res.text().catch(() => '');
+    let parsedBody: { id?: string; message?: string; name?: string } = {};
+    try {
+      parsedBody = rawText ? JSON.parse(rawText) : {};
+    } catch {
+      parsedBody = {};
+    }
+
     if (!res.ok) {
-      const errBody = await res.text().catch(() => '');
-      console.error(`[Auth OTP Resend Error] HTTP ${res.status}:`, errBody.slice(0, 200));
+      console.error(
+        `[Auth OTP Resend Error] HTTP ${res.status} (${payload.purpose || 'otp'}):`,
+        rawText.slice(0, 500)
+      );
+      const detail = parsedBody.message ? ` (${parsedBody.message})` : '';
       return {
         ok: false,
-        error: 'Could not send verification email right now. Please try again shortly.',
+        error: `Could not send verification email right now${detail}. Please try again shortly.`,
       };
     }
 
-    const data = (await res.json().catch(() => ({}))) as { id?: string };
-    return { ok: true, id: data?.id || 'sent' };
+    console.info(
+      `[Auth OTP Resend Success] HTTP ${res.status} id=${parsedBody?.id || 'sent'} purpose=${payload.purpose || 'otp'}`
+    );
+    return { ok: true, id: parsedBody?.id || 'sent' };
   } catch (err: any) {
     console.error('[Auth OTP Resend Network Error]:', err?.message || err);
     return {
@@ -2915,6 +2929,7 @@ export async function handleAuthApiRequest(
   // ─── 2. GET /api/auth/verification-status ───────────────────────────────────
   if (subPath === 'verification-status' && request.method === 'GET') {
     const isFreshLogin = url.searchParams.get('login') === '1' || url.searchParams.get('fresh') === '1';
+    const isPasswordLinkSync = url.searchParams.get('syncPasswordLink') === '1';
 
     let sessionRow = await db
       .prepare(
@@ -2924,11 +2939,41 @@ export async function handleAuthApiRequest(
       .first<{ user_id: string; email_verified: number; verified_auth_time: number; verified_at?: number }>()
       .catch(() => null);
 
-    const isGoogleUser = verifiedToken.signInProvider === 'google.com';
+    const isGoogleUser =
+      verifiedToken.signInProvider === 'google.com' ||
+      Boolean(verifiedToken.hasGoogleProvider) ||
+      Boolean(verifiedToken.signInProviders?.includes('google.com'));
     const accountEmailVerified =
       isGoogleUser ||
       Number(sessionRow?.email_verified || 0) === 1 ||
       (Boolean(verifiedToken.emailVerified) && (!sessionRow || Number(sessionRow.email_verified) !== 0));
+
+    // When a verified account links or updates a password in Settings, carry over its verified status
+    // and restore Firebase Auth emailVerified if linking EmailAuthProvider reset it.
+    if (accountEmailVerified && (isPasswordLinkSync || (isGoogleUser && !verifiedToken.emailVerified))) {
+      const nextVerifiedAuthTime = Math.max(Number(sessionRow?.verified_auth_time || 0), tokenAuthTime);
+      await db
+        .prepare(
+          `INSERT OR REPLACE INTO email_verification_sessions (user_id, email_hash, email_verified, verified_auth_time, verified_at, updated_at)
+           VALUES (?1, ?2, 1, ?3, ?4, ?5)`
+        )
+        .bind(uid, emailHash, nextVerifiedAuthTime, sessionRow?.verified_at || nowMs, nowMs)
+        .run()
+        .catch(() => {});
+      sessionRow = {
+        user_id: uid,
+        email_verified: 1,
+        verified_auth_time: nextVerifiedAuthTime,
+        verified_at: sessionRow?.verified_at || nowMs,
+      };
+      if (!verifiedToken.emailVerified) {
+        await syncEmailVerifiedToFirebaseAndFirestore({
+          uid,
+          env,
+          storeOverride: opts.firestoreStoreOverride,
+        }).catch(() => {});
+      }
+    }
 
     // Check 2FA status in D1
     let twoFaRow = await db
@@ -3172,18 +3217,36 @@ export async function handleAuthApiRequest(
       .first<{ user_id: string; email_verified: number; verified_auth_time: number }>()
       .catch(() => null);
 
-    const accountEmailVerified =
+    const isGoogleUser =
       verifiedToken.signInProvider === 'google.com' ||
+      Boolean(verifiedToken.hasGoogleProvider) ||
+      Boolean(verifiedToken.signInProviders?.includes('google.com'));
+    const accountEmailVerified =
+      isGoogleUser ||
       Number(sessionRow?.email_verified || 0) === 1 ||
       (Boolean(verifiedToken.emailVerified) && (!sessionRow || Number(sessionRow.email_verified) !== 0));
 
     // Google users skip signup email verification, unless explicitly requesting a 2FA login or 2FA recovery code
     if (
-      verifiedToken.signInProvider === 'google.com' &&
+      isGoogleUser &&
       body.purpose !== 'login' &&
       body.purpose !== '2fa_login' &&
       body.purpose !== '2fa_recovery'
     ) {
+      await db
+        .prepare(
+          `INSERT OR REPLACE INTO email_verification_sessions (user_id, email_hash, email_verified, verified_auth_time, verified_at, updated_at)
+           VALUES (?1, ?2, 1, ?3, ?4, ?5)`
+        )
+        .bind(
+          uid,
+          emailHash,
+          Math.max(Number(sessionRow?.verified_auth_time || 0), tokenAuthTime),
+          nowMs,
+          nowMs
+        )
+        .run()
+        .catch(() => {});
       return jsonResponse({
         ok: true,
         alreadyVerified: true,
@@ -3258,13 +3321,13 @@ export async function handleAuthApiRequest(
       );
     }
 
-    // Enforce hourly limit: max 5 code emails per hour per email address
+    // Enforce hourly limit: max 5 code emails per hour per account (by email_hash or user_id)
     const oneHourAgoMs = nowMs - HOURLY_WINDOW_MS;
     const emailHourlyCountRow = await db
       .prepare(
-        'SELECT COUNT(*) as cnt FROM email_verification_send_logs WHERE email_hash = ?1 AND created_at >= ?2'
+        'SELECT COUNT(*) as cnt FROM email_verification_send_logs WHERE (email_hash = ?1 OR user_id = ?2) AND created_at >= ?3'
       )
-      .bind(emailHash, oneHourAgoMs)
+      .bind(emailHash, uid, oneHourAgoMs)
       .first<{ cnt: number }>();
     const emailHourlyCount = Number(emailHourlyCountRow?.cnt || 0);
 
@@ -3272,8 +3335,9 @@ export async function handleAuthApiRequest(
       return jsonResponse(
         {
           ok: false,
-          error: 'Too many verification codes requested for this email. Please try again in an hour.',
+          error: 'Too many verification codes requested for this account. Please try again in an hour.',
           code: 'RATE_LIMITED_HOURLY_EMAIL',
+          maskedEmail,
         },
         429
       );

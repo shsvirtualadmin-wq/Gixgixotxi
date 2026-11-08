@@ -248,9 +248,9 @@ export const KobanChip: React.FC<KobanChipProps> = ({
   const safeBalance = Number.isFinite(Number(displayBalance)) ? Math.max(0, Math.floor(Number(displayBalance))) : 0;
   const content = (
     <>
-      <KobanIcon size={18} />
+      <KobanIcon size={18} className="shrink-0" />
       <span
-        className="font-mono tabular-nums text-xs font-bold"
+        className="font-mono tabular-nums text-xs max-[380px]:text-[11px] font-bold shrink-0 whitespace-nowrap leading-none"
         style={{ color: 'var(--cw-gold, #f5c542)' }}
       >
         {loading ? '0' : safeBalance.toLocaleString('en-US')}
@@ -258,7 +258,7 @@ export const KobanChip: React.FC<KobanChipProps> = ({
     </>
   );
 
-  const baseStyles = `inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--cw-glass-fill)] border border-[rgba(232,163,23,0.35)] shadow-xs ${className}`;
+  const baseStyles = `inline-flex items-center gap-1.5 max-[380px]:gap-1 px-2.5 max-[380px]:px-2 py-1 rounded-full shrink-0 whitespace-nowrap bg-[var(--cw-glass-fill)] border border-[rgba(232,163,23,0.35)] shadow-xs ${className}`;
 
   if (onClick || as === 'button') {
     return (

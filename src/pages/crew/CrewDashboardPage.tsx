@@ -11,6 +11,10 @@ import {
 } from '@/components/crew/CrewGlassPrimitives';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
+import {
+  EmailVerificationRequiredCard,
+  isEmailVerificationRequiredError,
+} from '@/components/auth/EmailVerificationRequiredCard';
 import { NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
@@ -470,42 +474,46 @@ export function CrewDashboardPage() {
             <LineLoader context="dashboard" variant="section" />
           </div>
         ) : hookError && !crew ? (
-          /* ── Error State with Explicit Retry ──────────────────────────── */
-          <div className="cw-card my-8 text-center space-y-4">
-            <div
-              className="w-12 h-12 rounded-full mx-auto flex items-center justify-center"
-              style={{
-                backgroundColor: 'color-mix(in srgb, var(--cw-red) 18%, transparent)',
-                color: 'var(--cw-red-text)',
-              }}
-            >
-              <AlertCircle size={22} />
-            </div>
-            <h2 className="cw-font-doto text-xl font-extrabold" style={{ color: 'var(--cw-text)' }}>
-              Study Squad Connection Delayed
-            </h2>
-            <p className="text-sm leading-relaxed" style={{ color: 'var(--cw-muted)' }}>
-              {hookError}
-            </p>
-            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button
-                type="button"
-                onClick={retry}
-                {...getCrewBtnHandlers()}
-                className="cw-btn cw-btn-red w-full sm:w-auto"
+          isEmailVerificationRequiredError(hookError) ? (
+            <EmailVerificationRequiredCard onVerified={retry} />
+          ) : (
+            /* ── Error State with Explicit Retry ──────────────────────────── */
+            <div className="cw-card my-8 text-center space-y-4">
+              <div
+                className="w-12 h-12 rounded-full mx-auto flex items-center justify-center"
+                style={{
+                  backgroundColor: 'color-mix(in srgb, var(--cw-red) 18%, transparent)',
+                  color: 'var(--cw-red-text)',
+                }}
               >
-                Retry Connection
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate('/crew')}
-                {...getCrewBtnHandlers()}
-                className="cw-btn cw-btn-glass w-full sm:w-auto"
-              >
-                Browse Squads
-              </button>
+                <AlertCircle size={22} />
+              </div>
+              <h2 className="cw-font-doto text-xl font-extrabold" style={{ color: 'var(--cw-text)' }}>
+                Could not load Study Squads
+              </h2>
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--cw-muted)' }}>
+                {hookError}
+              </p>
+              <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={retry}
+                  {...getCrewBtnHandlers()}
+                  className="cw-btn cw-btn-red w-full sm:w-auto"
+                >
+                  Retry Connection
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/crew')}
+                  {...getCrewBtnHandlers()}
+                  className="cw-btn cw-btn-glass w-full sm:w-auto"
+                >
+                  Browse Squads
+                </button>
+              </div>
             </div>
-          </div>
+          )
         ) : !crew ? (
           /* ── State A: Browse View (User Not In a Squad) ───────────────── */
           <div className="space-y-5">

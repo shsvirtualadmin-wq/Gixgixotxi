@@ -772,6 +772,18 @@ export async function verifyFirebaseIdToken(
     const signInProvider = payload.firebase?.sign_in_provider
       ? String(payload.firebase.sign_in_provider)
       : undefined;
+    const identityProviders =
+      payload.firebase?.identities && typeof payload.firebase.identities === 'object'
+        ? Object.keys(payload.firebase.identities).filter((k) => {
+            const val = (payload.firebase?.identities as Record<string, unknown>)[k];
+            return Array.isArray(val) ? val.length > 0 : Boolean(val);
+          })
+        : [];
+    const signInProviders = Array.from(
+      new Set([...(signInProvider ? [signInProvider] : []), ...identityProviders])
+    );
+    const hasGoogleProvider =
+      signInProvider === 'google.com' || signInProviders.includes('google.com');
     const authTimeSec = Number(payload.auth_time || payload.iat || 0);
 
     if (env.DB) {
@@ -784,6 +796,8 @@ export async function verifyFirebaseIdToken(
           authTime: authTimeSec,
           iat: Number(payload.iat || 0),
           signInProvider,
+          signInProviders,
+          hasGoogleProvider,
         },
         {
           request: req,

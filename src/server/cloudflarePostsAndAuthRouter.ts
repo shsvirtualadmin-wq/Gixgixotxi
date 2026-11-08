@@ -952,27 +952,39 @@ export async function verifyFirebaseJwtZeroFirestore(
     const signInProvider = payload.firebase?.sign_in_provider
       ? String(payload.firebase.sign_in_provider)
       : undefined;
+    const identityProviders =
+      payload.firebase?.identities && typeof payload.firebase.identities === 'object'
+        ? Object.keys(payload.firebase.identities).filter((k) => {
+            const val = (payload.firebase?.identities as Record<string, unknown>)[k];
+            return Array.isArray(val) ? val.length > 0 : Boolean(val);
+          })
+        : [];
+    const signInProviders = Array.from(
+      new Set([...(signInProvider ? [signInProvider] : []), ...identityProviders])
+    );
+    const hasGoogleProvider =
+      signInProvider === 'google.com' || signInProviders.includes('google.com');
     const authTimeSec = Number(payload.auth_time || payload.iat || 0);
 
-    if (signInProvider !== 'google.com') {
-      try {
-        const { getSharedLocalD1Database, isD1UserSessionVerified } = await import(
-          '../../functions/_utils/firestoreRestAdmin'
-        );
-        const sessionVerified = await isD1UserSessionVerified(getSharedLocalD1Database(), {
-          uid,
-          email,
-          emailVerified: Boolean(payload.email_verified),
-          authTime: authTimeSec,
-          iat: Number(payload.iat || 0),
-          signInProvider,
-        });
-        if (!sessionVerified) {
-          return null;
-        }
-      } catch {
-        // Fallback if local D1 helper cannot be loaded
+    try {
+      const { getSharedLocalD1Database, isD1UserSessionVerified } = await import(
+        '../../functions/_utils/firestoreRestAdmin'
+      );
+      const sessionVerified = await isD1UserSessionVerified(getSharedLocalD1Database(), {
+        uid,
+        email,
+        emailVerified: Boolean(payload.email_verified),
+        authTime: authTimeSec,
+        iat: Number(payload.iat || 0),
+        signInProvider,
+        signInProviders,
+        hasGoogleProvider,
+      });
+      if (!sessionVerified) {
+        return null;
       }
+    } catch {
+      // Fallback if local D1 helper cannot be loaded
     }
 
     const store = loadD1Store();

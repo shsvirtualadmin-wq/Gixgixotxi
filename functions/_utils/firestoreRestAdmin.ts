@@ -38,6 +38,8 @@ export interface VerifiedFirebaseToken {
   authTime?: number;
   iat?: number;
   signInProvider?: string;
+  signInProviders?: string[];
+  hasGoogleProvider?: boolean;
 }
 
 export interface AuthenticatedD1User {
@@ -200,6 +202,7 @@ export async function verifyFirebaseIdToken(
       admin?: boolean;
       firebase?: {
         sign_in_provider?: string;
+        identities?: Record<string, unknown>;
       };
     };
 
@@ -240,6 +243,21 @@ export async function verifyFirebaseIdToken(
     const signInProvider = payload.firebase?.sign_in_provider
       ? String(payload.firebase.sign_in_provider)
       : undefined;
+    const identityProviders =
+      payload.firebase?.identities && typeof payload.firebase.identities === 'object'
+        ? Object.keys(payload.firebase.identities).filter((k) => {
+            const val = (payload.firebase?.identities as Record<string, unknown>)[k];
+            return Array.isArray(val) ? val.length > 0 : Boolean(val);
+          })
+        : [];
+    const signInProviders = Array.from(
+      new Set([
+        ...(signInProvider ? [signInProvider] : []),
+        ...identityProviders,
+      ])
+    );
+    const hasGoogleProvider =
+      signInProvider === 'google.com' || signInProviders.includes('google.com');
 
     return {
       uid: payload.sub,
@@ -252,6 +270,8 @@ export async function verifyFirebaseIdToken(
       authTime: authTimeSec,
       iat: iatSec,
       signInProvider,
+      signInProviders,
+      hasGoogleProvider,
     };
   } catch {
     return null;
@@ -261,7 +281,7 @@ export async function verifyFirebaseIdToken(
 /**
  * Server-side source of truth for whether a registered user's current session is verified:
  * 1. Email Verification at Sign Up (required once):
- *    - Google sign-in (`signInProvider === 'google.com'`) is already verified by Google.
+ *    - Google sign-in (`signInProvider === 'google.com'` or `hasGoogleProvider === true` in the verified JWT) is already verified by Google.
  *    - Otherwise, user must have `email_verification_sessions.email_verified = 1` or `verified.emailVerified === true`.
  *    - If unverified, returns `false` (blocks dashboard & protected APIs).
  * 2. Optional Two-Step Verification (Settings > Security):
@@ -286,6 +306,7 @@ export async function isD1UserSessionVerified(
 
   let sessionRow: {
     user_id: string;
+    email_hash?: string;
     email_verified: number;
     verified_auth_time: number;
     verified_at?: number;
@@ -294,11 +315,12 @@ export async function isD1UserSessionVerified(
   try {
     sessionRow = await db
       .prepare(
-        'SELECT user_id, email_verified, verified_auth_time, verified_at FROM email_verification_sessions WHERE user_id = ?1 LIMIT 1'
+        'SELECT user_id, email_hash, email_verified, verified_auth_time, verified_at FROM email_verification_sessions WHERE user_id = ?1 LIMIT 1'
       )
       .bind(verified.uid)
       .first<{
         user_id: string;
+        email_hash?: string;
         email_verified: number;
         verified_auth_time: number;
         verified_at?: number;
@@ -307,8 +329,11 @@ export async function isD1UserSessionVerified(
     // Table may not exist yet before first migration run
   }
 
-  // Step 1: Check one-time email verification
-  const isGoogleUser = verified.signInProvider === 'google.com';
+  // Step 1: Check one-time email verification on the server
+  const isGoogleUser =
+    verified.signInProvider === 'google.com' ||
+    Boolean(verified.hasGoogleProvider) ||
+    Boolean(verified.signInProviders?.includes('google.com'));
   const isEmailVerifiedInD1 = Boolean(sessionRow && Number(sessionRow.email_verified) === 1);
   const isEmailVerifiedInToken =
     verified.emailVerified === true && (!sessionRow || Number(sessionRow.email_verified) !== 0);
@@ -316,6 +341,37 @@ export async function isD1UserSessionVerified(
   const isEmailVerified = isGoogleUser || isEmailVerifiedInD1 || isEmailVerifiedInToken;
   if (!isEmailVerified) {
     return false;
+  }
+
+  // Automatic server-side migration: if the account is verified (via Google provider or token claim)
+  // but email_verification_sessions is missing or has email_verified != 1, heal the D1 row immediately.
+  if ((isGoogleUser || isEmailVerifiedInToken) && (!sessionRow || Number(sessionRow.email_verified) !== 1)) {
+    const tokenAuthTimeSec = Number(verified.authTime || verified.iat || 0);
+    const verifiedAtVal = sessionRow?.verified_at || nowMs;
+    const emailHashVal = sessionRow?.email_hash || (verified.email ? verified.email.trim().toLowerCase() : 'google_verified');
+    try {
+      await db
+        .prepare(
+          `INSERT INTO email_verification_sessions (user_id, email_hash, email_verified, verified_auth_time, verified_at, updated_at)
+           VALUES (?1, ?2, 1, ?3, ?4, ?5)
+           ON CONFLICT(user_id) DO UPDATE SET
+             email_verified = 1,
+             verified_auth_time = CASE WHEN excluded.verified_auth_time > email_verification_sessions.verified_auth_time THEN excluded.verified_auth_time ELSE email_verification_sessions.verified_auth_time END,
+             verified_at = COALESCE(email_verification_sessions.verified_at, excluded.verified_at),
+             updated_at = excluded.updated_at`
+        )
+        .bind(verified.uid, emailHashVal, tokenAuthTimeSec, verifiedAtVal, nowMs)
+        .run();
+      sessionRow = {
+        user_id: verified.uid,
+        email_hash: emailHashVal,
+        email_verified: 1,
+        verified_auth_time: Math.max(Number(sessionRow?.verified_auth_time || 0), tokenAuthTimeSec),
+        verified_at: verifiedAtVal,
+      };
+    } catch {
+      // Non-fatal if table does not exist in test environment
+    }
   }
 
   // Step 2: Check optional Two-Step Verification (user_2fa)
@@ -790,7 +846,11 @@ export async function resolveCurrentUser(params: {
         isPostingBanned,
         isSuperAdmin,
         isAdminOrAbove,
-        emailVerified: Boolean(verified.emailVerified) || sessionVerified,
+        emailVerified:
+          Boolean(verified.emailVerified) ||
+          Boolean(verified.hasGoogleProvider) ||
+          verified.signInProvider === 'google.com' ||
+          sessionVerified,
         sessionVerified,
         isGuest: false,
         signInProvider: verified.signInProvider,

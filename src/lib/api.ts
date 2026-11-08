@@ -298,9 +298,14 @@ export async function apiRequest<T = any>(
       serverError = 'Your guest session expired, please choose your username again.';
     } else if (/^unauthorized$/i.test(rawServerError)) {
       serverError = 'Your session has expired or you are not signed in. Please sign in to continue.';
+    } else if (serverCode === 'EMAIL_VERIFICATION_REQUIRED') {
+      serverError = 'Please verify your email to continue.';
     }
 
-    const fullMessage = serverCode ? `${serverError} (${serverCode})` : serverError;
+    const fullMessage =
+      serverCode && serverCode !== 'EMAIL_VERIFICATION_REQUIRED'
+        ? `${serverError} (${serverCode})`
+        : serverError;
     const err: ApiError = new Error(fullMessage);
     err.status = response.status;
     err.code = serverCode || `HTTP_${response.status}`;
@@ -308,7 +313,7 @@ export async function apiRequest<T = any>(
     err.attemptId = data?.attemptId;
     err.attempt = data?.attempt;
     err.data = data;
-    if (!silentErrorToast) {
+    if (!silentErrorToast && serverCode !== 'EMAIL_VERIFICATION_REQUIRED') {
       showApiToast(fullMessage, 'error');
     }
     throw err;

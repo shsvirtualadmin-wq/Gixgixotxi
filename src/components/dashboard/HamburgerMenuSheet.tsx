@@ -23,7 +23,7 @@ import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useWallet } from '@/hooks/useWallet';
 import { useTheme, type ThemeSetting } from '@/hooks/useTheme';
-import { AvatarPicture, AvatarFrame } from '@/components/koban/CosmeticRenderers';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { LineLoader } from '@/components/ui/LineLoader';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
@@ -180,15 +180,17 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
       >
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <div className="shrink-0">
-            <AvatarFrame itemId={equipped?.frame || 'none'} size={48}>
-              <AvatarPicture
-                avatarId={equipped?.avatar}
-                avatarKey={profile?.avatarKey}
-                variant={profile?.avatarVariant}
-                seed={user?.uid}
-                size={38}
-              />
-            </AvatarFrame>
+            <BoardlyAvatar
+              uid={user?.uid}
+              name={displayName}
+              avatarUrl={profile?.avatarUrl}
+              photoURL={profile?.photoURL || user?.photoURL}
+              avatar={(profile as Record<string, unknown> | null)?.avatar as string | null}
+              customAvatarUrl={(profile as Record<string, unknown> | null)?.customAvatarUrl as string | null}
+              equippedAvatar={equipped?.avatar}
+              frame={equipped?.frame}
+              size={48}
+            />
           </div>
 
           <div className="min-w-0 flex-1">

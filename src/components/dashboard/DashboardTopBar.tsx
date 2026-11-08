@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
 import { Sun, Moon, Bell } from 'lucide-react';
@@ -9,7 +9,6 @@ import { useTheme } from '@/hooks/useTheme';
 import { useWallet } from '@/hooks/useWallet';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 import { KobanChip } from '@/components/koban/KobanIcon';
-import { AvatarFrame, AvatarPicture } from '@/components/koban/CosmeticRenderers';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import {
   DashboardMenuContent,
@@ -22,6 +21,21 @@ interface Props {
   sidebarCollapsed?: boolean;
 }
 
+function isUsablePhotoUrl(val?: unknown): val is string {
+  if (!val || typeof val !== 'string') return false;
+  const trimmed = val.trim();
+  if (!trimmed || trimmed === 'none' || trimmed === 'null' || trimmed === 'undefined') {
+    return false;
+  }
+  return (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('/') ||
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('blob:')
+  );
+}
+
 export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) {
   const { signOutUser, isAdmin, isGuest } = useAuth();
   const { user, profile } = useUserProfile();
@@ -29,6 +43,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   const navigate = useNavigate();
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [avatarImgFailed, setAvatarImgFailed] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.innerWidth < 640 : false
   );
@@ -43,6 +58,40 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
 
   const { theme, toggle: toggleTheme } = useTheme();
   const unreadCount = useUnreadNotificationsCount();
+
+  // Resolve real user profile photo URL across profile and Firebase Auth user fields
+  const resolvedPhotoUrl = useMemo(() => {
+    const candidates = [
+      profile?.avatarUrl,
+      profile?.photoURL,
+      (profile as Record<string, unknown> | null)?.avatar,
+      (profile as Record<string, unknown> | null)?.customAvatarUrl,
+      user?.photoURL,
+    ];
+    for (const c of candidates) {
+      if (isUsablePhotoUrl(c)) {
+        return c.trim();
+      }
+    }
+    return null;
+  }, [profile, user?.photoURL]);
+
+  useEffect(() => {
+    setAvatarImgFailed(false);
+  }, [resolvedPhotoUrl]);
+
+  const avatarInitial = useMemo(() => {
+    const rawName = (
+      profile?.displayName ||
+      profile?.name ||
+      profile?.username ||
+      user?.displayName ||
+      user?.email ||
+      'S'
+    ).trim();
+    const cleaned = rawName.replace(/^@+/, '').trim();
+    return (cleaned.charAt(0) || 'S').toUpperCase();
+  }, [profile?.displayName, profile?.name, profile?.username, user?.displayName, user?.email]);
 
   // Track viewport size so phones (<640px) use the bottom sheet and desktop uses the avatar dropdown
   useEffect(() => {
@@ -119,9 +168,8 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   };
 
   const effectivePlan = useEffectivePlan();
-  const { balance: kobanBalance, loading: walletLoading, equipped } = useWallet();
+  const { balance: kobanBalance, loading: walletLoading } = useWallet();
   const isPro = !isGuest && effectivePlan.isUnlimited;
-  const hasEquippedFrame = Boolean(equipped?.frame && equipped.frame !== 'none');
 
   if (isSigningOut) {
     return <LineLoader context="login" variant="page" immediate />;
@@ -130,77 +178,77 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   return (
     <>
       <header
-        className="sticky z-[70] w-full max-w-5xl mx-auto px-3.5 sm:px-6 lg:px-8 pb-1 shrink-0 pointer-events-none box-border select-none"
+        className="sticky z-[70] w-full max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 pb-1 shrink-0 pointer-events-none box-border select-none"
         style={{
           top: 'calc(12px + env(safe-area-inset-top, 0px))',
           marginTop: 'calc(12px + env(safe-area-inset-top, 0px))',
         }}
       >
         <div
-          className="w-full min-w-0 box-border h-14 sm:h-[60px] px-3.5 sm:px-5 rounded-full dashboard-glass-bar allow-backdrop-blur flex items-center justify-between gap-2 pointer-events-auto transition-all duration-200"
+          className="w-full min-w-0 box-border h-14 sm:h-[60px] px-3 sm:px-5 rounded-full dashboard-glass-bar allow-backdrop-blur flex items-center justify-between gap-2 max-[380px]:gap-1.5 pointer-events-auto transition-all duration-200"
         >
-          {/* Left side: Boardly Doto logo, Admin Portal label, and conditional PRO chip */}
-          <div className="flex items-center gap-2.5 min-w-0 shrink">
-            <div className="flex flex-col justify-center min-w-0 shrink-0">
+          {/* Left side: Boardly Doto logo with top-right PRO badge and stacked Admin Portal label */}
+          <div className="flex flex-col justify-center min-w-0 shrink-0">
+            <div className="inline-flex items-start gap-1 min-w-0 shrink-0">
               <Link
                 to="/dashboard"
-                className="inline-flex items-center shrink-0 select-none leading-none tracking-tight hover:opacity-90 transition-opacity"
+                className="inline-flex items-center shrink-0 select-none leading-none tracking-tight hover:opacity-90 transition-opacity text-[20px] min-[380px]:text-[22px]"
                 style={{
                   fontFamily: "'Doto', var(--font-dot), sans-serif",
                   fontWeight: 800,
-                  fontSize: '22px',
                   color: 'var(--cw-red-text)',
                 }}
                 aria-label="Boardly Dashboard"
               >
                 Boardly
               </Link>
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => navigate('/admin')}
-                  className="inline-flex items-center text-[9px] leading-none font-bold hover:underline tracking-tight mt-0.5 text-left cursor-pointer w-fit"
+
+              {isPro && (
+                <span
+                  className="-mt-1 inline-flex items-center text-[9px] leading-none font-extrabold uppercase tracking-wider px-1.5 py-[3px] rounded-full shrink-0 whitespace-nowrap"
                   style={{
-                    fontFamily: 'var(--font-heading)',
+                    backgroundColor: 'color-mix(in srgb, var(--cw-red) 16%, transparent)',
                     color: 'var(--cw-red-text)',
+                    boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--cw-red) 38%, transparent)',
                   }}
                 >
-                  Admin Portal
-                </button>
+                  PRO
+                </span>
               )}
             </div>
 
-            {isPro && (
-              <span
-                className="inline-flex items-center text-[11px] font-bold px-2.5 py-0.5 rounded-full shrink-0 whitespace-nowrap"
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => navigate('/admin')}
+                className="inline-flex items-center text-[9px] leading-none font-bold hover:underline tracking-tight mt-0.5 text-left cursor-pointer w-fit whitespace-nowrap"
                 style={{
-                  backgroundColor: 'color-mix(in srgb, var(--cw-red) 16%, transparent)',
+                  fontFamily: 'var(--font-heading)',
                   color: 'var(--cw-red-text)',
-                  boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--cw-red) 38%, transparent)',
                 }}
               >
-                PRO
-              </span>
+                Admin Portal
+              </button>
             )}
           </div>
 
-          {/* Right side: Gold Kobans balance chip, Notification bell, Theme toggle (40px), Profile avatar (36px) */}
-          <div className="flex items-center gap-2 shrink-0 ml-auto">
+          {/* Right side: Gold Kobans balance chip, Notification bell (>=400px), Theme toggle (40px), Profile avatar (36px) */}
+          <div className="flex items-center gap-2 max-[380px]:gap-1.5 shrink-0 ml-auto">
             {/* Kobans Wallet Chip */}
             <Link
               to="/store"
               title="Boardly Store & Kobans Wallet"
-              className="flex items-center shrink-0 transition-transform hover:scale-105"
+              className="flex items-center shrink-0 whitespace-nowrap transition-transform hover:scale-105"
             >
               <KobanChip balance={kobanBalance} loading={walletLoading} />
             </Link>
 
-            {/* Notification Bell (40px round glass icon button) */}
+            {/* Notification Bell (40px round glass icon button — hidden on screens narrower than 400px ONLY) */}
             <Link
               to="/dashboard/notifications"
               aria-label="Notifications"
               title="Notifications"
-              className="relative w-10 h-10 min-w-[40px] min-h-[40px] rounded-full dashboard-topbar-icon-btn flex items-center justify-center hover:opacity-90 transition-opacity cursor-pointer shrink-0"
+              className="relative hidden min-[400px]:flex w-10 h-10 min-w-[40px] min-h-[40px] rounded-full dashboard-topbar-icon-btn items-center justify-center hover:opacity-90 transition-opacity cursor-pointer shrink-0"
             >
               <Bell size={17} strokeWidth={1.85} />
               {unreadCount > 0 && (
@@ -225,25 +273,45 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
               )}
             </button>
 
-            {/* Profile Avatar (36px circle with ring) */}
+            {/* Profile Avatar (36px circle with red ring; real photo or clean circular first-letter fallback) */}
             <button
               ref={avatarBtnRef}
               type="button"
               onClick={() => setMenuOpen((prev) => !prev)}
               aria-label="User profile menu"
               aria-expanded={menuOpen}
-              className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-full overflow-hidden shrink-0 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity ring-1 ring-white/25 dark:ring-white/20"
-              style={{ boxShadow: 'inset 0 0 0 1px var(--cw-line)' }}
+              className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-full overflow-hidden shrink-0 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
+              style={{
+                width: 36,
+                height: 36,
+                boxShadow:
+                  'inset 0 0 0 1.5px color-mix(in srgb, var(--cw-red, #D71921) 68%, rgba(255,255,255,0.28))',
+                backgroundColor: 'color-mix(in srgb, var(--cw-red, #D71921) 14%, rgba(22,22,26,0.65))',
+              }}
             >
-              <AvatarFrame itemId={equipped?.frame || 'none'} size={36}>
-                <AvatarPicture
-                  avatarId={equipped?.avatar}
-                  avatarKey={profile?.avatarKey}
-                  variant={profile?.avatarVariant}
-                  seed={user?.uid}
-                  size={hasEquippedFrame ? 26 : 36}
+              {resolvedPhotoUrl && !avatarImgFailed ? (
+                <img
+                  src={resolvedPhotoUrl}
+                  alt={profile?.displayName || user?.displayName || 'Profile'}
+                  width={36}
+                  height={36}
+                  referrerPolicy="no-referrer"
+                  onError={() => setAvatarImgFailed(true)}
+                  className="w-9 h-9 rounded-full object-cover block shrink-0"
+                  style={{ width: 36, height: 36, objectFit: 'cover' }}
                 />
-              </AvatarFrame>
+              ) : (
+                <span
+                  className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm select-none leading-none"
+                  style={{
+                    width: 36,
+                    height: 36,
+                    color: 'var(--cw-red-text, #ff4d5c)',
+                  }}
+                >
+                  {avatarInitial}
+                </span>
+              )}
             </button>
           </div>
         </div>
