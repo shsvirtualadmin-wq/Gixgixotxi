@@ -20,55 +20,48 @@ export const WeakChapters = memo(function WeakChapters({
 
   return (
     <section
-      className="cockpit-surface-card p-4 sm:p-5 space-y-3"
+      className="rs-card space-y-3.5"
       aria-label="Weak Chapters"
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <AlertCircle size={16} className="shrink-0 text-[var(--accent)]" />
-          <h2
-            className="text-sm sm:text-base font-bold text-[var(--text)] truncate"
-            style={{ fontFamily: 'var(--font-heading)' }}
-          >
+          <AlertCircle size={18} className="shrink-0 text-[var(--rs-red-text)]" />
+          <h2 className="rs-doto text-base sm:text-lg text-[var(--rs-text)] truncate">
             Weak Chapters
           </h2>
         </div>
-        <span className="text-[11px] font-medium text-[var(--text-muted)] shrink-0">
+        <span className="rs-body text-xs font-medium text-[var(--rs-muted)] shrink-0">
           From University Tests
         </span>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {safeChapters.map((c) => (
           <div
             key={c.id}
-            className="cockpit-subrow flex items-center justify-between gap-3 p-3"
+            className="rs-card2-row flex items-center justify-between gap-3"
           >
             <div className="min-w-0 flex-1 space-y-0.5">
-              <div
-                className="text-xs sm:text-sm font-semibold text-[var(--text)] truncate"
-                style={{ fontFamily: 'var(--font-heading)' }}
-              >
+              <div className="rs-body text-sm font-bold text-[var(--rs-text)] truncate">
                 {c.topic}
               </div>
-              <div className="text-[11px] text-[var(--text-muted)] truncate">
+              <div className="rs-body text-xs text-[var(--rs-muted)] truncate">
                 {c.universityName} · {c.subject} · {c.answered} answered
               </div>
             </div>
 
             <div className="flex items-center gap-2.5 shrink-0">
-              <span className="cockpit-uni-pill cockpit-uni-pill--live tabular-nums">
+              <span className="rs-chip rs-chip--red tabular-nums">
                 {c.accuracy}% acc
               </span>
               {c.isUniversityLive && onDrillChapter && (
                 <button
                   type="button"
                   onClick={() => onDrillChapter(c)}
-                  className="inline-flex items-center justify-center gap-1 min-h-[44px] text-xs font-semibold px-3.5 py-2 rounded-full bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 transition-opacity cursor-pointer"
-                  style={{ fontFamily: 'var(--font-heading)' }}
+                  className="rs-glass-btn rs-glass-btn--red inline-flex items-center justify-center gap-1.5 min-h-[40px] text-xs font-bold px-4 py-2"
                 >
                   <span>Drill</span>
-                  <ArrowRight size={12} />
+                  <ArrowRight size={13} />
                 </button>
               )}
             </div>

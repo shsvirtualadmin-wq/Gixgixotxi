@@ -7690,3 +7690,585 @@ html:not(.dark) .zenryu-stage--active {
     scale: 1 1 !important;
   }
 }
+
+/* ==========================================================================
+   RESTYLED NOTIFICATIONS, STREAKS & PRACTICE DASHBOARD EXTRAS
+   (Weak Chapters & Recent Attempts)
+   ========================================================================== */
+
+:root,
+.light,
+[data-theme="light"] {
+  --rs-bg: #f5f3f2;
+  --rs-card: #ffffff;
+  --rs-card2: #f1eeec;
+  --rs-line: rgba(20, 20, 24, 0.11);
+  --rs-text: #16161a;
+  --rs-muted: #5d5d66;
+  --rs-red: #d4142a;
+  --rs-red-text: #c10f24;
+  --rs-gold: #8a5a00;
+  --rs-green: #128c4a;
+  --rs-blue: #0a74b5;
+  --rs-glass-fill: rgba(255, 255, 255, 0.55);
+  --rs-red-glass-fill: rgba(212, 20, 42, 0.66);
+  --rs-red-glass-fill: color-mix(in srgb, #d4142a 66%, transparent);
+  --rs-font-doto: 'Doto', var(--font-dot), sans-serif;
+  --rs-font-body: 'Space Grotesk', var(--font-heading), sans-serif;
+}
+
+.dark,
+[data-theme="dark"] {
+  --rs-bg: #060607;
+  --rs-card: #111114;
+  --rs-card2: #18181c;
+  --rs-line: rgba(255, 255, 255, 0.09);
+  --rs-text: #f4f4f5;
+  --rs-muted: #9a9aa3;
+  --rs-red: #e11d2e;
+  --rs-red-text: #ff4d5c;
+  --rs-gold: #f5c542;
+  --rs-green: #3ddc84;
+  --rs-blue: #4cc3ff;
+  --rs-glass-fill: rgba(255, 255, 255, 0.06);
+  --rs-red-glass-fill: rgba(225, 29, 46, 0.66);
+  --rs-red-glass-fill: color-mix(in srgb, #e11d2e 66%, transparent);
+  --rs-font-doto: 'Doto', var(--font-dot), sans-serif;
+  --rs-font-body: 'Space Grotesk', var(--font-heading), sans-serif;
+}
+
+/* Typography helpers */
+.rs-doto {
+  font-family: var(--rs-font-doto) !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.01em;
+}
+
+.rs-body {
+  font-family: var(--rs-font-body) !important;
+}
+
+/* Shared Glass Pill Button */
+.rs-glass-btn {
+  border-radius: 999px;
+  background: var(--rs-glass-fill);
+  -webkit-backdrop-filter: blur(2px) saturate(1.5);
+  backdrop-filter: blur(2px) saturate(1.5);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.6),
+    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.3),
+    0 3px 10px -3px rgba(0, 0, 0, 0.3);
+  color: var(--rs-text);
+  font-family: var(--rs-font-body);
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.rs-glass-btn:active:not(:disabled) {
+  transform: scale(1.07);
+}
+
+.rs-glass-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Red Glass Pill Button (66% red mixed with transparent + white text) */
+.rs-glass-btn--red {
+  background: rgba(225, 29, 46, 0.66);
+  background: var(--rs-red-glass-fill);
+  color: #ffffff !important;
+}
+
+/* Blue-Tinted Glass Pill Button (Freeze) */
+.rs-glass-btn--blue {
+  background: rgba(76, 195, 255, 0.14);
+  background: color-mix(in srgb, var(--rs-blue) 18%, var(--rs-glass-fill));
+  color: var(--rs-blue) !important;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--rs-blue) 42%, rgba(255, 255, 255, 0.22)),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.6),
+    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.3),
+    0 3px 10px -3px rgba(0, 0, 0, 0.3);
+}
+
+/* Shared Cards: radius 24-28px, padding 16-20px, card background, 1px inset line border */
+.rs-card {
+  background-color: var(--rs-card);
+  border-radius: 26px;
+  padding: 18px;
+  box-shadow: inset 0 0 0 1px var(--rs-line);
+  color: var(--rs-text);
+  font-family: var(--rs-font-body);
+}
+
+@media (min-width: 640px) {
+  .rs-card {
+    padding: 20px;
+  }
+}
+
+.rs-card--24 {
+  border-radius: 24px;
+  padding: 16px;
+}
+
+.rs-card--28 {
+  border-radius: 28px;
+  padding: 20px;
+}
+
+.rs-card2-row {
+  background-color: var(--rs-card2);
+  border-radius: 18px;
+  padding: 14px 16px;
+  box-shadow: inset 0 0 0 1px var(--rs-line);
+  color: var(--rs-text);
+  font-family: var(--rs-font-body);
+}
+
+/* Small Chips: pill, 3px 10px padding, 11px bold text, glass fill with 1px line */
+.rs-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-family: var(--rs-font-body) !important;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  background: var(--rs-glass-fill);
+  -webkit-backdrop-filter: blur(2px) saturate(1.5);
+  backdrop-filter: blur(2px) saturate(1.5);
+  box-shadow:
+    inset 0 0 0 1px var(--rs-line),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.45),
+    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.22),
+    0 3px 10px -3px rgba(0, 0, 0, 0.22);
+  color: var(--rs-text);
+}
+
+/* Reward & Pinned chips: gold */
+.rs-chip--gold {
+  color: var(--rs-gold) !important;
+  background: rgba(245, 197, 66, 0.12);
+  background: color-mix(in srgb, var(--rs-gold) 14%, var(--rs-glass-fill));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--rs-gold) 32%, var(--rs-line)),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.45),
+    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.22),
+    0 3px 10px -3px rgba(0, 0, 0, 0.22);
+}
+
+/* Follower chips: green */
+.rs-chip--green {
+  color: var(--rs-green) !important;
+  background: rgba(61, 220, 132, 0.12);
+  background: color-mix(in srgb, var(--rs-green) 14%, var(--rs-glass-fill));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--rs-green) 32%, var(--rs-line)),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.45),
+    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.22),
+    0 3px 10px -3px rgba(0, 0, 0, 0.22);
+}
+
+/* Announcement, Pro, and "0% acc" chips: red text on a red tint */
+.rs-chip--red {
+  color: var(--rs-red-text) !important;
+  background: rgba(225, 29, 46, 0.14);
+  background: color-mix(in srgb, var(--rs-red) 15%, var(--rs-glass-fill));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--rs-red) 34%, var(--rs-line)),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.45),
+    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.22),
+    0 3px 10px -3px rgba(0, 0, 0, 0.22);
+}
+
+/* Blue tint chip */
+.rs-chip--blue {
+  color: var(--rs-blue) !important;
+  background: rgba(76, 195, 255, 0.14);
+  background: color-mix(in srgb, var(--rs-blue) 14%, var(--rs-glass-fill));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--rs-blue) 32%, var(--rs-line)),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.45),
+    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.22),
+    0 3px 10px -3px rgba(0, 0, 0, 0.22);
+}
+
+/* Segmented Tab Bar with Sliding Red Glass Pill */
+.rs-seg-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  padding-block: 2px;
+}
+
+.rs-seg-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.rs-seg-track {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: max-content;
+  padding: 4px;
+  border-radius: 999px;
+  background-color: var(--rs-card);
+  box-shadow: inset 0 0 0 1px var(--rs-line);
+}
+
+.rs-seg-slider {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  border-radius: 999px;
+  background: rgba(225, 29, 46, 0.66);
+  background: var(--rs-red-glass-fill);
+  -webkit-backdrop-filter: blur(2px) saturate(1.5);
+  backdrop-filter: blur(2px) saturate(1.5);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.6),
+    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.3),
+    0 3px 10px -3px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  z-index: 1;
+  transition:
+    transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
+    width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.rs-seg-tab {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-family: var(--rs-font-body);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--rs-muted);
+  background: transparent;
+  border: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color 0.2s ease,
+    transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.rs-seg-tab:active {
+  transform: scale(1.07);
+}
+
+.rs-seg-tab--active {
+  color: #ffffff !important;
+}
+
+.rs-seg-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-family: var(--rs-font-body);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background-color: var(--rs-card2);
+  box-shadow: inset 0 0 0 1px var(--rs-line);
+  color: var(--rs-muted);
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rs-seg-tab--active .rs-seg-badge {
+  background-color: rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.32);
+  color: #ffffff;
+}
+
+/* Streaks Day Cells (44px rounded-square, radius 14px) */
+.rs-day-cell {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--rs-font-body);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+button.rs-day-cell:active {
+  transform: scale(1.07);
+}
+
+.rs-day-cell--practiced {
+  background: rgba(225, 29, 46, 0.66);
+  background: var(--rs-red-glass-fill);
+  -webkit-backdrop-filter: blur(2px) saturate(1.5);
+  backdrop-filter: blur(2px) saturate(1.5);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.6),
+    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.3),
+    0 3px 10px -3px rgba(0, 0, 0, 0.3);
+  color: #ffffff !important;
+}
+
+.rs-day-cell--frozen {
+  background: rgba(76, 195, 255, 0.14);
+  background: color-mix(in srgb, var(--rs-blue) 16%, var(--rs-card2));
+  border: 1px solid var(--rs-blue);
+  color: var(--rs-blue) !important;
+}
+
+.rs-day-cell--today {
+  background-color: var(--rs-card2);
+  border: 1.5px dashed var(--rs-red);
+  color: var(--rs-text);
+}
+
+.rs-day-cell--missed {
+  background-color: var(--rs-card2);
+  border: 1px solid var(--rs-line);
+  color: var(--rs-muted);
+}
+
+.rs-day-cell--future {
+  background-color: var(--rs-card2);
+  border: 1px dashed var(--rs-line);
+  color: var(--rs-muted);
+  opacity: 0.45;
+}
+
+/* Restyled Notifications Screen Overrides */
+.notif-page {
+  background-color: var(--rs-bg);
+  color: var(--rs-text);
+  font-family: var(--rs-font-body);
+  padding-bottom: calc(136px + env(safe-area-inset-bottom, 0px));
+}
+
+.notif-header {
+  border-bottom: none;
+  padding-bottom: 4px;
+}
+
+.notif-kicker {
+  font-family: var(--rs-font-body);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--rs-muted);
+}
+
+.notif-page-title {
+  font-family: var(--rs-font-doto) !important;
+  font-size: 30px !important;
+  font-weight: 800 !important;
+  color: var(--rs-text);
+}
+
+.notif-subtitle {
+  font-family: var(--rs-font-body);
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--rs-muted);
+}
+
+.notif-group-header {
+  font-family: var(--rs-font-body);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--rs-muted);
+}
+
+.notif-glass-card {
+  border-radius: 26px !important;
+  padding: 16px 18px !important;
+  background-color: var(--rs-card) !important;
+  border: none !important;
+  box-shadow: inset 0 0 0 1px var(--rs-line) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  display: grid !important;
+  grid-template-columns: 46px minmax(0, 1fr) !important;
+  column-gap: 14px !important;
+  align-items: start !important;
+  font-family: var(--rs-font-body);
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease !important;
+}
+
+@media (min-width: 640px) {
+  .notif-glass-card {
+    padding: 18px 20px !important;
+  }
+}
+
+.notif-glass-card:active {
+  transform: scale(1.02) !important;
+}
+
+.notif-glass-card--unread {
+  background-color: var(--rs-card) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rs-red) 42%, var(--rs-line)) !important;
+}
+
+.notif-glass-card--read {
+  background-color: var(--rs-card) !important;
+  box-shadow: inset 0 0 0 1px var(--rs-line) !important;
+}
+
+.notif-glass-card--read .notif-card-title {
+  color: var(--rs-text) !important;
+  font-weight: 700 !important;
+}
+
+.notif-icon-circle {
+  width: 46px !important;
+  height: 46px !important;
+  border-radius: 999px !important;
+  background-color: var(--rs-card2) !important;
+  border: 1px solid var(--rs-line) !important;
+  color: var(--rs-muted) !important;
+}
+
+.notif-icon-circle--system {
+  background-color: var(--rs-card2) !important;
+  border-color: var(--rs-line) !important;
+  color: var(--rs-text) !important;
+}
+
+.notif-icon-circle--reward {
+  background-color: color-mix(in srgb, var(--rs-gold) 15%, var(--rs-card2)) !important;
+  border-color: color-mix(in srgb, var(--rs-gold) 34%, var(--rs-line)) !important;
+  color: var(--rs-gold) !important;
+}
+
+.notif-icon-circle--announcement {
+  background-color: color-mix(in srgb, var(--rs-red) 15%, var(--rs-card2)) !important;
+  border-color: color-mix(in srgb, var(--rs-red) 34%, var(--rs-line)) !important;
+  color: var(--rs-red-text) !important;
+}
+
+.notif-icon-circle--crew {
+  background-color: color-mix(in srgb, var(--rs-gold) 15%, var(--rs-card2)) !important;
+  border-color: color-mix(in srgb, var(--rs-gold) 34%, var(--rs-line)) !important;
+  color: var(--rs-gold) !important;
+}
+
+.notif-icon-circle--avatar {
+  background-color: transparent !important;
+  border-color: transparent !important;
+}
+
+.notif-avatar-corner-badge {
+  width: 18px !important;
+  height: 18px !important;
+  border-radius: 999px !important;
+  background-color: var(--rs-card) !important;
+  border: 1px solid var(--rs-line) !important;
+}
+
+.notif-avatar-corner-badge--follower {
+  background-color: color-mix(in srgb, var(--rs-green) 20%, var(--rs-card)) !important;
+  border-color: color-mix(in srgb, var(--rs-green) 45%, var(--rs-line)) !important;
+  color: var(--rs-green) !important;
+}
+
+.notif-card-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.notif-card-title {
+  font-family: var(--rs-font-body) !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  line-height: 1.35 !important;
+  color: var(--rs-text) !important;
+  margin-top: 2px !important;
+}
+
+.notif-card-message {
+  font-family: var(--rs-font-body) !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  line-height: 1.48 !important;
+  color: var(--rs-muted) !important;
+}
+
+.notif-time {
+  font-family: var(--rs-font-body) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: var(--rs-muted) !important;
+}
+
+.notif-state-card {
+  border-radius: 26px !important;
+  background-color: var(--rs-card) !important;
+  border: none !important;
+  box-shadow: inset 0 0 0 1px var(--rs-line) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rs-glass-btn,
+  .rs-glass-btn:active,
+  .rs-seg-slider,
+  .rs-seg-tab,
+  .rs-seg-tab:active,
+  .rs-day-cell,
+  button.rs-day-cell:active,
+  .notif-glass-card,
+  .notif-glass-card:active {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+  }
+}
+

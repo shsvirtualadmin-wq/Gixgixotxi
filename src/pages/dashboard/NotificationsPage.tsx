@@ -817,6 +817,32 @@ export function NotificationsPage() {
 
   const isLoading = storeSnapshot.loading && !storeSnapshot.initialized;
 
+  const tabButtonRefs = useRef<Record<FilterType, HTMLButtonElement | null>>({
+    all: null,
+    following: null,
+    announcements: null,
+    rewards: null,
+  });
+  const [sliderRect, setSliderRect] = useState<{ left: number; width: number }>({
+    left: 4,
+    width: 0,
+  });
+
+  useEffect(() => {
+    const updateSlider = () => {
+      const activeBtn = tabButtonRefs.current[filter];
+      if (activeBtn) {
+        setSliderRect({
+          left: activeBtn.offsetLeft,
+          width: activeBtn.offsetWidth,
+        });
+      }
+    };
+    updateSlider();
+    window.addEventListener('resize', updateSlider);
+    return () => window.removeEventListener('resize', updateSlider);
+  }, [filter, counts.all, counts.following, counts.announcements, counts.rewards]);
+
   return (
     <div className="notif-page">
       {/* Header & Action Row */}
@@ -826,7 +852,7 @@ export function NotificationsPage() {
           <div className="notif-page-title-row">
             <h1 className="notif-page-title">Notifications</h1>
             {unreadCount > 0 && (
-              <span className="notif-unread-count-pill">{unreadCount} unread</span>
+              <span className="rs-chip rs-chip--red tabular-nums">{unreadCount} unread</span>
             )}
           </div>
           <p className="notif-subtitle">
@@ -839,9 +865,9 @@ export function NotificationsPage() {
             type="button"
             onClick={handleMarkAllRead}
             disabled={unreadCount === 0 || isLoading}
-            className="notif-action-pill"
+            className="rs-glass-btn inline-flex items-center justify-center gap-2 min-h-[42px] px-4 py-2 text-xs font-bold"
           >
-            <CheckCheck className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+            <CheckCheck className="w-4 h-4 shrink-0" strokeWidth={2} />
             <span>Mark all as read</span>
           </button>
 
@@ -849,21 +875,31 @@ export function NotificationsPage() {
             type="button"
             onClick={handleRefresh}
             disabled={refreshing || isLoading}
-            className="notif-refresh-btn"
+            className="rs-glass-btn w-[42px] h-[42px] min-w-[42px] min-h-[42px] inline-flex items-center justify-center shrink-0"
             aria-label="Refresh notifications"
             title="Refresh notifications"
           >
             <RefreshCw
               className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`}
-              strokeWidth={1.75}
+              strokeWidth={2}
             />
           </button>
         </div>
       </header>
 
-      {/* Filter Tabs Row */}
-      <div className="notif-chip-scroll-wrap">
-        <div className="notif-chip-scroll" role="tablist" aria-label="Notification filters">
+      {/* Filter Tabs Row (Segmented Tab Bar with Sliding Red Glass Pill) */}
+      <div className="rs-seg-scroll">
+        <div className="rs-seg-track" role="tablist" aria-label="Notification filters">
+          {sliderRect.width > 0 && (
+            <span
+              className="rs-seg-slider"
+              aria-hidden="true"
+              style={{
+                width: `${sliderRect.width}px`,
+                transform: `translate3d(${sliderRect.left}px, 0, 0)`,
+              }}
+            />
+          )}
           {(
             [
               { id: 'all', label: 'All', count: counts.all },
@@ -876,6 +912,9 @@ export function NotificationsPage() {
             return (
               <button
                 key={tab.id}
+                ref={(el) => {
+                  tabButtonRefs.current[tab.id] = el;
+                }}
                 type="button"
                 role="tab"
                 aria-selected={active}
@@ -883,12 +922,10 @@ export function NotificationsPage() {
                   setFilter(tab.id);
                   setVisibleCount(INITIAL_VISIBLE_COUNT);
                 }}
-                className={`notif-filter-chip ${
-                  active ? 'notif-filter-chip--active' : ''
-                }`}
+                className={`rs-seg-tab ${active ? 'rs-seg-tab--active' : ''}`}
               >
                 <span>{tab.label}</span>
-                <span className="notif-filter-chip-count">{tab.count}</span>
+                <span className="rs-seg-badge">{tab.count}</span>
               </button>
             );
           })}
@@ -909,7 +946,7 @@ export function NotificationsPage() {
               type="button"
               onClick={handleRefresh}
               disabled={refreshing}
-              className="notif-action-pill"
+              className="rs-glass-btn inline-flex items-center justify-center gap-2 min-h-[42px] px-4 py-2 text-xs font-bold"
             >
               <RefreshCw
                 className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`}
@@ -928,12 +965,12 @@ export function NotificationsPage() {
                 <div className="notif-glass-card notif-glass-card--read animate-pulse pointer-events-none">
                   <div className="notif-icon-circle" />
                   <div className="notif-card-body">
-                    <div className="h-3.5 w-24 rounded-full bg-current opacity-15" />
+                    <div className="notif-card-top-row">
+                      <div className="h-3.5 w-24 rounded-full bg-current opacity-15" />
+                      <div className="h-3 w-10 rounded-full bg-current opacity-15" />
+                    </div>
                     <div className="h-4 w-3/4 rounded-full bg-current opacity-20 mt-1" />
                     <div className="h-3 w-full rounded-full bg-current opacity-10 mt-1" />
-                  </div>
-                  <div className="notif-card-meta">
-                    <div className="h-3 w-10 rounded-full bg-current opacity-15" />
                   </div>
                 </div>
               </li>
@@ -1063,7 +1100,7 @@ export function NotificationsPage() {
                               avatarVariant={actorProfile?.avatarVariant}
                               name={resolvedActorName}
                               isSuperAdmin={isActorSuperAdmin}
-                              size={44}
+                              size={46}
                             />
                             {category === 'follower' ? (
                               <span
@@ -1118,7 +1155,7 @@ export function NotificationsPage() {
                     const renderTypeTag = () => {
                       if (category === 'announcement') {
                         return (
-                          <span className="notif-tag notif-tag--announcement">
+                          <span className="rs-chip rs-chip--red">
                             <Sparkles className="w-2.5 h-2.5" strokeWidth={2} />
                             ANNOUNCEMENT
                           </span>
@@ -1126,7 +1163,7 @@ export function NotificationsPage() {
                       }
                       if (category === 'follower') {
                         return (
-                          <span className="notif-tag notif-tag--follower">
+                          <span className="rs-chip rs-chip--green">
                             <UserPlus className="w-2.5 h-2.5" strokeWidth={2} />
                             FOLLOWER
                           </span>
@@ -1134,7 +1171,7 @@ export function NotificationsPage() {
                       }
                       if (category === 'post') {
                         return (
-                          <span className="notif-tag notif-tag--post">
+                          <span className="rs-chip">
                             <FileText className="w-2.5 h-2.5" strokeWidth={2} />
                             POST
                           </span>
@@ -1142,7 +1179,7 @@ export function NotificationsPage() {
                       }
                       if (category === 'reward') {
                         return (
-                          <span className="notif-tag notif-tag--reward">
+                          <span className="rs-chip rs-chip--gold">
                             <Coins className="w-2.5 h-2.5" strokeWidth={2} />
                             REWARD
                           </span>
@@ -1150,14 +1187,14 @@ export function NotificationsPage() {
                       }
                       if (category === 'crew') {
                         return (
-                          <span className="notif-tag notif-tag--crew">
+                          <span className="rs-chip rs-chip--gold">
                             <Award className="w-2.5 h-2.5" strokeWidth={2} />
                             CREW
                           </span>
                         );
                       }
                       return (
-                        <span className="notif-tag notif-tag--system">
+                        <span className="rs-chip">
                           <Bell className="w-2.5 h-2.5" strokeWidth={2} />
                           SYSTEM
                         </span>
@@ -1178,19 +1215,33 @@ export function NotificationsPage() {
                               : 'notif-glass-card--unread'
                           }`}
                         >
-                          {/* Left Column: Avatar or Category Icon */}
+                          {/* Left Column: 46px Round Avatar or Category Icon */}
                           {renderLeftAvatarOrIcon()}
 
-                          {/* Center Column: Tags + Title + Preview + Inline Announcement Expansion */}
+                          {/* Right Content Column: Top row (Chips + Time), Bold 16px Title, Muted 14px Description */}
                           <div className="notif-card-body">
-                            <div className="notif-tags-row">
-                              {isPinned && (
-                                <span className="notif-tag notif-tag--pinned">
-                                  <Pin className="w-2.5 h-2.5" strokeWidth={2} />
-                                  PINNED
+                            <div className="notif-card-top-row">
+                              <div className="notif-tags-row">
+                                {isPinned && (
+                                  <span className="rs-chip rs-chip--gold">
+                                    <Pin className="w-2.5 h-2.5" strokeWidth={2} />
+                                    PINNED
+                                  </span>
+                                )}
+                                {renderTypeTag()}
+                              </div>
+
+                              <div className="notif-card-meta">
+                                <span className="notif-time">
+                                  {formatNotificationTime(notif.createdAt)}
                                 </span>
-                              )}
-                              {renderTypeTag()}
+                                <span
+                                  className={`notif-unread-dot ${
+                                    notif.read ? 'notif-unread-dot--read' : ''
+                                  }`}
+                                  aria-label={notif.read ? 'Read' : 'Unread'}
+                                />
+                              </div>
                             </div>
 
                             <h3 className="notif-card-title">{heading}</h3>
@@ -1212,7 +1263,7 @@ export function NotificationsPage() {
                                     ? `Published by ${notif.publishedBy || 'Superadmin'}`
                                     : 'Tap to read full announcement'}
                                 </span>
-                                <span className="inline-flex items-center gap-1">
+                                <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--rs-muted)]">
                                   {isExpanded ? (
                                     <>
                                       <span>Show less</span>
@@ -1227,19 +1278,6 @@ export function NotificationsPage() {
                                 </span>
                               </div>
                             )}
-                          </div>
-
-                          {/* Right Column: Time + Unread Red Dot */}
-                          <div className="notif-card-meta">
-                            <span className="notif-time">
-                              {formatNotificationTime(notif.createdAt)}
-                            </span>
-                            <span
-                              className={`notif-unread-dot ${
-                                notif.read ? 'notif-unread-dot--read' : ''
-                              }`}
-                              aria-label={notif.read ? 'Read' : 'Unread'}
-                            />
                           </div>
                         </button>
                       </li>
