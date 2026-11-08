@@ -183,7 +183,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
             <BoardlyAvatar
               uid={user?.uid}
               name={displayName}
-              avatarUrl={profile?.avatarUrl}
+              avatarUrl={(profile as Record<string, unknown> | null)?.avatarUrl as string | undefined}
               photoURL={profile?.photoURL || user?.photoURL}
               avatar={(profile as Record<string, unknown> | null)?.avatar as string | null}
               customAvatarUrl={(profile as Record<string, unknown> | null)?.customAvatarUrl as string | null}

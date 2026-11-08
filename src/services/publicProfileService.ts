@@ -191,7 +191,7 @@ export function normalizePublicProfileDoc(
     p.equippedAvatar,
     w.avatarUrl,
     w.photoURL,
-    botMatch?.avatar,
+    botMatch?.equippedAvatar,
   ];
 
   let resolvedAvatarUrl: string | null = null;

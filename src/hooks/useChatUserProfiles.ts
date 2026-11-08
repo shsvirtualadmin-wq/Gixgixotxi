@@ -200,7 +200,7 @@ export function useChatUserProfiles(seeds: ChatUserSeed[]): Record<string, Resol
         uid,
         displayName,
         role: isSuperAdmin ? 'admin' : role,
-        customRole: prof?.customRole,
+        customRole: prof?.customRole || undefined,
         isSuperAdmin,
         equippedAvatar,
         avatarUrl,

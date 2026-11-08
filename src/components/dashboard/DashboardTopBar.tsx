@@ -61,11 +61,12 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
 
   // Resolve real user profile photo URL across profile and Firebase Auth user fields
   const resolvedPhotoUrl = useMemo(() => {
+    const profileRecord = profile as Record<string, unknown> | null;
     const candidates = [
-      profile?.avatarUrl,
+      profileRecord?.avatarUrl,
       profile?.photoURL,
-      (profile as Record<string, unknown> | null)?.avatar,
-      (profile as Record<string, unknown> | null)?.customAvatarUrl,
+      profile?.avatar,
+      profileRecord?.customAvatarUrl,
       user?.photoURL,
     ];
     for (const c of candidates) {

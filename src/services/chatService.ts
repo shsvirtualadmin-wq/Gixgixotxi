@@ -30,6 +30,8 @@ export interface ChatMessage {
   createdAtMs?: number;
 }
 
+export type DirectMessage = ChatMessage;
+
 export interface ConversationParticipant {
   displayName: string;
   avatar?: string | null;
@@ -43,13 +45,21 @@ export interface Conversation {
   participants: string[];
   participantDetails: Record<string, ConversationParticipant>;
   lastMessage?: string;
+  lastMessageText?: string;
+  lastMessageSenderId?: string;
   lastMessageAt?: any;
+  lastMessageAtMs?: number;
   lastSenderId?: string;
   createdAt?: any;
   updatedAt?: any;
 }
 
-export type ChatRequestStatus = 'pending' | 'accepted' | 'declined';
+export type ChatRequestStatus =
+  | 'pending'
+  | 'accepted'
+  | 'declined'
+  | 'already_allowed'
+  | 'auto_accepted';
 
 export interface ChatRequest {
   id: string;
@@ -64,6 +74,8 @@ export interface ChatRequest {
   toAvatar?: string | null;
   toFrame?: string | null;
   toPhotoURL?: string | null;
+  message?: string;
+  conversationId?: string;
   status: ChatRequestStatus;
   createdAt: any;
   createdAtMs?: number;
@@ -76,6 +88,7 @@ export interface ChatPermissionState {
   canChat: boolean;
   reason: 'mutual_follow' | 'request_accepted' | 'none';
   isMutualFollow: boolean;
+  hasAcceptedRequest?: boolean;
   outgoingRequest: ChatRequest | null;
   incomingRequest: ChatRequest | null;
   cooldownEndsAtMs: number | null;
@@ -120,6 +133,8 @@ function parseChatRequestDoc(id: string, data: Record<string, any>): ChatRequest
     toAvatar: data.toAvatar || null,
     toFrame: data.toFrame || null,
     toPhotoURL: data.toPhotoURL || null,
+    message: typeof data.message === 'string' ? data.message : '',
+    conversationId: typeof data.conversationId === 'string' ? data.conversationId : '',
     status: (data.status as ChatRequestStatus) || 'pending',
     createdAt: data.createdAt || null,
     createdAtMs: typeof data.createdAtMs === 'number' ? data.createdAtMs : toTimestampMs(data.createdAt),
@@ -189,6 +204,7 @@ export async function checkChatPermission(
       canChat: true,
       reason: 'mutual_follow',
       isMutualFollow: true,
+      hasAcceptedRequest: false,
       outgoingRequest,
       incomingRequest,
       cooldownEndsAtMs,
@@ -201,6 +217,7 @@ export async function checkChatPermission(
       canChat: true,
       reason: 'request_accepted',
       isMutualFollow: false,
+      hasAcceptedRequest: true,
       outgoingRequest,
       incomingRequest,
       cooldownEndsAtMs,
@@ -212,6 +229,7 @@ export async function checkChatPermission(
     canChat: false,
     reason: 'none',
     isMutualFollow: false,
+    hasAcceptedRequest: false,
     outgoingRequest,
     incomingRequest,
     cooldownEndsAtMs,
@@ -231,7 +249,8 @@ export async function sendChatRequest(
   fromUid: string,
   toUid: string,
   fromMeta?: ConversationParticipant,
-  toMeta?: ConversationParticipant
+  toMeta?: ConversationParticipant,
+  message?: string
 ): Promise<ChatRequest> {
   if (!fromUid || !toUid) {
     throw new Error('Both sender and recipient IDs are required.');
@@ -242,7 +261,19 @@ export async function sendChatRequest(
 
   const perm = await checkChatPermission(fromUid, toUid);
   if (perm.canChat) {
-    throw new Error('You can already chat with this user.');
+    const convId = getConversationId(fromUid, toUid);
+    return {
+      id: getChatRequestId(fromUid, toUid),
+      fromUid,
+      toUid,
+      fromName: fromMeta?.displayName || 'Student',
+      toName: toMeta?.displayName || 'Student',
+      message: message || '',
+      conversationId: convId,
+      status: 'already_allowed',
+      createdAt: null,
+      createdAtMs: Date.now(),
+    };
   }
   if (perm.outgoingRequest?.status === 'pending') {
     throw new Error('Chat request already sent.');
@@ -253,7 +284,12 @@ export async function sendChatRequest(
 
   // If the other user already sent a pending request to us, auto-accept it!
   if (perm.incomingRequest?.status === 'pending') {
-    return respondToChatRequest(perm.incomingRequest.id, fromUid, 'accepted', fromMeta);
+    const accepted = await respondToChatRequest(perm.incomingRequest.id, fromUid, 'accepted', fromMeta);
+    return {
+      ...accepted,
+      status: 'auto_accepted',
+      conversationId: getConversationId(fromUid, toUid),
+    };
   }
 
   const reqId = getChatRequestId(fromUid, toUid);
@@ -274,6 +310,8 @@ export async function sendChatRequest(
     toAvatar: toMeta?.avatar || null,
     toFrame: toMeta?.frame || null,
     toPhotoURL: toMeta?.photoURL || null,
+    message: message || '',
+    conversationId: getConversationId(fromUid, toUid),
     status: 'pending' as ChatRequestStatus,
     createdAt: serverTimestamp(),
     createdAtMs: nowMs,
@@ -342,10 +380,12 @@ export async function respondToChatRequest(
   }
 
   const nowMs = Date.now();
+  const convId = getConversationId(currentUid, existing.fromUid);
 
   if (decision === 'accepted') {
     await updateDoc(reqRef, {
       status: 'accepted',
+      conversationId: convId,
       updatedAt: serverTimestamp(),
       declinedAt: null,
       declinedAtMs: null,
@@ -399,6 +439,7 @@ export async function respondToChatRequest(
     return {
       ...existing,
       status: 'accepted',
+      conversationId: convId,
       declinedAt: null,
       declinedAtMs: null,
     };
@@ -481,13 +522,20 @@ export function subscribeUserConversations(
       const convs: Conversation[] = [];
       snap.forEach((d) => {
         const data = d.data();
+        const lastMsg = data.lastMessage || data.lastMessageText || '';
+        const lastSender = data.lastSenderId || data.lastMessageSenderId || '';
+        const lastMsgAt = data.lastMessageAt || data.updatedAt || null;
+        const lastMsgAtMs = typeof data.lastMessageAtMs === 'number' ? data.lastMessageAtMs : toTimestampMs(lastMsgAt);
         convs.push({
           id: d.id,
           participants: Array.isArray(data.participants) ? data.participants : [],
           participantDetails: data.participantDetails || {},
-          lastMessage: data.lastMessage || '',
-          lastMessageAt: data.lastMessageAt || data.updatedAt || null,
-          lastSenderId: data.lastSenderId || '',
+          lastMessage: lastMsg,
+          lastMessageText: lastMsg,
+          lastMessageSenderId: lastSender,
+          lastMessageAt: lastMsgAt,
+          lastMessageAtMs: lastMsgAtMs,
+          lastSenderId: lastSender,
           createdAt: data.createdAt || null,
           updatedAt: data.updatedAt || null,
         });
@@ -510,7 +558,7 @@ export function subscribeUserConversations(
 export async function getOrCreateConversation(
   currentUserId: string,
   otherUserId: string,
-  currentMeta?: ConversationParticipant,
+  currentMeta?: ConversationParticipant | Record<string, ConversationParticipant>,
   otherMeta?: ConversationParticipant
 ): Promise<string> {
   if (!currentUserId || !otherUserId) {
@@ -518,6 +566,17 @@ export async function getOrCreateConversation(
   }
   if (currentUserId === otherUserId) {
     throw new Error('Cannot create conversation with yourself.');
+  }
+
+  let cMeta: ConversationParticipant | undefined;
+  let oMeta: ConversationParticipant | undefined = otherMeta;
+
+  if (currentMeta && (currentUserId in currentMeta || otherUserId in currentMeta)) {
+    const metaMap = currentMeta as Record<string, ConversationParticipant>;
+    cMeta = metaMap[currentUserId];
+    oMeta = metaMap[otherUserId];
+  } else {
+    cMeta = currentMeta as ConversationParticipant | undefined;
   }
 
   const perm = await checkChatPermission(currentUserId, otherUserId);
@@ -533,12 +592,12 @@ export async function getOrCreateConversation(
 
   const snap = await getDoc(convRef);
   if (snap.exists()) {
-    if (currentMeta || otherMeta) {
+    if (cMeta || oMeta) {
       const existingData = snap.data() as Conversation;
       const details = {
         ...(existingData.participantDetails || {}),
-        ...(currentMeta ? { [currentUserId]: currentMeta } : {}),
-        ...(otherMeta ? { [otherUserId]: otherMeta } : {}),
+        ...(cMeta ? { [currentUserId]: cMeta } : {}),
+        ...(oMeta ? { [otherUserId]: oMeta } : {}),
       };
       await updateDoc(convRef, {
         participantDetails: details,
@@ -553,21 +612,24 @@ export async function getOrCreateConversation(
     participants: sortedParticipants,
     participantDetails: {
       [currentUserId]: {
-        displayName: currentMeta?.displayName || auth.currentUser?.displayName || 'Student',
-        avatar: currentMeta?.avatar || null,
-        frame: currentMeta?.frame || null,
-        photoURL: currentMeta?.photoURL || auth.currentUser?.photoURL || null,
+        displayName: cMeta?.displayName || auth.currentUser?.displayName || 'Student',
+        avatar: cMeta?.avatar || null,
+        frame: cMeta?.frame || null,
+        photoURL: cMeta?.photoURL || auth.currentUser?.photoURL || null,
       },
       [otherUserId]: {
-        displayName: otherMeta?.displayName || 'Student',
-        avatar: otherMeta?.avatar || null,
-        frame: otherMeta?.frame || null,
-        photoURL: otherMeta?.photoURL || null,
+        displayName: oMeta?.displayName || 'Student',
+        avatar: oMeta?.avatar || null,
+        frame: oMeta?.frame || null,
+        photoURL: oMeta?.photoURL || null,
       },
     },
     lastMessage: '',
-    lastMessageAt: serverTimestamp(),
+    lastMessageText: '',
+    lastMessageSenderId: currentUserId,
     lastSenderId: currentUserId,
+    lastMessageAt: serverTimestamp(),
+    lastMessageAtMs: Date.now(),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -583,10 +645,32 @@ export async function getOrCreateConversation(
 export async function sendMessage(
   conversationId: string,
   senderId: string,
-  text: string,
-  senderMeta?: ConversationParticipant,
-  recipientId?: string
+  arg3: string,
+  arg4?: string | ConversationParticipant,
+  arg5?: ConversationParticipant | string
 ): Promise<string> {
+  let recipientId: string | undefined;
+  let text: string;
+  let senderMeta: ConversationParticipant | undefined;
+
+  if (typeof arg4 === 'string') {
+    // Called as (conversationId, senderId, recipientId, text, senderMeta)
+    recipientId = arg3;
+    text = arg4;
+    senderMeta = arg5 as ConversationParticipant | undefined;
+  } else {
+    // Called as (conversationId, senderId, text, senderMeta, recipientId)
+    text = arg3;
+    senderMeta = arg4 as ConversationParticipant | undefined;
+    recipientId = typeof arg5 === 'string' ? arg5 : undefined;
+  }
+
+  // Fallback extraction of recipientId from conversationId (conv_uid1_uid2) if missing
+  if (!recipientId && conversationId.startsWith('conv_')) {
+    const parts = conversationId.replace(/^conv_/, '').split('_');
+    recipientId = parts.find((p) => p !== senderId);
+  }
+
   const trimmed = text.trim().slice(0, 1000);
   if (!trimmed) {
     throw new Error('Message cannot be empty.');
@@ -626,8 +710,11 @@ export async function sendMessage(
 
   await updateDoc(convRef, {
     lastMessage: trimmed,
-    lastMessageAt: serverTimestamp(),
+    lastMessageText: trimmed,
+    lastMessageSenderId: senderId,
     lastSenderId: senderId,
+    lastMessageAt: serverTimestamp(),
+    lastMessageAtMs: nowMs,
     updatedAt: serverTimestamp(),
   }).catch(() => {});
 
