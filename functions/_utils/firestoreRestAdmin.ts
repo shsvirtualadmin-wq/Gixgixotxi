@@ -1314,9 +1314,10 @@ export class InMemoryD1Database implements RewardsD1Database {
       return 0;
     }
 
-    // 1. reward_settings
+    // 1. reward_settings (key TEXT PRIMARY KEY)
     if (upper.includes('INTO REWARD_SETTINGS')) {
       const isIgnore = upper.includes('OR IGNORE');
+      const isReplace = upper.includes('OR REPLACE') || upper.includes('ON CONFLICT');
       let key: string;
       let val: string;
       if (args.length >= 2) {
@@ -1334,8 +1335,13 @@ export class InMemoryD1Database implements RewardsD1Database {
           return 0;
         }
       }
-      if (isIgnore && this.tables.reward_settings.has(key)) {
-        return 0;
+      if (this.tables.reward_settings.has(key)) {
+        if (isIgnore) {
+          return 0;
+        }
+        if (!isReplace) {
+          throw new Error('D1_ERROR: UNIQUE constraint failed: reward_settings.key');
+        }
       }
       this.tables.reward_settings.set(key, { key, value: val });
       return 1;

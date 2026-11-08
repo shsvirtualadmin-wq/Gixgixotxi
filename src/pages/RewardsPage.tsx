@@ -147,7 +147,7 @@ export function RewardsPage() {
   const [state, setState] = useState<RewardsStateResponse>(() =>
     buildFallbackClientState(user?.uid)
   );
-  const [, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(true);
   const [countdownSec, setCountdownSec] = useState<number>(() =>
     getSecondsUntilNextPktMidnight()
   );
@@ -174,10 +174,12 @@ export function RewardsPage() {
   const dailyClaimBtnRef = useRef<HTMLButtonElement | null>(null);
   const milestoneBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
-  const isServerNotReady = Boolean(
-    state.state === 'server_not_ready' || !state.serverConfigured
-  );
-  const isComingSoon = Boolean(isServerNotReady || !state.canClaim || state.comingSoon);
+  const hasLoadError = Boolean(state.loadError);
+  const isComingSoon =
+    !loading &&
+    !hasLoadError &&
+    (state.mode === 'off' || (state.mode === 'admin_only' && !isAdmin));
+  const isClaimBlocked = Boolean(loading || hasLoadError || isComingSoon);
   const isMilestoneAdminExcluded = Boolean(isAdmin && state.mode !== 'admin_only');
   const liveBalance = user ? Math.max(walletBalance, state.balance) : 0;
 
@@ -305,10 +307,10 @@ export function RewardsPage() {
       if (fetched.daily?.secondsUntilNextPktMidnight) {
         setCountdownSec(fetched.daily.secondsUntilNextPktMidnight);
       }
-      if (fetched.state === 'server_not_ready' || !fetched.serverConfigured) {
+      if (fetched.loadError) {
         setBannerNotice({
-          type: 'info',
-          text: fetched.statusMessage || 'Rewards are being set up',
+          type: 'error',
+          text: fetched.loadError,
         });
       }
     } finally {
@@ -333,7 +335,7 @@ export function RewardsPage() {
       navigate('/signup');
       return;
     }
-    if (isComingSoon || state.daily.claimedToday || claimingDaily) return;
+    if (isClaimBlocked || state.daily.claimedToday || claimingDaily) return;
 
     const startBalance = liveBalance;
     const sourceBtn = dailyClaimBtnRef.current;
@@ -380,7 +382,7 @@ export function RewardsPage() {
       navigate('/signup');
       return;
     }
-    if (isComingSoon || isMilestoneAdminExcluded || claimingMilestoneId) return;
+    if (isClaimBlocked || isMilestoneAdminExcluded || claimingMilestoneId) return;
 
     const startBalance = liveBalance;
     const sourceBtn = milestoneBtnRefs.current[milestoneId] || null;
@@ -429,7 +431,7 @@ export function RewardsPage() {
       return;
     }
     const clean = normalizeReferralCode(manualCodeInput);
-    if (!clean || isComingSoon || attachingCode) return;
+    if (!clean || isClaimBlocked || attachingCode) return;
 
     setAttachingCode(true);
     setBannerNotice(null);
@@ -460,7 +462,7 @@ export function RewardsPage() {
   };
 
   const handleConfirmFriendCode = async (referralId: string) => {
-    if (!user || isComingSoon || confirmingRefId) return;
+    if (!user || isClaimBlocked || confirmingRefId) return;
     const code = normalizeReferralCode(confirmInputs[referralId] || '');
     if (!code) {
       setBannerNotice({
@@ -534,10 +536,10 @@ export function RewardsPage() {
   const day30Amount = ladder[29] ?? 1000;
 
   const dailyBtnDisabled = Boolean(
-    isComingSoon || state.daily.claimedToday || claimingDaily
+    isClaimBlocked || state.daily.claimedToday || claimingDaily
   );
   const attachBtnDisabled = Boolean(
-    isComingSoon || attachingCode || !manualCodeInput.trim()
+    isClaimBlocked || attachingCode || !manualCodeInput.trim()
   );
 
   return (
@@ -630,7 +632,7 @@ export function RewardsPage() {
         }}
       >
         {/* ─── SUPER ADMIN BANNER WHEN MODE IS NOT "EVERYONE" ─────────────── */}
-        {isAdmin && state.mode !== 'everyone' && (
+        {isAdmin && !loading && !hasLoadError && state.mode !== 'everyone' && (
           <div
             data-testid="super-admin-rewards-mode-banner"
             className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-[28px] border px-5 py-4"
@@ -851,7 +853,11 @@ export function RewardsPage() {
             >
               <Gift size={18} />
               <span>
-                {isComingSoon
+                {hasLoadError
+                  ? 'Failed to load settings'
+                  : loading
+                  ? 'Loading...'
+                  : isComingSoon
                   ? 'Coming soon'
                   : state.daily.claimedToday
                   ? `Claimed Day ${state.daily.completedDaysInCycle}`
@@ -1157,7 +1163,7 @@ export function RewardsPage() {
                 const pct = Math.min(100, Math.round((m.progress / m.threshold) * 100));
                 const isClaimingThis = claimingMilestoneId === m.id;
                 const btnDisabled = Boolean(
-                  isComingSoon ||
+                  isClaimBlocked ||
                     isMilestoneAdminExcluded ||
                     m.claimed ||
                     !m.eligible ||
@@ -1236,7 +1242,11 @@ export function RewardsPage() {
                         {...getJellyHandlers(btnDisabled)}
                         className="rw-jelly-btn rw-btn-red-glass h-10 min-h-[40px] px-4 rounded-full inline-flex items-center justify-center gap-1.5 text-xs font-heading font-bold shrink-0 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
                       >
-                        {isComingSoon ? (
+                        {hasLoadError ? (
+                          <span>Error</span>
+                        ) : loading ? (
+                          <span>Loading...</span>
+                        ) : isComingSoon ? (
                           <span>Coming soon</span>
                         ) : m.claimed ? (
                           <>
@@ -1563,7 +1573,11 @@ export function RewardsPage() {
                     {...getJellyHandlers(attachBtnDisabled)}
                     className="rw-jelly-btn rw-btn-clear-glass h-12 min-h-[48px] px-6 rounded-full inline-flex items-center justify-center text-xs sm:text-sm font-heading font-bold shrink-0 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
                   >
-                    {isComingSoon
+                    {hasLoadError
+                      ? 'Failed to load settings'
+                      : loading
+                      ? 'Loading...'
+                      : isComingSoon
                       ? 'Coming soon'
                       : attachingCode
                       ? 'Attaching...'
@@ -1599,7 +1613,7 @@ export function RewardsPage() {
                     const isPaid =
                       item.status === 'completed' || item.status === 'paid';
                     const acceptDisabled = Boolean(
-                      isComingSoon || confirmingRefId === item.id
+                      isClaimBlocked || confirmingRefId === item.id
                     );
 
                     return (

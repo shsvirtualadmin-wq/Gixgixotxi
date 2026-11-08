@@ -297,7 +297,9 @@ export function canUserClaimRewards(params: {
 }): boolean {
   if (!params.serverConfigured || !params.user) return false;
   if (params.mode === 'off') return false;
-  if (params.mode === 'admin_only') return params.user.isSuperAdmin;
+  if (params.mode === 'admin_only') {
+    return Boolean(params.user.isSuperAdmin || params.user.isAdminOrAbove);
+  }
   if (params.mode === 'everyone') return true;
   return false;
 }
@@ -818,7 +820,7 @@ function jsonResponse(body: unknown, status = 200): Response {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     },
   });
@@ -835,12 +837,33 @@ export async function handleRewardsApiRequest(
       status: 204,
       headers: {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       },
     });
   }
 
+  try {
+    return await handleRewardsApiRequestInner(opts, request, env, nowMs);
+  } catch (unhandledErr: any) {
+    console.error('[Rewards Worker Unhandled Error]:', unhandledErr?.message || unhandledErr);
+    return jsonResponse(
+      {
+        ok: false,
+        error: unhandledErr?.message || 'Internal server error in Rewards Worker.',
+        code: 'INTERNAL_ERROR',
+      },
+      500
+    );
+  }
+}
+
+async function handleRewardsApiRequestInner(
+  opts: HandleRewardsRequestOptions,
+  request: Request,
+  env: RewardsEnv | undefined,
+  nowMs: number
+): Promise<Response> {
   const url = new URL(request.url);
   const subPath = url.pathname.replace(/^\/api\/rewards\/?/, '').replace(/\/+$/, '');
 
@@ -1018,46 +1041,37 @@ export async function handleRewardsApiRequest(
     }
   }
 
-  // 5. Per-user rate limiting (~1 request/sec)
-  if (!opts.bypassRateLimit) {
-    const rateBucket = request.method === 'GET' ? `get:${subPath}` : `post:${subPath}`;
-    if (!checkRateLimit(uid, rateBucket, nowMs)) {
+  // ─── ENDPOINT 6: GET / POST / PUT / PATCH /api/rewards/admin/mode (Super Admin Only) ───
+  if (subPath === 'admin/mode') {
+    if (!d1User.isSuperAdmin && !d1User.isAdminOrAbove) {
       return jsonResponse(
         {
           ok: false,
-          error: 'Too many requests. Please wait 1 second and try again.',
-          code: 'RATE_LIMITED',
+          error: 'Forbidden: Only Super Admins can manage the Rewards mode.',
+          code: 'FORBIDDEN',
         },
-        429
+        403
       );
     }
-  }
 
-  // 6. Reject suspended users (checked in D1 `user_roles.is_posting_banned` and Firestore `users/{uid}`)
-  let firestoreErrorOccurred = false;
-  let userDoc: Record<string, any> | null = null;
-  if (store) {
-    try {
-      userDoc = await store.getDoc(`users/${uid}`);
-    } catch (err: any) {
-      console.error(`[Rewards Firestore userDoc Error] uid=${uid}:`, err?.message || err);
-      firestoreErrorOccurred = true;
+    if (request.method === 'GET') {
+      const latest = await loadD1RewardsSettings(db);
+      return jsonResponse(
+        {
+          ok: true,
+          mode: latest.mode,
+        },
+        200
+      );
     }
-  }
 
-  if (d1User.isPostingBanned || isFirestoreUserSuspended(userDoc)) {
-    return jsonResponse(
-      {
-        ok: false,
-        error: 'Your account is suspended and cannot access Boardly Rewards.',
-        code: 'USER_SUSPENDED',
-      },
-      403
-    );
-  }
+    if (request.method !== 'POST' && request.method !== 'PUT' && request.method !== 'PATCH') {
+      return jsonResponse(
+        { ok: false, error: 'Method not allowed.', code: 'METHOD_NOT_ALLOWED' },
+        405
+      );
+    }
 
-  // ─── ENDPOINT 6: POST /api/rewards/admin/mode (Super Admin Only) ───────────
-  if (subPath === 'admin/mode' && request.method === 'POST') {
     if (!d1User.isSuperAdmin) {
       return jsonResponse(
         {
@@ -1092,13 +1106,6 @@ export async function handleRewardsApiRequest(
       );
     }
 
-    // Write `mode` to D1 `reward_settings`
-    await db
-      .prepare('UPDATE reward_settings SET value = ?1 WHERE key = ?2')
-      .bind(nextMode, 'mode')
-      .run();
-
-    // Record audit entry in D1 `reward_settings` and in Firestore `admin_audit_logs` if available
     const auditEntry = {
       action: 'REWARDS_MODE_CHANGE',
       previousMode: mode,
@@ -1107,10 +1114,30 @@ export async function handleRewardsApiRequest(
       adminEmail: d1User.email || 'superadmin',
       timestampMs: nowMs,
     };
-    await db
-      .prepare('INSERT INTO reward_settings (key, value) VALUES (?1, ?2)')
-      .bind('last_mode_audit', JSON.stringify(auditEntry))
-      .run();
+
+    try {
+      // Write `mode` to D1 `reward_settings` using INSERT OR REPLACE so it works whether key exists or not
+      await db
+        .prepare('INSERT OR REPLACE INTO reward_settings (key, value) VALUES (?1, ?2)')
+        .bind('mode', nextMode)
+        .run();
+
+      // Record audit entry in D1 `reward_settings` using INSERT OR REPLACE so repeated mode changes never violate PRIMARY KEY
+      await db
+        .prepare('INSERT OR REPLACE INTO reward_settings (key, value) VALUES (?1, ?2)')
+        .bind('last_mode_audit', JSON.stringify(auditEntry))
+        .run();
+    } catch (d1Err: any) {
+      console.error('[Rewards Admin Mode D1 Write Error]:', d1Err?.message || d1Err);
+      return jsonResponse(
+        {
+          ok: false,
+          error: `D1 write failed: ${d1Err?.message || 'Could not update reward_settings'}`,
+          code: 'D1_WRITE_FAILED',
+        },
+        500
+      );
+    }
 
     if (store) {
       await store
@@ -1127,14 +1154,40 @@ export async function handleRewardsApiRequest(
         .catch(() => null);
     }
 
+    // Re-read from D1 to confirm stored value
+    const verified = await loadD1RewardsSettings(db);
+
     return jsonResponse(
       {
         ok: true,
         previousMode: mode,
-        mode: nextMode,
+        mode: verified.mode,
         audit: auditEntry,
       },
       200
+    );
+  }
+
+  // 6. Reject suspended users (checked in D1 `user_roles.is_posting_banned` and Firestore `users/{uid}`)
+  let firestoreErrorOccurred = false;
+  let userDoc: Record<string, any> | null = null;
+  if (store) {
+    try {
+      userDoc = await store.getDoc(`users/${uid}`);
+    } catch (err: any) {
+      console.error(`[Rewards Firestore userDoc Error] uid=${uid}:`, err?.message || err);
+      firestoreErrorOccurred = true;
+    }
+  }
+
+  if (d1User.isPostingBanned || isFirestoreUserSuspended(userDoc)) {
+    return jsonResponse(
+      {
+        ok: false,
+        error: 'Your account is suspended and cannot access Boardly Rewards.',
+        code: 'USER_SUSPENDED',
+      },
+      403
     );
   }
 
@@ -1168,9 +1221,9 @@ export async function handleRewardsApiRequest(
           }>(),
         db
           .prepare(
-            'SELECT * FROM referrals WHERE inviter_uid = ?1 OR invitee_uid = ?1 ORDER BY created_at DESC'
+            'SELECT * FROM referrals WHERE inviter_uid = ?1 OR invitee_uid = ?2 ORDER BY created_at DESC'
           )
-          .bind(uid)
+          .bind(uid, uid)
           .all<Record<string, any>>(),
         store
           ? store.getDoc(`wallets/${uid}`).catch((err: any) => {
@@ -1405,6 +1458,21 @@ export async function handleRewardsApiRequest(
       { ok: false, error: 'Method not allowed.', code: 'METHOD_NOT_ALLOWED' },
       405
     );
+  }
+
+  // 5. Per-user rate limiting (~1 request/sec) for POST claim/referral actions
+  if (!opts.bypassRateLimit) {
+    const rateBucket = `post:${subPath}`;
+    if (!checkRateLimit(uid, rateBucket, nowMs)) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'Too many requests. Please wait 1 second and try again.',
+          code: 'RATE_LIMITED',
+        },
+        429
+      );
+    }
   }
 
   if (!serverConfigured || !store || firestoreErrorOccurred) {

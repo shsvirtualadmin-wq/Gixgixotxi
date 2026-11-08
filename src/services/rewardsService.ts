@@ -92,20 +92,23 @@ export function clearPendingReferralCode(): void {
   }
 }
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
+async function getAuthHeaders(forceRefresh = false): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
   try {
+    if (!auth.currentUser && typeof auth.authStateReady === 'function') {
+      await auth.authStateReady();
+    }
     const currentUser = auth.currentUser;
     if (currentUser) {
-      const token = await currentUser.getIdToken();
+      const token = await currentUser.getIdToken(forceRefresh);
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
     }
-  } catch {
-    // Proceed unauthenticated
+  } catch (err) {
+    console.warn('[Rewards Auth Header Warning]:', err);
   }
   return headers;
 }
@@ -194,13 +197,42 @@ function sanitizeClientRewardsError(
 }
 
 export async function fetchRewardsState(uid?: string | null): Promise<RewardsStateResponse> {
+  const url = '/api/rewards/state';
   try {
     const headers = await getAuthHeaders();
-    const res = await fetch('/api/rewards/state', {
+    const res = await fetch(url, {
       method: 'GET',
       headers,
     });
-    const data = await res.json().catch(() => null);
+    const rawText = await res.text();
+    let data: any = null;
+    try {
+      data = rawText ? JSON.parse(rawText) : null;
+    } catch {
+      data = null;
+    }
+
+    if (!res.ok) {
+      const serverMsg =
+        (data && typeof data === 'object' && (data.error || data.message)) ||
+        rawText.slice(0, 200).trim() ||
+        res.statusText ||
+        'Failed to load reward settings';
+      console.error('[Rewards State Load Failed]', {
+        url,
+        method: 'GET',
+        status: res.status,
+        statusText: res.statusText,
+        response: data ?? rawText,
+      });
+      const fallback = buildFallbackClientState(uid);
+      return {
+        ...fallback,
+        httpStatus: res.status,
+        loadError: `HTTP ${res.status}: ${serverMsg}`,
+      };
+    }
+
     if (data && typeof data === 'object' && data.daily && Array.isArray(data.milestones)) {
       if (uid && (!data.serverConfigured || data.referral?.myCode === 'BLD-7K9M2P')) {
         const deterministic = generateDeterministicReferralCode(uid, 0);
@@ -217,11 +249,34 @@ export async function fetchRewardsState(uid?: string | null): Promise<RewardsSta
         data.enabled = false;
         data.comingSoon = true;
       }
+      data.httpStatus = res.status;
       return data as RewardsStateResponse;
     }
-    return buildFallbackClientState(uid);
-  } catch {
-    return buildFallbackClientState(uid);
+
+    console.error('[Rewards State Invalid Payload]', {
+      url,
+      method: 'GET',
+      status: res.status,
+      statusText: res.statusText,
+      response: data ?? rawText,
+    });
+    const fallback = buildFallbackClientState(uid);
+    return {
+      ...fallback,
+      httpStatus: res.status,
+      loadError: `HTTP ${res.status}: Invalid response payload from /api/rewards/state`,
+    };
+  } catch (err: any) {
+    console.error('[Rewards State Network Error]', {
+      url,
+      method: 'GET',
+      error: err?.message || String(err),
+    });
+    const fallback = buildFallbackClientState(uid);
+    return {
+      ...fallback,
+      loadError: `Failed to load reward settings: ${err?.message || 'Unable to reach /api/rewards/state'}`,
+    };
   }
 }
 
@@ -471,26 +526,67 @@ export async function acceptPendingReferral(
  */
 export async function setRewardsAdminMode(mode: RewardsMode): Promise<{
   ok: boolean;
+  status?: number;
   previousMode?: RewardsMode;
   mode?: RewardsMode;
   error?: string;
   code?: string;
 }> {
-  const headers = await getAuthHeaders();
-  const res = await fetch('/api/rewards/admin/mode', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ mode }),
-  });
-  const data = await res.json().catch(() => ({ ok: false, error: 'Network error' }));
-  if (!res.ok) {
+  const url = '/api/rewards/admin/mode';
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ mode }),
+    });
+    const rawText = await res.text();
+    let data: any = null;
+    try {
+      data = rawText ? JSON.parse(rawText) : null;
+    } catch {
+      data = null;
+    }
+
+    if (!res.ok || !data?.ok) {
+      const serverMsg =
+        (data && typeof data === 'object' && (data.error || data.message)) ||
+        rawText.slice(0, 200).trim() ||
+        res.statusText ||
+        'Request failed';
+      console.error('[Rewards Admin Mode Save Failed]', {
+        url,
+        method: 'POST',
+        requestedMode: mode,
+        status: res.status,
+        statusText: res.statusText,
+        response: data ?? rawText,
+      });
+      return {
+        ok: false,
+        status: res.status,
+        error: `HTTP ${res.status}: ${serverMsg}`,
+        code: data?.code || `HTTP_${res.status}`,
+      };
+    }
+
+    return {
+      ...data,
+      status: res.status,
+    };
+  } catch (err: any) {
+    console.error('[Rewards Admin Mode Network Error]', {
+      url,
+      method: 'POST',
+      requestedMode: mode,
+      error: err?.message || String(err),
+    });
     return {
       ok: false,
-      error: data?.error || `Request failed (${res.status})`,
-      code: data?.code,
+      error: `Request failed: ${err?.message || 'Unable to reach /api/rewards/admin/mode'}`,
+      code: 'NETWORK_ERROR',
     };
   }
-  return data;
 }
 
 export interface RewardsHealthResponse {

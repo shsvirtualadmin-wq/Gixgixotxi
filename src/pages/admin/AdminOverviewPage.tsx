@@ -62,7 +62,7 @@ export function AdminOverviewPage() {
   const [seedError, setSeedError] = useState<string | null>(null);
 
   // Super Admin Rewards 3-way Mode Switch + Health Check state
-  const [rewardsMode, setRewardsMode] = useState<RewardsMode>('off');
+  const [rewardsMode, setRewardsMode] = useState<RewardsMode | null>(null);
   const [pendingRewardsMode, setPendingRewardsMode] = useState<RewardsMode | null>(null);
   const [updatingRewardsMode, setUpdatingRewardsMode] = useState(false);
   const [rewardsModeSuccess, setRewardsModeSuccess] = useState<string | null>(null);
@@ -92,7 +92,10 @@ export function AdminOverviewPage() {
       ]);
       setStats(s);
       setRecentLogs(logs);
-      if (rState?.mode) {
+      if (rState?.loadError) {
+        setRewardsMode(null);
+        setRewardsModeError(rState.loadError);
+      } else if (rState?.mode) {
         setRewardsMode(rState.mode);
       }
       if (rHealth) {
@@ -188,21 +191,36 @@ export function AdminOverviewPage() {
 
     try {
       const res = await setRewardsAdminMode(targetMode);
-      if (res.ok && res.mode) {
-        setRewardsMode(res.mode);
+      if (res.ok) {
+        // Re-read the stored setting from D1 via GET /api/rewards/state so the UI always matches D1
+        const verifiedState = await fetchRewardsState(user?.uid);
+        if (verifiedState.loadError) {
+          setRewardsModeError(
+            `Saved change, but failed to re-read setting from D1 (${verifiedState.loadError}).`
+          );
+          return;
+        }
+        const storedMode = verifiedState.mode;
+        setRewardsMode(storedMode);
         const label =
-          res.mode === 'everyone'
+          storedMode === 'everyone'
             ? 'Everyone (Live)'
-            : res.mode === 'admin_only'
+            : storedMode === 'admin_only'
             ? 'Admin only (testing)'
             : 'Off';
         setRewardsModeSuccess(`Boardly Rewards mode updated to "${label}" in Cloudflare D1.`);
-        await loadData();
+        const [logs, rHealth] = await Promise.all([
+          fetchAuditLogs(5).catch(() => null),
+          fetchRewardsHealth().catch(() => null),
+        ]);
+        if (logs) setRecentLogs(logs);
+        if (rHealth) setRewardsHealth(rHealth);
       } else {
         setRewardsModeError(res.error || 'Failed to update Rewards mode.');
       }
     } catch (err: any) {
-      setRewardsModeError(err?.message || 'Network error while updating Rewards mode.');
+      console.error('[AdminOverviewPage] Failed to update Rewards mode:', err);
+      setRewardsModeError(err?.message || 'Failed to update Rewards mode.');
     } finally {
       setUpdatingRewardsMode(false);
     }

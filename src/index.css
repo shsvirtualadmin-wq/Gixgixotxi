@@ -7520,10 +7520,173 @@ html:not(.dark) .zenryu-stage--active {
   }
 }
 
+/* ==========================================================================
+   STUDENT DASHBOARD BOTTOM NAVIGATION DOCK (.sdn-*)
+   ========================================================================== */
 
+:root,
+.dark,
+[data-theme="dark"] {
+  --sdn-dock-bg: rgba(22, 22, 26, 0.5);
+  --sdn-icon-muted: #9a9aa3;
+}
 
+.light,
+[data-theme="light"] {
+  --sdn-dock-bg: rgba(255, 255, 255, 0.55);
+  --sdn-icon-muted: #5d5d66;
+}
 
+@media (prefers-color-scheme: light) {
+  :root:not(.dark):not([data-theme="dark"]) {
+    --sdn-dock-bg: rgba(255, 255, 255, 0.55);
+    --sdn-icon-muted: #5d5d66;
+  }
+}
 
+@keyframes sdn-jelly-wobble {
+  0% {
+    scale: 1 1;
+  }
+  30% {
+    scale: 1.2 0.84;
+  }
+  60% {
+    scale: 0.94 1.12;
+  }
+  100% {
+    scale: 1 1;
+  }
+}
 
+/* Dock container: fully rounded pill, padding 7px, blur(24px) saturate(1.8), glass edge + shadow */
+.sdn-dock {
+  position: relative;
+  width: 100%;
+  height: 56px;
+  padding: 7px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--sdn-dock-bg);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  backdrop-filter: blur(24px) saturate(1.8);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.6),
+    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.3),
+    0 14px 34px -12px rgba(0, 0, 0, 0.55);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
+  overflow: visible;
+}
 
+/* Red sliding glass bubble behind icons */
+.sdn-bubble {
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  border-radius: 9999px;
+  z-index: 1;
+  pointer-events: none;
+  background-color: rgba(225, 29, 46, 0.58);
+  background-color: color-mix(in srgb, #e11d2e 58%, transparent);
+  -webkit-backdrop-filter: blur(3px) saturate(1.8);
+  backdrop-filter: blur(3px) saturate(1.8);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.4),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.6),
+    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.3),
+    0 3px 10px -3px rgba(0, 0, 0, 0.3);
+  scale: 1 1;
+  transition:
+    translate 0.55s cubic-bezier(0.34, 1.56, 0.64, 1),
+    width 0.55s cubic-bezier(0.34, 1.56, 0.64, 1),
+    scale 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.25s ease;
+  will-change: translate, width, scale;
+}
 
+/* Instant placement on initial load / window resize */
+.sdn-bubble.is-instant {
+  transition: none !important;
+  animation: none !important;
+}
+
+/* Follow finger horizontally while dragging */
+.sdn-bubble.is-dragging {
+  transition:
+    translate 0.06s linear,
+    width 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+    scale 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.2s ease;
+}
+
+/* Press & hold: grows to 1.32x wide and 1.5x tall + deeper shadow */
+.sdn-bubble.is-pressed {
+  scale: var(--sdn-sx, 1.32) var(--sdn-sy, 1.5);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.4),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.6),
+    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.3),
+    0 22px 36px -10px rgba(0, 0, 0, 0.5);
+}
+
+/* Release / tap jelly wobble */
+.sdn-bubble.is-wobbling {
+  animation: sdn-jelly-wobble 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Tab button */
+.sdn-tab-btn {
+  position: relative;
+  z-index: 2;
+  flex: 1 1 0%;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--sdn-icon-muted);
+  transition: color 0.16s ease;
+}
+
+.sdn-tab-btn svg {
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sdn-tab-btn.is-active {
+  color: #ffffff;
+}
+
+.sdn-tab-btn:focus-visible {
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgba(225, 29, 46, 0.75);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sdn-bubble,
+  .sdn-bubble.is-dragging,
+  .sdn-bubble.is-wobbling,
+  .sdn-tab-btn {
+    transition: none !important;
+    animation: none !important;
+  }
+  .sdn-bubble.is-pressed {
+    scale: 1 1 !important;
+  }
+}

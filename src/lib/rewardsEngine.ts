@@ -201,6 +201,8 @@ export type RewardsSystemState = 'ready' | 'server_not_ready' | 'disabled';
 export interface RewardsStateResponse {
   state?: RewardsSystemState;
   statusMessage?: string;
+  loadError?: string;
+  httpStatus?: number;
   serverConfigured: boolean;
   mode: RewardsMode;
   canClaim: boolean;
