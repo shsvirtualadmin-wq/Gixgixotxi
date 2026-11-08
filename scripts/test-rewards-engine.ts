@@ -819,6 +819,45 @@ async function runAllTests() {
   });
   assert.equal(db.tables.reward_settings.get('mode')?.value, 'off');
 
+  // ─── 8. UI Jelly Handler Regression Test (getJellyHandlers onClick forwarding) ─
+  console.log('8. Testing getJellyHandlers onClick forwarding & disabled guard...');
+  const { getJellyHandlers } = await import('../src/components/ui/RewardsPrimitives');
+  let clickCount = 0;
+  const fakeEvent = {
+    currentTarget: {
+      classList: { remove: () => {}, add: () => {} },
+      matches: () => false,
+      getAttribute: () => null,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 48 }),
+      querySelectorAll: () => [],
+      appendChild: () => {},
+      offsetWidth: 100,
+    },
+    clientX: 50,
+    clientY: 24,
+  } as any;
+
+  const enabledHandlers = getJellyHandlers(false, () => {
+    clickCount += 1;
+  });
+  enabledHandlers.onClick(fakeEvent);
+  assert.equal(
+    clickCount,
+    1,
+    'getJellyHandlers(false, onClick) must invoke the caller onClick handler'
+  );
+
+  const disabledHandlers = getJellyHandlers(true, () => {
+    clickCount += 1;
+  });
+  disabledHandlers.onClick(fakeEvent);
+  assert.equal(
+    clickCount,
+    1,
+    'getJellyHandlers(true, onClick) must block the caller onClick handler when disabled'
+  );
+  console.log('   ✓ Passed getJellyHandlers onClick forwarding & disabled guard regression test.\n');
+
   console.log('ALL PHASE 5 D1 + FIRESTORE REWARDS TESTS PASSED SUCCESSFULLY!');
 }
 

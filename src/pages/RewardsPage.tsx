@@ -173,6 +173,13 @@ export function RewardsPage() {
   const balanceNumberRef = useRef<HTMLSpanElement | null>(null);
   const dailyClaimBtnRef = useRef<HTMLButtonElement | null>(null);
   const milestoneBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const confirmBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  // Synchronous in-flight locks to prevent double claims on rapid taps
+  const claimingDailyLockRef = useRef<boolean>(false);
+  const claimingMilestoneLockRef = useRef<string | null>(null);
+  const attachingCodeLockRef = useRef<boolean>(false);
+  const confirmingRefLockRef = useRef<string | null>(null);
 
   const hasLoadError = Boolean(state.loadError);
   const isComingSoon =
@@ -283,24 +290,10 @@ export function RewardsPage() {
     }
   }, []);
 
-  const triggerServerNotReadyFailSafe = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      state: 'server_not_ready',
-      statusMessage: 'Rewards are being set up',
-      serverConfigured: false,
-      canClaim: false,
-      enabled: false,
-      comingSoon: true,
-    }));
-    setBannerNotice({
-      type: 'info',
-      text: 'Rewards are being set up',
-    });
-  }, []);
-
-  const loadState = useCallback(async () => {
-    setLoading(true);
+  const loadState = useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       const fetched = await fetchRewardsState(user?.uid);
       setState(fetched);
@@ -313,13 +306,16 @@ export function RewardsPage() {
           text: fetched.loadError,
         });
       }
+      return fetched;
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [user?.uid]);
 
   useEffect(() => {
-    loadState();
+    loadState(false);
   }, [loadState]);
 
   // Tick PKT midnight countdown every second
@@ -335,8 +331,16 @@ export function RewardsPage() {
       navigate('/signup');
       return;
     }
-    if (isClaimBlocked || state.daily.claimedToday || claimingDaily) return;
+    if (
+      isClaimBlocked ||
+      state.daily.claimedToday ||
+      claimingDaily ||
+      claimingDailyLockRef.current
+    ) {
+      return;
+    }
 
+    claimingDailyLockRef.current = true;
     const startBalance = liveBalance;
     const sourceBtn = dailyClaimBtnRef.current;
 
@@ -345,34 +349,40 @@ export function RewardsPage() {
     try {
       const res = await claimDailyReward();
       if (res.ok) {
-        const rewardDelta = res.rewardAmount || state.daily.nextRewardAmount || 0;
-        const targetBalance =
-          typeof res.newBalance === 'number' && res.newBalance > startBalance
+        const [refreshedState] = await Promise.all([loadState(true), refreshWallet()]);
+        const rewardDelta =
+          res.rewardAmount || state.daily.nextRewardAmount || 0;
+        const confirmedServerBalance =
+          typeof res.newBalance === 'number'
             ? res.newBalance
+            : typeof refreshedState?.balance === 'number' &&
+              refreshedState.balance > startBalance
+            ? refreshedState.balance
             : startBalance + rewardDelta;
 
         spawnClaimCoinBurst(sourceBtn, balanceNumberRef.current);
-        prevLiveBalanceRef.current = targetBalance;
-        runBalanceCountUp(startBalance, targetBalance);
+        prevLiveBalanceRef.current = confirmedServerBalance;
+        runBalanceCountUp(startBalance, confirmedServerBalance);
 
         setBannerNotice({
           type: 'success',
           text: `Claimed Day ${res.dayNumber} reward: +${rewardDelta.toLocaleString()} Kobans!`,
         });
-        await Promise.all([loadState(), refreshWallet()]);
-      } else if (
-        res.state === 'server_not_ready' ||
-        res.code === 'SERVER_NOT_READY' ||
-        res.comingSoon
-      ) {
-        triggerServerNotReadyFailSafe();
       } else {
+        console.error('[RewardsPage] Daily check-in claim failed:', res);
         setBannerNotice({
           type: 'error',
-          text: res.error || 'Rewards are being set up',
+          text: res.error || 'Daily check-in claim failed.',
         });
       }
+    } catch (err: any) {
+      console.error('[RewardsPage] Unexpected error during daily claim:', err);
+      setBannerNotice({
+        type: 'error',
+        text: err?.message || 'Unexpected error during daily check-in claim.',
+      });
     } finally {
+      claimingDailyLockRef.current = false;
       setClaimingDaily(false);
     }
   };
@@ -382,8 +392,19 @@ export function RewardsPage() {
       navigate('/signup');
       return;
     }
-    if (isClaimBlocked || isMilestoneAdminExcluded || claimingMilestoneId) return;
+    const targetMilestone = state.milestones.find((m) => m.id === milestoneId);
+    if (
+      isClaimBlocked ||
+      isMilestoneAdminExcluded ||
+      claimingMilestoneId ||
+      claimingMilestoneLockRef.current ||
+      targetMilestone?.claimed ||
+      (targetMilestone && !targetMilestone.eligible)
+    ) {
+      return;
+    }
 
+    claimingMilestoneLockRef.current = milestoneId;
     const startBalance = liveBalance;
     const sourceBtn = milestoneBtnRefs.current[milestoneId] || null;
 
@@ -392,34 +413,42 @@ export function RewardsPage() {
     try {
       const res = await claimMilestoneReward(milestoneId);
       if (res.ok) {
-        const rewardDelta = res.rewardAmount || 0;
-        const targetBalance =
-          typeof res.newBalance === 'number' && res.newBalance > startBalance
+        const [refreshedState] = await Promise.all([loadState(true), refreshWallet()]);
+        const rewardDelta = res.rewardAmount || targetMilestone?.reward || 0;
+        const confirmedServerBalance =
+          typeof res.newBalance === 'number'
             ? res.newBalance
+            : typeof refreshedState?.balance === 'number' &&
+              refreshedState.balance > startBalance
+            ? refreshedState.balance
             : startBalance + rewardDelta;
 
         spawnClaimCoinBurst(sourceBtn, balanceNumberRef.current);
-        prevLiveBalanceRef.current = targetBalance;
-        runBalanceCountUp(startBalance, targetBalance);
+        prevLiveBalanceRef.current = confirmedServerBalance;
+        runBalanceCountUp(startBalance, confirmedServerBalance);
 
         setBannerNotice({
           type: 'success',
           text: `Milestone unlocked! +${rewardDelta.toLocaleString()} Kobans credited to your wallet.`,
         });
-        await Promise.all([loadState(), refreshWallet()]);
-      } else if (
-        res.state === 'server_not_ready' ||
-        res.code === 'SERVER_NOT_READY' ||
-        res.comingSoon
-      ) {
-        triggerServerNotReadyFailSafe();
       } else {
+        console.error('[RewardsPage] Milestone claim failed:', {
+          milestoneId,
+          response: res,
+        });
         setBannerNotice({
           type: 'error',
-          text: res.error || 'Rewards are being set up',
+          text: res.error || 'Milestone claim failed.',
         });
       }
+    } catch (err: any) {
+      console.error('[RewardsPage] Unexpected error during milestone claim:', err);
+      setBannerNotice({
+        type: 'error',
+        text: err?.message || 'Unexpected error during milestone claim.',
+      });
     } finally {
+      claimingMilestoneLockRef.current = null;
       setClaimingMilestoneId(null);
     }
   };
@@ -431,38 +460,55 @@ export function RewardsPage() {
       return;
     }
     const clean = normalizeReferralCode(manualCodeInput);
-    if (!clean || isClaimBlocked || attachingCode) return;
+    if (
+      !clean ||
+      isClaimBlocked ||
+      attachingCode ||
+      attachingCodeLockRef.current
+    ) {
+      return;
+    }
 
+    attachingCodeLockRef.current = true;
     setAttachingCode(true);
     setBannerNotice(null);
     try {
       const res = await attachReferralCode(clean);
       if (res.ok) {
+        await loadState(true);
+        setManualCodeInput('');
         setBannerNotice({
           type: 'success',
           text: `Attached ${res.inviterDisplayName || 'friend'}'s code! Share your code (${state.referral.myCode}) with them so they can confirm.`,
         });
-        setManualCodeInput('');
-        await loadState();
-      } else if (
-        res.state === 'server_not_ready' ||
-        res.code === 'SERVER_NOT_READY' ||
-        res.comingSoon
-      ) {
-        triggerServerNotReadyFailSafe();
       } else {
+        console.error('[RewardsPage] Attach referral code failed:', res);
         setBannerNotice({
           type: 'error',
           text: res.error || 'Could not attach referral code.',
         });
       }
+    } catch (err: any) {
+      console.error('[RewardsPage] Unexpected error attaching referral code:', err);
+      setBannerNotice({
+        type: 'error',
+        text: err?.message || 'Could not attach referral code.',
+      });
     } finally {
+      attachingCodeLockRef.current = false;
       setAttachingCode(false);
     }
   };
 
   const handleConfirmFriendCode = async (referralId: string) => {
-    if (!user || isClaimBlocked || confirmingRefId) return;
+    if (
+      !user ||
+      isClaimBlocked ||
+      confirmingRefId ||
+      confirmingRefLockRef.current
+    ) {
+      return;
+    }
     const code = normalizeReferralCode(confirmInputs[referralId] || '');
     if (!code) {
       setBannerNotice({
@@ -472,11 +518,32 @@ export function RewardsPage() {
       return;
     }
 
+    confirmingRefLockRef.current = referralId;
+    const startBalance = liveBalance;
+    const sourceBtn = confirmBtnRefs.current[referralId] || null;
+
     setConfirmingRefId(referralId);
     setBannerNotice(null);
     try {
       const res = await acceptPendingReferral(referralId, code);
       if (res.ok) {
+        const [refreshedState] = await Promise.all([loadState(true), refreshWallet()]);
+        if (res.paid) {
+          const refItem = state.referral.items.find((item) => item.id === referralId);
+          const rewardDelta =
+            refItem?.role === 'invitee'
+              ? res.inviteeReward || refItem.inviteeReward || 1000
+              : res.inviterReward || refItem?.inviterReward || 5000;
+          const confirmedServerBalance =
+            typeof refreshedState?.balance === 'number' &&
+            refreshedState.balance > startBalance
+              ? refreshedState.balance
+              : startBalance + rewardDelta;
+
+          spawnClaimCoinBurst(sourceBtn, balanceNumberRef.current);
+          prevLiveBalanceRef.current = confirmedServerBalance;
+          runBalanceCountUp(startBalance, confirmedServerBalance);
+        }
         setBannerNotice({
           type: 'success',
           text:
@@ -485,20 +552,24 @@ export function RewardsPage() {
               ? `Referral completed! +${(res.inviterReward || 5000).toLocaleString()} Kobans credited to your wallet!`
               : 'Friend code confirmed! Rewards will unlock automatically once they complete 20 MCQs.'),
         });
-        await Promise.all([loadState(), refreshWallet()]);
-      } else if (
-        res.state === 'server_not_ready' ||
-        res.code === 'SERVER_NOT_READY' ||
-        res.comingSoon
-      ) {
-        triggerServerNotReadyFailSafe();
       } else {
+        console.error('[RewardsPage] Confirm friend referral code failed:', {
+          referralId,
+          response: res,
+        });
         setBannerNotice({
           type: 'error',
           text: res.error || 'Failed to confirm friend code.',
         });
       }
+    } catch (err: any) {
+      console.error('[RewardsPage] Unexpected error confirming friend code:', err);
+      setBannerNotice({
+        type: 'error',
+        text: err?.message || 'Failed to confirm friend code.',
+      });
     } finally {
+      confirmingRefLockRef.current = null;
       setConfirmingRefId(null);
     }
   };
@@ -603,10 +674,9 @@ export function RewardsPage() {
               <button
                 type="button"
                 data-testid="rewards-theme-toggle"
-                onClick={toggleTheme}
                 aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
                 title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-                {...getJellyHandlers()}
+                {...getJellyHandlers(false, toggleTheme)}
                 className="rw-jelly-btn rw-btn-clear-glass w-10 h-10 min-w-[40px] min-h-[40px] rounded-full flex items-center justify-center cursor-pointer shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
               >
                 {isDark ? <Sun size={17} /> : <Moon size={17} />}
@@ -847,8 +917,7 @@ export function RewardsPage() {
               type="button"
               data-testid="daily-claim-btn"
               disabled={dailyBtnDisabled}
-              onClick={handleClaimDaily}
-              {...getJellyHandlers(dailyBtnDisabled)}
+              {...getJellyHandlers(dailyBtnDisabled, handleClaimDaily)}
               className="rw-jelly-btn rw-btn-red-glass w-full h-14 min-h-[56px] rounded-full inline-flex items-center justify-center gap-2.5 px-6 text-sm sm:text-base font-heading font-bold disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
             >
               <Gift size={18} />
@@ -1238,8 +1307,7 @@ export function RewardsPage() {
                         type="button"
                         data-testid={`milestone-claim-btn-${m.threshold}`}
                         disabled={btnDisabled}
-                        onClick={() => handleClaimMilestone(m.id)}
-                        {...getJellyHandlers(btnDisabled)}
+                        {...getJellyHandlers(btnDisabled, () => handleClaimMilestone(m.id))}
                         className="rw-jelly-btn rw-btn-red-glass h-10 min-h-[40px] px-4 rounded-full inline-flex items-center justify-center gap-1.5 text-xs font-heading font-bold shrink-0 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
                       >
                         {hasLoadError ? (
@@ -1459,8 +1527,7 @@ export function RewardsPage() {
                 {/* Primary action: Copy code uses Red Glass */}
                 <button
                   type="button"
-                  onClick={handleCopyCode}
-                  {...getJellyHandlers()}
+                  {...getJellyHandlers(false, handleCopyCode)}
                   className="rw-jelly-btn rw-btn-red-glass h-10 min-h-[40px] px-4 rounded-full inline-flex items-center justify-center gap-1.5 text-xs font-heading font-bold shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
                 >
                   {copiedCode ? <Check size={14} /> : <Copy size={14} />}
@@ -1486,8 +1553,7 @@ export function RewardsPage() {
                 {/* Secondary action: Copy link uses Clear Glass */}
                 <button
                   type="button"
-                  onClick={handleCopyLink}
-                  {...getJellyHandlers()}
+                  {...getJellyHandlers(false, handleCopyLink)}
                   className="rw-jelly-btn rw-btn-clear-glass h-9 min-h-[36px] px-4 rounded-full inline-flex items-center justify-center gap-1.5 text-xs font-heading font-bold shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
                 >
                   {copiedLink ? (
@@ -1692,10 +1758,14 @@ export function RewardsPage() {
                               }}
                             />
                             <button
+                              ref={(el) => {
+                                confirmBtnRefs.current[item.id] = el;
+                              }}
                               type="button"
                               disabled={acceptDisabled}
-                              onClick={() => handleConfirmFriendCode(item.id)}
-                              {...getJellyHandlers(acceptDisabled)}
+                              {...getJellyHandlers(acceptDisabled, () =>
+                                handleConfirmFriendCode(item.id)
+                              )}
                               className="rw-jelly-btn rw-btn-red-glass h-11 min-h-[44px] px-4 rounded-full inline-flex items-center justify-center text-xs font-heading font-bold shrink-0 disabled:cursor-not-allowed"
                             >
                               {isComingSoon

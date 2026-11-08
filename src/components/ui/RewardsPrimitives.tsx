@@ -8,7 +8,7 @@ function isReducedMotionPreferred(): boolean {
 // ─── Tap Ripple + Jelly Button Animation Helper ─────────────────────────────
 
 function spawnTapRipple(el: HTMLElement, clientX?: number, clientY?: number) {
-  if (isReducedMotionPreferred()) return;
+  if (typeof document === 'undefined' || isReducedMotionPreferred()) return;
   const rect = el.getBoundingClientRect();
   const x =
     typeof clientX === 'number' && clientX > 0
@@ -34,7 +34,10 @@ function spawnTapRipple(el: HTMLElement, clientX?: number, clientY?: number) {
   el.appendChild(ripple);
 }
 
-export function getJellyHandlers(disabled = false) {
+export function getJellyHandlers<T extends HTMLElement = HTMLElement>(
+  disabled = false,
+  onClick?: (e: React.MouseEvent<T>) => void
+) {
   const triggerWobble = (el: HTMLElement) => {
     el.classList.remove('is-pressed');
     if (isReducedMotionPreferred()) return;
@@ -44,33 +47,36 @@ export function getJellyHandlers(disabled = false) {
   };
 
   return {
-    onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
+    onPointerDown: (e: React.PointerEvent<T>) => {
       if (disabled || e.button !== 0) return;
       const el = e.currentTarget;
       if (el.matches(':disabled, [aria-disabled="true"]')) return;
       el.classList.remove('is-wobbling');
       el.classList.add('is-pressed');
     },
-    onPointerUp: (e: React.PointerEvent<HTMLElement>) => {
+    onPointerUp: (e: React.PointerEvent<T>) => {
       if (disabled) return;
       const el = e.currentTarget;
       if (el.matches(':disabled, [aria-disabled="true"]')) return;
       el.classList.remove('is-pressed');
     },
-    onPointerLeave: (e: React.PointerEvent<HTMLElement>) => {
+    onPointerLeave: (e: React.PointerEvent<T>) => {
       e.currentTarget.classList.remove('is-pressed');
     },
-    onPointerCancel: (e: React.PointerEvent<HTMLElement>) => {
+    onPointerCancel: (e: React.PointerEvent<T>) => {
       e.currentTarget.classList.remove('is-pressed');
     },
-    onClick: (e: React.MouseEvent<HTMLElement>) => {
+    onClick: (e: React.MouseEvent<T>) => {
       if (disabled) return;
       const el = e.currentTarget;
       if (el.matches(':disabled, [aria-disabled="true"]')) return;
       spawnTapRipple(el, e.clientX, e.clientY);
       triggerWobble(el);
+      if (typeof onClick === 'function') {
+        onClick(e);
+      }
     },
-    onAnimationEnd: (e: React.AnimationEvent<HTMLElement>) => {
+    onAnimationEnd: (e: React.AnimationEvent<T>) => {
       if (e.animationName === 'rw-jelly-wobble') {
         e.currentTarget.classList.remove('is-wobbling');
       }
@@ -359,6 +365,7 @@ export function PillRow({
   className = '',
   style,
   children,
+  onClick,
   ...rest
 }: PillRowProps) {
   const isButton = Component === 'button';
@@ -371,11 +378,14 @@ export function PillRow({
       ? 'rw-jelly-btn'
       : '';
   const jellyHandlers =
-    resolvedVariant !== 'none' ? getJellyHandlers(Boolean(disabled)) : {};
+    resolvedVariant !== 'none'
+      ? getJellyHandlers(Boolean(disabled), onClick)
+      : { onClick };
 
   return (
     <Component
       {...(isButton ? { type, disabled } : {})}
+      {...rest}
       {...jellyHandlers}
       className={`w-full rounded-full min-h-[54px] px-5 py-3 flex items-center justify-between gap-3 border ${
         dashed ? 'border-dashed' : 'border-solid'
@@ -390,7 +400,6 @@ export function PillRow({
         color: 'var(--rw-text)',
         ...style,
       }}
-      {...rest}
     >
       {children ? (
         children

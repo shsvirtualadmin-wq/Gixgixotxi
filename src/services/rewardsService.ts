@@ -160,42 +160,6 @@ export function buildFallbackClientState(uid?: string | null): RewardsStateRespo
   };
 }
 
-function sanitizeClientRewardsError(
-  status: number,
-  data: Record<string, any> | null | undefined
-): {
-  error: string;
-  code: string;
-  state?: 'server_not_ready' | 'disabled';
-  comingSoon: boolean;
-} {
-  const rawCode = String(data?.code || '');
-  const rawError = String(data?.error || '');
-  const isServerNotReady =
-    status >= 500 ||
-    data?.state === 'server_not_ready' ||
-    rawCode === 'SERVER_NOT_READY' ||
-    rawCode === 'SERVER_NOT_CONFIGURED' ||
-    rawCode === 'CREDIT_PENDING_RETRY' ||
-    /firestore|beginTransaction|PERMISSION_DENIED|service account/i.test(rawError);
-
-  if (isServerNotReady) {
-    return {
-      error: 'Rewards are being set up',
-      code: 'SERVER_NOT_READY',
-      state: 'server_not_ready',
-      comingSoon: true,
-    };
-  }
-
-  return {
-    error: rawError || 'Rewards are being set up',
-    code: rawCode || `HTTP_${status}`,
-    state: data?.state === 'disabled' ? 'disabled' : undefined,
-    comingSoon: status === 503 || Boolean(data?.comingSoon),
-  };
-}
-
 export async function fetchRewardsState(uid?: string | null): Promise<RewardsStateResponse> {
   const url = '/api/rewards/state';
   try {
@@ -282,29 +246,56 @@ export async function fetchRewardsState(uid?: string | null): Promise<RewardsSta
 
 export async function claimDailyReward(): Promise<{
   ok: boolean;
+  httpStatus?: number;
   dayNumber?: number;
   rewardAmount?: number;
   newBalance?: number;
+  balanceBefore?: number;
+  balanceAfter?: number;
   error?: string;
   code?: string;
   state?: 'server_not_ready' | 'disabled';
   comingSoon?: boolean;
 }> {
+  const url = '/api/rewards/daily/claim';
   try {
     const headers = await getAuthHeaders();
-    const res = await fetch('/api/rewards/daily/claim', {
+    const res = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({}),
     });
-    const data = await res.json().catch(() => null);
+    const rawText = await res.text();
+    let data: any = null;
+    try {
+      data = rawText ? JSON.parse(rawText) : null;
+    } catch {
+      data = null;
+    }
+
     if (!res.ok || !data?.ok) {
-      const safe = sanitizeClientRewardsError(res.status, data);
+      const serverMsg =
+        (data && typeof data === 'object' && (data.error || data.message)) ||
+        rawText.slice(0, 200).trim() ||
+        res.statusText ||
+        'Daily check-in claim failed';
+      console.error('[Rewards Daily Claim Failed]', {
+        url,
+        method: 'POST',
+        status: res.status,
+        statusText: res.statusText,
+        response: data ?? rawText,
+      });
       return {
         ok: false,
-        ...safe,
+        httpStatus: res.status,
+        error: `HTTP ${res.status}: ${serverMsg}`,
+        code: data?.code || `HTTP_${res.status}`,
+        state: data?.state,
+        comingSoon: Boolean(data?.comingSoon),
       };
     }
+
     if (auth.currentUser && typeof data.rewardAmount === 'number') {
       const deltaAmount = Number(data.delta ?? data.rewardAmount);
       const newBalance = Number(data.balanceAfter ?? data.newBalance ?? 0);
@@ -327,44 +318,77 @@ export async function claimDailyReward(): Promise<{
         });
       }
     }
-    return data;
-  } catch {
+    return {
+      ...data,
+      httpStatus: res.status,
+    };
+  } catch (err: any) {
+    console.error('[Rewards Daily Claim Network Error]', {
+      url,
+      method: 'POST',
+      error: err?.message || String(err),
+    });
     return {
       ok: false,
-      error: 'Rewards are being set up',
-      code: 'SERVER_NOT_READY',
-      state: 'server_not_ready',
-      comingSoon: true,
+      error: `Request failed: ${err?.message || 'Unable to reach /api/rewards/daily/claim'}`,
+      code: 'NETWORK_ERROR',
     };
   }
 }
 
 export async function claimMilestoneReward(milestoneId: string): Promise<{
   ok: boolean;
+  httpStatus?: number;
   milestoneId?: string;
   rewardAmount?: number;
   balanceBefore?: number;
   newBalance?: number;
+  balanceAfter?: number;
   error?: string;
   code?: string;
   state?: 'server_not_ready' | 'disabled';
   comingSoon?: boolean;
 }> {
+  const url = '/api/rewards/milestone/claim';
   try {
     const headers = await getAuthHeaders();
-    const res = await fetch('/api/rewards/milestone/claim', {
+    const res = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({ id: milestoneId }),
     });
-    const data = await res.json().catch(() => null);
+    const rawText = await res.text();
+    let data: any = null;
+    try {
+      data = rawText ? JSON.parse(rawText) : null;
+    } catch {
+      data = null;
+    }
+
     if (!res.ok || !data?.ok) {
-      const safe = sanitizeClientRewardsError(res.status, data);
+      const serverMsg =
+        (data && typeof data === 'object' && (data.error || data.message)) ||
+        rawText.slice(0, 200).trim() ||
+        res.statusText ||
+        'Milestone claim failed';
+      console.error('[Rewards Milestone Claim Failed]', {
+        url,
+        method: 'POST',
+        milestoneId,
+        status: res.status,
+        statusText: res.statusText,
+        response: data ?? rawText,
+      });
       return {
         ok: false,
-        ...safe,
+        httpStatus: res.status,
+        error: `HTTP ${res.status}: ${serverMsg}`,
+        code: data?.code || `HTTP_${res.status}`,
+        state: data?.state,
+        comingSoon: Boolean(data?.comingSoon),
       };
     }
+
     if (auth.currentUser && typeof data.rewardAmount === 'number') {
       const deltaAmount = Number(data.delta ?? data.rewardAmount);
       const newBalance = Number(data.balanceAfter ?? data.newBalance ?? 0);
@@ -387,20 +411,28 @@ export async function claimMilestoneReward(milestoneId: string): Promise<{
         });
       }
     }
-    return data;
-  } catch {
+    return {
+      ...data,
+      httpStatus: res.status,
+    };
+  } catch (err: any) {
+    console.error('[Rewards Milestone Claim Network Error]', {
+      url,
+      method: 'POST',
+      milestoneId,
+      error: err?.message || String(err),
+    });
     return {
       ok: false,
-      error: 'Rewards are being set up',
-      code: 'SERVER_NOT_READY',
-      state: 'server_not_ready',
-      comingSoon: true,
+      error: `Request failed: ${err?.message || 'Unable to reach /api/rewards/milestone/claim'}`,
+      code: 'NETWORK_ERROR',
     };
   }
 }
 
 export async function attachReferralCode(code: string): Promise<{
   ok: boolean;
+  httpStatus?: number;
   referralId?: string;
   status?: string;
   inviterDisplayName?: string;
@@ -409,38 +441,71 @@ export async function attachReferralCode(code: string): Promise<{
   state?: 'server_not_ready' | 'disabled';
   comingSoon?: boolean;
 }> {
+  const url = '/api/rewards/referral/attach';
+  const normalizedCode = normalizeReferralCode(code);
   try {
     const headers = await getAuthHeaders();
-    const res = await fetch('/api/rewards/referral/attach', {
+    const res = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ code: normalizeReferralCode(code) }),
+      body: JSON.stringify({ code: normalizedCode }),
     });
-    const data = await res.json().catch(() => null);
+    const rawText = await res.text();
+    let data: any = null;
+    try {
+      data = rawText ? JSON.parse(rawText) : null;
+    } catch {
+      data = null;
+    }
+
     if (!res.ok || !data?.ok) {
-      const safe = sanitizeClientRewardsError(res.status, data);
+      const serverMsg =
+        (data && typeof data === 'object' && (data.error || data.message)) ||
+        rawText.slice(0, 200).trim() ||
+        res.statusText ||
+        'Referral attach failed';
+      console.error('[Rewards Referral Attach Failed]', {
+        url,
+        method: 'POST',
+        code: normalizedCode,
+        status: res.status,
+        statusText: res.statusText,
+        response: data ?? rawText,
+      });
       return {
         ok: false,
-        ...safe,
+        httpStatus: res.status,
+        error: `HTTP ${res.status}: ${serverMsg}`,
+        code: data?.code || `HTTP_${res.status}`,
+        state: data?.state,
+        comingSoon: Boolean(data?.comingSoon),
       };
     }
+
     if (auth.currentUser) {
       notifyReferralConfirmed({
-        referralId: String(data.referralId || `${auth.currentUser.uid}_${normalizeReferralCode(code)}`),
+        referralId: String(data.referralId || `${auth.currentUser.uid}_${normalizedCode}`),
         friendUid: auth.currentUser.uid,
         friendName: auth.currentUser.displayName || undefined,
         referrerName: data.inviterDisplayName || 'Boardly Classmate',
-        referralCode: normalizeReferralCode(code),
+        referralCode: normalizedCode,
       });
     }
-    return data;
-  } catch {
+    return {
+      ...data,
+      httpStatus: res.status,
+    };
+  } catch (err: any) {
+    console.error('[Rewards Referral Attach Network Error]', {
+      url,
+      method: 'POST',
+      code: normalizedCode,
+      error: err?.message || String(err),
+    });
     return {
       ok: false,
-      error: 'Rewards are being set up',
-      code: 'SERVER_NOT_READY',
-      state: 'server_not_ready',
-      comingSoon: true,
+      error: `Request failed: ${err?.message || 'Unable to reach /api/rewards/referral/attach'}`,
+      code: 'NETWORK_ERROR',
     };
   }
 }
@@ -450,37 +515,69 @@ export async function acceptPendingReferral(
   enteredCode: string
 ): Promise<{
   ok: boolean;
+  httpStatus?: number;
   referralId?: string;
   status?: string;
   inviterAccepted?: boolean;
   inviteeAccepted?: boolean;
   paid?: boolean;
   inviterReward?: number;
+  inviterBalanceBefore?: number;
+  inviterBalanceAfter?: number;
   inviteeReward?: number;
+  inviteeBalanceBefore?: number;
+  inviteeBalanceAfter?: number;
   message?: string;
   error?: string;
   code?: string;
   state?: 'server_not_ready' | 'disabled';
   comingSoon?: boolean;
 }> {
+  const url = '/api/rewards/referral/accept';
+  const normalizedCode = normalizeReferralCode(enteredCode);
   try {
     const headers = await getAuthHeaders();
-    const res = await fetch('/api/rewards/referral/accept', {
+    const res = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({
         referralId,
-        enteredCode: normalizeReferralCode(enteredCode),
+        enteredCode: normalizedCode,
       }),
     });
-    const data = await res.json().catch(() => null);
+    const rawText = await res.text();
+    let data: any = null;
+    try {
+      data = rawText ? JSON.parse(rawText) : null;
+    } catch {
+      data = null;
+    }
+
     if (!res.ok || !data?.ok) {
-      const safe = sanitizeClientRewardsError(res.status, data);
+      const serverMsg =
+        (data && typeof data === 'object' && (data.error || data.message)) ||
+        rawText.slice(0, 200).trim() ||
+        res.statusText ||
+        'Referral confirmation failed';
+      console.error('[Rewards Referral Accept Failed]', {
+        url,
+        method: 'POST',
+        referralId,
+        enteredCode: normalizedCode,
+        status: res.status,
+        statusText: res.statusText,
+        response: data ?? rawText,
+      });
       return {
         ok: false,
-        ...safe,
+        httpStatus: res.status,
+        error: `HTTP ${res.status}: ${serverMsg}`,
+        code: data?.code || `HTTP_${res.status}`,
+        state: data?.state,
+        comingSoon: Boolean(data?.comingSoon),
       };
     }
+
     if (auth.currentUser) {
       if (data.paid) {
         notifyReferralRewardCredited({
@@ -497,7 +594,7 @@ export async function acceptPendingReferral(
             typeof data.inviteeBalanceBefore === 'number' ? data.inviteeBalanceBefore : undefined,
           friendNewBalance:
             typeof data.inviteeBalanceAfter === 'number' ? data.inviteeBalanceAfter : undefined,
-          referralCode: normalizeReferralCode(enteredCode),
+          referralCode: normalizedCode,
           transactionId: String(data.referralId || referralId),
         });
       } else {
@@ -505,18 +602,26 @@ export async function acceptPendingReferral(
           referralId: String(data.referralId || referralId),
           referrerUid: auth.currentUser.uid,
           referrerName: auth.currentUser.displayName || undefined,
-          referralCode: normalizeReferralCode(enteredCode),
+          referralCode: normalizedCode,
         });
       }
     }
-    return data;
-  } catch {
+    return {
+      ...data,
+      httpStatus: res.status,
+    };
+  } catch (err: any) {
+    console.error('[Rewards Referral Accept Network Error]', {
+      url,
+      method: 'POST',
+      referralId,
+      enteredCode: normalizedCode,
+      error: err?.message || String(err),
+    });
     return {
       ok: false,
-      error: 'Rewards are being set up',
-      code: 'SERVER_NOT_READY',
-      state: 'server_not_ready',
-      comingSoon: true,
+      error: `Request failed: ${err?.message || 'Unable to reach /api/rewards/referral/accept'}`,
+      code: 'NETWORK_ERROR',
     };
   }
 }
