@@ -7574,21 +7574,6 @@ html:not(.dark) .zenryu-stage--active {
   }
 }
 
-@keyframes sdn-jelly-wobble {
-  0% {
-    scale: 1 1;
-  }
-  30% {
-    scale: 1.2 0.84;
-  }
-  60% {
-    scale: 0.94 1.12;
-  }
-  100% {
-    scale: 1 1;
-  }
-}
-
 /* Dock container: fully rounded pill, padding 7px, blur(24px) saturate(1.8), glass edge + shadow */
 .sdn-dock {
   position: relative;
@@ -7613,12 +7598,13 @@ html:not(.dark) .zenryu-stage--active {
   overflow: visible;
 }
 
-/* Red sliding glass bubble behind icons */
+/* Red sliding glass bubble behind icons — positioned via left & right edges */
 .sdn-bubble {
   position: absolute;
   top: 7px;
   bottom: 7px;
-  left: 0;
+  left: 7px;
+  right: 7px;
   border-radius: 9999px;
   z-index: 1;
   pointer-events: none;
@@ -7633,11 +7619,47 @@ html:not(.dark) .zenryu-stage--active {
     0 3px 10px -3px rgba(0, 0, 0, 0.3);
   scale: 1 1;
   transition:
-    translate 0.55s cubic-bezier(0.34, 1.56, 0.64, 1),
-    width 0.55s cubic-bezier(0.34, 1.56, 0.64, 1),
-    scale 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
+    left 0.52s cubic-bezier(0.34, 1.3, 0.5, 1) 0.07s,
+    right 0.26s cubic-bezier(0.3, 1.5, 0.5, 1),
+    scale 0.36s cubic-bezier(0.34, 1.56, 0.64, 1),
     box-shadow 0.25s ease;
-  will-change: translate, width, scale;
+  will-change: left, right, scale;
+}
+
+/* Moving right: RIGHT edge leads fast (.26s), LEFT edge trails (.52s + .07s delay) */
+.sdn-bubble.dir-right {
+  transition:
+    right 0.26s cubic-bezier(0.3, 1.5, 0.5, 1),
+    left 0.52s cubic-bezier(0.34, 1.3, 0.5, 1) 0.07s,
+    scale 0.36s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.25s ease;
+}
+
+/* Moving left: LEFT edge leads fast (.26s), RIGHT edge trails (.52s + .07s delay) */
+.sdn-bubble.dir-left {
+  transition:
+    left 0.26s cubic-bezier(0.3, 1.5, 0.5, 1),
+    right 0.52s cubic-bezier(0.34, 1.3, 0.5, 1) 0.07s,
+    scale 0.36s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.25s ease;
+}
+
+/* Vertical squash while travelling ( ~230ms before springing back to 1 with cubic-bezier(.34,1.56,.64,1) ) */
+.sdn-bubble.is-squashed {
+  scale: 1 0.9;
+  transition:
+    right 0.26s cubic-bezier(0.3, 1.5, 0.5, 1),
+    left 0.52s cubic-bezier(0.34, 1.3, 0.5, 1) 0.07s,
+    scale 0.14s ease-out,
+    box-shadow 0.25s ease;
+}
+
+.sdn-bubble.dir-left.is-squashed {
+  transition:
+    left 0.26s cubic-bezier(0.3, 1.5, 0.5, 1),
+    right 0.52s cubic-bezier(0.34, 1.3, 0.5, 1) 0.07s,
+    scale 0.14s ease-out,
+    box-shadow 0.25s ease;
 }
 
 /* Instant placement on initial load / window resize */
@@ -7646,28 +7668,32 @@ html:not(.dark) .zenryu-stage--active {
   animation: none !important;
 }
 
-/* Follow finger horizontally while dragging */
+/* Follow finger horizontally while dragging with zero transition delay */
 .sdn-bubble.is-dragging {
   transition:
-    translate 0.06s linear,
-    width 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+    left 0s linear,
+    right 0s linear,
     scale 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow 0.2s ease;
+    box-shadow 0.2s ease !important;
 }
 
-/* Press & hold: grows to 1.32x wide and 1.5x tall + deeper shadow */
+/* When finger slows down for ~90ms during drag, ease back to normal width */
+.sdn-bubble.is-dragging.is-drag-relaxing {
+  transition:
+    left 0.18s cubic-bezier(0.25, 1, 0.5, 1),
+    right 0.18s cubic-bezier(0.25, 1, 0.5, 1),
+    scale 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.2s ease !important;
+}
+
+/* Press & hold: grows to 1.14x taller + deeper shadow */
 .sdn-bubble.is-pressed {
-  scale: var(--sdn-sx, 1.32) var(--sdn-sy, 1.5);
+  scale: 1 1.14;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.4),
     inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.6),
     inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.3),
     0 22px 36px -10px rgba(0, 0, 0, 0.5);
-}
-
-/* Release / tap jelly wobble */
-.sdn-bubble.is-wobbling {
-  animation: sdn-jelly-wobble 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* Tab button */
@@ -7710,13 +7736,17 @@ html:not(.dark) .zenryu-stage--active {
 
 @media (prefers-reduced-motion: reduce) {
   .sdn-bubble,
+  .sdn-bubble.dir-right,
+  .sdn-bubble.dir-left,
+  .sdn-bubble.is-squashed,
   .sdn-bubble.is-dragging,
-  .sdn-bubble.is-wobbling,
+  .sdn-bubble.is-drag-relaxing,
   .sdn-tab-btn {
     transition: none !important;
     animation: none !important;
   }
-  .sdn-bubble.is-pressed {
+  .sdn-bubble.is-pressed,
+  .sdn-bubble.is-squashed {
     scale: 1 1 !important;
   }
 }
