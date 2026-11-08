@@ -1,10 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Search, Trophy, Flame, Sparkles, ChevronLeft, ChevronRight, Lock, Unlock, Eye } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  Search,
+  Trophy,
+  Flame,
+  ChevronLeft,
+  ChevronRight,
+  Lock,
+  Unlock,
+  Eye,
+  Users,
+} from 'lucide-react';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
 import type { PublicCrewSummary } from '@/types/crew';
 import { fetchCrewLeaderboard } from '@/services/crewService';
 import { CrewDetailsModal } from './CrewDetailsModal';
+import {
+  CrewGlassSlider,
+  getCrewBtnHandlers,
+  type CrewSliderOption,
+} from './CrewGlassPrimitives';
 
 interface PublicLeaderboardProps {
   currentUser?: {
@@ -16,18 +31,27 @@ interface PublicLeaderboardProps {
   } | null;
 }
 
+type PublicFilterId = 'all' | 'open' | 'request';
+
+const FILTER_OPTIONS: CrewSliderOption<PublicFilterId>[] = [
+  { id: 'all', label: 'All' },
+  { id: 'open', label: 'Open to join' },
+  { id: 'request', label: 'Request only' },
+];
+
 export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUser }) => {
+  const navigate = useNavigate();
   const [crews, setCrews] = useState<PublicCrewSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [filter, setFilter] = useState<PublicFilterId>('all');
   const [page, setPage] = useState(1);
   const limit = 20;
 
   const [selectedCrew, setSelectedCrew] = useState<PublicCrewSummary | null>(null);
 
-  // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search);
@@ -36,7 +60,6 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
     return () => clearTimeout(timer);
   }, [search]);
 
-  // Load ranked crews from server source of truth
   useEffect(() => {
     let active = true;
     async function load() {
@@ -63,164 +86,252 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
     };
   }, [debouncedSearch, page]);
 
+  const filteredCrews = useMemo(() => {
+    return crews.filter((c) => {
+      if (filter === 'all') return true;
+      if (filter === 'open') return c.joinMode === 'direct' && !c.isClosed;
+      if (filter === 'request') return c.joinMode === 'request' && !c.isClosed;
+      return true;
+    });
+  }, [crews, filter]);
+
   const totalPages = Math.max(1, Math.ceil(totalCount / limit));
 
   return (
-    <div className="space-y-6">
-      {/* Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:max-w-md">
-          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)] pointer-events-none" />
+    <section className="cw-card space-y-5">
+      {/* Header Row */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div>
+          <h2
+            className="cw-font-doto text-xl sm:text-2xl font-extrabold tracking-tight"
+            style={{ color: 'var(--cw-text)' }}
+          >
+            National Crew Leaderboard
+          </h2>
+          <p className="text-xs sm:text-sm mt-1" style={{ color: 'var(--cw-muted)' }}>
+            {totalCount} {totalCount === 1 ? 'squad' : 'squads'} registered across Pakistan
+          </p>
+        </div>
+      </div>
+
+      {/* Filter Slider + Rounded Search Pill */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
+        <CrewGlassSlider
+          options={FILTER_OPTIONS}
+          value={filter}
+          onChange={setFilter}
+          ariaLabel="Filter crews by join mode"
+          trackVariant="card2"
+        />
+
+        <div className="relative w-full">
+          <Search
+            size={16}
+            className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"
+            style={{ color: 'var(--cw-muted)' }}
+          />
           <input
             type="text"
             placeholder="Search study squad by name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-11 pr-4 py-3 rounded-full glass-input text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[#D71921] focus:ring-2 focus:ring-[#D71921]/40 transition-all"
+            className="cw-pill-input w-full h-11 pl-11 pr-4 text-sm font-medium"
           />
-        </div>
-
-        <div className="text-xs text-[var(--muted)] shrink-0 font-mono">
-          {totalCount} {totalCount === 1 ? 'squad' : 'squads'} registered across Pakistan
         </div>
       </div>
 
-      {/* Ranked Table / Cards */}
+      {/* Ranked Squad Rows */}
       {loading ? (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-16 rounded-[24px] bg-white/[0.04] border border-white/10 animate-pulse" />
+            <div
+              key={i}
+              className="h-16 rounded-[22px] animate-pulse"
+              style={{ backgroundColor: 'var(--cw-card2)' }}
+            />
           ))}
         </div>
-      ) : crews.length === 0 ? (
-        /* Empty state: Never show placeholder cards */
-        <div className="p-10 sm:p-14 rounded-[28px] glass-card text-center space-y-4">
-          <div className="icon-tile w-12 h-12 rounded-2xl text-[var(--muted)] flex items-center justify-center mx-auto">
-            <Trophy size={22} />
+      ) : filteredCrews.length === 0 ? (
+        <div
+          className="rounded-[22px] p-10 text-center space-y-3"
+          style={{
+            backgroundColor: 'var(--cw-card2)',
+            boxShadow: 'inset 0 0 0 1px var(--cw-line)',
+          }}
+        >
+          <div
+            className="w-11 h-11 rounded-full mx-auto flex items-center justify-center"
+            style={{ backgroundColor: 'var(--cw-card)', color: 'var(--cw-muted)' }}
+          >
+            <Trophy size={20} />
           </div>
-          <h3 className="text-base font-bold text-[var(--text)] font-heading">No Study Squads Found</h3>
-          <p className="text-xs text-[var(--muted)] max-w-sm mx-auto">
+          <h3 className="cw-font-doto text-base font-extrabold" style={{ color: 'var(--cw-text)' }}>
+            No Study Squads Found
+          </h3>
+          <p className="text-xs max-w-sm mx-auto" style={{ color: 'var(--cw-muted)' }}>
             {debouncedSearch
               ? `No crews matched "${debouncedSearch}". Try a different squad name.`
               : 'Be the first students in Pakistan to assemble a study crew and claim the #1 rank!'}
           </p>
           {!debouncedSearch && (
-            <div className="pt-2">
-              <Link to="/login?redirect=/dashboard/crew" className="btn-primary text-xs px-5 py-2.5" style={{ height: '42px' }}>
+            <div className="pt-1">
+              <Link
+                to="/login?redirect=/dashboard/crew"
+                {...getCrewBtnHandlers()}
+                className="cw-btn cw-btn-red"
+              >
                 Create First Squad
               </Link>
             </div>
           )}
         </div>
       ) : (
-        <div className="space-y-3">
-          {crews.map((c) => {
-            const isUserCrew = currentUser && currentUser.crewId === c.id;
+        <div className="space-y-2.5">
+          {filteredCrews.map((c, idx) => {
+            const isUserCrew = Boolean(currentUser && currentUser.crewId === c.id);
+            const displayRank = c.rank || idx + 1;
+            const solvedCount = c.questionsSolved ?? c.score ?? 0;
 
             return (
               <div
                 key={c.id}
                 onClick={() => setSelectedCrew(c)}
-                className={`p-3.5 sm:p-4 rounded-[24px] border transition-all duration-200 cursor-pointer flex items-center justify-between gap-3 min-h-[68px] hover:-translate-y-1 active:scale-[0.99] ${
-                  isUserCrew
-                    ? 'glass-card-highlight hover:border-[#D71921]'
-                    : 'glass-card hover:border-white/25'
-                }`}
+                className={`${
+                  isUserCrew ? 'cw-lb-row-me' : 'cw-lb-row'
+                } flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer`}
               >
-                {/* Left: Rank, Avatar, Name & Conditions */}
-                <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                  {/* Rank */}
-                  <div className="w-8 sm:w-10 text-center shrink-0">
-                    <span
-                      className={`font-mono text-sm sm:text-base font-bold ${
-                        c.rank === 1
-                          ? 'text-[#D71921]'
-                          : c.rank <= 3
-                          ? 'text-white'
-                          : 'text-[var(--muted)]'
-                      }`}
-                    >
-                      #{c.rank}
-                    </span>
-                  </div>
+                {/* Left: 28px Gold Rank Badge, 34px Avatar in card2, Name, Member Count */}
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <span className="cw-rank-badge shrink-0">{displayRank}</span>
 
-                  {/* Dot-matrix Avatar */}
-                  <div className="rounded-2xl overflow-hidden shrink-0 border border-white/10">
+                  <div className="cw-avatar-34 shrink-0">
                     <MatrixAvatar
                       avatarKey={c.avatarKey}
                       variant={c.avatarVariant}
-                      size={46}
+                      size={34}
                     />
                   </div>
 
-                  {/* Info */}
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-heading font-bold text-sm sm:text-base text-[var(--text)] truncate max-w-[150px] sm:max-w-xs md:max-w-md">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className="font-bold text-sm sm:text-[15px] truncate"
+                        style={{ color: 'var(--cw-text)' }}
+                      >
                         {c.name}
                       </span>
-                      {c.isPaidActive && (
-                        <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded-full bg-[#D71921]/20 border border-[#D71921]/50 text-[#D71921] flex items-center gap-0.5 shrink-0">
-                          <Sparkles size={9} /> Large Crew
-                        </span>
+
+                      {/* PRO BADGE RULE: Show Pro chip ONLY when crew has active Pro */}
+                      {Boolean(c.isPaidActive) && (
+                        <span className="cw-chip cw-chip-pro">Pro</span>
                       )}
+
                       {isUserCrew && (
-                        <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-950/40 border border-emerald-500/60 text-emerald-400 shrink-0">
-                          Your Squad
-                        </span>
+                        <span className="cw-chip cw-chip-you">You</span>
                       )}
                     </div>
 
-                    {/* Conditions snippet */}
-                    <div className="flex items-center gap-2 text-[11px] text-[var(--muted)] flex-wrap">
-                      <span className="flex items-center gap-1 font-mono">
+                    <div
+                      className="flex items-center gap-2 text-xs mt-0.5 flex-wrap"
+                      style={{ color: 'var(--cw-muted)' }}
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        <Users size={12} />
+                        <span>
+                          {c.memberCount} / {c.maxMembers || 30} members
+                        </span>
+                      </span>
+                      <span>&bull;</span>
+                      <span className="inline-flex items-center gap-1">
                         {c.joinMode === 'direct' ? (
                           <>
-                            <Unlock size={11} className="text-emerald-400" /> Direct
+                            <Unlock size={11} style={{ color: 'var(--cw-green)' }} />
+                            <span>Open</span>
                           </>
                         ) : (
                           <>
-                            <Lock size={11} className="text-amber-400" /> Request
+                            <Lock size={11} style={{ color: 'var(--cw-gold)' }} />
+                            <span>Request</span>
                           </>
                         )}
-                      </span>
-                      <span>&bull;</span>
-                      <span>
-                        {c.minStreak > 0 ? `Min ${c.minStreak}d streak` : 'Anyone can join'}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Right: Stats & View Action */}
-                <div className="flex items-center gap-3 sm:gap-5 shrink-0">
-                  <div className="text-right hidden xs:block">
-                    <div className="text-sm sm:text-base font-bold font-heading text-[var(--text)]">
-                      {c.questionsSolved ?? c.score} <span className="text-[10px] text-[var(--muted)] font-normal font-sans">solved</span>
+                {/* Right: Solved Count + Join (red) or Request (glass) button */}
+                <div
+                  className="flex items-center justify-between sm:justify-end gap-3 shrink-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="text-left sm:text-right">
+                    <div
+                      className="cw-font-doto text-sm sm:text-base font-extrabold tabular-nums"
+                      style={{ color: 'var(--cw-text)' }}
+                    >
+                      {solvedCount.toLocaleString()}{' '}
+                      <span
+                        className="cw-font-body text-xs font-medium"
+                        style={{ color: 'var(--cw-muted)' }}
+                      >
+                        solved
+                      </span>
                     </div>
-                    <div className="text-[11px] text-[var(--muted)] flex items-center justify-end gap-2 font-mono">
-                      <span className="flex items-center gap-0.5 text-[#D71921] font-semibold">
-                        <Flame size={11} /> {c.streak}d
+                    <div
+                      className="text-[11px] flex items-center sm:justify-end gap-1.5 font-semibold"
+                      style={{ color: 'var(--cw-muted)' }}
+                    >
+                      <span
+                        className="inline-flex items-center gap-0.5"
+                        style={{ color: 'var(--cw-red-text)' }}
+                      >
+                        <Flame size={11} />
+                        {c.streak || 1}d
                       </span>
                       <span>&bull;</span>
-                      <span className="text-emerald-400 font-semibold">
-                        {c.accuracy ?? 85}% acc
+                      <span style={{ color: 'var(--cw-green)' }}>
+                        {c.accuracy ?? 85}%
                       </span>
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedCrew(c);
-                    }}
-                    className="btn-secondary px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95"
-                    title="View squad details"
-                  >
-                    <Eye size={14} />
-                    <span className="hidden sm:inline">View</span>
-                  </button>
+                  {!c.isClosed && c.memberCount < (c.maxMembers || 30) ? (
+                    c.joinMode === 'direct' ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (currentUser) {
+                            navigate('/crew/my');
+                          } else {
+                            setSelectedCrew(c);
+                          }
+                        }}
+                        {...getCrewBtnHandlers()}
+                        className="cw-btn cw-btn-red !py-2 !px-4 !text-xs"
+                      >
+                        Join
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCrew(c)}
+                        {...getCrewBtnHandlers()}
+                        className="cw-btn cw-btn-glass !py-2 !px-4 !text-xs"
+                      >
+                        Request
+                      </button>
+                    )
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCrew(c)}
+                      {...getCrewBtnHandlers()}
+                      className="cw-btn cw-btn-glass !py-2 !px-3.5 !text-xs"
+                    >
+                      <Eye size={13} />
+                      <span>View</span>
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -230,16 +341,21 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
 
       {/* Pagination Controls */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
-          <span className="text-xs text-[var(--muted)] font-mono">
+        <div
+          className="flex items-center justify-between pt-3"
+          style={{ borderTop: '1px solid var(--cw-line)' }}
+        >
+          <span className="cw-font-doto text-xs font-bold" style={{ color: 'var(--cw-muted)' }}>
             Page {page} of {totalPages}
           </span>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="p-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] disabled:opacity-40 hover:bg-[var(--surface-hover)] transition-colors"
+              {...getCrewBtnHandlers(page <= 1)}
+              className="cw-btn cw-icon-btn cw-btn-glass"
+              aria-label="Previous page"
             >
               <ChevronLeft size={16} />
             </button>
@@ -247,7 +363,9 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
               type="button"
               disabled={page >= totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="p-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] disabled:opacity-40 hover:bg-[var(--surface-hover)] transition-colors"
+              {...getCrewBtnHandlers(page >= totalPages)}
+              className="cw-btn cw-icon-btn cw-btn-glass"
+              aria-label="Next page"
             >
               <ChevronRight size={16} />
             </button>
@@ -263,6 +381,6 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
           onClose={() => setSelectedCrew(null)}
         />
       )}
-    </div>
+    </section>
   );
 };

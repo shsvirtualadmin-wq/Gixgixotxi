@@ -6,6 +6,11 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { PublicLeaderboard } from '@/components/crew/PublicLeaderboard';
 import {
+  CrewStickyHeader,
+  CrewBottomDock,
+  getCrewBtnHandlers,
+} from '@/components/crew/CrewGlassPrimitives';
+import {
   Users,
   Trophy,
   Compass,
@@ -16,29 +21,26 @@ import {
 } from 'lucide-react';
 import { MAX_CREW_MEMBERS } from '@/constants/limits';
 import { GRAND_LINE_NAME, NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
-import { DashboardBottomNav } from '@/components/dashboard/DashboardBottomNav';
-import { PublicPageHeader } from '@/components/layout/PublicPageHeader';
 import { Footer } from '@/components/layout/Footer';
-import { BackgroundCanvas } from '@/components/BackgroundCanvas';
 
 const CREW_FEATURES = [
   {
-    icon: <Users size={22} />,
+    icon: <Users size={20} strokeWidth={2} />,
     title: 'Collaborative Study Squads',
     desc: `Room for up to ${MAX_CREW_MEMBERS} students per squad with real-time member rosters, active study status, and shareable QR codes.`,
   },
   {
-    icon: <Trophy size={22} />,
+    icon: <Trophy size={20} strokeWidth={2} />,
     title: 'Squad-Only Leaderboards',
     desc: 'Internal rank tracking based on tests completed, accuracy percentages, and current consecutive daily study streaks.',
   },
   {
-    icon: <Lock size={22} />,
+    icon: <Lock size={20} strokeWidth={2} />,
     title: 'Privacy & Invite Controls',
     desc: 'Squad leaders can lock rooms to prevent uninvited entries, manage members, or seamlessly transfer leadership.',
   },
   {
-    icon: <Compass size={22} />,
+    icon: <Compass size={20} strokeWidth={2} />,
     title: GRAND_LINE_NAME,
     desc: 'Public tests created by Nakama Captains from across Pakistan. Take tests, compare scores, and see where your squad stands.',
   },
@@ -127,93 +129,120 @@ export function CrewPage() {
     );
   };
 
-  const content = (
-    <div className="pb-20 boardly-container page-enter space-y-16 sm:space-y-24 pt-4 sm:pt-6">
-      {/* ── 1. Hero ── */}
-      <div className="text-center max-w-3xl mx-auto space-y-5">
-        <div className="flex justify-center">
-          <span className="section-chip-red">
+  return (
+    <div className="cw-screen-root min-h-screen w-full flex flex-col justify-between overflow-x-hidden transition-colors duration-150">
+      <PageMeta
+        title="Study Crew & Campus Squads — Boardly"
+        description={`Study together in squads of up to ${MAX_CREW_MEMBERS} students. Take practice tests, track leaderboards, and build consistent daily preparation habits.`}
+      />
+
+      {/* Sticky Glass Header Pill */}
+      <CrewStickyHeader showProChip={false} />
+
+      <div
+        className="mx-auto w-full max-w-3xl px-4 pt-6 space-y-6 flex-1"
+        style={{
+          paddingBottom: isLoggedIn
+            ? 'calc(110px + env(safe-area-inset-bottom, 0px))'
+            : '48px',
+        }}
+      >
+        {/* ── 1. Doto Page Title & Intro ── */}
+        <div className="space-y-2 px-1">
+          <span className="cw-chip cw-chip-leader">
             Feature 05 &bull; Collaborative Prep
           </span>
-        </div>
-
-        <h1
-          className="section-heading text-3xl sm:text-5xl font-extrabold text-[var(--text)] tracking-tight leading-tight"
-          style={{ fontFamily: 'var(--font-dot)', fontSize: 'clamp(28px, 4.2vw, 48px)' }}
-        >
-          Study Crew &amp; Campus Squads
-        </h1>
-        <p className="text-base sm:text-lg text-[var(--muted)] leading-relaxed max-w-2xl mx-auto">
-          Entrance exam prep is tough in isolation. Form a focused squad of up to {MAX_CREW_MEMBERS} peers, compare step derivations, and turn daily practice into a disciplined team habit.
-        </p>
-
-        <div className="pt-2 flex flex-wrap items-center justify-center gap-3.5">
-          {isInCrew ? (
-            <Link to="/crew/my" className="btn-primary">
-              Go to My Crew
-            </Link>
-          ) : isLoggedIn ? (
-            <Link to="/crew/my" className="btn-primary">
-              Create or Join a Crew
-            </Link>
-          ) : (
-            <button type="button" onClick={handleCreateOrJoinCrew} className="btn-primary cursor-pointer">
-              Create or Join a Crew
-            </button>
-          )}
-          {isLoggedIn ? (
-            <Link to="/captain/apply" className="btn-secondary">
-              Apply as {NAKAMA_CAPTAIN_SINGULAR}
-            </Link>
-          ) : (
-            <button type="button" onClick={handleApplyCaptain} className="btn-secondary cursor-pointer">
-              Apply as {NAKAMA_CAPTAIN_SINGULAR}
-            </button>
-          )}
-        </div>
-
-        {/* 6-character Crew Code Quick Join Input - Neat Glass Pill Group */}
-        <div className="max-w-md mx-auto pt-3">
-          <form onSubmit={handleJoinByCode} className="flex flex-col sm:flex-row items-center gap-2.5">
-            <input
-              type="text"
-              value={inviteCodeInput}
-              onChange={(e) => setInviteCodeInput(e.target.value.toUpperCase())}
-              placeholder="Enter 6-char crew code (e.g. CRW123)"
-              maxLength={8}
-              className="w-full sm:flex-1 h-[52px] rounded-full px-5 text-sm text-[var(--text)] placeholder-[var(--muted)] glass-input focus:outline-none focus:border-[#D71921] focus:ring-2 focus:ring-[#D71921]/40 uppercase tracking-wider text-center font-mono font-bold transition-all"
-            />
-            <button
-              type="submit"
-              className="btn-primary w-full sm:w-auto shrink-0 px-8 text-sm font-bold cursor-pointer"
-            >
-              Join
-            </button>
-          </form>
-        </div>
-      </div>
-
-      {/* ── 2. National Crew Leaderboard ── */}
-      <div className="space-y-8 relative">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] pointer-events-none -z-10 blur-3xl opacity-60">
-          <div className="w-full h-full bg-[radial-gradient(ellipse_at_center,rgba(215,25,33,0.12)_0%,rgba(215,25,33,0.03)_50%,transparent_75%)]" />
-        </div>
-
-        <div className="text-center max-w-2xl mx-auto space-y-3">
-          <div className="flex justify-center">
-            <span className="section-chip-red">Live Rankings</span>
-          </div>
-          <h2
-            className="section-heading text-2xl sm:text-4xl font-extrabold text-[var(--text)]"
-            style={{ fontFamily: 'var(--font-dot)', fontSize: 'clamp(24px, 3.4vw, 38px)' }}
+          <h1
+            className="cw-font-doto text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight pt-1"
+            style={{ color: 'var(--cw-text)' }}
           >
-            National Crew Leaderboard
-          </h2>
-          <p className="text-sm sm:text-base text-[var(--muted)] leading-relaxed">
-            Ranked in real time across Pakistan by questions solved, consecutive day streaks, and drill accuracy.
+            Study Crew &amp; Campus Squads
+          </h1>
+          <p
+            className="text-sm sm:text-base leading-relaxed"
+            style={{ color: 'var(--cw-muted)' }}
+          >
+            Entrance exam prep is tough in isolation. Form a focused squad of up to{' '}
+            {MAX_CREW_MEMBERS} peers, compare step derivations, and turn daily practice into a disciplined team habit.
           </p>
         </div>
 
+        {/* ── 2. CTA Card with Red & Glass Buttons + Join-Code Pill Input + Join Button ── */}
+        <section className="cw-card space-y-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              {isInCrew ? (
+                <Link
+                  to="/crew/my"
+                  {...getCrewBtnHandlers()}
+                  className="cw-btn cw-btn-red"
+                >
+                  Go to My Crew
+                </Link>
+              ) : isLoggedIn ? (
+                <Link
+                  to="/crew/my"
+                  {...getCrewBtnHandlers()}
+                  className="cw-btn cw-btn-red"
+                >
+                  Create or Join a Crew
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleCreateOrJoinCrew}
+                  {...getCrewBtnHandlers()}
+                  className="cw-btn cw-btn-red"
+                >
+                  Create or Join a Crew
+                </button>
+              )}
+
+              {isLoggedIn ? (
+                <Link
+                  to="/captain/apply"
+                  {...getCrewBtnHandlers()}
+                  className="cw-btn cw-btn-glass"
+                >
+                  Apply as {NAKAMA_CAPTAIN_SINGULAR}
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleApplyCaptain}
+                  {...getCrewBtnHandlers()}
+                  className="cw-btn cw-btn-glass"
+                >
+                  Apply as {NAKAMA_CAPTAIN_SINGULAR}
+                </button>
+              )}
+            </div>
+
+            {/* Join-Code Pill Input + Join Button */}
+            <form
+              onSubmit={handleJoinByCode}
+              className="flex items-center gap-2 w-full sm:w-auto"
+            >
+              <input
+                type="text"
+                value={inviteCodeInput}
+                onChange={(e) => setInviteCodeInput(e.target.value.toUpperCase())}
+                placeholder="6-char code (e.g. CRW123)"
+                maxLength={8}
+                className="cw-pill-input flex-1 sm:w-44 h-[44px] px-4 text-xs uppercase tracking-wider text-center font-mono font-bold"
+              />
+              <button
+                type="submit"
+                {...getCrewBtnHandlers()}
+                className="cw-btn cw-btn-red shrink-0"
+              >
+                Join
+              </button>
+            </form>
+          </div>
+        </section>
+
+        {/* ── 3. National Crew Leaderboard Card ── */}
         <PublicLeaderboard
           currentUser={
             user
@@ -227,270 +256,203 @@ export function CrewPage() {
               : null
           }
         />
-      </div>
 
-      {/* ── 3. Squad Capabilities (2x2 Grid) ── */}
-      <div className="space-y-8 relative">
-        <div className="text-center max-w-2xl mx-auto space-y-3">
-          <div className="flex justify-center">
-            <span className="section-chip">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.85)] shrink-0" aria-hidden="true" />
-              Engineered for Teams
-            </span>
+        {/* ── 4. Squad Capabilities (2x2 Grid) ── */}
+        <section className="space-y-4 pt-2">
+          <div className="px-1">
+            <h2
+              className="cw-font-doto text-2xl font-extrabold"
+              style={{ color: 'var(--cw-text)' }}
+            >
+              Squad Capabilities
+            </h2>
+            <p className="text-xs sm:text-sm mt-1" style={{ color: 'var(--cw-muted)' }}>
+              Everything your study circle needs to prepare together effectively.
+            </p>
           </div>
-          <h2
-            className="section-heading text-2xl sm:text-4xl font-extrabold text-[var(--text)]"
-            style={{ fontFamily: 'var(--font-dot)', fontSize: 'clamp(24px, 3.4vw, 38px)' }}
-          >
-            Squad Capabilities
-          </h2>
-          <p className="text-sm sm:text-base text-[var(--muted)] leading-relaxed">
-            Everything your study circle needs to prepare together effectively.
-          </p>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
-          {CREW_FEATURES.map((f) => (
-            <div key={f.title} className="glass-card rounded-[28px] p-6 sm:p-7 flex flex-col justify-between">
-              <div className="space-y-4">
-                <div className="w-12 h-12 rounded-2xl icon-tile text-white flex items-center justify-center shrink-0">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {CREW_FEATURES.map((f) => (
+              <div key={f.title} className="cw-card space-y-3">
+                <div
+                  className="w-11 h-11 rounded-full flex items-center justify-center shrink-0"
+                  style={{
+                    backgroundColor: 'color-mix(in srgb, var(--cw-red) 18%, transparent)',
+                    color: 'var(--cw-red-text)',
+                  }}
+                >
                   {f.icon}
                 </div>
                 <div>
                   <h3
-                    className="text-lg font-bold text-[var(--text)] mb-2"
-                    style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+                    className="cw-font-doto text-lg font-extrabold"
+                    style={{ color: 'var(--cw-text)' }}
                   >
                     {f.title}
                   </h3>
-                  <p className="text-sm text-[var(--muted)] leading-relaxed">{f.desc}</p>
+                  <p
+                    className="text-xs sm:text-sm mt-1 leading-relaxed"
+                    style={{ color: 'var(--cw-muted)' }}
+                  >
+                    {f.desc}
+                  </p>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── 4. Roles Section ── */}
-      <div className="space-y-8 relative">
-        <div className="text-center max-w-2xl mx-auto space-y-3">
-          <div className="flex justify-center">
-            <span className="section-chip">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.85)] shrink-0" aria-hidden="true" />
-              Leadership Pathways
-            </span>
+            ))}
           </div>
-          <h2
-            className="section-heading text-2xl sm:text-4xl font-extrabold text-[var(--text)]"
-            style={{ fontFamily: 'var(--font-dot)', fontSize: 'clamp(24px, 3.4vw, 38px)' }}
-          >
-            Roles in the Boardly Network
-          </h2>
-          <p className="text-sm sm:text-base text-[var(--muted)] leading-relaxed">
-            From everyday study partners to official student ambassadors representing Boardly and SHS Virtual Academy.
-          </p>
-        </div>
+        </section>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto items-stretch">
-          {CREW_ROLES.map((role) => (
-            <div
-              key={role.title}
-              className={`glass-card rounded-[28px] p-6 sm:p-8 flex flex-col justify-between ${
-                role.highlight
-                  ? 'glass-card-highlight'
-                  : ''
-              }`}
+        {/* ── 5. Roles in the Boardly Network ── */}
+        <section className="space-y-4 pt-2">
+          <div className="px-1">
+            <h2
+              className="cw-font-doto text-2xl font-extrabold"
+              style={{ color: 'var(--cw-text)' }}
             >
-              <div className="space-y-4">
-                <span className="section-chip text-xs">
-                  {role.badge}
-                </span>
-                <h3
-                  className="text-xl font-bold text-[var(--text)]"
-                  style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
-                >
-                  {role.title}
-                </h3>
-                <p className="text-sm text-[var(--muted)] leading-relaxed">{role.desc}</p>
-              </div>
-
-              <div className="pt-6 mt-6 border-t border-white/[0.08]">
-                {isLoggedIn ? (
-                  <Link to={role.actionLink} className="btn-secondary w-full group">
-                    <span>{role.actionText}</span>
-                    <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      role.actionLink.includes('captain')
-                        ? handleApplyCaptain()
-                        : handleCreateOrJoinCrew()
-                    }
-                    className="btn-secondary w-full group cursor-pointer"
-                  >
-                    <span>{role.actionText}</span>
-                    <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── 5. FAQs ── */}
-      <div className="space-y-8 max-w-3xl mx-auto relative">
-        <div className="text-center max-w-2xl mx-auto space-y-3">
-          <div className="flex justify-center">
-            <span className="section-chip">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.85)] shrink-0" aria-hidden="true" />
-              Questions
-            </span>
+              Roles in the Boardly Network
+            </h2>
+            <p className="text-xs sm:text-sm mt-1" style={{ color: 'var(--cw-muted)' }}>
+              From everyday study partners to official student ambassadors representing Boardly and SHS Virtual Academy.
+            </p>
           </div>
-          <h2
-            className="section-heading text-2xl sm:text-4xl font-extrabold text-[var(--text)]"
-            style={{ fontFamily: 'var(--font-dot)', fontSize: 'clamp(24px, 3.4vw, 38px)' }}
-          >
-            Frequently Asked Questions
-          </h2>
-          <p className="text-sm sm:text-base text-[var(--muted)] leading-relaxed">
-            Common questions about Study Crews, squad limits, and Nakama Captains.
-          </p>
-        </div>
 
-        <div className="space-y-3.5">
-          {CREW_FAQS.map((faq, i) => {
-            const isOpen = openFaq === i;
-            const answerId = `crew-faq-ans-${i}`;
-            const triggerId = `crew-faq-trig-${i}`;
-
-            return (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {CREW_ROLES.map((role) => (
               <div
-                key={faq.q}
-                className={`rounded-[24px] sm:rounded-[28px] border transition-all duration-300 ${
-                  isOpen
-                    ? 'glass-card-highlight'
-                    : 'glass-card hover:border-white/20'
-                }`}
+                key={role.title}
+                className="cw-card flex flex-col justify-between gap-5"
               >
-                <button
-                  type="button"
-                  id={triggerId}
-                  aria-expanded={isOpen}
-                  aria-controls={answerId}
-                  onClick={() => setOpenFaq(isOpen ? null : i)}
-                  className="w-full p-5 sm:p-6 text-left flex items-center justify-between gap-4 cursor-pointer rounded-[24px] sm:rounded-[28px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D71921] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
-                >
+                <div className="space-y-3">
                   <span
-                    className="font-semibold text-sm sm:text-base text-[var(--text)]"
-                    style={{ fontFamily: 'var(--font-heading)' }}
-                  >
-                    {faq.q}
-                  </span>
-                  <div
-                    className={`w-8 h-8 rounded-full border transition-all duration-300 flex items-center justify-center shrink-0 ${
-                      isOpen
-                        ? 'bg-[#D71921]/20 border-[#D71921]/60 text-[var(--text-primary)] shadow-[0_0_12px_rgba(215,25,33,0.3)]'
-                        : 'icon-tile text-white/70 hover:text-white'
+                    className={`cw-chip ${
+                      role.highlight ? 'cw-chip-leader' : 'cw-chip-you'
                     }`}
                   >
-                    {isOpen ? <Minus size={15} strokeWidth={2.5} /> : <Plus size={15} strokeWidth={2.5} />}
-                  </div>
-                </button>
+                    {role.badge}
+                  </span>
+                  <h3
+                    className="cw-font-doto text-xl font-extrabold"
+                    style={{ color: 'var(--cw-text)' }}
+                  >
+                    {role.title}
+                  </h3>
+                  <p
+                    className="text-xs sm:text-sm leading-relaxed"
+                    style={{ color: 'var(--cw-muted)' }}
+                  >
+                    {role.desc}
+                  </p>
+                </div>
 
-                <div
-                  id={answerId}
-                  role="region"
-                  aria-labelledby={triggerId}
-                  className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
-                    isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none'
-                  }`}
-                >
-                  <div className="overflow-hidden">
-                    <div className="px-5 pb-5 sm:px-6 sm:pb-6 pt-0">
-                      <div className="pt-3 border-t border-white/[0.08] text-sm text-[var(--muted)] leading-relaxed">
+                <div>
+                  {isLoggedIn ? (
+                    <Link
+                      to={role.actionLink}
+                      {...getCrewBtnHandlers()}
+                      className={`cw-btn w-full ${
+                        role.highlight ? 'cw-btn-red' : 'cw-btn-glass'
+                      }`}
+                    >
+                      <span>{role.actionText}</span>
+                      <ArrowRight size={15} />
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        role.actionLink.includes('captain')
+                          ? handleApplyCaptain()
+                          : handleCreateOrJoinCrew()
+                      }
+                      {...getCrewBtnHandlers()}
+                      className={`cw-btn w-full ${
+                        role.highlight ? 'cw-btn-red' : 'cw-btn-glass'
+                      }`}
+                    >
+                      <span>{role.actionText}</span>
+                      <ArrowRight size={15} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── 6. Frequently Asked Questions ── */}
+        <section className="space-y-4 pt-2">
+          <div className="px-1">
+            <h2
+              className="cw-font-doto text-2xl font-extrabold"
+              style={{ color: 'var(--cw-text)' }}
+            >
+              Frequently Asked Questions
+            </h2>
+            <p className="text-xs sm:text-sm mt-1" style={{ color: 'var(--cw-muted)' }}>
+              Common questions about Study Crews, squad limits, and Nakama Captains.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {CREW_FAQS.map((faq, i) => {
+              const isOpen = openFaq === i;
+              const answerId = `crew-faq-ans-${i}`;
+              const triggerId = `crew-faq-trig-${i}`;
+
+              return (
+                <div key={faq.q} className="cw-card !p-0 overflow-hidden">
+                  <button
+                    type="button"
+                    id={triggerId}
+                    aria-expanded={isOpen}
+                    aria-controls={answerId}
+                    onClick={() => setOpenFaq(isOpen ? null : i)}
+                    className="w-full p-5 text-left flex items-center justify-between gap-4 cursor-pointer"
+                  >
+                    <span
+                      className="font-bold text-sm sm:text-base"
+                      style={{ color: 'var(--cw-text)' }}
+                    >
+                      {faq.q}
+                    </span>
+                    <span
+                      className={`cw-btn cw-icon-btn ${
+                        isOpen ? 'cw-btn-red' : 'cw-btn-glass'
+                      } !w-8 !h-8 !min-w-[32px] !min-h-[32px] shrink-0`}
+                    >
+                      {isOpen ? (
+                        <Minus size={14} strokeWidth={2.5} />
+                      ) : (
+                        <Plus size={14} strokeWidth={2.5} />
+                      )}
+                    </span>
+                  </button>
+
+                  {isOpen && (
+                    <div
+                      id={answerId}
+                      role="region"
+                      aria-labelledby={triggerId}
+                      className="px-5 pb-5 pt-0 text-xs sm:text-sm leading-relaxed"
+                      style={{ color: 'var(--cw-muted)' }}
+                    >
+                      <div
+                        className="pt-3"
+                        style={{ borderTop: '1px solid var(--cw-line)' }}
+                      >
                         {faq.a}
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── 6. Bottom CTA (Matching Panel A) ── */}
-      <div className="relative overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[350px] pointer-events-none -z-10 blur-3xl opacity-75">
-          <div className="w-full h-full bg-[radial-gradient(ellipse_at_center,rgba(215,25,33,0.18)_0%,rgba(215,25,33,0.04)_50%,transparent_75%)]" />
-        </div>
-
-        <div className="glass-panel p-8 sm:p-12 lg:p-14 text-center space-y-4 max-w-4xl mx-auto">
-          <h2
-            className="section-heading text-2xl sm:text-3xl md:text-4xl font-extrabold text-[var(--text)]"
-            style={{ fontFamily: 'var(--font-dot)', fontSize: 'clamp(24px, 3.2vw, 36px)' }}
-          >
-            Study with your crew today
-          </h2>
-          <p className="text-sm sm:text-base text-[var(--muted)] max-w-xl mx-auto">
-            Create a squad room, invite up to {MAX_CREW_MEMBERS} peers, and practice with real university test patterns.
-          </p>
-          <div className="pt-2 flex flex-wrap items-center justify-center gap-3.5">
-            {isLoggedIn ? (
-              <Link to="/crew/my" className="btn-primary">
-                Open Squad Dashboard
-              </Link>
-            ) : (
-              <button type="button" onClick={handleCreateOrJoinCrew} className="btn-primary cursor-pointer">
-                Sign In to Join or Create
-              </button>
-            )}
-            {isLoggedIn ? (
-              <Link to="/captain/apply" className="btn-secondary">
-                Become a {NAKAMA_CAPTAIN_SINGULAR}
-              </Link>
-            ) : (
-              <button type="button" onClick={handleApplyCaptain} className="btn-secondary cursor-pointer">
-                Become a {NAKAMA_CAPTAIN_SINGULAR}
-              </button>
-            )}
+              );
+            })}
           </div>
-        </div>
+        </section>
       </div>
+
+      {isLoggedIn ? <CrewBottomDock /> : <Footer />}
     </div>
-  );
-
-  return (
-    <>
-      <PageMeta
-        title="Study Crew & Campus Squads — Boardly"
-        description={`Study together in squads of up to ${MAX_CREW_MEMBERS} students. Take practice tests, track leaderboards, and build consistent daily preparation habits.`}
-      />
-
-      {isLoggedIn ? (
-        // Logged in: in-dashboard Crew view (bottom nav visible, public top navbar hidden)
-        <div className="relative min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)]">
-          <BackgroundCanvas />
-          <div className="flex-1 flex flex-col pb-16 pt-4 sm:pt-6">
-            {content}
-          </div>
-          <DashboardBottomNav />
-        </div>
-      ) : (
-        // Logged out: public header with back arrow & title, footer, and NO bottom nav
-        <div className="relative min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)]">
-          <BackgroundCanvas />
-          <PublicPageHeader title="Study Crew" />
-          <div className="flex-1 flex flex-col pt-20 sm:pt-24">
-            {content}
-          </div>
-          <Footer />
-        </div>
-      )}
-    </>
   );
 }
 

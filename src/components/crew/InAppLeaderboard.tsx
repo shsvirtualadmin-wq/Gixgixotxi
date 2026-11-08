@@ -1,11 +1,32 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, Plus, Trophy, Sparkles, Lock, Unlock, Eye, AlertCircle, ChevronLeft, ChevronRight, Flame } from 'lucide-react';
+import {
+  Search,
+  Plus,
+  Trophy,
+  Lock,
+  Unlock,
+  Eye,
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  Flame,
+  Users,
+} from 'lucide-react';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
 import type { PublicCrewSummary } from '@/types/crew';
-import { fetchCrewLeaderboard, joinCrew, cancelJoinRequest } from '@/services/crewService';
+import {
+  fetchCrewLeaderboard,
+  joinCrew,
+  cancelJoinRequest,
+} from '@/services/crewService';
 import { evaluateUserEligibility } from '@/services/crewBackend';
 import { CrewDetailsModal } from './CrewDetailsModal';
 import { CreateCrewModal } from './CreateCrewModal';
+import {
+  CrewGlassSlider,
+  getCrewBtnHandlers,
+  type CrewSliderOption,
+} from './CrewGlassPrimitives';
 
 interface InAppLeaderboardProps {
   currentUser: {
@@ -19,19 +40,36 @@ interface InAppLeaderboardProps {
     avatarVariant?: string | null;
   };
   onCrewJoined: () => void;
+  externalCreateTrigger?: number;
 }
+
+type CrewFilterId = 'all' | 'open' | 'request';
+type CrewSortId = 'questions' | 'streak' | 'accuracy';
+
+const FILTER_OPTIONS: CrewSliderOption<CrewFilterId>[] = [
+  { id: 'all', label: 'All' },
+  { id: 'open', label: 'Open to join' },
+  { id: 'request', label: 'Request only' },
+];
+
+const SORT_OPTIONS: CrewSliderOption<CrewSortId>[] = [
+  { id: 'questions', label: 'Questions' },
+  { id: 'streak', label: 'Streak' },
+  { id: 'accuracy', label: 'Accuracy' },
+];
 
 export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
   currentUser,
   onCrewJoined,
+  externalCreateTrigger,
 }) => {
   const [crews, setCrews] = useState<PublicCrewSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [filter, setFilter] = useState<'all' | 'open' | 'request' | 'eligible'>('all');
-  const [sortBy, setSortBy] = useState<'questions' | 'streak' | 'accuracy'>('questions');
+  const [filter, setFilter] = useState<CrewFilterId>('all');
+  const [sortBy, setSortBy] = useState<CrewSortId>('questions');
   const [page, setPage] = useState(1);
   const limit = 20;
 
@@ -39,6 +77,12 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (externalCreateTrigger && externalCreateTrigger > 0) {
+      setCreateModalOpen(true);
+    }
+  }, [externalCreateTrigger]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -133,21 +177,12 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
     }
   };
 
-  // Filter and sort crews based on active tab and sort criterion
   const filteredCrews = useMemo(() => {
     return [...crews]
       .filter((c) => {
         if (filter === 'all') return true;
-        const eligibilityResult = evaluateUserEligibility(c, {
-          uid: currentUser.uid,
-          streak: currentUser.streak,
-          crewId: currentUser.crewId,
-        });
-        const eligibility = eligibilityResult.state;
-
         if (filter === 'open') return c.joinMode === 'direct' && !c.isClosed;
         if (filter === 'request') return c.joinMode === 'request' && !c.isClosed;
-        if (filter === 'eligible') return eligibility === 'eligible';
         return true;
       })
       .sort((a, b) => {
@@ -155,120 +190,106 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
         if (sortBy === 'accuracy') return (b.accuracy ?? 85) - (a.accuracy ?? 85);
         return (b.questionsSolved ?? b.score ?? 0) - (a.questionsSolved ?? a.score ?? 0);
       });
-  }, [crews, filter, sortBy, currentUser.uid, currentUser.streak, currentUser.crewId]);
+  }, [crews, filter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / limit));
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner: Create Crew CTA */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl bg-[#0A0A0A] border border-[rgba(255,255,255,0.12)] shadow-sm">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold font-heading text-white">National Crew Leaderboard</h2>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/10 text-white">
-              Live DB
-            </span>
-          </div>
-          <p className="text-xs text-[rgba(255,255,255,0.65)]">
-            All registered study crews across Pakistan, ranked by questions solved, streak, and drill accuracy.
+    <section className="cw-card space-y-5">
+      {/* Header Row */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="cw-font-doto text-xl sm:text-2xl font-extrabold tracking-tight" style={{ color: 'var(--cw-text)' }}>
+            National Crew Leaderboard
+          </h2>
+          <p className="text-xs sm:text-sm mt-1" style={{ color: 'var(--cw-muted)' }}>
+            All registered study crews across Pakistan, ranked by solved MCQs and streaks.
           </p>
         </div>
 
         <button
           type="button"
           onClick={() => setCreateModalOpen(true)}
-          className="px-5 py-2.5 rounded-xl bg-[#D71921] hover:bg-[#b0131a] text-white text-xs font-bold transition-all flex items-center gap-2 shadow-md shrink-0 cursor-pointer"
+          {...getCrewBtnHandlers()}
+          className="cw-btn cw-btn-red shrink-0"
         >
-          <Plus size={16} />
+          <Plus size={16} strokeWidth={2.2} />
           <span>Create Crew</span>
         </button>
       </div>
 
       {actionError && (
-        <div className="p-3.5 rounded-xl bg-red-950/40 border border-[#D71921] text-[#D71921] text-xs flex items-center gap-2">
+        <div
+          className="cw-lb-row-me flex items-center gap-2.5 text-xs font-semibold"
+          style={{ color: 'var(--cw-red-text)' }}
+        >
           <AlertCircle size={16} className="shrink-0" />
           <span>{actionError}</span>
         </div>
       )}
 
-      {/* Filter Tabs, Sort Options and Search Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-        {/* Filters */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {([
-            { id: 'all', label: 'All Crews' },
-            { id: 'open', label: 'Open to Join' },
-            { id: 'request', label: 'Request Only' },
-            { id: 'eligible', label: 'Eligible for Me' },
-          ] as const).map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setFilter(tab.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
-                filter === tab.id
-                  ? 'bg-white text-black font-bold'
-                  : 'bg-[#141414] text-[rgba(255,255,255,0.65)] hover:text-white border border-[rgba(255,255,255,0.08)]'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+      {/* Filter Sliders + Sort Sliders + Rounded Search Pill */}
+      <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <CrewGlassSlider
+            options={FILTER_OPTIONS}
+            value={filter}
+            onChange={setFilter}
+            ariaLabel="Filter crews by join mode"
+            trackVariant="card2"
+          />
+          <CrewGlassSlider
+            options={SORT_OPTIONS}
+            value={sortBy}
+            onChange={setSortBy}
+            ariaLabel="Sort crews by metric"
+            trackVariant="card2"
+          />
         </div>
 
-        {/* Sort Options: Questions Solved, Streak, Accuracy */}
-        <div className="flex items-center gap-1.5 text-xs text-[rgba(255,255,255,0.6)]">
-          <span className="hidden sm:inline font-heading text-[11px] text-[rgba(255,255,255,0.4)]">Rank:</span>
-          {(
-            [
-              { id: 'questions', label: 'Questions' },
-              { id: 'streak', label: 'Streak' },
-              { id: 'accuracy', label: 'Accuracy' },
-            ] as const
-          ).map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setSortBy(s.id)}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                sortBy === s.id
-                  ? 'bg-[#D71921] text-white font-bold'
-                  : 'bg-[#141414] text-[rgba(255,255,255,0.6)] hover:text-white border border-[rgba(255,255,255,0.08)]'
-              }`}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Search */}
-        <div className="relative w-full md:w-60">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(255,255,255,0.4)]" />
+        {/* Rounded Search Pill */}
+        <div className="relative w-full">
+          <Search
+            size={16}
+            className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none"
+            style={{ color: 'var(--cw-muted)' }}
+          />
           <input
             type="text"
-            placeholder="Search crews..."
+            placeholder="Search crews by name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3.5 py-1.5 rounded-lg bg-[#141414] border border-[rgba(255,255,255,0.12)] text-xs text-white placeholder-[rgba(255,255,255,0.3)] focus:outline-none focus:border-[#D71921]"
+            className="cw-pill-input w-full h-11 pl-11 pr-4 text-sm font-medium"
           />
         </div>
       </div>
 
-      {/* Ranked Squad List */}
+      {/* Crew Rows */}
       {loading ? (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-16 rounded-xl bg-[#141414] animate-pulse" />
+            <div
+              key={i}
+              className="h-16 rounded-[22px] animate-pulse"
+              style={{ backgroundColor: 'var(--cw-card2)' }}
+            />
           ))}
         </div>
       ) : filteredCrews.length === 0 ? (
-        <div className="p-12 rounded-2xl bg-[#0A0A0A] border border-[rgba(255,255,255,0.1)] text-center space-y-3">
-          <div className="w-12 h-12 rounded-full bg-[#141414] text-[rgba(255,255,255,0.4)] flex items-center justify-center mx-auto">
-            <Trophy size={20} />
+        <div
+          className="rounded-[22px] p-8 text-center space-y-2"
+          style={{
+            backgroundColor: 'var(--cw-card2)',
+            boxShadow: 'inset 0 0 0 1px var(--cw-line)',
+          }}
+        >
+          <div className="w-10 h-10 rounded-full mx-auto flex items-center justify-center" style={{ backgroundColor: 'var(--cw-card)', color: 'var(--cw-muted)' }}>
+            <Trophy size={18} />
           </div>
-          <h3 className="text-base font-bold font-heading text-white">No Matching Crews</h3>
-          <p className="text-xs text-[rgba(255,255,255,0.6)] max-w-sm mx-auto">
+          <h3 className="cw-font-doto text-base font-extrabold" style={{ color: 'var(--cw-text)' }}>
+            No Matching Crews
+          </h3>
+          <p className="text-xs max-w-sm mx-auto" style={{ color: 'var(--cw-muted)' }}>
             {debouncedSearch
               ? `No crews found for "${debouncedSearch}".`
               : 'No study squads currently fit this filter criteria.'}
@@ -276,155 +297,130 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
         </div>
       ) : (
         <div className="space-y-2.5">
-          {filteredCrews.map((c) => {
+          {filteredCrews.map((c, idx) => {
             const isUserCrew = currentUser.crewId === c.id;
-            const eligibilityResult = evaluateUserEligibility(
-              c,
-              {
-                uid: currentUser.uid,
-                streak: currentUser.streak,
-                crewId: currentUser.crewId,
-              }
-            );
+            const eligibilityResult = evaluateUserEligibility(c, {
+              uid: currentUser.uid,
+              streak: currentUser.streak,
+              crewId: currentUser.crewId,
+            });
             const eligibility = eligibilityResult.state;
-
             const isActionLoading = actionLoadingId === c.id;
+            const displayRank = c.rank || idx + 1;
+            const solvedCount = c.questionsSolved ?? c.score ?? 0;
 
             return (
               <div
                 key={c.id}
-                className={`p-3.5 sm:p-4 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                  isUserCrew
-                    ? 'bg-[#181011] border-[#D71921]/70'
-                    : 'bg-[#0A0A0A] border-[rgba(255,255,255,0.1)] hover:bg-[#111111]'
-                }`}
+                onClick={() => setSelectedCrew(c)}
+                className={`${
+                  isUserCrew ? 'cw-lb-row-me' : 'cw-lb-row'
+                } flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer`}
               >
-                {/* Left Side: Rank, Avatar, Title, Conditions */}
-                <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                  <div className="w-8 text-center shrink-0">
-                    <span
-                      className={`font-mono text-sm sm:text-base font-bold ${
-                        c.rank === 1
-                          ? 'text-[#D71921]'
-                          : c.rank <= 3
-                          ? 'text-white'
-                          : 'text-[rgba(255,255,255,0.5)]'
-                      }`}
-                    >
-                      #{c.rank}
-                    </span>
+                {/* Left: 28px Gold Rank Badge, 34px Avatar in card2, Name, Member count */}
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <span className="cw-rank-badge shrink-0">{displayRank}</span>
+
+                  <div className="cw-avatar-34 shrink-0">
+                    <MatrixAvatar
+                      avatarKey={c.avatarKey}
+                      variant={c.avatarVariant}
+                      size={34}
+                    />
                   </div>
 
-                  <MatrixAvatar
-                    avatarKey={c.avatarKey}
-                    variant={c.avatarVariant}
-                    size={46}
-                    className="shrink-0"
-                  />
-
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-heading font-bold text-sm sm:text-base text-white truncate">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className="font-bold text-sm sm:text-[15px] truncate"
+                        style={{ color: 'var(--cw-text)' }}
+                      >
                         {c.name}
                       </span>
-                      {c.isPaidActive && (
-                        <span className="text-[9px] uppercase font-bold px-1.5 py-0.2 rounded bg-[#D71921]/20 border border-[#D71921]/50 text-[#D71921] flex items-center gap-0.5 shrink-0">
-                          <Sparkles size={9} /> Large Crew
-                        </span>
+
+                      {/* PRO BADGE RULE: only show Pro chip when crew actually has active Pro */}
+                      {Boolean(c.isPaidActive) && (
+                        <span className="cw-chip cw-chip-pro">Pro</span>
                       )}
+
                       {isUserCrew && (
-                        <span className="text-[9px] uppercase font-bold px-1.5 py-0.2 rounded bg-emerald-950/40 border border-emerald-500/60 text-emerald-400 shrink-0">
-                          Your Crew
-                        </span>
+                        <span className="cw-chip cw-chip-you">You</span>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2 text-[11px] text-[rgba(255,255,255,0.6)] flex-wrap">
-                      <span className="flex items-center gap-1 font-mono">
+                    <div
+                      className="flex items-center gap-2 text-xs mt-0.5 flex-wrap"
+                      style={{ color: 'var(--cw-muted)' }}
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        <Users size={12} />
+                        <span>
+                          {c.memberCount} / {c.maxMembers || 30} members
+                        </span>
+                      </span>
+                      <span>&bull;</span>
+                      <span className="inline-flex items-center gap-1">
                         {c.joinMode === 'direct' ? (
                           <>
-                            <Unlock size={11} className="text-emerald-400" /> Direct
+                            <Unlock size={11} style={{ color: 'var(--cw-green)' }} />
+                            <span>Open</span>
                           </>
                         ) : (
                           <>
-                            <Lock size={11} className="text-amber-400" /> Request
+                            <Lock size={11} style={{ color: 'var(--cw-gold)' }} />
+                            <span>Request</span>
                           </>
                         )}
-                      </span>
-                      <span>&bull;</span>
-                      <span>
-                        {c.minStreak > 0 ? `Min ${c.minStreak}d streak` : '0d streak required'}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Right Side: Score, Eligibility Badge & Actions */}
-                <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[rgba(255,255,255,0.06)]">
-                  {/* Score & Metrics: Solved, Streak, Accuracy */}
+                {/* Right: Solved count in Doto + Join (red) or Request (glass) button */}
+                <div
+                  className="flex items-center justify-between sm:justify-end gap-3 shrink-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <div className="text-left sm:text-right">
-                    <div className="text-sm font-bold font-heading text-white">
-                      {c.questionsSolved ?? c.score} <span className="text-[10px] text-[rgba(255,255,255,0.5)] font-normal font-sans">solved</span>
+                    <div
+                      className="cw-font-doto text-sm sm:text-base font-extrabold tabular-nums"
+                      style={{ color: 'var(--cw-text)' }}
+                    >
+                      {solvedCount.toLocaleString()}{' '}
+                      <span
+                        className="cw-font-body text-xs font-medium"
+                        style={{ color: 'var(--cw-muted)' }}
+                      >
+                        solved
+                      </span>
                     </div>
-                    <div className="text-[11px] text-[rgba(255,255,255,0.6)] flex items-center sm:justify-end gap-2 font-mono">
-                      <span className="flex items-center gap-0.5 text-[#D71921] font-semibold">
-                        <Flame size={11} /> {c.streak}d
+                    <div
+                      className="text-[11px] flex items-center sm:justify-end gap-1.5 font-semibold"
+                      style={{ color: 'var(--cw-muted)' }}
+                    >
+                      <span
+                        className="inline-flex items-center gap-0.5"
+                        style={{ color: 'var(--cw-red-text)' }}
+                      >
+                        <Flame size={11} />
+                        {c.streak || 1}d
                       </span>
                       <span>&bull;</span>
-                      <span className="text-emerald-400 font-semibold">
-                        {c.accuracy ?? 85}% acc
+                      <span style={{ color: 'var(--cw-green)' }}>
+                        {c.accuracy ?? 85}%
                       </span>
                     </div>
                   </div>
 
-                  {/* Eligibility state badge */}
-                  <div className="hidden md:block">
-                    {eligibility === 'eligible' && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950/40 border border-emerald-500/40 text-emerald-400">
-                        Eligible
-                      </span>
-                    )}
-                    {eligibility === 'pending' && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-950/40 border border-amber-500/40 text-amber-400">
-                        Request pending
-                      </span>
-                    )}
-                    {eligibility === 'crew_full' && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-900 border border-neutral-700 text-neutral-400">
-                        Crew full
-                      </span>
-                    )}
-                    {eligibility === 'locked_streak' && (
-                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-neutral-900 border border-neutral-700 text-neutral-400" title={`Requires ${c.minStreak}d streak. You have ${currentUser.streak || 0}d.`}>
-                        Locked: Needs {c.minStreak}d (you have {currentUser.streak || 0})
-                      </span>
-                    )}
-                    {eligibility === 'already_in_crew' && !isUserCrew && (
-                      <span className="text-[10px] text-neutral-400 italic">
-                        In another crew
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCrew(c)}
-                      className="px-3 py-1.5 rounded-lg bg-[#141414] hover:bg-[#1E1E1E] border border-[rgba(255,255,255,0.12)] text-xs text-white flex items-center gap-1 transition-colors"
-                    >
-                      <Eye size={13} />
-                      <span>View</span>
-                    </button>
-
-                    {/* Join / Request / Pending CTA */}
-                    {eligibility === 'eligible' && (
+                  <div className="flex items-center gap-2">
+                    {eligibility === 'eligible' ? (
                       c.joinMode === 'direct' ? (
                         <button
                           type="button"
                           disabled={isActionLoading}
                           onClick={() => handleJoinDirect(c)}
-                          className="px-3.5 py-1.5 rounded-lg bg-[#D71921] hover:bg-[#b0131a] text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50"
+                          {...getCrewBtnHandlers(isActionLoading)}
+                          className="cw-btn cw-btn-red !py-2 !px-4 !text-xs"
                         >
                           {isActionLoading ? 'Joining...' : 'Join'}
                         </button>
@@ -433,21 +429,31 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
                           type="button"
                           disabled={isActionLoading}
                           onClick={() => handleRequestJoin(c)}
-                          className="px-3.5 py-1.5 rounded-lg bg-[#D71921] hover:bg-[#b0131a] text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50"
+                          {...getCrewBtnHandlers(isActionLoading)}
+                          className="cw-btn cw-btn-glass !py-2 !px-4 !text-xs"
                         >
                           {isActionLoading ? 'Sending...' : 'Request'}
                         </button>
                       )
-                    )}
-
-                    {eligibility === 'pending' && (
+                    ) : eligibility === 'pending' ? (
                       <button
                         type="button"
                         disabled={isActionLoading}
                         onClick={() => handleCancelRequest(c.id)}
-                        className="px-2.5 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-xs text-neutral-300 transition-colors"
+                        {...getCrewBtnHandlers(isActionLoading)}
+                        className="cw-btn cw-btn-glass !py-2 !px-3.5 !text-xs"
                       >
                         Cancel
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCrew(c)}
+                        {...getCrewBtnHandlers()}
+                        className="cw-btn cw-btn-glass !py-2 !px-3.5 !text-xs"
+                      >
+                        <Eye size={13} />
+                        <span>View</span>
                       </button>
                     )}
                   </div>
@@ -460,16 +466,21 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between pt-2 border-t border-[rgba(255,255,255,0.1)]">
-          <span className="text-xs text-[rgba(255,255,255,0.5)] font-mono">
+        <div
+          className="flex items-center justify-between pt-3"
+          style={{ borderTop: '1px solid var(--cw-line)' }}
+        >
+          <span className="cw-font-doto text-xs font-bold" style={{ color: 'var(--cw-muted)' }}>
             Page {page} of {totalPages}
           </span>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="p-1.5 rounded-lg bg-[#141414] border border-[rgba(255,255,255,0.1)] text-white disabled:opacity-40 hover:bg-[#1E1E1E]"
+              {...getCrewBtnHandlers(page <= 1)}
+              className="cw-btn cw-icon-btn cw-btn-glass"
+              aria-label="Previous page"
             >
               <ChevronLeft size={16} />
             </button>
@@ -477,7 +488,9 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
               type="button"
               disabled={page >= totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="p-1.5 rounded-lg bg-[#141414] border border-[rgba(255,255,255,0.1)] text-white disabled:opacity-40 hover:bg-[#1E1E1E]"
+              {...getCrewBtnHandlers(page >= totalPages)}
+              className="cw-btn cw-icon-btn cw-btn-glass"
+              aria-label="Next page"
             >
               <ChevronRight size={16} />
             </button>
@@ -511,6 +524,6 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
           }}
         />
       )}
-    </div>
+    </section>
   );
 };

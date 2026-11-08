@@ -37,6 +37,15 @@ export function PublicLayout() {
 
   const isContact = location.pathname === '/contact';
   const isCommonsFeed = location.pathname === '/commons';
+  const isRewardsPage = location.pathname === '/rewards';
+
+  if (isRewardsPage) {
+    return (
+      <BoardlySuspenseBoundary variant="page">
+        <Outlet />
+      </BoardlySuspenseBoundary>
+    );
+  }
 
   if (isStoreMainPage) {
     return (

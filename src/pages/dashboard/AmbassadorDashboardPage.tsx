@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import {
@@ -56,8 +56,6 @@ import { NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
 import { showApiToast } from '@/lib/api';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import {
-  getPublicProfiles,
-  getCachedPublicProfile,
   type PublicUserProfileSummary,
 } from '@/services/publicProfileService';
 import { isAdminAccount } from '@/constants/superAdmin';
@@ -77,11 +75,27 @@ const SUBJECT_OPTIONS = [
 
 type CaptainTab = 'tests' | 'results' | 'crew';
 
-function getRankBadgeClass(rank: number): string {
-  if (rank === 1) return 'rank-badge rank-badge--1';
-  if (rank === 2) return 'rank-badge rank-badge--2';
-  if (rank === 3) return 'rank-badge rank-badge--3';
-  return 'rank-badge rank-badge--default';
+function getRankSquareClass(rank: number): string {
+  if (rank === 1) return 'ncd-rank-square ncd-rank-square--1';
+  return 'ncd-rank-square';
+}
+
+function getNcdPressHandlers(disabled?: boolean) {
+  return {
+    onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
+      if (disabled) return;
+      e.currentTarget.classList.add('is-pressed');
+    },
+    onPointerUp: (e: React.PointerEvent<HTMLElement>) => {
+      e.currentTarget.classList.remove('is-pressed');
+    },
+    onPointerLeave: (e: React.PointerEvent<HTMLElement>) => {
+      e.currentTarget.classList.remove('is-pressed');
+    },
+    onPointerCancel: (e: React.PointerEvent<HTMLElement>) => {
+      e.currentTarget.classList.remove('is-pressed');
+    },
+  };
 }
 
 export function AmbassadorDashboardPage() {
@@ -99,7 +113,7 @@ export function AmbassadorDashboardPage() {
   // Results tab state
   const [selectedResultTestId, setSelectedResultTestId] = useState<string>('');
   const [testResults, setTestResults] = useState<AmbassadorTestAttempt[]>([]);
-  const [profilesByUid, setProfilesByUid] = useState<Record<string, PublicUserProfileSummary>>({});
+  const [profilesByUid] = useState<Record<string, PublicUserProfileSummary>>({});
   const [loadingResults, setLoadingResults] = useState(false);
 
   // Create / Edit Test Modal state
@@ -117,6 +131,18 @@ export function AmbassadorDashboardPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [savingTest, setSavingTest] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sliding tab bar refs & state
+  const tabTrackRef = useRef<HTMLDivElement | null>(null);
+  const tabBtnRefs = useRef<Record<CaptainTab, HTMLButtonElement | null>>({
+    tests: null,
+    results: null,
+    crew: null,
+  });
+  const [tabPillMetric, setTabPillMetric] = useState<{ x: number; width: number }>({
+    x: 5,
+    width: 110,
+  });
 
   const clampQuestionCount = (raw: string): number => {
     const trimmed = raw.trim();
@@ -239,6 +265,28 @@ export function AmbassadorDashboardPage() {
   })();
   const crewMembersCount =
     crewMembers.filter((m) => m.status === 'active').length || (crew?.memberCount ?? 0);
+
+  // Measure sliding tab indicator position
+  const updateTabIndicator = useCallback(() => {
+    const trackEl = tabTrackRef.current;
+    const btnEl = tabBtnRefs.current[activeTab];
+    if (!trackEl || !btnEl) return;
+    const trackRect = trackEl.getBoundingClientRect();
+    const btnRect = btnEl.getBoundingClientRect();
+    setTabPillMetric({
+      x: Math.round(btnRect.left - trackRect.left),
+      width: Math.round(btnRect.width),
+    });
+  }, [activeTab]);
+
+  useLayoutEffect(() => {
+    updateTabIndicator();
+  }, [updateTabIndicator, testsCreatedCount, totalAttemptsCount, crewMembersCount]);
+
+  useEffect(() => {
+    window.addEventListener('resize', updateTabIndicator);
+    return () => window.removeEventListener('resize', updateTabIndicator);
+  }, [updateTabIndicator]);
 
   const openCreateModal = () => {
     setEditingTestId(null);
@@ -483,38 +531,50 @@ export function AmbassadorDashboardPage() {
   };
 
   return (
-    <div className="w-full max-w-full min-w-0 overflow-x-hidden space-y-5 pb-[calc(96px+env(safe-area-inset-bottom,0px))]">
-      {/* ── CAPTAIN HOME HEADER ──────────────────────────────────────────────── */}
-      <div className="captain-glass-panel p-4 sm:p-6">
+    <div className="ncd-root w-full max-w-full min-w-0 overflow-x-hidden space-y-5 pb-[calc(96px+env(safe-area-inset-bottom,0px))]">
+      {/* ── 1. HEADER CARD (28px radius, 24px padding) & 2. STAT TILES ────────── */}
+      <div className="ncd-card">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="min-w-0">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#D71921]/15 border border-[#D71921]/30 text-[#D71921] text-[11px] font-mono uppercase tracking-wider mb-2">
+          <div className="min-w-0 space-y-1.5">
+            <div className="ncd-chip-red w-fit">
               <Award size={12} />
               <span>{NAKAMA_CAPTAIN_SINGULAR} Deck</span>
             </div>
-            <h1 className="text-lg sm:text-2xl font-bold text-[var(--text)] truncate">
+            <h1
+              className="ncd-font-doto tracking-tight leading-none truncate pt-0.5"
+              style={{
+                fontSize: 'clamp(28px, 6vw, 38px)',
+                color: 'var(--cw-text)',
+              }}
+            >
               {captainName}
             </h1>
-            <p className="text-xs sm:text-sm text-[var(--muted)] mt-0.5 truncate">
-              Crew: <span className="text-[var(--text)] font-medium">{crewNameDisplay}</span>
+            <p className="text-xs sm:text-sm truncate" style={{ color: 'var(--cw-muted)' }}>
+              Crew:{' '}
+              <span className="font-bold" style={{ color: 'var(--cw-text)' }}>
+                {crewNameDisplay}
+              </span>
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
             <Link
               to="/grand-line"
               title="Explore Grand Line"
               aria-label="Explore Grand Line"
-              className="captain-glass-card captain-glass-card--interactive min-h-[44px] px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-[var(--text)] inline-flex items-center justify-center gap-1.5 transition-colors"
+              {...getNcdPressHandlers()}
+              className="ncd-btn ncd-glass min-h-[44px] px-4 py-2.5 text-xs sm:text-sm"
+              style={{ color: 'var(--cw-text)' }}
             >
-              <Compass size={15} className="text-[#D71921] shrink-0" />
+              <Compass size={15} style={{ color: 'var(--cw-red-text)' }} className="shrink-0" />
               <span>Grand Line</span>
             </Link>
 
             <button
               type="button"
               onClick={openCreateModal}
-              className="min-h-[44px] px-4 py-2.5 rounded-xl bg-[#D71921] text-white text-xs sm:text-sm font-bold hover:opacity-95 inline-flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shrink-0"
+              {...getNcdPressHandlers()}
+              className="ncd-btn ncd-glass-red min-h-[44px] px-5 py-2.5 text-xs sm:text-sm shrink-0"
             >
               <Plus size={16} />
               <span>Create Test</span>
@@ -522,69 +582,108 @@ export function AmbassadorDashboardPage() {
           </div>
         </div>
 
-        {/* ── 4 STAT CARDS (Uniform icon color & equal height) ───────────────── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mt-5 items-stretch">
-          <div className="captain-glass-card p-3.5 sm:p-4 min-h-[88px] h-full flex flex-col justify-between min-w-0">
-            <div className="flex items-center justify-between gap-2 text-[var(--muted)]">
-              <span className="text-[11px] font-semibold uppercase tracking-wider truncate">
+        {/* ── 2. STAT TILES (4 in a row on desktop, 2x2 on mobile) ───────────── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6 items-stretch">
+          <div className="ncd-stat-tile min-h-[96px] h-full flex flex-col justify-between min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className="text-xs font-medium truncate"
+                style={{ color: 'var(--cw-muted)' }}
+              >
                 Tests created
               </span>
-              <span className="w-7 h-7 rounded-lg bg-[#D71921]/12 border border-[#D71921]/25 flex items-center justify-center shrink-0">
-                <FileSpreadsheet size={14} className="text-[#D71921]" />
+              <span className="ncd-stat-icon-badge shrink-0">
+                <FileSpreadsheet size={15} />
               </span>
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-2 font-sans tabular-nums">
+            <p
+              className="ncd-font-doto text-2xl sm:text-3xl mt-2 tabular-nums leading-none"
+              style={{ color: 'var(--cw-text)' }}
+            >
               {loading ? '—' : testsCreatedCount}
             </p>
           </div>
 
-          <div className="captain-glass-card p-3.5 sm:p-4 min-h-[88px] h-full flex flex-col justify-between min-w-0">
-            <div className="flex items-center justify-between gap-2 text-[var(--muted)]">
-              <span className="text-[11px] font-semibold uppercase tracking-wider truncate">
+          <div className="ncd-stat-tile min-h-[96px] h-full flex flex-col justify-between min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className="text-xs font-medium truncate"
+                style={{ color: 'var(--cw-muted)' }}
+              >
                 Total attempts
               </span>
-              <span className="w-7 h-7 rounded-lg bg-[#D71921]/12 border border-[#D71921]/25 flex items-center justify-center shrink-0">
-                <BarChart3 size={14} className="text-[#D71921]" />
+              <span className="ncd-stat-icon-badge shrink-0">
+                <BarChart3 size={15} />
               </span>
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-2 font-sans tabular-nums">
+            <p
+              className="ncd-font-doto text-2xl sm:text-3xl mt-2 tabular-nums leading-none"
+              style={{ color: 'var(--cw-text)' }}
+            >
               {loading ? '—' : totalAttemptsCount}
             </p>
           </div>
 
-          <div className="captain-glass-card p-3.5 sm:p-4 min-h-[88px] h-full flex flex-col justify-between min-w-0">
-            <div className="flex items-center justify-between gap-2 text-[var(--muted)]">
-              <span className="text-[11px] font-semibold uppercase tracking-wider truncate">
+          <div className="ncd-stat-tile min-h-[96px] h-full flex flex-col justify-between min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className="text-xs font-medium truncate"
+                style={{ color: 'var(--cw-muted)' }}
+              >
                 Average score
               </span>
-              <span className="w-7 h-7 rounded-lg bg-[#D71921]/12 border border-[#D71921]/25 flex items-center justify-center shrink-0">
-                <Trophy size={14} className="text-[#D71921]" />
+              <span className="ncd-stat-icon-badge shrink-0">
+                <Trophy size={15} />
               </span>
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-2 font-sans tabular-nums">
+            <p
+              className="ncd-font-doto text-2xl sm:text-3xl mt-2 tabular-nums leading-none"
+              style={{ color: 'var(--cw-text)' }}
+            >
               {loading ? '—' : `${averageScorePct}%`}
             </p>
           </div>
 
-          <div className="captain-glass-card p-3.5 sm:p-4 min-h-[88px] h-full flex flex-col justify-between min-w-0">
-            <div className="flex items-center justify-between gap-2 text-[var(--muted)]">
-              <span className="text-[11px] font-semibold uppercase tracking-wider truncate">
+          <div className="ncd-stat-tile min-h-[96px] h-full flex flex-col justify-between min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className="text-xs font-medium truncate"
+                style={{ color: 'var(--cw-muted)' }}
+              >
                 Crew members
               </span>
-              <span className="w-7 h-7 rounded-lg bg-[#D71921]/12 border border-[#D71921]/25 flex items-center justify-center shrink-0">
-                <Users size={14} className="text-[#D71921]" />
+              <span className="ncd-stat-icon-badge shrink-0">
+                <Users size={15} />
               </span>
             </div>
-            <p className="text-xl sm:text-2xl font-bold text-[var(--text)] mt-2 font-sans tabular-nums">
+            <p
+              className="ncd-font-doto text-2xl sm:text-3xl mt-2 tabular-nums leading-none"
+              style={{ color: 'var(--cw-text)' }}
+            >
               {loading ? '—' : crewMembersCount}
             </p>
           </div>
         </div>
       </div>
 
-      {/* ── NAVIGATION TABS: My Tests | Results | Crew (Aligned Pill Style) ──── */}
-      <div className="flex items-center justify-between gap-2 pb-1">
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+      {/* ── 3. TAB BAR: My Tests | Results | Crew + Refresh Glass Pill ───────── */}
+      <div className="flex items-center justify-between gap-2.5 pb-1">
+        <div
+          ref={tabTrackRef}
+          role="tablist"
+          aria-label="Captain workspace sections"
+          className="ncd-tab-track overflow-x-auto no-scrollbar max-w-full"
+        >
+          {/* Sliding Red Glass Pill */}
+          <div
+            aria-hidden="true"
+            className="ncd-tab-pill"
+            style={{
+              width: `${tabPillMetric.width}px`,
+              translate: `${tabPillMetric.x}px 0`,
+            }}
+          />
+
           {(
             [
               { id: 'tests', label: 'My Tests', count: testsCreatedCount },
@@ -596,21 +695,28 @@ export function AmbassadorDashboardPage() {
             return (
               <button
                 key={t.id}
+                ref={(el) => {
+                  tabBtnRefs.current[t.id] = el;
+                }}
                 type="button"
+                role="tab"
+                aria-selected={active}
                 onClick={() => setActiveTab(t.id)}
-                className={`min-h-[44px] px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all inline-flex items-center justify-center gap-2 cursor-pointer shrink-0 ${
-                  active
-                    ? 'bg-[#D71921] text-white border border-[#D71921] shadow-[0_6px_18px_-4px_rgba(215,25,33,0.45)]'
-                    : 'captain-glass-card captain-glass-card--interactive text-[var(--muted)] hover:text-[var(--text)]'
-                }`}
+                {...getNcdPressHandlers()}
+                className="ncd-btn relative z-10 min-h-[38px] px-3.5 sm:px-4 py-1.5 text-xs sm:text-sm font-bold shrink-0"
+                style={{
+                  color: active ? '#ffffff' : 'var(--cw-muted)',
+                }}
               >
                 <span>{t.label}</span>
                 <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-mono tabular-nums ${
-                    active
-                      ? 'bg-black/25 text-white'
-                      : 'bg-black/[0.06] dark:bg-white/[0.08] text-[var(--muted)]'
-                  }`}
+                  className="ncd-tab-count tabular-nums"
+                  style={{
+                    backgroundColor: active
+                      ? 'rgba(0, 0, 0, 0.24)'
+                      : 'var(--cw-card2)',
+                    color: active ? '#ffffff' : 'var(--cw-muted)',
+                  }}
                 >
                   {t.count}
                 </span>
@@ -623,34 +729,46 @@ export function AmbassadorDashboardPage() {
           type="button"
           onClick={loadCaptainWorkspace}
           disabled={loading}
-          className="captain-glass-card captain-glass-card--interactive min-h-[44px] min-w-[44px] px-3.5 rounded-full text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+          {...getNcdPressHandlers(loading)}
+          className="ncd-btn ncd-glass min-h-[44px] min-w-[44px] px-4 text-xs font-bold shrink-0"
+          style={{ color: 'var(--cw-text)' }}
           title="Refresh workspace"
           aria-label="Refresh workspace"
         >
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-          <span className="hidden sm:inline text-xs font-semibold">Refresh</span>
+          <span className="hidden sm:inline">Refresh</span>
         </button>
       </div>
 
-      {/* ── TAB 1: MY TESTS ──────────────────────────────────────────────────── */}
+      {/* ── 4. TAB 1: MY TESTS ───────────────────────────────────────────────── */}
       {activeTab === 'tests' && (
         <div className="space-y-3">
           {loading ? (
             <LineLoader context="dashboard" variant="section" />
           ) : myTests.length === 0 ? (
-            <div className="captain-glass-panel p-8 text-center">
-              <FileSpreadsheet size={32} className="mx-auto text-[var(--muted)] mb-2.5" />
-              <p className="text-sm font-bold text-[var(--text)]">No Captain tests created yet</p>
-              <p className="text-xs text-[var(--muted)] mt-1 max-w-md mx-auto">
+            <div className="ncd-card text-center py-10">
+              <FileSpreadsheet
+                size={32}
+                className="mx-auto mb-2.5"
+                style={{ color: 'var(--cw-muted)' }}
+              />
+              <p className="text-sm font-bold" style={{ color: 'var(--cw-text)' }}>
+                No Captain tests created yet
+              </p>
+              <p
+                className="text-xs mt-1 max-w-md mx-auto"
+                style={{ color: 'var(--cw-muted)' }}
+              >
                 Click &ldquo;Create Test&rdquo; above to upload questions and publish your first test to the Grand Line.
               </p>
               <button
                 type="button"
                 onClick={openCreateModal}
-                className="mt-4 min-h-[44px] inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#D71921] text-white text-xs font-bold cursor-pointer"
+                {...getNcdPressHandlers()}
+                className="ncd-btn ncd-glass-red mt-4 min-h-[44px] px-5 py-2.5 text-xs"
               >
                 <Plus size={14} />
-                Create Your First Test
+                <span>Create Your First Test</span>
               </button>
             </div>
           ) : (
@@ -663,35 +781,33 @@ export function AmbassadorDashboardPage() {
                 return (
                   <div
                     key={t.id}
-                    className="captain-glass-card p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                    className="ncd-test-row flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                   >
                     <div className="min-w-0 space-y-1.5">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="px-2 py-0.5 rounded-md bg-[#D71921]/15 text-[#D71921] text-[10px] font-mono font-semibold uppercase">
-                          {t.subject}
+                        <span className="ncd-chip-red">{t.subject}</span>
+
+                        <span className={isPublic ? 'ncd-chip-green' : 'ncd-chip-muted'}>
+                          {isPublic ? <Globe size={11} /> : <Lock size={11} />}
+                          <span>{isPublic ? 'Public' : 'Private'}</span>
                         </span>
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-semibold ${
-                            isPublic
-                              ? 'bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border border-emerald-500/30'
-                              : 'bg-zinc-500/15 text-[var(--muted)] border border-zinc-500/30'
-                          }`}
-                        >
-                          {isPublic ? <Globe size={10} /> : <Lock size={10} />}
-                          {isPublic ? 'Public' : 'Private'}
-                        </span>
+
                         {!isPublished && (
-                          <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-[10px] font-mono font-semibold">
-                            Unpublished
-                          </span>
+                          <span className="ncd-chip-gold">Unpublished</span>
                         )}
                       </div>
 
-                      <h3 className="text-sm sm:text-base font-bold text-[var(--text)] break-words">
+                      <h3
+                        className="text-sm sm:text-base font-bold break-words"
+                        style={{ color: 'var(--cw-text)' }}
+                      >
                         {t.title}
                       </h3>
 
-                      <div className="flex items-center gap-2.5 text-xs text-[var(--muted)] flex-wrap tabular-nums">
+                      <div
+                        className="flex items-center gap-2 text-xs flex-wrap tabular-nums"
+                        style={{ color: 'var(--cw-muted)' }}
+                      >
                         <span>
                           {qCount} {qCount === 1 ? 'question' : 'questions'}
                         </span>
@@ -708,13 +824,18 @@ export function AmbassadorDashboardPage() {
                       </div>
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-2 flex-wrap shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[var(--border)]">
+                    {/* Actions: glass pill buttons + round red-tinted Delete button; full width on mobile */}
+                    <div
+                      className="w-full sm:w-auto flex items-center gap-2 flex-wrap shrink-0 pt-3 sm:pt-0 border-t sm:border-t-0"
+                      style={{ borderColor: 'var(--cw-line)' }}
+                    >
                       <button
                         type="button"
                         onClick={() => handleTogglePublish(t)}
                         disabled={togglingPublishId === t.id}
-                        className="captain-glass-card captain-glass-card--interactive relative overflow-hidden min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-semibold text-[var(--text)] inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                        {...getNcdPressHandlers(togglingPublishId === t.id)}
+                        className="ncd-btn ncd-glass flex-1 sm:flex-initial min-h-[40px] px-3.5 py-2 text-xs relative overflow-hidden"
+                        style={{ color: 'var(--cw-text)' }}
                       >
                         {isPublished ? <EyeOff size={13} /> : <Eye size={13} />}
                         <span>
@@ -730,7 +851,9 @@ export function AmbassadorDashboardPage() {
                       <button
                         type="button"
                         onClick={() => openEditModal(t)}
-                        className="captain-glass-card captain-glass-card--interactive min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-semibold text-[var(--text)] inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                        {...getNcdPressHandlers()}
+                        className="ncd-btn ncd-glass flex-1 sm:flex-initial min-h-[40px] px-3.5 py-2 text-xs"
+                        style={{ color: 'var(--cw-text)' }}
                       >
                         <Pencil size={13} />
                         <span>Edit</span>
@@ -742,7 +865,9 @@ export function AmbassadorDashboardPage() {
                           setSelectedResultTestId(t.id);
                           setActiveTab('results');
                         }}
-                        className="captain-glass-card captain-glass-card--interactive min-h-[44px] px-3.5 py-2 rounded-xl text-xs font-semibold text-[var(--text)] inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                        {...getNcdPressHandlers()}
+                        className="ncd-btn ncd-glass flex-1 sm:flex-initial min-h-[40px] px-3.5 py-2 text-xs"
+                        style={{ color: 'var(--cw-text)' }}
                       >
                         <BarChart3 size={13} />
                         <span>Results</span>
@@ -751,7 +876,8 @@ export function AmbassadorDashboardPage() {
                       <button
                         type="button"
                         onClick={() => setDeleteConfirmTest(t)}
-                        className="min-h-[44px] min-w-[44px] p-2.5 rounded-xl bg-red-500/10 border border-red-500/25 text-red-500 dark:text-red-400 hover:bg-red-500/20 inline-flex items-center justify-center cursor-pointer"
+                        {...getNcdPressHandlers()}
+                        className="ncd-btn ncd-btn-delete shrink-0"
                         title="Delete Test"
                         aria-label={`Delete test ${t.title}`}
                       >
@@ -766,22 +892,31 @@ export function AmbassadorDashboardPage() {
         </div>
       )}
 
-      {/* ── TAB 2: RESULTS ───────────────────────────────────────────────────── */}
+      {/* ── 5 & 6. TAB 2: RESULTS & STUDENT SCORES/RANKING ───────────────────── */}
       {activeTab === 'results' && (
         <div className="space-y-4">
           {myTests.length === 0 ? (
-            <div className="captain-glass-panel p-8 text-center">
-              <Trophy size={32} className="mx-auto text-[var(--muted)] mb-2.5" />
-              <p className="text-sm font-bold text-[var(--text)]">No tests to show results for</p>
-              <p className="text-xs text-[var(--muted)] mt-1">
+            <div className="ncd-card text-center py-10">
+              <Trophy
+                size={32}
+                className="mx-auto mb-2.5"
+                style={{ color: 'var(--cw-muted)' }}
+              />
+              <p className="text-sm font-bold" style={{ color: 'var(--cw-text)' }}>
+                No tests to show results for
+              </p>
+              <p className="text-xs mt-1" style={{ color: 'var(--cw-muted)' }}>
                 Create and publish a test first so students can attempt it.
               </p>
             </div>
           ) : (
             <>
-              {/* Per-test selector list */}
-              <div className="captain-glass-panel p-4 sm:p-5 space-y-3">
-                <label className="block text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">
+              {/* 5. Results test picker card */}
+              <div className="ncd-card space-y-3.5">
+                <label
+                  className="block text-xs font-semibold uppercase tracking-wider"
+                  style={{ color: 'var(--cw-muted)' }}
+                >
                   SELECT TEST TO VIEW STUDENT RANKINGS
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-stretch">
@@ -793,23 +928,31 @@ export function AmbassadorDashboardPage() {
                         key={t.id}
                         type="button"
                         onClick={() => setSelectedResultTestId(t.id)}
-                        className={`captain-glass-card min-h-[64px] p-3.5 text-left transition-all flex items-center justify-between gap-3 cursor-pointer ${
-                          isSelected
-                            ? 'captain-glass-card--selected text-[var(--text)]'
-                            : 'captain-glass-card--interactive text-[var(--muted)] hover:text-[var(--text)]'
+                        {...getNcdPressHandlers()}
+                        className={`ncd-picker-btn min-h-[64px] flex items-center justify-between gap-3 ${
+                          isSelected ? 'is-selected' : ''
                         }`}
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs sm:text-sm font-bold text-[var(--text)] truncate">
+                          <p
+                            className="text-xs sm:text-sm font-bold truncate"
+                            style={{ color: 'var(--cw-text)' }}
+                          >
                             {t.title}
                           </p>
-                          <p className="text-[11px] text-[var(--muted)] mt-0.5 tabular-nums truncate">
+                          <p
+                            className="text-[11px] mt-0.5 tabular-nums truncate"
+                            style={{ color: 'var(--cw-muted)' }}
+                          >
                             {t.subject} • {aCount} {aCount === 1 ? 'attempt' : 'attempts'}
                           </p>
                         </div>
                         <ChevronRight
                           size={16}
-                          className={isSelected ? 'text-[#D71921] shrink-0' : 'text-[var(--muted)] shrink-0'}
+                          className="shrink-0"
+                          style={{
+                            color: isSelected ? 'var(--cw-red-text)' : 'var(--cw-muted)',
+                          }}
                         />
                       </button>
                     );
@@ -817,14 +960,20 @@ export function AmbassadorDashboardPage() {
                 </div>
               </div>
 
-              {/* Per-student scores and ranking */}
-              <div className="captain-glass-panel p-4 sm:p-5 space-y-3.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
+              {/* 6. Student scores & ranking card */}
+              <div className="ncd-card space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+                    <h3
+                      className="text-xs font-semibold uppercase tracking-wider"
+                      style={{ color: 'var(--cw-muted)' }}
+                    >
                       STUDENT SCORES &amp; RANKING
                     </h3>
-                    <span className="text-xs text-[var(--muted)] font-mono tabular-nums">
+                    <span
+                      className="text-xs font-mono tabular-nums"
+                      style={{ color: 'var(--cw-muted)' }}
+                    >
                       {testResults.length} {testResults.length === 1 ? 'submission' : 'submissions'}
                     </span>
                   </div>
@@ -832,6 +981,7 @@ export function AmbassadorDashboardPage() {
                     <button
                       type="button"
                       disabled={finalisingTestId === selectedResultTestId}
+                      {...getNcdPressHandlers(finalisingTestId === selectedResultTestId)}
                       onClick={async () => {
                         setFinalisingTestId(selectedResultTestId);
                         try {
@@ -849,7 +999,7 @@ export function AmbassadorDashboardPage() {
                           setFinalisingTestId(null);
                         }
                       }}
-                      className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#D71921] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer hover:opacity-95 disabled:opacity-50"
+                      className="ncd-btn ncd-glass-red min-h-[40px] px-4 py-2 text-xs"
                     >
                       <Award size={14} />
                       <span>
@@ -864,12 +1014,16 @@ export function AmbassadorDashboardPage() {
                 {loadingResults ? (
                   <LineLoader context="results" variant="section" />
                 ) : testResults.length === 0 ? (
-                  <div className="captain-glass-card py-8 px-4 text-center">
-                    <Users size={28} className="mx-auto text-[var(--muted)] mb-2" />
-                    <p className="text-xs font-semibold text-[var(--text)]">
+                  <div className="ncd-empty-box">
+                    <Users
+                      size={28}
+                      className="mx-auto mb-2"
+                      style={{ color: 'var(--cw-muted)' }}
+                    />
+                    <p className="text-xs sm:text-sm font-bold" style={{ color: 'var(--cw-text)' }}>
                       No attempts recorded for this test yet
                     </p>
-                    <p className="text-[11px] text-[var(--muted)] mt-0.5">
+                    <p className="text-xs mt-1" style={{ color: 'var(--cw-muted)' }}>
                       Share this test with your crew or on the Grand Line to see student rankings here.
                     </p>
                   </div>
@@ -891,13 +1045,13 @@ export function AmbassadorDashboardPage() {
                       return (
                         <div
                           key={r.id || `${rank}-${displayName}-${index}`}
-                          className={`ranking-glass-row min-h-[68px] p-3 sm:px-4 sm:py-3.5 flex items-center justify-between gap-3 ${
-                            isCurrentUser ? 'ranking-glass-row--highlight' : ''
+                          className={`ncd-score-row min-h-[68px] flex items-center justify-between gap-3 ${
+                            isCurrentUser ? 'ncd-score-row-me' : ''
                           }`}
                         >
-                          <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0 flex-1">
-                            <span className={getRankBadgeClass(rank)}>#{rank}</span>
-                            <div className="w-[44px] h-[44px] shrink-0 flex items-center justify-center">
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <span className={getRankSquareClass(rank)}>#{rank}</span>
+                            <div className="w-[40px] h-[40px] rounded-full overflow-hidden shrink-0 flex items-center justify-center">
                               <BoardlyAvatar
                                 uid={uid || `${rank}-${displayName}`}
                                 name={displayName}
@@ -907,31 +1061,43 @@ export function AmbassadorDashboardPage() {
                                 customAvatarUrl={liveProfile?.customAvatarUrl || null}
                                 equippedFrameId={liveProfile?.equippedFrameId || null}
                                 isSuperAdmin={isSuperAdminActor}
-                                size={44}
+                                size={40}
                               />
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5 min-w-0">
-                                <p className="text-xs sm:text-sm font-bold text-[var(--text)] truncate">
+                                <p
+                                  className="text-xs sm:text-sm font-bold truncate"
+                                  style={{ color: 'var(--cw-text)' }}
+                                >
                                   {displayName}
                                 </p>
                                 {isCurrentUser && (
-                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#D71921] text-white shrink-0">
+                                  <span className="ncd-chip-red !py-0.5 !px-2 !text-[10px]">
                                     You
                                   </span>
                                 )}
                               </div>
-                              <p className="text-[11px] text-[var(--muted)] font-mono tabular-nums truncate mt-0.5">
+                              <p
+                                className="text-[11px] tabular-nums truncate mt-0.5"
+                                style={{ color: 'var(--cw-muted)' }}
+                              >
                                 Time: {mins > 0 ? `${mins}m ${secs}s` : `${secs}s`} · {r.percentage}% accuracy
                               </p>
                             </div>
                           </div>
 
                           <div className="text-right shrink-0 whitespace-nowrap tabular-nums pl-2">
-                            <p className="text-xs sm:text-sm font-bold text-[var(--text)] font-mono whitespace-nowrap">
+                            <p
+                              className="ncd-font-doto text-sm sm:text-base whitespace-nowrap"
+                              style={{ color: 'var(--cw-text)' }}
+                            >
                               {r.score}/{r.totalQuestions}
                             </p>
-                            <p className="text-[11px] font-bold text-[#D71921] whitespace-nowrap mt-0.5">
+                            <p
+                              className="text-[11px] font-bold whitespace-nowrap mt-0.5"
+                              style={{ color: 'var(--cw-red-text)' }}
+                            >
                               {r.percentage}%
                             </p>
                           </div>
@@ -946,30 +1112,36 @@ export function AmbassadorDashboardPage() {
         </div>
       )}
 
-      {/* ── TAB 3: CREW ──────────────────────────────────────────────────────── */}
+      {/* ── 7. TAB 3: CREW ───────────────────────────────────────────────────── */}
       {activeTab === 'crew' && (
         <div className="space-y-4">
           {loading ? (
             <LineLoader context="dashboard" variant="section" />
           ) : !crew ? (
-            <div className="captain-glass-panel p-5 sm:p-6 space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#D71921]/15 text-[#D71921] flex items-center justify-center shrink-0">
+            <div className="ncd-card space-y-5">
+              <div className="flex items-start gap-3.5">
+                <div className="ncd-stat-icon-badge !w-11 !h-11 !rounded-2xl shrink-0">
                   <Users size={20} />
                 </div>
                 <div>
-                  <h3 className="text-sm sm:text-base font-bold text-[var(--text)]">
+                  <h3
+                    className="ncd-font-doto text-lg sm:text-xl"
+                    style={{ color: 'var(--cw-text)' }}
+                  >
                     Launch Your Nakama Crew
                   </h3>
-                  <p className="text-xs text-[var(--muted)] mt-0.5">
+                  <p className="text-xs sm:text-sm mt-1" style={{ color: 'var(--cw-muted)' }}>
                     Create your official crew to invite students, share private or public tests, and manage your roster.
                   </p>
                 </div>
               </div>
 
-              <form onSubmit={handleCreateCrew} className="space-y-3 pt-2">
+              <form onSubmit={handleCreateCrew} className="space-y-4 pt-1">
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text)] mb-1">
+                  <label
+                    className="block text-xs font-bold mb-1.5"
+                    style={{ color: 'var(--cw-text)' }}
+                  >
                     Crew Name *
                   </label>
                   <input
@@ -978,11 +1150,14 @@ export function AmbassadorDashboardPage() {
                     value={newCrewName}
                     onChange={(e) => setNewCrewName(e.target.value)}
                     placeholder="e.g. NUST Seeker Squadron"
-                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                    className="ncd-input w-full min-h-[46px] px-4 py-2.5 text-xs sm:text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text)] mb-1">
+                  <label
+                    className="block text-xs font-bold mb-1.5"
+                    style={{ color: 'var(--cw-text)' }}
+                  >
                     Target University / Campus (Optional)
                   </label>
                   <input
@@ -990,15 +1165,16 @@ export function AmbassadorDashboardPage() {
                     value={newCrewUniversity}
                     onChange={(e) => setNewCrewUniversity(e.target.value)}
                     placeholder="e.g. NUST / FAST / MDCAT"
-                    className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                    className="ncd-input w-full min-h-[46px] px-4 py-2.5 text-xs sm:text-sm"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={creatingCrew}
-                  className="relative overflow-hidden min-h-[44px] px-5 py-2.5 rounded-xl bg-[#D71921] text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  {...getNcdPressHandlers(creatingCrew)}
+                  className="ncd-btn ncd-glass-red relative overflow-hidden min-h-[44px] px-6 py-2.5 text-xs sm:text-sm"
                 >
-                  <Plus size={14} />
+                  <Plus size={15} />
                   <span>{creatingCrew ? 'Creating...' : 'Create Crew'}</span>
                   {creatingCrew && <ButtonLineLoader />}
                 </button>
@@ -1007,23 +1183,28 @@ export function AmbassadorDashboardPage() {
           ) : (
             <div className="space-y-4">
               {/* Crew Summary Card */}
-              <div className="captain-glass-panel p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="ncd-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-base font-bold text-[var(--text)] truncate">{crew.name}</h3>
+                    <h3
+                      className="ncd-font-doto text-lg sm:text-xl truncate"
+                      style={{ color: 'var(--cw-text)' }}
+                    >
+                      {crew.name}
+                    </h3>
                     <span
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-semibold uppercase ${
-                        crew.status === 'suspended'
-                          ? 'bg-red-500/15 text-red-500 dark:text-red-400'
-                          : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                      }`}
+                      className={
+                        crew.status === 'suspended' ? 'ncd-chip-red' : 'ncd-chip-green'
+                      }
                     >
                       {crew.status}
                     </span>
                   </div>
-                  <p className="text-xs text-[var(--muted)] mt-0.5">
+                  <p className="text-xs mt-1" style={{ color: 'var(--cw-muted)' }}>
                     Invite Code:{' '}
-                    <span className="font-mono font-bold text-[var(--text)]">{crew.code}</span>
+                    <span className="font-mono font-bold" style={{ color: 'var(--cw-text)' }}>
+                      {crew.code}
+                    </span>
                     {crew.university ? ` • ${crew.university}` : ''}
                   </p>
                 </div>
@@ -1031,30 +1212,52 @@ export function AmbassadorDashboardPage() {
                 <button
                   type="button"
                   onClick={copyCrewCode}
-                  className="captain-glass-card captain-glass-card--interactive min-h-[44px] px-4 py-2 rounded-xl text-xs font-semibold text-[var(--text)] inline-flex items-center justify-center gap-1.5 cursor-pointer self-start sm:self-auto"
+                  {...getNcdPressHandlers()}
+                  className="ncd-btn ncd-glass min-h-[42px] px-4 py-2 text-xs self-start sm:self-auto"
+                  style={{ color: 'var(--cw-text)' }}
                 >
-                  {copiedCode ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                  {copiedCode ? (
+                    <Check size={14} style={{ color: 'var(--cw-green)' }} />
+                  ) : (
+                    <Copy size={14} />
+                  )}
                   <span>{copiedCode ? 'Copied Code' : 'Copy Invite Code'}</span>
                 </button>
               </div>
 
               {/* Crew Members List */}
-              <div className="captain-glass-panel p-4 sm:p-5 space-y-3.5">
+              <div className="ncd-card space-y-3.5">
                 <div className="flex items-center justify-between gap-2">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+                  <h4
+                    className="text-xs font-semibold uppercase tracking-wider"
+                    style={{ color: 'var(--cw-muted)' }}
+                  >
                     CREW MEMBERS
                   </h4>
-                  <span className="text-xs font-mono text-[var(--muted)] tabular-nums">
+                  <span
+                    className="text-xs font-mono tabular-nums"
+                    style={{ color: 'var(--cw-muted)' }}
+                  >
                     {crewMembers.length} {crewMembers.length === 1 ? 'member' : 'members'}
                   </span>
                 </div>
 
                 {crewMembers.length === 0 ? (
-                  <div className="captain-glass-card py-8 px-4 text-center">
-                    <Users size={28} className="mx-auto text-[var(--muted)] mb-2" />
-                    <p className="text-xs font-semibold text-[var(--text)]">No members yet</p>
-                    <p className="text-[11px] text-[var(--muted)] mt-0.5">
-                      Share invite code <span className="font-mono font-bold">{crew.code}</span> with students to grow your crew.
+                  <div className="ncd-empty-box">
+                    <Users
+                      size={28}
+                      className="mx-auto mb-2"
+                      style={{ color: 'var(--cw-muted)' }}
+                    />
+                    <p className="text-xs sm:text-sm font-bold" style={{ color: 'var(--cw-text)' }}>
+                      No members yet
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--cw-muted)' }}>
+                      Share invite code{' '}
+                      <span className="font-mono font-bold" style={{ color: 'var(--cw-text)' }}>
+                        {crew.code}
+                      </span>{' '}
+                      with students to grow your crew.
                     </p>
                   </div>
                 ) : (
@@ -1068,30 +1271,32 @@ export function AmbassadorDashboardPage() {
                       return (
                         <div
                           key={m.id || m.userUid}
-                          className="captain-glass-card p-3.5 flex flex-col xs:flex-row xs:items-center justify-between gap-3"
+                          className="ncd-score-row flex flex-col xs:flex-row xs:items-center justify-between gap-3"
                         >
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs sm:text-sm font-bold text-[var(--text)] truncate">
+                              <span
+                                className="text-xs sm:text-sm font-bold truncate"
+                                style={{ color: 'var(--cw-text)' }}
+                              >
                                 {m.userName}
                               </span>
                               <span
-                                className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-semibold uppercase ${
-                                  isCaptainRow
-                                    ? 'bg-[#D71921]/15 text-[#D71921]'
-                                    : 'bg-black/[0.06] dark:bg-white/[0.08] text-[var(--muted)]'
-                                }`}
+                                className={
+                                  isCaptainRow ? 'ncd-chip-red' : 'ncd-chip-muted'
+                                }
                               >
                                 {isCaptainRow ? 'Captain' : 'Member'}
                               </span>
                               {isSuspended && (
-                                <span className="px-2 py-0.5 rounded-md bg-red-500/15 text-red-500 dark:text-red-400 text-[10px] font-mono font-semibold">
-                                  Suspended
-                                </span>
+                                <span className="ncd-chip-red">Suspended</span>
                               )}
                             </div>
                             {m.userEmail && (
-                              <p className="text-[11px] text-[var(--muted)] truncate mt-0.5">
+                              <p
+                                className="text-[11px] truncate mt-0.5"
+                                style={{ color: 'var(--cw-muted)' }}
+                              >
                                 {m.userEmail}
                               </p>
                             )}
@@ -1102,8 +1307,10 @@ export function AmbassadorDashboardPage() {
                               <button
                                 type="button"
                                 disabled={memberActionUid === m.userUid}
+                                {...getNcdPressHandlers(memberActionUid === m.userUid)}
                                 onClick={() => handleToggleSuspendMember(m)}
-                                className="captain-glass-card captain-glass-card--interactive min-h-[44px] px-3 py-1.5 rounded-xl text-[11px] font-semibold text-amber-600 dark:text-amber-400 inline-flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                                className="ncd-btn ncd-glass min-h-[38px] px-3.5 py-1.5 text-xs"
+                                style={{ color: 'var(--cw-gold)' }}
                               >
                                 <Ban size={12} />
                                 <span>{isSuspended ? 'Unsuspend' : 'Suspend'}</span>
@@ -1111,8 +1318,9 @@ export function AmbassadorDashboardPage() {
                               <button
                                 type="button"
                                 disabled={memberActionUid === m.userUid}
+                                {...getNcdPressHandlers(memberActionUid === m.userUid)}
                                 onClick={() => handleRemoveMember(m)}
-                                className="min-h-[44px] px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/25 text-[11px] font-semibold text-red-500 dark:text-red-400 hover:bg-red-500/20 inline-flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                                className="ncd-btn ncd-btn-delete !w-auto !h-auto min-h-[38px] px-3.5 py-1.5 text-xs"
                               >
                                 <UserMinus size={12} />
                                 <span>Remove</span>
@@ -1140,40 +1348,60 @@ export function AmbassadorDashboardPage() {
             data-fullscreen-modal="true"
             className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4"
           >
-            {/* Sibling dimmed/blurred backdrop so the modal panel is not nested inside a blurred element */}
+            {/* Sibling dimmed/blurred backdrop */}
             <div
               onClick={() => !savingTest && setModalOpen(false)}
-              className="fixed inset-0 z-0 bg-black/30 backdrop-blur-sm glass-backdrop cursor-pointer"
+              className="fixed inset-0 z-0 bg-black/50 backdrop-blur-md cursor-pointer"
               aria-hidden="true"
             />
-            <div className="relative z-10 w-full h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-h-[90dvh] sm:max-w-2xl glass sm:rounded-2xl flex flex-col">
-              {/* Modal Header — fixed at the top */}
-              <div className="sticky top-0 z-10 px-4 sm:px-6 py-4 border-b border-[var(--border)] flex items-center justify-between gap-3 shrink-0">
+            <div
+              className="ncd-root relative z-10 w-full h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-h-[90dvh] sm:max-w-2xl sm:rounded-[28px] border flex flex-col overflow-hidden"
+              style={{
+                backgroundColor: 'var(--cw-card)',
+                borderColor: 'var(--cw-line)',
+              }}
+            >
+              {/* Modal Header */}
+              <div
+                className="sticky top-0 z-10 px-4 sm:px-6 py-4 border-b flex items-center justify-between gap-3 shrink-0"
+                style={{
+                  backgroundColor: 'var(--cw-card)',
+                  borderColor: 'var(--cw-line)',
+                }}
+              >
                 <div>
-                  <h2 className="text-base sm:text-lg font-bold text-[var(--text)]">
+                  <h2
+                    className="ncd-font-doto text-base sm:text-lg"
+                    style={{ color: 'var(--cw-text)' }}
+                  >
                     {editingTestId ? 'Edit Captain Test' : 'Create & Publish Test'}
                   </h2>
-                  <p className="text-xs text-[var(--muted)]">
+                  <p className="text-xs" style={{ color: 'var(--cw-muted)' }}>
                     Configure test details and import questions
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => !savingTest && setModalOpen(false)}
-                  className="p-2 rounded-xl bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)] cursor-pointer shrink-0"
+                  {...getNcdPressHandlers()}
+                  className="ncd-btn ncd-glass w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                  style={{ color: 'var(--cw-text)' }}
                 >
                   <X size={16} />
                 </button>
               </div>
 
-              {/* Scrollable Body — pb-24 ensures last field is never hidden behind sticky footer */}
+              {/* Scrollable Body */}
               <form
                 id="captain-create-test-form"
                 onSubmit={handleSaveAndPublishTest}
                 className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 pb-24 sm:pb-24 space-y-4"
               >
                 <div>
-                  <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
+                  <label
+                    className="block text-xs font-bold mb-1.5"
+                    style={{ color: 'var(--cw-text)' }}
+                  >
                     Test Title *
                   </label>
                   <input
@@ -1182,19 +1410,22 @@ export function AmbassadorDashboardPage() {
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="e.g. NUST NET-4 Physics High-Yield Mock #1"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[#D71921]"
+                    className="ncd-input w-full px-4 py-2.5 text-xs sm:text-sm"
                   />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
+                    <label
+                      className="block text-xs font-bold mb-1.5"
+                      style={{ color: 'var(--cw-text)' }}
+                    >
                       Subject
                     </label>
                     <select
                       value={subject}
                       onChange={(e) => setSubject(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                      className="ncd-input w-full px-4 py-2.5 text-xs sm:text-sm"
                     >
                       {SUBJECT_OPTIONS.map((s) => (
                         <option key={s} value={s}>
@@ -1205,7 +1436,10 @@ export function AmbassadorDashboardPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
+                    <label
+                      className="block text-xs font-bold mb-1.5"
+                      style={{ color: 'var(--cw-text)' }}
+                    >
                       Number of Questions
                     </label>
                     <input
@@ -1217,45 +1451,61 @@ export function AmbassadorDashboardPage() {
                       onBlur={() =>
                         setTargetQuestionCount(String(clampQuestionCount(targetQuestionCount)))
                       }
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] font-sans tabular-nums focus:outline-none focus:border-[#D71921]"
+                      className="ncd-input w-full px-4 py-2.5 text-xs sm:text-sm tabular-nums"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
+                    <label
+                      className="block text-xs font-bold mb-1.5"
+                      style={{ color: 'var(--cw-text)' }}
+                    >
                       Visibility
                     </label>
-                    <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                    <div
+                      className="grid grid-cols-2 gap-1.5 p-1 rounded-[18px] border"
+                      style={{
+                        backgroundColor: 'var(--cw-card2)',
+                        borderColor: 'var(--cw-line)',
+                      }}
+                    >
                       <button
                         type="button"
                         onClick={() => setVisibility('public')}
-                        className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors ${
-                          visibility === 'public'
-                            ? 'bg-[#D71921] text-white'
-                            : 'text-[var(--muted)] hover:text-[var(--text)]'
+                        {...getNcdPressHandlers()}
+                        className={`ncd-btn py-1.5 text-xs ${
+                          visibility === 'public' ? 'ncd-glass-red' : ''
                         }`}
+                        style={{
+                          color: visibility === 'public' ? '#ffffff' : 'var(--cw-muted)',
+                        }}
                       >
                         <Globe size={12} />
-                        Public
+                        <span>Public</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setVisibility('private')}
-                        className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors ${
-                          visibility === 'private'
-                            ? 'bg-[#D71921] text-white'
-                            : 'text-[var(--muted)] hover:text-[var(--text)]'
+                        {...getNcdPressHandlers()}
+                        className={`ncd-btn py-1.5 text-xs ${
+                          visibility === 'private' ? 'ncd-glass-red' : ''
                         }`}
+                        style={{
+                          color: visibility === 'private' ? '#ffffff' : 'var(--cw-muted)',
+                        }}
                       >
                         <Lock size={12} />
-                        Private
+                        <span>Private</span>
                       </button>
                     </div>
                   </div>
                 </div>
 
                 {/* Certificate Design Theme Picker */}
-                <div className="pt-2 border-t border-[var(--border)]">
+                <div
+                  className="pt-3 border-t"
+                  style={{ borderColor: 'var(--cw-line)' }}
+                >
                   <ThemePicker
                     grandLineId={editingTestId || title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'new_mock'}
                     mockTitle={title.trim() || 'Grand Line Mock'}
@@ -1265,27 +1515,33 @@ export function AmbassadorDashboardPage() {
                 </div>
 
                 {/* CSV Upload or Paste */}
-                <div className="space-y-2 pt-1">
+                <div className="space-y-2.5 pt-1">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <label className="block text-xs font-semibold text-[var(--text)]">
+                    <label
+                      className="block text-xs font-bold"
+                      style={{ color: 'var(--cw-text)' }}
+                    >
                       Upload or Paste Questions (CSV)
                     </label>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={handleDownloadSampleCsv}
-                        className="px-2.5 py-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[11px] font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] flex items-center gap-1 cursor-pointer"
+                        {...getNcdPressHandlers()}
+                        className="ncd-btn ncd-glass px-3 py-1.5 text-[11px]"
+                        style={{ color: 'var(--cw-text)' }}
                       >
                         <Download size={12} />
-                        Template
+                        <span>Template</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="px-2.5 py-1.5 rounded-lg bg-[#D71921]/15 border border-[#D71921]/30 text-[11px] font-semibold text-[#D71921] hover:bg-[#D71921]/25 flex items-center gap-1 cursor-pointer"
+                        {...getNcdPressHandlers()}
+                        className="ncd-btn ncd-glass-red px-3 py-1.5 text-[11px]"
                       >
                         <Upload size={12} />
-                        Choose File
+                        <span>Choose File</span>
                       </button>
                       <input
                         ref={fileInputRef}
@@ -1302,24 +1558,34 @@ export function AmbassadorDashboardPage() {
                     value={csvText}
                     onChange={(e) => setCsvText(e.target.value)}
                     placeholder={`question,optionA,optionB,optionC,optionD,correctOption,explanation\n"What is the SI unit of force?","Joule","Newton","Watt","Pascal","B","F = ma is measured in Newtons."`}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-mono text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[#D71921]"
+                    className="ncd-input w-full px-4 py-2.5 text-xs font-mono"
                   />
 
-                  {/* Clear "X questions parsed" status banner */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                  {/* "X questions parsed" status banner */}
+                  <div className="ncd-score-row flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <CheckCircle2
                         size={16}
-                        className={
-                          parsedQuestions.length > 0 ? 'text-emerald-400 shrink-0' : 'text-[var(--muted)] shrink-0'
-                        }
+                        className="shrink-0"
+                        style={{
+                          color:
+                            parsedQuestions.length > 0
+                              ? 'var(--cw-green)'
+                              : 'var(--cw-muted)',
+                        }}
                       />
-                      <span className="text-xs font-bold text-[var(--text)] tabular-nums">
+                      <span
+                        className="text-xs font-bold tabular-nums"
+                        style={{ color: 'var(--cw-text)' }}
+                      >
                         {parsedQuestions.length} {parsedQuestions.length === 1 ? 'question' : 'questions'} parsed
                       </span>
                     </div>
                     {parseErrors.length > 0 && (
-                      <span className="text-[11px] font-semibold text-amber-400 flex items-center gap-1">
+                      <span
+                        className="text-[11px] font-semibold flex items-center gap-1"
+                        style={{ color: 'var(--cw-gold)' }}
+                      >
                         <AlertCircle size={13} />
                         {parseErrors.length} row issue{parseErrors.length === 1 ? '' : 's'}
                       </span>
@@ -1327,7 +1593,7 @@ export function AmbassadorDashboardPage() {
                   </div>
 
                   {parseErrors.length > 0 && (
-                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-300 space-y-1 max-h-28 overflow-y-auto">
+                    <div className="ncd-score-row text-[11px] space-y-1 max-h-28 overflow-y-auto" style={{ color: 'var(--cw-gold)' }}>
                       {parseErrors.slice(0, 5).map((err, i) => (
                         <p key={i}>• {err}</p>
                       ))}
@@ -1335,7 +1601,10 @@ export function AmbassadorDashboardPage() {
                   )}
 
                   {submitError && (
-                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 flex items-start gap-2">
+                    <div
+                      className="ncd-score-row ncd-score-row-me text-xs flex items-start gap-2"
+                      style={{ color: 'var(--cw-red-text)' }}
+                    >
                       <AlertCircle size={15} className="shrink-0 mt-0.5" />
                       <span className="break-words">{submitError}</span>
                     </div>
@@ -1343,16 +1612,22 @@ export function AmbassadorDashboardPage() {
                 </div>
               </form>
 
-              {/* Sticky Safe-Area Footer — never clipped */}
+              {/* Sticky Safe-Area Footer */}
               <div
-                className="sticky bottom-0 z-10 px-4 sm:px-6 pt-3 pb-[calc(16px+env(safe-area-inset-bottom,0px))] border-t border-[var(--border)] flex items-center justify-end gap-2.5 shrink-0"
-                style={{ paddingBottom: 'max(16px, calc(16px + env(safe-area-inset-bottom, 0px)))' }}
+                className="sticky bottom-0 z-10 px-4 sm:px-6 pt-3 border-t flex items-center justify-end gap-2.5 shrink-0"
+                style={{
+                  backgroundColor: 'var(--cw-card)',
+                  borderColor: 'var(--cw-line)',
+                  paddingBottom: 'max(16px, calc(16px + env(safe-area-inset-bottom, 0px)))',
+                }}
               >
                 <button
                   type="button"
                   disabled={savingTest}
+                  {...getNcdPressHandlers(savingTest)}
                   onClick={() => setModalOpen(false)}
-                  className="min-h-[44px] px-4 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] inline-flex items-center justify-center cursor-pointer disabled:opacity-50"
+                  className="ncd-btn ncd-glass min-h-[44px] px-5 py-2.5 text-xs sm:text-sm"
+                  style={{ color: 'var(--cw-text)' }}
                 >
                   Cancel
                 </button>
@@ -1360,7 +1635,8 @@ export function AmbassadorDashboardPage() {
                   type="submit"
                   form="captain-create-test-form"
                   disabled={savingTest || parsedQuestions.length === 0}
-                  className="relative overflow-hidden min-h-[44px] px-5 py-2.5 rounded-xl bg-[#D71921] text-white text-xs sm:text-sm font-bold hover:opacity-95 inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  {...getNcdPressHandlers(savingTest || parsedQuestions.length === 0)}
+                  className="ncd-btn ncd-glass-red relative overflow-hidden min-h-[44px] px-5 py-2.5 text-xs sm:text-sm"
                 >
                   <CheckCircle2 size={15} className="shrink-0" />
                   <span>
@@ -1390,36 +1666,41 @@ export function AmbassadorDashboardPage() {
           >
             <div
               onClick={() => !deletingTestId && setDeleteConfirmTest(null)}
-              className="fixed inset-0 z-0 bg-black/30 backdrop-blur-sm glass-backdrop cursor-pointer"
+              className="fixed inset-0 z-0 bg-black/50 backdrop-blur-md cursor-pointer"
               aria-hidden="true"
             />
-            <div className="relative z-10 w-full max-w-md rounded-2xl glass p-5 space-y-4">
+            <div className="ncd-root ncd-card relative z-10 w-full max-w-md space-y-4">
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-red-500/15 text-red-400 flex items-center justify-center shrink-0">
+                <div className="ncd-stat-icon-badge !w-10 !h-10 !rounded-xl shrink-0">
                   <ShieldAlert size={20} />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-[var(--text)]">Delete Test?</h3>
-                  <p className="text-xs text-[var(--muted)] mt-1">
+                  <h3 className="ncd-font-doto text-base" style={{ color: 'var(--cw-text)' }}>
+                    Delete Test?
+                  </h3>
+                  <p className="text-xs mt-1" style={{ color: 'var(--cw-muted)' }}>
                     Are you sure you want to delete{' '}
-                    <strong className="text-[var(--text)]">{deleteConfirmTest.title}</strong>? This will also remove all questions and student results for this test.
+                    <strong style={{ color: 'var(--cw-text)' }}>{deleteConfirmTest.title}</strong>? This will also remove all questions and student results for this test.
                   </p>
                 </div>
               </div>
-              <div className="flex items-center justify-end gap-2 pt-2">
+              <div className="flex items-center justify-end gap-2.5 pt-2">
                 <button
                   type="button"
                   disabled={Boolean(deletingTestId)}
+                  {...getNcdPressHandlers(Boolean(deletingTestId))}
                   onClick={() => setDeleteConfirmTest(null)}
-                  className="min-h-[44px] px-4 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] cursor-pointer"
+                  className="ncd-btn ncd-glass min-h-[42px] px-4 py-2 text-xs"
+                  style={{ color: 'var(--cw-text)' }}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   disabled={Boolean(deletingTestId)}
+                  {...getNcdPressHandlers(Boolean(deletingTestId))}
                   onClick={handleConfirmDeleteTest}
-                  className="relative overflow-hidden min-h-[44px] px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="ncd-btn ncd-glass-red relative overflow-hidden min-h-[42px] px-4 py-2 text-xs"
                 >
                   <Trash2 size={14} />
                   <span>{deletingTestId ? 'Deleting...' : 'Delete Permanently'}</span>

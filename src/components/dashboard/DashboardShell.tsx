@@ -18,6 +18,7 @@ export function DashboardShell() {
   const isAuthenticated = isUserAuthenticated(user, profileLoading);
 
   const isProfileRoute = location.pathname.startsWith('/dashboard/profile');
+  const isCrewRoute = location.pathname.startsWith('/dashboard/crew');
   const isCommonsRoute =
     location.pathname.startsWith('/dashboard/commons') ||
     location.pathname.startsWith('/commons') ||
@@ -63,14 +64,16 @@ export function DashboardShell() {
         noindex={true}
       />
       <VerificationBanner />
-      {!isProfileRoute && !isCommonsRoute && <DashboardTopBar />}
+      {!isProfileRoute && !isCommonsRoute && !isCrewRoute && <DashboardTopBar />}
 
-      {/* Main Content Container: when on profile route, remove bottom nav padding and use safe-area padding */}
+      {/* Main Content Container */}
       <main
-        className={`flex-1 w-full max-w-5xl min-w-0 box-border overflow-x-hidden mx-auto flex flex-col transition-all duration-200 ${
-          isProfileRoute
-            ? 'px-0 sm:px-4 md:px-6 pt-0 sm:pt-4 pb-[calc(24px+env(safe-area-inset-bottom,0px))]'
-            : 'px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-[calc(112px+env(safe-area-inset-bottom,0px))]'
+        className={`flex-1 w-full min-w-0 box-border overflow-x-hidden mx-auto flex flex-col transition-all duration-200 ${
+          isCrewRoute
+            ? 'max-w-none p-0'
+            : isProfileRoute
+            ? 'max-w-5xl px-0 sm:px-4 md:px-6 pt-0 sm:pt-4 pb-[calc(24px+env(safe-area-inset-bottom,0px))]'
+            : 'max-w-5xl px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-[calc(112px+env(safe-area-inset-bottom,0px))]'
         }`}
       >
         <DashboardErrorBoundary fallbackTitle="Cockpit Section Error">
@@ -80,8 +83,8 @@ export function DashboardShell() {
         </DashboardErrorBoundary>
       </main>
 
-      {/* Unified Student Pill Navigation (fades out on profile route) */}
-      <DashboardBottomNav />
+      {/* Unified Student Pill Navigation */}
+      {!isCrewRoute && <DashboardBottomNav />}
     </div>
   );
 }

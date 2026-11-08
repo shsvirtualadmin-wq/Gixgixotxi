@@ -4,13 +4,20 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useStudyCrew, type CrewMember } from '@/hooks/useStudyCrew';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { InAppLeaderboard } from '@/components/crew/InAppLeaderboard';
+import {
+  CrewStickyHeader,
+  CrewBottomDock,
+  CrewGlassSlider,
+  getCrewBtnHandlers,
+  type CrewSliderOption,
+} from '@/components/crew/CrewGlassPrimitives';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { updateCrewSettings } from '@/services/crewService';
-import { getPast7PKTDateKeys, getPKTDateKey } from '@/hooks/usePKTDate';
+import { getPast7PKTDateKeys } from '@/hooks/usePKTDate';
 import { useSmartBack } from '@/utils/homeUrl';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -27,17 +34,16 @@ import {
   Lock,
   Unlock,
   AlertCircle,
-  RefreshCw,
   Crown,
   X,
 } from 'lucide-react';
 
-/* ─── 88px Solid SVG Progress Ring ─────────────────────────────────────── */
-function SolidProgressRing({
+/* ─── 92px Circular Progress Ring (9px stroke, red progress, round caps) ─ */
+function CrewGoalProgressRing({
   value,
   max,
-  size = 88,
-  strokeWidth = 6,
+  size = 92,
+  strokeWidth = 9,
 }: {
   value: number;
   max: number;
@@ -46,7 +52,10 @@ function SolidProgressRing({
 }) {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const percentage = Math.min(100, Math.max(0, Math.round((value / Math.max(1, max)) * 100)));
+  const percentage = Math.min(
+    100,
+    Math.max(0, Math.round((value / Math.max(1, max)) * 100))
+  );
   const offset = circumference - (percentage / 100) * circumference;
 
   return (
@@ -64,7 +73,7 @@ function SolidProgressRing({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="var(--border)"
+          stroke="var(--cw-line)"
           strokeWidth={strokeWidth}
           fill="transparent"
         />
@@ -72,7 +81,7 @@ function SolidProgressRing({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="var(--accent)"
+          stroke="var(--cw-red)"
           strokeWidth={strokeWidth}
           strokeDasharray={circumference}
           strokeDashoffset={offset}
@@ -82,7 +91,10 @@ function SolidProgressRing({
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-base font-bold text-[var(--text-primary)] tabular-nums">
+        <span
+          className="cw-font-doto text-base font-extrabold tabular-nums"
+          style={{ color: 'var(--cw-text)' }}
+        >
           {percentage}%
         </span>
       </div>
@@ -95,6 +107,13 @@ interface EnrichedMember extends CrewMember {
   weeklyCount?: number;
   streakCount: number;
 }
+
+type LeaderboardTabId = 'weekly' | 'streaks';
+
+const LEADERBOARD_SLIDER_OPTIONS: CrewSliderOption<LeaderboardTabId>[] = [
+  { id: 'weekly', label: 'Weekly MCQs' },
+  { id: 'streaks', label: 'Streaks' },
+];
 
 export function CrewDashboardPage() {
   const { user } = useAuth();
@@ -129,7 +148,10 @@ export function CrewDashboardPage() {
   const [selectedNewLeader, setSelectedNewLeader] = useState<string>('');
   const [transferLoading, setTransferLoading] = useState(false);
 
-  // Toast feedback
+  // Trigger Create Crew modal in Browse view
+  const [createCrewTrigger, setCreateCrewTrigger] = useState(0);
+
+  // Top Toast pill feedback (auto-hides in ~1.8s)
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -138,16 +160,22 @@ export function CrewDashboardPage() {
     setToastMessage(msg);
     toastTimeoutRef.current = setTimeout(() => {
       setToastMessage(null);
-    }, 2400);
+    }, 1800);
   };
 
-  // Quick Join on State A
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    };
+  }, []);
+
+  // Quick Join on State A (Browse view)
   const [quickCodeInput, setQuickCodeInput] = useState('');
   const [quickJoinLoading, setQuickJoinLoading] = useState(false);
   const [quickJoinError, setQuickJoinError] = useState<string | null>(null);
 
   // Leaderboard Tab: Weekly MCQs vs Streaks
-  const [leaderboardTab, setLeaderboardTab] = useState<'weekly' | 'streaks'>('weekly');
+  const [leaderboardTab, setLeaderboardTab] = useState<LeaderboardTabId>('weekly');
 
   // Track current user's weekly usage from Firestore
   const [currentUserUsageWeekly, setCurrentUserUsageWeekly] = useState<number | null>(null);
@@ -207,6 +235,9 @@ export function CrewDashboardPage() {
   }, [user]);
 
   const isLeader = Boolean(crew && user && crew.leaderId === user.uid);
+  // PRO BADGE RULE: Show "PRO ACTIVE" badge and "Pro" chip only when the crew actually has an active Pro plan
+  const crewHasActivePro = Boolean(crew?.hasProMember);
+
   const squadName =
     crew?.name?.trim() && crew.name.trim() !== '1'
       ? crew.name.trim()
@@ -221,7 +252,7 @@ export function CrewDashboardPage() {
       await navigator.clipboard.writeText(crew.code);
       setCopiedCode(true);
       showToast('Code copied');
-      setTimeout(() => setCopiedCode(false), 2000);
+      setTimeout(() => setCopiedCode(false), 1800);
     } catch {
       showToast('Failed to copy code');
     }
@@ -243,7 +274,6 @@ export function CrewDashboardPage() {
         if ((err as Error)?.name === 'AbortError') return;
       }
     }
-    // Fallback: copy link & text
     try {
       await navigator.clipboard.writeText(`${shareText}\n${joinUrl}`);
       showToast('Invite link & code copied!');
@@ -283,7 +313,7 @@ export function CrewDashboardPage() {
     try {
       await leaveCrew();
       setLeaveConfirmOpen(false);
-      showToast('You left the squad');
+      showToast('You left the crew');
       navigate('/dashboard/crew');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to leave squad';
@@ -316,6 +346,7 @@ export function CrewDashboardPage() {
     setQuickJoinError(null);
     try {
       await joinCrewByCode(code);
+      showToast('Joined crew!');
       retry();
     } catch (err: unknown) {
       setQuickJoinError((err as Error).message || 'Failed to join squad with this code.');
@@ -333,14 +364,11 @@ export function CrewDashboardPage() {
   const streakCount = Math.max(1, Number(crew?.streak) || 1);
 
   /* ── Reconcile and calculate real weekly MCQ counts ────────────────────── */
-  // Rule: Sum of members' weekly counts should match squad total (currentQuestions).
-  // If a value can't be read, show "–", never a wrong 0.
   const enrichedMembers: EnrichedMember[] = useMemo(() => {
     let knownSum = 0;
     const prelim = members.map((m) => {
       let weekly: number | undefined;
 
-      // Current user: take real usage if available
       if (user && m.uid === user.uid && currentUserUsageWeekly !== null) {
         weekly = currentUserUsageWeekly;
       } else if (typeof m.questionsSolved === 'number' && m.questionsSolved > 0) {
@@ -358,9 +386,6 @@ export function CrewDashboardPage() {
       };
     });
 
-    // If squad total > 0 and known sum is 0 (or less than currentQuestions because
-    // member.questionsSolved was never written when currentQuestions was incremented):
-    // Reconcile so the sum matches the squad total.
     if (currentQuestions > 0 && knownSum < currentQuestions) {
       const remainder = currentQuestions - knownSum;
       const userIndex = prelim.findIndex((m) => user && m.uid === user.uid);
@@ -368,8 +393,13 @@ export function CrewDashboardPage() {
         prelim[userIndex].weeklyCount = remainder;
       } else {
         const leaderIndex = prelim.findIndex((m) => crew && m.uid === crew.leaderId);
-        if (leaderIndex !== -1 && (prelim[leaderIndex].weeklyCount === undefined || prelim[leaderIndex].weeklyCount === 0)) {
-          prelim[leaderIndex].weeklyCount = (prelim[leaderIndex].weeklyCount || 0) + remainder;
+        if (
+          leaderIndex !== -1 &&
+          (prelim[leaderIndex].weeklyCount === undefined ||
+            prelim[leaderIndex].weeklyCount === 0)
+        ) {
+          prelim[leaderIndex].weeklyCount =
+            (prelim[leaderIndex].weeklyCount || 0) + remainder;
         }
       }
     }
@@ -396,10 +426,13 @@ export function CrewDashboardPage() {
   }, [enrichedMembers, leaderboardTab]);
 
   const allZeroWeekly = useMemo(() => {
-    return currentQuestions === 0 && enrichedMembers.every((m) => !m.weeklyCount || m.weeklyCount === 0);
+    return (
+      currentQuestions === 0 &&
+      enrichedMembers.every((m) => !m.weeklyCount || m.weeklyCount === 0)
+    );
   }, [currentQuestions, enrichedMembers]);
 
-  // Compute 7 days for the streak display
+  // Compute 7 days (Mon-Sun) for the 30px streak circles
   const weekDays = useMemo(() => {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const now = new Date();
@@ -422,645 +455,770 @@ export function CrewDashboardPage() {
     return Math.max(...weakChapters.map((c) => c.errorCount || 0), 1);
   }, [weakChapters]);
 
-  if (loading) {
-    return (
-      <div className="max-w-3xl mx-auto py-12 px-4">
-        <LineLoader context="dashboard" variant="section" />
-      </div>
-    );
-  }
-
-  /* ── Error State with Explicit Retry ──────────────────────────────────── */
-  if (hookError && !crew) {
-    return (
-      <div className="max-w-md mx-auto my-12 px-4 space-y-4 text-center">
-        <div className="w-12 h-12 rounded-full bg-[var(--surface-muted)] border border-[var(--accent)] text-[var(--accent)] flex items-center justify-center mx-auto">
-          <AlertCircle size={22} />
-        </div>
-        <h2 className="text-xl font-bold text-[var(--text-primary)]">
-          Study Squad Connection Delayed
-        </h2>
-        <p className="text-sm text-[var(--text-muted)] leading-relaxed">{hookError}</p>
-        <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-          <button
-            type="button"
-            onClick={retry}
-            className="w-full sm:w-auto px-5 py-2.5 rounded-xl font-semibold text-sm bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white min-h-[44px] transition-colors"
-          >
-            Retry Connection
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/crew')}
-            className="w-full sm:w-auto px-5 py-2.5 rounded-xl font-semibold text-sm border border-[var(--border)] hover:bg-[var(--surface-muted)] text-[var(--text-primary)] min-h-[44px] transition-colors"
-          >
-            Browse Squads
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  /* ── State A: User Not In a Squad ─────────────────────────────────────── */
-  if (!crew) {
-    return (
-      <div className="max-w-3xl mx-auto py-6 px-4 space-y-6">
-        {/* Sticky Top Bar */}
-        <header className="sticky top-0 z-30 floating-blur backdrop-blur-lg border-b border-[var(--border)] -mx-4 px-4 py-3 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleBack}
-            className="p-2 -ml-2 rounded-xl text-[var(--text-primary)] hover:bg-[var(--surface-muted)] flex items-center justify-center min-w-[44px] min-h-[44px] transition-colors"
-            aria-label="Go back"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <h1 className="text-lg font-bold text-[var(--text-primary)] tracking-tight">
-            Study Squad
-          </h1>
-        </header>
-
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-[var(--text-primary)] tracking-tight">
-            Study Squads &amp; National Leaderboard
-          </h2>
-          <p className="text-sm text-[var(--text-muted)] mt-1.5 leading-relaxed">
-            Collaborate in study squads, track streaks together, and prepare for entrance exams across Pakistan.
-          </p>
-        </div>
-
-        {/* Action card */}
-        <div className="p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border)] shadow-sm dark:shadow-none space-y-4">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <button
-                type="button"
-                onClick={() => {
-                  const el = document.getElementById('leaderboard-crews-view');
-                  if (el) el.scrollIntoView({ behavior: 'smooth' });
-                }}
-                className="px-4 py-2.5 rounded-xl font-semibold text-sm bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white min-h-[44px] transition-colors"
-              >
-                Create or Join a Squad
-              </button>
-
-              <Link
-                to="/captain/apply"
-                className="px-4 py-2.5 rounded-xl font-semibold text-sm border border-[var(--border)] hover:bg-[var(--surface-muted)] text-[var(--text-primary)] min-h-[44px] flex items-center transition-colors"
-              >
-                Apply as {NAKAMA_CAPTAIN_SINGULAR}
-              </Link>
-            </div>
-
-            {/* Code Input */}
-            <form onSubmit={handleQuickJoin} className="flex items-center gap-2 w-full sm:w-auto">
-              <input
-                type="text"
-                value={quickCodeInput}
-                onChange={(e) => setQuickCodeInput(e.target.value.toUpperCase())}
-                placeholder="6-char code (e.g. CRW123)"
-                maxLength={8}
-                className="flex-1 sm:w-44 px-3.5 py-2.5 rounded-xl bg-[var(--surface-muted)] border border-[var(--border)] text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] uppercase tracking-wider text-center font-bold focus:outline-none focus:border-[var(--accent)] min-h-[44px]"
-              />
-              <button
-                type="submit"
-                disabled={quickJoinLoading || !quickCodeInput.trim()}
-                className="relative overflow-hidden px-4 py-2.5 rounded-xl font-semibold text-xs bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px] transition-colors shrink-0"
-              >
-                <span>{quickJoinLoading ? 'Joining...' : 'Join'}</span>
-                {quickJoinLoading && <ButtonLineLoader />}
-              </button>
-            </form>
-          </div>
-
-          {quickJoinError && (
-            <div className="p-3 rounded-xl bg-red-500/10 border border-[var(--accent)]/30 text-[var(--accent)] text-xs flex items-center gap-2">
-              <AlertCircle size={15} className="shrink-0" />
-              <span>{quickJoinError}</span>
-            </div>
-          )}
-        </div>
-
-        <div id="leaderboard-crews-view">
-          {user && (
-            <InAppLeaderboard
-              currentUser={{
-                uid: user.uid,
-                email: user.email || '',
-                displayName: sanitizeStudentDisplayName(
-                  profile?.displayName || user.displayName,
-                  profile?.shortId || user.uid
-                ),
-                streak: profile?.streak || 0,
-                score: profile?.score || 0,
-                crewId: null,
-                avatarKey: profile?.avatarKey || null,
-                avatarVariant: profile?.avatarVariant || null,
-              }}
-              onCrewJoined={retry}
-            />
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  /* ── State B: User In An Active Squad ─────────────────────────────────── */
-
-
   return (
-    <div className="max-w-3xl mx-auto py-4 px-4 sm:px-6 space-y-4 pb-28">
-      {/* ── 1. Top Bar (Sticky, Clean, 360px mobile safe) ──────────────── */}
-      <header className="sticky top-0 z-30 floating-blur backdrop-blur-lg border-b border-[var(--border)] -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 flex items-center justify-between shadow-xs">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleBack}
-            className="p-2 -ml-2 rounded-xl text-[var(--text-primary)] hover:bg-[var(--surface-muted)] flex items-center justify-center min-w-[44px] min-h-[44px] transition-colors cursor-pointer"
-            aria-label="Go back"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <span className="text-lg font-bold text-[var(--text-primary)] tracking-tight">
-            Study Squad
-          </span>
+    <div className="cw-screen-root min-h-screen w-full flex flex-col justify-between overflow-x-hidden transition-colors duration-150">
+      {/* ─── TOP TOAST PILL (Slides down, auto-hides in ~1.8s) ──────────── */}
+      {toastMessage && (
+        <div role="status" className="cw-top-toast">
+          <Check size={14} strokeWidth={2.5} style={{ color: '#3ddc84' }} />
+          <span>{toastMessage}</span>
         </div>
+      )}
 
-        {/* More (Three Dots) Menu */}
-        <div className="relative" ref={moreMenuRef}>
-          <button
-            type="button"
-            onClick={() => setMoreMenuOpen((v) => !v)}
-            className="p-2 -mr-2 rounded-xl text-[var(--text-primary)] hover:bg-[var(--surface-muted)] flex items-center justify-center min-w-[44px] min-h-[44px] transition-colors cursor-pointer"
-            aria-label="More squad options"
-            aria-expanded={moreMenuOpen}
-          >
-            <MoreVertical size={20} />
-          </button>
+      {/* ─── STICKY GLASS PILL HEADER ───────────────────────────────────── */}
+      <CrewStickyHeader showProChip={crewHasActivePro} />
 
-          {moreMenuOpen && (
-            <div className="absolute right-0 mt-1 w-52 rounded-2xl floating-blur backdrop-blur-lg border border-[var(--border)] shadow-xl p-1.5 z-50 text-xs font-semibold space-y-0.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setMoreMenuOpen(false);
-                  handleShareSquad();
-                }}
-                className="w-full text-left px-3 py-2 rounded-xl hover:bg-[var(--surface-muted)] text-[var(--text-primary)] flex items-center gap-2.5 transition-colors cursor-pointer min-h-[38px]"
-              >
-                <Share2 size={15} className="text-[var(--text-muted)]" />
-                <span>Share squad</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setMoreMenuOpen(false);
-                  handleCopyCode();
-                }}
-                className="w-full text-left px-3 py-2 rounded-xl hover:bg-[var(--surface-muted)] text-[var(--text-primary)] flex items-center gap-2.5 transition-colors cursor-pointer min-h-[38px]"
-              >
-                <Copy size={15} className="text-[var(--text-muted)]" />
-                <span>Copy invite code</span>
-              </button>
-
-              {isLeader && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMoreMenuOpen(false);
-                      setNewSquadName(crew.name || '');
-                      setRenameModalOpen(true);
-                    }}
-                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-[var(--surface-muted)] text-[var(--text-primary)] flex items-center gap-2.5 transition-colors cursor-pointer min-h-[38px]"
-                  >
-                    <Pencil size={15} className="text-[var(--text-muted)]" />
-                    <span>Edit squad name</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMoreMenuOpen(false);
-                      toggleLock();
-                    }}
-                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-[var(--surface-muted)] text-[var(--text-primary)] flex items-center gap-2.5 transition-colors cursor-pointer min-h-[38px]"
-                  >
-                    {crew.isLocked ? (
-                      <>
-                        <Unlock size={15} className="text-[var(--text-muted)]" />
-                        <span>Unlock invites</span>
-                      </>
-                    ) : (
-                      <>
-                        <Lock size={15} className="text-[var(--text-muted)]" />
-                        <span>Lock invites</span>
-                      </>
-                    )}
-                  </button>
-
-                  {members.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMoreMenuOpen(false);
-                        setTransferModalOpen(true);
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-xl hover:bg-[var(--surface-muted)] text-[var(--text-primary)] flex items-center gap-2.5 transition-colors cursor-pointer min-h-[38px]"
-                    >
-                      <Crown size={15} className="text-[var(--text-muted)]" />
-                      <span>Transfer leadership</span>
-                    </button>
-                  )}
-                </>
-              )}
-
-              <div className="border-t border-[var(--border)] my-1" />
-
-              <button
-                type="button"
-                onClick={() => {
-                  setMoreMenuOpen(false);
-                  setLeaveConfirmOpen(true);
-                }}
-                className="w-full text-left px-3 py-2 rounded-xl hover:bg-red-500/10 text-red-600 dark:text-red-400 flex items-center gap-2.5 transition-colors cursor-pointer min-h-[38px]"
-              >
-                <LogOut size={15} />
-                <span>Leave squad</span>
-              </button>
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* ── 2. Squad Header Card ─────────────────────────────────────── */}
-      <section className="p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border)] shadow-sm dark:shadow-none space-y-4">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-[22px] font-bold font-sans text-[var(--text-primary)] tracking-tight leading-tight break-words">
-              {squadName}
-            </h1>
-            {isLeader && (
-              <button
-                type="button"
-                onClick={() => {
-                  setNewSquadName(crew.name || '');
-                  setRenameModalOpen(true);
-                }}
-                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-muted)] transition-colors cursor-pointer"
-                title="Edit squad name"
-                aria-label="Edit squad name"
-              >
-                <Pencil size={15} />
-              </button>
-            )}
-            {crew.hasProMember && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                PRO ACTIVE
-              </span>
-            )}
-            {crew.isLocked && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1">
-                <Lock size={10} /> LOCKED
-              </span>
-            )}
+      {/* ─── MAIN SCREEN CONTENT ────────────────────────────────────────── */}
+      <div
+        className="mx-auto w-full max-w-3xl px-4 pt-6 flex-1 space-y-5"
+        style={{
+          paddingBottom: 'calc(110px + env(safe-area-inset-bottom, 0px))',
+        }}
+      >
+        {loading ? (
+          <div className="py-12">
+            <LineLoader context="dashboard" variant="section" />
           </div>
-
-          <p className="text-sm text-[var(--text-muted)] mt-1">
-            Led by {crew.leaderName || 'Squad Leader'}
-          </p>
-
-          {/* Member Avatars Stack */}
-          <div className="flex items-center gap-3 mt-3">
-            <div className="flex -space-x-2 overflow-hidden py-0.5">
-              {members.slice(0, 5).map((m) => (
-                <div
-                  key={m.uid}
-                  onClick={() => openProfile(m.uid)}
-                  className="relative ring-2 ring-[var(--surface)] rounded-full cursor-pointer hover:scale-105 transition-transform"
-                  title={sanitizeStudentDisplayName(m.displayName, m.uid)}
-                >
-                  <BoardlyAvatar
-                    name={m.displayName}
-                    size={30}
-                    avatarKey={m.avatarKey}
-                    avatarVariant={m.avatarVariant}
-                    frame={m.equipped?.frame}
-                  />
-                </div>
-              ))}
+        ) : hookError && !crew ? (
+          /* ── Error State with Explicit Retry ──────────────────────────── */
+          <div className="cw-card my-8 text-center space-y-4">
+            <div
+              className="w-12 h-12 rounded-full mx-auto flex items-center justify-center"
+              style={{
+                backgroundColor: 'color-mix(in srgb, var(--cw-red) 18%, transparent)',
+                color: 'var(--cw-red-text)',
+              }}
+            >
+              <AlertCircle size={22} />
             </div>
-            <span className="text-xs text-[var(--text-muted)] font-medium">
-              {memberCount} of {maxMembers} members
-            </span>
-          </div>
-        </div>
-
-        {/* Action Row: Primary Share Button + Invite Code Chip */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
-          <button
-            type="button"
-            onClick={handleShareSquad}
-            className="w-full sm:flex-1 px-5 py-2.5 rounded-xl font-semibold text-sm bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white flex items-center justify-center gap-2 min-h-[44px] shadow-sm transition-colors cursor-pointer"
-          >
-            <Share2 size={16} />
-            <span>Share Squad</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleCopyCode}
-            className="flex items-center justify-between sm:justify-start gap-2.5 px-4 py-2.5 rounded-xl bg-[var(--surface-muted)] border border-[var(--border)] hover:border-[var(--border-strong)] transition-colors min-h-[44px] cursor-pointer"
-            title="Tap to copy invite code"
-          >
-            <span className="text-xs text-[var(--text-muted)] font-medium">Code:</span>
-            <span className="font-bold tracking-widest text-sm text-[var(--text-primary)]">
-              {crew.code}
-            </span>
-            {copiedCode ? (
-              <Check size={14} className="text-emerald-500 shrink-0" />
-            ) : (
-              <Copy size={14} className="text-[var(--text-muted)] shrink-0" />
-            )}
-          </button>
-        </div>
-      </section>
-
-      {/* ── 3. Goal and Streak (Two Compact Cards) ────────────────────── */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {/* Weekly Goal Card */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border)] shadow-sm dark:shadow-none flex items-center gap-4">
-          <SolidProgressRing value={currentQuestions} max={goalQuestions} size={88} strokeWidth={6} />
-          <div className="flex flex-col justify-center min-w-0">
-            <span className="text-xs text-[var(--text-muted)] font-medium">
-              Weekly Squad Goal
-            </span>
-            <div className="text-xl font-bold text-[var(--text-primary)] tabular-nums mt-0.5">
-              {currentQuestions} / {goalQuestions} MCQs
-            </div>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5 leading-tight">
-              Solved by your squad this week
+            <h2 className="cw-font-doto text-xl font-extrabold" style={{ color: 'var(--cw-text)' }}>
+              Study Squad Connection Delayed
+            </h2>
+            <p className="text-sm leading-relaxed" style={{ color: 'var(--cw-muted)' }}>
+              {hookError}
             </p>
-          </div>
-        </div>
-
-        {/* Streak Card */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border)] shadow-sm dark:shadow-none flex flex-col justify-between gap-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Flame size={20} className="text-[var(--accent)] shrink-0" />
-              <span className="text-lg font-bold text-[var(--text-primary)] tabular-nums">
-                {streakCount} {streakCount === 1 ? 'day' : 'days'}
-              </span>
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={retry}
+                {...getCrewBtnHandlers()}
+                className="cw-btn cw-btn-red w-full sm:w-auto"
+              >
+                Retry Connection
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/crew')}
+                {...getCrewBtnHandlers()}
+                className="cw-btn cw-btn-glass w-full sm:w-auto"
+              >
+                Browse Squads
+              </button>
             </div>
-            <span className="text-xs text-[var(--text-muted)] font-medium">Squad Streak</span>
           </div>
-
-          {/* 7 Day Dots with Weekday Labels */}
-          <div className="flex items-center justify-between gap-1 py-1">
-            {weekDays.map((day, idx) => (
-              <div key={idx} className="flex flex-col items-center gap-1 flex-1 min-w-0">
-                <span className="text-[10px] text-[var(--text-muted)] font-medium truncate">
-                  {day.label}
-                </span>
-                <div
-                  className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold transition-all ${
-                    day.isToday
-                      ? 'bg-[var(--accent)] text-white shadow-sm ring-2 ring-[var(--accent)]/30'
-                      : day.isCompleted
-                      ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
-                      : 'bg-[var(--surface-muted)] text-[var(--text-muted)] border border-[var(--border)]'
-                  }`}
+        ) : !crew ? (
+          /* ── State A: Browse View (User Not In a Squad) ───────────────── */
+          <div className="space-y-5">
+            {/* Back + Doto Page Title */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  {...getCrewBtnHandlers()}
+                  className="cw-btn cw-icon-btn cw-btn-glass shrink-0"
+                  aria-label="Go back"
                 >
-                  {day.isCompleted ? <Check size={12} strokeWidth={3} /> : idx + 1}
-                </div>
+                  <ArrowLeft size={18} strokeWidth={2} />
+                </button>
+                <h1
+                  className="cw-font-doto text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight"
+                  style={{ color: 'var(--cw-text)' }}
+                >
+                  Study Squads &amp; National Leaderboard
+                </h1>
               </div>
-            ))}
-          </div>
-
-          <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-            The streak continues when at least one member practices each day.
-          </p>
-        </div>
-      </section>
-
-      {/* ── 4. Leaderboard ────────────────────────────────────────────── */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-baseline gap-2">
-            <h2 className="text-base font-bold font-sans text-[var(--text-primary)]">Leaderboard</h2>
-            <span className="text-xs text-[var(--text-muted)] font-normal font-sans">
-              {memberCount} of {maxMembers} members
-            </span>
-          </div>
-        </div>
-
-        {/* Segmented Control */}
-        <div className="grid grid-cols-2 p-1 rounded-xl bg-[var(--surface-muted)] border border-[var(--border)] text-xs font-semibold">
-          <button
-            type="button"
-            onClick={() => setLeaderboardTab('weekly')}
-            className={`py-2 px-3 rounded-lg text-center transition-all min-h-[36px] cursor-pointer ${
-              leaderboardTab === 'weekly'
-                ? 'bg-[var(--surface)] text-[var(--text-primary)] shadow-sm'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            Weekly MCQs
-          </button>
-          <button
-            type="button"
-            onClick={() => setLeaderboardTab('streaks')}
-            className={`py-2 px-3 rounded-lg text-center transition-all min-h-[36px] cursor-pointer ${
-              leaderboardTab === 'streaks'
-                ? 'bg-[var(--surface)] text-[var(--text-primary)] shadow-sm'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            Streaks
-          </button>
-        </div>
-
-        {/* Member Rows in ONE Card */}
-        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl shadow-sm dark:shadow-none divide-y divide-[var(--border)] overflow-hidden">
-          {allZeroWeekly && leaderboardTab === 'weekly' ? (
-            <div className="p-6 text-center text-sm text-[var(--text-muted)]">
-              No MCQs solved yet this week. Be the first!
+              <p className="text-sm leading-relaxed pl-1" style={{ color: 'var(--cw-muted)' }}>
+                Collaborate in study squads, track streaks together, and prepare for entrance exams across Pakistan.
+              </p>
             </div>
-          ) : (
-            sortedMembers.map((m, idx) => {
-              const rank = idx + 1;
-              const isMemLeader = m.uid === crew.leaderId;
-              const isCurrentUser = Boolean(user && m.uid === user.uid);
 
-              return (
-                <div
-                  key={m.uid}
-                  onClick={() => openProfile(m.uid)}
-                  className={`p-3.5 sm:p-4 flex items-center justify-between gap-3 transition-colors cursor-pointer ${
-                    isCurrentUser
-                      ? 'bg-[var(--accent-soft)] ring-1 ring-[var(--accent)]/30'
-                      : 'hover:bg-[var(--surface-muted)]/50'
-                  }`}
-                  title={`View profile of ${m.displayName}`}
-                >
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    {/* Rank Number */}
-                    <div
-                      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                        rank === 1
-                          ? 'bg-amber-400 text-amber-950 dark:bg-amber-400 dark:text-black font-extrabold'
-                          : rank === 2
-                          ? 'bg-slate-300 text-slate-800 dark:bg-slate-400 dark:text-slate-950 font-extrabold'
-                          : rank === 3
-                          ? 'bg-amber-700 text-white dark:bg-amber-600 dark:text-white font-extrabold'
-                          : 'text-[var(--text-muted)] text-[11px]'
-                      }`}
-                    >
-                      {rank}
-                    </div>
-
-                    {/* Avatar */}
-                    <BoardlyAvatar
-                      name={m.displayName}
-                      size={36}
-                      avatarKey={m.avatarKey}
-                      avatarVariant={m.avatarVariant}
-                      frame={m.equipped?.frame}
-                    />
-
-                    {/* Nickname & Badges */}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-bold text-[var(--text-primary)] truncate">
-                          {sanitizeStudentDisplayName(m.displayName, m.uid)}
-                        </span>
-                        {isMemLeader && (
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-500/10 text-[var(--accent)] border border-red-500/20">
-                            Leader
-                          </span>
-                        )}
-                        {m.isPro && (
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                            Pro
-                          </span>
-                        )}
-                        {isCurrentUser && (
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--surface-muted)] text-[var(--text-secondary)] border border-[var(--border)]">
-                            You
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Value on Right in Normal Bold Font */}
-                  <div className="text-right shrink-0">
-                    <span className="text-sm font-bold text-[var(--text-primary)] tabular-nums">
-                      {leaderboardTab === 'weekly'
-                        ? m.weeklyCount !== undefined
-                          ? `${m.weeklyCount} MCQs`
-                          : '–'
-                        : `${m.streakCount} ${m.streakCount === 1 ? 'day' : 'days'}`}
-                    </span>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </section>
-
-      {/* ── 5. Weak Topics ────────────────────────────────────────────── */}
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-base font-bold font-sans text-[var(--text-primary)]">
-            Squad weak topics
-          </h2>
-          <p className="text-xs text-[var(--text-muted)] mt-0.5 font-sans">
-            Chapters where your squad made the most mistakes this week.
-          </p>
-        </div>
-
-        {weakChapters.length > 0 ? (
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl shadow-sm dark:shadow-none divide-y divide-[var(--border)] overflow-hidden">
-            {weakChapters.map((ch) => {
-              const count = ch.errorCount || 0;
-              const ratio = Math.min(100, Math.round((count / maxErrors) * 100));
-
-              return (
-                <div
-                  key={ch.chapter}
-                  className="p-3.5 sm:p-4 flex items-center justify-between gap-3"
-                >
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-sm font-semibold font-sans text-[var(--text-primary)] truncate">
-                        {ch.chapter}
-                      </h3>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-[var(--text-muted)] tabular-nums">
-                        {count} {count === 1 ? 'mistake' : 'mistakes'}
-                      </span>
-                      <div className="h-1.5 w-24 sm:w-32 rounded-full bg-[var(--surface-muted)] overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-[var(--accent)] transition-all duration-300"
-                          style={{ width: `${ratio}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
+            {/* CTA Card with Red & Glass Buttons + Join-Code Pill Input + Join Button */}
+            <section className="cw-card space-y-4">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2.5">
                   <button
                     type="button"
-                    onClick={() =>
-                      navigate(`/dashboard/practice?chapter=${encodeURIComponent(ch.chapter)}`)
-                    }
-                    className="px-3 py-1.5 rounded-lg border border-[var(--border)] hover:bg-[var(--surface-muted)] text-xs font-semibold text-[var(--text-primary)] flex items-center gap-1.5 shrink-0 min-h-[36px] transition-colors cursor-pointer"
+                    onClick={() => setCreateCrewTrigger((n) => n + 1)}
+                    {...getCrewBtnHandlers()}
+                    className="cw-btn cw-btn-red"
                   >
-                    <Target size={13} className="text-[var(--accent)]" />
-                    <span>Drill</span>
+                    Create or Join a Squad
                   </button>
+
+                  <Link
+                    to="/captain/apply"
+                    {...getCrewBtnHandlers()}
+                    className="cw-btn cw-btn-glass"
+                  >
+                    Apply as {NAKAMA_CAPTAIN_SINGULAR}
+                  </Link>
                 </div>
-              );
-            })}
+
+                {/* Join-Code Pill Input + Join Button */}
+                <form
+                  onSubmit={handleQuickJoin}
+                  className="flex items-center gap-2 w-full sm:w-auto"
+                >
+                  <input
+                    type="text"
+                    value={quickCodeInput}
+                    onChange={(e) => setQuickCodeInput(e.target.value.toUpperCase())}
+                    placeholder="6-char code (e.g. CRW123)"
+                    maxLength={8}
+                    className="cw-pill-input flex-1 sm:w-44 h-[44px] px-4 text-xs uppercase tracking-wider text-center font-mono font-bold"
+                  />
+                  <button
+                    type="submit"
+                    disabled={quickJoinLoading || !quickCodeInput.trim()}
+                    {...getCrewBtnHandlers(quickJoinLoading || !quickCodeInput.trim())}
+                    className="cw-btn cw-btn-red shrink-0"
+                  >
+                    <span>{quickJoinLoading ? 'Joining...' : 'Join'}</span>
+                    {quickJoinLoading && <ButtonLineLoader />}
+                  </button>
+                </form>
+              </div>
+
+              {quickJoinError && (
+                <div
+                  className="cw-lb-row-me flex items-center gap-2 text-xs font-semibold"
+                  style={{ color: 'var(--cw-red-text)' }}
+                >
+                  <AlertCircle size={15} className="shrink-0" />
+                  <span>{quickJoinError}</span>
+                </div>
+              )}
+            </section>
+
+            {/* National Crew Leaderboard Card */}
+            <div id="leaderboard-crews-view">
+              {user && (
+                <InAppLeaderboard
+                  currentUser={{
+                    uid: user.uid,
+                    email: user.email || '',
+                    displayName: sanitizeStudentDisplayName(
+                      profile?.displayName || user.displayName,
+                      profile?.shortId || user.uid
+                    ),
+                    streak: profile?.streak || 0,
+                    score: profile?.score || 0,
+                    crewId: null,
+                    avatarKey: profile?.avatarKey || null,
+                    avatarVariant: profile?.avatarVariant || null,
+                  }}
+                  onCrewJoined={retry}
+                  externalCreateTrigger={createCrewTrigger}
+                />
+              )}
+            </div>
           </div>
         ) : (
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 text-center shadow-sm dark:shadow-none">
-            <p className="text-sm text-[var(--text-muted)]">
-              No weak topics yet. Practice together and they will show up here.
-            </p>
+          /* ── State B: Active Crew View ────────────────────────────────── */
+          <div className="space-y-5">
+            {/* ── 1. Crew Hero Card ──────────────────────────────────────── */}
+            <section className="cw-card space-y-5 relative">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h1
+                      className="cw-font-doto font-extrabold tracking-tight break-words"
+                      style={{
+                        fontSize: 'clamp(28px, 6.5vw, 37px)',
+                        lineHeight: 1.08,
+                        color: 'var(--cw-text)',
+                      }}
+                    >
+                      {squadName}
+                    </h1>
+
+                    {isLeader && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewSquadName(crew.name || '');
+                          setRenameModalOpen(true);
+                        }}
+                        {...getCrewBtnHandlers()}
+                        className="cw-btn cw-icon-btn cw-btn-glass !w-8 !h-8 !min-w-[32px] !min-h-[32px]"
+                        title="Edit squad name"
+                        aria-label="Edit squad name"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    )}
+
+                    {/* PRO BADGE RULE: Show "PRO ACTIVE" badge ONLY when crew actually has active Pro */}
+                    {crewHasActivePro && (
+                      <span className="cw-chip cw-chip-pro">PRO ACTIVE</span>
+                    )}
+
+                    {crew.isLocked && (
+                      <span className="cw-chip cw-chip-gold">
+                        <Lock size={11} />
+                        <span>LOCKED</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Leader line */}
+                  <p className="text-sm font-medium" style={{ color: 'var(--cw-muted)' }}>
+                    Led by {crew.leaderName || 'Squad Leader'}
+                  </p>
+                </div>
+
+                {/* Top-Right Three-Dot Menu Button & Glass Popup (220px wide, radius 24px) */}
+                <div className="relative shrink-0" ref={moreMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setMoreMenuOpen((v) => !v)}
+                    {...getCrewBtnHandlers()}
+                    className="cw-btn cw-icon-btn cw-btn-glass"
+                    aria-label="More squad options"
+                    aria-expanded={moreMenuOpen}
+                  >
+                    <MoreVertical size={18} strokeWidth={2} />
+                  </button>
+
+                  {moreMenuOpen && (
+                    <div
+                      role="menu"
+                      className="cw-menu-popup absolute right-0 mt-2 z-50 space-y-0.5"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          handleShareSquad();
+                        }}
+                        className="cw-menu-row"
+                      >
+                        <Share2 size={15} style={{ color: 'var(--cw-muted)' }} />
+                        <span>Share crew</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          handleCopyCode();
+                        }}
+                        className="cw-menu-row"
+                      >
+                        <Copy size={15} style={{ color: 'var(--cw-muted)' }} />
+                        <span>Copy invite code</span>
+                      </button>
+
+                      {isLeader && (
+                        <>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setMoreMenuOpen(false);
+                              setNewSquadName(crew.name || '');
+                              setRenameModalOpen(true);
+                            }}
+                            className="cw-menu-row"
+                          >
+                            <Pencil size={15} style={{ color: 'var(--cw-muted)' }} />
+                            <span>Edit crew name</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => {
+                              setMoreMenuOpen(false);
+                              toggleLock();
+                            }}
+                            className="cw-menu-row"
+                          >
+                            {crew.isLocked ? (
+                              <>
+                                <Unlock size={15} style={{ color: 'var(--cw-muted)' }} />
+                                <span>Unlock invites</span>
+                              </>
+                            ) : (
+                              <>
+                                <Lock size={15} style={{ color: 'var(--cw-muted)' }} />
+                                <span>Lock invites</span>
+                              </>
+                            )}
+                          </button>
+
+                          {members.length > 1 && (
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setMoreMenuOpen(false);
+                                setTransferModalOpen(true);
+                              }}
+                              className="cw-menu-row"
+                            >
+                              <Crown size={15} style={{ color: 'var(--cw-muted)' }} />
+                              <span>Transfer leadership</span>
+                            </button>
+                          )}
+                        </>
+                      )}
+
+                      <div
+                        className="my-1"
+                        style={{ borderTop: '1px solid var(--cw-line)' }}
+                      />
+
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          setLeaveConfirmOpen(true);
+                        }}
+                        className="cw-menu-row cw-menu-row-danger"
+                      >
+                        <LogOut size={15} />
+                        <span>Leave crew</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Member count with 34px avatars in card2 */}
+              <div className="flex items-center gap-3">
+                <div className="flex -space-x-2 overflow-hidden py-0.5">
+                  {members.slice(0, 5).map((m) => (
+                    <button
+                      key={m.uid}
+                      type="button"
+                      onClick={() => openProfile(m.uid)}
+                      className="cw-avatar-34 relative cursor-pointer transition-transform hover:scale-105"
+                      title={sanitizeStudentDisplayName(m.displayName, m.uid)}
+                    >
+                      <BoardlyAvatar
+                        name={m.displayName}
+                        size={34}
+                        avatarKey={m.avatarKey}
+                        avatarVariant={m.avatarVariant}
+                        frame={m.equipped?.frame}
+                      />
+                    </button>
+                  ))}
+                </div>
+                <span className="text-xs sm:text-sm font-semibold" style={{ color: 'var(--cw-muted)' }}>
+                  {memberCount} of {maxMembers} members
+                </span>
+              </div>
+
+              {/* Red "Share crew" button + Glass invite-code button with code in monospace */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={handleShareSquad}
+                  {...getCrewBtnHandlers()}
+                  className="cw-btn cw-btn-red sm:flex-1"
+                >
+                  <Share2 size={16} strokeWidth={2.2} />
+                  <span>Share crew</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCopyCode}
+                  {...getCrewBtnHandlers()}
+                  className="cw-btn cw-btn-glass justify-between sm:justify-center"
+                  title="Tap to copy invite code"
+                >
+                  <span className="text-xs font-medium" style={{ color: 'var(--cw-muted)' }}>
+                    Code:
+                  </span>
+                  <span
+                    className="font-mono font-bold tracking-widest text-sm"
+                    style={{ color: 'var(--cw-text)' }}
+                  >
+                    {crew.code}
+                  </span>
+                  {copiedCode ? (
+                    <Check size={15} strokeWidth={2.5} style={{ color: 'var(--cw-green)' }} />
+                  ) : (
+                    <Copy size={15} style={{ color: 'var(--cw-muted)' }} />
+                  )}
+                </button>
+              </div>
+            </section>
+
+            {/* ── 2. Weekly Goal Card & Streak Card ─────────────────────── */}
+            <section className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* Weekly Goal Card */}
+              <div className="cw-card flex items-center gap-5">
+                <CrewGoalProgressRing
+                  value={currentQuestions}
+                  max={goalQuestions}
+                  size={92}
+                  strokeWidth={9}
+                />
+                <div className="flex flex-col justify-center min-w-0">
+                  <span
+                    className="text-xs font-bold uppercase tracking-wider"
+                    style={{ color: 'var(--cw-muted)' }}
+                  >
+                    Weekly Squad Goal
+                  </span>
+                  <div
+                    className="cw-font-doto text-2xl sm:text-[26px] font-extrabold tabular-nums mt-1 leading-tight"
+                    style={{ color: 'var(--cw-text)' }}
+                  >
+                    {currentQuestions} / {goalQuestions} MCQs
+                  </div>
+                  <p
+                    className="text-xs mt-1 leading-snug"
+                    style={{ color: 'var(--cw-muted)' }}
+                  >
+                    Solved by your squad this week
+                  </p>
+                </div>
+              </div>
+
+              {/* Streak Card */}
+              <div className="cw-card flex flex-col justify-between gap-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-baseline gap-2">
+                    <Flame
+                      size={22}
+                      className="shrink-0 self-center"
+                      style={{ color: 'var(--cw-red-text)' }}
+                    />
+                    <span
+                      className="cw-font-doto text-3xl sm:text-4xl font-extrabold tabular-nums leading-none"
+                      style={{ color: 'var(--cw-red-text)' }}
+                    >
+                      {streakCount}
+                    </span>
+                    <span
+                      className="cw-font-doto text-sm font-bold"
+                      style={{ color: 'var(--cw-text)' }}
+                    >
+                      {streakCount === 1 ? 'day' : 'days'}
+                    </span>
+                  </div>
+                  <span
+                    className="text-xs font-bold uppercase tracking-wider"
+                    style={{ color: 'var(--cw-muted)' }}
+                  >
+                    Squad Streak
+                  </span>
+                </div>
+
+                {/* Mon-Sun Row of 30px Circles */}
+                <div className="flex items-center justify-between gap-1.5">
+                  {weekDays.map((day, idx) => (
+                    <div
+                      key={day.label}
+                      className="flex flex-col items-center gap-1.5 flex-1 min-w-0"
+                    >
+                      <span
+                        className="text-[11px] font-semibold truncate"
+                        style={{
+                          color: day.isToday ? 'var(--cw-red-text)' : 'var(--cw-muted)',
+                        }}
+                      >
+                        {day.label}
+                      </span>
+                      <div
+                        className={
+                          day.isCompleted
+                            ? 'cw-streak-circle-done'
+                            : 'cw-streak-circle-todo'
+                        }
+                      >
+                        {day.isCompleted ? (
+                          <Check size={14} strokeWidth={3} />
+                        ) : (
+                          idx + 1
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <p
+                  className="text-xs leading-relaxed"
+                  style={{ color: 'var(--cw-muted)' }}
+                >
+                  The streak continues when at least one member practices each day.
+                </p>
+              </div>
+            </section>
+
+            {/* ── 3. Leaderboard Card ───────────────────────────────────── */}
+            <section className="cw-card space-y-4">
+              <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                <h2
+                  className="cw-font-doto text-xl font-extrabold"
+                  style={{ color: 'var(--cw-text)' }}
+                >
+                  Leaderboard
+                </h2>
+                <span className="text-xs font-semibold" style={{ color: 'var(--cw-muted)' }}>
+                  {memberCount} of {maxMembers} members
+                </span>
+              </div>
+
+              {/* Weekly MCQs | Streaks Slider */}
+              <CrewGlassSlider
+                options={LEADERBOARD_SLIDER_OPTIONS}
+                value={leaderboardTab}
+                onChange={setLeaderboardTab}
+                ariaLabel="Crew leaderboard metric"
+                trackVariant="card2"
+              />
+
+              {/* Member Rows */}
+              <div className="space-y-2.5">
+                {allZeroWeekly && leaderboardTab === 'weekly' ? (
+                  <div
+                    className="cw-lb-row text-center text-sm py-8"
+                    style={{ color: 'var(--cw-muted)' }}
+                  >
+                    No MCQs solved yet this week. Be the first!
+                  </div>
+                ) : (
+                  sortedMembers.map((m, idx) => {
+                    const rank = idx + 1;
+                    const isMemLeader = m.uid === crew.leaderId;
+                    const isCurrentUser = Boolean(user && m.uid === user.uid);
+
+                    return (
+                      <div
+                        key={m.uid}
+                        onClick={() => openProfile(m.uid)}
+                        className={`${
+                          isCurrentUser ? 'cw-lb-row-me' : 'cw-lb-row'
+                        } flex items-center justify-between gap-3 cursor-pointer`}
+                        title={`View profile of ${m.displayName}`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          {/* 28px Gold Rank Badge with dark text */}
+                          <span className="cw-rank-badge shrink-0">{rank}</span>
+
+                          {/* 34px Circle Avatar in card2 */}
+                          <div className="cw-avatar-34 shrink-0">
+                            <BoardlyAvatar
+                              name={m.displayName}
+                              size={34}
+                              avatarKey={m.avatarKey}
+                              avatarVariant={m.avatarVariant}
+                              frame={m.equipped?.frame}
+                            />
+                          </div>
+
+                          {/* Nickname & Chips (Leader, Pro, You) */}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span
+                                className="text-sm font-bold truncate"
+                                style={{ color: 'var(--cw-text)' }}
+                              >
+                                {sanitizeStudentDisplayName(m.displayName, m.uid)}
+                              </span>
+
+                              {isMemLeader && (
+                                <span className="cw-chip cw-chip-leader">
+                                  Leader
+                                </span>
+                              )}
+
+                              {/* PRO BADGE RULE: Show Pro chip ONLY when crew has active Pro AND member is Pro */}
+                              {crewHasActivePro && m.isPro && (
+                                <span className="cw-chip cw-chip-pro">Pro</span>
+                              )}
+
+                              {isCurrentUser && (
+                                <span className="cw-chip cw-chip-you">You</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Metric Value on Right in Doto */}
+                        <div className="text-right shrink-0">
+                          <span
+                            className="cw-font-doto text-sm sm:text-base font-extrabold tabular-nums"
+                            style={{ color: 'var(--cw-text)' }}
+                          >
+                            {leaderboardTab === 'weekly'
+                              ? m.weeklyCount !== undefined
+                                ? `${m.weeklyCount} MCQs`
+                                : '–'
+                              : `${m.streakCount} ${
+                                  m.streakCount === 1 ? 'day' : 'days'
+                                }`}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </section>
+
+            {/* ── 4. Squad Weak Topics Card ─────────────────────────────── */}
+            <section className="cw-card space-y-4">
+              <div>
+                <h2
+                  className="cw-font-doto text-xl font-extrabold"
+                  style={{ color: 'var(--cw-text)' }}
+                >
+                  Squad weak topics
+                </h2>
+                <p className="text-xs mt-1" style={{ color: 'var(--cw-muted)' }}>
+                  Chapters where your squad made the most mistakes this week.
+                </p>
+              </div>
+
+              {weakChapters.length > 0 ? (
+                <div className="space-y-2.5">
+                  {weakChapters.map((ch) => {
+                    const count = ch.errorCount || 0;
+                    const ratio = Math.min(100, Math.round((count / maxErrors) * 100));
+
+                    return (
+                      <div
+                        key={ch.chapter}
+                        className="cw-lb-row flex items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          <h3
+                            className="text-sm font-bold truncate"
+                            style={{ color: 'var(--cw-text)' }}
+                          >
+                            {ch.chapter}
+                          </h3>
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className="cw-font-doto text-xs font-bold tabular-nums"
+                              style={{ color: 'var(--cw-muted)' }}
+                            >
+                              {count} {count === 1 ? 'mistake' : 'mistakes'}
+                            </span>
+                            <div
+                              className="h-2 w-24 sm:w-32 rounded-full overflow-hidden"
+                              style={{ backgroundColor: 'var(--cw-card)' }}
+                            >
+                              <div
+                                className="h-full rounded-full transition-all duration-300"
+                                style={{
+                                  width: `${ratio}%`,
+                                  backgroundColor: 'var(--cw-red)',
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate(
+                              `/dashboard/practice?chapter=${encodeURIComponent(
+                                ch.chapter
+                              )}`
+                            )
+                          }
+                          {...getCrewBtnHandlers()}
+                          className="cw-btn cw-btn-glass !py-2 !px-4 !text-xs shrink-0"
+                        >
+                          <Target size={14} style={{ color: 'var(--cw-red-text)' }} />
+                          <span>Drill</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                /* Bordered rounded empty state in muted text */
+                <div
+                  className="rounded-[22px] p-6 text-center text-sm"
+                  style={{
+                    backgroundColor: 'var(--cw-card2)',
+                    border: '1px dashed var(--cw-line)',
+                    color: 'var(--cw-muted)',
+                  }}
+                >
+                  No weak topics yet. Practice together and they will show up here.
+                </div>
+              )}
+            </section>
           </div>
         )}
-      </section>
+      </div>
 
-      {/* ── Modal: Leave Confirmation ─────────────────────────────────── */}
+      {/* ─── FLOATING 6-ICON BOTTOM DOCK ────────────────────────────────── */}
+      <CrewBottomDock />
+
+      {/* ─── DIALOG: LEAVE CREW (Radius 32px Glass Card over Blurred Backdrop) ─ */}
       {leaveConfirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md">
-          <div className="w-full max-w-sm rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-5 shadow-2xl space-y-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="leave-crew-dialog-title"
+          className="cw-dialog-backdrop fixed inset-0 z-[120] flex items-center justify-center p-4"
+        >
+          <div className="cw-dialog-card w-full max-w-sm text-center space-y-4">
+            {/* Red circular icon on top */}
+            <div
+              className="w-12 h-12 rounded-full mx-auto flex items-center justify-center"
+              style={{
+                backgroundColor: 'color-mix(in srgb, var(--cw-red) 24%, transparent)',
+                boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--cw-red) 50%, transparent)',
+                color: '#ffffff',
+              }}
+            >
+              <LogOut size={20} strokeWidth={2.2} />
+            </div>
+
             <div className="space-y-1.5">
-              <h3 className="text-lg font-bold font-sans text-[var(--text-primary)]">
-                Leave this squad?
+              <h3
+                id="leave-crew-dialog-title"
+                className="cw-font-doto text-xl font-extrabold"
+                style={{ color: 'var(--cw-text)' }}
+              >
+                Leave this crew?
               </h3>
-              <p className="text-xs text-[var(--text-muted)] leading-relaxed font-sans">
+              <p className="text-xs sm:text-sm leading-relaxed" style={{ color: 'var(--cw-muted)' }}>
                 Leave this squad? You can rejoin with the invite code.
               </p>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="grid grid-cols-2 gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => setLeaveConfirmOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold border border-[var(--border)] hover:bg-[var(--surface-muted)] text-[var(--text-primary)] min-h-[44px] transition-colors cursor-pointer"
+                {...getCrewBtnHandlers()}
+                className="cw-btn cw-btn-glass w-full"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleConfirmLeave}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-red-600 hover:bg-red-700 text-white min-h-[44px] transition-colors cursor-pointer"
+                {...getCrewBtnHandlers()}
+                className="cw-btn cw-btn-red w-full"
               >
                 Leave
               </button>
@@ -1069,27 +1227,41 @@ export function CrewDashboardPage() {
         </div>
       )}
 
-      {/* ── Modal: Rename Squad (Leader Only) ─────────────────────────── */}
+      {/* ─── DIALOG: RENAME CREW (Leader Only) ──────────────────────────── */}
       {renameModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md">
-          <div className="w-full max-w-sm rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-5 shadow-2xl space-y-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="rename-crew-dialog-title"
+          className="cw-dialog-backdrop fixed inset-0 z-[120] flex items-center justify-center p-4"
+        >
+          <div className="cw-dialog-card w-full max-w-sm space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold font-sans text-[var(--text-primary)]">
-                Edit Squad Name
+              <h3
+                id="rename-crew-dialog-title"
+                className="cw-font-doto text-lg font-extrabold"
+                style={{ color: 'var(--cw-text)' }}
+              >
+                Edit Crew Name
               </h3>
               <button
                 type="button"
                 onClick={() => setRenameModalOpen(false)}
-                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                {...getCrewBtnHandlers()}
+                className="cw-btn cw-icon-btn cw-btn-glass !w-9 !h-9 !min-w-[36px] !min-h-[36px]"
+                aria-label="Close"
               >
-                <X size={18} />
+                <X size={16} />
               </button>
             </div>
 
-            <form onSubmit={handleRenameSubmit} className="space-y-3">
+            <form onSubmit={handleRenameSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs text-[var(--text-muted)] mb-1 font-medium">
-                  Squad Name (2–50 characters)
+                <label
+                  className="block text-xs font-semibold mb-1.5"
+                  style={{ color: 'var(--cw-muted)' }}
+                >
+                  Crew Name (2–50 characters)
                 </label>
                 <input
                   type="text"
@@ -1098,28 +1270,33 @@ export function CrewDashboardPage() {
                   value={newSquadName}
                   onChange={(e) => setNewSquadName(e.target.value)}
                   placeholder="e.g. Apex Scholars"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-muted)] border border-[var(--border)] text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] min-h-[44px]"
+                  className="cw-pill-input w-full h-11 px-4 text-sm font-medium"
                 />
               </div>
 
               {renameError && (
-                <div className="p-2.5 rounded-lg bg-red-500/10 border border-[var(--accent)]/30 text-[var(--accent)] text-xs">
+                <div
+                  className="cw-lb-row-me text-xs font-semibold"
+                  style={{ color: 'var(--cw-red-text)' }}
+                >
                   {renameError}
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2 pt-2">
+              <div className="grid grid-cols-2 gap-3 pt-1">
                 <button
                   type="button"
                   onClick={() => setRenameModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold border border-[var(--border)] hover:bg-[var(--surface-muted)] text-[var(--text-primary)] min-h-[44px] transition-colors cursor-pointer"
+                  {...getCrewBtnHandlers()}
+                  className="cw-btn cw-btn-glass w-full"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={renameLoading || !newSquadName.trim()}
-                  className="relative overflow-hidden px-4 py-2 rounded-xl text-xs font-semibold bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px] transition-colors cursor-pointer"
+                  {...getCrewBtnHandlers(renameLoading || !newSquadName.trim())}
+                  className="cw-btn cw-btn-red w-full"
                 >
                   <span>{renameLoading ? 'Saving...' : 'Save Name'}</span>
                   {renameLoading && <ButtonLineLoader />}
@@ -1130,31 +1307,42 @@ export function CrewDashboardPage() {
         </div>
       )}
 
-      {/* ── Modal: Transfer Leadership (Leader Only) ───────────────────── */}
+      {/* ─── DIALOG: TRANSFER LEADERSHIP (Leader Only) ──────────────────── */}
       {transferModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md">
-          <div className="w-full max-w-sm rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-5 shadow-2xl space-y-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="transfer-leader-dialog-title"
+          className="cw-dialog-backdrop fixed inset-0 z-[120] flex items-center justify-center p-4"
+        >
+          <div className="cw-dialog-card w-full max-w-sm space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold font-sans text-[var(--text-primary)]">
+              <h3
+                id="transfer-leader-dialog-title"
+                className="cw-font-doto text-lg font-extrabold"
+                style={{ color: 'var(--cw-text)' }}
+              >
                 Transfer Leadership
               </h3>
               <button
                 type="button"
                 onClick={() => setTransferModalOpen(false)}
-                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                {...getCrewBtnHandlers()}
+                className="cw-btn cw-icon-btn cw-btn-glass !w-9 !h-9 !min-w-[36px] !min-h-[36px]"
+                aria-label="Close"
               >
-                <X size={18} />
+                <X size={16} />
               </button>
             </div>
 
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-              Select a squad member to become the new squad leader.
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--cw-muted)' }}>
+              Select a crew member to become the new leader.
             </p>
 
             <select
               value={selectedNewLeader}
               onChange={(e) => setSelectedNewLeader(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl bg-[var(--surface-muted)] border border-[var(--border)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] min-h-[44px]"
+              className="cw-pill-input w-full h-11 px-4 text-xs font-semibold"
             >
               <option value="">Select a member...</option>
               {members
@@ -1166,11 +1354,12 @@ export function CrewDashboardPage() {
                 ))}
             </select>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="grid grid-cols-2 gap-3 pt-1">
               <button
                 type="button"
                 onClick={() => setTransferModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold border border-[var(--border)] hover:bg-[var(--surface-muted)] text-[var(--text-primary)] min-h-[44px] transition-colors cursor-pointer"
+                {...getCrewBtnHandlers()}
+                className="cw-btn cw-btn-glass w-full"
               >
                 Cancel
               </button>
@@ -1178,21 +1367,14 @@ export function CrewDashboardPage() {
                 type="button"
                 disabled={transferLoading || !selectedNewLeader}
                 onClick={handleConfirmTransfer}
-                className="relative overflow-hidden px-4 py-2 rounded-xl text-xs font-semibold bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white disabled:opacity-60 disabled:cursor-not-allowed min-h-[44px] transition-colors cursor-pointer"
+                {...getCrewBtnHandlers(transferLoading || !selectedNewLeader)}
+                className="cw-btn cw-btn-red w-full"
               >
                 <span>{transferLoading ? 'Transferring...' : 'Confirm'}</span>
                 {transferLoading && <ButtonLineLoader />}
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* ── Toast Notification ────────────────────────────────────────── */}
-      {toastMessage && (
-        <div className="fixed bottom-20 inset-x-0 mx-auto w-fit max-w-[90vw] px-4 py-2.5 rounded-xl floating-blur backdrop-blur-lg border border-[var(--border)] text-[var(--text-primary)] text-xs font-semibold shadow-lg z-50 flex items-center gap-2 animate-fade-in">
-          <Check size={14} className="text-emerald-400 dark:text-emerald-600 shrink-0" />
-          <span>{toastMessage}</span>
         </div>
       )}
     </div>

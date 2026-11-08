@@ -333,7 +333,7 @@ function AppInner() {
           <Route path="results/:attemptId" element={<TestResultPage />} />
           <Route path="certificates" element={<MyCertificatesPage />} />
           <Route path="store" element={<StorePage />} />
-          <Route path="rewards" element={<RewardsPage />} />
+          <Route path="rewards" element={<Navigate to="/rewards" replace />} />
           <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />
           <Route path="arena" element={<ArenaDashboardPage />} />
           <Route path="ai-tutor" element={<AiTutorPage />} />
