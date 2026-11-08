@@ -65,3 +65,5 @@ Disallow: /410
 Disallow: /api/
 
 Sitemap: https://boardly.cfd/sitemap.xml
+Sitemap: https://boardly.cfd/sitemap-posts.xml
+

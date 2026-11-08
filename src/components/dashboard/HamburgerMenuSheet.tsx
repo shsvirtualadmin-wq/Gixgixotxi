@@ -88,7 +88,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   showCoinBalanceInStore = false,
 }) => {
   const location = useLocation();
-  const { user, profileLoading, isAdmin } = useAuth();
+  const { user, profileLoading, isAdmin, isGuest } = useAuth();
   const { profile } = useUserProfile();
   const effectivePlan = useEffectivePlan();
   const { balance: kobanBalance, equipped } = useWallet();
@@ -122,10 +122,10 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         profile?.isAmbassador)
   );
 
-  const isPro = Boolean(effectivePlan.isUnlimited || isConfirmedAdmin);
+  const isPro = Boolean((effectivePlan.isUnlimited || isConfirmedAdmin) && !isGuest);
 
   // Single Role/Plan badge (shown ONCE in the profile card)
-  const singleBadgeLabel = !user
+  const singleBadgeLabel = !user || isGuest
     ? 'Guest'
     : isConfirmedSuperAdmin
     ? 'Super Admin'

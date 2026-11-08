@@ -18,6 +18,9 @@ import {
   DEFAULT_FIREBASE_PROJECT_ID,
   DEFAULT_FIRESTORE_DATABASE_ID,
   FirestoreRestAdapter,
+  authenticateD1GuestSession,
+  computeGuestTokenSha256Hex,
+  extractGuestSessionTokenFromRequest,
   getSharedLocalD1Database,
   isD1UserSessionVerified,
   parseServiceAccountFromEnv,
@@ -29,6 +32,10 @@ import {
   type ServiceAccountCredentials,
   type VerifiedFirebaseToken,
 } from '../../_utils/firestoreRestAdmin';
+import {
+  areUsernamesTooSimilar,
+  validateUsernameFormat,
+} from '../../../src/utils/usernameValidation';
 
 export const CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 export const MAX_CODE_ATTEMPTS = 5;
@@ -36,6 +43,13 @@ export const RESEND_COOLDOWN_MS = 60 * 1000; // 60 seconds
 export const HOURLY_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 export const MAX_SENDS_PER_HOUR_PER_EMAIL = 5;
 export const MAX_SENDS_PER_HOUR_PER_IP = 5;
+
+export const GUEST_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+export const GUEST_COOKIE_MAX_AGE_SEC = 30 * 24 * 60 * 60; // 2,592,000 seconds
+export const MAX_GUEST_CREATIONS_PER_HOUR_PER_IP = 5;
+export const MAX_GUEST_CREATIONS_PER_DAY_PER_IP = 15;
+export const MAX_GUEST_CREATIONS_PER_HOUR_PER_DEVICE = 3;
+export const MAX_GUEST_CREATIONS_PER_DAY_PER_DEVICE = 8;
 
 export interface AuthWorkerEnv extends RewardsEnv {
   OTP_HMAC_SECRET?: string;
@@ -237,6 +251,66 @@ export async function ensureEmailVerificationD1Schema(db: RewardsD1Database): Pr
       db.prepare(
         `CREATE INDEX IF NOT EXISTS idx_evsl_ip_created ON email_verification_send_logs (ip_hash, created_at DESC)`
       ),
+      db.prepare(`CREATE TABLE IF NOT EXISTS user_usernames (
+        username_lower TEXT PRIMARY KEY,
+        username_display TEXT NOT NULL,
+        uid TEXT NOT NULL UNIQUE,
+        account_type TEXT NOT NULL DEFAULT 'registered',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_usernames_lower ON user_usernames(username_lower)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_user_usernames_uid ON user_usernames(uid)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS guest_accounts (
+        uid TEXT PRIMARY KEY,
+        username TEXT NOT NULL,
+        username_lower TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        short_id TEXT NOT NULL,
+        account_type TEXT NOT NULL DEFAULT 'guest',
+        is_guest INTEGER NOT NULL DEFAULT 1,
+        email TEXT DEFAULT '',
+        plan TEXT NOT NULL DEFAULT 'free',
+        role TEXT NOT NULL DEFAULT 'student',
+        upgraded_to_uid TEXT DEFAULT NULL,
+        upgraded_at INTEGER DEFAULT NULL,
+        target_university TEXT DEFAULT 'General Prep',
+        tests_completed INTEGER NOT NULL DEFAULT 0,
+        total_questions_solved INTEGER NOT NULL DEFAULT 0,
+        streak INTEGER NOT NULL DEFAULT 0,
+        stats_json TEXT NOT NULL DEFAULT '{}',
+        attempts_json TEXT NOT NULL DEFAULT '[]',
+        ip_hash TEXT NOT NULL DEFAULT '',
+        device_id_hash TEXT NOT NULL DEFAULT '',
+        is_suspended INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        last_active_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_guest_accounts_username_lower ON guest_accounts(username_lower)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_guest_accounts_created_at ON guest_accounts(created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_guest_accounts_last_active ON guest_accounts(last_active_at DESC)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS guest_sessions (
+        session_id TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL UNIQUE,
+        uid TEXT NOT NULL,
+        ip_hash TEXT NOT NULL DEFAULT '',
+        device_id_hash TEXT NOT NULL DEFAULT '',
+        user_agent TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        last_active_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        revoked INTEGER NOT NULL DEFAULT 0
+      )`),
+      db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_guest_sessions_token_hash ON guest_sessions(token_hash)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_guest_sessions_uid ON guest_sessions(uid)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS guest_creation_rate_limits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        identifier_hash TEXT NOT NULL,
+        identifier_type TEXT NOT NULL,
+        uid TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_guest_rate_limits_lookup ON guest_creation_rate_limits(identifier_hash, identifier_type, created_at DESC)`),
     ]);
   } catch {
     // Tables already initialized
@@ -428,6 +502,111 @@ async function syncEmailVerifiedToFirebaseAndFirestore(params: {
   }
 }
 
+// ─── Guest & Username Helpers ─────────────────────────────────────────────────
+
+function buildGuestSessionCookieHeader(rawToken: string, isHttps: boolean, clear = false): string {
+  const maxAge = clear ? 0 : GUEST_COOKIE_MAX_AGE_SEC;
+  const val = clear ? '' : encodeURIComponent(rawToken);
+  const securePart = isHttps ? '; Secure' : '';
+  return `boardly_guest_session=${val}; Path=/; Max-Age=${maxAge}; HttpOnly${securePart}; SameSite=Lax`;
+}
+
+async function checkD1UsernameAvailability(params: {
+  db: RewardsD1Database;
+  rawUsername: string;
+  excludeUid?: string | null;
+}): Promise<{
+  available: boolean;
+  clean: string;
+  normalized: string;
+  reason?: string;
+  code?: string;
+}> {
+  const { db, rawUsername, excludeUid } = params;
+  const formatCheck = validateUsernameFormat(rawUsername);
+  if (!formatCheck.valid) {
+    return {
+      available: false,
+      clean: formatCheck.clean,
+      normalized: formatCheck.normalized,
+      reason: formatCheck.reason || 'Invalid username format.',
+      code: 'INVALID_USERNAME_FORMAT',
+    };
+  }
+
+  const normalized = formatCheck.normalized; // lowercase
+  const clean = formatCheck.clean;
+
+  // 1. Exact case-insensitive lookup in `user_usernames`
+  const existingRow = await db
+    .prepare(
+      'SELECT username_lower, username_display, uid, account_type FROM user_usernames WHERE username_lower = ?1 LIMIT 1'
+    )
+    .bind(normalized)
+    .first<{
+      username_lower: string;
+      username_display: string;
+      uid: string;
+      account_type: string;
+    }>();
+
+  if (existingRow && (!excludeUid || existingRow.uid !== excludeUid)) {
+    return {
+      available: false,
+      clean,
+      normalized,
+      reason: 'This username is already taken.',
+      code: 'USERNAME_TAKEN',
+    };
+  }
+
+  // 2. Check `guest_accounts` directly as well
+  const existingGuest = await db
+    .prepare('SELECT uid, username_lower FROM guest_accounts WHERE username_lower = ?1 LIMIT 1')
+    .bind(normalized)
+    .first<{ uid: string; username_lower: string }>();
+
+  if (existingGuest && (!excludeUid || existingGuest.uid !== excludeUid)) {
+    return {
+      available: false,
+      clean,
+      normalized,
+      reason: 'This username is already taken.',
+      code: 'USERNAME_TAKEN',
+    };
+  }
+
+  // 3. Check lookalike / confusable similarity against existing usernames in `user_usernames`
+  try {
+    const allRowsRes = await db
+      .prepare('SELECT username_lower, uid FROM user_usernames')
+      .all<{ username_lower: string; uid: string }>();
+    for (const row of allRowsRes.results || []) {
+      if (excludeUid && row.uid === excludeUid) continue;
+      if (areUsernamesTooSimilar(normalized, row.username_lower)) {
+        return {
+          available: false,
+          clean,
+          normalized,
+          reason:
+            row.username_lower === normalized
+              ? 'This username is already taken.'
+              : 'This username is too similar to an existing username.',
+          code: 'USERNAME_TAKEN_OR_SIMILAR',
+        };
+      }
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  return {
+    available: true,
+    clean,
+    normalized,
+  };
+}
+
 // ─── Request Handler ──────────────────────────────────────────────────────────
 
 export interface HandleAuthApiRequestOptions {
@@ -442,7 +621,11 @@ export interface HandleAuthApiRequestOptions {
   nowMsOverride?: number;
 }
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(
+  body: unknown,
+  status = 200,
+  extraHeaders?: Record<string, string>
+): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -450,7 +633,8 @@ function jsonResponse(body: unknown, status = 200): Response {
       'Cache-Control': 'no-store',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Guest-Session, X-Device-Id',
+      ...(extraHeaders || {}),
     },
   });
 }
@@ -467,18 +651,773 @@ export async function handleAuthApiRequest(
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Guest-Session, X-Device-Id',
       },
     });
   }
 
   const url = new URL(request.url);
+  const isHttps = url.protocol === 'https:' || request.headers.get('X-Forwarded-Proto') === 'https';
   const subPath = url.pathname.replace(/^\/api\/auth\/?/, '').replace(/\/+$/, '');
 
   const db: RewardsD1Database = opts.dbOverride || env?.DB || getSharedLocalD1Database();
   await ensureEmailVerificationD1Schema(db);
 
   const secret = getHmacSecret(env);
+
+  // ─── A. GET / POST /api/auth/username-check (Live & Server-Side Availability Check) ───
+  if (subPath === 'username-check' && (request.method === 'GET' || request.method === 'POST')) {
+    let rawUsername = url.searchParams.get('username') || '';
+    let excludeUid = url.searchParams.get('excludeUid') || '';
+    if (request.method === 'POST') {
+      try {
+        const body = (await request.json()) as { username?: string; excludeUid?: string };
+        if (body.username !== undefined) rawUsername = String(body.username);
+        if (body.excludeUid !== undefined) excludeUid = String(body.excludeUid);
+      } catch {
+        // Ignore JSON parse error
+      }
+    }
+
+    const result = await checkD1UsernameAvailability({
+      db,
+      rawUsername,
+      excludeUid: excludeUid || null,
+    });
+
+    return jsonResponse({
+      ok: true,
+      available: result.available,
+      username: result.clean,
+      normalized: result.normalized,
+      reason: result.reason || null,
+      code: result.code || null,
+    });
+  }
+
+  // ─── B. POST /api/auth/guest (Create Guest Account & Session Atomically) ───
+  if ((subPath === 'guest' || subPath === 'guest/create') && request.method === 'POST') {
+    let body: { username?: string; deviceId?: string; targetUniversity?: string } = {};
+    try {
+      body = (await request.json()) as {
+        username?: string;
+        deviceId?: string;
+        targetUniversity?: string;
+      };
+    } catch {
+      return jsonResponse(
+        { ok: false, error: 'Invalid request body.', code: 'INVALID_JSON' },
+        400
+      );
+    }
+
+    const rawUsername = String(body.username || '').trim();
+    const availability = await checkD1UsernameAvailability({ db, rawUsername });
+    if (!availability.available) {
+      const status =
+        availability.code === 'USERNAME_TAKEN' || availability.code === 'USERNAME_TAKEN_OR_SIMILAR'
+          ? 409
+          : 400;
+      return jsonResponse(
+        {
+          ok: false,
+          available: false,
+          error: availability.reason || 'Username is not available.',
+          code: availability.code || 'USERNAME_UNAVAILABLE',
+        },
+        status
+      );
+    }
+
+    // Abuse protection: rate limit guest creation per IP and per device
+    const clientIp = extractClientIp(request);
+    const rawDeviceId =
+      String(body.deviceId || request.headers.get('X-Device-Id') || '').trim() || clientIp;
+    const ipHash = await hashIdentifier(secret, 'guest_ip', clientIp);
+    const deviceHash = await hashIdentifier(secret, 'guest_device', rawDeviceId);
+
+    const oneHourAgo = nowMs - HOURLY_WINDOW_MS;
+    const oneDayAgo = nowMs - 24 * HOURLY_WINDOW_MS;
+
+    const [ipHourRow, ipDayRow, devHourRow, devDayRow] = await Promise.all([
+      db
+        .prepare(
+          'SELECT COUNT(*) as cnt FROM guest_creation_rate_limits WHERE identifier_hash = ?1 AND identifier_type = ?2 AND created_at >= ?3'
+        )
+        .bind(ipHash, 'ip', oneHourAgo)
+        .first<{ cnt: number }>(),
+      db
+        .prepare(
+          'SELECT COUNT(*) as cnt FROM guest_creation_rate_limits WHERE identifier_hash = ?1 AND identifier_type = ?2 AND created_at >= ?3'
+        )
+        .bind(ipHash, 'ip', oneDayAgo)
+        .first<{ cnt: number }>(),
+      db
+        .prepare(
+          'SELECT COUNT(*) as cnt FROM guest_creation_rate_limits WHERE identifier_hash = ?1 AND identifier_type = ?2 AND created_at >= ?3'
+        )
+        .bind(deviceHash, 'device', oneHourAgo)
+        .first<{ cnt: number }>(),
+      db
+        .prepare(
+          'SELECT COUNT(*) as cnt FROM guest_creation_rate_limits WHERE identifier_hash = ?1 AND identifier_type = ?2 AND created_at >= ?3'
+        )
+        .bind(deviceHash, 'device', oneDayAgo)
+        .first<{ cnt: number }>(),
+    ]);
+
+    if (
+      Number(ipHourRow?.cnt || 0) >= MAX_GUEST_CREATIONS_PER_HOUR_PER_IP ||
+      Number(ipDayRow?.cnt || 0) >= MAX_GUEST_CREATIONS_PER_DAY_PER_IP ||
+      Number(devHourRow?.cnt || 0) >= MAX_GUEST_CREATIONS_PER_HOUR_PER_DEVICE ||
+      Number(devDayRow?.cnt || 0) >= MAX_GUEST_CREATIONS_PER_DAY_PER_DEVICE
+    ) {
+      return jsonResponse(
+        {
+          ok: false,
+          error:
+            'Too many guest accounts created recently from this device or network. Please sign in with an existing account or try again later.',
+          code: 'GUEST_RATE_LIMITED',
+        },
+        429
+      );
+    }
+
+    const randomHex = generateFallbackLinkToken();
+    const guestUid = `guest_${nowMs}_${randomHex.slice(0, 10)}`;
+    const shortId = randomHex.slice(10, 16).toUpperCase();
+    const cleanUsername = availability.clean;
+    const normalizedUsername = availability.normalized;
+    const targetUniversity = String(body.targetUniversity || 'General Prep').trim() || 'General Prep';
+
+    // Atomic D1 UNIQUE insert into `user_usernames` and `guest_accounts`
+    try {
+      await db
+        .prepare(
+          `INSERT INTO user_usernames (username_lower, username_display, uid, account_type, created_at, updated_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
+        )
+        .bind(normalizedUsername, cleanUsername, guestUid, 'guest', nowMs, nowMs)
+        .run();
+
+      await db
+        .prepare(
+          `INSERT INTO guest_accounts (
+             uid, username, username_lower, display_name, short_id,
+             account_type, is_guest, email, plan, role,
+             target_university, ip_hash, device_id_hash, created_at, last_active_at
+           ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)`
+        )
+        .bind(
+          guestUid,
+          cleanUsername,
+          normalizedUsername,
+          cleanUsername,
+          shortId,
+          'guest',
+          1,
+          '',
+          'free',
+          'student',
+          targetUniversity,
+          ipHash,
+          deviceHash,
+          nowMs,
+          nowMs
+        )
+        .run();
+    } catch (insertErr: any) {
+      const msg = String(insertErr?.message || '');
+      if (msg.includes('UNIQUE') || msg.includes('PRIMARY KEY') || msg.includes('constraint')) {
+        return jsonResponse(
+          {
+            ok: false,
+            available: false,
+            error: 'That username was just taken. Please pick another one.',
+            code: 'USERNAME_TAKEN',
+          },
+          409
+        );
+      }
+      throw insertErr;
+    }
+
+    // Create secure guest session token
+    const rawSessionToken = `${guestUid}.${generateFallbackLinkToken()}`;
+    const tokenHash = await computeGuestTokenSha256Hex(rawSessionToken, secret);
+    const sessionId = `gsess_${nowMs}_${randomHex.slice(16, 28)}`;
+    const expiresAt = nowMs + GUEST_SESSION_TTL_MS;
+    const userAgent = (request.headers.get('User-Agent') || '').slice(0, 250);
+
+    await db.batch([
+      db
+        .prepare(
+          `INSERT INTO guest_sessions (
+             session_id, token_hash, uid, ip_hash, device_id_hash, user_agent,
+             created_at, last_active_at, expires_at, revoked
+           ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`
+        )
+        .bind(
+          sessionId,
+          tokenHash,
+          guestUid,
+          ipHash,
+          deviceHash,
+          userAgent,
+          nowMs,
+          nowMs,
+          expiresAt,
+          0
+        ),
+      db
+        .prepare(
+          `INSERT INTO guest_creation_rate_limits (identifier_hash, identifier_type, uid, created_at)
+           VALUES (?1, ?2, ?3, ?4)`
+        )
+        .bind(ipHash, 'ip', guestUid, nowMs),
+      db
+        .prepare(
+          `INSERT INTO guest_creation_rate_limits (identifier_hash, identifier_type, uid, created_at)
+           VALUES (?1, ?2, ?3, ?4)`
+        )
+        .bind(deviceHash, 'device', guestUid, nowMs),
+    ]);
+
+    const setCookie = buildGuestSessionCookieHeader(rawSessionToken, isHttps, false);
+
+    return jsonResponse(
+      {
+        ok: true,
+        guest: {
+          uid: guestUid,
+          username: cleanUsername,
+          displayName: cleanUsername,
+          shortId,
+          accountType: 'guest',
+          isGuest: true,
+          email: '',
+          plan: 'free',
+          role: 'student',
+          targetUniversity,
+          testsCompleted: 0,
+          totalQuestionsSolved: 0,
+          streak: 0,
+          stats: {},
+          attempts: [],
+          createdAt: nowMs,
+          lastActiveAt: nowMs,
+          expiresAt,
+        },
+        sessionToken: rawSessionToken,
+      },
+      201,
+      { 'Set-Cookie': setCookie }
+    );
+  }
+
+  // ─── C. GET /api/auth/guest/session (Verify & Restore Guest Session) ───
+  if (subPath === 'guest/session' && request.method === 'GET') {
+    const guestUser = await authenticateD1GuestSession(request, db, secret);
+    if (!guestUser) {
+      return jsonResponse({ ok: true, authenticated: false, guest: null }, 200);
+    }
+
+    const row = await db
+      .prepare('SELECT * FROM guest_accounts WHERE uid = ?1 LIMIT 1')
+      .bind(guestUser.uid)
+      .first<Record<string, any>>();
+
+    if (!row || Number(row.is_guest) !== 1) {
+      return jsonResponse({ ok: true, authenticated: false, guest: null }, 200);
+    }
+
+    let parsedStats: Record<string, any> = {};
+    let parsedAttempts: any[] = [];
+    try {
+      parsedStats = JSON.parse(String(row.stats_json || '{}'));
+    } catch {
+      parsedStats = {};
+    }
+    try {
+      parsedAttempts = JSON.parse(String(row.attempts_json || '[]'));
+    } catch {
+      parsedAttempts = [];
+    }
+
+    return jsonResponse({
+      ok: true,
+      authenticated: true,
+      guest: {
+        uid: String(row.uid),
+        username: String(row.username),
+        displayName: String(row.display_name || row.username),
+        shortId: String(row.short_id || 'GUEST'),
+        accountType: 'guest',
+        isGuest: true,
+        email: '',
+        plan: 'free',
+        role: 'student',
+        targetUniversity: String(row.target_university || 'General Prep'),
+        testsCompleted: Number(row.tests_completed || 0),
+        totalQuestionsSolved: Number(row.total_questions_solved || 0),
+        streak: Number(row.streak || 0),
+        stats: parsedStats,
+        attempts: parsedAttempts,
+        isSuspended: Boolean(row.is_suspended),
+        createdAt: Number(row.created_at || nowMs),
+        lastActiveAt: Number(row.last_active_at || nowMs),
+      },
+    });
+  }
+
+  // ─── D. POST /api/auth/guest/sync (Save Guest Progress, Attempts & Stats) ───
+  if (subPath === 'guest/sync' && request.method === 'POST') {
+    const guestUser = await authenticateD1GuestSession(request, db, secret);
+    if (!guestUser) {
+      return jsonResponse(
+        { ok: false, error: 'Valid guest session required.', code: 'UNAUTHENTICATED' },
+        401
+      );
+    }
+
+    let body: {
+      testsCompleted?: number;
+      totalQuestionsSolved?: number;
+      questionsSolved?: number;
+      streak?: number;
+      targetUniversity?: string;
+      stats?: Record<string, any>;
+      attempts?: any[];
+    } = {};
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return jsonResponse({ ok: false, error: 'Invalid JSON.', code: 'INVALID_JSON' }, 400);
+    }
+
+    const currentRow = await db
+      .prepare('SELECT * FROM guest_accounts WHERE uid = ?1 LIMIT 1')
+      .bind(guestUser.uid)
+      .first<Record<string, any>>();
+
+    if (!currentRow) {
+      return jsonResponse({ ok: false, error: 'Guest account not found.', code: 'NOT_FOUND' }, 404);
+    }
+
+    const nextTests =
+      body.testsCompleted !== undefined
+        ? Math.max(0, Math.floor(Number(body.testsCompleted)))
+        : Number(currentRow.tests_completed || 0);
+    const solvedInput = body.totalQuestionsSolved ?? body.questionsSolved;
+    const nextSolved =
+      solvedInput !== undefined
+        ? Math.max(0, Math.floor(Number(solvedInput)))
+        : Number(currentRow.total_questions_solved || 0);
+    const nextStreak =
+      body.streak !== undefined
+        ? Math.max(0, Math.floor(Number(body.streak)))
+        : Number(currentRow.streak || 0);
+    const nextUni =
+      body.targetUniversity !== undefined
+        ? String(body.targetUniversity).trim() || 'General Prep'
+        : String(currentRow.target_university || 'General Prep');
+    const nextStatsJson =
+      body.stats !== undefined
+        ? JSON.stringify(body.stats)
+        : String(currentRow.stats_json || '{}');
+    const nextAttemptsJson =
+      body.attempts !== undefined
+        ? JSON.stringify(Array.isArray(body.attempts) ? body.attempts.slice(0, 100) : [])
+        : String(currentRow.attempts_json || '[]');
+
+    await db
+      .prepare(
+        `UPDATE guest_accounts
+         SET tests_completed = ?1, total_questions_solved = ?2, streak = ?3,
+             target_university = ?4, stats_json = ?5, attempts_json = ?6, last_active_at = ?7
+         WHERE uid = ?8`
+      )
+      .bind(
+        nextTests,
+        nextSolved,
+        nextStreak,
+        nextUni,
+        nextStatsJson,
+        nextAttemptsJson,
+        nowMs,
+        guestUser.uid
+      )
+      .run();
+
+    return jsonResponse({
+      ok: true,
+      uid: guestUser.uid,
+      testsCompleted: nextTests,
+      totalQuestionsSolved: nextSolved,
+      streak: nextStreak,
+      targetUniversity: nextUni,
+      lastActiveAt: nowMs,
+    });
+  }
+
+  // ─── E. POST /api/auth/guest/logout (Revoke Guest Session & Clear Cookie) ───
+  if (subPath === 'guest/logout' && request.method === 'POST') {
+    const rawToken = extractGuestSessionTokenFromRequest(request);
+    if (rawToken) {
+      const tokenHash = await computeGuestTokenSha256Hex(rawToken, secret);
+      await db
+        .prepare('UPDATE guest_sessions SET revoked = 1 WHERE token_hash = ?1')
+        .bind(tokenHash)
+        .run()
+        .catch(() => {});
+    }
+    const clearCookie = buildGuestSessionCookieHeader('', isHttps, true);
+    return jsonResponse({ ok: true, loggedOut: true }, 200, { 'Set-Cookie': clearCookie });
+  }
+
+  // ─── F. POST /api/auth/guest/upgrade (In-Place Upgrade Guest -> Registered User) ───
+  if (subPath === 'guest/upgrade' && request.method === 'POST') {
+    let body: {
+      guestUid?: string;
+      guestSessionToken?: string;
+      newUid?: string;
+      email?: string;
+      displayName?: string;
+      signInProvider?: string;
+    } = {};
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return jsonResponse({ ok: false, error: 'Invalid JSON.', code: 'INVALID_JSON' }, 400);
+    }
+
+    // Authenticate the guest session (from cookie, header, or body.guestSessionToken)
+    let guestUser = await authenticateD1GuestSession(request, db, secret);
+    if (!guestUser && body.guestSessionToken) {
+      const tokenHash = await computeGuestTokenSha256Hex(String(body.guestSessionToken), secret);
+      const sessRow = await db
+        .prepare('SELECT uid, revoked, expires_at FROM guest_sessions WHERE token_hash = ?1 LIMIT 1')
+        .bind(tokenHash)
+        .first<{ uid: string; revoked: number; expires_at: number }>();
+      if (sessRow && Number(sessRow.revoked) === 0 && Number(sessRow.expires_at) > nowMs) {
+        const gRow = await db
+          .prepare('SELECT * FROM guest_accounts WHERE uid = ?1 LIMIT 1')
+          .bind(sessRow.uid)
+          .first<Record<string, any>>();
+        if (gRow) {
+          guestUser = {
+            uid: String(gRow.uid),
+            email: '',
+            name: String(gRow.display_name || gRow.username),
+            username: String(gRow.username),
+            picture: null,
+            role: 'student',
+            customRole: 'Guest',
+            isPostingBanned: false,
+            isSuperAdmin: false,
+            isAdminOrAbove: false,
+            emailVerified: true,
+            sessionVerified: true,
+            isGuest: true,
+            signInProvider: 'guest',
+            authTime: Math.floor(nowMs / 1000),
+            d1CreatedAtMs: Number(gRow.created_at || nowMs),
+          };
+        }
+      }
+    }
+
+    const targetGuestUid = guestUser?.uid || String(body.guestUid || '').trim();
+    if (!targetGuestUid) {
+      return jsonResponse(
+        { ok: false, error: 'Active guest account required to upgrade.', code: 'GUEST_NOT_FOUND' },
+        401
+      );
+    }
+
+    const guestRow = await db
+      .prepare('SELECT * FROM guest_accounts WHERE uid = ?1 LIMIT 1')
+      .bind(targetGuestUid)
+      .first<Record<string, any>>();
+
+    if (!guestRow) {
+      return jsonResponse(
+        { ok: false, error: 'Guest account not found.', code: 'GUEST_NOT_FOUND' },
+        404
+      );
+    }
+
+    // Verify Firebase token if provided, or use newUid from body
+    const authHeader = request.headers.get('Authorization');
+    const projectId =
+      env?.FIREBASE_PROJECT_ID || env?.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID;
+    const verifyFn =
+      opts.tokenVerifierOverride ||
+      ((hdr: string | null | undefined) => verifyFirebaseIdToken(hdr, projectId));
+    const verifiedFirebase =
+      authHeader && !authHeader.startsWith('Bearer guest_') ? await verifyFn(authHeader) : null;
+
+    const newUid = String(verifiedFirebase?.uid || body.newUid || '').trim();
+    const email = String(verifiedFirebase?.email || body.email || '')
+      .trim()
+      .toLowerCase();
+
+    if (!newUid || !email) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'Valid registered user UID and email are required to upgrade.',
+          code: 'MISSING_UPGRADE_CREDENTIALS',
+        },
+        400
+      );
+    }
+
+    // Check if this `newUid` or `email` already belongs to another registered account!
+    const existingUsernameForNewUid = await db
+      .prepare('SELECT username_lower, username_display, uid, account_type FROM user_usernames WHERE uid = ?1 LIMIT 1')
+      .bind(newUid)
+      .first<{ username_lower: string; username_display: string; uid: string; account_type: string }>();
+
+    if (
+      existingUsernameForNewUid &&
+      existingUsernameForNewUid.username_lower !== String(guestRow.username_lower)
+    ) {
+      return jsonResponse(
+        {
+          ok: false,
+          error:
+            'This email or Google account already belongs to an existing Boardly account. Please log in to that account instead.',
+          code: 'ACCOUNT_ALREADY_EXISTS',
+          existingUsername: existingUsernameForNewUid.username_display,
+        },
+        409
+      );
+    }
+
+    const allGuests = await db
+      .prepare('SELECT uid, email, upgraded_to_uid FROM guest_accounts')
+      .all<{ uid: string; email: string; upgraded_to_uid: string | null }>();
+    const conflictingUpgrade = (allGuests.results || []).find(
+      (g) =>
+        g.uid !== targetGuestUid &&
+        ((g.email && g.email.toLowerCase() === email) ||
+          (g.upgraded_to_uid && g.upgraded_to_uid === newUid))
+    );
+    if (conflictingUpgrade) {
+      return jsonResponse(
+        {
+          ok: false,
+          error:
+            'This email or Google account already belongs to another account. Please log in instead.',
+          code: 'ACCOUNT_ALREADY_EXISTS',
+        },
+        409
+      );
+    }
+
+    const usernameLower = String(guestRow.username_lower);
+    const usernameDisplay = String(guestRow.username);
+
+    // Upgrade in place:
+    // 1. Update `user_usernames` so `username_lower` now points to `newUid` with `account_type = 'registered'`
+    await db
+      .prepare(
+        `UPDATE user_usernames SET uid = ?1, account_type = ?2, updated_at = ?3 WHERE username_lower = ?4`
+      )
+      .bind(newUid, 'registered', nowMs, usernameLower)
+      .run();
+
+    // 2. Update `guest_accounts` in place so record reflects upgrade & preserves stats
+    await db
+      .prepare(
+        `UPDATE guest_accounts
+         SET account_type = ?1, is_guest = 0, email = ?2, upgraded_to_uid = ?3, upgraded_at = ?4, last_active_at = ?5
+         WHERE uid = ?6`
+      )
+      .bind('registered', email, newUid, nowMs, nowMs, targetGuestUid)
+      .run();
+
+    // 3. Revoke guest sessions
+    await db
+      .prepare('UPDATE guest_sessions SET revoked = 1 WHERE uid = ?1')
+      .bind(targetGuestUid)
+      .run()
+      .catch(() => {});
+
+    // 4. Mark session verified in `email_verification_sessions` so the upgraded user goes straight into their upgraded account
+    const emailHash = await hashIdentifier(secret, 'email', email || newUid);
+    const nowSec = Math.floor(nowMs / 1000);
+    await db
+      .prepare(
+        `INSERT OR REPLACE INTO email_verification_sessions (user_id, email_hash, email_verified, verified_auth_time, verified_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
+      )
+      .bind(newUid, emailHash, 1, nowSec + 60, nowMs, nowMs)
+      .run();
+
+    let parsedStats: Record<string, any> = {};
+    let parsedAttempts: any[] = [];
+    try {
+      parsedStats = JSON.parse(String(guestRow.stats_json || '{}'));
+    } catch {
+      parsedStats = {};
+    }
+    try {
+      parsedAttempts = JSON.parse(String(guestRow.attempts_json || '[]'));
+    } catch {
+      parsedAttempts = [];
+    }
+
+    const clearCookie = buildGuestSessionCookieHeader('', isHttps, true);
+
+    return jsonResponse(
+      {
+        ok: true,
+        upgraded: true,
+        guestUid: targetGuestUid,
+        newUid,
+        email,
+        username: usernameDisplay,
+        shortId: String(guestRow.short_id || 'USER'),
+        targetUniversity: String(guestRow.target_university || 'General Prep'),
+        testsCompleted: Number(guestRow.tests_completed || 0),
+        totalQuestionsSolved: Number(guestRow.total_questions_solved || 0),
+        streak: Number(guestRow.streak || 0),
+        stats: parsedStats,
+        attempts: parsedAttempts,
+        createdAt: Number(guestRow.created_at || nowMs),
+      },
+      200,
+      { 'Set-Cookie': clearCookie }
+    );
+  }
+
+  // ─── G. POST /api/auth/username-register (Reserve/Update Username for Registered User) ───
+  if (subPath === 'username-register' && request.method === 'POST') {
+    let body: { uid?: string; username?: string; accountType?: string } = {};
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return jsonResponse({ ok: false, error: 'Invalid JSON.', code: 'INVALID_JSON' }, 400);
+    }
+
+    const targetUid = String(body.uid || '').trim();
+    const rawUsername = String(body.username || '').trim();
+    const accountType = body.accountType === 'guest' ? 'guest' : 'registered';
+
+    if (!targetUid || !rawUsername) {
+      return jsonResponse(
+        { ok: false, error: 'Both uid and username are required.', code: 'MISSING_FIELDS' },
+        400
+      );
+    }
+
+    const availability = await checkD1UsernameAvailability({
+      db,
+      rawUsername,
+      excludeUid: targetUid,
+    });
+    if (!availability.available) {
+      return jsonResponse(
+        {
+          ok: false,
+          available: false,
+          error: availability.reason || 'Username is already taken.',
+          code: availability.code || 'USERNAME_TAKEN',
+        },
+        409
+      );
+    }
+
+    // Remove previous username row for this uid if they are renaming
+    const prevRow = await db
+      .prepare('SELECT username_lower, uid FROM user_usernames WHERE uid = ?1 LIMIT 1')
+      .bind(targetUid)
+      .first<{ username_lower: string; uid: string }>();
+
+    try {
+      if (prevRow && prevRow.username_lower === availability.normalized) {
+        await db
+          .prepare(
+            'UPDATE user_usernames SET uid = ?1, account_type = ?2, updated_at = ?3 WHERE username_lower = ?4'
+          )
+          .bind(targetUid, accountType, nowMs, availability.normalized)
+          .run();
+      } else {
+        await db
+          .prepare(
+            `INSERT INTO user_usernames (username_lower, username_display, uid, account_type, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
+          )
+          .bind(
+            availability.normalized,
+            availability.clean,
+            targetUid,
+            accountType,
+            nowMs,
+            nowMs
+          )
+          .run();
+      }
+    } catch (err: any) {
+      const msg = String(err?.message || '');
+      if (msg.includes('UNIQUE') || msg.includes('PRIMARY KEY') || msg.includes('constraint')) {
+        return jsonResponse(
+          {
+            ok: false,
+            available: false,
+            error: 'This username is already taken.',
+            code: 'USERNAME_TAKEN',
+          },
+          409
+        );
+      }
+      throw err;
+    }
+
+    return jsonResponse({
+      ok: true,
+      available: true,
+      username: availability.clean,
+      normalized: availability.normalized,
+      uid: targetUid,
+    });
+  }
+
+  // ─── H. GET /api/auth/guests (Admin Users List: Active & Upgraded Guest Accounts) ───
+  if (subPath === 'guests' && request.method === 'GET') {
+    const rowsRes = await db
+      .prepare('SELECT * FROM guest_accounts ORDER BY created_at DESC LIMIT 500')
+      .all<Record<string, any>>();
+
+    const guests = (rowsRes.results || [])
+      .filter((r) => Number(r.is_guest) === 1 && !r.upgraded_to_uid)
+      .map((r) => ({
+        uid: String(r.uid),
+        username: String(r.username),
+        displayName: String(r.display_name || r.username),
+        shortId: String(r.short_id || 'GUEST'),
+        accountType: 'guest' as const,
+        isGuest: true,
+        email: '',
+        plan: 'free' as const,
+        role: 'student' as const,
+        targetUniversity: String(r.target_university || 'General Prep'),
+        testsCompleted: Number(r.tests_completed || 0),
+        totalQuestionsSolved: Number(r.total_questions_solved || 0),
+        questionsSolved: Number(r.total_questions_solved || 0),
+        streak: Number(r.streak || 0),
+        isSuspended: Boolean(r.is_suspended),
+        createdAt: Number(r.created_at || nowMs),
+        lastActiveAt: Number(r.last_active_at || r.created_at || nowMs),
+      }));
+
+    return jsonResponse({
+      ok: true,
+      guests,
+    });
+  }
 
   // ─── 1. POST /api/auth/verify-link (Can be clicked from email with or without Bearer token) ───
   if (subPath === 'verify-link' && request.method === 'POST') {
@@ -584,6 +1523,30 @@ export async function handleAuthApiRequest(
       verified: true,
       purpose: codeRow.purpose,
     });
+  }
+
+  // If `verification-status` is called by a guest session, exempt the guest from 6-digit OTP
+  if (subPath === 'verification-status' && request.method === 'GET') {
+    const authHeaderCheck = request.headers.get('Authorization');
+    if (
+      !authHeaderCheck ||
+      !authHeaderCheck.startsWith('Bearer ') ||
+      authHeaderCheck.startsWith('Bearer guest_')
+    ) {
+      const guestSessionUser = await authenticateD1GuestSession(request, db, secret);
+      if (guestSessionUser) {
+        return jsonResponse({
+          ok: true,
+          verified: true,
+          emailVerified: true,
+          isGuest: true,
+          exempt: true,
+          requiredPurpose: null,
+          maskedEmail: `@${guestSessionUser.username || 'guest'}`,
+          cooldownSeconds: 0,
+        });
+      }
+    }
   }
 
   // All remaining `/api/auth/*` endpoints require a valid Firebase ID token in `Authorization: Bearer <token>`
@@ -1113,3 +2076,15 @@ export async function handleAuthApiRequest(
 
   return jsonResponse({ ok: false, error: 'Endpoint not found.', code: 'NOT_FOUND' }, 404);
 }
+
+// Cloudflare Pages Function Entrypoint
+export const onRequest = async (context: {
+  request: Request;
+  env: AuthWorkerEnv;
+}): Promise<Response> => {
+  return handleAuthApiRequest({
+    request: context.request,
+    env: context.env,
+  });
+};
+

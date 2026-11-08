@@ -2,20 +2,24 @@ import { Outlet, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { isUserAuthenticated } from '@/utils/homeUrl';
 import { VerificationBanner } from '@/components/auth/VerificationBanner';
+import { GuestUpgradeModal } from '@/components/auth/GuestUpgradeModal';
 import { DashboardTopBar } from './DashboardTopBar';
 import { DashboardBottomNav } from './DashboardBottomNav';
 import { DashboardErrorBoundary } from './DashboardErrorBoundary';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
 import { LineLoader } from '@/components/ui/LineLoader';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ensureWelcomeNotificationForUser } from '@/services/notificationService';
+import { UserPlus, X } from 'lucide-react';
 
 export function DashboardShell() {
-  const { user, profileLoading, isSessionVerified, otpVerificationState } = useAuth();
+  const { user, profile, isGuest, profileLoading, isSessionVerified, otpVerificationState } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const isAuthenticated = isUserAuthenticated(user, profileLoading);
+  const [guestNoteDismissed, setGuestNoteDismissed] = useState(false);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
 
   const isProfileRoute = location.pathname.startsWith('/dashboard/profile');
   const isCrewRoute = location.pathname.startsWith('/dashboard/crew');
@@ -26,10 +30,10 @@ export function DashboardShell() {
     location.pathname === '/saved';
 
   useEffect(() => {
-    if (user?.uid && isSessionVerified) {
+    if (user?.uid && isSessionVerified && !isGuest) {
       void ensureWelcomeNotificationForUser(user.uid);
     }
-  }, [user?.uid, isSessionVerified]);
+  }, [user?.uid, isSessionVerified, isGuest]);
 
   useEffect(() => {
     if (!isAuthenticated && !profileLoading && !user) {
@@ -45,7 +49,7 @@ export function DashboardShell() {
 
   if (
     (profileLoading && !user && !isAuthenticated) ||
-    (user && otpVerificationState.status === 'checking')
+    (user && !isGuest && otpVerificationState.status === 'checking')
   ) {
     return <LineLoader context="dashboard" variant="page" />;
   }
@@ -56,8 +60,8 @@ export function DashboardShell() {
     return <Navigate to={`/login?redirect=${encodeURIComponent(target)}`} replace />;
   }
 
-  // Route guard: Signed-in users who have NOT completed the 6-digit verification code step
-  if (user && !isSessionVerified) {
+  // Route guard: Signed-in non-guest users who have NOT completed the 6-digit verification code step
+  if (user && !isGuest && !isSessionVerified) {
     const target = `${location.pathname}${location.search}${location.hash}`;
     try {
       sessionStorage.setItem('boardly_post_login_redirect', target);
@@ -81,8 +85,37 @@ export function DashboardShell() {
         description="Private Boardly student dashboard and practice cockpit."
         noindex={true}
       />
-      <VerificationBanner />
+      {!isGuest && <VerificationBanner />}
       {!isProfileRoute && !isCommonsRoute && !isCrewRoute && <DashboardTopBar />}
+
+      {/* Small non-blocking note for guests (Part B Rule 3) */}
+      {isGuest && !guestNoteDismissed && (
+        <div className="max-w-5xl w-full mx-auto px-3.5 sm:px-6 lg:px-8 pt-2">
+          <div className="px-3.5 py-2 rounded-2xl bg-[var(--card)] border border-[var(--border)] flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]">
+            <span>
+              Signed in as guest (<strong className="text-[var(--text)] font-mono">@{profile?.username || user?.displayName || 'guest'}</strong>). Clearing browser data means you cannot return unless you upgrade.
+            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setUpgradeModalOpen(true)}
+                className="px-2.5 py-1 rounded-full bg-[#D71921] text-white font-semibold text-[11px] inline-flex items-center gap-1 cursor-pointer hover:opacity-90 transition-opacity"
+              >
+                <UserPlus size={12} />
+                <span>Create account</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setGuestNoteDismissed(true)}
+                className="p-1 text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                aria-label="Dismiss guest notice"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Container */}
       <main
@@ -103,9 +136,13 @@ export function DashboardShell() {
 
       {/* Unified Student Pill Navigation */}
       {!isCrewRoute && <DashboardBottomNav />}
+
+      <GuestUpgradeModal
+        isOpen={upgradeModalOpen}
+        onClose={() => setUpgradeModalOpen(false)}
+      />
     </div>
   );
 }
 
 export default DashboardShell;
-

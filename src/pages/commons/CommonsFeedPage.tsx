@@ -841,7 +841,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
         currentUserId={user?.uid}
         onSelectPost={(post: CommonsPost) => {
           setSearchModalOpen(false);
-          setCommentsPost(post);
+          navigate(`/commons/post/${buildEntitySlug(post.id, post.title)}`);
         }}
         onOpenComments={(p: CommonsPost) => {
           setSearchModalOpen(false);

@@ -268,7 +268,7 @@ export const SearchPage: React.FC = () => {
               {matchedPosts.map((post) => {
                 const slug = buildEntitySlug(post.id, post.title);
                 const hasFile = Boolean(post.files && post.files.length > 0);
-                const dest = hasFile ? `/material/${slug}` : `/commons/post/${slug}`;
+                const dest = typeFilter === 'material' && hasFile ? `/material/${slug}` : `/commons/post/${slug}`;
                 return (
                   <Link key={post.id} to={dest} className="boardly-post-card glass-card-interactive p-4 block w-full max-w-full min-w-0 box-border overflow-x-hidden">
                     <div className="flex items-center justify-between gap-2 mb-1 min-w-0">

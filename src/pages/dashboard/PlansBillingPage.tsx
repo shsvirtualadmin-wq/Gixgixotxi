@@ -22,12 +22,13 @@ import {
 import { StatusBanner } from '@/components/plans/StatusBanner';
 import { PlanCard } from '@/components/plans/PlanCard';
 import { ProCheckoutSheet } from '@/components/plans/ProCheckoutSheet';
+import { GuestProBlockedView } from '@/components/plans/GuestProBlockedView';
 import { GetKobansModal } from '@/components/koban/GetKobansModal';
 import { fetchStudentProRequests } from '@/services/proSubscriptionService';
 import type { PaymentRequest } from '@/types';
 
 export function PlansBillingPage() {
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
   const navigate = useNavigate();
   const { profile } = useUserProfile();
   const { plan: currentPlan, isPro, source } = useEffectivePlan();
@@ -47,14 +48,18 @@ export function PlansBillingPage() {
   const [studentProRequests, setStudentProRequests] = useState<PaymentRequest[]>([]);
 
   const loadProRequests = useCallback(async () => {
-    if (!user?.uid) return;
+    if (!user?.uid || isGuest) return;
     const list = await fetchStudentProRequests(user.uid);
     setStudentProRequests(list);
-  }, [user?.uid]);
+  }, [user?.uid, isGuest]);
 
   useEffect(() => {
     loadProRequests();
   }, [loadProRequests]);
+
+  if (isGuest) {
+    return <GuestProBlockedView variant="page" />;
+  }
 
   const rawExpiresAt = profile?.planExpiresAt ?? (profile as any)?.premiumExpiresAt ?? null;
   const proSummary = getProStatusSummary(rawExpiresAt);

@@ -557,6 +557,61 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
       db
         .prepare('UPDATE posts SET created_at = ?, updated_at = ? WHERE created_at > ?')
         .bind(nowMs - 60000, nowMs - 60000, nowMs + 5000),
+      db.prepare(`CREATE TABLE IF NOT EXISTS user_usernames (
+        username_lower TEXT PRIMARY KEY,
+        username_display TEXT NOT NULL,
+        uid TEXT NOT NULL UNIQUE,
+        account_type TEXT NOT NULL DEFAULT 'registered',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_user_usernames_lower ON user_usernames(username_lower)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS guest_accounts (
+        uid TEXT PRIMARY KEY,
+        username TEXT NOT NULL,
+        username_lower TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        short_id TEXT NOT NULL,
+        account_type TEXT NOT NULL DEFAULT 'guest',
+        is_guest INTEGER NOT NULL DEFAULT 1,
+        email TEXT DEFAULT '',
+        plan TEXT NOT NULL DEFAULT 'free',
+        role TEXT NOT NULL DEFAULT 'student',
+        upgraded_to_uid TEXT DEFAULT NULL,
+        upgraded_at INTEGER DEFAULT NULL,
+        target_university TEXT DEFAULT 'General Prep',
+        tests_completed INTEGER NOT NULL DEFAULT 0,
+        total_questions_solved INTEGER NOT NULL DEFAULT 0,
+        streak INTEGER NOT NULL DEFAULT 0,
+        stats_json TEXT NOT NULL DEFAULT '{}',
+        attempts_json TEXT NOT NULL DEFAULT '[]',
+        ip_hash TEXT NOT NULL DEFAULT '',
+        device_id_hash TEXT NOT NULL DEFAULT '',
+        is_suspended INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        last_active_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_guest_accounts_username_lower ON guest_accounts(username_lower)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS guest_sessions (
+        session_id TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL UNIQUE,
+        uid TEXT NOT NULL,
+        ip_hash TEXT NOT NULL DEFAULT '',
+        device_id_hash TEXT NOT NULL DEFAULT '',
+        user_agent TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        last_active_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        revoked INTEGER NOT NULL DEFAULT 0
+      )`),
+      db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_guest_sessions_token_hash ON guest_sessions(token_hash)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS guest_creation_rate_limits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        identifier_hash TEXT NOT NULL,
+        identifier_type TEXT NOT NULL,
+        uid TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )`),
     ]);
 
     schemaInitialized = true;
@@ -726,16 +781,28 @@ export function buildSlug(id: string, title: string): string {
 export function extractIdFromSlugOrId(slugOrId: string): string {
   const trimmed = (slugOrId || '').trim();
   if (!trimmed) return '';
+  const uuidMatch = trimmed.match(
+    /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-|$)/i
+  );
+  if (uuidMatch) return uuidMatch[1];
+  if (trimmed.startsWith('commons_anon_topic_')) {
+    const m = trimmed.match(/^(commons_anon_topic_\d+)(?:-|$)/i);
+    if (m) return m[1];
+  }
   if (trimmed.startsWith('post_gen_')) {
-    const m = trimmed.match(/^(post_gen_\d+)/);
+    const m = trimmed.match(/^(post_gen_\d+)(?:-|$)/i);
     if (m) return m[1];
   }
   if (trimmed.startsWith('post_')) {
-    const m = trimmed.match(/^(post_\d+_[a-zA-Z0-9]+)/);
+    const m = trimmed.match(/^(post_\d+_[a-zA-Z0-9]+)(?:-|$)/);
     if (m) return m[1];
+    const m2 = trimmed.match(/^(post_[a-zA-Z0-9_]+?)(?:-|$)/);
+    if (m2) return m2[1];
   }
+  const glMatch = trimmed.match(/^(gl-[a-z0-9]+-\d+)(?:-|$)/i);
+  if (glMatch) return glMatch[1];
   const dashIdx = trimmed.indexOf('-');
-  if (dashIdx >= 15) {
+  if (dashIdx >= 8) {
     return trimmed.slice(0, dashIdx);
   }
   return trimmed;

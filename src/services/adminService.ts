@@ -437,18 +437,66 @@ export async function fetchUsersPaginated(options?: {
   // Never cut off the collection at limit(10) before in-memory search filtering runs!
   queryConstraints.push(limit(hasSearch ? 1000 : count));
 
+  const fetchGuestAccountsFallback = async (): Promise<UserProfile[]> => {
+    try {
+      const headers: Record<string, string> = {};
+      if (auth?.currentUser) {
+        const idToken = await auth.currentUser.getIdToken().catch(() => '');
+        if (idToken) headers.Authorization = `Bearer ${idToken}`;
+      }
+      const res = await fetch('/api/auth/guests', { headers });
+      if (!res.ok) return [];
+      const data = await res.json().catch(() => null);
+      if (!data?.guests || !Array.isArray(data.guests)) return [];
+      return data.guests
+        .filter((g: any) => !g.upgradedToUid)
+        .map((g: any) => ({
+          uid: g.uid,
+          email: '',
+          username: g.username,
+          displayName: g.displayName || g.username,
+          name: g.displayName || g.username,
+          role: 'student',
+          plan: 'free',
+          isGuest: true,
+          accountType: 'guest',
+          onboardingCompleted: true,
+          testsCompleted: Number(g.testsCompleted || 0),
+          totalQuestionsSolved: Number(g.questionsSolved || 0),
+          streak: Number(g.streak || 0),
+          createdAt: g.createdAt,
+          lastActiveAt: g.lastActiveAt || g.createdAt,
+        } as unknown as UserProfile));
+    } catch {
+      return [];
+    }
+  };
+
   try {
     const q = query(ref, ...queryConstraints);
-    const snap = await Promise.race([
-      getDocs(q),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Users list query timed out after 8 seconds')), 8000)
-      ),
+    const [snap, guestUsers] = await Promise.all([
+      Promise.race([
+        getDocs(q),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Users list query timed out after 8 seconds')), 8000)
+        ),
+      ]),
+      fetchGuestAccountsFallback(),
     ]);
 
     let users = snap.docs
       .map((d) => ({ uid: d.id, ...d.data() } as UserProfile))
       .filter((u) => !u.uid.startsWith('bot_') && (u as any).role !== 'bot');
+
+    if (guestUsers.length > 0 && (!options?.plan || options.plan === 'all' || options.plan === 'free')) {
+      const existingUids = new Set(users.map((u) => u.uid));
+      for (const gu of guestUsers) {
+        if (!existingUids.has(gu.uid)) {
+          users.push(gu);
+        }
+      }
+    }
+
     if (hasSearch && options?.searchQuery) {
       const qLower = options.searchQuery.toLowerCase().trim();
       const qNoSpaces = qLower.replace(/\s+/g, '');
@@ -528,6 +576,15 @@ export async function fetchUsersPaginated(options?: {
 
     return { users, lastDoc, hasMore, queryTimeMs };
   } catch (err: unknown) {
+    const guestFallback = await fetchGuestAccountsFallback();
+    if (guestFallback.length > 0) {
+      return {
+        users: guestFallback,
+        lastDoc: null,
+        hasMore: false,
+        queryTimeMs: Math.round(performance.now() - startTime),
+      };
+    }
     const e = err as { message?: string; code?: string };
     throw new AdminFirestoreError(
       e?.message || 'Failed to fetch users from collection "users". Check Firestore permissions.',

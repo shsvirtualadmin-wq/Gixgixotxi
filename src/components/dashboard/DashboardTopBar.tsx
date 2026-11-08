@@ -24,7 +24,7 @@ interface Props {
 }
 
 export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) {
-  const { signOutUser, isAdmin } = useAuth();
+  const { signOutUser, isAdmin, isGuest } = useAuth();
   const { user, profile } = useUserProfile();
   const { openProfile } = useProfileModal();
   const navigate = useNavigate();
@@ -121,7 +121,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
 
   const effectivePlan = useEffectivePlan();
   const { balance: kobanBalance, loading: walletLoading, equipped } = useWallet();
-  const isPro = effectivePlan.isUnlimited;
+  const isPro = !isGuest && effectivePlan.isUnlimited;
 
   if (isSigningOut) {
     return <LineLoader context="login" variant="page" immediate />;
@@ -133,7 +133,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
         <div
           className="w-full max-w-5xl min-w-0 box-border mx-auto h-14 sm:h-16 px-3 sm:px-5 rounded-full glass dashboard-glass-bar allow-backdrop-blur border flex items-center justify-between gap-2 pointer-events-auto transition-all duration-200"
         >
-          {/* Left side: Brand logo, PRO/FREE badge, and Admin Portal label */}
+          {/* Left side: Brand logo, PRO/FREE/GUEST badge, and Admin Portal label */}
           <div className="flex items-center gap-2 min-w-0 shrink">
             <div className="flex flex-col justify-center min-w-0 shrink-0">
               <Link to="/dashboard" className="flex items-center shrink-0" aria-label="Boardly Dashboard">
@@ -159,7 +159,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
                 isPro ? 'badge-pill-red' : 'glass-pill text-[var(--text-muted)]'
               }`}
             >
-              {isPro ? 'PRO' : 'FREE'}
+              {isGuest ? 'GUEST' : isPro ? 'PRO' : 'FREE'}
             </span>
 
             {isAdmin && (
@@ -175,9 +175,9 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
             )}
           </div>
 
-          {/* Right side: Upgrade button, Kobans wallet chip (shown once here), Notification bell, Theme toggle, Avatar trigger */}
+          {/* Right side: Upgrade button (never shown to guests), Kobans wallet chip, Notification bell, Theme toggle, Avatar trigger */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0 ml-auto">
-            {!isPro && !isAdmin && (
+            {!isGuest && !isPro && !isAdmin && (
               <Link
                 to="/dashboard/plans"
                 className="hidden md:inline-flex btn-primary text-xs py-1.5 px-3.5 rounded-full items-center shrink-0 whitespace-nowrap"

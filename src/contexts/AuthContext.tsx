@@ -86,7 +86,67 @@ function isGoogleProviderUser(firebaseUser: User | null): boolean {
   );
 }
 
+const GUEST_TOKEN_LS_KEY = 'boardly_guest_session_token';
+const GUEST_DEVICE_ID_LS_KEY = 'boardly_device_id';
+
+function getOrCreateClientDeviceId(): string {
+  try {
+    const existing = localStorage.getItem(GUEST_DEVICE_ID_LS_KEY);
+    if (existing && existing.length >= 12) return existing;
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    const id = Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+    localStorage.setItem(GUEST_DEVICE_ID_LS_KEY, id);
+    return id;
+  } catch {
+    return 'browser-device';
+  }
+}
+
+function buildSyntheticGuestUser(guestUid: string, username: string, sessionToken: string): User {
+  const tokenValue = `guest_${sessionToken}`;
+  const fakeUser: Partial<User> & Record<string, any> = {
+    uid: guestUid,
+    displayName: username,
+    email: null,
+    phoneNumber: null,
+    photoURL: null,
+    providerId: 'guest',
+    emailVerified: true,
+    isAnonymous: true,
+    isGuest: true,
+    metadata: {},
+    providerData: [],
+    refreshToken: sessionToken,
+    tenantId: null,
+    delete: async () => {},
+    getIdToken: async () => tokenValue,
+    getIdTokenResult: async () =>
+      ({
+        token: tokenValue,
+        claims: { sub: guestUid, isGuest: true, username },
+        authTime: new Date().toUTCString(),
+        issuedAtTime: new Date().toUTCString(),
+        expirationTime: new Date(Date.now() + 30 * 86400 * 1000).toUTCString(),
+        signInProvider: 'guest',
+        signInSecondFactor: null,
+      }) as any,
+    reload: async () => {},
+    toJSON: () => ({ uid: guestUid, displayName: username, isGuest: true }),
+  };
+  return fakeUser as User;
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
+export interface GuestUpgradeResult {
+  ok: boolean;
+  existingAccountConflict?: boolean;
+  existingEmail?: string;
+  error?: string;
+}
+
 interface AuthContextValue {
   user: User | null;
   profile: UserProfile | null;
@@ -96,6 +156,8 @@ interface AuthContextValue {
   clearAuthError: () => void;
   clearProfileError: () => void;
   isAdmin: boolean;
+  isGuest: boolean;
+  guestSessionToken: string | null;
   isSessionVerified: boolean;
   otpVerificationState: OtpVerificationState;
   requestOtpCode: (opts?: {
@@ -112,6 +174,28 @@ interface AuthContextValue {
     token: string,
     uid?: string
   ) => Promise<{ ok: boolean; error?: string }>;
+  checkUsernameAvailability: (username: string) => Promise<{
+    available: boolean;
+    username: string;
+    normalized: string;
+    reason?: string | null;
+    code?: string | null;
+  }>;
+  signInAsGuest: (username: string, targetUniversity?: string) => Promise<UserProfile>;
+  syncGuestProgress: (updates: {
+    testsCompleted?: number;
+    totalQuestionsSolved?: number;
+    streak?: number;
+    targetUniversity?: string;
+    stats?: Record<string, any>;
+    attempts?: any[];
+  }) => Promise<void>;
+  upgradeGuestWithEmail: (
+    email: string,
+    password: string,
+    displayName?: string
+  ) => Promise<GuestUpgradeResult>;
+  upgradeGuestWithGoogle: () => Promise<GuestUpgradeResult>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signInWithGoogle: () => Promise<User | null>;
@@ -134,6 +218,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileError, setProfileError] = useState<{ code?: string; message: string; path?: string } | null>(null);
   const [authError, setAuthError] = useState<{ code?: string; message: string } | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [guestSessionToken, setGuestSessionToken] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(GUEST_TOKEN_LS_KEY) || null;
+    } catch {
+      return null;
+    }
+  });
   const [otpVerificationState, setOtpVerificationState] = useState<OtpVerificationState>({
     status: 'idle',
     purpose: null,
@@ -143,9 +234,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     error: null,
   });
 
-  const isSessionVerified = otpVerificationState.status === 'verified';
+  const isGuest = Boolean(
+    profile?.isGuest === true ||
+      profile?.accountType === 'guest' ||
+      (user as any)?.isGuest === true ||
+      (user?.uid && String(user.uid).startsWith('guest_'))
+  );
+
+  // Guests are exempt from the 6-digit email OTP verification step
+  const isSessionVerified = isGuest || otpVerificationState.status === 'verified';
 
   const isAdmin = !!(
+    !isGuest &&
     isSessionVerified &&
     ((user?.uid && user.uid === SUPER_ADMIN_UID) ||
       (user?.email &&
@@ -165,13 +265,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ── Helper to determine target dashboard URL by role ─────────────────────
   const getRoleRedirectUrl = useCallback(
     (customRole?: string) => {
+      if (isGuest) return '/dashboard';
       if (isAdmin) return '/admin';
       const role = customRole || profile?.role || 'student';
       if (role === 'crew') return '/crew';
       if (role === 'captain') return '/captain';
       return '/dashboard';
     },
-    [isAdmin, profile]
+    [isGuest, isAdmin, profile]
   );
 
   // ── Create referral document after first signup ──────────────────────────
@@ -692,11 +793,86 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.warn('[Boardly Auth] onAuthStateChanged profile load error:', err);
         });
       } else {
+        // Check if an active Guest session exists on this device (via HttpOnly cookie or local token)
+        try {
+          const savedGuestToken = localStorage.getItem(GUEST_TOKEN_LS_KEY) || '';
+          const headers: Record<string, string> = {};
+          if (savedGuestToken) {
+            headers['X-Guest-Session'] = savedGuestToken;
+          }
+          const guestRes = await fetch('/api/auth/guest/session', {
+            method: 'GET',
+            credentials: 'include',
+            headers,
+          });
+          const guestData = (await guestRes.json().catch(() => ({}))) as {
+            ok?: boolean;
+            authenticated?: boolean;
+            guest?: {
+              uid: string;
+              username: string;
+              displayName: string;
+              shortId: string;
+              targetUniversity?: string;
+              testsCompleted?: number;
+              totalQuestionsSolved?: number;
+              streak?: number;
+              createdAt?: number;
+              lastActiveAt?: number;
+            } | null;
+          };
+
+          if (guestRes.ok && guestData.authenticated && guestData.guest) {
+            const g = guestData.guest;
+            const effectiveToken = savedGuestToken || `${g.uid}.cookie_session`;
+            const synthUser = buildSyntheticGuestUser(g.uid, g.username, effectiveToken);
+            const guestProfile: UserProfile = {
+              uid: g.uid,
+              email: '',
+              displayName: g.username,
+              name: g.username,
+              username: g.username,
+              shortId: g.shortId || 'GUEST',
+              role: 'student',
+              customRole: 'Guest',
+              plan: 'free',
+              status: 'active',
+              isGuest: true,
+              accountType: 'guest',
+              profileCompleted: true,
+              onboardingCompleted: true,
+              targetUniversity: g.targetUniversity || 'General Prep',
+              testsCompleted: Number(g.testsCompleted || 0),
+              totalQuestionsSolved: Number(g.totalQuestionsSolved || 0),
+              streak: Number(g.streak || 0),
+              lastActiveAt: g.lastActiveAt || Date.now(),
+            };
+            setGuestSessionToken(effectiveToken);
+            setUser(synthUser);
+            setProfile(guestProfile);
+            setOtpVerificationState({
+              status: 'verified',
+              purpose: null,
+              email: '',
+              maskedEmail: `@${g.username}`,
+              cooldownSeconds: 0,
+              error: null,
+            });
+            setProfileLoading(false);
+            setProfileError(null);
+            return;
+          }
+        } catch {
+          // Ignore guest session check failure
+        }
+
         try {
           localStorage.removeItem('boardly_user_authenticated');
+          localStorage.removeItem(GUEST_TOKEN_LS_KEY);
         } catch {
           // Ignore storage errors
         }
+        setGuestSessionToken(null);
         setOtpVerificationState({
           status: 'idle',
           purpose: null,
@@ -713,10 +889,502 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, [loadProfile, retryCount, requestOtpCodeForUser]);
 
+  // ── Guest Mode Actions ───────────────────────────────────────────────────
+  const checkUsernameAvailability = useCallback(async (rawUsername: string) => {
+    try {
+      const res = await fetch(
+        `/api/auth/username-check?username=${encodeURIComponent(rawUsername.trim())}`,
+        { method: 'GET', credentials: 'include' }
+      );
+      const data = await res.json().catch(() => ({}));
+      return {
+        available: Boolean(data?.available),
+        username: String(data?.username || rawUsername.trim()),
+        normalized: String(data?.normalized || rawUsername.trim().toLowerCase()),
+        reason: data?.reason || null,
+        code: data?.code || null,
+      };
+    } catch {
+      return {
+        available: false,
+        username: rawUsername.trim(),
+        normalized: rawUsername.trim().toLowerCase(),
+        reason: 'Could not verify username availability. Please check your connection.',
+        code: 'NETWORK_ERROR',
+      };
+    }
+  }, []);
+
+  const signInAsGuest = useCallback(
+    async (username: string, targetUniversity = 'General Prep'): Promise<UserProfile> => {
+      setAuthError(null);
+      const deviceId = getOrCreateClientDeviceId();
+      const res = await fetch('/api/auth/guest', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Device-Id': deviceId,
+        },
+        body: JSON.stringify({
+          username: username.trim(),
+          deviceId,
+          targetUniversity,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok || !data?.guest) {
+        const err: any = new Error(
+          data?.error || 'Could not create guest session. Please try another username.'
+        );
+        err.code = data?.code || 'GUEST_CREATION_FAILED';
+        setAuthError({ code: err.code, message: err.message });
+        throw err;
+      }
+
+      const g = data.guest;
+      const sessionToken = String(data.sessionToken || '');
+      try {
+        if (sessionToken) {
+          localStorage.setItem(GUEST_TOKEN_LS_KEY, sessionToken);
+        }
+        localStorage.setItem('boardly_user_authenticated', 'true');
+      } catch {
+        // Ignore storage error
+      }
+
+      setGuestSessionToken(sessionToken);
+      const synthUser = buildSyntheticGuestUser(g.uid, g.username, sessionToken);
+      const guestProfile: UserProfile = {
+        uid: g.uid,
+        email: '',
+        displayName: g.username,
+        name: g.username,
+        username: g.username,
+        shortId: g.shortId || 'GUEST',
+        role: 'student',
+        customRole: 'Guest',
+        plan: 'free',
+        status: 'active',
+        isGuest: true,
+        accountType: 'guest',
+        profileCompleted: true,
+        onboardingCompleted: true,
+        targetUniversity: g.targetUniversity || targetUniversity,
+        testsCompleted: Number(g.testsCompleted || 0),
+        totalQuestionsSolved: Number(g.totalQuestionsSolved || 0),
+        streak: Number(g.streak || 0),
+        lastActiveAt: g.lastActiveAt || Date.now(),
+      };
+
+      setUser(synthUser);
+      setProfile(guestProfile);
+      setOtpVerificationState({
+        status: 'verified',
+        purpose: null,
+        email: '',
+        maskedEmail: `@${g.username}`,
+        cooldownSeconds: 0,
+        error: null,
+      });
+      setProfileLoading(false);
+      return guestProfile;
+    },
+    []
+  );
+
+  const syncGuestProgress = useCallback(
+    async (updates: {
+      testsCompleted?: number;
+      totalQuestionsSolved?: number;
+      streak?: number;
+      targetUniversity?: string;
+      stats?: Record<string, any>;
+      attempts?: any[];
+    }) => {
+      if (!isGuest) return;
+      try {
+        const token = guestSessionToken || localStorage.getItem(GUEST_TOKEN_LS_KEY) || '';
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['X-Guest-Session'] = token;
+
+        await fetch('/api/auth/guest/sync', {
+          method: 'POST',
+          credentials: 'include',
+          headers,
+          body: JSON.stringify(updates),
+        });
+      } catch {
+        // Non-fatal background sync
+      }
+    },
+    [isGuest, guestSessionToken]
+  );
+
+  const upgradeGuestWithEmail = useCallback(
+    async (
+      email: string,
+      password: string,
+      displayName?: string
+    ): Promise<GuestUpgradeResult> => {
+      if (!isGuest || !profile?.uid) {
+        return { ok: false, error: 'No active guest account to upgrade.' };
+      }
+      setAuthError(null);
+      const cleanEmail = email.trim().toLowerCase();
+      const guestUid = profile.uid;
+      const guestUsername = profile.username || profile.displayName || 'Student';
+      const savedGuestToken = guestSessionToken || localStorage.getItem(GUEST_TOKEN_LS_KEY) || '';
+
+      try {
+        // 1. Create the Firebase Auth credentials for the email/password
+        const credential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+        const newFirebaseUser = credential.user;
+        const idToken = await newFirebaseUser.getIdToken();
+
+        // 2. Upgrade the guest account in-place on D1 (`/api/auth/guest/upgrade`)
+        const upgRes = await fetch('/api/auth/guest/upgrade', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+            ...(savedGuestToken ? { 'X-Guest-Session': savedGuestToken } : {}),
+          },
+          body: JSON.stringify({
+            guestUid,
+            guestSessionToken: savedGuestToken,
+            newUid: newFirebaseUser.uid,
+            email: cleanEmail,
+            displayName: displayName?.trim() || guestUsername,
+            signInProvider: 'password',
+          }),
+        });
+        const upgData = await upgRes.json().catch(() => ({}));
+
+        if (upgRes.status === 409 || upgData?.code === 'ACCOUNT_ALREADY_EXISTS') {
+          return {
+            ok: false,
+            existingAccountConflict: true,
+            existingEmail: cleanEmail,
+            error:
+              upgData?.error ||
+              'An account with this email already exists. Please log in instead.',
+          };
+        }
+
+        if (!upgRes.ok || !upgData?.ok) {
+          return {
+            ok: false,
+            error: upgData?.error || 'Could not upgrade guest account. Please try again.',
+          };
+        }
+
+        // 3. Migrate Commons posts, comments, likes, saves & attempts in D1 store
+        await fetch('/api/posts/migrate-guest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            guestUid,
+            newUid: newFirebaseUser.uid,
+            username: guestUsername,
+          }),
+        }).catch(() => {});
+
+        // 4. Write upgraded profile to Firestore preserving username, progress, attempts, and stats
+        const preservedName = displayName?.trim() || guestUsername;
+        try {
+          await firebaseUpdateProfile(newFirebaseUser, { displayName: preservedName });
+        } catch {
+          // Non-fatal
+        }
+
+        const upgradedProfileDoc: UserProfile = {
+          uid: newFirebaseUser.uid,
+          email: cleanEmail,
+          displayName: preservedName,
+          name: preservedName,
+          username: guestUsername,
+          shortId: upgData.shortId || profile.shortId || deriveFallbackShortId(newFirebaseUser.uid),
+          role: 'student',
+          plan: 'free',
+          status: 'active',
+          isGuest: false,
+          accountType: 'registered',
+          profileCompleted: true,
+          onboardingCompleted: true,
+          targetUniversity: upgData.targetUniversity || profile.targetUniversity || 'General Prep',
+          testsCompleted: Number(upgData.testsCompleted ?? profile.testsCompleted ?? 0),
+          totalQuestionsSolved: Number(
+            upgData.totalQuestionsSolved ?? profile.totalQuestionsSolved ?? 0
+          ),
+          streak: Number(upgData.streak ?? profile.streak ?? 0),
+        };
+
+        await setDoc(
+          doc(db, 'users', newFirebaseUser.uid),
+          {
+            ...upgradedProfileDoc,
+            emailVerified: true,
+            upgradedFromGuestUid: guestUid,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ).catch(() => {});
+
+        await setDoc(
+          doc(db, 'publicProfiles', newFirebaseUser.uid),
+          {
+            uid: newFirebaseUser.uid,
+            displayName: preservedName,
+            username: guestUsername,
+            studentId: upgradedProfileDoc.shortId,
+            role: 'student',
+            stats: {
+              streak: upgradedProfileDoc.streak || 0,
+              testsCompleted: upgradedProfileDoc.testsCompleted || 0,
+              totalQuestionsSolved: upgradedProfileDoc.totalQuestionsSolved || 0,
+            },
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ).catch(() => {});
+
+        try {
+          localStorage.removeItem(GUEST_TOKEN_LS_KEY);
+          localStorage.setItem('boardly_user_authenticated', 'true');
+        } catch {
+          // Ignore
+        }
+        setGuestSessionToken(null);
+        setUser(newFirebaseUser);
+        setProfile(upgradedProfileDoc);
+        setOtpVerificationState({
+          status: 'verified',
+          purpose: null,
+          email: cleanEmail,
+          maskedEmail: maskEmailClient(cleanEmail),
+          cooldownSeconds: 0,
+          error: null,
+        });
+        return { ok: true };
+      } catch (err: any) {
+        const code = String(err?.code || '');
+        if (code === 'auth/email-already-in-use') {
+          return {
+            ok: false,
+            existingAccountConflict: true,
+            existingEmail: cleanEmail,
+            error:
+              'This email already belongs to another Boardly account. Would you like to log in instead?',
+          };
+        }
+        return {
+          ok: false,
+          error: err?.message || 'Could not upgrade guest account.',
+        };
+      }
+    },
+    [isGuest, profile, guestSessionToken]
+  );
+
+  const upgradeGuestWithGoogle = useCallback(async (): Promise<GuestUpgradeResult> => {
+    if (!isGuest || !profile?.uid) {
+      return { ok: false, error: 'No active guest account to upgrade.' };
+    }
+    setAuthError(null);
+    const guestUid = profile.uid;
+    const guestUsername = profile.username || profile.displayName || 'Student';
+    const savedGuestToken = guestSessionToken || localStorage.getItem(GUEST_TOKEN_LS_KEY) || '';
+    const snapshotGuestProfile = { ...profile };
+
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+
+    try {
+      const credential = await signInWithPopup(auth, provider);
+      const googleUser = credential?.user;
+      if (!googleUser) {
+        return { ok: false, error: 'Google sign-in was cancelled.' };
+      }
+
+      // Check if this Google user already has an existing registered profile in Firestore
+      const existingSnap = await getDoc(doc(db, 'users', googleUser.uid)).catch(() => null);
+      if (
+        existingSnap &&
+        typeof existingSnap.exists === 'function' &&
+        existingSnap.exists()
+      ) {
+        const existingData = existingSnap.data();
+        if (
+          existingData &&
+          existingData.onboardingCompleted === true &&
+          existingData.upgradedFromGuestUid !== guestUid
+        ) {
+          // Revert Firebase popup login so guest session is not lost unless they choose to log in
+          await firebaseSignOut(auth).catch(() => {});
+          const synth = buildSyntheticGuestUser(
+            guestUid,
+            guestUsername,
+            savedGuestToken || `${guestUid}.cookie_session`
+          );
+          setUser(synth);
+          setProfile(snapshotGuestProfile);
+          return {
+            ok: false,
+            existingAccountConflict: true,
+            existingEmail: googleUser.email || undefined,
+            error:
+              'This Google account already belongs to an existing Boardly user. Would you like to log in to that account instead?',
+          };
+        }
+      }
+
+      const idToken = await googleUser.getIdToken();
+      const upgRes = await fetch('/api/auth/guest/upgrade', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+          ...(savedGuestToken ? { 'X-Guest-Session': savedGuestToken } : {}),
+        },
+        body: JSON.stringify({
+          guestUid,
+          guestSessionToken: savedGuestToken,
+          newUid: googleUser.uid,
+          email: googleUser.email || '',
+          displayName: googleUser.displayName || guestUsername,
+          signInProvider: 'google.com',
+        }),
+      });
+      const upgData = await upgRes.json().catch(() => ({}));
+
+      if (upgRes.status === 409 || upgData?.code === 'ACCOUNT_ALREADY_EXISTS') {
+        await firebaseSignOut(auth).catch(() => {});
+        const synth = buildSyntheticGuestUser(
+          guestUid,
+          guestUsername,
+          savedGuestToken || `${guestUid}.cookie_session`
+        );
+        setUser(synth);
+        setProfile(snapshotGuestProfile);
+        return {
+          ok: false,
+          existingAccountConflict: true,
+          existingEmail: googleUser.email || undefined,
+          error:
+            upgData?.error ||
+            'This Google account already belongs to another user. Please log in instead.',
+        };
+      }
+
+      await fetch('/api/posts/migrate-guest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          guestUid,
+          newUid: googleUser.uid,
+          username: guestUsername,
+        }),
+      }).catch(() => {});
+
+      const upgradedProfileDoc: UserProfile = {
+        uid: googleUser.uid,
+        email: (googleUser.email || '').toLowerCase(),
+        displayName: guestUsername,
+        name: googleUser.displayName || guestUsername,
+        username: guestUsername,
+        photoURL: googleUser.photoURL || null,
+        shortId: upgData?.shortId || snapshotGuestProfile.shortId || deriveFallbackShortId(googleUser.uid),
+        role: 'student',
+        plan: 'free',
+        status: 'active',
+        isGuest: false,
+        accountType: 'registered',
+        profileCompleted: true,
+        onboardingCompleted: true,
+        targetUniversity:
+          upgData?.targetUniversity || snapshotGuestProfile.targetUniversity || 'General Prep',
+        testsCompleted: Number(
+          upgData?.testsCompleted ?? snapshotGuestProfile.testsCompleted ?? 0
+        ),
+        totalQuestionsSolved: Number(
+          upgData?.totalQuestionsSolved ?? snapshotGuestProfile.totalQuestionsSolved ?? 0
+        ),
+        streak: Number(upgData?.streak ?? snapshotGuestProfile.streak ?? 0),
+      };
+
+      await setDoc(
+        doc(db, 'users', googleUser.uid),
+        {
+          ...upgradedProfileDoc,
+          emailVerified: true,
+          upgradedFromGuestUid: guestUid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch(() => {});
+
+      await setDoc(
+        doc(db, 'publicProfiles', googleUser.uid),
+        {
+          uid: googleUser.uid,
+          displayName: guestUsername,
+          username: guestUsername,
+          studentId: upgradedProfileDoc.shortId,
+          role: 'student',
+          stats: {
+            streak: upgradedProfileDoc.streak || 0,
+            testsCompleted: upgradedProfileDoc.testsCompleted || 0,
+            totalQuestionsSolved: upgradedProfileDoc.totalQuestionsSolved || 0,
+          },
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch(() => {});
+
+      try {
+        localStorage.removeItem(GUEST_TOKEN_LS_KEY);
+        localStorage.setItem('boardly_user_authenticated', 'true');
+      } catch {
+        // Ignore
+      }
+      setGuestSessionToken(null);
+      setUser(googleUser);
+      setProfile(upgradedProfileDoc);
+      setOtpVerificationState({
+        status: 'verified',
+        purpose: null,
+        email: googleUser.email || '',
+        maskedEmail: maskEmailClient(googleUser.email || ''),
+        cooldownSeconds: 0,
+        error: null,
+      });
+      return { ok: true };
+    } catch (err: any) {
+      return {
+        ok: false,
+        error: err?.message || 'Could not upgrade guest account with Google.',
+      };
+    }
+  }, [isGuest, profile, guestSessionToken]);
+
   // ── Auth actions ─────────────────────────────────────────────────────────
   const signIn = useCallback(
     async (email: string, password: string) => {
       setAuthError(null);
+      // Clear any previous guest session when explicitly logging into a registered account
+      try {
+        localStorage.removeItem(GUEST_TOKEN_LS_KEY);
+      } catch {
+        // Ignore storage errors
+      }
+      setGuestSessionToken(null);
+      fetch('/api/auth/guest/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+
       const cleanEmail = email.trim().toLowerCase();
       const credential = await signInWithEmailAndPassword(auth, cleanEmail, password);
       const loggedInUser = credential.user;
@@ -748,6 +1416,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = useCallback(
     async (email: string, password: string, displayName: string) => {
       setAuthError(null);
+      try {
+        localStorage.removeItem(GUEST_TOKEN_LS_KEY);
+      } catch {
+        // Ignore storage errors
+      }
+      setGuestSessionToken(null);
+      fetch('/api/auth/guest/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+
       const cleanEmail = email.trim().toLowerCase();
       const credential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
       const { user: newUser } = credential;
@@ -834,6 +1510,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ── Pure popup-only Google sign-in (no redirects, no device branching) ───
   const signInWithGoogle = useCallback(async (): Promise<User | null> => {
     setAuthError(null);
+    try {
+      localStorage.removeItem(GUEST_TOKEN_LS_KEY);
+    } catch {
+      // Ignore storage errors
+    }
+    setGuestSessionToken(null);
+    fetch('/api/auth/guest/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
 
@@ -898,10 +1582,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOutUser = useCallback(async () => {
     setAuthError(null);
+    const savedGuestToken = guestSessionToken || localStorage.getItem(GUEST_TOKEN_LS_KEY) || '';
     try {
       localStorage.removeItem('boardly_user_authenticated');
+      localStorage.removeItem(GUEST_TOKEN_LS_KEY);
     } catch {
       // Ignore storage errors
+    }
+    setGuestSessionToken(null);
+    if (savedGuestToken || isGuest) {
+      fetch('/api/auth/guest/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: savedGuestToken ? { 'X-Guest-Session': savedGuestToken } : undefined,
+      }).catch(() => {});
     }
     setOtpVerificationState({
       status: 'idle',
@@ -911,17 +1605,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cooldownSeconds: 0,
       error: null,
     });
-    await firebaseSignOut(auth);
-  }, []);
+    setUser(null);
+    setProfile(null);
+    await firebaseSignOut(auth).catch(() => {});
+  }, [guestSessionToken, isGuest]);
 
   const sendVerificationEmail = useCallback(async () => {
-    if (user) {
+    if (user && !isGuest) {
       await requestOtpCodeForUser(user, {
         purpose: 'signup',
         forceResend: true,
       });
     }
-  }, [user, requestOtpCodeForUser]);
+  }, [user, isGuest, requestOtpCodeForUser]);
 
   const resetPassword = useCallback(async (email: string) => {
     setAuthError(null);
@@ -993,7 +1689,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateProfile = useCallback(
     async (updates: Partial<UserProfile>) => {
       updateLocalProfile(updates);
+      if (isGuest) {
+        await syncGuestProgress({
+          testsCompleted: updates.testsCompleted,
+          totalQuestionsSolved: updates.totalQuestionsSolved,
+          streak: updates.streak,
+          targetUniversity: updates.targetUniversity || undefined,
+        });
+        return;
+      }
       if (user) {
+        if (updates.username) {
+          fetch('/api/auth/username-register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              uid: user.uid,
+              username: updates.username,
+              accountType: 'registered',
+            }),
+          }).catch(() => {});
+        }
         try {
           await withTimeout(
             setDoc(doc(db, 'users', user.uid), updates, { merge: true }),
@@ -1005,7 +1721,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [user, updateLocalProfile]
+    [user, isGuest, updateLocalProfile, syncGuestProgress]
   );
 
   const contextValue = useMemo<AuthContextValue>(
@@ -1018,11 +1734,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearAuthError,
       clearProfileError,
       isAdmin,
+      isGuest,
+      guestSessionToken,
       isSessionVerified,
       otpVerificationState,
       requestOtpCode,
       verifyOtpCode,
       verifyFallbackEmailLink,
+      checkUsernameAvailability,
+      signInAsGuest,
+      syncGuestProgress,
+      upgradeGuestWithEmail,
+      upgradeGuestWithGoogle,
       signIn,
       signUp,
       signInWithGoogle,
@@ -1043,11 +1766,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearAuthError,
       clearProfileError,
       isAdmin,
+      isGuest,
+      guestSessionToken,
       isSessionVerified,
       otpVerificationState,
       requestOtpCode,
       verifyOtpCode,
       verifyFallbackEmailLink,
+      checkUsernameAvailability,
+      signInAsGuest,
+      syncGuestProgress,
+      upgradeGuestWithEmail,
+      upgradeGuestWithGoogle,
       signIn,
       signUp,
       signInWithGoogle,

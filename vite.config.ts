@@ -911,6 +911,26 @@ RULES:
           if (!cfMiddlewarePromise) {
             cfMiddlewarePromise = Promise.resolve(cfMod.createCloudflarePostsAndAuthMiddleware());
           }
+          const origWriteHead = res.writeHead.bind(res);
+          res.writeHead = function (statusCode: number, ...whArgs: any[]) {
+            try {
+              if (
+                statusCode === 200 &&
+                !capturedUrl.startsWith('/api/') &&
+                !capturedUrl.startsWith('/src/') &&
+                !capturedUrl.startsWith('/@')
+              ) {
+                const routeMeta = cfMod.resolveServerRouteMeta(capturedUrl);
+                if (routeMeta?.statusCode && routeMeta.statusCode !== 200) {
+                  statusCode = routeMeta.statusCode;
+                }
+              }
+            } catch {
+              // ignore status override error
+            }
+            return origWriteHead(statusCode, ...whArgs);
+          };
+
           const origEnd = res.end.bind(res);
           res.end = function (chunk: any, ...args: any[]) {
             try {
@@ -918,6 +938,10 @@ RULES:
               if (ct.includes('text/html') && chunk) {
                 const rawStr = typeof chunk === 'string' ? chunk : Buffer.isBuffer(chunk) ? chunk.toString('utf-8') : null;
                 if (rawStr && rawStr.includes('<title>')) {
+                  const routeMeta = cfMod.resolveServerRouteMeta(capturedUrl);
+                  if (routeMeta?.statusCode && !res.headersSent) {
+                    res.statusCode = routeMeta.statusCode;
+                  }
                   const enriched = cfMod.injectRouteMetaIntoHtml(rawStr, capturedUrl);
                   if (res.getHeader?.('content-length') || res.getHeader?.('Content-Length')) {
                     res.setHeader('Content-Length', Buffer.byteLength(enriched, 'utf-8'));
@@ -1267,15 +1291,12 @@ RULES:
         }
       });
 
-      // ─── EMAIL VERIFICATION & LOGIN 2FA API (/api/auth/*) ─────────────────
+      // ─── EMAIL VERIFICATION, LOGIN 2FA & GUEST MODE API (/api/auth/*) ───────
       server.middlewares.use('/api/auth', async (req: any, res: any, next: () => void) => {
-        const subPath = String(req.url || '').split('?')[0];
-        if (
-          subPath !== '/verification-status' &&
-          subPath !== '/send-code' &&
-          subPath !== '/verify-code' &&
-          subPath !== '/verify-link'
-        ) {
+        const subPath = String(req.url || '')
+          .split('?')[0]
+          .replace(/\/+$/, '');
+        if (subPath === '/password-reset' || subPath === '/check-account-status') {
           return next();
         }
         try {

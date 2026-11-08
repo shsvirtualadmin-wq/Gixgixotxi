@@ -7,10 +7,42 @@ export const RESERVED_WORDS = [
   'scholario',
   'superadmin',
   'admin',
+  'administrator',
+  'support',
+  'moderator',
+  'official',
+  'staff',
+  'system',
+  'security',
+  'helpdesk',
 ];
 
+export const EXACT_RESERVED_HANDLES = new Set([
+  'admin',
+  'administrator',
+  'superadmin',
+  'boardly',
+  'support',
+  'moderator',
+  'mod',
+  'shs',
+  'shsvirtualacademy',
+  'scholario',
+  'official',
+  'staff',
+  'system',
+  'root',
+  'help',
+  'security',
+  'captain',
+  'founder',
+  'team',
+  'guest',
+  'anonymous',
+]);
+
 /**
- * Normalizes a candidate username or display name for reserved keyword detection.
+ * Normalizes a candidate username or display name for reserved keyword and lookalike detection.
  * Strips zero-width characters, accents, spaces, dots, underscores, and translates leetspeak.
  */
 export function normalizeForReservedCheck(input: string): string {
@@ -44,19 +76,64 @@ export function normalizeForReservedCheck(input: string): string {
 }
 
 /**
+ * Normalizes a username into a canonical alphanumeric skeleton (stripping dots/underscores and lowercasing)
+ * to detect usernames that are too similar to existing ones (e.g. "ali.khan" vs "ali_khan" or "alikhan").
+ */
+export function normalizeUsernameSkeleton(username: string): string {
+  if (!username || typeof username !== 'string') return '';
+  return username
+    .toLowerCase()
+    .trim()
+    .replace(/[._-]+/g, '');
+}
+
+/**
+ * Checks whether a candidate username is too similar to an existing username.
+ * Blocks exact case-insensitive matches, punctuation-only variations (e.g. "john.doe" vs "john_doe"),
+ * and leetspeak lookalikes of usernames >= 4 chars.
+ */
+export function areUsernamesTooSimilar(candidate: string, existing: string): boolean {
+  const cLower = String(candidate || '').trim().toLowerCase();
+  const eLower = String(existing || '').trim().toLowerCase();
+  if (!cLower || !eLower) return false;
+  if (cLower === eLower) return true;
+
+  const cSkel = normalizeUsernameSkeleton(cLower);
+  const eSkel = normalizeUsernameSkeleton(eLower);
+  if (cSkel.length >= 3 && cSkel === eSkel) {
+    return true;
+  }
+
+  const cLookalike = normalizeForReservedCheck(cLower);
+  const eLookalike = normalizeForReservedCheck(eLower);
+  if (cLookalike.length >= 4 && cLookalike === eLookalike) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Checks whether a name contains any reserved keywords or look-alikes.
  */
 export function isReservedUsername(name: string): boolean {
   if (!name || typeof name !== 'string') return false;
 
+  const rawLower = name.toLowerCase().trim().replace(/^[._]+|[._]+$/g, '');
+  if (EXACT_RESERVED_HANDLES.has(rawLower)) return true;
+
+  const skel = normalizeUsernameSkeleton(name);
+  if (EXACT_RESERVED_HANDLES.has(skel)) return true;
+
   const normalized = normalizeForReservedCheck(name);
   if (!normalized) return false;
+  if (EXACT_RESERVED_HANDLES.has(normalized)) return true;
 
   // Also check deduplicated / collapsed consecutive characters (e.g., "sshhss" -> "shs")
   const collapsed = normalized.replace(/(.)\1+/g, '$1');
 
   for (const keyword of RESERVED_WORDS) {
-    if (normalized.includes(keyword) || collapsed.includes(keyword)) {
+    if (normalized.includes(keyword) || collapsed.includes(keyword) || skel.includes(keyword)) {
       return true;
     }
   }
@@ -110,49 +187,75 @@ export function validateNickname(
 
 /**
  * Validates username format:
- * Unique, lowercase, letters, numbers, dots, and underscores only (3 to 20 characters).
+ * Unique across all users (compared case-insensitively), letters, numbers, dots, and underscores only (3 to 20 characters).
  */
 export function validateUsernameFormat(
   username: string,
   userIdentifier?: string | null,
   isUserAdmin?: boolean
-): { valid: boolean; error?: string; isReserved?: boolean } {
+): {
+  valid: boolean;
+  clean: string;
+  normalized: string;
+  error?: string;
+  reason?: string;
+  isReserved?: boolean;
+} {
   if (!username || typeof username !== 'string') {
-    return { valid: false, error: 'Username cannot be empty.' };
+    const msg = 'Username cannot be empty.';
+    return { valid: false, clean: '', normalized: '', error: msg, reason: msg };
   }
 
   const clean = username.trim();
-
-  if (clean !== clean.toLowerCase()) {
-    return { valid: false, error: 'Username must be all lowercase.' };
-  }
+  const normalized = clean.toLowerCase();
 
   if (clean.length < 3) {
-    return { valid: false, error: 'Username must be at least 3 characters.' };
+    const msg = 'Username must be at least 3 characters.';
+    return { valid: false, clean, normalized, error: msg, reason: msg };
   }
 
   if (clean.length > 20) {
-    return { valid: false, error: 'Username cannot exceed 20 characters.' };
+    const msg = 'Username cannot exceed 20 characters.';
+    return { valid: false, clean, normalized, error: msg, reason: msg };
   }
 
-  const regex = /^[a-z0-9._]+$/;
+  const regex = /^[a-zA-Z0-9._]+$/;
   if (!regex.test(clean)) {
+    const msg = 'Username can only contain letters, numbers, dots (.), and underscores (_).';
     return {
       valid: false,
-      error: 'Username can only contain lowercase letters, numbers, dots, and underscores.',
+      clean,
+      normalized,
+      error: msg,
+      reason: msg,
+    };
+  }
+
+  if (/^[._]|[._]$/.test(clean) || /[._]{2,}/.test(clean)) {
+    const msg = 'Username cannot start/end with or repeat dots or underscores.';
+    return {
+      valid: false,
+      clean,
+      normalized,
+      error: msg,
+      reason: msg,
     };
   }
 
   const isAdmin = Boolean(isUserAdmin || isAdminAccount(userIdentifier));
   if (!isAdmin && isReservedUsername(clean)) {
+    const msg = 'This username is reserved and cannot be used.';
     return {
       valid: false,
+      clean,
+      normalized,
       isReserved: true,
-      error: 'This name is reserved. Send a request to use it.',
+      error: msg,
+      reason: msg,
     };
   }
 
-  return { valid: true };
+  return { valid: true, clean, normalized };
 }
 
 /**
@@ -175,3 +278,4 @@ export function isForbiddenAdminRole(roleStr?: string | null): boolean {
   const lower = roleStr.toLowerCase().trim().replace(/[\s\-_.]+/g, '');
   return lower.includes('admin') || lower.includes('superadmin') || lower.includes('administrator');
 }
+

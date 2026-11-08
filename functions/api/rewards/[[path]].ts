@@ -296,6 +296,10 @@ export function canUserClaimRewards(params: {
   user: AuthenticatedD1User | null;
 }): boolean {
   if (!params.serverConfigured || !params.user) return false;
+  // Abuse protection: guests cannot claim Koban rewards or referral bonuses
+  if (params.user.isGuest || String(params.user.uid || '').startsWith('guest_')) {
+    return false;
+  }
   if (params.mode === 'off') return false;
   if (params.mode === 'admin_only') {
     return Boolean(params.user.isSuperAdmin || params.user.isAdminOrAbove);

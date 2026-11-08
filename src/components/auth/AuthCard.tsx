@@ -1,19 +1,22 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, User, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle2, ArrowLeft, UserCheck } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { logRedirect } from '@/utils/debugTracker';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { OtpVerificationCard } from './OtpVerificationCard';
+import { validateUsernameFormat } from '@/utils/usernameValidation';
 
 interface AuthCardProps {
-  initialMode?: 'signin' | 'signup';
+  initialMode?: 'signin' | 'signup' | 'guest';
 }
 
 export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
-  const [mode, setMode] = useState<'signin' | 'signup'>(() => {
-    if (typeof window !== 'undefined' && window.location.pathname === '/signup') {
-      return 'signup';
+  const [mode, setMode] = useState<'signin' | 'signup' | 'guest'>(() => {
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get('mode') === 'guest') return 'guest';
+      if (window.location.pathname === '/signup') return 'signup';
     }
     return initialMode;
   });
@@ -21,6 +24,8 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     signIn,
     signUp,
     signInWithGoogle,
+    signInAsGuest,
+    checkUsernameAvailability,
     signOutUser,
     authError,
     clearAuthError,
@@ -45,6 +50,14 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  // Guest Mode State
+  const [guestUsername, setGuestUsername] = useState('');
+  const [guestCheckState, setGuestCheckState] = useState<{
+    status: 'idle' | 'checking' | 'available' | 'taken' | 'invalid';
+    reason?: string;
+  }>({ status: 'idle' });
+  const [guestSubmitting, setGuestSubmitting] = useState(false);
+
   // Status State
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -54,7 +67,12 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
 
   // Sync mode with props if prop changes
   useEffect(() => {
-    setMode(initialMode);
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('mode') === 'guest') {
+      setMode('guest');
+    } else {
+      setMode(initialMode);
+    }
     setFieldErrors({});
     setGeneralError('');
     setEmailAlreadyInUse(false);
@@ -62,9 +80,47 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     clearProfileError();
   }, [initialMode, clearAuthError, clearProfileError]);
 
+  // Live debounced username availability check in guest mode
+  useEffect(() => {
+    if (mode !== 'guest') return;
+    const raw = guestUsername.trim().replace(/^@+/, '');
+    if (!raw) {
+      setGuestCheckState({ status: 'idle' });
+      return;
+    }
+    const localValidation = validateUsernameFormat(raw);
+    if (!localValidation.valid) {
+      setGuestCheckState({
+        status: 'invalid',
+        reason: localValidation.reason || 'Invalid username format.',
+      });
+      return;
+    }
+
+    let cancelled = false;
+    setGuestCheckState({ status: 'checking' });
+    const timer = setTimeout(async () => {
+      const res = await checkUsernameAvailability(raw);
+      if (cancelled) return;
+      if (res.available) {
+        setGuestCheckState({ status: 'available' });
+      } else {
+        setGuestCheckState({
+          status: 'taken',
+          reason: res.reason || 'That username is already taken.',
+        });
+      }
+    }, 260);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [guestUsername, mode, checkUsernameAvailability]);
+
   const getDestinationUrl = useCallback(() => {
     const searchParams = new URLSearchParams(window.location.search);
-    const redirectParam = searchParams.get('redirect');
+    const redirectParam = searchParams.get('redirect') || searchParams.get('returnTo');
     const storedRedirect = sessionStorage.getItem('boardly_post_login_redirect');
     const pendingCrew = sessionStorage.getItem('pending_join_crew_code');
 
@@ -79,39 +135,55 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     if (pendingCrew) {
       return `/join/${pendingCrew}`;
     }
-    if (profile && !profile.onboardingCompleted && profile.role === 'student') {
+    if (profile && !profile.isGuest && !profile.onboardingCompleted && profile.role === 'student') {
       return '/onboarding';
     }
     return profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
   }, [profile, getRoleRedirectUrl]);
 
-  const handleContinueAsGuest = useCallback(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const redirectParam = searchParams.get('redirect');
-    sessionStorage.removeItem('boardly_post_login_redirect');
+  const handleStartGuestMode = useCallback(() => {
+    setGeneralError('');
+    setFieldErrors({});
+    clearAuthError();
+    clearProfileError();
+    setMode('guest');
+  }, [clearAuthError, clearProfileError]);
 
-    // Only redirect to public routes if a redirect param exists; avoid private routes that would bounce back to /login
-    const isPrivateTarget =
-      redirectParam &&
-      (/^\/(dashboard|practice|results|messages|notifications|saved|settings|profile|wallet|checkout|admin|onboarding|test)(\/|$)/.test(
-        redirectParam
-      ) ||
-        redirectParam.startsWith('/commons/new') ||
-        redirectParam.startsWith('/crew/my') ||
-        redirectParam.startsWith('/crew/dashboard'));
-
-    if (redirectParam && redirectParam.startsWith('/') && !isPrivateTarget) {
-      navigate(redirectParam);
+  const handleGuestSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setGeneralError('');
+    const raw = guestUsername.trim().replace(/^@+/, '');
+    const localCheck = validateUsernameFormat(raw);
+    if (!localCheck.valid) {
+      setGuestCheckState({
+        status: 'invalid',
+        reason: localCheck.reason || 'Please enter a valid username.',
+      });
       return;
     }
-    if (typeof window !== 'undefined' && window.history.length > 2) {
-      navigate(-1);
-      return;
-    }
-    navigate('/');
-  }, [navigate]);
 
-  // Navigate ONLY after session has completed 6-digit verification (or Google sign-in)
+    setGuestSubmitting(true);
+    try {
+      const res = await signInAsGuest(raw);
+      if (!res.ok) {
+        setGuestCheckState({
+          status: 'taken',
+          reason: res.error || 'Could not claim that username.',
+        });
+        setGeneralError(res.error || 'Could not start guest session.');
+        return;
+      }
+      const dest = getDestinationUrl();
+      logRedirect('/login', dest, 'AuthCard.tsx (Guest account created)');
+      navigate(dest, { replace: true });
+    } catch (err: unknown) {
+      setGeneralError(err instanceof Error ? err.message : 'Could not create guest session.');
+    } finally {
+      setGuestSubmitting(false);
+    }
+  };
+
+  // Navigate ONLY after session has completed 6-digit verification (or Google / Guest sign-in)
   useEffect(() => {
     if (user && isSessionVerified) {
       if (!profileLoading || profile) {
@@ -267,6 +339,149 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     );
   }
 
+  // ── Guest Username Step (PART B) ──────────────────────────────────────────
+  if (mode === 'guest') {
+    const canSubmitGuest =
+      !guestSubmitting &&
+      guestUsername.trim().replace(/^@+/, '').length >= 3 &&
+      guestCheckState.status !== 'invalid' &&
+      guestCheckState.status !== 'taken' &&
+      guestCheckState.status !== 'checking';
+
+    return (
+      <div
+        className="w-full rounded-[28px] border border-[var(--border)] p-6 sm:p-7 flex flex-col gap-5"
+        style={{
+          backgroundColor: 'var(--card)',
+          boxShadow: 'none',
+        }}
+      >
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => {
+              setMode('signin');
+              setGeneralError('');
+            }}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+          >
+            <ArrowLeft size={15} />
+            <span>Back to Sign In</span>
+          </button>
+          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold uppercase bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)]">
+            Guest Mode
+          </span>
+        </div>
+
+        <div className="text-left">
+          <h1
+            className="text-2xl font-bold text-[var(--text)] tracking-tight"
+            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+          >
+            Pick a guest username
+          </h1>
+          <p className="text-xs sm:text-sm text-[var(--muted)] mt-1.5 leading-relaxed">
+            Choose a unique username to practice tests, save your progress, and participate in Boardly Commons.
+          </p>
+        </div>
+
+        {generalError && (
+          <div
+            role="alert"
+            className="p-3.5 rounded-2xl bg-[#260B0B] border border-[#EF4444] flex items-start gap-2.5 text-xs text-[#FEE2E2]"
+          >
+            <AlertCircle size={16} className="text-[#EF4444] shrink-0 mt-0.5" />
+            <span>{generalError}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleGuestSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2 text-left">
+            <div className="flex items-center justify-between gap-2">
+              <label
+                htmlFor="guest-username-input"
+                className="text-sm font-medium text-[var(--text)]"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                Username
+              </label>
+
+              {guestCheckState.status === 'checking' && (
+                <span className="text-[11px] font-mono text-[var(--muted)]">
+                  Checking availability...
+                </span>
+              )}
+              {guestCheckState.status === 'available' && (
+                <span className="text-[11px] font-mono font-bold text-emerald-500 inline-flex items-center gap-1">
+                  <CheckCircle2 size={13} />
+                  <span>Available</span>
+                </span>
+              )}
+              {(guestCheckState.status === 'taken' || guestCheckState.status === 'invalid') && (
+                <span className="text-[11px] font-mono font-bold text-[#EF4444] inline-flex items-center gap-1">
+                  <AlertCircle size={13} />
+                  <span>{guestCheckState.status === 'taken' ? 'Taken' : 'Invalid'}</span>
+                </span>
+              )}
+            </div>
+
+            <div className="relative">
+              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] font-mono font-bold text-sm pointer-events-none">
+                @
+              </div>
+              <input
+                id="guest-username-input"
+                type="text"
+                value={guestUsername}
+                onChange={(e) => setGuestUsername(e.target.value.replace(/^@+/, ''))}
+                placeholder="ahmed_khan99"
+                maxLength={20}
+                autoFocus
+                autoComplete="off"
+                className={`auth-form-input font-mono ${
+                  guestCheckState.status === 'taken' || guestCheckState.status === 'invalid'
+                    ? 'input-error'
+                    : ''
+                }`}
+                style={{
+                  height: '52px',
+                  paddingLeft: '36px',
+                  paddingRight: '16px',
+                }}
+              />
+            </div>
+
+            {(guestCheckState.status === 'taken' || guestCheckState.status === 'invalid') &&
+              guestCheckState.reason && (
+                <span className="text-xs text-[#EF4444] font-medium">
+                  {guestCheckState.reason}
+                </span>
+              )}
+
+            <span className="text-[11px] text-[var(--muted)] leading-relaxed">
+              3 to 20 characters. Letters, numbers, dots (<code className="font-mono">.</code>) and underscores (<code className="font-mono">_</code>) only. Case-insensitive across all accounts.
+            </span>
+          </div>
+
+          {/* Non-blocking note required by Part B Rule 3 */}
+          <div className="p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[11px] text-[var(--muted)] leading-relaxed text-left">
+            You&apos;ll stay signed in on this device. Clearing browser data means you cannot return to this guest account unless you upgrade to a full account.
+          </div>
+
+          <button
+            type="submit"
+            disabled={!canSubmitGuest}
+            className="btn-red relative overflow-hidden w-full cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{ height: '52px' }}
+          >
+            <span>{guestSubmitting ? 'Starting guest session...' : 'Continue as guest'}</span>
+            {guestSubmitting && <ButtonLineLoader />}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
   // ── Main Sign In / Sign Up Card ───────────────────────────────────────────
   return (
     <div
@@ -397,41 +612,54 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
         </div>
       )}
 
-      {/* Continue with Google: Full-width white button, 52px tall, official Google icon, black text, 2px red border, pill shape */}
-      <button
-        type="button"
-        onClick={handleGoogleSignIn}
-        disabled={googleLoading || loading}
-        className="auth-google-btn relative overflow-hidden"
-        aria-label="Continue with Google"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
-          <path
-            fill="#4285F4"
-            d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
-          />
-          <path
-            fill="#34A853"
-            d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24Z"
-          />
-          <path
-            fill="#FBBC05"
-            d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15Z"
-          />
-          <path
-            fill="#EA4335"
-            d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98Z"
-          />
-        </svg>
-        <span>
-          {googleLoading
-            ? mode === 'signin'
-              ? 'Logging in...'
-              : 'Creating your account...'
-            : 'Continue with Google'}
-        </span>
-        {googleLoading && <ButtonLineLoader />}
-      </button>
+      {/* Continue with Google + Continue as guest */}
+      <div className="flex flex-col gap-2.5">
+        <button
+          type="button"
+          onClick={handleGoogleSignIn}
+          disabled={googleLoading || loading}
+          className="auth-google-btn relative overflow-hidden"
+          aria-label="Continue with Google"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="#4285F4"
+              d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
+            />
+            <path
+              fill="#34A853"
+              d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24Z"
+            />
+            <path
+              fill="#FBBC05"
+              d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15Z"
+            />
+            <path
+              fill="#EA4335"
+              d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98Z"
+            />
+          </svg>
+          <span>
+            {googleLoading
+              ? mode === 'signin'
+                ? 'Logging in...'
+                : 'Creating your account...'
+              : 'Continue with Google'}
+          </span>
+          {googleLoading && <ButtonLineLoader />}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleStartGuestMode}
+          disabled={googleLoading || loading}
+          className="w-full py-3 px-4 rounded-full border border-[var(--border)] bg-[var(--surface-2)] hover:border-[#D71921]/60 text-xs sm:text-sm font-semibold text-[var(--text)] transition-all cursor-pointer inline-flex items-center justify-center gap-2"
+          style={{ fontFamily: 'var(--font-heading)', height: '48px' }}
+        >
+          <UserCheck size={16} className="text-[#D71921]" />
+          <span>Continue as guest</span>
+        </button>
+      </div>
 
       {/* Divider: "or use email" */}
       <div className="flex items-center gap-3 my-1">
@@ -643,7 +871,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           </p>
         )}
 
-        {/* Mode switch link + Continue without an account */}
+        {/* Mode switch link + Continue as guest */}
         <div className="pt-2 border-t border-[var(--border)] flex flex-col items-center gap-3 text-center">
           <p className="text-xs text-[var(--muted)]">
             {mode === 'signin' ? (
@@ -683,11 +911,11 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
 
           <button
             type="button"
-            onClick={handleContinueAsGuest}
+            onClick={handleStartGuestMode}
             className="w-full py-2.5 px-4 rounded-full border border-[var(--border)] bg-[var(--surface-2)] hover:border-[var(--text-muted)] text-xs font-medium text-[var(--muted)] hover:text-[var(--text)] transition-all cursor-pointer"
             style={{ fontFamily: 'var(--font-heading)' }}
           >
-            Continue without an account
+            Continue as guest
           </button>
         </div>
       </form>

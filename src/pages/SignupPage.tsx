@@ -17,21 +17,19 @@ export function SignupPage() {
   } = useAuth();
   const navigate = useNavigate();
 
-  // Only redirect once the 6-digit verification code has been verified
+  // Only redirect once the 6-digit verification code has been verified (or guest session created)
   useEffect(() => {
     if (user && !profileLoading && isSessionVerified) {
-      if (profile && !profile.onboardingCompleted && profile.role === 'student') {
-        navigate('/onboarding', { replace: true });
-        return;
-      }
       const searchParams = new URLSearchParams(window.location.search);
-      const redirectParam = searchParams.get('redirect');
+      const redirectParam = searchParams.get('redirect') || searchParams.get('returnTo');
       const storedRedirect = sessionStorage.getItem('boardly_post_login_redirect');
       let dest = profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
       if (redirectParam && redirectParam.startsWith('/')) {
         dest = redirectParam;
       } else if (storedRedirect && storedRedirect.startsWith('/')) {
         dest = storedRedirect;
+      } else if (profile && !profile.isGuest && !profile.onboardingCompleted && profile.role === 'student') {
+        dest = '/onboarding';
       }
       sessionStorage.removeItem('boardly_post_login_redirect');
       navigate(dest, { replace: true });

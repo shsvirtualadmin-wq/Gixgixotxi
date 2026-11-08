@@ -36,6 +36,7 @@ export function AdminUsersPage() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [planFilter, setPlanFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'guest' | 'registered' | 'pro'>('all');
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -201,11 +202,18 @@ export function AdminUsersPage() {
         if (roleFilter === 'crew' && u.role !== 'crew') return false;
       }
 
-      // 2. Plan Filter
+      // 2. Plan & Account Type Filter (Guest / Registered / Pro)
+      const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
+      const isPro = !isGuestUser && (u.plan === 'pro' || !!u.isPremium);
+      if (accountTypeFilter === 'guest' && !isGuestUser) return false;
+      if (accountTypeFilter === 'registered' && isGuestUser) return false;
+      if (accountTypeFilter === 'pro' && !isPro) return false;
+
       if (planFilter !== 'all') {
-        const isPro = u.plan === 'pro' || !!u.isPremium;
         if (planFilter === 'pro' && !isPro) return false;
-        if (planFilter === 'free' && isPro) return false;
+        if (planFilter === 'free' && (isPro || isGuestUser)) return false;
+        if (planFilter === 'guest' && !isGuestUser) return false;
+        if (planFilter === 'registered' && isGuestUser) return false;
       }
 
       // 3. Status Filter
@@ -220,17 +228,24 @@ export function AdminUsersPage() {
       if (debouncedSearch.trim()) {
         const st = debouncedSearch.toLowerCase().trim();
         const name = getUserDisplayName(u).toLowerCase();
+        const username = String(u.username || '').toLowerCase();
         const email = (u.email || '').toLowerCase();
         const uid = (u.uid || '').toLowerCase();
         const uni = (u.targetUniversity || '').toLowerCase();
-        if (!name.includes(st) && !email.includes(st) && !uid.includes(st) && !uni.includes(st)) {
+        if (
+          !name.includes(st) &&
+          !username.includes(st) &&
+          !email.includes(st) &&
+          !uid.includes(st) &&
+          !uni.includes(st)
+        ) {
           return false;
         }
       }
 
       return true;
     });
-  }, [allUsers, roleFilter, planFilter, statusFilter, debouncedSearch]);
+  }, [allUsers, roleFilter, planFilter, statusFilter, accountTypeFilter, debouncedSearch]);
 
   return (
     <div className="flex flex-col gap-6 w-full max-w-full">
@@ -417,9 +432,32 @@ export function AdminUsersPage() {
             ))}
           </div>
 
-          {/* Plan & Status Filter Chips */}
+          {/* Account Type, Plan & Status Filter Chips */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[11px] font-heading text-[var(--muted)] mr-1 shrink-0">
+              Account:
+            </span>
+            {[
+              { id: 'all', label: 'All' },
+              { id: 'registered', label: 'Registered' },
+              { id: 'guest', label: 'Guest' },
+              { id: 'pro', label: 'Pro' },
+            ].map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setAccountTypeFilter(id as 'all' | 'guest' | 'registered' | 'pro')}
+                className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
+                  accountTypeFilter === id
+                    ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
+                    : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+
+            <span className="text-[11px] font-heading text-[var(--muted)] mx-1 shrink-0">
               Plan:
             </span>
             {[
@@ -495,7 +533,8 @@ export function AdminUsersPage() {
             const name = getUserDisplayName(u);
             const initial = name[0].toUpperCase();
             const isSuspended = !!(u.suspended || u.isSuspended);
-            const isPro = u.plan === 'pro' || u.isPremium;
+            const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
+            const isPro = !isGuestUser && (u.plan === 'pro' || u.isPremium);
 
             const studentId = formatStudentId(u);
             const qSolved = u.totalQuestionsSolved ?? ((u.testsCompleted || 0) * 15);
@@ -503,7 +542,14 @@ export function AdminUsersPage() {
               ? u.createdAt.toDate().toLocaleDateString('en-GB')
               : u.createdAt?.seconds
               ? new Date(u.createdAt.seconds * 1000).toLocaleDateString('en-GB')
+              : typeof u.createdAt === 'number'
+              ? new Date(u.createdAt).toLocaleDateString('en-GB')
               : 'Recent';
+            const lastActiveDate = typeof u.lastActiveAt === 'number'
+              ? new Date(u.lastActiveAt).toLocaleDateString('en-GB')
+              : u.lastActiveAt?.toDate
+              ? u.lastActiveAt.toDate().toLocaleDateString('en-GB')
+              : null;
 
             return (
               <div
@@ -517,16 +563,25 @@ export function AdminUsersPage() {
                         {initial}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-heading font-semibold text-[14px] text-[var(--text)] truncate">
                             {name}
                           </p>
+                          {isGuestUser && (
+                            <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              Guest
+                            </span>
+                          )}
                           <span className="font-mono text-[11px] font-bold text-[#D71921] px-1.5 py-0.2 rounded bg-[var(--surface-2)] border border-[var(--border)]">
                             {studentId}
                           </span>
                         </div>
                         <p className="font-heading text-[12px] text-[var(--muted)] truncate">
-                          {isSuperAdmin ? u.email : maskEmail(u.email)}
+                          {isGuestUser
+                            ? `@${u.username || name}`
+                            : isSuperAdmin
+                            ? u.email
+                            : maskEmail(u.email)}
                         </p>
                       </div>
                     </div>
@@ -543,12 +598,18 @@ export function AdminUsersPage() {
 
                   {/* Meta: Track, Joined Date & Status Pills */}
                   <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-[var(--border)]/60 text-xs">
-                    <div className="flex items-center gap-2 text-[11px] text-[var(--muted)]">
+                    <div className="flex items-center gap-2 text-[11px] text-[var(--muted)] flex-wrap">
                       <span className="font-medium text-[var(--text)] truncate max-w-[140px]">
                         {u.targetUniversity || 'General Prep'}
                       </span>
                       <span>·</span>
                       <span className="font-mono text-[var(--text-faint)]">Joined {joinedDate}</span>
+                      {lastActiveDate && (
+                        <>
+                          <span>·</span>
+                          <span className="font-mono text-[var(--text-faint)]">Active {lastActiveDate}</span>
+                        </>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -557,12 +618,20 @@ export function AdminUsersPage() {
                           Suspended
                         </span>
                       )}
-                      <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)] capitalize">
-                        {u.role || 'Student'}
-                      </span>
-                      <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
-                        {isPro ? 'Pro' : 'Free'}
-                      </span>
+                      {isGuestUser ? (
+                        <span className="text-[10px] font-heading px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 font-semibold">
+                          Guest
+                        </span>
+                      ) : (
+                        <>
+                          <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)] capitalize">
+                            {u.role || 'Student'}
+                          </span>
+                          <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
+                            {isPro ? 'Pro' : 'Free'}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -578,11 +647,11 @@ export function AdminUsersPage() {
               <tr className="border-b border-[var(--border)] bg-[var(--card-2)]/50 text-[12px] font-heading text-[var(--muted)]">
                 <th className="py-3 px-5 font-medium">Student</th>
                 <th className="py-3 px-4 font-medium">Short ID</th>
-                <th className="py-3 px-4 font-medium">Email</th>
+                <th className="py-3 px-4 font-medium">Email / Handle</th>
                 <th className="py-3 px-4 font-medium">University Track</th>
                 <th className="py-3 px-4 font-medium">Questions Solved</th>
                 <th className="py-3 px-4 font-medium">Streak</th>
-                <th className="py-3 px-4 font-medium">Joined Date</th>
+                <th className="py-3 px-4 font-medium">Created / Active</th>
                 <th className="py-3 px-5 text-right font-medium">Action</th>
               </tr>
             </thead>
@@ -597,7 +666,7 @@ export function AdminUsersPage() {
                 <tr>
                   <td colSpan={8} className="py-12 px-5 text-center text-[var(--muted)]">
                     <p className="font-heading text-[14px] mb-2">No users match your filters or search criteria.</p>
-                    {(search || roleFilter !== 'all' || planFilter !== 'all' || statusFilter !== 'all') && (
+                    {(search || roleFilter !== 'all' || planFilter !== 'all' || statusFilter !== 'all' || accountTypeFilter !== 'all') && (
                       <button
                         type="button"
                         onClick={() => {
@@ -605,6 +674,7 @@ export function AdminUsersPage() {
                           setRoleFilter('all');
                           setPlanFilter('all');
                           setStatusFilter('all');
+                          setAccountTypeFilter('all');
                         }}
                         className="text-[12px] font-heading px-3 py-1 rounded-full border border-[var(--border)] text-[var(--text)] hover:border-[var(--text)] transition-colors cursor-pointer"
                       >
@@ -617,13 +687,21 @@ export function AdminUsersPage() {
                 filteredUsers.map((u) => {
                   const name = getUserDisplayName(u);
                   const initial = name[0].toUpperCase();
+                  const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
                   const studentId = formatStudentId(u);
                   const qSolved = u.totalQuestionsSolved ?? ((u.testsCompleted || 0) * 15);
                   const joinedDate = u.createdAt?.toDate
                     ? u.createdAt.toDate().toLocaleDateString('en-GB')
                     : u.createdAt?.seconds
                     ? new Date(u.createdAt.seconds * 1000).toLocaleDateString('en-GB')
+                    : typeof u.createdAt === 'number'
+                    ? new Date(u.createdAt).toLocaleDateString('en-GB')
                     : 'Recent';
+                  const lastActiveDate = typeof u.lastActiveAt === 'number'
+                    ? new Date(u.lastActiveAt).toLocaleDateString('en-GB')
+                    : u.lastActiveAt?.toDate
+                    ? u.lastActiveAt.toDate().toLocaleDateString('en-GB')
+                    : null;
 
                   return (
                     <tr
@@ -633,13 +711,18 @@ export function AdminUsersPage() {
                     >
                       {/* 1. Student Name */}
                       <td className="py-3.5 px-5">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2.5">
                           <div className="w-8 h-8 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[12px] text-[var(--text)] shrink-0">
                             {initial}
                           </div>
                           <span className="font-heading font-semibold text-[13px] text-[var(--text)] truncate max-w-[140px]">
                             {name}
                           </span>
+                          {isGuestUser && (
+                            <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
+                              Guest
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -648,9 +731,13 @@ export function AdminUsersPage() {
                         {studentId}
                       </td>
 
-                      {/* 3. Email */}
+                      {/* 3. Email / Username */}
                       <td className="py-3.5 px-4 text-[12px] text-[var(--muted)]">
-                        {isSuperAdmin ? u.email : maskEmail(u.email)}
+                        {isGuestUser
+                          ? `@${u.username || name}`
+                          : isSuperAdmin
+                          ? u.email
+                          : maskEmail(u.email)}
                       </td>
 
                       {/* 4. University Track */}
@@ -668,9 +755,12 @@ export function AdminUsersPage() {
                         🔥 {u.streak || 0}d
                       </td>
 
-                      {/* 7. Joined Date */}
+                      {/* 7. Created & Last Active Date */}
                       <td className="py-3.5 px-4 text-[12px] font-mono text-[var(--text-faint)]">
-                        {joinedDate}
+                        <div>{joinedDate}</div>
+                        {lastActiveDate && (
+                          <div className="text-[10px] text-[var(--muted)]">Active {lastActiveDate}</div>
+                        )}
                       </td>
 
                       {/* 8. Action */}

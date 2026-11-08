@@ -322,6 +322,54 @@ function ensureStoreDefaults(store: D1StoreData): boolean {
   const basePastMs = 1743465600000;
 
   if (!Array.isArray(store.posts)) store.posts = [];
+
+  // Ensure the canonical shared Baqai PG post exists in the store
+  const baqaiPostId = 'post_1794114347338_zoybjtb0';
+  if (!store.posts.some((p) => p.id === baqaiPostId)) {
+    store.posts.unshift({
+      id: baqaiPostId,
+      slug: 'post_1794114347338_zoybjtb0-news-baqai-pg-late-window-closes-tue-10-nov-test-28-nov',
+      type: 'discussion',
+      title: 'NEWS: Baqai PG late window closes Tue 10 Nov — test 28 Nov',
+      description:
+        "Corroborated by several schedule sources (ResultOnline, Result.pk, Daily Express 25 Oct), not yet verified on Baqai's own portal: Baqai Medical University postgraduate admissions (PhD, MPhil, MS, MD, MDS, FCPS-II slots and diplomas) took normal applications to 3 November; the late window runs to Tuesday 10 November with a Rs 2,000 late fee, and the University Admission Test is 28 November 2026. Forms via baqai.edu.pk / the Admission Cell (local processing fee Rs 5,000, non-refundable). Confirm the schedule and fee on baqai.edu.pk before paying.",
+      subject: 'MDCAT',
+      chapter: 'Admissions & Schedule',
+      target: 'MDCAT',
+      class_level: '12',
+      board: 'Sindh',
+      format: 'text',
+      tags_json: JSON.stringify(['Baqai', 'Admissions', 'Postgraduate', 'University Test']),
+      files_json: '[]',
+      is_anonymous: 0,
+      anonymous_alias: 'Anonymous Student',
+      author_uid: 'bot_biology_amina',
+      real_author_uid: 'bot_biology_amina',
+      author_name: 'Amina Tariq',
+      author_avatar: 'https://api.dicebear.com/7.x/Bottts/svg?seed=Amina',
+      author_frame: 'frame- emerald',
+      author_equipped_avatar: 'avatar-amina',
+      author_photo_url: null,
+      author_role: 'student',
+      author_custom_role: 'Biology Mentor',
+      status: 'published',
+      visibility: 'public',
+      is_hidden: 0,
+      is_pinned: 0,
+      is_featured: 1,
+      upvotes: 14,
+      downvotes: 0,
+      views: 128,
+      comment_count: 1,
+      save_count: 5,
+      shares_count: 3,
+      report_count: 0,
+      created_at: 1762560000000,
+      updated_at: 1762560000000,
+    });
+    mutated = true;
+  }
+
   for (let i = 0; i < store.posts.length; i++) {
     const p = store.posts[i];
     if (p.created_at > 0 && p.created_at < 10000000000) {
@@ -330,8 +378,9 @@ function ensureStoreDefaults(store: D1StoreData): boolean {
       mutated = true;
     }
     if (
-      p.created_at > now ||
-      (String(p.id || '').startsWith('commons_anon_topic_') && p.created_at > basePastMs)
+      p.id !== baqaiPostId &&
+      (p.created_at > now ||
+        (String(p.id || '').startsWith('commons_anon_topic_') && p.created_at > basePastMs))
     ) {
       p.created_at = basePastMs - i * 3600000;
       p.updated_at = p.created_at;
@@ -800,12 +849,57 @@ export interface VerifiedWorkerUser {
   picture: string;
   role: 'student' | 'captain' | 'superadmin';
   customRole: string | null;
+  isGuest?: boolean;
+  username?: string;
 }
 
 export async function verifyFirebaseJwtZeroFirestore(
   req: express.Request
 ): Promise<VerifiedWorkerUser | null> {
   const authHeader = String(req.headers.authorization || '');
+  const guestSessionHeader = String(req.headers['x-guest-session'] || '').trim();
+  const cookieHeader = String(req.headers.cookie || '');
+
+  // Support guest sessions (cookie `boardly_guest_session`, header `X-Guest-Session`, or `Authorization: Bearer guest_...`)
+  if (
+    guestSessionHeader ||
+    authHeader.startsWith('Bearer guest_') ||
+    (!authHeader.startsWith('Bearer ') && cookieHeader.includes('boardly_guest_session='))
+  ) {
+    try {
+      const { getSharedLocalD1Database, authenticateD1GuestSession } = await import(
+        '../../functions/_utils/firestoreRestAdmin'
+      );
+      const headersObj = new Headers();
+      if (authHeader) headersObj.set('Authorization', authHeader);
+      if (guestSessionHeader) headersObj.set('X-Guest-Session', guestSessionHeader);
+      if (cookieHeader) headersObj.set('Cookie', cookieHeader);
+      const webReq = new Request('http://localhost/api/check', { headers: headersObj });
+      const guestUser = await authenticateD1GuestSession(webReq, getSharedLocalD1Database());
+      if (guestUser) {
+        if (guestUser.isPostingBanned) {
+          throw new Error('POSTING_BANNED');
+        }
+        return {
+          uid: guestUser.uid,
+          email: '',
+          name: guestUser.username || guestUser.name || 'Guest',
+          tokenName: guestUser.username || guestUser.name || 'Guest',
+          picture: '',
+          role: 'student',
+          customRole: 'Guest',
+          isGuest: true,
+          username: guestUser.username,
+        };
+      }
+    } catch (gErr: any) {
+      if (gErr?.message === 'POSTING_BANNED') throw gErr;
+    }
+    if (!authHeader.startsWith('Bearer ') || authHeader.startsWith('Bearer guest_')) {
+      return null;
+    }
+  }
+
   if (!authHeader.startsWith('Bearer ')) return null;
   const token = authHeader.slice(7).trim();
   if (!token) return null;
@@ -909,6 +1003,7 @@ export async function verifyFirebaseJwtZeroFirestore(
       picture: payload.picture || '',
       role,
       customRole,
+      isGuest: false,
     };
   } catch (err: any) {
     if (err?.message === 'POSTING_BANNED') throw err;
@@ -987,10 +1082,13 @@ export function registerCloudflarePostsAndAuthRoutes(
     getGoogleAccessToken?: () => Promise<string | null>;
   }
 ): void {
-  // 1. Dynamic Sitemap XML generated directly from D1 posts
+  // 1. Dynamic Sitemap XML & Sitemap Index generated directly from D1 posts with <lastmod>
   app.get('/sitemap.xml', (_req, res) => {
     const store = loadD1Store();
-    const visiblePosts = store.posts.filter((p) => !p.is_hidden);
+    const visiblePosts = store.posts.filter(
+      (p) => !p.is_hidden && p.status !== 'removed' && (!p.visibility || p.visibility === 'public')
+    );
+    const nowIso = new Date().toISOString();
 
     const staticUrls = [
       'https://boardly.cfd/',
@@ -1008,32 +1106,174 @@ export function registerCloudflarePostsAndAuthRoutes(
       'https://boardly.cfd/faq',
     ];
 
-    const postUrls: string[] = [];
+    const entries: Array<{ loc: string; lastmod: string; changefreq: string; priority: string }> =
+      staticUrls.map((loc) => ({
+        loc,
+        lastmod: nowIso,
+        changefreq: 'daily',
+        priority: '0.9',
+      }));
+
     for (const p of visiblePosts) {
       const slug = p.slug || buildSlug(p.id, p.title);
-      postUrls.push(`https://boardly.cfd/commons/post/${slug}`);
+      const lastmodMs = Number(p.updated_at || p.created_at || Date.now());
+      const lastmod = new Date(lastmodMs > 0 ? lastmodMs : Date.now()).toISOString();
+      entries.push({
+        loc: `https://boardly.cfd/commons/post/${slug}`,
+        lastmod,
+        changefreq: 'daily',
+        priority: '0.8',
+      });
       if (p.files_json && p.files_json !== '[]') {
-        postUrls.push(`https://boardly.cfd/material/${slug}`);
+        entries.push({
+          loc: `https://boardly.cfd/material/${slug}`,
+          lastmod,
+          changefreq: 'weekly',
+          priority: '0.8',
+        });
       }
     }
 
-    const allUrls = [...staticUrls, ...postUrls];
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${allUrls
+${entries
   .map(
-    (loc) => `  <url>
-    <loc>${loc}</loc>
-    <changefreq>daily</changefreq>
-    <priority>${loc.includes('/commons/post/') || loc.includes('/material/') ? '0.8' : '0.9'}</priority>
+    (u) => `  <url>
+    <loc>${escapeHtmlAttr(u.loc)}</loc>
+    <lastmod>${escapeHtmlAttr(u.lastmod)}</lastmod>
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority}</priority>
   </url>`
   )
   .join('\n')}
 </urlset>`;
 
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=900');
+    res.setHeader('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
     return res.status(200).send(xml);
+  });
+
+  app.get('/sitemap-index.xml', (_req, res) => {
+    const store = loadD1Store();
+    const latestMs = store.posts.reduce(
+      (acc, p) => Math.max(acc, Number(p.updated_at || p.created_at || 0)),
+      Date.now()
+    );
+    const lastmod = new Date(latestMs).toISOString();
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc>https://boardly.cfd/sitemap.xml</loc>
+    <lastmod>${escapeHtmlAttr(lastmod)}</lastmod>
+  </sitemap>
+</sitemapindex>`;
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=120, s-maxage=300');
+    return res.status(200).send(xml);
+  });
+
+  // 1a. Pro-Only Server Guard Endpoints — Reject Guest Sessions with 403 Forbidden
+  const handleProServerGuard = async (req: express.Request, res: express.Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
+    if (!user) {
+      return res.status(401).json({
+        ok: false,
+        error: 'Authentication required. Please sign in.',
+        code: 'UNAUTHENTICATED',
+      });
+    }
+    if (user.isGuest || String(user.uid || '').startsWith('guest_')) {
+      return res.status(403).json({
+        ok: false,
+        error: "You can't use this feature as a guest.",
+        code: 'GUEST_PRO_FORBIDDEN',
+      });
+    }
+    return res.status(200).json({
+      ok: true,
+      uid: user.uid,
+      isGuest: false,
+      eligibleForPro: true,
+    });
+  };
+
+  app.get('/api/pro/status', handleProServerGuard);
+  app.post('/api/pro/checkout', handleProServerGuard);
+  app.post('/api/payments/checkout', handleProServerGuard);
+  app.post('/api/checkout', handleProServerGuard);
+
+  // 1a-2. POST /api/posts/migrate-guest — Migrate Commons posts, comments, likes, saves & test attempts from guestUid -> newUid on in-place upgrade
+  app.post('/api/posts/migrate-guest', async (req: express.Request, res: express.Response) => {
+    const guestUid = String(req.body?.guestUid || '').trim();
+    const newUid = String(req.body?.newUid || '').trim();
+    const username = String(req.body?.username || '').trim();
+    if (!guestUid || !newUid || !guestUid.startsWith('guest_')) {
+      return res.status(400).json({ ok: false, error: 'Valid guestUid and newUid are required.' });
+    }
+
+    const store = loadD1Store() as any;
+    let migratedPosts = 0;
+    let migratedComments = 0;
+    let migratedLikes = 0;
+    let migratedSaves = 0;
+    let migratedAttempts = 0;
+
+    for (const p of store.posts || []) {
+      if (p.real_author_uid === guestUid || p.author_uid === guestUid) {
+        p.real_author_uid = newUid;
+        if (!p.is_anonymous) {
+          p.author_uid = newUid;
+          if (username) p.author_name = username;
+        }
+        migratedPosts++;
+      }
+    }
+    for (const c of store.comments || []) {
+      if (c.real_author_uid === guestUid || c.author_uid === guestUid) {
+        c.real_author_uid = newUid;
+        if (!c.is_anonymous) {
+          c.author_uid = newUid;
+          if (username) c.author_name = username;
+        }
+        migratedComments++;
+      }
+    }
+    for (const l of store.likes || []) {
+      if (l.user_uid === guestUid) {
+        l.user_uid = newUid;
+        migratedLikes++;
+      }
+    }
+    for (const s of store.saves || []) {
+      if (s.user_uid === guestUid) {
+        s.user_uid = newUid;
+        migratedSaves++;
+      }
+    }
+    for (const ta of store.testAttempts || []) {
+      if (ta.user_uid === guestUid || ta.uid === guestUid) {
+        if (ta.user_uid === guestUid) ta.user_uid = newUid;
+        if (ta.uid === guestUid) ta.uid = newUid;
+        migratedAttempts++;
+      }
+    }
+
+    if (migratedPosts || migratedComments || migratedLikes || migratedSaves || migratedAttempts) {
+      saveD1Store(store);
+    }
+
+    return res.status(200).json({
+      ok: true,
+      guestUid,
+      newUid,
+      migrated: {
+        posts: migratedPosts,
+        comments: migratedComments,
+        likes: migratedLikes,
+        saves: migratedSaves,
+        attempts: migratedAttempts,
+      },
+    });
   });
 
   // 1b. GET /api/health & /api/posts/health — Health check endpoint
@@ -9099,7 +9339,18 @@ function escapeHtmlAttr(str: string): string {
 export function resolveServerRouteMeta(pathname: string) {
   const cleanPath = (pathname || '/').split('?')[0].split('#')[0].replace(/\/+$/, '') || '/';
   const rawBase = resolveStaticOrPatternRouteMeta(cleanPath);
-  const baseMeta = {
+  const baseMeta: {
+    title: string;
+    description: string;
+    canonical: string;
+    ogType: 'website' | 'article' | 'profile';
+    ogImage: string;
+    robots: string;
+    h1: string;
+    statusCode: number;
+    jsonLd?: string;
+    rootBodyHtml?: string;
+  } = {
     ...rawBase,
     canonical: rawBase.canonicalUrl || `https://boardly.cfd${cleanPath === '/' ? '' : cleanPath}`,
     robots: rawBase.noindex
@@ -9128,29 +9379,166 @@ export function resolveServerRouteMeta(pathname: string) {
         .replace(/\/+$/, '')
     );
     const lookupId = extractIdFromSlugOrId(slugParam);
-    const d1Row = loadD1Store().posts.find(
-      (p) => (p.slug === slugParam || p.id === slugParam || p.id === lookupId) && !p.is_hidden
+    const store = loadD1Store();
+    const d1Row = store.posts.find(
+      (p) => p.id === lookupId || p.id === slugParam || p.slug === slugParam
     );
-    if (d1Row) {
-      const isMaterial = cleanPath.startsWith('/material/') || cleanPath.startsWith('/study-material/');
-      const title = isMaterial
-        ? `${d1Row.title} — ${d1Row.subject || 'Study Material'} PDF & Notes | Boardly`
-        : `${d1Row.title} — ${d1Row.subject || 'Student Discussion'} | Boardly Commons`;
-      const rawDesc = String(d1Row.description || '').replace(/\s+/g, ' ').trim();
-      const authorLabel = d1Row.is_anonymous
-        ? 'Anonymous Student'
-        : d1Row.author_name || 'Boardly Student';
-      const description = rawDesc
-        ? `${rawDesc.slice(0, 180)}${rawDesc.length > 180 ? '...' : ''} — Shared by ${authorLabel} (${d1Row.subject || 'Academic'}, Class ${d1Row.class_level || '11/12'}).`
-        : `Read "${d1Row.title}" in ${d1Row.subject || 'Boardly Commons'} on Boardly.`;
+
+    const isMissingOrPrivate =
+      !d1Row ||
+      Boolean(d1Row.is_hidden) ||
+      d1Row.status === 'removed' ||
+      (d1Row.visibility && d1Row.visibility !== 'public');
+
+    if (isMissingOrPrivate) {
+      const notFoundHtml = `<main style="max-width:720px;margin:48px auto;padding:24px;color:#f4f4f5;font-family:system-ui,-apple-system,sans-serif;">
+  <h1 style="font-size:28px;font-weight:800;margin-bottom:12px;">Post Not Found (404)</h1>
+  <p style="color:#a1a1aa;line-height:1.6;">This Commons post does not exist or has been removed.</p>
+  <p style="margin-top:16px;"><a href="https://boardly.cfd/commons" style="color:#e11d2e;text-decoration:underline;">Browse Boardly Commons</a></p>
+</main>`;
       return {
         ...baseMeta,
-        title,
-        description,
-        ogType: 'article' as const,
-        h1: d1Row.title,
+        title: 'Post Not Found — Boardly Commons',
+        description: 'This Commons post does not exist or has been removed.',
+        robots: 'noindex, nofollow',
+        h1: 'Post Not Found',
+        statusCode: 404,
+        rootBodyHtml: notFoundHtml,
       };
     }
+
+    const isMaterial =
+      cleanPath.startsWith('/material/') || cleanPath.startsWith('/study-material/');
+    const canonicalSlug = d1Row.slug || buildSlug(d1Row.id, d1Row.title);
+    const canonicalUrl = isMaterial
+      ? `https://boardly.cfd/material/${canonicalSlug}`
+      : `https://boardly.cfd/commons/post/${canonicalSlug}`;
+
+    const title = isMaterial
+      ? `${d1Row.title} — ${d1Row.subject || 'Study Material'} PDF & Notes | Boardly`
+      : `${d1Row.title} — ${d1Row.subject || 'Student Discussion'} | Boardly Commons`;
+
+    const rawDesc = String(d1Row.description || '').replace(/\s+/g, ' ').trim();
+    const authorLabel = d1Row.is_anonymous
+      ? 'Anonymous Student'
+      : d1Row.author_name || 'Boardly Student';
+
+    // First 150 to 160 characters of the post for meta description
+    const description = rawDesc
+      ? rawDesc.length > 158
+        ? `${rawDesc.slice(0, 155).trimEnd()}...`
+        : rawDesc
+      : `Read "${d1Row.title}" by ${authorLabel} in ${d1Row.subject || 'Boardly Commons'} on Boardly.`;
+
+    const createdMs = Number(d1Row.created_at || Date.now());
+    const updatedMs = Number(d1Row.updated_at || createdMs);
+    const publishedIso = new Date(createdMs).toISOString();
+    const modifiedIso = new Date(updatedMs).toISOString();
+    const formattedDate = new Date(createdMs).toUTCString();
+
+    const topComments = (store.comments || [])
+      .filter((c) => c.post_id === d1Row.id)
+      .sort((a, b) => Number(a.created_at || 0) - Number(b.created_at || 0))
+      .slice(0, 10);
+
+    const commentCount = Math.max(Number(d1Row.comment_count || 0), topComments.length);
+
+    const jsonLdObj = {
+      '@context': 'https://schema.org',
+      '@type': 'DiscussionForumPosting',
+      '@id': canonicalUrl,
+      url: canonicalUrl,
+      mainEntityOfPage: {
+        '@type': 'WebPage',
+        '@id': canonicalUrl,
+      },
+      headline: d1Row.title,
+      text: d1Row.description || d1Row.title,
+      articleSection: d1Row.subject || 'General',
+      datePublished: publishedIso,
+      dateModified: modifiedIso,
+      author: {
+        '@type': 'Person',
+        name: authorLabel,
+      },
+      publisher: {
+        '@type': 'Organization',
+        name: 'Boardly',
+        url: 'https://boardly.cfd',
+      },
+      interactionStatistic: [
+        {
+          '@type': 'InteractionCounter',
+          interactionType: 'https://schema.org/LikeAction',
+          userInteractionCount: Number(d1Row.upvotes || 0),
+        },
+        {
+          '@type': 'InteractionCounter',
+          interactionType: 'https://schema.org/CommentAction',
+          userInteractionCount: commentCount,
+        },
+      ],
+      commentCount,
+      comment: topComments.map((c) => ({
+        '@type': 'Comment',
+        text: String(c.text || ''),
+        dateCreated: new Date(Number(c.created_at || createdMs)).toISOString(),
+        author: {
+          '@type': 'Person',
+          name: c.is_anonymous ? 'Anonymous Student' : String(c.author_name || 'Student'),
+        },
+      })),
+    };
+
+    const jsonLd = JSON.stringify(jsonLdObj).replace(/</g, '\\u003c');
+
+    const commentsHtml =
+      topComments.length > 0
+        ? `<section aria-label="Comments" style="margin-top:28px;border-top:1px solid rgba(255,255,255,0.1);padding-top:20px;">
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:12px;">Comments (${commentCount})</h2>
+      ${topComments
+        .map((c) => {
+          const cAuthor = c.is_anonymous ? 'Anonymous Student' : String(c.author_name || 'Student');
+          const cDate = new Date(Number(c.created_at || createdMs)).toISOString();
+          return `<div itemprop="comment" itemscope itemtype="https://schema.org/Comment" style="margin-bottom:14px;padding:12px;border-radius:10px;background:rgba(255,255,255,0.03);">
+        <div style="font-size:13px;color:#a1a1aa;margin-bottom:4px;">
+          <strong itemprop="author">${escapeHtmlAttr(cAuthor)}</strong> • <time itemprop="dateCreated" datetime="${escapeHtmlAttr(cDate)}">${escapeHtmlAttr(cDate.slice(0, 10))}</time>
+        </div>
+        <div itemprop="text" style="font-size:14px;line-height:1.5;color:#e4e4e7;">${escapeHtmlAttr(String(c.text || ''))}</div>
+      </div>`;
+        })
+        .join('\n')}
+    </section>`
+        : '';
+
+    const rootBodyHtml = `<main style="max-width:820px;margin:0 auto;padding:32px 20px;color:#f4f4f5;font-family:system-ui,-apple-system,sans-serif;">
+  <article itemscope itemtype="https://schema.org/DiscussionForumPosting">
+    <header style="margin-bottom:20px;">
+      <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:#e11d2e;margin-bottom:8px;">
+        ${escapeHtmlAttr(d1Row.subject || 'General')} • Class ${escapeHtmlAttr(d1Row.class_level || '11/12')} • ${escapeHtmlAttr(d1Row.board || 'Federal')} Board
+      </div>
+      <h1 itemprop="headline" style="font-size:28px;font-weight:800;line-height:1.3;margin:0 0 12px;color:#ffffff;">${escapeHtmlAttr(d1Row.title)}</h1>
+      <div style="font-size:13px;color:#a1a1aa;">
+        Posted by <span itemprop="author" itemscope itemtype="https://schema.org/Person"><span itemprop="name">${escapeHtmlAttr(authorLabel)}</span></span>
+        on <time itemprop="datePublished" datetime="${escapeHtmlAttr(publishedIso)}">${escapeHtmlAttr(formattedDate)}</time>
+      </div>
+    </header>
+    <div itemprop="text" style="font-size:16px;line-height:1.75;color:#e4e4e7;white-space:pre-wrap;">${escapeHtmlAttr(d1Row.description || d1Row.title)}</div>
+    ${commentsHtml}
+  </article>
+</main>`;
+
+    return {
+      ...baseMeta,
+      title,
+      description,
+      canonical: canonicalUrl,
+      ogType: 'article' as const,
+      h1: d1Row.title,
+      statusCode: 200,
+      jsonLd,
+      rootBodyHtml,
+    };
   }
 
   return baseMeta;
@@ -9163,7 +9551,7 @@ export function injectRouteMetaIntoHtml(html: string, pathname: string): string 
   const c = escapeHtmlAttr(meta.canonical);
   const img = escapeHtmlAttr(meta.ogImage);
 
-  return html
+  let out = html
     .replace(/<title>[\s\S]*?<\/title>/i, `<title>${t}</title>`)
     .replace(
       /<meta\s+name="title"\s+content="[^"]*"\s*\/?>/i,
@@ -9217,6 +9605,22 @@ export function injectRouteMetaIntoHtml(html: string, pathname: string): string 
       /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
       `<meta name="twitter:image" content="${img}" />`
     );
+
+  if (meta.jsonLd) {
+    out = out.replace(
+      /<\/head>/i,
+      `  <script id="boardly-post-jsonld" type="application/ld+json">${meta.jsonLd}</script>\n</head>`
+    );
+  }
+
+  if (meta.rootBodyHtml) {
+    out = out.replace(
+      /<div\s+id="root"\s*><\/div>/i,
+      `<div id="root">${meta.rootBodyHtml}</div>`
+    );
+  }
+
+  return out;
 }
 
 /**
@@ -9295,6 +9699,12 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
 
       if (isBot) {
         const meta = resolveServerRouteMeta(pathname);
+        const jsonLdTag = meta.jsonLd
+          ? `\n  <script id="boardly-post-jsonld" type="application/ld+json">${meta.jsonLd}</script>`
+          : '';
+        const bodyContent =
+          meta.rootBodyHtml ||
+          `<main>\n    <h1>${escapeHtmlAttr(meta.h1)}</h1>\n    <p>${escapeHtmlAttr(meta.description)}</p>\n  </main>`;
         const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -9311,19 +9721,23 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
   <meta property="og:url" content="${escapeHtmlAttr(meta.canonical)}" />
   <meta property="og:image" content="${escapeHtmlAttr(meta.ogImage)}" />
   <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:url" content="${escapeHtmlAttr(meta.canonical)}" />
   <meta name="twitter:title" content="${escapeHtmlAttr(meta.title)}" />
   <meta name="twitter:description" content="${escapeHtmlAttr(meta.description)}" />
-  <meta name="twitter:image" content="${escapeHtmlAttr(meta.ogImage)}" />
+  <meta name="twitter:image" content="${escapeHtmlAttr(meta.ogImage)}" />${jsonLdTag}
 </head>
 <body>
-  <main>
-    <h1>${escapeHtmlAttr(meta.h1)}</h1>
-    <p>${escapeHtmlAttr(meta.description)}</p>
-  </main>
+  <div id="root">${bodyContent}</div>
 </body>
 </html>`;
         res.statusCode = meta.statusCode || 200;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader(
+          'Cache-Control',
+          meta.statusCode === 404
+            ? 'no-store'
+            : 'public, max-age=60, s-maxage=120, stale-while-revalidate=300'
+        );
         res.end(html);
         return;
       }
@@ -9340,6 +9754,9 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
         pathname.startsWith('/api/admin') ||
         pathname.startsWith('/api/r2') ||
         pathname.startsWith('/api/auth') ||
+        pathname.startsWith('/api/pro') ||
+        pathname.startsWith('/api/payments') ||
+        pathname.startsWith('/api/checkout') ||
         pathname.startsWith('/api/bots') ||
         pathname.startsWith('/api/certificates') ||
         pathname.startsWith('/api/verify') ||
@@ -9351,7 +9768,7 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Bot-Run-Secret',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Bot-Run-Secret, X-Guest-Session, X-Device-Id',
       });
       res.end();
       return;

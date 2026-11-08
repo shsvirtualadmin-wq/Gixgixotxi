@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { X, Zap, Users } from 'lucide-react';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { useAuth } from '@/contexts/AuthContext';
+import { GuestProBlockedView } from '@/components/plans/GuestProBlockedView';
 
 interface DailyLimitBlockedSheetProps {
   isOpen: boolean;
@@ -17,6 +19,7 @@ export function DailyLimitBlockedSheet({
 }: DailyLimitBlockedSheetProps) {
   const navigate = useNavigate();
   const effectivePlan = useEffectivePlan();
+  const { isGuest } = useAuth();
   const [countdownText, setCountdownText] = useState('');
 
   // PKT (UTC+5) Midnight Reset Timer
@@ -44,6 +47,10 @@ export function DailyLimitBlockedSheet({
 
   // Superadmin, Pro, and crew-shared unlimited users must NEVER see the blocked sheet
   if (!isOpen || effectivePlan.isUnlimited || effectivePlan.isSuperAdmin) return null;
+
+  if (isGuest) {
+    return <GuestProBlockedView variant="sheet" onClose={onClose} />;
+  }
 
   return (
     <div

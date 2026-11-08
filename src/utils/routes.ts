@@ -22,10 +22,14 @@ export function extractIdFromSlug(idSlug?: string | null): string {
     /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-|$)/i
   );
   if (uuidMatch) return uuidMatch[1];
+  const anonTopicMatch = trimmed.match(/^(commons_anon_topic_\d+)(?:-|$)/i);
+  if (anonTopicMatch) return anonTopicMatch[1];
   const postGenMatch = trimmed.match(/^(post_gen_\d+)(?:-|$)/);
   if (postGenMatch) return postGenMatch[1];
   const postMatch = trimmed.match(/^(post_\d+_[a-zA-Z0-9]+)(?:-|$)/);
   if (postMatch) return postMatch[1];
+  const postGenericMatch = trimmed.match(/^(post_[a-zA-Z0-9_]+)(?:-|$)/i);
+  if (postGenericMatch) return postGenericMatch[1];
   const glMatch = trimmed.match(/^(gl-[a-z0-9]+-\d+)(?:-|$)/i);
   if (glMatch) return glMatch[1];
   const dashIndex = trimmed.indexOf('-');

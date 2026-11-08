@@ -17,8 +17,9 @@ import { COMMONS_POST_TYPES } from '@/types/commons';
 import { searchPeople, fetchCommonsPosts } from '@/services/commonsService';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { Link } from 'react-router-dom';
 import { RoleBadge } from '@/components/ui/RoleBadge';
-import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { sanitizeStudentDisplayName, buildEntitySlug } from '@/utils/privacy';
 import { useTheme } from '@/hooks/useTheme';
 import { LineLoader } from '@/components/ui/LineLoader';
 
@@ -357,15 +358,17 @@ export function CommonsSearchModal({
                     (post as any).authorRole === 'admin' ||
                     post.authorUid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2';
 
+                  const postUrl = `/commons/post/${buildEntitySlug(post.id, post.title)}`;
                   return (
-                    <div
+                    <Link
                       key={post.id}
+                      to={postUrl}
                       onClick={() => {
                         saveRecentSearch(debouncedQuery);
                         onClose();
-                        onOpenComments(post);
+                        onSelectPost(post);
                       }}
-                      className="boardly-post-card p-3.5 rounded-xl border border-border bg-surface hover:border-border-strong hover:bg-surface-muted/60 transition-all cursor-pointer group space-y-1.5 w-full max-w-full min-w-0 box-border overflow-x-hidden"
+                      className="block boardly-post-card p-3.5 rounded-xl border border-border bg-surface hover:border-border-strong hover:bg-surface-muted/60 transition-all cursor-pointer group space-y-1.5 w-full max-w-full min-w-0 box-border overflow-x-hidden"
                     >
                       {/* Top row: Type Pill & Time */}
                       <div className="flex items-center justify-between text-xs text-muted min-w-0">
@@ -423,7 +426,7 @@ export function CommonsSearchModal({
                           <ChevronRight size={12} />
                         </span>
                       </div>
-                    </div>
+                    </Link>
                   );
                 })}
               </div>

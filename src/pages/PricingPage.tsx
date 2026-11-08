@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { Check, X, Shield } from 'lucide-react';
 import { KobanIcon } from '@/components/koban/KobanIcon';
+import { GuestProBlockedView } from '@/components/plans/GuestProBlockedView';
 import { FREE_DAILY_TESTS, FREE_DAILY_TOKEN_LIMIT, FREE_DAILY_ARENA_LIMIT } from '@/constants/limits';
 import { PAYMENT_METHODS as OFFICIAL_PAYMENT_METHODS } from '@/constants/branding';
 import { PLANS } from '@/config/plans';
@@ -47,9 +48,13 @@ const PAYMENT_METHODS = [
 ];
 
 export function PricingPage() {
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
   const { requireAuth } = useAuthGate();
   const navigate = useNavigate();
+
+  if (isGuest) {
+    return <GuestProBlockedView variant="page" />;
+  }
 
   return (
     <>

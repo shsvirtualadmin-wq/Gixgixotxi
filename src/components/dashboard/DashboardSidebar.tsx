@@ -26,7 +26,7 @@ import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/Cosmet
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 
 export function DashboardSidebar() {
-  const { isAdmin, signOutUser } = useAuth();
+  const { isAdmin, isGuest, signOutUser } = useAuth();
   const { user, profile } = useUserProfile();
   const { equipped } = useWallet();
   const { openProfile } = useProfileModal();
@@ -40,7 +40,7 @@ export function DashboardSidebar() {
     navigate('/login');
   };
 
-  const isPro = effectivePlan.isUnlimited;
+  const isPro = !isGuest && effectivePlan.isUnlimited;
   const role = profile?.role || 'student';
   const rawDisplayName = profile?.displayName || user?.displayName || 'Student';
   const displayName = sanitizeStudentDisplayName(rawDisplayName, profile?.shortId || user?.uid);
@@ -137,7 +137,7 @@ export function DashboardSidebar() {
         </NavLink>
 
         {/* Profile */}
-        {profile?.profileCompleted || profile?.onboardingCompleted ? (
+        {isGuest || profile?.profileCompleted || profile?.onboardingCompleted ? (
           <NavLink
             to="/dashboard/profile"
             className={({ isActive }) =>
@@ -185,31 +185,33 @@ export function DashboardSidebar() {
           <span>Squad</span>
         </NavLink>
 
-        {/* 5. Plans & Upgrade */}
-        <NavLink
-          to="/pricing"
-          className={({ isActive }) =>
-            `flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-              isActive
-                ? 'bg-[var(--text)] text-[var(--bg)] font-bold'
-                : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)]'
-            }`
-          }
-          style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
-        >
-          <div className="flex items-center gap-3">
-            <Sparkles size={18} />
-            <span>Plans &amp; Upgrade</span>
-          </div>
-          {!isPro && (
-            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[var(--text)] text-[var(--bg)] font-semibold">
-              Pro
-            </span>
-          )}
-        </NavLink>
+        {/* 5. Plans & Upgrade (Hidden in Guest Mode per Part B Rule 5) */}
+        {!isGuest && (
+          <NavLink
+            to="/pricing"
+            className={({ isActive }) =>
+              `flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                isActive
+                  ? 'bg-[var(--text)] text-[var(--bg)] font-bold'
+                  : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)]'
+              }`
+            }
+            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+          >
+            <div className="flex items-center gap-3">
+              <Sparkles size={18} />
+              <span>Plans &amp; Upgrade</span>
+            </div>
+            {!isPro && (
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[var(--text)] text-[var(--bg)] font-semibold">
+                Pro
+              </span>
+            )}
+          </NavLink>
+        )}
 
         {/* Ambassadorship role if approved */}
-        {(role === 'crew' || role === 'ambassador' || Boolean(profile?.isAmbassador)) && (
+        {!isGuest && (role === 'crew' || role === 'ambassador' || Boolean(profile?.isAmbassador)) && (
           <NavLink
             to="/dashboard/ambassador"
             className={({ isActive }) =>
@@ -225,7 +227,7 @@ export function DashboardSidebar() {
           </NavLink>
         )}
 
-        {role === 'captain' && (
+        {!isGuest && role === 'captain' && (
           <NavLink
             to="/captain"
             className={({ isActive }) =>
@@ -242,7 +244,7 @@ export function DashboardSidebar() {
         )}
 
         {/* ── SUPERADMIN PORTAL (Visible for admin accounts) ──────────────── */}
-        {isAdmin && (
+        {isAdmin && !isGuest && (
           <div className="pt-2 mt-1 border-t border-[var(--border)]">
             <Link
               to="/admin"
@@ -288,7 +290,7 @@ export function DashboardSidebar() {
               </p>
             )}
             <p className="font-heading text-[10px] text-[var(--muted)] truncate mt-0.5">
-              {isPro ? 'Pro Member' : 'Free Starter'}
+              {isGuest ? 'Guest' : isPro ? 'Pro Member' : 'Free Starter'}
             </p>
           </div>
         </div>

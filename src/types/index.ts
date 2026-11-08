@@ -67,6 +67,9 @@ export interface UserProfile {
   accent?: string;
   pinnedBadges?: string[];
   pinnedStamps?: string[];
+  isGuest?: boolean;
+  accountType?: 'guest' | 'registered';
+  lastActiveAt?: Timestamp | number | string | null;
 }
 
 export type CosmeticType = 'effect' | 'frame' | 'nameplate' | 'avatar' | 'banner';

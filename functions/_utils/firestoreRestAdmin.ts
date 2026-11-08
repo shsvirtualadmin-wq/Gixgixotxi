@@ -40,6 +40,7 @@ export interface AuthenticatedD1User {
   uid: string;
   email: string;
   name: string;
+  username?: string;
   picture: string | null;
   role: 'student' | 'captain' | 'admin' | 'superadmin';
   customRole: string | null;
@@ -48,6 +49,7 @@ export interface AuthenticatedD1User {
   isAdminOrAbove: boolean;
   emailVerified: boolean;
   sessionVerified: boolean;
+  isGuest?: boolean;
   signInProvider?: string;
   authTime?: number;
   d1CreatedAtMs: number;
@@ -288,6 +290,122 @@ export async function isD1UserSessionVerified(
  * Exact D1 user verification + Super Admin check helper reused across MCQ and Rewards endpoints.
  * Verifies the Bearer Firebase ID token and queries `user_roles` in D1 (`env.DB`).
  */
+export function extractGuestSessionTokenFromRequest(request: Request): string | null {
+  const headerToken = (request.headers.get('X-Guest-Session') || '').trim();
+  if (headerToken) {
+    return headerToken.startsWith('guest_guest_') ? headerToken.slice('guest_'.length) : headerToken;
+  }
+
+  const authHeader = (request.headers.get('Authorization') || '').trim();
+  if (authHeader.startsWith('Bearer guest_')) {
+    const raw = authHeader.slice('Bearer '.length).trim();
+    return raw.startsWith('guest_guest_') ? raw.slice('guest_'.length) : raw;
+  }
+
+  const cookieHeader = request.headers.get('Cookie') || request.headers.get('cookie') || '';
+  if (cookieHeader) {
+    const match = cookieHeader.match(/(?:^|;\s*)boardly_guest_session=([^;]+)/);
+    if (match?.[1]) {
+      try {
+        return decodeURIComponent(match[1].trim());
+      } catch {
+        return match[1].trim();
+      }
+    }
+  }
+  return null;
+}
+
+export async function computeGuestTokenSha256Hex(rawToken: string, secret = 'boardly-default-otp-hmac-secret-v1-do-not-expose'): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(`guest_session:v1:${rawToken}`));
+  return Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+export async function authenticateD1GuestSession(
+  request: Request,
+  db: RewardsD1Database,
+  secret?: string
+): Promise<AuthenticatedD1User | null> {
+  const rawToken = extractGuestSessionTokenFromRequest(request);
+  if (!rawToken || rawToken.length < 16) return null;
+
+  try {
+    const tokenHash = await computeGuestTokenSha256Hex(rawToken, secret);
+    const now = Date.now();
+    const sessionRow = await db
+      .prepare(
+        'SELECT session_id, token_hash, uid, expires_at, revoked FROM guest_sessions WHERE token_hash = ?1 LIMIT 1'
+      )
+      .bind(tokenHash)
+      .first<{
+        session_id: string;
+        token_hash: string;
+        uid: string;
+        expires_at: number;
+        revoked: number;
+      }>();
+
+    if (!sessionRow || Number(sessionRow.revoked) === 1 || Number(sessionRow.expires_at) <= now) {
+      return null;
+    }
+
+    const guestRow = await db
+      .prepare(
+        'SELECT uid, username, display_name, account_type, is_guest, is_suspended, created_at FROM guest_accounts WHERE uid = ?1 LIMIT 1'
+      )
+      .bind(sessionRow.uid)
+      .first<{
+        uid: string;
+        username: string;
+        display_name: string;
+        account_type: string;
+        is_guest: number;
+        is_suspended: number;
+        created_at: number;
+      }>();
+
+    if (!guestRow) return null;
+
+    // Touch last_active_at asynchronously
+    await db
+      .prepare('UPDATE guest_accounts SET last_active_at = ?1 WHERE uid = ?2')
+      .bind(now, guestRow.uid)
+      .run()
+      .catch(() => {});
+
+    return {
+      uid: guestRow.uid,
+      email: '',
+      name: guestRow.display_name || guestRow.username,
+      username: guestRow.username,
+      picture: null,
+      role: 'student',
+      customRole: 'Guest',
+      isPostingBanned: Boolean(guestRow.is_suspended),
+      isSuperAdmin: false,
+      isAdminOrAbove: false,
+      emailVerified: true,
+      sessionVerified: true,
+      isGuest: Number(guestRow.is_guest) === 1 || guestRow.account_type === 'guest',
+      signInProvider: 'guest',
+      authTime: Math.floor(Number(guestRow.created_at || now) / 1000),
+      d1CreatedAtMs: Number(guestRow.created_at || now),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function authenticateD1RewardsUser(params: {
   request: Request;
   env?: RewardsEnv;
@@ -296,7 +414,11 @@ export async function authenticateD1RewardsUser(params: {
 }): Promise<AuthenticatedD1User | null> {
   const { request, env, db, tokenVerifierOverride } = params;
   const authHeader = request.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+
+  // Check if this is a guest session first when no standard Firebase JWT is provided
+  if (!authHeader || !authHeader.startsWith('Bearer ') || authHeader.startsWith('Bearer guest_')) {
+    const guestUser = await authenticateD1GuestSession(request, db);
+    if (guestUser) return guestUser;
     return null;
   }
 
@@ -305,6 +427,8 @@ export async function authenticateD1RewardsUser(params: {
   const verifyFn = tokenVerifierOverride || ((hdr) => verifyFirebaseIdToken(hdr, projectId));
   const verified = await verifyFn(authHeader);
   if (!verified || !verified.uid) {
+    const guestUser = await authenticateD1GuestSession(request, db);
+    if (guestUser) return guestUser;
     return null;
   }
 
@@ -1211,6 +1335,68 @@ export interface InMemoryD1Tables {
       created_at: number;
     }
   >;
+  user_usernames: Map<
+    string,
+    {
+      username_lower: string;
+      username: string;
+      normalized_lookalike: string;
+      uid: string;
+      account_type: string;
+      created_at: number;
+      updated_at: number;
+    }
+  >;
+  guest_accounts: Map<
+    string,
+    {
+      uid: string;
+      username: string;
+      username_lower: string;
+      display_name: string;
+      short_id: string;
+      account_type: string;
+      is_guest: number;
+      email: string;
+      plan: string;
+      role: string;
+      upgraded_to_uid: string | null;
+      upgraded_at: number | null;
+      target_university: string;
+      tests_completed: number;
+      total_questions_solved: number;
+      streak: number;
+      stats_json: string;
+      attempts_json: string;
+      ip_hash: string;
+      device_id_hash: string;
+      is_suspended: number;
+      created_at: number;
+      last_active_at: number;
+    }
+  >;
+  guest_sessions: Map<
+    string,
+    {
+      session_id: string;
+      token_hash: string;
+      uid: string;
+      ip_hash: string;
+      device_id_hash: string;
+      user_agent: string;
+      created_at: number;
+      last_active_at: number;
+      expires_at: number;
+      revoked: number;
+    }
+  >;
+  guest_creation_rate_limits: Array<{
+    id: number;
+    identifier_hash: string;
+    identifier_type: string;
+    uid: string;
+    created_at: number;
+  }>;
 }
 
 export class InMemoryD1Database implements RewardsD1Database {
@@ -1226,6 +1412,10 @@ export class InMemoryD1Database implements RewardsD1Database {
     email_verification_codes: new Map(),
     email_verification_sessions: new Map(),
     email_verification_send_logs: new Map(),
+    user_usernames: new Map(),
+    guest_accounts: new Map(),
+    guest_sessions: new Map(),
+    guest_creation_rate_limits: [],
   };
 
   prepare(query: string): RewardsD1PreparedStatement {
@@ -1489,6 +1679,80 @@ export class InMemoryD1Database implements RewardsD1Database {
           .filter((r) => r.user_id === userId)
           .sort((a, b) => b.created_at - a.created_at);
         return matches.map((r) => ({ ...r }));
+      }
+      return all.map((r) => ({ ...r }));
+    }
+
+    // 12. user_usernames
+    if (upper.includes('FROM USER_USERNAMES')) {
+      const all = Array.from(this.tables.user_usernames.values());
+      if (upper.includes('WHERE USERNAME_LOWER =')) {
+        const uLower = String(args[0] ?? '').toLowerCase();
+        const row = this.tables.user_usernames.get(uLower);
+        return row ? [{ ...row }] : [];
+      }
+      if (upper.includes('WHERE UID =')) {
+        const uid = String(args[0] ?? '');
+        const found = all.find((r) => r.uid === uid);
+        return found ? [{ ...found }] : [];
+      }
+      if (upper.includes('WHERE NORMALIZED_LOOKALIKE =')) {
+        const lookalike = String(args[0] ?? '');
+        return all.filter((r) => r.normalized_lookalike === lookalike).map((r) => ({ ...r }));
+      }
+      return all.map((r) => ({ ...r }));
+    }
+
+    // 13. guest_accounts
+    if (upper.includes('FROM GUEST_ACCOUNTS')) {
+      const all = Array.from(this.tables.guest_accounts.values());
+      if (upper.includes('WHERE UID =')) {
+        const uid = String(args[0] ?? '');
+        const row = this.tables.guest_accounts.get(uid);
+        return row ? [{ ...row }] : [];
+      }
+      if (upper.includes('WHERE USERNAME_LOWER =')) {
+        const uLower = String(args[0] ?? '').toLowerCase();
+        const found = all.find((r) => r.username_lower === uLower);
+        return found ? [{ ...found }] : [];
+      }
+      if (upper.includes('WHERE EMAIL =')) {
+        const em = String(args[0] ?? '').toLowerCase();
+        const found = all.filter((r) => r.email && r.email.toLowerCase() === em);
+        return found.map((r) => ({ ...r }));
+      }
+      return all.sort((a, b) => b.created_at - a.created_at).map((r) => ({ ...r }));
+    }
+
+    // 14. guest_sessions
+    if (upper.includes('FROM GUEST_SESSIONS')) {
+      const all = Array.from(this.tables.guest_sessions.values());
+      if (upper.includes('WHERE TOKEN_HASH =')) {
+        const th = String(args[0] ?? '');
+        const found = all.find((r) => r.token_hash === th);
+        return found ? [{ ...found }] : [];
+      }
+      if (upper.includes('WHERE UID =')) {
+        const uid = String(args[0] ?? '');
+        return all.filter((r) => r.uid === uid).map((r) => ({ ...r }));
+      }
+      return all.map((r) => ({ ...r }));
+    }
+
+    // 15. guest_creation_rate_limits
+    if (upper.includes('FROM GUEST_CREATION_RATE_LIMITS')) {
+      const all = this.tables.guest_creation_rate_limits;
+      if (upper.includes('COUNT(*)') && upper.includes('WHERE IDENTIFIER_HASH =')) {
+        const idHash = String(args[0] ?? '');
+        const idType = String(args[1] ?? '');
+        const sinceMs = Number(args[2] ?? 0);
+        const cnt = all.filter(
+          (r) =>
+            r.identifier_hash === idHash &&
+            r.identifier_type === idType &&
+            r.created_at >= sinceMs
+        ).length;
+        return [{ cnt }];
       }
       return all.map((r) => ({ ...r }));
     }
@@ -1848,6 +2112,232 @@ export class InMemoryD1Database implements RewardsD1Database {
         row.status = status;
         return 1;
       }
+    }
+
+    // 6. user_usernames (username_lower PRIMARY KEY, uid UNIQUE)
+    if (upper.includes('INTO USER_USERNAMES')) {
+      const isReplace = upper.includes('OR REPLACE') || upper.includes('ON CONFLICT');
+      const username_lower = String(args[0] ?? '').toLowerCase();
+      const username = String(args[1] ?? '');
+      const normalized_lookalike = String(args[2] ?? '');
+      const uid = String(args[3] ?? '');
+      const account_type = String(args[4] ?? 'guest');
+      const created_at = Number(args[5] ?? Date.now());
+      const updated_at = Number(args[6] ?? created_at);
+
+      const existingByLower = this.tables.user_usernames.get(username_lower);
+      if (existingByLower && existingByLower.uid !== uid) {
+        throw new Error('UNIQUE constraint failed: user_usernames.username_lower');
+      }
+      const existingByUid = Array.from(this.tables.user_usernames.values()).find(
+        (r) => r.uid === uid && r.username_lower !== username_lower
+      );
+      if (existingByUid) {
+        if (isReplace) {
+          this.tables.user_usernames.delete(existingByUid.username_lower);
+        } else {
+          throw new Error('UNIQUE constraint failed: user_usernames.uid');
+        }
+      }
+
+      this.tables.user_usernames.set(username_lower, {
+        username_lower,
+        username,
+        normalized_lookalike,
+        uid,
+        account_type,
+        created_at,
+        updated_at,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('UPDATE USER_USERNAMES')) {
+      if (upper.includes('SET UID =') && upper.includes('ACCOUNT_TYPE =')) {
+        const newUid = String(args[0]);
+        const accType = String(args[1]);
+        const updatedAt = Number(args[2] ?? Date.now());
+        const uLower = String(args[3] ?? '').toLowerCase();
+        const row = this.tables.user_usernames.get(uLower);
+        if (!row) return 0;
+        row.uid = newUid;
+        row.account_type = accType;
+        row.updated_at = updatedAt;
+        return 1;
+      }
+    }
+
+    // 7. guest_accounts (uid PRIMARY KEY, username_lower UNIQUE)
+    if (upper.includes('INTO GUEST_ACCOUNTS')) {
+      const uid = String(args[0]);
+      const username = String(args[1]);
+      const username_lower = String(args[2]).toLowerCase();
+      const display_name = String(args[3]);
+      const short_id = String(args[4]);
+      const account_type = String(args[5] ?? 'guest');
+      const is_guest = Number(args[6] ?? 1);
+      const email = String(args[7] ?? '');
+      const plan = String(args[8] ?? 'free');
+      const role = String(args[9] ?? 'student');
+      const target_university = String(args[10] ?? 'General Prep');
+      const ip_hash = String(args[11] ?? '');
+      const device_id_hash = String(args[12] ?? '');
+      const created_at = Number(args[13] ?? Date.now());
+      const last_active_at = Number(args[14] ?? created_at);
+
+      if (this.tables.guest_accounts.has(uid)) {
+        throw new Error('UNIQUE constraint failed: guest_accounts.uid');
+      }
+      const existingLower = Array.from(this.tables.guest_accounts.values()).find(
+        (r) => r.username_lower === username_lower
+      );
+      if (existingLower) {
+        throw new Error('UNIQUE constraint failed: guest_accounts.username_lower');
+      }
+
+      this.tables.guest_accounts.set(uid, {
+        uid,
+        username,
+        username_lower,
+        display_name,
+        short_id,
+        account_type,
+        is_guest,
+        email,
+        plan,
+        role,
+        upgraded_to_uid: null,
+        upgraded_at: null,
+        target_university,
+        tests_completed: 0,
+        total_questions_solved: 0,
+        streak: 0,
+        stats_json: '{}',
+        attempts_json: '[]',
+        ip_hash,
+        device_id_hash,
+        is_suspended: 0,
+        created_at,
+        last_active_at,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('UPDATE GUEST_ACCOUNTS')) {
+      if (upper.includes('SET LAST_ACTIVE_AT =') && !upper.includes('TESTS_COMPLETED')) {
+        const lastActive = Number(args[0] ?? Date.now());
+        const uid = String(args[1] ?? '');
+        const row = this.tables.guest_accounts.get(uid);
+        if (!row) return 0;
+        row.last_active_at = lastActive;
+        return 1;
+      }
+      if (upper.includes('SET ACCOUNT_TYPE =') && upper.includes('IS_GUEST = 0')) {
+        const accType = String(args[0] ?? 'registered');
+        const email = String(args[1] ?? '');
+        const upgradedToUid = String(args[2] ?? '');
+        const upgradedAt = Number(args[3] ?? Date.now());
+        const lastActive = Number(args[4] ?? upgradedAt);
+        const uid = String(args[5] ?? '');
+        const row = this.tables.guest_accounts.get(uid);
+        if (!row) return 0;
+        row.account_type = accType;
+        row.is_guest = 0;
+        row.email = email;
+        row.upgraded_to_uid = upgradedToUid;
+        row.upgraded_at = upgradedAt;
+        row.last_active_at = lastActive;
+        return 1;
+      }
+      if (upper.includes('SET TESTS_COMPLETED =')) {
+        const tests_completed = Number(args[0] ?? 0);
+        const total_questions_solved = Number(args[1] ?? 0);
+        const streak = Number(args[2] ?? 0);
+        const target_university = String(args[3] ?? 'General Prep');
+        const stats_json = String(args[4] ?? '{}');
+        const attempts_json = String(args[5] ?? '[]');
+        const last_active_at = Number(args[6] ?? Date.now());
+        const uid = String(args[7] ?? '');
+        const row = this.tables.guest_accounts.get(uid);
+        if (!row) return 0;
+        row.tests_completed = tests_completed;
+        row.total_questions_solved = total_questions_solved;
+        row.streak = streak;
+        row.target_university = target_university;
+        row.stats_json = stats_json;
+        row.attempts_json = attempts_json;
+        row.last_active_at = last_active_at;
+        return 1;
+      }
+    }
+
+    // 8. guest_sessions (session_id PRIMARY KEY, token_hash UNIQUE)
+    if (upper.includes('INTO GUEST_SESSIONS')) {
+      const session_id = String(args[0]);
+      const token_hash = String(args[1]);
+      const uid = String(args[2]);
+      const ip_hash = String(args[3] ?? '');
+      const device_id_hash = String(args[4] ?? '');
+      const user_agent = String(args[5] ?? '');
+      const created_at = Number(args[6] ?? Date.now());
+      const last_active_at = Number(args[7] ?? created_at);
+      const expires_at = Number(args[8] ?? created_at + 30 * 86400 * 1000);
+      const revoked = Number(args[9] ?? 0);
+
+      this.tables.guest_sessions.set(session_id, {
+        session_id,
+        token_hash,
+        uid,
+        ip_hash,
+        device_id_hash,
+        user_agent,
+        created_at,
+        last_active_at,
+        expires_at,
+        revoked,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('UPDATE GUEST_SESSIONS')) {
+      if (upper.includes('SET REVOKED = 1') && upper.includes('WHERE TOKEN_HASH =')) {
+        const th = String(args[0] ?? '');
+        let changes = 0;
+        for (const r of this.tables.guest_sessions.values()) {
+          if (r.token_hash === th) {
+            r.revoked = 1;
+            changes++;
+          }
+        }
+        return changes;
+      }
+      if (upper.includes('SET REVOKED = 1') && upper.includes('WHERE UID =')) {
+        const uid = String(args[0] ?? '');
+        let changes = 0;
+        for (const r of this.tables.guest_sessions.values()) {
+          if (r.uid === uid) {
+            r.revoked = 1;
+            changes++;
+          }
+        }
+        return changes;
+      }
+    }
+
+    // 9. guest_creation_rate_limits
+    if (upper.includes('INTO GUEST_CREATION_RATE_LIMITS')) {
+      const identifier_hash = String(args[0] ?? '');
+      const identifier_type = String(args[1] ?? 'ip');
+      const uid = String(args[2] ?? '');
+      const created_at = Number(args[3] ?? Date.now());
+      this.tables.guest_creation_rate_limits.push({
+        id: this.tables.guest_creation_rate_limits.length + 1,
+        identifier_hash,
+        identifier_type,
+        uid,
+        created_at,
+      });
+      return 1;
     }
 
     return 0;

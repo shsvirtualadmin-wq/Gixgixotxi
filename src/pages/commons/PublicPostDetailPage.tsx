@@ -179,6 +179,16 @@ export const PublicPostDetailPage: React.FC = () => {
     });
   }, [post?.id, post?.upvotes, user?.uid]);
 
+  // Normalize browser URL bar to canonical /commons/post/<postId>-<slug> when slug is missing or outdated
+  useEffect(() => {
+    if (status !== 'ready' || !post) return;
+    const expectedSlug = buildEntitySlug(post.id, post.title);
+    const expectedPath = `/commons/post/${expectedSlug}`;
+    if (location.pathname !== expectedPath) {
+      window.history.replaceState(null, '', `${expectedPath}${location.search}${location.hash}`);
+    }
+  }, [status, post, location.pathname, location.search, location.hash]);
+
   // Scroll to and highlight #comment-:commentId or #comments when hash is present
   useEffect(() => {
     if (status !== 'ready') return;
@@ -286,7 +296,9 @@ export const PublicPostDetailPage: React.FC = () => {
 
   const handleLike = async () => {
     if (!user) {
-      requireAuth('like this post');
+      requireAuth('like this post', () => {
+        void loadData();
+      }, canonicalPath);
       return;
     }
     const prev = hasVoted;
@@ -305,7 +317,9 @@ export const PublicPostDetailPage: React.FC = () => {
 
   const handleBookmark = async () => {
     if (!user) {
-      requireAuth('save this post');
+      requireAuth('save this post', () => {
+        void loadData();
+      }, canonicalPath);
       return;
     }
     const prev = isSaved;
@@ -359,7 +373,18 @@ export const PublicPostDetailPage: React.FC = () => {
   ) => {
     e.preventDefault();
     if (!user) {
-      requireAuth('download this study material');
+      requireAuth(
+        'download this study material',
+        async () => {
+          try {
+            const { downloadCommonsAttachment } = await import('@/services/commonsUploadService');
+            await downloadCommonsAttachment(file);
+          } catch (err) {
+            console.error('[PublicPostDetailPage] attachment download error:', err);
+          }
+        },
+        canonicalPath
+      );
       return;
     }
     try {
@@ -373,7 +398,13 @@ export const PublicPostDetailPage: React.FC = () => {
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
-      requireAuth('comment on this post');
+      requireAuth(
+        'comment on this post',
+        () => {
+          setTimeout(() => commentInputRef.current?.focus(), 100);
+        },
+        canonicalPath
+      );
       return;
     }
     const trimmed = commentText.trim();

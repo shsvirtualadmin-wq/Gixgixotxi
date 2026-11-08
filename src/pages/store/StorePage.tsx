@@ -77,6 +77,7 @@ import {
 import { StatusBanner } from '@/components/plans/StatusBanner';
 import { PlanCard } from '@/components/plans/PlanCard';
 import { ProCheckoutSheet } from '@/components/plans/ProCheckoutSheet';
+import { GuestProBlockedView } from '@/components/plans/GuestProBlockedView';
 import { fetchStudentProRequests } from '@/services/proSubscriptionService';
 import type { PaymentRequest } from '@/types';
 
@@ -115,7 +116,7 @@ export const StorePage: React.FC<StorePageProps> = ({
   defaultOpenGetKobans = false,
 }) => {
   const navigate = useNavigate();
-  const { user, userProfile } = useAuth();
+  const { user, userProfile, isGuest } = useAuth();
   const { isDark, toggle: toggleTheme } = useTheme();
   const {
     balance,
@@ -901,36 +902,38 @@ export const StorePage: React.FC<StorePageProps> = ({
               <Sparkles className="w-3.5 h-3.5" />
               <span>Cosmetics ({liveCatalog.length})</span>
             </button>
-            <button
-              type="button"
-              onClick={() => setMainView('membership')}
-              style={
-                mainView === 'membership'
-                  ? {
-                      background:
-                        'linear-gradient(135deg, #E8342A 0%, #C8241B 55%, #B45309 100%)',
-                      color: '#FFFFFF',
-                    }
-                  : undefined
-              }
-              className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-heading font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                mainView === 'membership'
-                  ? 'text-[#FFFFFF] shadow-sm'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <Crown className="w-3.5 h-3.5" />
-              <span>Boardly Pro</span>
-              {effectiveIsPro && (
-                <span className="ml-1 px-1.5 py-0.2 rounded text-[9px] font-mono uppercase bg-white/20 text-[#FFFFFF]">
-                  Active
-                </span>
-              )}
-            </button>
+            {!isGuest && (
+              <button
+                type="button"
+                onClick={() => setMainView('membership')}
+                style={
+                  mainView === 'membership'
+                    ? {
+                        background:
+                          'linear-gradient(135deg, #E8342A 0%, #C8241B 55%, #B45309 100%)',
+                        color: '#FFFFFF',
+                      }
+                    : undefined
+                }
+                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-heading font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  mainView === 'membership'
+                    ? 'text-[#FFFFFF] shadow-sm'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                <Crown className="w-3.5 h-3.5" />
+                <span>Boardly Pro</span>
+                {effectiveIsPro && (
+                  <span className="ml-1 px-1.5 py-0.2 rounded text-[9px] font-mono uppercase bg-white/20 text-[#FFFFFF]">
+                    Active
+                  </span>
+                )}
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
-            {effectiveIsPro && proStatusSummary.statusText && (
+            {effectiveIsPro && !isGuest && proStatusSummary.statusText && (
               <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 font-semibold hidden md:inline-flex items-center gap-1.5">
                 <Crown className="w-3 h-3" />
                 <span>{proStatusSummary.statusText}</span>
@@ -942,7 +945,9 @@ export const StorePage: React.FC<StorePageProps> = ({
           </div>
         </div>
 
-        {mainView === 'membership' ? (
+        {mainView === 'membership' && isGuest ? (
+          <GuestProBlockedView variant="page" />
+        ) : mainView === 'membership' ? (
           /* ─── BOARDLY PRO MEMBERSHIP VIEW (Un-nested pass cards, normal bold heading font, ProCheckoutSheet) ─── */
           <div className="space-y-6 pb-20">
             {/* Pro Status Banner (shown when student is already Pro or has a pending/rejected Pro request) */}

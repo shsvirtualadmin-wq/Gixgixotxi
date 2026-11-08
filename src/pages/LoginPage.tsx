@@ -22,7 +22,7 @@ export function LoginPage() {
   useEffect(() => {
     if (user && !profileLoading && isSessionVerified) {
       const searchParams = new URLSearchParams(window.location.search);
-      const redirectParam = searchParams.get('redirect');
+      const redirectParam = searchParams.get('redirect') || searchParams.get('returnTo');
       const storedRedirect = sessionStorage.getItem('boardly_post_login_redirect');
       const pendingCrew = sessionStorage.getItem('pending_join_crew_code');
 
@@ -33,7 +33,7 @@ export function LoginPage() {
         dest = storedRedirect;
       } else if (pendingCrew) {
         dest = `/join/${pendingCrew}`;
-      } else if (profile && !profile.onboardingCompleted && profile.role === 'student') {
+      } else if (profile && !profile.isGuest && !profile.onboardingCompleted && profile.role === 'student') {
         dest = '/onboarding';
       }
 

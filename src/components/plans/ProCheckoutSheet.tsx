@@ -15,6 +15,8 @@ import {
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/contexts/AuthContext';
+import { GuestProBlockedView } from '@/components/plans/GuestProBlockedView';
 import {
   PLANS,
   REFUND_POLICY_TEXT,
@@ -55,11 +57,6 @@ export interface ProCheckoutSheetProps {
 
 /**
  * Dedicated Boardly Pro Checkout Sheet (Bottom Sheet).
- * - Backdrop layer ONLY has blur (`fixed inset-0 bg-black/50 backdrop-blur-sm`).
- * - Drawer surface itself is 100% solid opaque (`#0F0F14` dark, `#FFFFFF` light) with `backdropFilter: 'none'`.
- * - Supports switching between Monthly Pass (30d · PKR 199 / 1,990 Kobans) and Annual Pass (365d · PKR 1,791 / 17,910 Kobans).
- * - Option A: Pay with Kobans (instant atomic transaction, or disabled with "You need N more Kobans" + "Get Kobans" button).
- * - Option B: Pay with JazzCash / Opay (PKR) (reads shared account details, copy buttons, TID input, submits for 2-hour verification).
  */
 export function ProCheckoutSheet({
   open,
@@ -76,6 +73,7 @@ export function ProCheckoutSheet({
   onStartPracticing,
 }: ProCheckoutSheetProps) {
   const { isDark } = useTheme();
+  const { isGuest } = useAuth();
   const isLight = !isDark;
 
   const [selectedPlanId, setSelectedPlanId] = useState<ProPlanId>(initialPlanId);
@@ -159,6 +157,10 @@ export function ProCheckoutSheet({
   );
 
   if (!open) return null;
+
+  if (isGuest) {
+    return <GuestProBlockedView variant="sheet" onClose={onClose} />;
+  }
 
   const surfaceBg = isLight ? '#FFFFFF' : '#0F0F14';
   const cardBg = isLight ? '#F7F7FA' : '#16161E';
