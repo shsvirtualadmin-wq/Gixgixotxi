@@ -172,8 +172,8 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setGuestBusy(true);
     try {
-      const res = await signInAsGuest(raw);
-      if (!res.ok) {
+      const res: any = await signInAsGuest(raw);
+      if (res && res.ok === false) {
         setGuestCheck({
           status: 'taken',
           reason: res.error || 'Could not claim that username.',
@@ -183,7 +183,12 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       finishAuthSuccess();
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Could not start guest session.');
+      const msg = err instanceof Error ? err.message : 'Could not start guest session.';
+      setGuestCheck({
+        status: 'taken',
+        reason: msg,
+      });
+      setErrorMsg(msg);
     } finally {
       setGuestBusy(false);
     }
@@ -325,7 +330,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                     </div>
 
                     <div className="p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[11px] text-[var(--text-muted)] leading-relaxed">
-                      You&apos;ll stay signed in on this device. Clearing browser data means you cannot return unless you create an account.
+                      You&apos;ll stay signed in on this device.
                     </div>
 
                     <button
@@ -336,6 +341,13 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                       <span>{guestBusy ? 'Starting guest session...' : 'Continue as guest'}</span>
                       {guestBusy && <ButtonLineLoader />}
                     </button>
+
+                    <p
+                      data-testid="authgate-guest-temporary-notice"
+                      className="text-[11px] text-[var(--text-muted)] leading-relaxed"
+                    >
+                      Guest accounts are temporary. If you log out or clear your browser data, you can&apos;t get back into this account. Create a free account to keep your progress and use rewards and Pro.
+                    </p>
                   </form>
                 </div>
               ) : (

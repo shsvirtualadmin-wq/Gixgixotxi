@@ -11,7 +11,9 @@ import {
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  signInWithCredential,
   createUserWithEmailAndPassword,
+  deleteUser,
   signInWithPopup,
   GoogleAuthProvider,
   signOut as firebaseSignOut,
@@ -38,6 +40,10 @@ import type { UserProfile } from '@/types';
 import { debugTracker } from '@/utils/debugTracker';
 import { deriveFallbackShortId, ensureUserShortId } from '@/utils/shortId';
 import { processAmbassadorReferralOnSignup } from '@/services/referralService';
+import { validateUsernameFormat } from '@/utils/usernameValidation';
+import { GuestLogoutConfirmModal } from '@/components/auth/GuestLogoutConfirmModal';
+import { GuestUpgradeModal } from '@/components/auth/GuestUpgradeModal';
+import { ChooseUsernameModal } from '@/components/auth/ChooseUsernameModal';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const SUPER_ADMIN_EMAIL = 'shsvirtualadmin@gmail.com';
@@ -198,10 +204,10 @@ interface AuthContextValue {
     displayName?: string
   ) => Promise<GuestUpgradeResult>;
   upgradeGuestWithGoogle: () => Promise<GuestUpgradeResult>;
-  signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, displayName: string) => Promise<void>;
+  signIn: (identifier: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, displayName: string, username?: string) => Promise<void>;
   signInWithGoogle: () => Promise<User | null>;
-  signOutUser: () => Promise<void>;
+  signOutUser: (opts?: { force?: boolean }) => Promise<void>;
   sendVerificationEmail: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   retryProfile: () => void;
@@ -234,6 +240,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     maskedEmail: '',
     cooldownSeconds: 0,
     error: null,
+  });
+  const [showGuestLogoutConfirm, setShowGuestLogoutConfirm] = useState(false);
+  const [guestLogoutLoading, setGuestLogoutLoading] = useState(false);
+  const [showGuestUpgradeFromLogout, setShowGuestUpgradeFromLogout] = useState(false);
+  const pendingGuestLogoutResolversRef = useRef<Array<() => void>>([]);
+  const [usernamePromptState, setUsernamePromptState] = useState<{
+    open: boolean;
+    allowSkip: boolean;
+    suggested: string;
+  }>({
+    open: false,
+    allowSkip: false,
+    suggested: '',
   });
 
   const isGuest = Boolean(
@@ -934,10 +953,78 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             headers: { Authorization: `Bearer ${idToken}` },
           });
           const meData = await meRes.json().catch(() => ({}));
-          if (meRes.ok && meData?.user?.username) {
-            setProfile((prev) =>
-              prev && !prev.username ? { ...prev, username: meData.user.username } : prev
+          if (meRes.ok && meData?.user) {
+            if (meData.user.username) {
+              setProfile((prev) =>
+                prev ? { ...prev, username: meData.user.username } : prev
+              );
+            }
+            const hasRegUsername = Boolean(
+              meData.hasRegisteredUsername || meData.user.hasRegisteredUsername
             );
+            if (!hasRegUsername) {
+              // Check if Firestore profile already has a valid username we can register in D1
+              const existingFsUsername = String(profileRef.current?.username || '').trim();
+              if (existingFsUsername && validateUsernameFormat(existingFsUsername).valid) {
+                const regRes = await fetch('/api/auth/username-register', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${idToken}`,
+                  },
+                  body: JSON.stringify({
+                    uid: firebaseUser.uid,
+                    username: existingFsUsername,
+                    email: (firebaseUser.email || '').toLowerCase(),
+                    accountType: 'registered',
+                  }),
+                }).catch(() => null);
+                const regJson = regRes ? await regRes.json().catch(() => ({})) : {};
+                if (regRes?.ok && regJson?.ok) {
+                  setUsernamePromptState({ open: false, allowSkip: false, suggested: '' });
+                } else {
+                  const isGoogle = isGoogleProviderUser(firebaseUser);
+                  const seenKey = `boardly_username_prompt_seen_${firebaseUser.uid}`;
+                  const alreadySeen =
+                    !isGoogle &&
+                    typeof window !== 'undefined' &&
+                    window.localStorage.getItem(seenKey) === '1';
+                  if (!alreadySeen) {
+                    setUsernamePromptState({
+                      open: true,
+                      allowSkip: !isGoogle,
+                      suggested: '',
+                    });
+                  }
+                }
+              } else {
+                const isGoogle = isGoogleProviderUser(firebaseUser);
+                const seenKey = `boardly_username_prompt_seen_${firebaseUser.uid}`;
+                const alreadySeen =
+                  !isGoogle &&
+                  typeof window !== 'undefined' &&
+                  window.localStorage.getItem(seenKey) === '1';
+                if (!alreadySeen) {
+                  const baseSuggested = (
+                    firebaseUser.displayName ||
+                    (firebaseUser.email ? firebaseUser.email.split('@')[0] : '') ||
+                    ''
+                  )
+                    .toLowerCase()
+                    .replace(/[^a-z0-9._]/g, '_')
+                    .replace(/^[._]+|[._]+$/g, '')
+                    .slice(0, 16);
+                  setUsernamePromptState({
+                    open: true,
+                    allowSkip: !isGoogle,
+                    suggested: baseSuggested.length >= 3 ? baseSuggested : '',
+                  });
+                }
+              }
+            } else {
+              setUsernamePromptState({ open: false, allowSkip: false, suggested: '' });
+            }
           }
         } catch {
           // Non-fatal
@@ -1536,9 +1623,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── Auth actions ─────────────────────────────────────────────────────────
   const signIn = useCallback(
-    async (email: string, password: string) => {
+    async (identifier: string, password: string) => {
       setAuthError(null);
-      // Clear any previous guest session when explicitly logging into a registered account
+      const rawIdentifier = identifier.trim();
+      const genericMsg = 'Invalid username/email or password';
+
+      // Clear any previous guest token in local storage when explicitly logging into a registered account
       try {
         localStorage.removeItem(GUEST_TOKEN_LS_KEY);
       } catch {
@@ -1546,11 +1636,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setStoredGuestSessionToken(null);
       setGuestSessionToken(null);
-      fetch('/api/auth/guest/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
 
-      const cleanEmail = email.trim().toLowerCase();
-      const credential = await signInWithEmailAndPassword(auth, cleanEmail, password);
-      const loggedInUser = credential.user;
+      let loggedInUser: User;
+
+      if (!rawIdentifier.includes('@')) {
+        // Username login: resolve username -> email and verify password on the server (`/api/auth/login-username`)
+        // without EVER exposing the account's email to the browser!
+        const res = await fetch('/api/auth/login-username', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            identifier: rawIdentifier,
+            password,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.ok || !data?.tokenResponse?.idToken) {
+          const isRateLimited = res.status === 429 || data?.code === 'RATE_LIMITED';
+          const err: any = new Error(
+            isRateLimited
+              ? data?.error || 'Too many login attempts. Please wait a few minutes and try again.'
+              : genericMsg
+          );
+          err.code = isRateLimited ? 'auth/too-many-requests' : 'auth/invalid-credential';
+          setAuthError({ code: err.code, message: err.message });
+          throw err;
+        }
+
+        const serverTokenResponse = data.tokenResponse;
+        const customCredential = {
+          providerId: 'password',
+          signInMethod: 'password',
+          toJSON: () => ({}),
+          _getIdTokenResponse: async () => serverTokenResponse,
+          _linkToIdToken: async () => serverTokenResponse,
+          _reauthenticateWithIdToken: async () => serverTokenResponse,
+        };
+
+        try {
+          const credential = await signInWithCredential(auth, customCredential as any);
+          loggedInUser = credential.user;
+        } catch {
+          const err: any = new Error(genericMsg);
+          err.code = 'auth/invalid-credential';
+          setAuthError({ code: err.code, message: err.message });
+          throw err;
+        }
+      } else {
+        // Email login
+        const cleanEmail = rawIdentifier.toLowerCase();
+        try {
+          const credential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+          loggedInUser = credential.user;
+        } catch (firebaseErr: any) {
+          const fCode = String(firebaseErr?.code || '');
+          if (fCode === 'auth/too-many-requests') {
+            throw firebaseErr;
+          }
+          // Enforce identical generic error message for wrong email / wrong password
+          const err: any = new Error(genericMsg);
+          err.code = 'auth/invalid-credential';
+          setAuthError({ code: err.code, message: err.message });
+          throw err;
+        }
+      }
 
       try {
         localStorage.removeItem('boardly_user_authenticated');
@@ -1562,8 +1712,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setOtpVerificationState({
         status: 'pending',
         purpose,
-        email: loggedInUser.email || cleanEmail,
-        maskedEmail: maskEmailClient(loggedInUser.email || cleanEmail),
+        email: loggedInUser.email || '',
+        maskedEmail: maskEmailClient(loggedInUser.email || ''),
         cooldownSeconds: 60,
         error: null,
       });
@@ -1577,8 +1727,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signUp = useCallback(
-    async (email: string, password: string, displayName: string) => {
+    async (email: string, password: string, displayName: string, username?: string) => {
       setAuthError(null);
+
+      // 1. Validate & pre-check username before creating Firebase user
+      const rawUsername = String(username || '').trim();
+      const formatCheck = validateUsernameFormat(rawUsername);
+      if (!formatCheck.valid) {
+        const err: any = new Error(formatCheck.reason || 'Please enter a valid username.');
+        err.code = 'INVALID_USERNAME_FORMAT';
+        setAuthError({ code: err.code, message: err.message });
+        throw err;
+      }
+
+      const preCheck = await checkUsernameAvailability(formatCheck.clean);
+      if (!preCheck.available) {
+        const err: any = new Error(preCheck.reason || 'This username is already taken.');
+        err.code = preCheck.code || 'USERNAME_TAKEN';
+        setAuthError({ code: err.code, message: err.message });
+        throw err;
+      }
+
       try {
         localStorage.removeItem(GUEST_TOKEN_LS_KEY);
       } catch {
@@ -1586,11 +1755,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setStoredGuestSessionToken(null);
       setGuestSessionToken(null);
-      fetch('/api/auth/guest/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
 
       const cleanEmail = email.trim().toLowerCase();
       const credential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
       const { user: newUser } = credential;
+
+      // 2. Atomically reserve the username in D1 `user_usernames` with the new user's UID & email.
+      // If reservation fails (e.g. simultaneous signup race condition), roll back by deleting the Firebase user!
+      try {
+        const idToken = await newUser.getIdToken();
+        const regRes = await fetch('/api/auth/username-register', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            uid: newUser.uid,
+            username: formatCheck.clean,
+            email: cleanEmail,
+            accountType: 'registered',
+          }),
+        });
+        const regData = await regRes.json().catch(() => ({}));
+        if (!regRes.ok || !regData?.ok) {
+          await deleteUser(newUser).catch(() => {});
+          await firebaseSignOut(auth).catch(() => {});
+          const err: any = new Error(
+            regData?.error || 'That username was just taken. Please choose another username.'
+          );
+          err.code = regData?.code || 'USERNAME_TAKEN';
+          setAuthError({ code: err.code, message: err.message });
+          throw err;
+        }
+      } catch (reserveErr: any) {
+        if (reserveErr?.code === 'USERNAME_TAKEN' || reserveErr?.code === 'USERNAME_TAKEN_OR_SIMILAR' || reserveErr?.code === 'INVALID_USERNAME_FORMAT') {
+          throw reserveErr;
+        }
+        await deleteUser(newUser).catch(() => {});
+        await firebaseSignOut(auth).catch(() => {});
+        const err: any = new Error(
+          reserveErr?.message || 'Could not reserve username. Please try again.'
+        );
+        err.code = 'USERNAME_RESERVATION_FAILED';
+        setAuthError({ code: err.code, message: err.message });
+        throw err;
+      }
 
       try {
         localStorage.removeItem('boardly_user_authenticated');
@@ -1610,6 +1821,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Resolve and save displayName immediately
       const resolvedName =
         displayName?.trim() ||
+        formatCheck.clean ||
         (cleanEmail.includes('@') ? cleanEmail.split('@')[0] : 'Student');
 
       try {
@@ -1635,7 +1847,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Non-fatal orphan cleanup
       }
 
-      // Write the initial user document with emailVerified: false
+      // Write the initial user document with username and emailVerified: false
       const userDocRef = doc(db, 'users', newUser.uid);
       await withTimeout(
         setDoc(
@@ -1644,6 +1856,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             uid: newUser.uid,
             name: resolvedName,
             displayName: resolvedName,
+            username: formatCheck.clean,
+            usernameLower: formatCheck.normalized,
             email: cleanEmail,
             photoURL: null,
             role: 'student',
@@ -1668,7 +1882,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       createReferralDoc(newUser.uid, cleanEmail).catch(() => {});
     },
-    [createReferralDoc, requestOtpCodeForUser]
+    [checkUsernameAvailability, createReferralDoc, requestOtpCodeForUser]
   );
 
   // ── Pure popup-only Google sign-in (no redirects, no device branching) ───
@@ -1681,7 +1895,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setStoredGuestSessionToken(null);
     setGuestSessionToken(null);
-    fetch('/api/auth/guest/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
 
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
@@ -1745,9 +1958,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [loadProfile]);
 
-  const signOutUser = useCallback(async () => {
+  const executeForceSignOut = useCallback(async () => {
     setAuthError(null);
     const savedGuestToken = guestSessionToken || localStorage.getItem(GUEST_TOKEN_LS_KEY) || '';
+    const guestUid = isGuest ? profile?.uid || user?.uid || '' : '';
     try {
       localStorage.removeItem('boardly_user_authenticated');
       localStorage.removeItem(GUEST_TOKEN_LS_KEY);
@@ -1757,10 +1971,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStoredGuestSessionToken(null);
     setGuestSessionToken(null);
     if (savedGuestToken || isGuest) {
-      fetch('/api/auth/guest/logout', {
+      await fetch('/api/auth/guest/logout', {
         method: 'POST',
         credentials: 'include',
-        headers: savedGuestToken ? { 'X-Guest-Session': savedGuestToken } : undefined,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(savedGuestToken ? { 'X-Guest-Session': savedGuestToken } : {}),
+        },
+        body: JSON.stringify({ uid: guestUid }),
       }).catch(() => {});
     }
     setOtpVerificationState({
@@ -1771,10 +1989,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cooldownSeconds: 0,
       error: null,
     });
+    setUsernamePromptState({ open: false, allowSkip: false, suggested: '' });
     setUser(null);
     setProfile(null);
     await firebaseSignOut(auth).catch(() => {});
-  }, [guestSessionToken, isGuest]);
+  }, [guestSessionToken, isGuest, profile?.uid, user?.uid]);
+
+  const signOutUser = useCallback(
+    async (opts?: { force?: boolean }) => {
+      if (isGuest && !opts?.force) {
+        setShowGuestLogoutConfirm(true);
+        return new Promise<void>((resolve) => {
+          pendingGuestLogoutResolversRef.current.push(resolve);
+        });
+      }
+      await executeForceSignOut();
+    },
+    [isGuest, executeForceSignOut]
+  );
+
+  const handleConfirmGuestLogout = useCallback(async () => {
+    setGuestLogoutLoading(true);
+    try {
+      await executeForceSignOut();
+      setShowGuestLogoutConfirm(false);
+      const resolvers = [...pendingGuestLogoutResolversRef.current];
+      pendingGuestLogoutResolversRef.current = [];
+      for (const r of resolvers) {
+        try {
+          r();
+        } catch {
+          // Ignore
+        }
+      }
+    } finally {
+      setGuestLogoutLoading(false);
+    }
+  }, [executeForceSignOut]);
+
+  const handleCancelGuestLogout = useCallback(() => {
+    if (guestLogoutLoading) return;
+    setShowGuestLogoutConfirm(false);
+    pendingGuestLogoutResolversRef.current = [];
+  }, [guestLogoutLoading]);
+
+  const handleCreateAccountFromGuestLogout = useCallback(() => {
+    if (guestLogoutLoading) return;
+    setShowGuestLogoutConfirm(false);
+    pendingGuestLogoutResolversRef.current = [];
+    setShowGuestUpgradeFromLogout(true);
+  }, [guestLogoutLoading]);
 
   const sendVerificationEmail = useCallback(async () => {
     if (user && !isGuest) {
@@ -1866,12 +2130,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       if (user) {
         if (updates.username) {
+          const idToken = await user.getIdToken().catch(() => '');
           fetch('/api/auth/username-register', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+            },
             body: JSON.stringify({
               uid: user.uid,
               username: updates.username,
+              email: (user.email || profile?.email || '').toLowerCase(),
               accountType: 'registered',
             }),
           }).catch(() => {});
@@ -1887,8 +2157,88 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [user, isGuest, updateLocalProfile, syncGuestProgress]
+    [user, isGuest, profile?.email, updateLocalProfile, syncGuestProgress]
   );
+
+  const handleSaveModalUsername = useCallback(
+    async (chosenUsername: string): Promise<{ ok: boolean; error?: string }> => {
+      const currentUser = auth.currentUser || user;
+      if (!currentUser || isGuest) {
+        return { ok: false, error: 'Please sign in first.' };
+      }
+      const formatCheck = validateUsernameFormat(chosenUsername);
+      if (!formatCheck.valid) {
+        return { ok: false, error: formatCheck.reason || 'Invalid username format.' };
+      }
+      try {
+        const idToken = await currentUser.getIdToken();
+        const res = await fetch('/api/auth/username-register', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            uid: currentUser.uid,
+            username: formatCheck.clean,
+            email: (currentUser.email || profile?.email || '').toLowerCase(),
+            accountType: 'registered',
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.ok) {
+          return {
+            ok: false,
+            error: data?.error || 'This username is already taken.',
+          };
+        }
+
+        updateLocalProfile({ username: formatCheck.clean });
+        await setDoc(
+          doc(db, 'users', currentUser.uid),
+          {
+            username: formatCheck.clean,
+            usernameLower: formatCheck.normalized,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ).catch(() => {});
+        await setDoc(
+          doc(db, 'publicProfiles', currentUser.uid),
+          {
+            uid: currentUser.uid,
+            username: formatCheck.clean,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ).catch(() => {});
+
+        try {
+          localStorage.setItem(`boardly_username_prompt_seen_${currentUser.uid}`, '1');
+        } catch {
+          // Ignore
+        }
+        setUsernamePromptState({ open: false, allowSkip: false, suggested: '' });
+        return { ok: true };
+      } catch (err: any) {
+        return { ok: false, error: err?.message || 'Could not save username.' };
+      }
+    },
+    [user, isGuest, profile?.email, updateLocalProfile]
+  );
+
+  const handleSkipModalUsername = useCallback(() => {
+    const currentUid = auth.currentUser?.uid || user?.uid;
+    if (currentUid) {
+      try {
+        localStorage.setItem(`boardly_username_prompt_seen_${currentUid}`, '1');
+      } catch {
+        // Ignore
+      }
+    }
+    setUsernamePromptState({ open: false, allowSkip: false, suggested: '' });
+  }, [user?.uid]);
 
   const contextValue = useMemo<AuthContextValue>(
     () => ({
@@ -1960,6 +2310,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={contextValue}>
       {children}
+      <GuestLogoutConfirmModal
+        isOpen={showGuestLogoutConfirm}
+        username={profile?.username || profile?.displayName}
+        loading={guestLogoutLoading}
+        onCancel={handleCancelGuestLogout}
+        onCreateAccount={handleCreateAccountFromGuestLogout}
+        onConfirmLogout={handleConfirmGuestLogout}
+      />
+      <GuestUpgradeModal
+        isOpen={showGuestUpgradeFromLogout}
+        onClose={() => setShowGuestUpgradeFromLogout(false)}
+        defaultReason="Create a free account to keep your username, progress, and test attempts permanently."
+      />
+      <ChooseUsernameModal
+        isOpen={Boolean(
+          usernamePromptState.open &&
+            !isGuest &&
+            user &&
+            isSessionVerified &&
+            !profileLoading
+        )}
+        initialSuggestion={usernamePromptState.suggested}
+        allowSkip={usernamePromptState.allowSkip}
+        onSkip={handleSkipModalUsername}
+        onCheckAvailability={checkUsernameAvailability}
+        onSaveUsername={handleSaveModalUsername}
+      />
     </AuthContext.Provider>
   );
 }

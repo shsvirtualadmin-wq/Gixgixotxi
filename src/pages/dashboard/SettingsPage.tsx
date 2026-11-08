@@ -275,6 +275,27 @@ export function SettingsPage() {
     setSavingIdentity(true);
     try {
       const oldUsername = (profile?.username || '').trim().toLowerCase();
+      if (cleanUsername) {
+        const idToken = auth.currentUser ? await auth.currentUser.getIdToken().catch(() => '') : '';
+        const regRes = await fetch('/api/auth/username-register', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            uid: user.uid,
+            username: cleanUsername,
+            email: (user.email || profile?.email || '').trim().toLowerCase(),
+            accountType: 'registered',
+          }),
+        });
+        const regData = await regRes.json().catch(() => ({}));
+        if (!regRes.ok || !regData.ok) {
+          throw new Error(regData.error || `@${cleanUsername} is already taken.`);
+        }
+      }
       if (cleanUsername && cleanUsername !== oldUsername) {
         await runTransaction(db, async (tx) => {
           const newUsernameRef = doc(db, 'usernames', cleanUsername);

@@ -15,15 +15,18 @@
  */
 
 import {
+  ABANDONED_GUEST_GRACE_PERIOD_MS,
   DEFAULT_FIREBASE_PROJECT_ID,
   DEFAULT_FIRESTORE_DATABASE_ID,
   FirestoreRestAdapter,
+  INACTIVE_GUEST_TTL_MS,
   authenticateD1GuestSession,
   computeGuestTokenSha256Hex,
   extractGuestSessionTokenFromRequest,
   getSharedLocalD1Database,
   isD1UserSessionVerified,
   parseServiceAccountFromEnv,
+  purgeExpiredGuestAccounts,
   resolveCurrentUser,
   resolveTargetFirestoreDatabaseId,
   resolveTargetFirestoreProjectId,
@@ -37,6 +40,7 @@ import {
   areUsernamesTooSimilar,
   validateUsernameFormat,
 } from '../../../src/utils/usernameValidation';
+import { TARGET_API_KEY } from '../../../src/lib/firebaseConfig';
 
 export const CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 export const MAX_CODE_ATTEMPTS = 5;
@@ -52,6 +56,10 @@ export const MAX_GUEST_CREATIONS_PER_DAY_PER_IP = 15;
 export const MAX_GUEST_CREATIONS_PER_HOUR_PER_DEVICE = 3;
 export const MAX_GUEST_CREATIONS_PER_DAY_PER_DEVICE = 8;
 
+export const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+export const MAX_LOGIN_ATTEMPTS_PER_WINDOW = 10;
+export const GENERIC_LOGIN_ERROR = 'Invalid username/email or password';
+
 export interface AuthWorkerEnv extends RewardsEnv {
   OTP_HMAC_SECRET?: string;
   EMAIL_VERIFICATION_SECRET?: string;
@@ -59,6 +67,8 @@ export interface AuthWorkerEnv extends RewardsEnv {
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
   APP_URL?: string;
+  FIREBASE_API_KEY?: string;
+  VITE_FIREBASE_API_KEY?: string;
 }
 
 export interface EmailDispatchPayload {
@@ -257,6 +267,7 @@ export async function ensureEmailVerificationD1Schema(db: RewardsD1Database): Pr
         username_display TEXT NOT NULL,
         uid TEXT NOT NULL UNIQUE,
         account_type TEXT NOT NULL DEFAULT 'registered',
+        email TEXT NOT NULL DEFAULT '',
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )`),
@@ -284,6 +295,9 @@ export async function ensureEmailVerificationD1Schema(db: RewardsD1Database): Pr
         ip_hash TEXT NOT NULL DEFAULT '',
         device_id_hash TEXT NOT NULL DEFAULT '',
         is_suspended INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'active',
+        abandoned_at INTEGER DEFAULT NULL,
+        purge_after INTEGER DEFAULT NULL,
         created_at INTEGER NOT NULL,
         last_active_at INTEGER NOT NULL
       )`),
@@ -312,9 +326,32 @@ export async function ensureEmailVerificationD1Schema(db: RewardsD1Database): Pr
         created_at INTEGER NOT NULL
       )`),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_guest_rate_limits_lookup ON guest_creation_rate_limits(identifier_hash, identifier_type, created_at DESC)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS login_rate_limits (
+        rate_key TEXT PRIMARY KEY,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        window_start INTEGER NOT NULL,
+        locked_until INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_login_rate_limits_updated ON login_rate_limits(updated_at DESC)`),
     ]);
   } catch {
     // Tables already initialized
+  }
+  // Safe column migrations for existing D1 tables
+  const migrations = [
+    `ALTER TABLE user_usernames ADD COLUMN email TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE guest_accounts ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
+    `ALTER TABLE guest_accounts ADD COLUMN abandoned_at INTEGER DEFAULT NULL`,
+    `ALTER TABLE guest_accounts ADD COLUMN purge_after INTEGER DEFAULT NULL`,
+    `CREATE INDEX IF NOT EXISTS idx_guest_accounts_status_purge ON guest_accounts(status, purge_after)`,
+  ];
+  for (const sql of migrations) {
+    try {
+      await db.prepare(sql).run();
+    } catch {
+      // Column or index already exists
+    }
   }
 }
 
@@ -984,9 +1021,25 @@ export async function handleAuthApiRequest(
       );
     }
 
+    // Check if the registered user has a canonical username in `user_usernames`
+    const usernameRow = await db
+      .prepare('SELECT username_lower, username_display, email FROM user_usernames WHERE uid = ?1 LIMIT 1')
+      .bind(resolved.uid)
+      .first<{ username_lower: string; username_display: string; email?: string }>()
+      .catch(() => null);
+
+    if (usernameRow && !usernameRow.email && resolved.email) {
+      await db
+        .prepare('UPDATE user_usernames SET email = ?1, updated_at = ?2 WHERE uid = ?3')
+        .bind(resolved.email.toLowerCase(), nowMs, resolved.uid)
+        .run()
+        .catch(() => {});
+    }
+
     const regPayload = {
       uid: resolved.uid,
-      username: resolved.username,
+      username: usernameRow?.username_display || resolved.username,
+      hasRegisteredUsername: Boolean(usernameRow?.username_display),
       displayName: resolved.displayName || resolved.name,
       name: resolved.name,
       email: resolved.email,
@@ -1005,6 +1058,7 @@ export async function handleAuthApiRequest(
         ok: true,
         authenticated: true,
         accountType: 'registered',
+        hasRegisteredUsername: Boolean(usernameRow?.username_display),
         user: regPayload,
         guest: null,
       },
@@ -1429,19 +1483,125 @@ export async function handleAuthApiRequest(
     );
   }
 
-  // ─── E. POST /api/auth/guest/logout (Revoke Guest Session & Clear Cookie) ───
+  // ─── E. POST /api/auth/guest/logout (Revoke Session, Clear Cookie, Abandon Guest & Release Username Immediately) ───
   if (subPath === 'guest/logout' && request.method === 'POST') {
+    let bodyUid = '';
+    try {
+      const b = (await request.json()) as { uid?: string };
+      if (b?.uid) bodyUid = String(b.uid).trim();
+    } catch {
+      // Optional JSON body
+    }
+
     const rawToken = extractGuestSessionTokenFromRequest(request);
+    let targetGuestUid = bodyUid;
+    let targetUsernameLower = '';
+
     if (rawToken) {
       const tokenHash = await computeGuestTokenSha256Hex(rawToken, secret);
+      const sessRow = await db
+        .prepare('SELECT uid FROM guest_sessions WHERE token_hash = ?1 LIMIT 1')
+        .bind(tokenHash)
+        .first<{ uid: string }>()
+        .catch(() => null);
+      if (sessRow?.uid) {
+        targetGuestUid = String(sessRow.uid);
+      }
       await db
         .prepare('UPDATE guest_sessions SET revoked = 1 WHERE token_hash = ?1')
         .bind(tokenHash)
         .run()
         .catch(() => {});
     }
+
+    if (targetGuestUid) {
+      const guestRow = await db
+        .prepare('SELECT uid, username_lower, is_guest, upgraded_to_uid FROM guest_accounts WHERE uid = ?1 LIMIT 1')
+        .bind(targetGuestUid)
+        .first<{ uid: string; username_lower: string; is_guest: number; upgraded_to_uid: string | null }>()
+        .catch(() => null);
+
+      // Revoke all sessions for this guest UID
+      await db
+        .prepare('UPDATE guest_sessions SET revoked = 1 WHERE uid = ?1')
+        .bind(targetGuestUid)
+        .run()
+        .catch(() => {});
+
+      // Release the username immediately from `user_usernames` so it is not locked forever
+      await db
+        .prepare("DELETE FROM user_usernames WHERE uid = ?1 AND account_type = 'guest'")
+        .bind(targetGuestUid)
+        .run()
+        .catch(() => {});
+
+      if (guestRow && Number(guestRow.is_guest) === 1 && !guestRow.upgraded_to_uid) {
+        targetUsernameLower = String(guestRow.username_lower || '');
+        if (targetUsernameLower && !targetUsernameLower.includes('__abandoned_')) {
+          await db
+            .prepare("DELETE FROM user_usernames WHERE username_lower = ?1 AND account_type = 'guest'")
+            .bind(targetUsernameLower)
+            .run()
+            .catch(() => {});
+        }
+        const freedUsernameLower = targetUsernameLower.includes('__abandoned_')
+          ? targetUsernameLower
+          : `${targetUsernameLower}__abandoned_${targetGuestUid}`;
+        const purgeAfterMs = nowMs + ABANDONED_GUEST_GRACE_PERIOD_MS;
+
+        // Mark guest account as abandoned; data will be deleted after 7-day grace period
+        await db
+          .prepare(
+            `UPDATE guest_accounts
+             SET status = ?1, abandoned_at = ?2, purge_after = ?3, username_lower = ?4, last_active_at = ?5
+             WHERE uid = ?6`
+          )
+          .bind('abandoned', nowMs, purgeAfterMs, freedUsernameLower, nowMs, targetGuestUid)
+          .run()
+          .catch(() => {});
+      }
+    }
+
+    // Also opportunistically purge any guest accounts past their 7-day grace period or 30-day inactivity
+    await purgeExpiredGuestAccounts(db, nowMs).catch(() => {});
+
     const clearCookie = buildGuestSessionCookieHeader('', isHttps, true);
-    return jsonResponse({ ok: true, loggedOut: true }, 200, { 'Set-Cookie': clearCookie });
+    return jsonResponse(
+      {
+        ok: true,
+        loggedOut: true,
+        abandoned: Boolean(targetGuestUid),
+        usernameReleased: Boolean(targetGuestUid),
+        gracePeriodDays: 7,
+        purgeAfter: nowMs + ABANDONED_GUEST_GRACE_PERIOD_MS,
+      },
+      200,
+      { 'Set-Cookie': clearCookie }
+    );
+  }
+
+  // ─── E2. POST / GET /api/auth/guest/cleanup (Scheduled Cleanup Job & Manual Trigger) ───
+  if (subPath === 'guest/cleanup' && (request.method === 'POST' || request.method === 'GET')) {
+    let customNowMs = nowMs;
+    if (request.method === 'POST') {
+      try {
+        const b = (await request.json()) as { nowMs?: number };
+        if (typeof b?.nowMs === 'number' && b.nowMs > 0) {
+          customNowMs = b.nowMs;
+        }
+      } catch {
+        // Ignore
+      }
+    }
+    const cleanupResult = await purgeExpiredGuestAccounts(db, customNowMs);
+    return jsonResponse({
+      ok: true,
+      purgedCount: cleanupResult.purgedCount,
+      purgedUids: cleanupResult.purgedUids,
+      abandonedGracePeriodDays: 7,
+      inactiveTtlDays: 30,
+      executedAt: customNowMs,
+    });
   }
 
   // ─── F. POST /api/auth/guest/upgrade (In-Place Upgrade Guest -> Registered User) ───
@@ -1473,7 +1633,7 @@ export async function handleAuthApiRequest(
           .prepare('SELECT * FROM guest_accounts WHERE uid = ?1 LIMIT 1')
           .bind(sessRow.uid)
           .first<Record<string, any>>();
-        if (gRow) {
+        if (gRow && String(gRow.status || 'active') !== 'abandoned' && !gRow.abandoned_at) {
           guestUser = {
             uid: String(gRow.uid),
             email: '',
@@ -1509,9 +1669,9 @@ export async function handleAuthApiRequest(
       .bind(targetGuestUid)
       .first<Record<string, any>>();
 
-    if (!guestRow) {
+    if (!guestRow || String(guestRow.status || 'active') === 'abandoned' || guestRow.abandoned_at) {
       return jsonResponse(
-        { ok: false, error: 'Guest account not found.', code: 'GUEST_NOT_FOUND' },
+        { ok: false, error: 'Guest account not found or already logged out.', code: 'GUEST_NOT_FOUND' },
         404
       );
     }
@@ -1589,12 +1749,12 @@ export async function handleAuthApiRequest(
     const usernameDisplay = String(guestRow.username);
 
     // Upgrade in place:
-    // 1. Update `user_usernames` so `username_lower` now points to `newUid` with `account_type = 'registered'`
+    // 1. Update `user_usernames` so `username_lower` now points to `newUid` with `account_type = 'registered'` and `email`
     await db
       .prepare(
-        `UPDATE user_usernames SET uid = ?1, account_type = ?2, updated_at = ?3 WHERE username_lower = ?4`
+        `UPDATE user_usernames SET uid = ?1, account_type = ?2, email = ?3, updated_at = ?4 WHERE username_lower = ?5`
       )
-      .bind(newUid, 'registered', nowMs, usernameLower)
+      .bind(newUid, 'registered', email, nowMs, usernameLower)
       .run();
 
     // 2. Update `guest_accounts` in place so record reflects upgrade & preserves stats
@@ -1664,15 +1824,29 @@ export async function handleAuthApiRequest(
 
   // ─── G. POST /api/auth/username-register (Reserve/Update Username for Registered User) ───
   if (subPath === 'username-register' && request.method === 'POST') {
-    let body: { uid?: string; username?: string; accountType?: string } = {};
+    let body: { uid?: string; username?: string; email?: string; accountType?: string } = {};
     try {
       body = (await request.json()) as typeof body;
     } catch {
       return jsonResponse({ ok: false, error: 'Invalid JSON.', code: 'INVALID_JSON' }, 400);
     }
 
-    const targetUid = String(body.uid || '').trim();
+    const authHeaderCheck = request.headers.get('Authorization');
+    const projectId =
+      env?.FIREBASE_PROJECT_ID || env?.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID;
+    const verifyFn =
+      opts.tokenVerifierOverride ||
+      ((hdr: string | null | undefined) => verifyFirebaseIdToken(hdr, projectId));
+    const verifiedToken =
+      authHeaderCheck && authHeaderCheck.startsWith('Bearer ') && !authHeaderCheck.startsWith('Bearer guest_')
+        ? await verifyFn(authHeaderCheck).catch(() => null)
+        : null;
+
+    const targetUid = String(verifiedToken?.uid || body.uid || '').trim();
     const rawUsername = String(body.username || '').trim();
+    const resolvedEmail = String(verifiedToken?.email || body.email || '')
+      .trim()
+      .toLowerCase();
     const accountType = body.accountType === 'guest' ? 'guest' : 'registered';
 
     if (!targetUid || !rawUsername) {
@@ -1688,6 +1862,10 @@ export async function handleAuthApiRequest(
       excludeUid: targetUid,
     });
     if (!availability.available) {
+      const status =
+        availability.code === 'USERNAME_TAKEN' || availability.code === 'USERNAME_TAKEN_OR_SIMILAR'
+          ? 409
+          : 400;
       return jsonResponse(
         {
           ok: false,
@@ -1695,35 +1873,38 @@ export async function handleAuthApiRequest(
           error: availability.reason || 'Username is already taken.',
           code: availability.code || 'USERNAME_TAKEN',
         },
-        409
+        status
       );
     }
 
-    // Remove previous username row for this uid if they are renaming
+    // Check previous username row for this uid if they are renaming
     const prevRow = await db
-      .prepare('SELECT username_lower, uid FROM user_usernames WHERE uid = ?1 LIMIT 1')
+      .prepare('SELECT username_lower, uid, email FROM user_usernames WHERE uid = ?1 LIMIT 1')
       .bind(targetUid)
-      .first<{ username_lower: string; uid: string }>();
+      .first<{ username_lower: string; uid: string; email?: string }>();
+
+    const emailToStore = resolvedEmail || String(prevRow?.email || '').trim().toLowerCase();
 
     try {
       if (prevRow && prevRow.username_lower === availability.normalized) {
         await db
           .prepare(
-            'UPDATE user_usernames SET uid = ?1, account_type = ?2, updated_at = ?3 WHERE username_lower = ?4'
+            'UPDATE user_usernames SET uid = ?1, account_type = ?2, email = ?3, updated_at = ?4 WHERE username_lower = ?5'
           )
-          .bind(targetUid, accountType, nowMs, availability.normalized)
+          .bind(targetUid, accountType, emailToStore, nowMs, availability.normalized)
           .run();
       } else {
         await db
           .prepare(
-            `INSERT INTO user_usernames (username_lower, username_display, uid, account_type, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
+            `INSERT INTO user_usernames (username_lower, username_display, uid, account_type, email, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
           )
           .bind(
             availability.normalized,
             availability.clean,
             targetUid,
             accountType,
+            emailToStore,
             nowMs,
             nowMs
           )
@@ -1745,6 +1926,31 @@ export async function handleAuthApiRequest(
       throw err;
     }
 
+    // Sync username to Firestore `users/{targetUid}` if service account is available
+    try {
+      const sa = parseServiceAccountFromEnv(env);
+      if (sa && accountType === 'registered') {
+        const fsProjectId = resolveTargetFirestoreProjectId(projectId);
+        const fsDbId = resolveTargetFirestoreDatabaseId(
+          env?.FIREBASE_DATABASE_ID ||
+            env?.VITE_FIREBASE_DATABASE_ID ||
+            env?.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
+            DEFAULT_FIRESTORE_DATABASE_ID
+        );
+        const store = new FirestoreRestAdapter(sa, fsProjectId, fsDbId);
+        await store.setDoc(
+          `users/${targetUid}`,
+          {
+            username: availability.clean,
+            usernameLower: availability.normalized,
+          },
+          true
+        );
+      }
+    } catch {
+      // Non-fatal
+    }
+
     return jsonResponse({
       ok: true,
       available: true,
@@ -1754,33 +1960,302 @@ export async function handleAuthApiRequest(
     });
   }
 
-  // ─── H. GET /api/auth/guests (Admin Users List: Active & Upgraded Guest Accounts) ───
+  // ─── G2. POST /api/auth/username-release (Rollback Username Reservation on Failed Signup) ───
+  if (subPath === 'username-release' && request.method === 'POST') {
+    let body: { uid?: string; username?: string } = {};
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return jsonResponse({ ok: false, error: 'Invalid JSON.', code: 'INVALID_JSON' }, 400);
+    }
+    const targetUid = String(body.uid || '').trim();
+    if (!targetUid) {
+      return jsonResponse({ ok: false, error: 'Missing uid.', code: 'MISSING_FIELDS' }, 400);
+    }
+    await db
+      .prepare('DELETE FROM user_usernames WHERE uid = ?1')
+      .bind(targetUid)
+      .run()
+      .catch(() => {});
+    return jsonResponse({ ok: true, released: true });
+  }
+
+  // ─── G3. POST /api/auth/login-username (Server-Side Username -> Email Resolution & Password Verification) ───
+  if (subPath === 'login-username' && request.method === 'POST') {
+    let body: { identifier?: string; username?: string; password?: string } = {};
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return jsonResponse({ ok: false, error: GENERIC_LOGIN_ERROR, code: 'INVALID_CREDENTIALS' }, 401);
+    }
+
+    const rawIdentifier = String(body.identifier || body.username || '').trim();
+    const password = String(body.password || '');
+    const normalizedIdentifier = rawIdentifier.replace(/^@+/, '').toLowerCase();
+
+    const clientIp = extractClientIp(request);
+    const ipRateKey = `ip:${await hashIdentifier(secret, 'login_ip', clientIp)}`;
+    const idRateKey = `id:${await hashIdentifier(secret, 'login_id', normalizedIdentifier || 'empty')}`;
+
+    const checkRateLimit = async (key: string): Promise<boolean> => {
+      const row = await db
+        .prepare('SELECT attempt_count, window_start, locked_until FROM login_rate_limits WHERE rate_key = ?1 LIMIT 1')
+        .bind(key)
+        .first<{ attempt_count: number; window_start: number; locked_until: number }>()
+        .catch(() => null);
+      if (!row) return false;
+      if (row.locked_until && nowMs < Number(row.locked_until)) return true;
+      if (nowMs - Number(row.window_start) > LOGIN_RATE_LIMIT_WINDOW_MS) return false;
+      return Number(row.attempt_count || 0) >= MAX_LOGIN_ATTEMPTS_PER_WINDOW;
+    };
+
+    const recordFailedAttempt = async (key: string): Promise<void> => {
+      const row = await db
+        .prepare('SELECT attempt_count, window_start, locked_until FROM login_rate_limits WHERE rate_key = ?1 LIMIT 1')
+        .bind(key)
+        .first<{ attempt_count: number; window_start: number; locked_until: number }>()
+        .catch(() => null);
+      const expiredWindow = !row || nowMs - Number(row.window_start) > LOGIN_RATE_LIMIT_WINDOW_MS;
+      const nextCount = expiredWindow ? 1 : Number(row.attempt_count || 0) + 1;
+      const nextWindowStart = expiredWindow ? nowMs : Number(row.window_start);
+      const nextLockedUntil =
+        nextCount >= MAX_LOGIN_ATTEMPTS_PER_WINDOW ? nowMs + LOGIN_RATE_LIMIT_WINDOW_MS : 0;
+      await db
+        .prepare(
+          `INSERT OR REPLACE INTO login_rate_limits (rate_key, attempt_count, window_start, locked_until, updated_at)
+           VALUES (?1, ?2, ?3, ?4, ?5)`
+        )
+        .bind(key, nextCount, nextWindowStart, nextLockedUntil, nowMs)
+        .run()
+        .catch(() => {});
+    };
+
+    const [ipLimited, idLimited] = await Promise.all([
+      checkRateLimit(ipRateKey),
+      checkRateLimit(idRateKey),
+    ]);
+
+    if (ipLimited || idLimited) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'Too many login attempts. Please wait 15 minutes and try again.',
+          code: 'RATE_LIMITED',
+        },
+        429
+      );
+    }
+
+    if (!normalizedIdentifier || !password) {
+      await Promise.all([recordFailedAttempt(ipRateKey), recordFailedAttempt(idRateKey)]);
+      return jsonResponse(
+        { ok: false, error: GENERIC_LOGIN_ERROR, code: 'INVALID_CREDENTIALS' },
+        401
+      );
+    }
+
+    // 1. Look up username in `user_usernames` on the server
+    const usernameRow = await db
+      .prepare(
+        'SELECT username_lower, username_display, uid, account_type, email FROM user_usernames WHERE username_lower = ?1 LIMIT 1'
+      )
+      .bind(normalizedIdentifier)
+      .first<{
+        username_lower: string;
+        username_display: string;
+        uid: string;
+        account_type: string;
+        email?: string;
+      }>()
+      .catch(() => null);
+
+    // Block missing usernames AND guest usernames with the exact same generic error
+    if (!usernameRow || usernameRow.account_type === 'guest' || usernameRow.uid.startsWith('guest_')) {
+      await Promise.all([recordFailedAttempt(ipRateKey), recordFailedAttempt(idRateKey)]);
+      return jsonResponse(
+        { ok: false, error: GENERIC_LOGIN_ERROR, code: 'INVALID_CREDENTIALS' },
+        401
+      );
+    }
+
+    // 2. Resolve the account's email on the server (never expose it to the client)
+    let resolvedEmail = String(usernameRow.email || '').trim().toLowerCase();
+
+    if (!resolvedEmail) {
+      const roleRow = await db
+        .prepare('SELECT email FROM user_roles WHERE uid = ?1 LIMIT 1')
+        .bind(usernameRow.uid)
+        .first<{ email: string }>()
+        .catch(() => null);
+      if (roleRow?.email) {
+        resolvedEmail = String(roleRow.email).trim().toLowerCase();
+      }
+    }
+
+    if (!resolvedEmail) {
+      const upgradedGuestRow = await db
+        .prepare('SELECT email FROM guest_accounts WHERE upgraded_to_uid = ?1 LIMIT 1')
+        .bind(usernameRow.uid)
+        .first<{ email: string }>()
+        .catch(() => null);
+      if (upgradedGuestRow?.email) {
+        resolvedEmail = String(upgradedGuestRow.email).trim().toLowerCase();
+      }
+    }
+
+    if (!resolvedEmail) {
+      try {
+        const sa = parseServiceAccountFromEnv(env);
+        if (sa) {
+          const projectId = resolveTargetFirestoreProjectId(
+            env?.FIREBASE_PROJECT_ID || env?.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID
+          );
+          const databaseId = resolveTargetFirestoreDatabaseId(
+            env?.FIREBASE_DATABASE_ID ||
+              env?.VITE_FIREBASE_DATABASE_ID ||
+              env?.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
+              DEFAULT_FIRESTORE_DATABASE_ID
+          );
+          const store = new FirestoreRestAdapter(sa, projectId, databaseId);
+          const userDoc = await store.getDoc(`users/${usernameRow.uid}`);
+          if (userDoc.exists && userDoc.data?.email) {
+            resolvedEmail = String(userDoc.data.email).trim().toLowerCase();
+          }
+        }
+      } catch {
+        // Ignore
+      }
+    }
+
+    if (!resolvedEmail || !resolvedEmail.includes('@')) {
+      await Promise.all([recordFailedAttempt(ipRateKey), recordFailedAttempt(idRateKey)]);
+      return jsonResponse(
+        { ok: false, error: GENERIC_LOGIN_ERROR, code: 'INVALID_CREDENTIALS' },
+        401
+      );
+    }
+
+    // Backfill `user_usernames.email` if it was resolved from fallback
+    if (!usernameRow.email && resolvedEmail) {
+      await db
+        .prepare('UPDATE user_usernames SET email = ?1, updated_at = ?2 WHERE username_lower = ?3')
+        .bind(resolvedEmail, nowMs, usernameRow.username_lower)
+        .run()
+        .catch(() => {});
+    }
+
+    // 3. Verify password against Firebase Identity Toolkit REST API on the server
+    const firebaseApiKey = (
+      env?.FIREBASE_API_KEY ||
+      env?.VITE_FIREBASE_API_KEY ||
+      (typeof process !== 'undefined'
+        ? process.env?.FIREBASE_API_KEY || process.env?.VITE_FIREBASE_API_KEY
+        : '') ||
+      TARGET_API_KEY
+    ).trim();
+
+    try {
+      const toolkitRes = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(firebaseApiKey)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: resolvedEmail,
+            password,
+            returnSecureToken: true,
+          }),
+        }
+      );
+
+      const toolkitData = (await toolkitRes.json().catch(() => null)) as Record<string, any> | null;
+
+      if (!toolkitRes.ok || !toolkitData?.idToken) {
+        const errCode = String(toolkitData?.error?.message || '');
+        await Promise.all([recordFailedAttempt(ipRateKey), recordFailedAttempt(idRateKey)]);
+        if (errCode.includes('TOO_MANY_ATTEMPTS_TRY_LATER')) {
+          return jsonResponse(
+            {
+              ok: false,
+              error: 'Too many login attempts. Please wait a few minutes and try again.',
+              code: 'RATE_LIMITED',
+            },
+            429
+          );
+        }
+        return jsonResponse(
+          { ok: false, error: GENERIC_LOGIN_ERROR, code: 'INVALID_CREDENTIALS' },
+          401
+        );
+      }
+
+      // Clear failed login counter for this identifier on success
+      await db
+        .prepare('DELETE FROM login_rate_limits WHERE rate_key = ?1')
+        .bind(idRateKey)
+        .run()
+        .catch(() => {});
+
+      // Return tokenResponse WITHOUT exposing the user's email in the HTTP response body
+      return jsonResponse({
+        ok: true,
+        uid: String(toolkitData.localId || usernameRow.uid),
+        username: usernameRow.username_display,
+        tokenResponse: {
+          kind: toolkitData.kind || 'identitytoolkit#VerifyPasswordResponse',
+          localId: String(toolkitData.localId || usernameRow.uid),
+          displayName: String(toolkitData.displayName || usernameRow.username_display),
+          idToken: String(toolkitData.idToken),
+          refreshToken: String(toolkitData.refreshToken),
+          expiresIn: String(toolkitData.expiresIn || '3600'),
+          registered: true,
+        },
+      });
+    } catch {
+      return jsonResponse(
+        { ok: false, error: GENERIC_LOGIN_ERROR, code: 'INVALID_CREDENTIALS' },
+        401
+      );
+    }
+  }
+
+  // ─── H. GET /api/auth/guests (Admin Users List: Active & Abandoned Guest Accounts Until Purged) ───
   if (subPath === 'guests' && request.method === 'GET') {
+    await purgeExpiredGuestAccounts(db, nowMs).catch(() => {});
+
     const rowsRes = await db
       .prepare('SELECT * FROM guest_accounts ORDER BY created_at DESC LIMIT 500')
       .all<Record<string, any>>();
 
     const guests = (rowsRes.results || [])
       .filter((r) => Number(r.is_guest) === 1 && !r.upgraded_to_uid)
-      .map((r) => ({
-        uid: String(r.uid),
-        username: String(r.username),
-        displayName: String(r.display_name || r.username),
-        shortId: String(r.short_id || 'GUEST'),
-        accountType: 'guest' as const,
-        isGuest: true,
-        email: '',
-        plan: 'free' as const,
-        role: 'student' as const,
-        targetUniversity: String(r.target_university || 'General Prep'),
-        testsCompleted: Number(r.tests_completed || 0),
-        totalQuestionsSolved: Number(r.total_questions_solved || 0),
-        questionsSolved: Number(r.total_questions_solved || 0),
-        streak: Number(r.streak || 0),
-        isSuspended: Boolean(r.is_suspended),
-        createdAt: Number(r.created_at || nowMs),
-        lastActiveAt: Number(r.last_active_at || r.created_at || nowMs),
-      }));
+      .map((r) => {
+        const status =
+          String(r.status || 'active') === 'abandoned' || r.abandoned_at ? 'abandoned' : 'active';
+        return {
+          uid: String(r.uid),
+          username: String(r.username),
+          displayName: String(r.display_name || r.username),
+          shortId: String(r.short_id || 'GUEST'),
+          accountType: 'guest' as const,
+          badge: 'Guest' as const,
+          isGuest: true,
+          status,
+          abandonedAt: r.abandoned_at ? Number(r.abandoned_at) : null,
+          purgeAfter: r.purge_after ? Number(r.purge_after) : null,
+          email: '',
+          plan: 'free' as const,
+          role: 'student' as const,
+          targetUniversity: String(r.target_university || 'General Prep'),
+          testsCompleted: Number(r.tests_completed || 0),
+          totalQuestionsSolved: Number(r.total_questions_solved || 0),
+          questionsSolved: Number(r.total_questions_solved || 0),
+          streak: Number(r.streak || 0),
+          isSuspended: Boolean(r.is_suspended),
+          createdAt: Number(r.created_at || nowMs),
+          lastActiveAt: Number(r.last_active_at || r.created_at || nowMs),
+        };
+      });
 
     return jsonResponse({
       ok: true,

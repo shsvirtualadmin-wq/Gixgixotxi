@@ -58,6 +58,13 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
   }>({ status: 'idle' });
   const [guestSubmitting, setGuestSubmitting] = useState(false);
 
+  // Sign Up Username State
+  const [signupUsername, setSignupUsername] = useState('');
+  const [signupUsernameCheck, setSignupUsernameCheck] = useState<{
+    status: 'idle' | 'checking' | 'available' | 'taken' | 'invalid';
+    reason?: string;
+  }>({ status: 'idle' });
+
   // Status State
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -118,6 +125,44 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     };
   }, [guestUsername, mode, checkUsernameAvailability]);
 
+  // Live debounced username availability check in email sign-up mode
+  useEffect(() => {
+    if (mode !== 'signup') return;
+    const raw = signupUsername.trim().replace(/^@+/, '');
+    if (!raw) {
+      setSignupUsernameCheck({ status: 'idle' });
+      return;
+    }
+    const localValidation = validateUsernameFormat(raw);
+    if (!localValidation.valid) {
+      setSignupUsernameCheck({
+        status: 'invalid',
+        reason: localValidation.reason || 'Invalid username format.',
+      });
+      return;
+    }
+
+    let cancelled = false;
+    setSignupUsernameCheck({ status: 'checking' });
+    const timer = setTimeout(async () => {
+      const res = await checkUsernameAvailability(raw);
+      if (cancelled) return;
+      if (res.available) {
+        setSignupUsernameCheck({ status: 'available' });
+      } else {
+        setSignupUsernameCheck({
+          status: 'taken',
+          reason: res.reason || 'That username is already taken.',
+        });
+      }
+    }, 260);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [signupUsername, mode, checkUsernameAvailability]);
+
   const getDestinationUrl = useCallback(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const redirectParam = searchParams.get('redirect') || searchParams.get('returnTo');
@@ -164,8 +209,8 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
 
     setGuestSubmitting(true);
     try {
-      const res = await signInAsGuest(raw);
-      if (!res.ok) {
+      const res: any = await signInAsGuest(raw);
+      if (res && res.ok === false) {
         setGuestCheckState({
           status: 'taken',
           reason: res.error || 'Could not claim that username.',
@@ -177,7 +222,12 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
       logRedirect('/login', dest, 'AuthCard.tsx (Guest account created)');
       navigate(dest, { replace: true });
     } catch (err: unknown) {
-      setGeneralError(err instanceof Error ? err.message : 'Could not create guest session.');
+      const msg = err instanceof Error ? err.message : 'Could not create guest session.';
+      setGuestCheckState({
+        status: 'taken',
+        reason: msg,
+      });
+      setGeneralError(msg);
     } finally {
       setGuestSubmitting(false);
     }
@@ -231,21 +281,38 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     setGeneralError('');
     const errors: Record<string, string> = {};
 
-    if (!email.trim()) {
-      errors.email = 'Please enter your email address.';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      errors.email = 'Please enter a valid email address.';
+    if (mode === 'signin') {
+      if (!email.trim()) {
+        errors.email = 'Please enter your email or username.';
+      } else if (email.trim().includes('@') && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        errors.email = 'Please enter a valid email address.';
+      }
+    } else {
+      if (!email.trim()) {
+        errors.email = 'Please enter your email address.';
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        errors.email = 'Please enter a valid email address.';
+      }
     }
 
     if (!password) {
       errors.password = 'Please enter a password.';
-    } else if (password.length < 6) {
+    } else if (mode === 'signup' && password.length < 6) {
       errors.password = 'Password must be at least 6 characters.';
     }
 
     if (mode === 'signup') {
       if (!displayName.trim()) {
         errors.name = 'Please enter your full name.';
+      }
+      const cleanSignupUsername = signupUsername.trim().replace(/^@+/, '');
+      const usernameValidation = validateUsernameFormat(cleanSignupUsername);
+      if (!cleanSignupUsername) {
+        errors.username = 'Please choose a username.';
+      } else if (!usernameValidation.valid) {
+        errors.username = usernameValidation.reason || 'Please enter a valid username.';
+      } else if (signupUsernameCheck.status === 'taken') {
+        errors.username = signupUsernameCheck.reason || 'That username is already taken.';
       }
       if (password !== confirmPassword) {
         errors.confirmPassword = 'Passwords do not match.';
@@ -273,7 +340,12 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
             // ignore storage errors
           }
         }
-        await signUp(email.trim(), password, displayName.trim());
+        await signUp(
+          email.trim(),
+          password,
+          displayName.trim(),
+          signupUsername.trim().replace(/^@+/, '')
+        );
       }
     } catch (err: unknown) {
       if (import.meta.env.DEV) {
@@ -282,9 +354,23 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
       const fe = err as { code?: string; message?: string };
       const code = fe.code ?? '';
 
-      if (code === 'auth/user-not-found' || code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
+      if (
+        code === 'auth/user-not-found' ||
+        code === 'auth/invalid-credential' ||
+        code === 'auth/wrong-password' ||
+        code === 'INVALID_CREDENTIALS'
+      ) {
         setEmailAlreadyInUse(false);
-        setGeneralError('Incorrect email or password. Please check your credentials.');
+        setGeneralError('Invalid username/email or password');
+      } else if (
+        code === 'USERNAME_TAKEN' ||
+        code === 'USERNAME_TAKEN_OR_SIMILAR' ||
+        code === 'INVALID_USERNAME_FORMAT'
+      ) {
+        setEmailAlreadyInUse(false);
+        const msg = fe.message || 'That username is already taken.';
+        setFieldErrors({ username: msg });
+        setGeneralError(msg);
       } else if (code === 'auth/email-already-in-use') {
         setEmailAlreadyInUse(true);
         const msg =
@@ -296,7 +382,9 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
         setFieldErrors({ password: 'Password is too weak. Please use at least 6 characters.' });
       } else if (code === 'auth/too-many-requests') {
         setEmailAlreadyInUse(false);
-        setGeneralError('Too many failed attempts. Please wait a few moments before trying again.');
+        setGeneralError(
+          fe.message || 'Too many failed attempts. Please wait a few moments before trying again.'
+        );
       } else if (code === 'auth/user-disabled') {
         setEmailAlreadyInUse(false);
         setGeneralError('This account has been disabled. Please contact support@boardly.cfd.');
@@ -305,7 +393,11 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
         setGeneralError('Network connection issue. Please check your internet connection.');
       } else {
         setEmailAlreadyInUse(false);
-        setGeneralError('Authentication failed. Please check your details and try again.');
+        setGeneralError(
+          mode === 'signin'
+            ? 'Invalid username/email or password'
+            : fe.message || 'Authentication failed. Please check your details and try again.'
+        );
       }
     } finally {
       setLoading(false);
@@ -465,7 +557,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
 
           {/* Non-blocking note required by Part B Rule 3 */}
           <div className="p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[11px] text-[var(--muted)] leading-relaxed text-left">
-            You&apos;ll stay signed in on this device. Clearing browser data means you cannot return to this guest account unless you upgrade to a full account.
+            You&apos;ll stay signed in on this device.
           </div>
 
           <button
@@ -477,6 +569,13 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
             <span>{guestSubmitting ? 'Starting guest session...' : 'Continue as guest'}</span>
             {guestSubmitting && <ButtonLineLoader />}
           </button>
+
+          <p
+            data-testid="guest-temporary-notice"
+            className="text-[11px] text-[var(--muted)] leading-relaxed text-left"
+          >
+            Guest accounts are temporary. If you log out or clear your browser data, you can&apos;t get back into this account. Create a free account to keep your progress and use rewards and Pro.
+          </p>
         </form>
       </div>
     );
@@ -710,14 +809,104 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           </div>
         )}
 
-        {/* Email */}
+        {/* Username (Sign Up only) */}
+        {mode === 'signup' && (
+          <div className="flex flex-col gap-2 text-left">
+            <div className="flex items-center justify-between gap-2">
+              <label
+                htmlFor="auth-signup-username"
+                className="text-sm font-medium text-[var(--text)]"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                Username
+              </label>
+
+              {signupUsernameCheck.status === 'checking' && (
+                <span className="text-[11px] font-mono text-[var(--muted)]">
+                  Checking availability...
+                </span>
+              )}
+              {signupUsernameCheck.status === 'available' && (
+                <span
+                  data-testid="signup-username-available"
+                  className="text-[11px] font-mono font-bold text-emerald-500 inline-flex items-center gap-1"
+                >
+                  <CheckCircle2 size={13} />
+                  <span>Available</span>
+                </span>
+              )}
+              {(signupUsernameCheck.status === 'taken' ||
+                signupUsernameCheck.status === 'invalid') && (
+                <span
+                  data-testid="signup-username-taken"
+                  className="text-[11px] font-mono font-bold text-[#EF4444] inline-flex items-center gap-1"
+                >
+                  <AlertCircle size={13} />
+                  <span>{signupUsernameCheck.status === 'taken' ? 'Taken' : 'Invalid'}</span>
+                </span>
+              )}
+            </div>
+
+            <div className="relative">
+              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] font-mono font-bold text-sm pointer-events-none">
+                @
+              </div>
+              <input
+                id="auth-signup-username"
+                data-testid="auth-signup-username"
+                type="text"
+                value={signupUsername}
+                onChange={(e) => {
+                  setSignupUsername(e.target.value.replace(/^@+/, '').replace(/\s+/g, ''));
+                  if (fieldErrors.username) {
+                    setFieldErrors((prev) => ({ ...prev, username: '' }));
+                  }
+                }}
+                placeholder="ahmed_khan99"
+                maxLength={20}
+                autoComplete="username"
+                className={`auth-form-input font-mono ${
+                  fieldErrors.username ||
+                  signupUsernameCheck.status === 'taken' ||
+                  signupUsernameCheck.status === 'invalid'
+                    ? 'input-error'
+                    : ''
+                }`}
+                style={{
+                  height: '52px',
+                  paddingLeft: '36px',
+                  paddingRight: '16px',
+                }}
+              />
+            </div>
+
+            {fieldErrors.username ? (
+              <span className="text-xs text-[#DC2626] font-medium mt-0.5">
+                {fieldErrors.username}
+              </span>
+            ) : (
+              (signupUsernameCheck.status === 'taken' ||
+                signupUsernameCheck.status === 'invalid') &&
+              signupUsernameCheck.reason && (
+                <span className="text-xs text-[#DC2626] font-medium mt-0.5">
+                  {signupUsernameCheck.reason}
+                </span>
+              )
+            )}
+            <span className="text-[11px] text-[var(--muted)] leading-relaxed">
+              3 to 20 characters: letters, numbers, dots (<code className="font-mono">.</code>) and underscores (<code className="font-mono">_</code>) only.
+            </span>
+          </div>
+        )}
+
+        {/* Email (Sign Up) or Email / Username (Sign In) */}
         <div className="flex flex-col gap-2 text-left">
           <label
             htmlFor="auth-email"
             className="text-sm font-medium text-[var(--text)]"
             style={{ fontFamily: 'var(--font-heading)' }}
           >
-            Email
+            {mode === 'signin' ? 'Email or username' : 'Email'}
           </label>
           <div className="relative">
             <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] pointer-events-none">
@@ -725,11 +914,14 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
             </div>
             <input
               id="auth-email"
-              type="email"
+              data-testid="auth-identifier-input"
+              type={mode === 'signin' ? 'text' : 'email'}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="student@example.com"
-              autoComplete="email"
+              placeholder={
+                mode === 'signin' ? 'student@example.com or username' : 'student@example.com'
+              }
+              autoComplete={mode === 'signin' ? 'username' : 'email'}
               className={`auth-form-input ${fieldErrors.email ? 'input-error' : ''}`}
               style={{
                 height: '52px',

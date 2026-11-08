@@ -92,6 +92,8 @@ export function clearPendingReferralCode(): void {
   }
 }
 
+import { getStoredGuestSessionToken } from '@/lib/api';
+
 async function getAuthHeaders(forceRefresh = false): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -105,6 +107,11 @@ async function getAuthHeaders(forceRefresh = false): Promise<Record<string, stri
       const token = await currentUser.getIdToken(forceRefresh);
       if (token) {
         headers.Authorization = `Bearer ${token}`;
+      }
+    } else {
+      const guestToken = getStoredGuestSessionToken();
+      if (guestToken) {
+        headers['X-Guest-Session'] = guestToken;
       }
     }
   } catch (err) {
@@ -167,6 +174,7 @@ export async function fetchRewardsState(uid?: string | null): Promise<RewardsSta
     const res = await fetch(url, {
       method: 'GET',
       headers,
+      credentials: 'include',
     });
     const rawText = await res.text();
     let data: any = null;
@@ -254,8 +262,9 @@ export async function claimDailyReward(): Promise<{
   balanceAfter?: number;
   error?: string;
   code?: string;
-  state?: 'server_not_ready' | 'disabled';
+  state?: 'server_not_ready' | 'disabled' | 'guest_locked';
   comingSoon?: boolean;
+  guestLocked?: boolean;
 }> {
   const url = '/api/rewards/daily/claim';
   try {
@@ -263,6 +272,7 @@ export async function claimDailyReward(): Promise<{
     const res = await fetch(url, {
       method: 'POST',
       headers,
+      credentials: 'include',
       body: JSON.stringify({}),
     });
     const rawText = await res.text();
@@ -274,6 +284,7 @@ export async function claimDailyReward(): Promise<{
     }
 
     if (!res.ok || !data?.ok) {
+      const hasStructuredError = Boolean(data && typeof data === 'object' && (data.error || data.message));
       const serverMsg =
         (data && typeof data === 'object' && (data.error || data.message)) ||
         rawText.slice(0, 200).trim() ||
@@ -289,10 +300,11 @@ export async function claimDailyReward(): Promise<{
       return {
         ok: false,
         httpStatus: res.status,
-        error: `HTTP ${res.status}: ${serverMsg}`,
+        error: hasStructuredError ? String(serverMsg) : `HTTP ${res.status}: ${serverMsg}`,
         code: data?.code || `HTTP_${res.status}`,
         state: data?.state,
         comingSoon: Boolean(data?.comingSoon),
+        guestLocked: Boolean(data?.guestLocked || data?.code === 'GUEST_REWARDS_FORBIDDEN'),
       };
     }
 
@@ -346,8 +358,9 @@ export async function claimMilestoneReward(milestoneId: string): Promise<{
   balanceAfter?: number;
   error?: string;
   code?: string;
-  state?: 'server_not_ready' | 'disabled';
+  state?: 'server_not_ready' | 'disabled' | 'guest_locked';
   comingSoon?: boolean;
+  guestLocked?: boolean;
 }> {
   const url = '/api/rewards/milestone/claim';
   try {
@@ -355,6 +368,7 @@ export async function claimMilestoneReward(milestoneId: string): Promise<{
     const res = await fetch(url, {
       method: 'POST',
       headers,
+      credentials: 'include',
       body: JSON.stringify({ id: milestoneId }),
     });
     const rawText = await res.text();
@@ -366,6 +380,7 @@ export async function claimMilestoneReward(milestoneId: string): Promise<{
     }
 
     if (!res.ok || !data?.ok) {
+      const hasStructuredError = Boolean(data && typeof data === 'object' && (data.error || data.message));
       const serverMsg =
         (data && typeof data === 'object' && (data.error || data.message)) ||
         rawText.slice(0, 200).trim() ||
@@ -382,10 +397,11 @@ export async function claimMilestoneReward(milestoneId: string): Promise<{
       return {
         ok: false,
         httpStatus: res.status,
-        error: `HTTP ${res.status}: ${serverMsg}`,
+        error: hasStructuredError ? String(serverMsg) : `HTTP ${res.status}: ${serverMsg}`,
         code: data?.code || `HTTP_${res.status}`,
         state: data?.state,
         comingSoon: Boolean(data?.comingSoon),
+        guestLocked: Boolean(data?.guestLocked || data?.code === 'GUEST_REWARDS_FORBIDDEN'),
       };
     }
 
@@ -438,8 +454,9 @@ export async function attachReferralCode(code: string): Promise<{
   inviterDisplayName?: string;
   error?: string;
   code?: string;
-  state?: 'server_not_ready' | 'disabled';
+  state?: 'server_not_ready' | 'disabled' | 'guest_locked';
   comingSoon?: boolean;
+  guestLocked?: boolean;
 }> {
   const url = '/api/rewards/referral/attach';
   const normalizedCode = normalizeReferralCode(code);
@@ -448,6 +465,7 @@ export async function attachReferralCode(code: string): Promise<{
     const res = await fetch(url, {
       method: 'POST',
       headers,
+      credentials: 'include',
       body: JSON.stringify({ code: normalizedCode }),
     });
     const rawText = await res.text();
@@ -459,6 +477,7 @@ export async function attachReferralCode(code: string): Promise<{
     }
 
     if (!res.ok || !data?.ok) {
+      const hasStructuredError = Boolean(data && typeof data === 'object' && (data.error || data.message));
       const serverMsg =
         (data && typeof data === 'object' && (data.error || data.message)) ||
         rawText.slice(0, 200).trim() ||
@@ -475,10 +494,11 @@ export async function attachReferralCode(code: string): Promise<{
       return {
         ok: false,
         httpStatus: res.status,
-        error: `HTTP ${res.status}: ${serverMsg}`,
+        error: hasStructuredError ? String(serverMsg) : `HTTP ${res.status}: ${serverMsg}`,
         code: data?.code || `HTTP_${res.status}`,
         state: data?.state,
         comingSoon: Boolean(data?.comingSoon),
+        guestLocked: Boolean(data?.guestLocked || data?.code === 'GUEST_REWARDS_FORBIDDEN'),
       };
     }
 
@@ -530,8 +550,9 @@ export async function acceptPendingReferral(
   message?: string;
   error?: string;
   code?: string;
-  state?: 'server_not_ready' | 'disabled';
+  state?: 'server_not_ready' | 'disabled' | 'guest_locked';
   comingSoon?: boolean;
+  guestLocked?: boolean;
 }> {
   const url = '/api/rewards/referral/accept';
   const normalizedCode = normalizeReferralCode(enteredCode);
@@ -540,6 +561,7 @@ export async function acceptPendingReferral(
     const res = await fetch(url, {
       method: 'POST',
       headers,
+      credentials: 'include',
       body: JSON.stringify({
         referralId,
         enteredCode: normalizedCode,
@@ -554,6 +576,7 @@ export async function acceptPendingReferral(
     }
 
     if (!res.ok || !data?.ok) {
+      const hasStructuredError = Boolean(data && typeof data === 'object' && (data.error || data.message));
       const serverMsg =
         (data && typeof data === 'object' && (data.error || data.message)) ||
         rawText.slice(0, 200).trim() ||
@@ -571,10 +594,11 @@ export async function acceptPendingReferral(
       return {
         ok: false,
         httpStatus: res.status,
-        error: `HTTP ${res.status}: ${serverMsg}`,
+        error: hasStructuredError ? String(serverMsg) : `HTTP ${res.status}: ${serverMsg}`,
         code: data?.code || `HTTP_${res.status}`,
         state: data?.state,
         comingSoon: Boolean(data?.comingSoon),
+        guestLocked: Boolean(data?.guestLocked || data?.code === 'GUEST_REWARDS_FORBIDDEN'),
       };
     }
 

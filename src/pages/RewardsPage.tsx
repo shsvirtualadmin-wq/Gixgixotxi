@@ -17,6 +17,7 @@ import {
   Moon,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { GuestUpgradeModal } from '@/components/auth/GuestUpgradeModal';
 import { useWallet } from '@/hooks/useWallet';
 import { useTheme } from '@/hooks/useTheme';
 import { useHomeUrl } from '@/utils/homeUrl';
@@ -132,9 +133,10 @@ export function RewardsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const homeUrl = useHomeUrl();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isGuest } = useAuth();
   const { balance: walletBalance, refreshWallet } = useWallet();
   const { isDark, toggle: toggleTheme } = useTheme();
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
 
   // Tab state synced with URL hash (#checkin, #milestones, #invite, #faq)
   const [activeTab, setActiveTab] = useState<RewardsTabId>(() =>
@@ -182,13 +184,15 @@ export function RewardsPage() {
   const confirmingRefLockRef = useRef<string | null>(null);
 
   const hasLoadError = Boolean(state.loadError);
+  const isGuestAccount = Boolean(isGuest || state.guestLocked || state.state === 'guest_locked');
   const isComingSoon =
     !loading &&
     !hasLoadError &&
+    !isGuestAccount &&
     (state.mode === 'off' || (state.mode === 'admin_only' && !isAdmin));
-  const isClaimBlocked = Boolean(loading || hasLoadError || isComingSoon);
+  const isClaimBlocked = Boolean(loading || hasLoadError || isComingSoon || isGuestAccount);
   const isMilestoneAdminExcluded = Boolean(isAdmin && state.mode !== 'admin_only');
-  const liveBalance = user ? Math.max(walletBalance, state.balance) : 0;
+  const liveBalance = user && !isGuestAccount ? Math.max(walletBalance, state.balance) : 0;
 
   // Animated balance state for 900ms ease-out count-up + bump
   const [animatedBalance, setAnimatedBalance] = useState<number>(liveBalance);
@@ -737,6 +741,38 @@ export function RewardsPage() {
           </div>
         )}
 
+        {/* ─── GUEST ACCOUNT REWARDS LOCK BANNER ──────────────────────────── */}
+        {isGuestAccount && !loading && (
+          <div
+            data-testid="guest-rewards-locked-banner"
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-[28px] border px-5 py-4"
+            style={{
+              backgroundColor: 'var(--rw-card)',
+              borderColor: 'var(--rw-border)',
+              color: 'var(--rw-text)',
+            }}
+          >
+            <div className="flex items-start sm:items-center gap-3">
+              <Lock size={18} className="shrink-0 mt-0.5 sm:mt-0" style={{ color: 'var(--rw-red)' }} />
+              <div className="text-xs sm:text-sm">
+                <p className="font-bold">Create a free account to claim rewards</p>
+                <p className="mt-0.5 text-xs" style={{ color: 'var(--rw-muted)' }}>
+                  Upgrade in place to keep your username, progress, and test attempts while unlocking daily Kobans and milestones.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              data-testid="rewards-guest-upgrade-btn"
+              onClick={() => setIsUpgradeModalOpen(true)}
+              className="rw-jelly-btn rw-btn-red-glass inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-heading font-bold shrink-0 cursor-pointer"
+            >
+              <span>Create free account</span>
+              <ArrowRight size={14} />
+            </button>
+          </div>
+        )}
+
         {/* ─── 1. BALANCE CARD ────────────────────────────────────────────── */}
         <GlassCard
           as="section"
@@ -855,7 +891,16 @@ export function RewardsPage() {
               ) : (
                 <AlertCircle size={16} className="shrink-0" />
               )}
-              <span className="truncate">{bannerNotice.text}</span>
+              <span className="truncate flex-1">{bannerNotice.text}</span>
+              {isGuestAccount && (
+                <button
+                  type="button"
+                  onClick={() => setIsUpgradeModalOpen(true)}
+                  className="ml-2 underline font-bold shrink-0 cursor-pointer"
+                >
+                  Create free account
+                </button>
+              )}
             </div>
           )}
         </GlassCard>
@@ -920,12 +965,14 @@ export function RewardsPage() {
               {...getJellyHandlers(dailyBtnDisabled, handleClaimDaily)}
               className="rw-jelly-btn rw-btn-red-glass w-full h-14 min-h-[56px] rounded-full inline-flex items-center justify-center gap-2.5 px-6 text-sm sm:text-base font-heading font-bold disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
             >
-              <Gift size={18} />
+              {isGuestAccount ? <Lock size={18} /> : <Gift size={18} />}
               <span>
                 {hasLoadError
                   ? 'Failed to load settings'
                   : loading
                   ? 'Loading...'
+                  : isGuestAccount
+                  ? 'Create a free account to claim rewards'
                   : isComingSoon
                   ? 'Coming soon'
                   : state.daily.claimedToday
@@ -1314,6 +1361,11 @@ export function RewardsPage() {
                           <span>Error</span>
                         ) : loading ? (
                           <span>Loading...</span>
+                        ) : isGuestAccount ? (
+                          <>
+                            <Lock size={13} />
+                            <span>Create a free account to claim rewards</span>
+                          </>
                         ) : isComingSoon ? (
                           <span>Coming soon</span>
                         ) : m.claimed ? (
@@ -1643,6 +1695,8 @@ export function RewardsPage() {
                       ? 'Failed to load settings'
                       : loading
                       ? 'Loading...'
+                      : isGuestAccount
+                      ? 'Create a free account to claim rewards'
                       : isComingSoon
                       ? 'Coming soon'
                       : attachingCode
@@ -1928,6 +1982,12 @@ export function RewardsPage() {
           </div>
         </div>
       </footer>
+
+      <GuestUpgradeModal
+        isOpen={isUpgradeModalOpen}
+        onClose={() => setIsUpgradeModalOpen(false)}
+        defaultReason="Create a free account to claim rewards and keep your username, progress, and test attempts."
+      />
     </div>
   );
 }

@@ -907,7 +907,7 @@ async function handleRewardsApiRequestInner(
   });
 
   // Public unauthenticated `GET /api/rewards/state` returns schedule + current mode
-  if (subPath === 'state' && request.method === 'GET' && !authHeader) {
+  if (subPath === 'state' && request.method === 'GET' && !d1User) {
     const daily = computeDailyProgressState({
       totalClaims: 0,
       lastClaimPktDate: null,
@@ -1183,10 +1183,12 @@ async function handleRewardsApiRequestInner(
     );
   }
 
+  const isGuestCaller = Boolean(d1User.isGuest || String(d1User.uid || '').startsWith('guest_'));
+
   // 6. Reject suspended users (checked in D1 `user_roles.is_posting_banned` and Firestore `users/{uid}`)
   let firestoreErrorOccurred = false;
   let userDoc: Record<string, any> | null = null;
-  if (store) {
+  if (store && !isGuestCaller) {
     try {
       userDoc = await store.getDoc(`users/${uid}`);
     } catch (err: any) {
@@ -1195,7 +1197,7 @@ async function handleRewardsApiRequestInner(
     }
   }
 
-  if (d1User.isPostingBanned || isFirestoreUserSuspended(userDoc)) {
+  if (d1User.isPostingBanned || (!isGuestCaller && isFirestoreUserSuspended(userDoc))) {
     return jsonResponse(
       {
         ok: false,
@@ -1208,19 +1210,21 @@ async function handleRewardsApiRequestInner(
 
   // ─── ENDPOINT 1: GET /api/rewards/state ────────────────────────────────────
   if (subPath === 'state' && request.method === 'GET') {
-    // Phase 3: Retry any pending Firestore credits for this user first
-    await retryPendingFirestoreCredits({
-      db,
-      store,
-      uid,
-      onFirestoreError: () => {
-        firestoreErrorOccurred = true;
-      },
-    });
+    // Phase 3: Retry any pending Firestore credits for registered users first
+    if (!isGuestCaller) {
+      await retryPendingFirestoreCredits({
+        db,
+        store,
+        uid,
+        onFirestoreError: () => {
+          firestoreErrorOccurred = true;
+        },
+      });
+    }
 
-    const [myCode, daily, mcqsAnswered, milestoneRowsRes, referralRowsRes, walletDoc] =
+    const [myCode, daily, rawMcqsAnswered, milestoneRowsRes, referralRowsRes, walletDoc] =
       await Promise.all([
-        ensureD1UserReferralCode(db, uid),
+        isGuestCaller ? Promise.resolve('GUEST-LOCKED') : ensureD1UserReferralCode(db, uid),
         computeD1DailyProgressForUser(db, uid, config, nowMs),
         computeAuthoritativeMcqsFromD1(db, uid, 0),
         db
@@ -1240,7 +1244,7 @@ async function handleRewardsApiRequestInner(
           )
           .bind(uid, uid)
           .all<Record<string, any>>(),
-        store
+        store && !isGuestCaller
           ? store.getDoc(`wallets/${uid}`).catch((err: any) => {
               console.error(`[Rewards Firestore walletDoc Error] uid=${uid}:`, err?.message || err);
               firestoreErrorOccurred = true;
@@ -1248,6 +1252,10 @@ async function handleRewardsApiRequestInner(
             })
           : Promise.resolve(null),
       ]);
+
+    const mcqsAnswered = isGuestCaller
+      ? Math.max(rawMcqsAnswered, Number(d1User.totalQuestionsSolved || 0))
+      : rawMcqsAnswered;
 
     const claimedIds: Record<string, number> = {};
     const milestoneCreditStatus: Record<string, 'pending' | 'credited'> = {};
@@ -1409,6 +1417,7 @@ async function handleRewardsApiRequestInner(
       mode,
       user: d1User,
     });
+    const modeAllowsClaimsForStudents = effectiveServerReady && mode === 'everyone';
 
     const accountCreatedAtMs =
       (d1User.d1CreatedAtMs > 0 ? d1User.d1CreatedAtMs : null) ??
@@ -1426,17 +1435,24 @@ async function handleRewardsApiRequestInner(
       ) + newlyPaidReferralDelta;
 
     const responsePayload: RewardsStateResponse = {
-      state: !effectiveServerReady
+      state: isGuestCaller
+        ? 'guest_locked'
+        : !effectiveServerReady
         ? 'server_not_ready'
         : effectiveCanClaim
         ? 'ready'
         : 'disabled',
-      statusMessage: !effectiveServerReady ? 'Rewards are being set up' : undefined,
+      statusMessage: isGuestCaller
+        ? 'Create a free account to claim rewards'
+        : !effectiveServerReady
+        ? 'Rewards are being set up'
+        : undefined,
       serverConfigured: effectiveServerReady,
       mode,
       canClaim: effectiveCanClaim,
-      enabled: effectiveCanClaim,
-      comingSoon: !effectiveCanClaim,
+      enabled: isGuestCaller ? true : effectiveCanClaim,
+      comingSoon: isGuestCaller ? false : !effectiveCanClaim,
+      guestLocked: isGuestCaller,
       timezone: config.timezone,
       balance: currentBalance,
       daily,
@@ -1472,6 +1488,24 @@ async function handleRewardsApiRequestInner(
     return jsonResponse(
       { ok: false, error: 'Method not allowed.', code: 'METHOD_NOT_ALLOWED' },
       405
+    );
+  }
+
+  // Policy: Guests CANNOT claim rewards or use referral actions (prevents reward farming since guest accounts are temporary).
+  // Enforced on the server with HTTP 403 (never 503/543 "coming soon").
+  if (isGuestCaller) {
+    return jsonResponse(
+      {
+        ok: false,
+        state: 'guest_locked',
+        comingSoon: false,
+        guestLocked: true,
+        mode,
+        canClaim: false,
+        error: 'Create a free account to claim rewards',
+        code: 'GUEST_REWARDS_FORBIDDEN',
+      },
+      403
     );
   }
 

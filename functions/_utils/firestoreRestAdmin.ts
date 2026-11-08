@@ -344,6 +344,64 @@ export async function computeGuestTokenSha256Hex(rawToken: string, secret = 'boa
 }
 
 export const SLIDING_GUEST_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+export const ABANDONED_GUEST_GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000; // 7-day grace period after logout before purge
+export const INACTIVE_GUEST_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30-day inactivity cutoff before purge
+
+export async function purgeExpiredGuestAccounts(
+  db: RewardsD1Database,
+  nowMs: number = Date.now()
+): Promise<{ purgedCount: number; purgedUids: string[] }> {
+  const inactiveCutoffMs = nowMs - INACTIVE_GUEST_TTL_MS;
+  const purgedUids: string[] = [];
+
+  try {
+    const { results: candidateRows } = await db
+      .prepare(
+        `SELECT uid, username_lower, is_guest, upgraded_to_uid, status, abandoned_at, purge_after, last_active_at
+         FROM guest_accounts`
+      )
+      .all<Record<string, any>>();
+
+    for (const row of candidateRows || []) {
+      const uid = String(row.uid || '');
+      if (!uid) continue;
+      const isUpgraded = Boolean(row.upgraded_to_uid) || String(row.status || '') === 'upgraded';
+      if (isUpgraded) continue;
+
+      const status = String(row.status || 'active');
+      const purgeAfter = row.purge_after != null ? Number(row.purge_after) : null;
+      const lastActiveAt = Number(row.last_active_at || row.created_at || 0);
+
+      const isAbandonedExpired =
+        status === 'abandoned' && purgeAfter !== null && purgeAfter > 0 && purgeAfter <= nowMs;
+      const isInactiveExpired =
+        Number(row.is_guest) === 1 && lastActiveAt > 0 && lastActiveAt <= inactiveCutoffMs;
+
+      if (isAbandonedExpired || isInactiveExpired) {
+        await db
+          .prepare(`DELETE FROM user_usernames WHERE uid = ?1 AND account_type = 'guest'`)
+          .bind(uid)
+          .run()
+          .catch(() => {});
+        await db
+          .prepare('DELETE FROM guest_sessions WHERE uid = ?1')
+          .bind(uid)
+          .run()
+          .catch(() => {});
+        await db
+          .prepare('DELETE FROM guest_accounts WHERE uid = ?1')
+          .bind(uid)
+          .run()
+          .catch(() => {});
+        purgedUids.push(uid);
+      }
+    }
+  } catch (err) {
+    console.warn('[purgeExpiredGuestAccounts] non-fatal error:', err);
+  }
+
+  return { purgedCount: purgedUids.length, purgedUids };
+}
 
 export async function authenticateD1GuestSession(
   request: Request,
@@ -382,7 +440,9 @@ export async function authenticateD1GuestSession(
       !guestRow ||
       Number(guestRow.is_guest) !== 1 ||
       Boolean(guestRow.upgraded_to_uid) ||
-      Number(guestRow.is_suspended) === 1
+      Number(guestRow.is_suspended) === 1 ||
+      String(guestRow.status || 'active') === 'abandoned' ||
+      Number(guestRow.abandoned_at || 0) > 0
     ) {
       return null;
     }
@@ -1434,6 +1494,7 @@ export interface InMemoryD1Tables {
       normalized_lookalike: string;
       uid: string;
       account_type: string;
+      email?: string;
       created_at: number;
       updated_at: number;
     }
@@ -1451,6 +1512,9 @@ export interface InMemoryD1Tables {
       email: string;
       plan: string;
       role: string;
+      status?: string;
+      abandoned_at?: number | null;
+      purge_after?: number | null;
       upgraded_to_uid: string | null;
       upgraded_at: number | null;
       target_university: string;
@@ -1488,6 +1552,16 @@ export interface InMemoryD1Tables {
     uid: string;
     created_at: number;
   }>;
+  login_rate_limits: Map<
+    string,
+    {
+      rate_key: string;
+      attempts: number;
+      window_start_ms: number;
+      blocked_until_ms: number | null;
+      updated_at_ms: number;
+    }
+  >;
 }
 
 export class InMemoryD1Database implements RewardsD1Database {
@@ -1507,6 +1581,7 @@ export class InMemoryD1Database implements RewardsD1Database {
     guest_accounts: new Map(),
     guest_sessions: new Map(),
     guest_creation_rate_limits: [],
+    login_rate_limits: new Map(),
   };
 
   constructor() {
@@ -1539,13 +1614,21 @@ export class InMemoryD1Database implements RewardsD1Database {
               ...r,
               username: r.username || r.username_display || r.username_lower,
               username_display: r.username_display || r.username || r.username_lower,
+              email: r.email || '',
             });
           }
         }
       }
       if (Array.isArray(raw.guest_accounts)) {
         for (const r of raw.guest_accounts) {
-          if (r && r.uid) this.tables.guest_accounts.set(String(r.uid), r);
+          if (r && r.uid) {
+            this.tables.guest_accounts.set(String(r.uid), {
+              status: 'active',
+              abandoned_at: null,
+              purge_after: null,
+              ...r,
+            });
+          }
         }
       }
       if (Array.isArray(raw.guest_sessions)) {
@@ -1865,6 +1948,11 @@ export class InMemoryD1Database implements RewardsD1Database {
         const found = all.find((r) => r.uid === uid);
         return found ? [{ ...found }] : [];
       }
+      if (upper.includes('WHERE EMAIL =')) {
+        const em = String(args[0] ?? '').toLowerCase();
+        const found = all.find((r) => (r.email || '').toLowerCase() === em);
+        return found ? [{ ...found }] : [];
+      }
       if (upper.includes('WHERE NORMALIZED_LOOKALIKE =')) {
         const lookalike = String(args[0] ?? '');
         return all.filter((r) => r.normalized_lookalike === lookalike).map((r) => ({ ...r }));
@@ -1941,13 +2029,24 @@ export class InMemoryD1Database implements RewardsD1Database {
       return all.map((r) => ({ ...r }));
     }
 
+    // 16. login_rate_limits
+    if (upper.includes('FROM LOGIN_RATE_LIMITS')) {
+      const key = String(args[0] ?? '');
+      const row = this.tables.login_rate_limits.get(key);
+      return row ? [{ ...row }] : [];
+    }
+
     return [];
   }
 
   private executeMutation(sql: string, args: any[]): number {
     const upper = sql.toUpperCase();
 
-    if (upper.startsWith('CREATE TABLE') || upper.startsWith('CREATE INDEX')) {
+    if (
+      upper.startsWith('CREATE TABLE') ||
+      upper.startsWith('CREATE INDEX') ||
+      upper.startsWith('ALTER TABLE')
+    ) {
       return 0;
     }
 
@@ -2083,7 +2182,6 @@ export class InMemoryD1Database implements RewardsD1Database {
         key = 'mode';
         val = String(args[0]);
       } else {
-        // Parse literal seed from SQL if no bind args
         if (sql.includes("'mode'")) {
           key = 'mode';
           val = 'off';
@@ -2247,7 +2345,6 @@ export class InMemoryD1Database implements RewardsD1Database {
     }
 
     if (upper.startsWith('UPDATE REFERRALS')) {
-      // Distinguish the specific UPDATE REFERRALS queries by their SET clauses
       if (upper.includes('SET INVITER_ACCEPTED =') && upper.includes('INVITEE_ACCEPTED =')) {
         const inviter_accepted = Number(args[0]);
         const invitee_accepted = Number(args[1]);
@@ -2299,18 +2396,20 @@ export class InMemoryD1Database implements RewardsD1Database {
     }
 
     // 6. user_usernames (username_lower PRIMARY KEY, uid UNIQUE)
-    // Supports both 6-arg `(username_lower, username_display, uid, account_type, created_at, updated_at)`
-    // and 7-arg `(username_lower, username, normalized_lookalike, uid, account_type, created_at, updated_at)`
     if (upper.includes('INTO USER_USERNAMES')) {
       const isReplace = upper.includes('OR REPLACE') || upper.includes('ON CONFLICT');
-      const hasLookalikeCol = upper.includes('NORMALIZED_LOOKALIKE') || args.length >= 7;
+      const hasLookalikeCol = upper.includes('NORMALIZED_LOOKALIKE');
+      const hasEmailCol = upper.includes('EMAIL');
       const username_lower = String(args[0] ?? '').toLowerCase();
       const usernameDisplay = String(args[1] ?? '');
-      const normalized_lookalike = hasLookalikeCol ? String(args[2] ?? '') : username_lower;
-      const uid = String((hasLookalikeCol ? args[3] : args[2]) ?? '');
-      const account_type = String((hasLookalikeCol ? args[4] : args[3]) ?? 'guest');
-      const created_at = Number((hasLookalikeCol ? args[5] : args[4]) ?? Date.now());
-      const updated_at = Number((hasLookalikeCol ? args[6] : args[5]) ?? created_at);
+
+      let idx = 2;
+      const normalized_lookalike = hasLookalikeCol ? String(args[idx++] ?? '') : username_lower;
+      const uid = String(args[idx++] ?? '');
+      const account_type = String(args[idx++] ?? 'guest');
+      const email = hasEmailCol ? String(args[idx++] ?? '').trim().toLowerCase() : '';
+      const created_at = Number(args[idx++] ?? Date.now());
+      const updated_at = Number(args[idx++] ?? created_at);
 
       const existingByLower = this.tables.user_usernames.get(username_lower);
       if (existingByLower && existingByLower.uid !== uid) {
@@ -2334,6 +2433,7 @@ export class InMemoryD1Database implements RewardsD1Database {
         normalized_lookalike,
         uid,
         account_type,
+        email: email || existingByLower?.email || existingByUid?.email || '',
         created_at,
         updated_at,
       });
@@ -2341,6 +2441,20 @@ export class InMemoryD1Database implements RewardsD1Database {
     }
 
     if (upper.startsWith('UPDATE USER_USERNAMES')) {
+      if (upper.includes('SET UID =') && upper.includes('ACCOUNT_TYPE =') && upper.includes('EMAIL =')) {
+        const newUid = String(args[0]);
+        const accType = String(args[1]);
+        const email = String(args[2] ?? '').trim().toLowerCase();
+        const updatedAt = Number(args[3] ?? Date.now());
+        const uLower = String(args[4] ?? '').toLowerCase();
+        const row = this.tables.user_usernames.get(uLower);
+        if (!row) return 0;
+        row.uid = newUid;
+        row.account_type = accType;
+        if (email) row.email = email;
+        row.updated_at = updatedAt;
+        return 1;
+      }
       if (upper.includes('SET UID =') && upper.includes('ACCOUNT_TYPE =')) {
         const newUid = String(args[0]);
         const accType = String(args[1]);
@@ -2351,6 +2465,55 @@ export class InMemoryD1Database implements RewardsD1Database {
         row.uid = newUid;
         row.account_type = accType;
         row.updated_at = updatedAt;
+        return 1;
+      }
+      if (upper.includes('SET EMAIL =') && upper.includes('WHERE UID =')) {
+        const email = String(args[0] ?? '').trim().toLowerCase();
+        const updatedAt = Number(args[1] ?? Date.now());
+        const uid = String(args[2] ?? '');
+        let changes = 0;
+        for (const r of this.tables.user_usernames.values()) {
+          if (r.uid === uid) {
+            r.email = email;
+            r.updated_at = updatedAt;
+            changes++;
+          }
+        }
+        return changes;
+      }
+    }
+
+    if (upper.startsWith('DELETE FROM USER_USERNAMES')) {
+      if (upper.includes('WHERE UID =') && upper.includes('ACCOUNT_TYPE =')) {
+        const uid = String(args[0] ?? '');
+        const accType = args.length > 1 ? String(args[1] ?? 'guest') : 'guest';
+        let changes = 0;
+        for (const [key, r] of this.tables.user_usernames.entries()) {
+          if (r.uid === uid && r.account_type === accType) {
+            this.tables.user_usernames.delete(key);
+            changes++;
+          }
+        }
+        return changes;
+      }
+      if (upper.includes('WHERE UID =')) {
+        const uid = String(args[0] ?? '');
+        let changes = 0;
+        for (const [key, r] of this.tables.user_usernames.entries()) {
+          if (r.uid === uid) {
+            this.tables.user_usernames.delete(key);
+            changes++;
+          }
+        }
+        return changes;
+      }
+      if (upper.includes('WHERE USERNAME_LOWER =')) {
+        const uLower = String(args[0] ?? '').toLowerCase();
+        const uidFilter = args.length > 1 ? String(args[1] ?? '') : '';
+        const existing = this.tables.user_usernames.get(uLower);
+        if (!existing) return 0;
+        if (uidFilter && existing.uid !== uidFilter) return 0;
+        this.tables.user_usernames.delete(uLower);
         return 1;
       }
     }
@@ -2394,6 +2557,9 @@ export class InMemoryD1Database implements RewardsD1Database {
         email,
         plan,
         role,
+        status: 'active',
+        abandoned_at: null,
+        purge_after: null,
         upgraded_to_uid: null,
         upgraded_at: null,
         target_university,
@@ -2412,6 +2578,24 @@ export class InMemoryD1Database implements RewardsD1Database {
     }
 
     if (upper.startsWith('UPDATE GUEST_ACCOUNTS')) {
+      if (upper.includes('SET STATUS =') && upper.includes('ABANDONED_AT =')) {
+        const status = String(args[0] ?? 'abandoned');
+        const abandonedAt = Number(args[1] ?? Date.now());
+        const purgeAfter = Number(args[2] ?? abandonedAt + 7 * 86400 * 1000);
+        const newUsernameLower = String(args[3] ?? '');
+        const lastActive = Number(args[4] ?? abandonedAt);
+        const uid = String(args[5] ?? '');
+        const row = this.tables.guest_accounts.get(uid);
+        if (!row) return 0;
+        row.status = status;
+        row.abandoned_at = abandonedAt;
+        row.purge_after = purgeAfter;
+        if (newUsernameLower) {
+          row.username_lower = newUsernameLower;
+        }
+        row.last_active_at = lastActive;
+        return 1;
+      }
       if (upper.includes('SET LAST_ACTIVE_AT =') && !upper.includes('TESTS_COMPLETED')) {
         const lastActive = Number(args[0] ?? Date.now());
         const uid = String(args[1] ?? '');
@@ -2431,6 +2615,7 @@ export class InMemoryD1Database implements RewardsD1Database {
         if (!row) return 0;
         row.account_type = accType;
         row.is_guest = 0;
+        row.status = 'upgraded';
         row.email = email;
         row.upgraded_to_uid = upgradedToUid;
         row.upgraded_at = upgradedAt;
@@ -2456,6 +2641,13 @@ export class InMemoryD1Database implements RewardsD1Database {
         row.attempts_json = attempts_json;
         row.last_active_at = last_active_at;
         return 1;
+      }
+    }
+
+    if (upper.startsWith('DELETE FROM GUEST_ACCOUNTS')) {
+      if (upper.includes('WHERE UID =')) {
+        const uid = String(args[0] ?? '');
+        return this.tables.guest_accounts.delete(uid) ? 1 : 0;
       }
     }
 
@@ -2522,6 +2714,20 @@ export class InMemoryD1Database implements RewardsD1Database {
       }
     }
 
+    if (upper.startsWith('DELETE FROM GUEST_SESSIONS')) {
+      if (upper.includes('WHERE UID =')) {
+        const uid = String(args[0] ?? '');
+        let changes = 0;
+        for (const [sid, r] of this.tables.guest_sessions.entries()) {
+          if (r.uid === uid) {
+            this.tables.guest_sessions.delete(sid);
+            changes++;
+          }
+        }
+        return changes;
+      }
+    }
+
     // 9. guest_creation_rate_limits
     if (upper.includes('INTO GUEST_CREATION_RATE_LIMITS')) {
       const identifier_hash = String(args[0] ?? '');
@@ -2536,6 +2742,28 @@ export class InMemoryD1Database implements RewardsD1Database {
         created_at,
       });
       return 1;
+    }
+
+    // 10. login_rate_limits
+    if (upper.includes('INTO LOGIN_RATE_LIMITS')) {
+      const rate_key = String(args[0] ?? '');
+      const attempts = Number(args[1] ?? 1);
+      const window_start_ms = Number(args[2] ?? Date.now());
+      const blocked_until_ms = args[3] != null ? Number(args[3]) : null;
+      const updated_at_ms = Number(args[4] ?? window_start_ms);
+      this.tables.login_rate_limits.set(rate_key, {
+        rate_key,
+        attempts,
+        window_start_ms,
+        blocked_until_ms,
+        updated_at_ms,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('DELETE FROM LOGIN_RATE_LIMITS')) {
+      const key = String(args[0] ?? '');
+      return this.tables.login_rate_limits.delete(key) ? 1 : 0;
     }
 
     return 0;

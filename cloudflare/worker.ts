@@ -6424,6 +6424,40 @@ ${urls
     if (!env.DB) return;
     ctx.waitUntil(
       (async () => {
+        const nowMs = event.scheduledTime || Date.now();
+        const inactiveCutoffMs = nowMs - 30 * 24 * 60 * 60 * 1000;
+        try {
+          // 1. Purge abandoned guests past their 7-day grace period AND guests inactive for 30+ days
+          const expiredGuests = await env.DB!.prepare(
+            `SELECT uid, status, purge_after, last_active_at, is_guest, upgraded_to_uid
+             FROM guest_accounts
+             WHERE is_guest = 1 AND upgraded_to_uid IS NULL
+               AND (
+                 (status = 'abandoned' AND purge_after IS NOT NULL AND purge_after <= ?1)
+                 OR (last_active_at <= ?2)
+               )`
+          )
+            .bind(nowMs, inactiveCutoffMs)
+            .all<{ uid: string }>()
+            .catch(() => ({ results: [] as { uid: string }[] }));
+
+          for (const row of expiredGuests.results || []) {
+            if (!row?.uid) continue;
+            await env.DB!.batch([
+              env.DB!.prepare("DELETE FROM user_usernames WHERE uid = ?1 AND account_type = 'guest'").bind(row.uid),
+              env.DB!.prepare('DELETE FROM guest_sessions WHERE uid = ?1').bind(row.uid),
+              env.DB!.prepare('DELETE FROM guest_accounts WHERE uid = ?1').bind(row.uid),
+            ]).catch(() => {});
+          }
+          if ((expiredGuests.results || []).length > 0) {
+            console.log(
+              `[CloudflareWorker] Purged ${(expiredGuests.results || []).length} expired/inactive guest accounts.`
+            );
+          }
+        } catch (cleanupErr) {
+          console.error('[CloudflareWorker] Guest cleanup error:', cleanupErr);
+        }
+
         try {
           await ensureD1Schema(env.DB!);
           const res = await executeD1BotRun(env.DB!, env, {
@@ -6448,3 +6482,4 @@ ${urls
     );
   },
 };
+

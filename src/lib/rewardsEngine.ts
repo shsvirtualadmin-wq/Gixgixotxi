@@ -196,7 +196,7 @@ export interface MilestoneItemState {
   progress: number;
 }
 
-export type RewardsSystemState = 'ready' | 'server_not_ready' | 'disabled';
+export type RewardsSystemState = 'ready' | 'server_not_ready' | 'disabled' | 'guest_locked';
 
 export interface RewardsStateResponse {
   state?: RewardsSystemState;
@@ -208,6 +208,7 @@ export interface RewardsStateResponse {
   canClaim: boolean;
   enabled: boolean;
   comingSoon: boolean;
+  guestLocked?: boolean;
   timezone: string;
   balance: number;
   daily: DailyProgressState;

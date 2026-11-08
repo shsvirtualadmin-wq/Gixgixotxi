@@ -4457,4 +4457,37 @@ export default {
       return errorResponse(request, env, err.message || 'Internal server error', code, status);
     }
   },
+
+  async scheduled(event, env, ctx) {
+    if (!env || !env.DB) return;
+    ctx.waitUntil(
+      (async () => {
+        const nowMs = (event && event.scheduledTime) || Date.now();
+        const inactiveCutoffMs = nowMs - 30 * 24 * 60 * 60 * 1000;
+        try {
+          const expired = await env.DB.prepare(
+            `SELECT uid FROM guest_accounts
+             WHERE is_guest = 1 AND upgraded_to_uid IS NULL
+               AND (
+                 (status = 'abandoned' AND purge_after IS NOT NULL AND purge_after <= ?1)
+                 OR (last_active_at <= ?2)
+               )`
+          )
+            .bind(nowMs, inactiveCutoffMs)
+            .all();
+          for (const row of (expired && expired.results) || []) {
+            if (!row || !row.uid) continue;
+            await env.DB.batch([
+              env.DB.prepare("DELETE FROM user_usernames WHERE uid = ?1 AND account_type = 'guest'").bind(row.uid),
+              env.DB.prepare('DELETE FROM guest_sessions WHERE uid = ?1').bind(row.uid),
+              env.DB.prepare('DELETE FROM guest_accounts WHERE uid = ?1').bind(row.uid),
+            ]);
+          }
+        } catch (err) {
+          console.error('[Worker Cron] Guest cleanup failed:', err);
+        }
+      })()
+    );
+  },
 };
+
