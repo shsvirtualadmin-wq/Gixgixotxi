@@ -191,24 +191,71 @@ async function apiRequest<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 // ============================================================================
-// Universities API (D1)
+// Universities API (D1) — With In-Flight Deduplication & 60s Shared Cache
 // ============================================================================
 
-export async function fetchUniversities(): Promise<D1UniversityRow[]> {
-  try {
-    const res = await apiRequest<{ ok?: boolean; success?: boolean; universities?: D1UniversityRow[] }>(
-      '/api/universities'
-    );
-    if (Array.isArray(res.universities) && res.universities.length > 0) {
-      const mirror = loadLocalD1Mirror();
-      mirror.universities = res.universities;
-      saveLocalD1Mirror(mirror);
-      return res.universities;
-    }
-  } catch {
-    // Fallback to local mirror seeded with DEFAULT_D1_UNIVERSITIES
+const UNIVERSITIES_CACHE_TTL_MS = 60_000;
+let universitiesMemoryCache: { data: D1UniversityRow[]; expiresAt: number } | null = null;
+let universitiesInFlightPromise: Promise<D1UniversityRow[]> | null = null;
+
+type UniversityTopicsResult = {
+  subjects: Array<{
+    subject: string;
+    total: number;
+    topics: Array<{ topic: string; count: number }>;
+  }>;
+  flat: Array<{ subject: string; topic: string; count: number }>;
+};
+const universityTopicsCache = new Map<string, { data: UniversityTopicsResult; expiresAt: number }>();
+const universityTopicsInFlight = new Map<string, Promise<UniversityTopicsResult>>();
+
+export function invalidateUniversitiesCache(): void {
+  universitiesMemoryCache = null;
+  universityTopicsCache.clear();
+}
+
+export async function fetchUniversities(forceRefresh = false): Promise<D1UniversityRow[]> {
+  if (!forceRefresh && universitiesMemoryCache && Date.now() < universitiesMemoryCache.expiresAt) {
+    return universitiesMemoryCache.data;
   }
-  return loadLocalD1Mirror().universities;
+  if (!forceRefresh && universitiesInFlightPromise) {
+    return universitiesInFlightPromise;
+  }
+
+  const p = (async () => {
+    try {
+      const res = await apiRequest<{ ok?: boolean; success?: boolean; universities?: D1UniversityRow[] }>(
+        '/api/universities'
+      );
+      if (Array.isArray(res.universities) && res.universities.length > 0) {
+        const mirror = loadLocalD1Mirror();
+        mirror.universities = res.universities;
+        saveLocalD1Mirror(mirror);
+        universitiesMemoryCache = {
+          data: res.universities,
+          expiresAt: Date.now() + UNIVERSITIES_CACHE_TTL_MS,
+        };
+        return res.universities;
+      }
+    } catch {
+      // Fallback to local mirror seeded with DEFAULT_D1_UNIVERSITIES
+    }
+    const fallback = loadLocalD1Mirror().universities;
+    universitiesMemoryCache = {
+      data: fallback,
+      expiresAt: Date.now() + 15_000,
+    };
+    return fallback;
+  })();
+
+  universitiesInFlightPromise = p;
+  try {
+    return await p;
+  } finally {
+    if (universitiesInFlightPromise === p) {
+      universitiesInFlightPromise = null;
+    }
+  }
 }
 
 export async function createUniversity(payload: {
@@ -217,6 +264,7 @@ export async function createUniversity(payload: {
   logo_url?: string;
   sort_order?: number;
 }): Promise<D1UniversityRow> {
+  invalidateUniversitiesCache();
   try {
     const res = await apiRequest<{ ok?: boolean; university?: D1UniversityRow }>('/api/universities', {
       method: 'POST',
@@ -251,6 +299,7 @@ export async function updateUniversity(
   id: string,
   payload: Partial<{ name: string; slug: string; logo_url: string; sort_order: number }>
 ): Promise<D1UniversityRow> {
+  invalidateUniversitiesCache();
   try {
     const res = await apiRequest<{ ok?: boolean; university?: D1UniversityRow }>(
       `/api/universities/${encodeURIComponent(id)}`,
@@ -278,6 +327,7 @@ export async function updateUniversity(
 }
 
 export async function reorderUniversities(orderedIds: string[]): Promise<D1UniversityRow[]> {
+  invalidateUniversitiesCache();
   try {
     const res = await apiRequest<{ ok?: boolean; universities?: D1UniversityRow[] }>(
       '/api/universities/reorder',
@@ -301,6 +351,7 @@ export async function reorderUniversities(orderedIds: string[]): Promise<D1Unive
 }
 
 export async function deleteUniversity(id: string): Promise<void> {
+  invalidateUniversitiesCache();
   try {
     await apiRequest<{ ok?: boolean }>(`/api/universities/${encodeURIComponent(id)}`, {
       method: 'DELETE',
@@ -409,90 +460,112 @@ export async function fetchUniversityTopics(
   }>;
   flat: Array<{ subject: string; topic: string; count: number }>;
 }> {
-  const qs = new URLSearchParams();
-  if (universityIdOrSlug) qs.set('university_id', universityIdOrSlug);
-  try {
-    const res = await apiRequest<{
-      ok?: boolean;
-      subjects?: Array<{
-        subject: string;
-        total?: number;
-        count?: number;
-        topics?: Array<{ topic: string; count: number }>;
-      }>;
-      flat?: Array<{ subject: string; topic: string; count: number }>;
-    }>(`/api/mcqs/topics?${qs.toString()}`);
+  const cacheKey = (universityIdOrSlug || '__all__').trim().toLowerCase();
+  const cached = universityTopicsCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.data;
+  }
+  const existing = universityTopicsInFlight.get(cacheKey);
+  if (existing) {
+    return existing;
+  }
 
-    const rawSubjects = Array.isArray(res.subjects) ? res.subjects : [];
-    const normalizedSubjects = rawSubjects.map((s) => {
-      const topicsList = Array.isArray(s?.topics)
-        ? s.topics.map((t) => ({
-            topic: String(t?.topic || 'General'),
-            count: Number(t?.count || 0),
-          }))
+  const p = (async () => {
+    const qs = new URLSearchParams();
+    if (universityIdOrSlug) qs.set('university_id', universityIdOrSlug);
+    try {
+      const res = await apiRequest<{
+        ok?: boolean;
+        subjects?: Array<{
+          subject: string;
+          total?: number;
+          count?: number;
+          topics?: Array<{ topic: string; count: number }>;
+        }>;
+        flat?: Array<{ subject: string; topic: string; count: number }>;
+      }>(`/api/mcqs/topics?${qs.toString()}`);
+
+      const rawSubjects = Array.isArray(res.subjects) ? res.subjects : [];
+      const normalizedSubjects = rawSubjects.map((s) => {
+        const topicsList = Array.isArray(s?.topics)
+          ? s.topics.map((t) => ({
+              topic: String(t?.topic || 'General'),
+              count: Number(t?.count || 0),
+            }))
+          : [];
+        const totalCount =
+          typeof s?.total === 'number'
+            ? s.total
+            : typeof s?.count === 'number'
+            ? s.count
+            : topicsList.reduce((acc, t) => acc + t.count, 0);
+        return {
+          subject: String(s?.subject || 'General'),
+          total: totalCount,
+          topics: topicsList,
+        };
+      });
+
+      const flatList: Array<{ subject: string; topic: string; count: number }> = Array.isArray(res.flat)
+        ? res.flat
         : [];
-      const totalCount =
-        typeof s?.total === 'number'
-          ? s.total
-          : typeof s?.count === 'number'
-          ? s.count
-          : topicsList.reduce((acc, t) => acc + t.count, 0);
-      return {
-        subject: String(s?.subject || 'General'),
-        total: totalCount,
-        topics: topicsList,
-      };
-    });
-
-    const flatList: Array<{ subject: string; topic: string; count: number }> = Array.isArray(res.flat)
-      ? res.flat
-      : [];
-    if (flatList.length === 0 && normalizedSubjects.length > 0) {
-      for (const s of normalizedSubjects) {
-        for (const t of s.topics) {
-          flatList.push({ subject: s.subject, topic: t.topic, count: t.count });
+      if (flatList.length === 0 && normalizedSubjects.length > 0) {
+        for (const s of normalizedSubjects) {
+          for (const t of s.topics) {
+            flatList.push({ subject: s.subject, topic: t.topic, count: t.count });
+          }
         }
       }
-    }
 
-    return {
-      subjects: normalizedSubjects,
-      flat: flatList,
-    };
-  } catch {
-    const mirror = loadLocalD1Mirror();
-    const matchedUni = universityIdOrSlug
-      ? mirror.universities.find(
-          (u) => u.id === universityIdOrSlug || u.slug.toLowerCase() === universityIdOrSlug.toLowerCase()
-        )
-      : null;
-    const mcqs = mirror.mcqs.filter((m) =>
-      matchedUni ? m.university_id === matchedUni.id : !universityIdOrSlug
-    );
-    const subjMap = new Map<string, Map<string, number>>();
-    for (const m of mcqs) {
-      const s = m.subject || 'General';
-      const t = m.topic || 'General';
-      if (!subjMap.has(s)) subjMap.set(s, new Map());
-      const tMap = subjMap.get(s)!;
-      tMap.set(t, (tMap.get(t) || 0) + 1);
-    }
-    const subjects: Array<{
-      subject: string;
-      total: number;
-      topics: Array<{ topic: string; count: number }>;
-    }> = [];
-    const flat: Array<{ subject: string; topic: string; count: number }> = [];
-    for (const [subject, tMap] of subjMap.entries()) {
-      const topics = Array.from(tMap.entries()).map(([topic, count]) => {
-        flat.push({ subject, topic, count });
-        return { topic, count };
+      const result = {
+        subjects: normalizedSubjects,
+        flat: flatList,
+      };
+      universityTopicsCache.set(cacheKey, {
+        data: result,
+        expiresAt: Date.now() + UNIVERSITIES_CACHE_TTL_MS,
       });
-      const total = topics.reduce((acc, x) => acc + x.count, 0);
-      subjects.push({ subject, total, topics });
+      return result;
+    } catch {
+      const mirror = loadLocalD1Mirror();
+      const matchedUni = universityIdOrSlug
+        ? mirror.universities.find(
+            (u) => u.id === universityIdOrSlug || u.slug.toLowerCase() === universityIdOrSlug.toLowerCase()
+          )
+        : null;
+      const mcqs = mirror.mcqs.filter((m) =>
+        matchedUni ? m.university_id === matchedUni.id : !universityIdOrSlug
+      );
+      const subjMap = new Map<string, Map<string, number>>();
+      for (const m of mcqs) {
+        const s = m.subject || 'General';
+        const t = m.topic || 'General';
+        if (!subjMap.has(s)) subjMap.set(s, new Map());
+        const tMap = subjMap.get(s)!;
+        tMap.set(t, (tMap.get(t) || 0) + 1);
+      }
+      const subjects: Array<{
+        subject: string;
+        total: number;
+        topics: Array<{ topic: string; count: number }>;
+      }> = [];
+      const flat: Array<{ subject: string; topic: string; count: number }> = [];
+      for (const [subject, tMap] of subjMap.entries()) {
+        const topics = Array.from(tMap.entries()).map(([topic, count]) => {
+          flat.push({ subject, topic, count });
+          return { topic, count };
+        });
+        const total = topics.reduce((acc, x) => acc + x.count, 0);
+        subjects.push({ subject, total, topics });
+      }
+      return { subjects, flat };
+    } finally {
+      universityTopicsInFlight.delete(cacheKey);
     }
-    return { subjects, flat };
-  }
+  })();
+
+  universityTopicsInFlight.set(cacheKey, p);
+  return p;
 }
 
 export async function createMcq(payload: {
@@ -508,6 +581,7 @@ export async function createMcq(payload: {
   explanation: string;
   difficulty: 'easy' | 'medium' | 'hard';
 }): Promise<D1McqRow> {
+  invalidateUniversitiesCache();
   try {
     const res = await apiRequest<{ ok?: boolean; mcq?: D1McqRow }>('/api/mcqs', {
       method: 'POST',

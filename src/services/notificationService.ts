@@ -733,78 +733,117 @@ export function isUserSuperAdmin(user: { uid?: string; email?: string | null } |
  * Fetches the pinned "Welcome to Boardly" announcement from D1 (/api/announcements/welcome)
  * with Firestore fallback. Supports both `userStatus` and `welcomeStatus` response keys.
  */
+let welcomeAnnouncementCache: {
+  key: string;
+  data: { announcement: AnnouncementItem; userStatus: { welcomed: boolean; read: boolean } | null };
+  expiresAt: number;
+} | null = null;
+const welcomeAnnouncementInFlight = new Map<
+  string,
+  Promise<{ announcement: AnnouncementItem; userStatus: { welcomed: boolean; read: boolean } | null }>
+>();
+
 export async function fetchWelcomeAnnouncement(userId?: string): Promise<{
   announcement: AnnouncementItem;
   userStatus: { welcomed: boolean; read: boolean } | null;
 }> {
-  let d1Item: AnnouncementItem | null = null;
-  let userStatus: { welcomed: boolean; read: boolean } | null = null;
-
-  try {
-    const headers = await getOptionalBearerHeader();
-    const qs = userId ? `?userId=${encodeURIComponent(userId)}` : '';
-    const resp = await fetch(`/api/announcements/welcome${qs}`, {
-      headers,
-      cache: 'no-store',
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      if (data?.announcement) {
-        const a = data.announcement;
-        d1Item = {
-          id: a.id || WELCOME_ANNOUNCEMENT_ID,
-          title: a.title || DEFAULT_WELCOME_ANNOUNCEMENT.title,
-          message: a.message || DEFAULT_WELCOME_ANNOUNCEMENT.message,
-          isPinned: true,
-          authorId: a.authorId || DEFAULT_WELCOME_ANNOUNCEMENT.authorUid,
-          authorEmail: a.authorEmail || DEFAULT_WELCOME_ANNOUNCEMENT.authorEmail,
-          authorName: a.authorName || DEFAULT_WELCOME_ANNOUNCEMENT.authorName,
-          createdAt: a.updatedAtMs || a.createdAtMs || a.updatedAt || a.createdAt || Date.now(),
-        };
-      }
-      const statusRaw = data?.userStatus || data?.welcomeStatus;
-      if (statusRaw && typeof statusRaw === 'object') {
-        userStatus = {
-          welcomed: Boolean(statusRaw.welcomed),
-          read: Boolean(statusRaw.read),
-        };
-      }
-    }
-  } catch {
-    // Ignore fetch error, fall back to default
+  const cacheKey = userId || 'anon';
+  if (
+    welcomeAnnouncementCache &&
+    welcomeAnnouncementCache.key === cacheKey &&
+    Date.now() < welcomeAnnouncementCache.expiresAt
+  ) {
+    return welcomeAnnouncementCache.data;
+  }
+  const existing = welcomeAnnouncementInFlight.get(cacheKey);
+  if (existing) {
+    return existing;
   }
 
-  try {
-    const snap = await getDoc(doc(db, 'announcements', WELCOME_ANNOUNCEMENT_ID));
-    if (snap.exists()) {
-      const data = snap.data();
-      d1Item = {
-        id: WELCOME_ANNOUNCEMENT_ID,
-        title: data.title || d1Item?.title || DEFAULT_WELCOME_ANNOUNCEMENT.title,
-        message: data.message || d1Item?.message || DEFAULT_WELCOME_ANNOUNCEMENT.message,
-        isPinned: true,
-        authorId: data.authorId || d1Item?.authorId || DEFAULT_WELCOME_ANNOUNCEMENT.authorUid,
-        authorEmail: data.authorEmail || d1Item?.authorEmail || DEFAULT_WELCOME_ANNOUNCEMENT.authorEmail,
-        authorName: data.authorName || d1Item?.authorName || 'Superadmin',
-        createdAt: data.updatedAt || data.createdAt || d1Item?.createdAt || Date.now(),
-      };
+  const p = (async () => {
+    let d1Item: AnnouncementItem | null = null;
+    let userStatus: { welcomed: boolean; read: boolean } | null = null;
+
+    try {
+      const headers = await getOptionalBearerHeader();
+      const qs = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+      const resp = await fetch(`/api/announcements/welcome${qs}`, {
+        headers,
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data?.announcement) {
+          const a = data.announcement;
+          d1Item = {
+            id: a.id || WELCOME_ANNOUNCEMENT_ID,
+            title: a.title || DEFAULT_WELCOME_ANNOUNCEMENT.title,
+            message: a.message || DEFAULT_WELCOME_ANNOUNCEMENT.message,
+            isPinned: true,
+            authorId: a.authorId || DEFAULT_WELCOME_ANNOUNCEMENT.authorUid,
+            authorEmail: a.authorEmail || DEFAULT_WELCOME_ANNOUNCEMENT.authorEmail,
+            authorName: a.authorName || DEFAULT_WELCOME_ANNOUNCEMENT.authorName,
+            createdAt: a.updatedAtMs || a.createdAtMs || a.updatedAt || a.createdAt || Date.now(),
+          };
+        }
+        const statusRaw = data?.userStatus || data?.welcomeStatus;
+        if (statusRaw && typeof statusRaw === 'object') {
+          userStatus = {
+            welcomed: Boolean(statusRaw.welcomed),
+            read: Boolean(statusRaw.read),
+          };
+        }
+      }
+    } catch {
+      // Ignore fetch error, fall back to default
     }
-  } catch {
-    // Fall back to default announcement
+
+    if (!d1Item) {
+      try {
+        const snap = await getDoc(doc(db, 'announcements', WELCOME_ANNOUNCEMENT_ID));
+        if (snap.exists()) {
+          const data = snap.data();
+          d1Item = {
+            id: WELCOME_ANNOUNCEMENT_ID,
+            title: data.title || DEFAULT_WELCOME_ANNOUNCEMENT.title,
+            message: data.message || DEFAULT_WELCOME_ANNOUNCEMENT.message,
+            isPinned: true,
+            authorId: data.authorId || DEFAULT_WELCOME_ANNOUNCEMENT.authorUid,
+            authorEmail: data.authorEmail || DEFAULT_WELCOME_ANNOUNCEMENT.authorEmail,
+            authorName: data.authorName || 'Superadmin',
+            createdAt: data.updatedAt || data.createdAt || Date.now(),
+          };
+        }
+      } catch {
+        // Fall back to default announcement
+      }
+    }
+
+    const fallback: AnnouncementItem = d1Item || {
+      id: WELCOME_ANNOUNCEMENT_ID,
+      title: DEFAULT_WELCOME_ANNOUNCEMENT.title,
+      message: DEFAULT_WELCOME_ANNOUNCEMENT.message,
+      isPinned: true,
+      authorId: DEFAULT_WELCOME_ANNOUNCEMENT.authorUid,
+      authorEmail: DEFAULT_WELCOME_ANNOUNCEMENT.authorEmail,
+      authorName: DEFAULT_WELCOME_ANNOUNCEMENT.authorName,
+      createdAt: Date.now(),
+    };
+
+    const result = { announcement: fallback, userStatus };
+    welcomeAnnouncementCache = {
+      key: cacheKey,
+      data: result,
+      expiresAt: Date.now() + 60_000,
+    };
+    return result;
+  })();
+
+  welcomeAnnouncementInFlight.set(cacheKey, p);
+  try {
+    return await p;
+  } finally {
+    welcomeAnnouncementInFlight.delete(cacheKey);
   }
-
-  const fallback: AnnouncementItem = d1Item || {
-    id: WELCOME_ANNOUNCEMENT_ID,
-    title: DEFAULT_WELCOME_ANNOUNCEMENT.title,
-    message: DEFAULT_WELCOME_ANNOUNCEMENT.message,
-    isPinned: true,
-    authorId: DEFAULT_WELCOME_ANNOUNCEMENT.authorUid,
-    authorEmail: DEFAULT_WELCOME_ANNOUNCEMENT.authorEmail,
-    authorName: DEFAULT_WELCOME_ANNOUNCEMENT.authorName,
-    createdAt: Date.now(),
-  };
-
-  return { announcement: fallback, userStatus };
 }
 
 /**
@@ -880,6 +919,15 @@ const ensuredWelcomeSessionSet = new Set<string>();
  */
 export async function ensureWelcomeNotificationForUser(userId: string): Promise<void> {
   if (!userId || ensuredWelcomeSessionSet.has(userId)) return;
+  const storageKey = `boardly_welcomed_v1_${userId}`;
+  try {
+    if (typeof window !== 'undefined' && window.localStorage.getItem(storageKey) === '1') {
+      ensuredWelcomeSessionSet.add(userId);
+      return;
+    }
+  } catch {
+    // Ignore storage read error
+  }
   ensuredWelcomeSessionSet.add(userId);
 
   try {
@@ -894,6 +942,14 @@ export async function ensureWelcomeNotificationForUser(userId: string): Promise<
     })
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null);
+
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(storageKey, '1');
+      }
+    } catch {
+      // Ignore storage write error
+    }
 
     if (d1Resp?.read) {
       activeStore.readAnnouncementIds.add(WELCOME_ANNOUNCEMENT_ID);
@@ -1003,6 +1059,7 @@ let cachedAnnouncements: { data: AnnouncementItem[]; expires: number } | null = 
 
 export function invalidateAnnouncementsCache() {
   cachedAnnouncements = null;
+  welcomeAnnouncementCache = null;
 }
 
 /**
@@ -1328,7 +1385,7 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
       }
       const headers = await getOptionalBearerHeader();
 
-      const [d1Data, announcements, firestoreReadAnns, welcomeRes, fsNotifSnap] =
+      const [d1Data, announcements, firestoreReadAnns, fsNotifSnap] =
         await Promise.all([
           fetch(`/api/notifications?userId=${encodeURIComponent(userId)}`, {
             headers,
@@ -1338,7 +1395,6 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
             .catch(() => null),
           fetchAnnouncements(50, userId),
           getDocs(collection(db, 'users', userId, 'readAnnouncements')).catch(() => null),
-          fetchWelcomeAnnouncement(userId).catch(() => null),
           // Only fetch one-time Firestore notifications if real-time listener is not already active
           activeFirestoreUnsub
             ? Promise.resolve(null)
@@ -1357,7 +1413,7 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
       if (firestoreReadAnns) {
         firestoreReadAnns.docs.forEach((d) => activeStore.readAnnouncementIds.add(d.id));
       }
-      if (welcomeRes?.userStatus?.read || d1Data?.welcomeRead) {
+      if (d1Data?.welcomeRead) {
         activeStore.readAnnouncementIds.add(WELCOME_ANNOUNCEMENT_ID);
       }
       if (Array.isArray(d1Data?.readAnnouncementIds)) {

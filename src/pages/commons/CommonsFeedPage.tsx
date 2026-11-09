@@ -172,17 +172,14 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
     setLoading(true);
     setLoadError(null);
     try {
-      // If a shared post ID is in the URL, fetch it specifically so it's guaranteed to be loaded
-      let targetPost: CommonsPost | null = null;
-      if (targetPostId) {
-        targetPost = await fetchCommonsPostById(targetPostId);
-      }
-
-      const res = await fetchCommonsPosts({
-        feedTab: feedTab === 'following' ? 'following' : 'all',
-        pageSize: 15,
-        currentUid: user?.uid,
-      });
+      const [targetPost, res] = await Promise.all([
+        targetPostId ? fetchCommonsPostById(targetPostId) : Promise.resolve(null),
+        fetchCommonsPosts({
+          feedTab: feedTab === 'following' ? 'following' : 'all',
+          pageSize: 15,
+          currentUid: user?.uid,
+        }),
+      ]);
 
       let combined = res.posts;
       if (targetPost && !combined.some((p) => p.id === targetPost!.id)) {
@@ -199,7 +196,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       setPosts(sortCommonsPosts(combined));
       setLastDoc(res.lastDoc);
       setHasMore(res.hasMore);
-      if (res.backendMode) setBackendMode(res.backendMode);
+      setBackendMode(res.backendMode || 'cloudflare-d1-r2');
     } catch (err: unknown) {
       console.warn('[CommonsFeedPage] fetch error:', err);
       const msg =
@@ -216,26 +213,6 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
   useEffect(() => {
     loadPosts();
   }, [loadPosts]);
-
-  useEffect(() => {
-    let active = true;
-    fetch('/api/health', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!active || !data) return;
-        const d1Ok = Boolean(data?.d1?.exists ?? data?.bindings?.d1?.exists);
-        const r2Ok = Boolean(data?.r2?.exists ?? data?.bindings?.r2?.exists);
-        if (data.status === 'ok' || (d1Ok && r2Ok)) {
-          setBackendMode('cloudflare-d1-r2');
-        } else {
-          setBackendMode('preview-demo');
-        }
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const handleLoadMore = useCallback(async () => {
     if (lastDoc === null || lastDoc === undefined || loadingMore) return;

@@ -525,6 +525,36 @@ export function sortCommonsPosts(
   });
 }
 
+const COMMONS_POSTS_CACHE_TTL_MS = 20_000;
+const commonsListCache = new Map<
+  string,
+  {
+    data: {
+      posts: CommonsPost[];
+      lastDoc: any;
+      hasMore: boolean;
+      backendMode?: 'cloudflare-d1-r2' | 'preview-demo';
+    };
+    expiresAt: number;
+  }
+>();
+const commonsListInFlight = new Map<
+  string,
+  Promise<{
+    posts: CommonsPost[];
+    lastDoc: any;
+    hasMore: boolean;
+    backendMode?: 'cloudflare-d1-r2' | 'preview-demo';
+  }>
+>();
+const commonsPostDetailCache = new Map<string, { post: CommonsPost; expiresAt: number }>();
+const commonsPostDetailInFlight = new Map<string, Promise<CommonsPost | null>>();
+
+export function invalidateCommonsPostsCache(): void {
+  commonsListCache.clear();
+  commonsPostDetailCache.clear();
+}
+
 export async function fetchCommonsPosts(options: {
   subject?: string;
   target?: string;
@@ -586,44 +616,104 @@ export async function fetchCommonsPosts(options: {
     params.set('followingUids', effectiveFollowingUids.join(','));
   }
 
-  const headers = await getOptionalAuthHeader();
-  const resp = await fetch(`/api/posts?${params.toString()}`, {
-    headers,
-    cache: 'no-store',
-  });
-  const data = await resp.json().catch(() => ({}));
-
-  if (!resp.ok || !Array.isArray(data?.posts)) {
-    throw new Error(data?.error || `Failed to load posts (HTTP ${resp.status}).`);
+  const cacheKey = `${options.currentUid || 'anon'}:${params.toString()}`;
+  const cached = commonsListCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.data;
+  }
+  const existingPromise = commonsListInFlight.get(cacheKey);
+  if (existingPromise) {
+    return existingPromise;
   }
 
-  const posts = data.posts.map((p: any) => normalizeCloudflarePost(p));
-  const nextOffset =
-    typeof data.nextOffset === 'number' ? data.nextOffset : offset + pageSize;
+  const promise = (async () => {
+    const headers = await getOptionalAuthHeader();
+    const resp = await fetch(`/api/posts?${params.toString()}`, {
+      headers,
+    });
+    const data = await resp.json().catch(() => ({}));
 
-  return {
-    posts,
-    lastDoc: data.hasMore ? nextOffset : null,
-    hasMore: Boolean(data.hasMore),
-    backendMode: data.backendMode || (data.source === 'cloudflare-d1-r2' ? 'cloudflare-d1-r2' : 'preview-demo'),
-  };
+    if (!resp.ok || !Array.isArray(data?.posts)) {
+      throw new Error(data?.error || `Failed to load posts (HTTP ${resp.status}).`);
+    }
+
+    const posts: CommonsPost[] = data.posts.map((p: any) => normalizeCloudflarePost(p));
+    for (const p of posts) {
+      if (p.id) {
+        commonsPostDetailCache.set(p.id, {
+          post: p,
+          expiresAt: Date.now() + COMMONS_POSTS_CACHE_TTL_MS,
+        });
+      }
+    }
+    const nextOffset =
+      typeof data.nextOffset === 'number' ? data.nextOffset : offset + pageSize;
+
+    const result = {
+      posts,
+      lastDoc: data.hasMore ? nextOffset : null,
+      hasMore: Boolean(data.hasMore),
+      backendMode: (data.backendMode ||
+        (data.source === 'cloudflare-d1-r2' ? 'cloudflare-d1-r2' : 'preview-demo')) as
+        | 'cloudflare-d1-r2'
+        | 'preview-demo',
+    };
+    commonsListCache.set(cacheKey, {
+      data: result,
+      expiresAt: Date.now() + COMMONS_POSTS_CACHE_TTL_MS,
+    });
+    return result;
+  })();
+
+  commonsListInFlight.set(cacheKey, promise);
+  try {
+    return await promise;
+  } finally {
+    commonsListInFlight.delete(cacheKey);
+  }
 }
 
 export async function fetchCommonsPostById(postIdOrSlug: string): Promise<CommonsPost | null> {
   if (!postIdOrSlug) return null;
-  try {
-    const headers = await getOptionalAuthHeader();
-    const resp = await fetch(`/api/posts/${encodeURIComponent(postIdOrSlug)}?view=1`, {
-      headers,
-      cache: 'no-store',
-    });
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    if (!data?.post) return null;
-    return normalizeCloudflarePost(data.post);
-  } catch {
-    return null;
+  const cached = commonsPostDetailCache.get(postIdOrSlug);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.post;
   }
+  const pending = commonsPostDetailInFlight.get(postIdOrSlug);
+  if (pending) {
+    return pending;
+  }
+
+  const p = (async () => {
+    try {
+      const headers = await getOptionalAuthHeader();
+      const resp = await fetch(`/api/posts/${encodeURIComponent(postIdOrSlug)}?view=1`, {
+        headers,
+      });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      if (!data?.post) return null;
+      const normalized = normalizeCloudflarePost(data.post);
+      commonsPostDetailCache.set(postIdOrSlug, {
+        post: normalized,
+        expiresAt: Date.now() + COMMONS_POSTS_CACHE_TTL_MS,
+      });
+      if (normalized.id) {
+        commonsPostDetailCache.set(normalized.id, {
+          post: normalized,
+          expiresAt: Date.now() + COMMONS_POSTS_CACHE_TTL_MS,
+        });
+      }
+      return normalized;
+    } catch {
+      return null;
+    } finally {
+      commonsPostDetailInFlight.delete(postIdOrSlug);
+    }
+  })();
+
+  commonsPostDetailInFlight.set(postIdOrSlug, p);
+  return p;
 }
 
 export async function togglePostVote(
@@ -649,6 +739,7 @@ export async function togglePostVote(
   if (effectiveUserId) {
     statusRequestCache.delete(`${effectiveUserId}:${postId}`);
   }
+  invalidateCommonsPostsCache();
   recordPostLikeSnapshot(postId, newCount, effectiveUserId || null, voted, true);
   return {
     voted,

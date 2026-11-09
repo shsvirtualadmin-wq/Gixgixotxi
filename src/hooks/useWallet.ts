@@ -11,6 +11,7 @@ import {
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { syncPublicProfile } from '@/services/publicProfileService';
+import { getSharedUserProfileSnapshot } from '@/hooks/useUserProfile';
 import type { EquippedCosmetics } from '@/types';
 
 export interface WalletDoc {
@@ -32,8 +33,20 @@ const DEFAULT_WALLET: WalletDoc = {
   },
 };
 
-// Module-level in-memory session cache: Read the wallet once per session per user
+// Module-level in-memory session cache & in-flight deduplication: Read the wallet once per session per user
 const sessionWalletCache: { [uid: string]: WalletDoc } = {};
+const inFlightWalletPromises: { [uid: string]: Promise<WalletDoc> } = {};
+const walletSubscribers = new Set<(uid: string, doc: WalletDoc) => void>();
+
+function notifyWalletSubscribers(uid: string, doc: WalletDoc) {
+  walletSubscribers.forEach((cb) => {
+    try {
+      cb(uid, doc);
+    } catch {
+      // Ignore subscriber error
+    }
+  });
+}
 
 export function useWallet() {
   const { user } = useAuth();
@@ -72,124 +85,153 @@ export function useWallet() {
       return sessionWalletCache[uid];
     }
 
+    if (!forceRefresh && inFlightWalletPromises[uid]) {
+      setLoading(true);
+      try {
+        const sharedResult = await inFlightWalletPromises[uid];
+        setWallet(sharedResult);
+        return sharedResult;
+      } finally {
+        setLoading(false);
+      }
+    }
+
     setLoading(true);
     const walletDocRef = doc(db, 'wallets', uid);
     const userDocRef = doc(db, 'users', uid);
     const unlockedColRef = collection(db, 'users', uid, 'unlocked');
 
-    try {
-      const [snap, userSnap, unlockedSnap] = await Promise.all([
-        getDoc(walletDocRef).catch((err) => {
-          console.error('[useWallet] getDoc wallets error:', err?.code || 'ERROR', `wallets/${uid}`, err);
-          return null;
-        }),
-        getDoc(userDocRef).catch((err) => {
-          console.error('[useWallet] getDoc users error:', err?.code || 'ERROR', `users/${uid}`, err);
-          return null;
-        }),
-        getDocs(unlockedColRef).catch((err) => {
-          console.error(
-            '[useWallet] getDocs unlocked error:',
-            err?.code || 'ERROR',
-            `users/${uid}/unlocked`,
-            err
+    const loadPromise = (async (): Promise<WalletDoc> => {
+      try {
+        const cachedUserProfile = !forceRefresh ? getSharedUserProfileSnapshot(uid) : null;
+
+        const [snap, userSnap, unlockedSnap] = await Promise.all([
+          getDoc(walletDocRef).catch((err) => {
+            console.error('[useWallet] getDoc wallets error:', err?.code || 'ERROR', `wallets/${uid}`, err);
+            return null;
+          }),
+          cachedUserProfile
+            ? Promise.resolve(null)
+            : getDoc(userDocRef).catch((err) => {
+                console.error('[useWallet] getDoc users error:', err?.code || 'ERROR', `users/${uid}`, err);
+                return null;
+              }),
+          getDocs(unlockedColRef).catch((err) => {
+            console.error(
+              '[useWallet] getDocs unlocked error:',
+              err?.code || 'ERROR',
+              `users/${uid}/unlocked`,
+              err
+            );
+            return null;
+          }),
+        ]);
+
+        const uData: Record<string, any> | null =
+          (cachedUserProfile as Record<string, any> | null) ||
+          (userSnap && userSnap.exists() ? userSnap.data() : null);
+
+        const userKobans =
+          uData && typeof uData.kobans === 'number' && Number.isFinite(uData.kobans)
+            ? Math.max(0, Math.floor(uData.kobans))
+            : 0;
+        const userKobanBalance =
+          uData && typeof uData.kobanBalance === 'number' && Number.isFinite(uData.kobanBalance)
+            ? Math.max(0, Math.floor(uData.kobanBalance))
+            : 0;
+        const userBalance = Math.max(userKobans, userKobanBalance);
+
+        const userOwned: string[] = Array.isArray(uData?.ownedCosmetics)
+          ? (uData.ownedCosmetics as string[])
+          : [];
+        const unlockedIds: string[] = unlockedSnap
+          ? unlockedSnap.docs.map((d) => String(d.data()?.itemId || d.id))
+          : [];
+
+        if (snap && snap.exists()) {
+          const data = snap.data() as Partial<WalletDoc>;
+          const walletBalance =
+            typeof data.balance === 'number' && Number.isFinite(data.balance)
+              ? Math.max(0, Math.floor(data.balance))
+              : null;
+          const resolvedBalance =
+            walletBalance !== null && walletBalance > 0
+              ? walletBalance
+              : Math.max(walletBalance ?? 0, userBalance);
+
+          const walletOwned = Array.isArray(data.owned) ? data.owned : [];
+          const mergedOwned = Array.from(
+            new Set([...walletOwned, ...userOwned, ...unlockedIds])
           );
-          return null;
-        }),
-      ]);
 
-      const uData = userSnap && userSnap.exists() ? userSnap.data() : null;
-      const userKobans =
-        uData && typeof uData.kobans === 'number' && Number.isFinite(uData.kobans)
-          ? Math.max(0, Math.floor(uData.kobans))
-          : 0;
-      const userKobanBalance =
-        uData && typeof uData.kobanBalance === 'number' && Number.isFinite(uData.kobanBalance)
-          ? Math.max(0, Math.floor(uData.kobanBalance))
-          : 0;
-      const userBalance = Math.max(userKobans, userKobanBalance);
+          const rawEquipped = {
+            ...(uData?.equipped || {}),
+            ...(data.equipped || {}),
+          };
 
-      const userOwned: string[] = Array.isArray(uData?.ownedCosmetics)
-        ? (uData.ownedCosmetics as string[])
-        : [];
-      const unlockedIds: string[] = unlockedSnap
-        ? unlockedSnap.docs.map((d) => String(d.data()?.itemId || d.id))
-        : [];
-
-      if (snap && snap.exists()) {
-        const data = snap.data() as Partial<WalletDoc>;
-        const walletBalance =
-          typeof data.balance === 'number' && Number.isFinite(data.balance)
-            ? Math.max(0, Math.floor(data.balance))
-            : null;
-        const resolvedBalance =
-          walletBalance !== null && walletBalance > 0
-            ? walletBalance
-            : Math.max(walletBalance ?? 0, userBalance);
-
-        const walletOwned = Array.isArray(data.owned) ? data.owned : [];
-        const mergedOwned = Array.from(
-          new Set([...walletOwned, ...userOwned, ...unlockedIds])
+          const cleanWallet: WalletDoc = {
+            balance: resolvedBalance,
+            owned: mergedOwned,
+            equipped: {
+              effect: rawEquipped.effect ?? uData?.effectId ?? null,
+              frame: rawEquipped.frame ?? uData?.frame ?? uData?.equippedFrame ?? null,
+              nameplate:
+                rawEquipped.nameplate ?? uData?.nameplate ?? uData?.equippedNameplate ?? null,
+              avatar: rawEquipped.avatar ?? uData?.avatar ?? uData?.equippedAvatar ?? null,
+              banner: rawEquipped.banner ?? uData?.banner ?? uData?.equippedBanner ?? null,
+            },
+            updatedAt: data.updatedAt,
+          };
+          sessionWalletCache[uid] = cleanWallet;
+          notifyWalletSubscribers(uid, cleanWallet);
+          return cleanWallet;
+        } else {
+          // Initialize wallet document using existing user balance & unlocked items so we never overwrite a non-zero user balance with 0
+          const mergedOwned = Array.from(new Set([...userOwned, ...unlockedIds]));
+          const uEquipped = uData?.equipped || {};
+          const initial: WalletDoc = {
+            balance: userBalance,
+            owned: mergedOwned,
+            equipped: {
+              effect: uEquipped.effect ?? uData?.effectId ?? null,
+              frame: uEquipped.frame ?? uData?.frame ?? uData?.equippedFrame ?? null,
+              nameplate:
+                uEquipped.nameplate ?? uData?.nameplate ?? uData?.equippedNameplate ?? null,
+              avatar: uEquipped.avatar ?? uData?.avatar ?? uData?.equippedAvatar ?? null,
+              banner: uEquipped.banner ?? uData?.banner ?? uData?.equippedBanner ?? null,
+            },
+            updatedAt: serverTimestamp(),
+          };
+          await setDoc(walletDocRef, initial, { merge: true }).catch((err) => {
+            console.error(
+              '[useWallet] Initial wallet setDoc error:',
+              err?.code || 'ERROR',
+              `wallets/${uid}`,
+              err
+            );
+          });
+          sessionWalletCache[uid] = initial;
+          notifyWalletSubscribers(uid, initial);
+          return initial;
+        }
+      } catch (err: any) {
+        console.error(
+          '[useWallet] Wallet read error:',
+          err?.code || 'ERROR',
+          `wallets/${uid}`,
+          err
         );
-
-        const rawEquipped = {
-          ...(uData?.equipped || {}),
-          ...(data.equipped || {}),
-        };
-
-        const cleanWallet: WalletDoc = {
-          balance: resolvedBalance,
-          owned: mergedOwned,
-          equipped: {
-            effect: rawEquipped.effect ?? uData?.effectId ?? null,
-            frame: rawEquipped.frame ?? uData?.frame ?? uData?.equippedFrame ?? null,
-            nameplate:
-              rawEquipped.nameplate ?? uData?.nameplate ?? uData?.equippedNameplate ?? null,
-            avatar: rawEquipped.avatar ?? uData?.avatar ?? uData?.equippedAvatar ?? null,
-            banner: rawEquipped.banner ?? uData?.banner ?? uData?.equippedBanner ?? null,
-          },
-          updatedAt: data.updatedAt,
-        };
-        sessionWalletCache[uid] = cleanWallet;
-        setWallet(cleanWallet);
-        return cleanWallet;
-      } else {
-        // Initialize wallet document using existing user balance & unlocked items so we never overwrite a non-zero user balance with 0
-        const mergedOwned = Array.from(new Set([...userOwned, ...unlockedIds]));
-        const uEquipped = uData?.equipped || {};
-        const initial: WalletDoc = {
-          balance: userBalance,
-          owned: mergedOwned,
-          equipped: {
-            effect: uEquipped.effect ?? uData?.effectId ?? null,
-            frame: uEquipped.frame ?? uData?.frame ?? uData?.equippedFrame ?? null,
-            nameplate:
-              uEquipped.nameplate ?? uData?.nameplate ?? uData?.equippedNameplate ?? null,
-            avatar: uEquipped.avatar ?? uData?.avatar ?? uData?.equippedAvatar ?? null,
-            banner: uEquipped.banner ?? uData?.banner ?? uData?.equippedBanner ?? null,
-          },
-          updatedAt: serverTimestamp(),
-        };
-        await setDoc(walletDocRef, initial, { merge: true }).catch((err) => {
-          console.error(
-            '[useWallet] Initial wallet setDoc error:',
-            err?.code || 'ERROR',
-            `wallets/${uid}`,
-            err
-          );
-        });
-        sessionWalletCache[uid] = initial;
-        setWallet(initial);
-        return initial;
+        return sessionWalletCache[uid] || DEFAULT_WALLET;
+      } finally {
+        delete inFlightWalletPromises[uid];
       }
-    } catch (err: any) {
-      console.error(
-        '[useWallet] Wallet read error:',
-        err?.code || 'ERROR',
-        `wallets/${uid}`,
-        err
-      );
-      return sessionWalletCache[uid] || DEFAULT_WALLET;
+    })();
+
+    inFlightWalletPromises[uid] = loadPromise;
+    try {
+      const resolved = await loadPromise;
+      setWallet(resolved);
+      return resolved;
     } finally {
       setLoading(false);
     }
@@ -202,6 +244,14 @@ export function useWallet() {
       return;
     }
 
+    const onSub = (updatedUid: string, updatedDoc: WalletDoc) => {
+      if (updatedUid === user.uid) {
+        setWallet(updatedDoc);
+        setLoading(false);
+      }
+    };
+    walletSubscribers.add(onSub);
+
     fetchWallet(user.uid, false);
 
     const handleWalletRefresh = (ev: Event) => {
@@ -213,7 +263,7 @@ export function useWallet() {
           balance: nextBalance,
         };
         sessionWalletCache[user.uid] = nextWallet;
-        setWallet(nextWallet);
+        notifyWalletSubscribers(user.uid, nextWallet);
       }
       fetchWallet(user.uid, true).catch(() => {});
     };
@@ -221,6 +271,7 @@ export function useWallet() {
     window.addEventListener('boardly:wallet-refresh', handleWalletRefresh);
     window.addEventListener('boardly:plan-refresh', handleWalletRefresh);
     return () => {
+      walletSubscribers.delete(onSub);
       window.removeEventListener('boardly:wallet-refresh', handleWalletRefresh);
       window.removeEventListener('boardly:plan-refresh', handleWalletRefresh);
     };

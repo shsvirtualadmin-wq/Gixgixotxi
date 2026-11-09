@@ -2,6 +2,7 @@ import React, { useEffect, useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { useKobanStyle } from '@/contexts/KobanStyleContext';
+import { useSmoothMode } from '@/utils/smoothMode';
 import {
   DEFAULT_KOBAN_STYLE,
   deriveKobanColors,
@@ -165,7 +166,7 @@ function ensureKobanKeyframes(): void {
  * Renders one of the 6 whitelisted designs with per-instance unique gradient IDs,
  * user-selected colors, glow drop-shadow, light sweep + 4-point sparkles, and motion.
  */
-export const KobanIcon: React.FC<KobanIconProps> = ({
+export const KobanIcon: React.FC<KobanIconProps> = React.memo(({
   size = 24,
   styleSettings,
   styleOverride,
@@ -177,6 +178,7 @@ export const KobanIcon: React.FC<KobanIconProps> = ({
   ensureKobanKeyframes();
 
   const { style: contextStyle } = useKobanStyle();
+  const { smoothMode } = useSmoothMode();
   const reducedMotion = usePrefersReducedMotion();
   const isLightMode = useIsLightTheme();
   const rawUid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
@@ -212,24 +214,25 @@ export const KobanIcon: React.FC<KobanIconProps> = ({
   const shineGradId = `kb-shine-${rawUid}`;
   const clipId = `kb-clip-${rawUid}`;
 
-  // Effective animation flags (strictly off when animated=false, motion='off', or prefers-reduced-motion)
-  const canAnimate = Boolean(animated && !reducedMotion && motion !== 'off');
+  // Effective animation flags (strictly off when animated=false, motion='off', smoothMode, or prefers-reduced-motion)
+  const canAnimate = Boolean(animated && !smoothMode && !reducedMotion && motion !== 'off');
   const isLively = canAnimate && motion === 'lively';
-  const showShineAndSparkle = Boolean(animated && !reducedMotion && sparkle);
+  const showShineAndSparkle = Boolean(animated && !smoothMode && !reducedMotion && sparkle);
   const showSparkles = showShineAndSparkle && size >= 40;
 
-  // Glow drop-shadow calculation
-  // s = (glow / 100) multiplied by 0.55 in light mode so it does not wash out
-  const rawStrength = Math.max(0, Math.min(100, glow)) / 100;
+  // Glow drop-shadow calculation: static lightweight single shadow in lists, full dual shadow only on animated primary icons, off in smoothMode
+  const rawStrength = smoothMode ? 0 : Math.max(0, Math.min(100, glow)) / 100;
   const s = rawStrength * (isLightMode ? 0.55 : 1);
   const blur1 = (size * 0.1).toFixed(2);
-  const blur2 = (size * 0.28).toFixed(2);
-  const alpha1 = (0.9 * s).toFixed(3);
-  const alpha2 = (0.55 * s).toFixed(3);
+  const blur2 = (size * 0.24).toFixed(2);
+  const alpha1 = (0.85 * s).toFixed(3);
+  const alpha2 = (0.45 * s).toFixed(3);
   const filterShadow =
-    s > 0.005
+    s <= 0.005
+      ? 'none'
+      : canAnimate
       ? `drop-shadow(0 0 ${blur1}px rgba(${glowRgb.r}, ${glowRgb.g}, ${glowRgb.b}, ${alpha1})) drop-shadow(0 0 ${blur2}px rgba(${glowRgb.r}, ${glowRgb.g}, ${glowRgb.b}, ${alpha2}))`
-      : 'none';
+      : `drop-shadow(0 0 ${blur1}px rgba(${glowRgb.r}, ${glowRgb.g}, ${glowRgb.b}, ${(0.55 * s).toFixed(3)}))`;
 
   // Outer motion class/style for subtle/lively glow pulse or float
   const wrapperAnimation = !canAnimate
@@ -593,7 +596,7 @@ export const KobanIcon: React.FC<KobanIconProps> = ({
       </svg>
     </span>
   );
-};
+});
 
 export interface KobanAmountProps {
   value?: number;
@@ -609,7 +612,7 @@ export interface KobanAmountProps {
 /**
  * Formatted Koban amount with the shared <KobanIcon /> + tabular numeral formatting.
  */
-export const KobanAmount: React.FC<KobanAmountProps> = ({
+export const KobanAmount: React.FC<KobanAmountProps> = React.memo(({
   value,
   amount,
   size,
@@ -649,7 +652,7 @@ export const KobanAmount: React.FC<KobanAmountProps> = ({
       )}
     </span>
   );
-};
+});
 
 export interface KobanChipProps {
   balance: number;
@@ -664,7 +667,7 @@ export interface KobanChipProps {
 /**
  * Top Bar Koban Balance Chip — animates the shared <KobanIcon /> and counts smoothly when balance changes.
  */
-export const KobanChip: React.FC<KobanChipProps> = ({
+export const KobanChip: React.FC<KobanChipProps> = React.memo(({
   balance,
   loading = false,
   onClick,
@@ -755,7 +758,7 @@ export const KobanChip: React.FC<KobanChipProps> = ({
       {content}
     </Link>
   );
-};
+});
 
 /**
  * Stacked Kobans visual for bundle cards in GetKobansModal

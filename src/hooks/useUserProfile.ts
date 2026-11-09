@@ -338,6 +338,31 @@ function releaseSubscription() {
   }, 15000);
 }
 
+export function seedSharedUserProfileCache(uid: string, profile: UserProfile): void {
+  if (!uid || !profile) return;
+  const clean: UserProfile = {
+    ...(sharedState.profile || {}),
+    ...profile,
+    uid,
+    photoURL: null,
+  };
+  sharedState.profile = clean;
+  sharedState.docExists = true;
+  sharedState.fetchStatus = 'success';
+  sharedState.hasReceivedSnapshot = true;
+  sharedState.error = null;
+  setLocalCachedProfile(uid, clean);
+  broadcastState();
+}
+
+export function getSharedUserProfileSnapshot(uid?: string | null): UserProfile | null {
+  if (!uid) return sharedState.profile;
+  if (sharedState.profile && sharedState.profile.uid === uid) {
+    return sharedState.profile;
+  }
+  return getLocalCachedProfile(uid);
+}
+
 /**
  * Single shared hook for accessing and updating the active student's profile.
  * Coordinates through a singleton observer on `users/{uid}` to eliminate duplicate reads.
@@ -346,6 +371,11 @@ function releaseSubscription() {
 export function useUserProfile(): UserProfileHookResult {
   const { user, profile: authProfile, profileLoading: authLoading, updateLocalProfile, syncGuestProgress, isGuest } = useAuth();
   const [tick, setTick] = useState(0);
+
+  const authProfileRef = useRef<UserProfile | null>(authProfile);
+  useEffect(() => {
+    authProfileRef.current = authProfile;
+  }, [authProfile]);
 
   const updateLocalProfileRef = useRef(updateLocalProfile);
   useEffect(() => {
@@ -360,7 +390,7 @@ export function useUserProfile(): UserProfileHookResult {
     };
 
     subscriberCallbacks.add(onUpdate);
-    startSubscription(user.uid, authProfile);
+    startSubscription(user.uid, authProfileRef.current);
 
     return () => {
       subscriberCallbacks.delete(onUpdate);
@@ -368,7 +398,7 @@ export function useUserProfile(): UserProfileHookResult {
         releaseSubscription();
       }
     };
-  }, [user?.uid, authProfile]);
+  }, [user?.uid]);
 
   // Keep AuthContext profile synchronized whenever Firestore user doc updates plan/expiry/role
   useEffect(() => {

@@ -18,11 +18,25 @@ export function detectDefaultSmoothMode(): boolean {
     }
 
     const nav = navigator as Navigator & {
+      deviceMemory?: number;
+      hardwareConcurrency?: number;
       connection?: {
         saveData?: boolean;
         effectiveType?: string;
       };
     };
+
+    if (typeof nav.deviceMemory === 'number' && nav.deviceMemory > 0 && nav.deviceMemory <= 4) {
+      return true;
+    }
+
+    if (
+      typeof nav.hardwareConcurrency === 'number' &&
+      nav.hardwareConcurrency > 0 &&
+      nav.hardwareConcurrency <= 4
+    ) {
+      return true;
+    }
 
     if (nav.connection) {
       if (nav.connection.saveData) return true;
@@ -36,6 +50,30 @@ export function detectDefaultSmoothMode(): boolean {
   }
 
   return false;
+}
+
+let visibilityListenerRegistered = false;
+function ensureTabVisibilityObserver(): void {
+  if (visibilityListenerRegistered || typeof document === 'undefined') return;
+  visibilityListenerRegistered = true;
+
+  const updateVisibility = () => {
+    const root = document.documentElement;
+    if (document.hidden) {
+      root.classList.add('tab-hidden');
+      root.setAttribute('data-tab-hidden', 'true');
+    } else {
+      root.classList.remove('tab-hidden');
+      root.removeAttribute('data-tab-hidden');
+    }
+  };
+
+  updateVisibility();
+  document.addEventListener('visibilitychange', updateVisibility, { passive: true });
+}
+
+if (typeof document !== 'undefined') {
+  ensureTabVisibilityObserver();
 }
 
 /**
@@ -58,6 +96,7 @@ export function getSmoothMode(): boolean {
  */
 export function applySmoothModeToDocument(enabled: boolean): void {
   if (typeof document === 'undefined') return;
+  ensureTabVisibilityObserver();
   const root = document.documentElement;
   if (enabled) {
     root.classList.add('smooth-mode');

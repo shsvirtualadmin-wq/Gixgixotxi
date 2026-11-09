@@ -3,16 +3,19 @@ import { useAuth } from '@/contexts/AuthContext';
 import { isUserAuthenticated } from '@/utils/homeUrl';
 import { VerificationBanner } from '@/components/auth/VerificationBanner';
 import { LegalUpdateNoticeBanner } from '@/components/auth/LegalUpdateNoticeBanner';
-import { GuestUpgradeModal } from '@/components/auth/GuestUpgradeModal';
 import { DashboardTopBar } from './DashboardTopBar';
 import { DashboardBottomNav } from './DashboardBottomNav';
 import { DashboardErrorBoundary } from './DashboardErrorBoundary';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
 import { LineLoader } from '@/components/ui/LineLoader';
-import { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { ensureWelcomeNotificationForUser } from '@/services/notificationService';
 import { UserPlus, X } from 'lucide-react';
+
+const GuestUpgradeModal = React.lazy(() =>
+  import('@/components/auth/GuestUpgradeModal').then((m) => ({ default: m.GuestUpgradeModal }))
+);
 
 export function DashboardShell() {
   const { user, profile, isGuest, profileLoading, isSessionVerified, otpVerificationState } = useAuth();
@@ -46,10 +49,7 @@ export function DashboardShell() {
     }
   }, [isAuthenticated, user, profileLoading, navigate, location.pathname, location.search, location.hash]);
 
-  if (
-    (profileLoading && !user && !isAuthenticated) ||
-    (user && !isGuest && otpVerificationState.status === 'checking')
-  ) {
+  if (profileLoading && !user && !isAuthenticated) {
     return <LineLoader context="dashboard" variant="page" />;
   }
 
@@ -60,7 +60,7 @@ export function DashboardShell() {
   }
 
   // Route guard: Signed-in non-guest users who have NOT completed the 6-digit verification code step
-  if (user && !isGuest && !isSessionVerified) {
+  if (user && !isGuest && otpVerificationState.status !== 'checking' && !isSessionVerified) {
     const target = `${location.pathname}${location.search}${location.hash}`;
     try {
       sessionStorage.setItem('boardly_post_login_redirect', target);
@@ -135,10 +135,14 @@ export function DashboardShell() {
       {/* Unified Student Pill Navigation */}
       <DashboardBottomNav />
 
-      <GuestUpgradeModal
-        isOpen={upgradeModalOpen}
-        onClose={() => setUpgradeModalOpen(false)}
-      />
+      {upgradeModalOpen && (
+        <Suspense fallback={null}>
+          <GuestUpgradeModal
+            isOpen={upgradeModalOpen}
+            onClose={() => setUpgradeModalOpen(false)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

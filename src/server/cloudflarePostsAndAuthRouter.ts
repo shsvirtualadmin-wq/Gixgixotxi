@@ -5563,7 +5563,7 @@ ${entries
     const universities = [...(store.universities || [])].sort(
       (a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.name.localeCompare(b.name)
     );
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600');
     return res.status(200).json({
       success: true,
       universities,
@@ -5780,6 +5780,7 @@ ${entries
         };
       });
 
+    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600');
     return res.status(200).json({
       success: true,
       universityId: matchedUni?.id || null,

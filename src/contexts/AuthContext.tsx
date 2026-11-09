@@ -6,6 +6,8 @@ import {
   useCallback,
   useMemo,
   useRef,
+  lazy,
+  Suspense,
   type ReactNode,
 } from 'react';
 import {
@@ -49,9 +51,23 @@ import {
   LEGAL_DOCUMENT_VERSION,
   recordLegalConsentOnServer,
 } from '@/constants/legalConsent';
-import { GuestLogoutConfirmModal } from '@/components/auth/GuestLogoutConfirmModal';
-import { GuestUpgradeModal } from '@/components/auth/GuestUpgradeModal';
-import { ChooseUsernameModal } from '@/components/auth/ChooseUsernameModal';
+import { seedSharedUserProfileCache } from '@/hooks/useUserProfile';
+
+const GuestLogoutConfirmModal = lazy(() =>
+  import('@/components/auth/GuestLogoutConfirmModal').then((m) => ({
+    default: m.GuestLogoutConfirmModal,
+  }))
+);
+const GuestUpgradeModal = lazy(() =>
+  import('@/components/auth/GuestUpgradeModal').then((m) => ({
+    default: m.GuestUpgradeModal,
+  }))
+);
+const ChooseUsernameModal = lazy(() =>
+  import('@/components/auth/ChooseUsernameModal').then((m) => ({
+    default: m.ChooseUsernameModal,
+  }))
+);
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const SUPER_ADMIN_EMAIL = 'shsvirtualadmin@gmail.com';
@@ -466,11 +482,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         setProfile(loadedProfile);
+        seedSharedUserProfileCache(firebaseUser.uid, loadedProfile);
       } else {
         // Doc read timed out or failed — use fallback profile in-memory ONLY.
         // NEVER write this fallback profile to Firestore, as that would overwrite the user's real plan!
         console.warn(`[Boardly] Profile read timed out or offline at ${path}. Keeping in-memory fallback.`);
         setProfile(defaultProfile);
+        seedSharedUserProfileCache(firebaseUser.uid, defaultProfile);
       }
     } catch (err: unknown) {
       console.warn(`[Boardly] Firestore profile read fallback at ${path}:`, err);
@@ -1038,69 +1056,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (firebaseUser) {
         setUser(firebaseUser);
-        await evaluateUserVerificationGate(firebaseUser, false);
 
-        // Warm-up read of config/{any} right after sign-in so the first connection is opened early
-        getDoc(doc(db, 'config', 'app')).catch(() => {});
-
-        await loadProfileRef.current(firebaseUser).catch((err) => {
-          console.warn('[Boardly Auth] onAuthStateChanged profile load error:', err);
-        });
-
-        // Also sync server-side username from `/api/auth/me` if registered user has one in D1
-        try {
-          const idToken = await firebaseUser.getIdToken();
-          const meRes = await fetch('/api/auth/me', {
-            method: 'GET',
-            credentials: 'include',
-            headers: { Authorization: `Bearer ${idToken}` },
-          });
-          const meData = await meRes.json().catch(() => ({}));
-          if (meRes.ok && meData?.user) {
-            if (meData.user.username) {
-              setProfile((prev) =>
-                prev ? { ...prev, username: meData.user.username } : prev
-              );
+        // Run verification gate, Firestore profile load, and D1 `/api/auth/me` in parallel instead of a sequential waterfall
+        const [, , meCheck] = await Promise.all([
+          evaluateUserVerificationGate(firebaseUser, false).catch(() => false),
+          loadProfileRef.current(firebaseUser).catch((err) => {
+            console.warn('[Boardly Auth] onAuthStateChanged profile load error:', err);
+          }),
+          (async () => {
+            try {
+              const idToken = await firebaseUser.getIdToken();
+              const meRes = await fetch('/api/auth/me', {
+                method: 'GET',
+                credentials: 'include',
+                headers: { Authorization: `Bearer ${idToken}` },
+              });
+              const meData = await meRes.json().catch(() => ({}));
+              return { ok: meRes.ok, meData, idToken };
+            } catch {
+              return null;
             }
-            const hasRegUsername = Boolean(
-              meData.hasRegisteredUsername || meData.user.hasRegisteredUsername
+          })(),
+        ]);
+
+        if (!isMounted) return;
+
+        // Apply server-side username from `/api/auth/me` if registered user has one in D1
+        if (meCheck?.ok && meCheck.meData?.user) {
+          const { meData, idToken } = meCheck;
+          if (meData.user.username) {
+            setProfile((prev) =>
+              prev ? { ...prev, username: meData.user.username } : prev
             );
-            if (!hasRegUsername) {
-              // Check if Firestore profile already has a valid username we can register in D1
-              const existingFsUsername = String(profileRef.current?.username || '').trim();
-              if (existingFsUsername && validateUsernameFormat(existingFsUsername).valid) {
-                const regRes = await fetch('/api/auth/username-register', {
-                  method: 'POST',
-                  credentials: 'include',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${idToken}`,
-                  },
-                  body: JSON.stringify({
-                    uid: firebaseUser.uid,
-                    username: existingFsUsername,
-                    email: (firebaseUser.email || '').toLowerCase(),
-                    accountType: 'registered',
-                  }),
-                }).catch(() => null);
-                const regJson = regRes ? await regRes.json().catch(() => ({})) : {};
-                if (regRes?.ok && regJson?.ok) {
-                  setUsernamePromptState({ open: false, allowSkip: false, suggested: '' });
-                } else {
-                  const isGoogle = isGoogleProviderUser(firebaseUser);
-                  const seenKey = `boardly_username_prompt_seen_${firebaseUser.uid}`;
-                  const alreadySeen =
-                    !isGoogle &&
-                    typeof window !== 'undefined' &&
-                    window.localStorage.getItem(seenKey) === '1';
-                  if (!alreadySeen) {
-                    setUsernamePromptState({
-                      open: true,
-                      allowSkip: !isGoogle,
-                      suggested: '',
-                    });
-                  }
-                }
+          }
+          const hasRegUsername = Boolean(
+            meData.hasRegisteredUsername || meData.user.hasRegisteredUsername
+          );
+          if (!hasRegUsername) {
+            const existingFsUsername = String(profileRef.current?.username || '').trim();
+            if (existingFsUsername && validateUsernameFormat(existingFsUsername).valid) {
+              const regRes = await fetch('/api/auth/username-register', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({
+                  uid: firebaseUser.uid,
+                  username: existingFsUsername,
+                  email: (firebaseUser.email || '').toLowerCase(),
+                  accountType: 'registered',
+                }),
+              }).catch(() => null);
+              const regJson = regRes ? await regRes.json().catch(() => ({})) : {};
+              if (regRes?.ok && regJson?.ok) {
+                setUsernamePromptState({ open: false, allowSkip: false, suggested: '' });
               } else {
                 const isGoogle = isGoogleProviderUser(firebaseUser);
                 const seenKey = `boardly_username_prompt_seen_${firebaseUser.uid}`;
@@ -1109,28 +1120,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   typeof window !== 'undefined' &&
                   window.localStorage.getItem(seenKey) === '1';
                 if (!alreadySeen) {
-                  const baseSuggested = (
-                    firebaseUser.displayName ||
-                    (firebaseUser.email ? firebaseUser.email.split('@')[0] : '') ||
-                    ''
-                  )
-                    .toLowerCase()
-                    .replace(/[^a-z0-9._]/g, '_')
-                    .replace(/^[._]+|[._]+$/g, '')
-                    .slice(0, 16);
                   setUsernamePromptState({
                     open: true,
                     allowSkip: !isGoogle,
-                    suggested: baseSuggested.length >= 3 ? baseSuggested : '',
+                    suggested: '',
                   });
                 }
               }
             } else {
-              setUsernamePromptState({ open: false, allowSkip: false, suggested: '' });
+              const isGoogle = isGoogleProviderUser(firebaseUser);
+              const seenKey = `boardly_username_prompt_seen_${firebaseUser.uid}`;
+              const alreadySeen =
+                !isGoogle &&
+                typeof window !== 'undefined' &&
+                window.localStorage.getItem(seenKey) === '1';
+              if (!alreadySeen) {
+                const baseSuggested = (
+                  firebaseUser.displayName ||
+                  (firebaseUser.email ? firebaseUser.email.split('@')[0] : '') ||
+                  ''
+                )
+                  .toLowerCase()
+                  .replace(/[^a-z0-9._]/g, '_')
+                  .replace(/^[._]+|[._]+$/g, '')
+                  .slice(0, 16);
+                setUsernamePromptState({
+                  open: true,
+                  allowSkip: !isGoogle,
+                  suggested: baseSuggested.length >= 3 ? baseSuggested : '',
+                });
+              }
             }
+          } else {
+            setUsernamePromptState({ open: false, allowSkip: false, suggested: '' });
           }
-        } catch {
-          // Non-fatal
         }
       } else {
         // Firebase emitted "no user". NEVER clear user/profile before checking `/api/auth/me`!
@@ -2415,36 +2438,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ]
   );
 
+  const shouldRenderUsernameModal = Boolean(
+    usernamePromptState.open &&
+      !isGuest &&
+      user &&
+      isSessionVerified &&
+      !profileLoading
+  );
+
   return (
     <AuthContext.Provider value={contextValue}>
       {children}
-      <GuestLogoutConfirmModal
-        isOpen={showGuestLogoutConfirm}
-        username={profile?.username || profile?.displayName}
-        loading={guestLogoutLoading}
-        onCancel={handleCancelGuestLogout}
-        onCreateAccount={handleCreateAccountFromGuestLogout}
-        onConfirmLogout={handleConfirmGuestLogout}
-      />
-      <GuestUpgradeModal
-        isOpen={showGuestUpgradeFromLogout}
-        onClose={() => setShowGuestUpgradeFromLogout(false)}
-        defaultReason="Create a free account to keep your username, progress, and test attempts permanently."
-      />
-      <ChooseUsernameModal
-        isOpen={Boolean(
-          usernamePromptState.open &&
-            !isGuest &&
-            user &&
-            isSessionVerified &&
-            !profileLoading
-        )}
-        initialSuggestion={usernamePromptState.suggested}
-        allowSkip={usernamePromptState.allowSkip}
-        onSkip={handleSkipModalUsername}
-        onCheckAvailability={checkUsernameAvailability}
-        onSaveUsername={handleSaveModalUsername}
-      />
+      {showGuestLogoutConfirm && (
+        <Suspense fallback={null}>
+          <GuestLogoutConfirmModal
+            isOpen={showGuestLogoutConfirm}
+            username={profile?.username || profile?.displayName}
+            loading={guestLogoutLoading}
+            onCancel={handleCancelGuestLogout}
+            onCreateAccount={handleCreateAccountFromGuestLogout}
+            onConfirmLogout={handleConfirmGuestLogout}
+          />
+        </Suspense>
+      )}
+      {showGuestUpgradeFromLogout && (
+        <Suspense fallback={null}>
+          <GuestUpgradeModal
+            isOpen={showGuestUpgradeFromLogout}
+            onClose={() => setShowGuestUpgradeFromLogout(false)}
+            defaultReason="Create a free account to keep your username, progress, and test attempts permanently."
+          />
+        </Suspense>
+      )}
+      {shouldRenderUsernameModal && (
+        <Suspense fallback={null}>
+          <ChooseUsernameModal
+            isOpen={shouldRenderUsernameModal}
+            initialSuggestion={usernamePromptState.suggested}
+            allowSkip={usernamePromptState.allowSkip}
+            onSkip={handleSkipModalUsername}
+            onCheckAvailability={checkUsernameAvailability}
+            onSaveUsername={handleSaveModalUsername}
+          />
+        </Suspense>
+      )}
     </AuthContext.Provider>
   );
 }

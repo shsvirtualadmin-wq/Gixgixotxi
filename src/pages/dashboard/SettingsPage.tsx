@@ -916,18 +916,24 @@ export function SettingsPage() {
           <KobanStyleCustomizer />
         </section>
 
-        {/* ── 6. Smooth Mode (Performance & Battery) ─────────────────────── */}
-        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap">
+        {/* ── 6. Appearance > Reduce effects (Smooth Mode) ───────────────── */}
+        <section
+          id="appearance-reduce-effects"
+          className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap"
+        >
           <div className="space-y-1 max-w-lg">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--muted)]">
+              Appearance
+            </div>
             <div className="flex items-center gap-2">
               <Sparkles size={16} className="text-[var(--muted)]" />
               <h2 className="text-base font-bold text-[var(--text)] font-heading">
-                Smooth Mode
+                Reduce effects (Smooth Mode)
               </h2>
               {smoothMode && <Badge color="green">Active</Badge>}
             </div>
             <p className="text-xs text-[var(--muted)] leading-relaxed">
-              Optimizes scrolling and battery life on phones by turning off backdrop blur, idle floating animations, and animated cosmetic effects.
+              Optimizes scrolling and battery life on phones by turning off backdrop blur, idle floating animations, and animated cosmetic effects. Automatically enabled on low-memory or Data Saver devices.
             </p>
           </div>
 
@@ -935,12 +941,13 @@ export function SettingsPage() {
             type="button"
             role="switch"
             aria-checked={smoothMode}
+            aria-label="Reduce effects"
             onClick={() => setSmoothMode(!smoothMode)}
             className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
               smoothMode ? 'bg-[var(--red)]' : 'bg-[var(--surface-2)] border-[var(--border)]'
             }`}
           >
-            <span className="sr-only">Toggle Smooth Mode</span>
+            <span className="sr-only">Reduce effects (Smooth Mode)</span>
             <span
               className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
                 smoothMode ? 'translate-x-5' : 'translate-x-0'

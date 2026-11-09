@@ -90,7 +90,15 @@ export const PublicPostDetailPage: React.FC = () => {
     }
     setStatus('loading');
     try {
-      const fetched = await fetchCommonsPostById(postId);
+      const [fetched, loadedComments, recentFeed] = await Promise.all([
+        fetchCommonsPostById(postId),
+        fetchPostComments(postId).catch(() => []),
+        fetchCommonsPosts({ feedTab: 'all', pageSize: 8 }).catch(() => ({
+          posts: [],
+          lastDoc: null,
+          hasMore: false,
+        })),
+      ]);
       if (!fetched) {
         setStatus('not_found');
         return;
@@ -101,17 +109,8 @@ export const PublicPostDetailPage: React.FC = () => {
       }
       setPost(fetched);
       setUpvotes(fetched.upvotes || 0);
-      setStatus('ready');
-
-      const [loadedComments, recentFeed] = await Promise.all([
-        fetchPostComments(fetched.id).catch(() => []),
-        fetchCommonsPosts({ feedTab: 'all', pageSize: 24 }).catch(() => ({
-          posts: [],
-          lastDoc: null,
-          hasMore: false,
-        })),
-      ]);
       setComments(loadedComments);
+      setStatus('ready');
 
       // Score and sort related posts by subject, chapter, and tag overlap, falling back to latest
       const targetSubj = (fetched.subject || '').toLowerCase().trim();

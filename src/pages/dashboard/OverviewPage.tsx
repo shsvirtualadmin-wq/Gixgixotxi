@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { WeakChapters } from '@/components/dashboard/WeakChapters';
 import { RecentAttempts } from '@/components/dashboard/RecentAttempts';
-import { MyCertificatesSection } from '@/pages/dashboard/MyCertificatesPage';
 import {
   Flame,
   ArrowRight,
@@ -41,6 +40,10 @@ import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 
 const LazyDragonCompanion = lazy(() =>
   import('@/components/dashboard/DragonCompanion').then((m) => ({ default: m.DragonCompanion }))
+);
+
+const LazyMyCertificatesSection = lazy(() =>
+  import('@/pages/dashboard/MyCertificatesPage').then((m) => ({ default: m.MyCertificatesSection }))
 );
 
 function getUniversityInitials(name: string): string {
@@ -718,7 +721,9 @@ export function OverviewPage() {
       />
 
       {/* 7. My Certificates (1st Position Grand Line Mock Credentials) */}
-      <MyCertificatesSection compact={true} />
+      <Suspense fallback={null}>
+        <LazyMyCertificatesSection compact={true} />
+      </Suspense>
 
       {/* ── University Test Flow Modal (Opened ONLY by tapping a LIVE University Bubble) ── */}
       {activeUni && (

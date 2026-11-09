@@ -2735,7 +2735,7 @@ ${urls
         const t0 = Date.now();
         const [{ results: allRows }, { results: importLogs }] = await Promise.all([
           env.DB.prepare(
-            'SELECT id, bank_id, subject, topic, difficulty, status, needs_review, options_json, correct_answer FROM questions'
+            'SELECT id, bank_id, subject, topic, difficulty, status, needs_review, correct_answer FROM questions'
           ).all(),
           env.DB.prepare(
             'SELECT bank_id, subject, imported_count, needs_review_count, imported_at FROM questions_import_log ORDER BY imported_at DESC LIMIT 100'
@@ -2964,14 +2964,50 @@ ${urls
           }
         > = {};
 
+        // Batch-fetch matching questions in a single IN(...) query instead of N+1 queries inside a loop
+        const candidateIds = new Set<string>();
+        for (const ans of answersInput) {
+          const qId = ans.questionId.trim();
+          if (!qId) continue;
+          candidateIds.add(qId);
+          if (qId.includes(':')) {
+            const bareId = qId.slice(qId.indexOf(':') + 1);
+            candidateIds.add(bareId);
+            candidateIds.add(`legacy:${bareId}`);
+            candidateIds.add(`bank1:${bareId}`);
+            candidateIds.add(`bank2:${bareId}`);
+          }
+        }
+        const idList = Array.from(candidateIds).slice(0, 500);
+        const rowById = new Map<string, Record<string, any>>();
+        const rowByBareId = new Map<string, Record<string, any>>();
+        if (idList.length > 0) {
+          const placeholders = idList.map(() => '?').join(',');
+          const { results: batchRows } = await env.DB.prepare(
+            `SELECT id, options_json, correct_answer, explanation FROM questions WHERE id IN (${placeholders})`
+          )
+            .bind(...idList)
+            .all<Record<string, any>>();
+          for (const r of batchRows || []) {
+            const rid = String(r.id || '');
+            rowById.set(rid, r);
+            const bare = rid.includes(':') ? rid.slice(rid.indexOf(':') + 1) : rid;
+            if (!rowByBareId.has(bare)) rowByBareId.set(bare, r);
+          }
+        }
+
         for (const ans of answersInput) {
           const qId = ans.questionId.trim();
           const bareId = qId.includes(':') ? qId.slice(qId.indexOf(':') + 1) : qId;
-          const row = await env.DB.prepare(
-            'SELECT * FROM questions WHERE id = ? OR id LIKE ? LIMIT 1'
-          )
-            .bind(qId, `%:${bareId}`)
-            .first<Record<string, any>>();
+          let row: Record<string, any> | null | undefined =
+            rowById.get(qId) || rowByBareId.get(bareId);
+          if (!row) {
+            row = await env.DB.prepare(
+              'SELECT id, options_json, correct_answer, explanation FROM questions WHERE id = ? OR id LIKE ? LIMIT 1'
+            )
+              .bind(qId, `%:${bareId}`)
+              .first<Record<string, any>>();
+          }
 
           if (!row) continue;
 
@@ -3118,14 +3154,47 @@ ${urls
             .split(',')
             .map((s) => s.trim())
             .filter(Boolean);
+          const candidateIds = new Set<string>();
+          for (const reqId of requestedIds) {
+            candidateIds.add(reqId);
+            if (reqId.includes(':')) {
+              const bare = reqId.slice(reqId.indexOf(':') + 1);
+              candidateIds.add(bare);
+              candidateIds.add(`legacy:${bare}`);
+              candidateIds.add(`bank1:${bare}`);
+              candidateIds.add(`bank2:${bare}`);
+            }
+          }
+          const idList = Array.from(candidateIds).slice(0, 500);
+          const rowById = new Map<string, Record<string, any>>();
+          const rowByBareId = new Map<string, Record<string, any>>();
+          if (idList.length > 0) {
+            const placeholders = idList.map(() => '?').join(',');
+            const { results: batchRows } = await env.DB.prepare(
+              `SELECT * FROM questions WHERE id IN (${placeholders})`
+            )
+              .bind(...idList)
+              .all<Record<string, any>>();
+            for (const r of batchRows || []) {
+              const rid = String(r.id || '');
+              rowById.set(rid, r);
+              const bare = rid.includes(':') ? rid.slice(rid.indexOf(':') + 1) : rid;
+              if (!rowByBareId.has(bare)) rowByBareId.set(bare, r);
+            }
+          }
+
           const matchedQuestions: Record<string, any>[] = [];
           for (const reqId of requestedIds) {
             const bareId = reqId.includes(':') ? reqId.slice(reqId.indexOf(':') + 1) : reqId;
-            const row = await env.DB.prepare(
-              'SELECT * FROM questions WHERE id = ? OR id LIKE ? LIMIT 1'
-            )
-              .bind(reqId, `%:${bareId}`)
-              .first<Record<string, any>>();
+            let row: Record<string, any> | null | undefined =
+              rowById.get(reqId) || rowByBareId.get(bareId);
+            if (!row) {
+              row = await env.DB.prepare(
+                'SELECT * FROM questions WHERE id = ? OR id LIKE ? LIMIT 1'
+              )
+                .bind(reqId, `%:${bareId}`)
+                .first<Record<string, any>>();
+            }
             if (!row) continue;
             if (!isStrictQuestionAdmin && String(row.status) !== 'published') continue;
             const dto = rowToQuestionDto(row, isStrictQuestionAdmin);

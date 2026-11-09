@@ -80,17 +80,19 @@ function DashboardBottomNavComponent() {
   // Detect any open full-screen external modal across the app and hide the bottom navigation
   useEffect(() => {
     if (typeof document === 'undefined') return;
+    let rafId: number | null = null;
 
-    const checkModalState = () => {
+    const runModalCheck = () => {
+      rafId = null;
       if (document.body.getAttribute('data-hamburger-sheet-open') === 'true') {
-        setIsExternalModalOpen(false);
+        setIsExternalModalOpen((prev) => (prev ? false : prev));
         return;
       }
       if (
         document.body.getAttribute('data-fullscreen-modal-open') === 'true' ||
         document.body.getAttribute('data-pro-checkout-open') === 'true'
       ) {
-        setIsExternalModalOpen(true);
+        setIsExternalModalOpen((prev) => (prev ? prev : true));
         return;
       }
       const overlays = document.querySelectorAll<HTMLElement>(
@@ -107,29 +109,35 @@ function DashboardBottomNavComponent() {
         }
         return true;
       });
-      setIsExternalModalOpen(hasActiveModal);
+      setIsExternalModalOpen((prev) => (prev === hasActiveModal ? prev : hasActiveModal));
     };
 
-    checkModalState();
+    const scheduleModalCheck = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(runModalCheck);
+    };
 
-    const observer = new MutationObserver(checkModalState);
+    runModalCheck();
+
+    const observer = new MutationObserver(scheduleModalCheck);
     observer.observe(document.body, {
       attributes: true,
       attributeFilter: [
-        'style',
-        'class',
         'data-fullscreen-modal-open',
         'data-pro-checkout-open',
         'data-hamburger-sheet-open',
       ],
       childList: true,
-      subtree: true,
+      subtree: false,
     });
 
-    window.addEventListener('boardly:modal-change', checkModalState);
+    window.addEventListener('boardly:modal-change', scheduleModalCheck);
     return () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
       observer.disconnect();
-      window.removeEventListener('boardly:modal-change', checkModalState);
+      window.removeEventListener('boardly:modal-change', scheduleModalCheck);
     };
   }, [location.pathname]);
 

@@ -78,15 +78,14 @@ const PKTMidnightCountdown = memo(function PKTMidnightCountdown() {
       const diffMs = midnight.getTime() - pktNow.getTime();
       const hrs = Math.floor(diffMs / (1000 * 60 * 60));
       const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-      const secs = Math.floor((diffMs % (1000 * 60)) / 1000);
 
       setTimeToMidnight(
-        `${String(hrs).padStart(2, '0')}h ${String(mins).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s`
+        `${String(hrs).padStart(2, '0')}h ${String(mins).padStart(2, '0')}m`
       );
     }
 
     updateCountdown();
-    const interval = setInterval(updateCountdown, 1000);
+    const interval = setInterval(updateCountdown, 30000);
     return () => clearInterval(interval);
   }, []);
 

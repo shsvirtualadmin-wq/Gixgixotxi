@@ -33,7 +33,13 @@ export function PlansBillingPage() {
   const { user, isGuest } = useAuth();
   const navigate = useNavigate();
   const { profile } = useUserProfile();
-  const { plan: currentPlan, source, planStatus, refreshPlanStatus } = useEffectivePlan();
+  const {
+    plan: currentPlan,
+    source,
+    planStatus,
+    paymentRequests: streamedPaymentRequests,
+    refreshPlanStatus,
+  } = useEffectivePlan();
   const isCrew = source === 'crew';
   const { balance } = useWallet();
 
@@ -49,16 +55,18 @@ export function PlansBillingPage() {
 
   const [studentProRequests, setStudentProRequests] = useState<PaymentRequest[]>([]);
 
+  useEffect(() => {
+    if (Array.isArray(streamedPaymentRequests) && streamedPaymentRequests.length > 0) {
+      setStudentProRequests(streamedPaymentRequests);
+    }
+  }, [streamedPaymentRequests]);
+
   const loadProRequests = useCallback(async () => {
     if (!user?.uid || isGuest) return;
     await refreshPlanStatus();
     const list = await fetchStudentProRequests(user.uid);
     setStudentProRequests(list);
   }, [user?.uid, isGuest, refreshPlanStatus]);
-
-  useEffect(() => {
-    loadProRequests();
-  }, [loadProRequests]);
 
   // Refresh plan status when the window regains focus or a plan-refresh event is dispatched
   useEffect(() => {

@@ -87,17 +87,18 @@ const KobanStyleContext = createContext<KobanStyleContextValue>({
   resetToDefault: async () => ({ ok: true }),
 });
 
+let inFlightKobanStylePromise: Promise<KobanStyleSettings | null> | null = null;
+let inFlightKobanStyleUid: string | null = null;
+
 export function KobanStyleProvider({ children }: { children: React.ReactNode }) {
-  const { user, profileLoading: authLoading } = useAuth();
+  const { user } = useAuth();
   const [style, setStyle] = useState<KobanStyleSettings>(() => readStyleFromLocalStorage(null));
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const loadedUidRef = useRef<string | null>(null);
 
-  // Sync from server once on app start / when user changes
+  // Sync from server once on app start / when user changes (without waiting on profileLoading waterfall)
   useEffect(() => {
-    if (authLoading) return;
-
     const uid = user?.uid || null;
 
     // Instant paint from localStorage for this user before network completes
@@ -117,37 +118,50 @@ export function KobanStyleProvider({ children }: { children: React.ReactNode }) 
     let cancelled = false;
     setLoading(true);
 
-    (async () => {
-      try {
-        const headers = await buildKobanStyleAuthHeaders();
-        const res = await fetch('/api/koban-style', {
-          method: 'GET',
-          headers,
-          credentials: 'include',
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (cancelled) return;
-        if (data?.ok && data?.style) {
-          const check = validateKobanStylePayload(data.style);
-          if (check.valid && check.value) {
-            setStyle(check.value);
-            writeStyleToLocalStorage(check.value, uid);
+    if (!inFlightKobanStylePromise || inFlightKobanStyleUid !== uid) {
+      inFlightKobanStyleUid = uid;
+      inFlightKobanStylePromise = (async () => {
+        try {
+          const headers = await buildKobanStyleAuthHeaders();
+          const res = await fetch('/api/koban-style', {
+            method: 'GET',
+            headers,
+            credentials: 'include',
+          });
+          if (!res.ok) return null;
+          const data = await res.json();
+          if (data?.ok && data?.style) {
+            const check = validateKobanStylePayload(data.style);
+            if (check.valid && check.value) {
+              writeStyleToLocalStorage(check.value, uid);
+              return check.value;
+            }
           }
+        } catch {
+          // Keep cached or default style if offline
         }
-      } catch {
-        // Keep cached or default style if offline
-      } finally {
+        return null;
+      })().finally(() => {
+        inFlightKobanStylePromise = null;
+      });
+    }
+
+    inFlightKobanStylePromise
+      .then((resolved) => {
+        if (!cancelled && resolved) {
+          setStyle(resolved);
+        }
+      })
+      .finally(() => {
         if (!cancelled) {
           setLoading(false);
         }
-      }
-    })();
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [user?.uid, authLoading]);
+  }, [user?.uid]);
 
   const saveStyle = useCallback(
     async (nextStyle: KobanStyleSettings): Promise<{ ok: boolean; error?: string }> => {
@@ -206,16 +220,19 @@ export function KobanStyleProvider({ children }: { children: React.ReactNode }) 
     return saveStyle(DEFAULT_KOBAN_STYLE);
   }, [saveStyle]);
 
+  const contextValue = React.useMemo<KobanStyleContextValue>(
+    () => ({
+      style,
+      loading,
+      saving,
+      saveStyle,
+      resetToDefault,
+    }),
+    [style, loading, saving, saveStyle, resetToDefault]
+  );
+
   return (
-    <KobanStyleContext.Provider
-      value={{
-        style,
-        loading,
-        saving,
-        saveStyle,
-        resetToDefault,
-      }}
-    >
+    <KobanStyleContext.Provider value={contextValue}>
       {children}
     </KobanStyleContext.Provider>
   );
