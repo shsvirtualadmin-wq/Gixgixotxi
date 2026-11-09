@@ -16,11 +16,11 @@ import {
   REFUND_POLICY_TEXT,
   ANNUAL_SAVINGS_PERCENT,
   PLAN_COMPARISON_ROWS,
-  getProStatusSummary,
   type ProPlanId,
 } from '@/config/plans';
 import { StatusBanner } from '@/components/plans/StatusBanner';
 import { PlanCard } from '@/components/plans/PlanCard';
+import { ProLockedStateCard } from '@/components/plans/ProLockedStateCard';
 import { ProCheckoutSheet } from '@/components/plans/ProCheckoutSheet';
 import { GuestProBlockedView } from '@/components/plans/GuestProBlockedView';
 import { GetKobansModal } from '@/components/koban/GetKobansModal';
@@ -31,7 +31,7 @@ export function PlansBillingPage() {
   const { user, isGuest } = useAuth();
   const navigate = useNavigate();
   const { profile } = useUserProfile();
-  const { plan: currentPlan, isPro, source } = useEffectivePlan();
+  const { plan: currentPlan, source, planStatus, refreshPlanStatus } = useEffectivePlan();
   const isCrew = source === 'crew';
   const { balance } = useWallet();
 
@@ -49,21 +49,36 @@ export function PlansBillingPage() {
 
   const loadProRequests = useCallback(async () => {
     if (!user?.uid || isGuest) return;
+    await refreshPlanStatus();
     const list = await fetchStudentProRequests(user.uid);
     setStudentProRequests(list);
-  }, [user?.uid, isGuest]);
+  }, [user?.uid, isGuest, refreshPlanStatus]);
 
   useEffect(() => {
     loadProRequests();
   }, [loadProRequests]);
+
+  // Refresh plan status when the window regains focus or a plan-refresh event is dispatched
+  useEffect(() => {
+    if (!user?.uid || isGuest) return;
+    const onFocusOrRefresh = () => {
+      loadProRequests().catch(() => {});
+    };
+    window.addEventListener('focus', onFocusOrRefresh);
+    window.addEventListener('boardly:plan-refresh', onFocusOrRefresh);
+    return () => {
+      window.removeEventListener('focus', onFocusOrRefresh);
+      window.removeEventListener('boardly:plan-refresh', onFocusOrRefresh);
+    };
+  }, [user?.uid, isGuest, loadProRequests]);
 
   if (isGuest) {
     return <GuestProBlockedView variant="page" />;
   }
 
   const rawExpiresAt = profile?.planExpiresAt ?? (profile as any)?.premiumExpiresAt ?? null;
-  const proSummary = getProStatusSummary(rawExpiresAt);
-  const effectiveIsPro = isPro || proSummary.isActive;
+  const effectiveIsPro = planStatus.state === 'active';
+  const isPurchaseLocked = planStatus.state === 'active' || planStatus.state === 'pending';
 
   const pendingProRequest =
     studentProRequests.find(
@@ -74,7 +89,9 @@ export function PlansBillingPage() {
       (r) => r.status === 'rejected' && r.plan !== 'large_crew'
     ) || null;
 
+  // Automatically close the checkout sheet if the user's plan becomes active while open
   const openProCheckout = (plan: ProPlanId) => {
+    if (isPurchaseLocked) return;
     setSelectedCheckoutPlan(plan);
     setCheckoutOpen(true);
   };
@@ -97,14 +114,106 @@ export function PlansBillingPage() {
         </p>
       </div>
 
-      {/* ─── ACTIVE PLAN STATUS BANNER (Uniform 1px border, no left-edge curve artifact) ─── */}
+      {/* ─── ACTIVE PLAN STATUS BANNER ─── */}
       <StatusBanner
         planId={effectiveIsPro ? 'pro' : isCrew ? 'crew' : 'free'}
         planExpiresAtRaw={rawExpiresAt}
+        planStatus={planStatus}
         pendingProRequest={pendingProRequest}
         latestRejectedProRequest={latestRejectedProRequest}
         onUpgradeOrExtend={() => openProCheckout('pro_monthly')}
       />
+
+      {/* ─── LOCKED STATE (ACTIVE PRO OR PENDING VERIFICATION) VS PURCHASE OPTIONS ─── */}
+      {isPurchaseLocked ? (
+        <ProLockedStateCard planStatus={planStatus} />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 items-stretch">
+          {/* 1. Free Tier Card */}
+          <PlanCard
+            title={PLANS.free.name}
+            subtitle={PLANS.free.shortName}
+            icon={<BookOpen size={17} />}
+            pricePkr={PLANS.free.price_pkr}
+            cadenceLabel={PLANS.free.cadenceLabel}
+            priceSubtext={PLANS.free.description}
+            features={PLANS.free.features}
+            featured={false}
+            ctaLabel={currentPlan === 'free' && !effectiveIsPro ? 'Current Plan' : 'Included Base Tier'}
+            ctaVariant="disabled-current"
+          />
+
+          {/* 2. Boardly Pro Card */}
+          <PlanCard
+            title="Boardly Pro"
+            subtitle={
+              proCardCycle === 'pro_annual'
+                ? `Annual Pass · Save ${ANNUAL_SAVINGS_PERCENT}%`
+                : 'Monthly Pass · Full Access'
+            }
+            durationBadge={`${activeProOption.duration_days} Days`}
+            topRightBadge="POPULAR"
+            topRightBadgeTone="pro"
+            icon={<Zap size={17} />}
+            pricePkr={activeProOption.price_pkr}
+            cadenceLabel={activeProOption.cadenceLabel}
+            priceKobans={activeProOption.price_kobans}
+            regularPricePkr={activeProOption.regular_price_pkr}
+            priceSubtext={activeProOption.description}
+            features={activeProOption.features}
+            featured={true}
+            ctaLabel={
+              proCardCycle === 'pro_annual'
+                ? `Get Annual Pass, PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}`
+                : `Upgrade to Pro, PKR ${PLANS.pro_monthly.price_pkr}/mo`
+            }
+            ctaIcon={<Zap size={15} />}
+            ctaVariant="primary-red"
+            onCtaClick={() => openProCheckout(proCardCycle)}
+            footerSlot={
+              <div className="pt-1 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setProCardCycle((prev) =>
+                      prev === 'pro_monthly' ? 'pro_annual' : 'pro_monthly'
+                    )
+                  }
+                  className="w-full min-h-[40px] px-3 py-1.5 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--border)]/40 border border-[var(--border)] text-xs font-heading font-semibold text-[var(--text)] flex items-center justify-between gap-2 transition-colors cursor-pointer"
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    <Sparkles size={13} className="text-[#E8342A]" />
+                    <span>
+                      {proCardCycle === 'pro_monthly'
+                        ? `Switch to Annual (PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}/yr)`
+                        : `Switch to Monthly (PKR ${PLANS.pro_monthly.price_pkr}/mo)`}
+                    </span>
+                  </span>
+                  <span className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-[#E8342A]/15 text-[#E8342A]">
+                    Save {ANNUAL_SAVINGS_PERCENT}%
+                  </span>
+                </button>
+              </div>
+            }
+          />
+
+          {/* 3. Nakama Crew Card */}
+          <PlanCard
+            title={PLANS.crew.name}
+            subtitle={PLANS.crew.shortName}
+            icon={<Users size={17} />}
+            pricePkr={PLANS.crew.price_pkr}
+            cadenceLabel={PLANS.crew.cadenceLabel}
+            priceSubtext={PLANS.crew.description}
+            features={PLANS.crew.features}
+            featured={false}
+            ctaLabel={isCrew ? 'Manage Your Crew' : 'Join or Create Crew'}
+            ctaIcon={<Users size={15} />}
+            ctaVariant="outlined"
+            onCtaClick={() => navigate('/dashboard/crew')}
+          />
+        </div>
+      )}
 
       {/* ─── COMPACT 3-COLUMN COMPARISON SUMMARY (Free vs Pro vs Crew) ──────── */}
       <div className="rounded-[22px] bg-[var(--card)] border border-[var(--border)] overflow-hidden">
@@ -151,111 +260,25 @@ export function PlansBillingPage() {
         </div>
       </div>
 
-      {/* ─── THREE CONSISTENT PLAN CARDS (Free, Boardly Pro, Nakama Crew) ────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 items-stretch">
-        {/* 1. Free Tier Card */}
-        <PlanCard
-          title={PLANS.free.name}
-          subtitle={PLANS.free.shortName}
-          icon={<BookOpen size={17} />}
-          pricePkr={PLANS.free.price_pkr}
-          cadenceLabel={PLANS.free.cadenceLabel}
-          priceSubtext={PLANS.free.description}
-          features={PLANS.free.features}
-          featured={false}
-          ctaLabel={currentPlan === 'free' && !effectiveIsPro ? 'Current Plan' : 'Included Base Tier'}
-          ctaVariant="disabled-current"
-        />
-
-        {/* 2. Boardly Pro Card (Only card with red border & subtle red glow; POPULAR badge inside top-right) */}
-        <PlanCard
-          title="Boardly Pro"
-          subtitle={
-            proCardCycle === 'pro_annual'
-              ? `Annual Pass · Save ${ANNUAL_SAVINGS_PERCENT}%`
-              : 'Monthly Pass · Full Access'
-          }
-          durationBadge={`${activeProOption.duration_days} Days`}
-          topRightBadge="POPULAR"
-          topRightBadgeTone="pro"
-          icon={<Zap size={17} />}
-          pricePkr={activeProOption.price_pkr}
-          cadenceLabel={activeProOption.cadenceLabel}
-          priceKobans={activeProOption.price_kobans}
-          regularPricePkr={activeProOption.regular_price_pkr}
-          priceSubtext={activeProOption.description}
-          features={activeProOption.features}
-          featured={true}
-          ctaLabel={
-            effectiveIsPro
-              ? `Extend Pro — PKR ${activeProOption.price_pkr.toLocaleString()}`
-              : proCardCycle === 'pro_annual'
-              ? `Get Annual Pass, PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}`
-              : `Upgrade to Pro, PKR ${PLANS.pro_monthly.price_pkr}/mo`
-          }
-          ctaIcon={<Zap size={15} />}
-          ctaVariant="primary-red"
-          onCtaClick={() => openProCheckout(proCardCycle)}
-          footerSlot={
-            <div className="pt-1 flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  setProCardCycle((prev) =>
-                    prev === 'pro_monthly' ? 'pro_annual' : 'pro_monthly'
-                  )
-                }
-                className="w-full min-h-[40px] px-3 py-1.5 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--border)]/40 border border-[var(--border)] text-xs font-heading font-semibold text-[var(--text)] flex items-center justify-between gap-2 transition-colors cursor-pointer"
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <Sparkles size={13} className="text-[#E8342A]" />
-                  <span>
-                    {proCardCycle === 'pro_monthly'
-                      ? `Switch to Annual (PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}/yr)`
-                      : `Switch to Monthly (PKR ${PLANS.pro_monthly.price_pkr}/mo)`}
-                  </span>
-                </span>
-                <span className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-[#E8342A]/15 text-[#E8342A]">
-                  Save {ANNUAL_SAVINGS_PERCENT}%
-                </span>
-              </button>
-            </div>
-          }
-        />
-
-        {/* 3. Nakama Crew Card */}
-        <PlanCard
-          title={PLANS.crew.name}
-          subtitle={PLANS.crew.shortName}
-          icon={<Users size={17} />}
-          pricePkr={PLANS.crew.price_pkr}
-          cadenceLabel={PLANS.crew.cadenceLabel}
-          priceSubtext={PLANS.crew.description}
-          features={PLANS.crew.features}
-          featured={false}
-          ctaLabel={isCrew ? 'Manage Your Crew' : 'Join or Create Crew'}
-          ctaIcon={<Users size={15} />}
-          ctaVariant="outlined"
-          onCtaClick={() => navigate('/dashboard/crew')}
-        />
-      </div>
-
       {/* ─── REFUND POLICY & PAYMENT NOTE FOOTER ────────────────────────────── */}
       <div className="rounded-[20px] bg-[var(--card)] border border-[var(--border)] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[var(--muted)]">
         <div className="flex items-center gap-2.5">
           <ShieldCheck size={16} className="text-emerald-500 shrink-0" />
           <span>
-            <strong className="text-[var(--text)]">Terms:</strong> {REFUND_POLICY_TEXT} Instant
-            activation when paying with Kobans, or within 2 hours via JazzCash / Opay.
+            <strong className="text-[var(--text)]">Terms &amp; Refunds:</strong> {REFUND_POLICY_TEXT}{' '}
+            Payments are verified manually and plans are activated within 24 hours after you submit
+            your payment and proof.
           </span>
         </div>
-        <button
-          type="button"
-          onClick={() => openProCheckout('pro_annual')}
-          className="font-heading font-bold text-xs text-[var(--red)] hover:underline shrink-0 text-left sm:text-right cursor-pointer"
-        >
-          View Annual Pass (Save {ANNUAL_SAVINGS_PERCENT}%) →
-        </button>
+        {!isPurchaseLocked && (
+          <button
+            type="button"
+            onClick={() => openProCheckout('pro_annual')}
+            className="font-heading font-bold text-xs text-[var(--red)] hover:underline shrink-0 text-left sm:text-right cursor-pointer"
+          >
+            View Annual Pass (Save {ANNUAL_SAVINGS_PERCENT}%) →
+          </button>
+        )}
       </div>
 
       {/* ─── DEDICATED PRO CHECKOUT SHEET ───────────────────────────────────── */}
@@ -268,7 +291,7 @@ export function PlansBillingPage() {
         userName={profile?.displayName || profile?.name || user?.displayName}
         kobanBalance={balance}
         currentProExpiresAt={rawExpiresAt}
-        hasPendingProRequest={Boolean(pendingProRequest)}
+        hasPendingProRequest={planStatus.state === 'pending' || Boolean(pendingProRequest)}
         onOpenGetKobans={(needed) => {
           setCheckoutOpen(false);
           setGetKobansInitialAmount(needed);
@@ -292,3 +315,4 @@ export function PlansBillingPage() {
     </div>
   );
 }
+

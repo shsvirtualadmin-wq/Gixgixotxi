@@ -16,7 +16,7 @@ const SECTIONS = [
   { id: 'commons-community', title: '6. Boardly Commons, Crews & Direct Chat' },
   { id: 'moderation-admin', title: '7. Moderation & Administrator Access' },
   { id: 'rewards-kobans', title: '8. Rewards, Referrals & Kobans' },
-  { id: 'pro-payments', title: '9. Boardly Pro, Manual Payments & Refunds' },
+  { id: 'pro-payments', title: '9. Boardly Pro, Manual Payments & Zero Refunds' },
   { id: 'acceptable-use', title: '10. Acceptable Use & Anti-Abuse Rules' },
   { id: 'intellectual-property', title: '11. Intellectual Property & User Content' },
   { id: 'university-disclaimer', title: '12. University & Exam Non-Affiliation' },
@@ -122,6 +122,12 @@ export const TermsPage: React.FC = () => {
             </div>
             <ul className="list-disc pl-5 space-y-2 text-xs sm:text-sm text-[var(--text)]/90">
               <li>
+                <strong>Operated by SHS Virtual Academy:</strong> Boardly is a product of{' '}
+                <strong>SHS Virtual Academy</strong> (Rawalpindi, Pakistan). You must be at least
+                13 years old to use Boardly, and users under 18 should use Boardly with the
+                knowledge of a parent or guardian.
+              </li>
+              <li>
                 <strong>Two ways to use Boardly:</strong> You can create a registered account (email
                 &amp; password or Google) or try Boardly with a temporary Guest account. Guest
                 accounts have no password, cannot be recovered after logging out or clearing browser
@@ -145,10 +151,10 @@ export const TermsPage: React.FC = () => {
                 system retains your internal user ID for safety, abuse prevention, and moderation.
               </li>
               <li>
-                <strong>Kobans &amp; Boardly Pro:</strong> Kobans are virtual in-app points with no
-                real-world cash value and cannot be withdrawn or transferred. Boardly Pro passes can
-                be unlocked using Kobans or manual PKR transfers (JazzCash / Opay) verified via
-                Transaction ID (TID).
+                <strong>Manual payment verification (within 24 hours) &amp; zero refunds:</strong>{' '}
+                Payments are verified manually. After you submit your payment and proof, we verify
+                it and activate your plan within 24 hours. All Pro and Premium purchases are final
+                and non-refundable once submitted or activated (zero refunds).
               </li>
               <li>
                 <strong>Independent platform:</strong> Boardly is an independent educational
@@ -163,22 +169,30 @@ export const TermsPage: React.FC = () => {
               1. Acceptance &amp; Operator Details
             </h2>
             <p>
-              Welcome to Boardly (&ldquo;Boardly&rdquo;, &ldquo;we&rdquo;, &ldquo;our&rdquo;, or
-              &ldquo;us&rdquo;), operated by <strong>[BUSINESS NAME]</strong> (formerly operating
-              under SHS Virtual Academy), located at <strong>[ADDRESS]</strong>. By creating an
-              account, continuing as a guest, or using our website (`boardly.cfd`), Progressive Web
-              App (PWA), or related services, you agree to these Terms of Service and our{' '}
+              Welcome to <strong>Boardly</strong> (&ldquo;Boardly&rdquo;, &ldquo;we&rdquo;,
+              &ldquo;our&rdquo;, or &ldquo;us&rdquo;). Boardly is a product of and is operated by{' '}
+              <strong>SHS Virtual Academy</strong> (parent organization), located in{' '}
+              <strong>Rawalpindi, Pakistan</strong>. By creating an account, continuing as a guest,
+              or using our website (`boardly.cfd`), Progressive Web App (PWA), or related services,
+              you agree to these Terms of Service and our{' '}
               <Link to="/privacy" className="text-[var(--red)] hover:underline font-medium">
                 Privacy Policy
               </Link>
               .
             </p>
             <p>
-              <strong>Eligibility &amp; Minors:</strong> You must be at least{' '}
-              <strong>[MINIMUM AGE, e.g., 13 — TO CONFIRM]</strong> years old to use Boardly. If you
-              are under 18 years of age, you confirm that you are using Boardly with the knowledge
-              and permission of your parent or legal guardian, particularly before submitting any
-              payment for Boardly Pro.
+              <strong>Minimum Age &amp; Minors:</strong> You must be at least{' '}
+              <strong>13 years old</strong> to use Boardly. Users under{' '}
+              <strong>18 years of age</strong> should use Boardly with the knowledge of a parent or
+              legal guardian. We do not knowingly collect data from children under 13, and a parent
+              or guardian can email us at{' '}
+              <a
+                href="mailto:shsvirtualadmin@gmail.com"
+                className="text-[var(--red)] hover:underline font-mono"
+              >
+                shsvirtualadmin@gmail.com
+              </a>{' '}
+              to request deletion of an account.
             </p>
           </section>
 
@@ -286,9 +300,8 @@ export const TermsPage: React.FC = () => {
               </li>
               <li>
                 <strong>Username &amp; Display Name Changes:</strong> Username changes are subject
-                to a <strong>14-day cooldown</strong> between changes (`[ENFORCEMENT SCOPE — TO
-                CONFIRM]`). Display name change requests are reviewed by administrators (up to 2
-                requests per month).
+                to a <strong>14-day cooldown</strong> between changes. Display name change requests
+                are reviewed by administrators (up to 2 requests per month).
               </li>
               <li>
                 <strong>Right to Reclaim or Rename:</strong> Boardly reserves the right to reclaim,
@@ -382,10 +395,10 @@ export const TermsPage: React.FC = () => {
               </li>
               <li>
                 <strong>What Administrators Can Access:</strong> Boardly administrators and super
-                administrators can view and moderate public and hidden Commons posts, comments
-                (including internal author records for anonymous posts when investigating abuse),
-                user reports, Nakama Captain and crew applications, payment verification requests,
-                and AI Study Buddy logs (`study_buddy_logs`).
+                administrators at SHS Virtual Academy can view and moderate public and hidden
+                Commons posts, comments (including internal author records for anonymous posts when
+                investigating abuse), user reports, Nakama Captain and crew applications, payment
+                verification requests, and AI Study Buddy logs (`study_buddy_logs`).
               </li>
               <li>
                 <strong>Direct Messages Storage:</strong> Direct chat messages and chat requests are
@@ -430,35 +443,38 @@ export const TermsPage: React.FC = () => {
 
           <section id="pro-payments" className="scroll-mt-28 space-y-4">
             <h2 className="font-dot text-2xl text-[var(--text)]">
-              9. Boardly Pro, Manual Payments &amp; Refunds
+              9. Boardly Pro, Manual Payments &amp; Zero Refunds
             </h2>
             <ul className="list-disc pl-5 space-y-2.5">
               <li>
                 <strong>Plans &amp; Pricing:</strong> Boardly offers fixed-duration Pro passes,
                 including the Monthly Pass (30 days, PKR 199 or 1,990 Kobans) and Annual Pass (365
-                days, PKR 1,791 or 17,910 Kobans), as well as optional Koban top-up packs. Prices
-                are displayed in Pakistani Rupees (PKR) before checkout.
+                days, PKR 1,791 or 17,910 Kobans), as well as optional Koban packs. Prices are
+                displayed in Pakistani Rupees (PKR) before checkout.
               </li>
               <li>
-                <strong>Payment Methods:</strong> You can unlock Boardly Pro either (a) instantly
-                using your in-app Koban balance, or (b) via manual Pakistani mobile wallet/bank
-                transfer (currently <strong>JazzCash</strong> and <strong>Opay</strong>) by sending
-                the exact PKR amount to the official account displayed at checkout and submitting
-                your Transaction ID (TID / reference number).
+                <strong>How Payment &amp; Manual Verification Work:</strong> Payments are verified
+                manually. When you pay via Pakistani mobile wallet or bank transfer (currently{' '}
+                <strong>JazzCash</strong> and <strong>Opay</strong>), you send the exact PKR amount
+                to the official account shown at checkout and submit your payment details and proof
+                (Transaction ID / TID). After you submit your payment and proof, our team verifies
+                it and activates your plan <strong>within 24 hours</strong> (we do not promise
+                instant activation for manual payments). You may also redeem an existing in-app
+                Koban balance toward a Pro pass.
               </li>
               <li>
-                <strong>Manual Verification &amp; Expiry Extension:</strong> Manual PKR transfers
-                are reviewed by our team (typically within 2 hours). Submitting fake, altered, or
-                duplicate Transaction IDs will result in rejection and may lead to account
-                suspension. Passes do not auto-charge your bank or wallet when they expire; if you
-                purchase a new pass while Pro is active, the additional days are added to your
-                existing expiry date.
+                <strong>When Your Plan Starts &amp; Expiry Extension:</strong> Your Pro pass starts
+                once your payment is verified and activated (or if you already have an active Pro
+                pass, the new duration is added onto your current expiry date). Passes do not
+                auto-renew or auto-charge your account when they expire. Submitting fake, altered,
+                or duplicate Transaction IDs will result in rejection and may lead to account
+                suspension.
               </li>
               <li>
-                <strong>Refund &amp; Cancellation Policy:</strong> Once a Boardly Pro pass or Koban
-                pack is activated on your account, it is non-refundable except where a duplicate
-                manual transfer occurred or where required by applicable law.{' '}
-                <strong>[REFUND &amp; CANCELLATION POLICY — TO CONFIRM]</strong>
+                <strong>Zero Refunds Policy (All Purchases Final):</strong> We have a strict{' '}
+                <strong>zero refunds</strong> policy. All Pro, Premium, and Koban purchases are{' '}
+                <strong>final and non-refundable once submitted or activated</strong>. Please verify
+                your selected plan and payment amount carefully before submitting your payment.
               </li>
             </ul>
           </section>
@@ -497,15 +513,16 @@ export const TermsPage: React.FC = () => {
             <p>
               <strong>Boardly Content:</strong> All platform software, visual designs, logos,
               Zenryu companion artwork, curated MCQ explanations, and original study materials are
-              owned by Boardly or its licensors and are protected by copyright and intellectual
-              property laws. You receive a personal, non-exclusive, non-transferable license to use
-              Boardly solely for your own exam preparation.
+              owned by SHS Virtual Academy (Boardly) or its licensors and are protected by copyright
+              and intellectual property laws. You receive a personal, non-exclusive,
+              non-transferable license to use Boardly solely for your own exam preparation.
             </p>
             <p>
               <strong>Your Content:</strong> You retain ownership of the original notes, posts, and
               comments you upload to Boardly Commons. By posting content on Boardly Commons, you
-              grant Boardly a worldwide, royalty-free, non-exclusive license to host, display,
-              format, and distribute that content to other students on the platform.
+              grant SHS Virtual Academy (operating Boardly) a worldwide, royalty-free, non-exclusive
+              license to host, display, format, and distribute that content to other students on the
+              platform.
             </p>
           </section>
 
@@ -514,15 +531,15 @@ export const TermsPage: React.FC = () => {
               12. University &amp; Exam Non-Affiliation Disclaimer
             </h2>
             <p>
-              Boardly is an independent educational preparation platform. We are{' '}
-              <strong>not affiliated with, associated with, authorized by, endorsed by, or in any
-              way officially connected with</strong> any university, college, or examination
-              authority — including but not limited to NUST (NET), FAST-NUCES, IBA Karachi, LUMS,
-              GIKI, UET (ECAT), PIEAS, NED, NUMS, Aga Khan University (AKU), ETEA, NTS (NAT), HEC
-              (USAT), PMDC (MDCAT), or any Federal or Provincial Board of Intermediate and Secondary
-              Education (BISE). All university and exam names are used strictly for identification
-              of study tracks. Practice scores and mock rankings on Boardly do not guarantee
-              admission or official exam results.
+              Boardly is an independent educational preparation platform operated by SHS Virtual
+              Academy. We are <strong>not affiliated with, associated with, authorized by, endorsed
+              by, or in any way officially connected with</strong> any university, college, or
+              examination authority — including but not limited to NUST (NET), FAST-NUCES, IBA
+              Karachi, LUMS, GIKI, UET (ECAT), PIEAS, NED, NUMS, Aga Khan University (AKU), ETEA,
+              NTS (NAT), HEC (USAT), PMDC (MDCAT), or any Federal or Provincial Board of
+              Intermediate and Secondary Education (BISE). All university and exam names are used
+              strictly for identification of study tracks. Practice scores and mock rankings on
+              Boardly do not guarantee admission or official exam results.
             </p>
           </section>
 
@@ -536,8 +553,8 @@ export const TermsPage: React.FC = () => {
               we release. You are responsible for any mobile data charges incurred while using
               Boardly. If you download or access Boardly via Google Play or another app store in the
               future, your use is also subject to that store&apos;s standard terms, while{' '}
-              <strong>[BUSINESS NAME]</strong> (and not Google Play) remains solely responsible for
-              the app and student support.
+              <strong>SHS Virtual Academy</strong> (and not Google Play) remains solely responsible
+              for the Boardly app and student support.
             </p>
           </section>
 
@@ -559,8 +576,8 @@ export const TermsPage: React.FC = () => {
               <strong>Service Provided &ldquo;As Is&rdquo;:</strong> Boardly is provided on an
               &ldquo;as is&rdquo; and &ldquo;as available&rdquo; basis without warranties of
               uninterrupted availability or error-free content. To the fullest extent permitted by
-              law, Boardly&apos;s total liability for any claim arising out of your use of the
-              service is limited to the total amount you paid to Boardly for Pro access in the
+              law, SHS Virtual Academy&apos;s total liability for any claim arising out of your use
+              of Boardly is limited to the total amount you paid for Boardly Pro access in the
               twelve (12) months preceding the claim.
             </p>
           </section>
@@ -572,7 +589,8 @@ export const TermsPage: React.FC = () => {
             <p>
               <strong>Governing Law:</strong> These Terms are governed by the laws of the{' '}
               <strong>Islamic Republic of Pakistan</strong>. Any disputes arising from these Terms
-              or your use of Boardly shall be subject to the jurisdiction of the courts of Pakistan.
+              or your use of Boardly shall be subject to the jurisdiction of the courts in
+              Rawalpindi, Pakistan.
             </p>
             <p>
               <strong>Updates to These Terms:</strong> When we make material changes to these Terms,
@@ -580,22 +598,26 @@ export const TermsPage: React.FC = () => {
               this page and display a notice inside the app for logged-in users.
             </p>
             <div className="rounded-xl bg-[var(--surface-2)] border border-[var(--border)] p-4 text-xs sm:text-sm space-y-1.5">
-              <p className="text-[var(--text)] font-semibold">Contact Us:</p>
-              <p>
-                <strong>Operator / Business Name:</strong> [BUSINESS NAME]
+              <p className="text-[var(--text)] font-semibold">
+                Legal, Support, Privacy &amp; Data Request Contact:
               </p>
               <p>
-                <strong>Support Email:</strong>{' '}
+                <strong>Service Name:</strong> Boardly
+              </p>
+              <p>
+                <strong>Operator / Parent Organization:</strong> SHS Virtual Academy
+              </p>
+              <p>
+                <strong>Email:</strong>{' '}
                 <a
-                  href="mailto:support@boardly.cfd"
+                  href="mailto:shsvirtualadmin@gmail.com"
                   className="text-[var(--red)] hover:underline font-mono"
                 >
-                  support@boardly.cfd
-                </a>{' '}
-                / <strong>[CONTACT EMAIL]</strong>
+                  shsvirtualadmin@gmail.com
+                </a>
               </p>
               <p>
-                <strong>Address:</strong> [ADDRESS]
+                <strong>Address:</strong> Rawalpindi, Pakistan
               </p>
             </div>
           </section>
@@ -604,3 +626,4 @@ export const TermsPage: React.FC = () => {
     </div>
   );
 };
+export default TermsPage;

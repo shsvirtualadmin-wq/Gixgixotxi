@@ -31,6 +31,7 @@ import { useWallet } from '@/hooks/useWallet';
 import { useStoreCart } from '@/hooks/useStoreCart';
 import { useTheme } from '@/hooks/useTheme';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import {
   COSMETICS_CATALOG,
   type CosmeticItem,
@@ -76,6 +77,7 @@ import {
 } from '@/config/plans';
 import { StatusBanner } from '@/components/plans/StatusBanner';
 import { PlanCard } from '@/components/plans/PlanCard';
+import { ProLockedStateCard } from '@/components/plans/ProLockedStateCard';
 import { ProCheckoutSheet } from '@/components/plans/ProCheckoutSheet';
 import { GuestProBlockedView } from '@/components/plans/GuestProBlockedView';
 import { fetchStudentProRequests } from '@/services/proSubscriptionService';
@@ -116,7 +118,9 @@ export const StorePage: React.FC<StorePageProps> = ({
   defaultOpenGetKobans = false,
 }) => {
   const navigate = useNavigate();
-  const { user, profile: userProfile, isGuest } = useAuth();
+  const { user, profile: authUserProfile, isGuest } = useAuth();
+  const { profile: liveUserProfile } = useUserProfile();
+  const userProfile = liveUserProfile || authUserProfile;
   const { isDark, toggle: toggleTheme } = useTheme();
   const {
     balance,
@@ -209,26 +213,54 @@ export const StorePage: React.FC<StorePageProps> = ({
   const [studentProRequests, setStudentProRequests] = useState<PaymentRequest[]>(
     []
   );
-  const { isPro, source: planSource } = useEffectivePlan();
+  const { source: planSource, planStatus, refreshPlanStatus } = useEffectivePlan();
   const isCrew = planSource === 'crew';
 
   const rawProExpiresAt =
     userProfile?.planExpiresAt ?? (userProfile as any)?.premiumExpiresAt ?? null;
   const proStatusSummary = useMemo(
-    () => getProStatusSummary(rawProExpiresAt),
-    [rawProExpiresAt]
+    () =>
+      getProStatusSummary({
+        plan: planStatus.isPersonalPro ? 'pro' : 'free',
+        isPremium: planStatus.isPersonalPro,
+        proPlanId: planStatus.planId,
+        planExpiresAt: planStatus.expiryMs ?? rawProExpiresAt,
+        isSuperAdmin: planStatus.isSuperAdmin,
+      }),
+    [planStatus, rawProExpiresAt]
   );
-  const effectiveIsPro = isPro || proStatusSummary.isActive;
+  const effectiveIsPro = planStatus.state === 'active';
+  const isPurchaseLocked = planStatus.state === 'active' || planStatus.state === 'pending';
 
   const loadStudentProRequests = useCallback(async () => {
-    if (!user?.uid) return;
+    if (!user?.uid || isGuest) return;
+    await refreshPlanStatus();
     const list = await fetchStudentProRequests(user.uid);
     setStudentProRequests(list);
-  }, [user?.uid]);
+  }, [user?.uid, isGuest, refreshPlanStatus]);
 
   useEffect(() => {
     loadStudentProRequests();
   }, [loadStudentProRequests]);
+
+  useEffect(() => {
+    if (mainView === 'membership' && user?.uid && !isGuest) {
+      loadStudentProRequests().catch(() => {});
+    }
+  }, [mainView, user?.uid, isGuest, loadStudentProRequests]);
+
+  useEffect(() => {
+    if (!user?.uid || isGuest) return;
+    const onFocusOrRefresh = () => {
+      loadStudentProRequests().catch(() => {});
+    };
+    window.addEventListener('focus', onFocusOrRefresh);
+    window.addEventListener('boardly:plan-refresh', onFocusOrRefresh);
+    return () => {
+      window.removeEventListener('focus', onFocusOrRefresh);
+      window.removeEventListener('boardly:plan-refresh', onFocusOrRefresh);
+    };
+  }, [user?.uid, isGuest, loadStudentProRequests]);
 
   const pendingProRequest = useMemo(
     () =>
@@ -251,10 +283,11 @@ export const StorePage: React.FC<StorePageProps> = ({
         navigate('/login');
         return;
       }
+      if (isPurchaseLocked) return;
       setProCheckoutPlanId(planId);
       setProCheckoutOpen(true);
     },
-    [user, navigate]
+    [user, navigate, isPurchaseLocked]
   );
 
   const [coinBurstActive, setCoinBurstActive] = useState(false);
@@ -951,10 +984,11 @@ export const StorePage: React.FC<StorePageProps> = ({
           /* ─── BOARDLY PRO MEMBERSHIP VIEW (Un-nested pass cards, normal bold heading font, ProCheckoutSheet) ─── */
           <div className="space-y-6 pb-20">
             {/* Pro Status Banner (shown when student is already Pro or has a pending/rejected Pro request) */}
-            {(effectiveIsPro || pendingProRequest || latestRejectedProRequest) && (
+            {(effectiveIsPro || planStatus.state === 'pending' || pendingProRequest || latestRejectedProRequest) && (
               <StatusBanner
                 planId={effectiveIsPro ? 'pro' : isCrew ? 'crew' : 'free'}
                 planExpiresAtRaw={rawProExpiresAt}
+                planStatus={planStatus}
                 pendingProRequest={pendingProRequest}
                 latestRejectedProRequest={latestRejectedProRequest}
                 onUpgradeOrExtend={() => handleOpenProCheckout('pro_monthly')}
@@ -976,7 +1010,53 @@ export const StorePage: React.FC<StorePageProps> = ({
               </p>
             </div>
 
-            {/* "What you get with Pro" 4-bullet list above the pass cards */}
+            {/* Locked state when Active or Pending vs Pass Cards when Free */}
+            {isPurchaseLocked ? (
+              <ProLockedStateCard planStatus={planStatus} />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+                {/* Monthly Pass Card */}
+                <PlanCard
+                  title="Monthly Pass"
+                  subtitle="Full Pro access for 30 days"
+                  durationBadge={`${PLANS.pro_monthly.duration_days} Days`}
+                  icon={<Zap size={17} />}
+                  pricePkr={PLANS.pro_monthly.price_pkr}
+                  cadenceLabel={PLANS.pro_monthly.cadenceLabel}
+                  priceKobans={PLANS.pro_monthly.price_kobans}
+                  priceSubtext={PLANS.pro_monthly.description}
+                  features={PLANS.pro_monthly.features}
+                  featured={false}
+                  ctaLabel={`Get Monthly Pass, PKR ${PLANS.pro_monthly.price_pkr}`}
+                  ctaIcon={<Zap size={15} />}
+                  ctaVariant="primary-red"
+                  onCtaClick={() => handleOpenProCheckout('pro_monthly')}
+                />
+
+                {/* Annual Pass Card */}
+                <PlanCard
+                  title="Annual Pass"
+                  subtitle="Full year of uninterrupted exam prep"
+                  durationBadge={`${PLANS.pro_annual.duration_days} Days`}
+                  topRightBadge={`Best value · Save ${ANNUAL_SAVINGS_PERCENT}%`}
+                  topRightBadgeTone="pro"
+                  icon={<Crown size={17} />}
+                  pricePkr={PLANS.pro_annual.price_pkr}
+                  cadenceLabel={PLANS.pro_annual.cadenceLabel}
+                  priceKobans={PLANS.pro_annual.price_kobans}
+                  regularPricePkr={PLANS.pro_annual.regular_price_pkr}
+                  priceSubtext={PLANS.pro_annual.description}
+                  features={PLANS.pro_annual.features}
+                  featured={true}
+                  ctaLabel={`Get Annual Pass, PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}`}
+                  ctaIcon={<Crown size={15} />}
+                  ctaVariant="primary-gradient"
+                  onCtaClick={() => handleOpenProCheckout('pro_annual')}
+                />
+              </div>
+            )}
+
+            {/* "What you get with Pro" 4-bullet list */}
             <div className="rounded-[22px] border border-[var(--border)] bg-[var(--bg-card)] p-4 sm:p-5 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="font-heading font-bold text-sm sm:text-base text-[var(--text-primary)]">
@@ -1014,56 +1094,6 @@ export const StorePage: React.FC<StorePageProps> = ({
                   );
                 })}
               </div>
-            </div>
-
-            {/* Pass Cards Placed Directly on the Page (No outer wrapper card box; 16px gap) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-              {/* Monthly Pass Card */}
-              <PlanCard
-                title="Monthly Pass"
-                subtitle="Full Pro access for 30 days"
-                durationBadge={`${PLANS.pro_monthly.duration_days} Days`}
-                icon={<Zap size={17} />}
-                pricePkr={PLANS.pro_monthly.price_pkr}
-                cadenceLabel={PLANS.pro_monthly.cadenceLabel}
-                priceKobans={PLANS.pro_monthly.price_kobans}
-                priceSubtext={PLANS.pro_monthly.description}
-                features={PLANS.pro_monthly.features}
-                featured={false}
-                ctaLabel={
-                  effectiveIsPro
-                    ? `Extend Pro — PKR ${PLANS.pro_monthly.price_pkr}`
-                    : `Get Monthly Pass, PKR ${PLANS.pro_monthly.price_pkr}`
-                }
-                ctaIcon={<Zap size={15} />}
-                ctaVariant="primary-red"
-                onCtaClick={() => handleOpenProCheckout('pro_monthly')}
-              />
-
-              {/* Annual Pass Card */}
-              <PlanCard
-                title="Annual Pass"
-                subtitle="Full year of uninterrupted exam prep"
-                durationBadge={`${PLANS.pro_annual.duration_days} Days`}
-                topRightBadge={`Best value · Save ${ANNUAL_SAVINGS_PERCENT}%`}
-                topRightBadgeTone="pro"
-                icon={<Crown size={17} />}
-                pricePkr={PLANS.pro_annual.price_pkr}
-                cadenceLabel={PLANS.pro_annual.cadenceLabel}
-                priceKobans={PLANS.pro_annual.price_kobans}
-                regularPricePkr={PLANS.pro_annual.regular_price_pkr}
-                priceSubtext={PLANS.pro_annual.description}
-                features={PLANS.pro_annual.features}
-                featured={true}
-                ctaLabel={
-                  effectiveIsPro
-                    ? `Extend Pro — PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}`
-                    : `Get Annual Pass, PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}`
-                }
-                ctaIcon={<Crown size={15} />}
-                ctaVariant="primary-gradient"
-                onCtaClick={() => handleOpenProCheckout('pro_annual')}
-              />
             </div>
 
             {/* Small FAQ at the bottom of Boardly Pro tab */}

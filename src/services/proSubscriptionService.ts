@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   addDoc,
   setDoc,
@@ -10,13 +11,15 @@ import {
   runTransaction,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import {
   getProPlanById,
   computeExtendedProExpiry,
+  resolveUnifiedPlanStatus,
   type ProPlanId,
 } from '@/config/plans';
-import { clearPlanCache } from '@/hooks/useEffectivePlan';
+import { clearPlanCache, forceRefreshPaymentRequests } from '@/hooks/useEffectivePlan';
+import { forceRefreshUserProfile } from '@/hooks/useUserProfile';
 import {
   notifyProActivated,
   notifyProRequestReceived,
@@ -41,6 +44,7 @@ export interface ProKobanPurchaseResult {
 }
 
 const inFlightProKeys = new Set<string>();
+const inFlightPurchaseUids = new Set<string>();
 const completedProCache = new Map<string, ProKobanPurchaseResult>();
 
 function sanitizeIdempotencyKey(raw: string): string {
@@ -49,6 +53,85 @@ function sanitizeIdempotencyKey(raw: string): string {
     .replace(/[^a-zA-Z0-9_-]/g, '_')
     .slice(0, 64);
   return cleaned || `pro_${Date.now()}`;
+}
+
+async function callServerProPurchaseGuard(params: {
+  endpoint: '/api/pro/purchase' | '/api/pro/submit-payment' | '/api/pro/activate' | '/api/pro/purchase-guard';
+  uid: string;
+  planId: ProPlanId;
+  planName: string;
+  durationDays: number;
+  amountPkr: number;
+  method: string;
+  tid?: string;
+  commitLock: boolean;
+  lockState: 'active' | 'pending';
+  expiresAtMs?: number;
+  pendingRequestId?: string;
+}): Promise<{ serverNowMs: number }> {
+  if (params.uid.startsWith('guest_')) {
+    const err = new Error(
+      'Guest accounts cannot purchase Boardly Pro. Please create a registered account to upgrade.'
+    ) as Error & { code?: string; status?: number };
+    err.code = 'GUEST_UPGRADE_FORBIDDEN';
+    err.status = 403;
+    throw err;
+  }
+
+  let token: string | null = null;
+  try {
+    token = (await auth.currentUser?.getIdToken()) || null;
+  } catch {
+    token = null;
+  }
+
+  if (!token) {
+    return { serverNowMs: Date.now() };
+  }
+
+  let resp: Response;
+  try {
+    resp = await fetch(params.endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        uid: params.uid,
+        planId: params.planId,
+        planName: params.planName,
+        durationDays: params.durationDays,
+        amountPkr: params.amountPkr,
+        method: params.method,
+        tid: params.tid || '',
+        commitLock: params.commitLock,
+        lockState: params.lockState,
+        expiresAtMs: params.expiresAtMs,
+        pendingRequestId: params.pendingRequestId,
+      }),
+    });
+  } catch {
+    // If network call to auxiliary worker fails locally, fallback to Firestore transaction guard
+    return { serverNowMs: Date.now() };
+  }
+
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || data?.ok === false) {
+    const message =
+      data?.error ||
+      (resp.status === 403
+        ? 'Guest accounts cannot purchase Boardly Pro. Please create a registered account to upgrade.'
+        : 'You cannot start another purchase while you have an active plan or a payment awaiting verification.');
+    const err = new Error(message) as Error & { code?: string; status?: number };
+    err.code = data?.code || (resp.status === 403 ? 'FORBIDDEN' : 'CONFLICT');
+    err.status = resp.status;
+    throw err;
+  }
+
+  return {
+    serverNowMs: typeof data?.serverNowMs === 'number' ? data.serverNowMs : Date.now(),
+  };
 }
 
 /**
@@ -119,13 +202,14 @@ export function calculateProPurchaseOutcome(params: {
 
 /**
  * Pay with Kobans:
- * Runs one atomic transaction that:
- * 1. Verifies the student's wallet balance
- * 2. Deducts `price_kobans` (read strictly from PLANS config)
- * 3. Activates or extends Pro (adds 30 or 365 days to current `planExpiresAt` if already Pro)
- * 4. Writes an immutable ledger entry with `balance_before` (`balanceBefore`) and `balance_after` (`balanceAfter`)
- * 5. Uses an `idempotencyKey` so a double-tap cannot charge twice
- * 6. Sends the "Pro activated" / receipt email after commit
+ * Runs server-side guard + atomic Firestore transaction that:
+ * 1. Verifies the user does NOT already have an active Pro plan or pending manual payment
+ * 2. Verifies the student's wallet balance
+ * 3. Deducts `price_kobans` (read strictly from PLANS config)
+ * 4. Activates Pro for 30 or 365 days
+ * 5. Writes an immutable ledger entry with `balance_before` (`balanceBefore`) and `balance_after` (`balanceAfter`)
+ * 6. Uses an `idempotencyKey` and per-UID lock so a double-tap or two tabs cannot charge twice
+ * 7. Sends the "Pro activated" / receipt email after commit
  */
 export async function purchaseProWithKobans(params: {
   uid: string;
@@ -138,6 +222,14 @@ export async function purchaseProWithKobans(params: {
   if (!uid) {
     throw new Error('Please sign in to purchase Boardly Pro.');
   }
+  if (uid.startsWith('guest_')) {
+    const err = new Error(
+      'Guest accounts cannot purchase Boardly Pro. Please create a registered account to upgrade.'
+    ) as Error & { code?: string; status?: number };
+    err.code = 'GUEST_UPGRADE_FORBIDDEN';
+    err.status = 403;
+    throw err;
+  }
 
   const plan = getProPlanById(planId);
   const safeKey = sanitizeIdempotencyKey(params.idempotencyKey);
@@ -146,11 +238,17 @@ export async function purchaseProWithKobans(params: {
   if (completedProCache.has(cacheKey)) {
     return completedProCache.get(cacheKey)!;
   }
-  if (inFlightProKeys.has(cacheKey)) {
-    throw new Error('Your Pro pass activation is already processing. Please wait.');
+  if (inFlightProKeys.has(cacheKey) || inFlightPurchaseUids.has(uid)) {
+    const err = new Error(
+      'Your Pro pass purchase is already being processed. Please wait a moment.'
+    ) as Error & { code?: string; status?: number };
+    err.code = 'PURCHASE_IN_PROGRESS';
+    err.status = 409;
+    throw err;
   }
 
   inFlightProKeys.add(cacheKey);
+  inFlightPurchaseUids.add(uid);
 
   const userRef = doc(db, 'users', uid);
   const walletRef = doc(db, 'wallets', uid);
@@ -158,6 +256,28 @@ export async function purchaseProWithKobans(params: {
   const ledgerRef = doc(db, 'wallets', uid, 'ledger', ledgerDocId);
 
   try {
+    // 1. Pre-check pending paymentRequests in Firestore
+    const pendingReqsSnap = await getDocs(
+      query(collection(db, 'paymentRequests'), where('userId', '==', uid), limit(25))
+    );
+    const existingPendingDocs = pendingReqsSnap.docs.map((d) => ({
+      id: d.id,
+      ...(d.data() as Record<string, any>),
+    }));
+
+    // 2. Enforce server-authoritative guard before running transaction
+    const { serverNowMs } = await callServerProPurchaseGuard({
+      endpoint: '/api/pro/purchase',
+      uid,
+      planId: plan.id,
+      planName: plan.name,
+      durationDays: plan.duration_days,
+      amountPkr: plan.price_pkr,
+      method: 'kobans',
+      commitLock: false,
+      lockState: 'active',
+    });
+
     const txOutcome = await runTransaction(db, async (tx) => {
       const [userSnap, walletSnap, ledgerSnap] = await Promise.all([
         tx.get(userRef),
@@ -190,7 +310,7 @@ export async function purchaseProWithKobans(params: {
           ? Math.max(walletBalance, userDocBalance)
           : Math.max(walletBalance ?? 0, userDocBalance);
 
-      // Idempotency guard: if this ledger entry already exists, return the existing result without charging again
+      // Idempotency guard: if this exact ledger entry already exists, return the existing result without charging again
       if (ledgerSnap.exists()) {
         const lData = ledgerSnap.data();
         const existingExpiryIso =
@@ -227,11 +347,48 @@ export async function purchaseProWithKobans(params: {
         };
       }
 
+      // Atomic check inside transaction: block if the user already has an active plan or pending payment
+      const liveStatus = resolveUnifiedPlanStatus({
+        uid,
+        email: params.userEmail || userData?.email,
+        role: userData?.role,
+        plan: userData?.plan,
+        isPremium: userData?.isPremium,
+        proPlanId: userData?.proPlanId,
+        planStartedAt: userData?.planStartedAt,
+        updatedAt: userData?.updatedAt,
+        planExpiresAt: userData?.planExpiresAt,
+        premiumExpiresAt: userData?.premiumExpiresAt,
+        pendingRequests: existingPendingDocs,
+        nowMs: serverNowMs,
+      });
+
+      if (liveStatus.state === 'active') {
+        const err = new Error(
+          liveStatus.blockReason ||
+            `You already have Boardly Pro (${liveStatus.planName}) active until ${liveStatus.expiryFormatted}. You can purchase again after your current plan expires.`
+        ) as Error & { code?: string; status?: number };
+        err.code = 'PRO_ALREADY_ACTIVE';
+        err.status = 409;
+        throw err;
+      }
+
+      if (liveStatus.state === 'pending') {
+        const err = new Error(
+          liveStatus.blockReason ||
+            'Your payment is being verified. This usually takes up to 24 hours. You cannot start another purchase while a payment is awaiting verification.'
+        ) as Error & { code?: string; status?: number };
+        err.code = 'PAYMENT_PENDING_VERIFICATION';
+        err.status = 409;
+        throw err;
+      }
+
       const currentExpiryRaw = userData?.planExpiresAt ?? userData?.premiumExpiresAt ?? null;
       const outcome = calculateProPurchaseOutcome({
         planId: plan.id,
         currentBalance,
         currentExpiryRaw,
+        nowMs: serverNowMs,
       });
 
       const curOwned: string[] =
@@ -259,7 +416,7 @@ export async function purchaseProWithKobans(params: {
         { merge: true }
       );
 
-      // 2. Update user document with new balance AND activated/extended Pro expiry
+      // 2. Update user document with new balance AND activated Pro expiry
       tx.set(
         userRef,
         {
@@ -270,6 +427,7 @@ export async function purchaseProWithKobans(params: {
           isPremium: true,
           proPlanId: outcome.planId,
           premiumSource: 'kobans',
+          planStartedAt: new Date(serverNowMs).toISOString(),
           planExpiresAt: outcome.newExpiryIso,
           premiumExpiresAt: outcome.newExpiryMs,
           updatedAt: serverTimestamp(),
@@ -295,9 +453,7 @@ export async function purchaseProWithKobans(params: {
         newExpiryIso: outcome.newExpiryIso,
         newExpiryLabel: outcome.newExpiryLabel,
         transactionId: ledgerDocId,
-        reason: `${outcome.planName} (${outcome.durationDays} Days)${
-          outcome.wasExtension ? ' · Extended' : ''
-        }`,
+        reason: `${outcome.planName} (${outcome.durationDays} Days)`,
         timestamp: serverTimestamp(),
       });
 
@@ -323,6 +479,20 @@ export async function purchaseProWithKobans(params: {
       };
     });
 
+    // Record the active lock on the server D1 store so another tab is immediately aware
+    callServerProPurchaseGuard({
+      endpoint: '/api/pro/activate',
+      uid,
+      planId: txOutcome.planId,
+      planName: txOutcome.planName,
+      durationDays: txOutcome.durationDays,
+      amountPkr: plan.price_pkr,
+      method: 'kobans',
+      commitLock: true,
+      lockState: 'active',
+      expiresAtMs: txOutcome.newExpiryMs,
+    }).catch(() => {});
+
     const result: ProKobanPurchaseResult = {
       success: true,
       alreadyProcessed: txOutcome.alreadyProcessed,
@@ -343,13 +513,12 @@ export async function purchaseProWithKobans(params: {
     completedProCache.set(cacheKey, result);
     clearPlanCache(uid);
 
-    // Update localStorage profile cache so UI hooks reflect Pro status immediately
+    // Update both localStorage profile cache keys so all UI hooks reflect Pro status immediately
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        const lsKey = `boardly_user_profile_${uid}`;
-        const existingRaw = window.localStorage.getItem(lsKey);
-        if (existingRaw) {
-          const parsed = JSON.parse(existingRaw);
+        for (const lsKey of [`cached_profile_${uid}`, `boardly_user_profile_${uid}`]) {
+          const existingRaw = window.localStorage.getItem(lsKey);
+          const parsed = existingRaw ? JSON.parse(existingRaw) : { uid };
           parsed.plan = 'pro';
           parsed.isPremium = true;
           parsed.proPlanId = txOutcome.planId;
@@ -359,10 +528,13 @@ export async function purchaseProWithKobans(params: {
           parsed.kobans = txOutcome.balanceAfter;
           window.localStorage.setItem(lsKey, JSON.stringify(parsed));
         }
+        window.dispatchEvent(new Event('boardly:plan-refresh'));
       }
     } catch {
       // Ignore storage errors
     }
+
+    forceRefreshUserProfile(uid).catch(() => {});
 
     if (!txOutcome.alreadyProcessed) {
       // Create in-app notification for student
@@ -372,7 +544,7 @@ export async function purchaseProWithKobans(params: {
           {
             userId: uid,
             type: 'system',
-            title: txOutcome.wasExtension ? 'Boardly Pro Extended!' : 'Boardly Pro Activated!',
+            title: 'Boardly Pro Activated!',
             message: `${txOutcome.planName} is now active until ${txOutcome.newExpiryLabel}. Enjoy unlimited mock tests, full analytics, and exclusive Pro perks!`,
             link: '/dashboard/plans',
             read: false,
@@ -406,6 +578,7 @@ export async function purchaseProWithKobans(params: {
     return result;
   } finally {
     inFlightProKeys.delete(cacheKey);
+    inFlightPurchaseUids.delete(uid);
   }
 }
 
@@ -427,6 +600,14 @@ export function validateProPaymentRequestInput(params: {
   if (!params.uid) {
     throw new Error('Please sign in to submit a Pro pass payment request.');
   }
+  if (params.uid.startsWith('guest_')) {
+    const err = new Error(
+      'Guest accounts cannot purchase Boardly Pro. Please create a registered account to upgrade.'
+    ) as Error & { code?: string; status?: number };
+    err.code = 'GUEST_UPGRADE_FORBIDDEN';
+    err.status = 403;
+    throw err;
+  }
 
   const plan = getProPlanById(params.planId);
   const rawTid = String(params.transactionId || '').trim();
@@ -447,9 +628,10 @@ export function validateProPaymentRequestInput(params: {
     )
   ) {
     const err = new Error(
-      'You already have a pending Pro pass request awaiting verification. We will verify it within 2 hours.'
-    ) as Error & { code?: string };
+      'Your payment is being verified. This usually takes up to 24 hours. You cannot start another purchase while a payment is awaiting verification.'
+    ) as Error & { code?: string; status?: number };
     err.code = 'PENDING_REQUEST_EXISTS';
+    err.status = 409;
     throw err;
   }
 
@@ -459,8 +641,9 @@ export function validateProPaymentRequestInput(params: {
   ) {
     const err = new Error(
       'This Transaction ID (TID) has already been submitted. Please check your receipt and enter your unique TID.'
-    ) as Error & { code?: string };
+    ) as Error & { code?: string; status?: number };
     err.code = 'DUPLICATE_TID';
+    err.status = 409;
     throw err;
   }
 
@@ -473,6 +656,7 @@ export function validateProPaymentRequestInput(params: {
 
 /**
  * Pay with PKR (JazzCash / Opay):
+ * - Rejects if student already has an active Pro plan or pending manual payment (on both server and Firestore)
  * - Reads plan price & duration from `PLANS` config (`PKR 199` monthly, `PKR 1,791` annual)
  * - Allows only one pending Pro request per student at a time
  * - Rejects duplicate TIDs across `paymentRequests` and `kobanRequests`
@@ -494,100 +678,176 @@ export async function submitProPaymentRequest(params: {
     transactionId: params.transactionId,
   });
 
-  const { normalizedTid, normalizedMethod, plan } = preCheck;
-  const rawTidTrimmed = params.transactionId.trim();
+  if (inFlightPurchaseUids.has(params.uid)) {
+    const err = new Error(
+      'A payment request is already being submitted for your account. Please wait a moment.'
+    ) as Error & { code?: string; status?: number };
+    err.code = 'PURCHASE_IN_PROGRESS';
+    err.status = 409;
+    throw err;
+  }
 
-  // 1. Check if this student already has a pending Pro request
-  const studentReqsSnap = await getDocs(
-    query(collection(db, 'paymentRequests'), where('userId', '==', params.uid), limit(25))
-  );
-  const existingStudentPending = studentReqsSnap.docs
-    .map((d) => ({ id: d.id, ...(d.data() as { status?: string }) }))
-    .filter((r) => r.status === 'pending');
+  inFlightPurchaseUids.add(params.uid);
 
-  // 2. Check for duplicate TID in paymentRequests and kobanRequests (case-insensitive check on trimmed & uppercase)
-  const [dupPaymentUpper, dupPaymentRaw, dupKobanUpper, dupKobanRaw] = await Promise.all([
-    getDocs(
-      query(collection(db, 'paymentRequests'), where('transactionId', '==', normalizedTid), limit(5))
-    ),
-    rawTidTrimmed !== normalizedTid
-      ? getDocs(
-          query(
-            collection(db, 'paymentRequests'),
-            where('transactionId', '==', rawTidTrimmed),
-            limit(5)
+  try {
+    const { normalizedTid, normalizedMethod, plan } = preCheck;
+    const rawTidTrimmed = params.transactionId.trim();
+
+    // 1. Read student's user profile AND existing paymentRequests in parallel
+    const [userSnap, studentReqsSnap] = await Promise.all([
+      getDoc(doc(db, 'users', params.uid)),
+      getDocs(query(collection(db, 'paymentRequests'), where('userId', '==', params.uid), limit(25))),
+    ]);
+
+    const userData = userSnap.exists() ? userSnap.data() : null;
+    const existingStudentReqs = studentReqsSnap.docs.map((d) => ({
+      id: d.id,
+      ...(d.data() as Record<string, any>),
+    }));
+
+    // Check unified plan status before allowing any payment submission
+    const currentStatus = resolveUnifiedPlanStatus({
+      uid: params.uid,
+      email: params.userEmail || userData?.email,
+      role: userData?.role,
+      plan: userData?.plan,
+      isPremium: userData?.isPremium,
+      proPlanId: userData?.proPlanId,
+      planStartedAt: userData?.planStartedAt,
+      updatedAt: userData?.updatedAt,
+      planExpiresAt: userData?.planExpiresAt,
+      premiumExpiresAt: userData?.premiumExpiresAt,
+      pendingRequests: existingStudentReqs,
+    });
+
+    if (currentStatus.state === 'active') {
+      const err = new Error(
+        currentStatus.blockReason ||
+          `You already have Boardly Pro (${currentStatus.planName}) active until ${currentStatus.expiryFormatted}. You can purchase again after your current plan expires.`
+      ) as Error & { code?: string; status?: number };
+      err.code = 'PRO_ALREADY_ACTIVE';
+      err.status = 409;
+      throw err;
+    }
+
+    if (currentStatus.state === 'pending') {
+      const err = new Error(
+        currentStatus.blockReason ||
+          'Your payment is being verified. This usually takes up to 24 hours. You cannot start another purchase while a payment is awaiting verification.'
+      ) as Error & { code?: string; status?: number };
+      err.code = 'PAYMENT_PENDING_VERIFICATION';
+      err.status = 409;
+      throw err;
+    }
+
+    const existingStudentPending = existingStudentReqs.filter((r) => r.status === 'pending');
+
+    // 2. Check for duplicate TID in paymentRequests and kobanRequests (case-insensitive check on trimmed & uppercase)
+    const [dupPaymentUpper, dupPaymentRaw, dupKobanUpper, dupKobanRaw] = await Promise.all([
+      getDocs(
+        query(collection(db, 'paymentRequests'), where('transactionId', '==', normalizedTid), limit(5))
+      ),
+      rawTidTrimmed !== normalizedTid
+        ? getDocs(
+            query(
+              collection(db, 'paymentRequests'),
+              where('transactionId', '==', rawTidTrimmed),
+              limit(5)
+            )
           )
-        )
-      : Promise.resolve({ docs: [] }),
-    getDocs(
-      query(collection(db, 'kobanRequests'), where('transactionId', '==', normalizedTid), limit(5))
-    ),
-    rawTidTrimmed !== normalizedTid
-      ? getDocs(
-          query(
-            collection(db, 'kobanRequests'),
-            where('transactionId', '==', rawTidTrimmed),
-            limit(5)
+        : Promise.resolve({ docs: [] }),
+      getDocs(
+        query(collection(db, 'kobanRequests'), where('transactionId', '==', normalizedTid), limit(5))
+      ),
+      rawTidTrimmed !== normalizedTid
+        ? getDocs(
+            query(
+              collection(db, 'kobanRequests'),
+              where('transactionId', '==', rawTidTrimmed),
+              limit(5)
+            )
           )
-        )
-      : Promise.resolve({ docs: [] }),
-  ]);
+        : Promise.resolve({ docs: [] }),
+    ]);
 
-  const duplicateMatches = [
-    ...dupPaymentUpper.docs,
-    ...dupPaymentRaw.docs,
-    ...dupKobanUpper.docs,
-    ...dupKobanRaw.docs,
-  ].map((d) => ({ id: d.id }));
+    const duplicateMatches = [
+      ...dupPaymentUpper.docs,
+      ...dupPaymentRaw.docs,
+      ...dupKobanUpper.docs,
+      ...dupKobanRaw.docs,
+    ].map((d) => ({ id: d.id }));
 
-  validateProPaymentRequestInput({
-    uid: params.uid,
-    planId: params.planId,
-    method: params.method,
-    transactionId: params.transactionId,
-    existingStudentPendingRequests: existingStudentPending as any,
-    existingDuplicateTidMatches: duplicateMatches,
-  });
+    validateProPaymentRequestInput({
+      uid: params.uid,
+      planId: params.planId,
+      method: params.method,
+      transactionId: params.transactionId,
+      existingStudentPendingRequests: existingStudentPending as any,
+      existingDuplicateTidMatches: duplicateMatches,
+    });
 
-  const durationMonths = plan.id === 'pro_annual' ? 12 : 1;
+    // 3. Enforce server-side purchase guard and atomically lock in D1 so a second tab cannot race
+    await callServerProPurchaseGuard({
+      endpoint: '/api/pro/submit-payment',
+      uid: params.uid,
+      planId: plan.id,
+      planName: plan.name,
+      durationDays: plan.duration_days,
+      amountPkr: plan.price_pkr,
+      method: normalizedMethod,
+      tid: normalizedTid,
+      commitLock: true,
+      lockState: 'pending',
+    });
 
-  const docRef = await addDoc(collection(db, 'paymentRequests'), {
-    uid: params.uid,
-    userId: params.uid,
-    userEmail: params.userEmail || '',
-    userName: params.userName || 'Student',
-    requestType: 'pro_pass',
-    plan: plan.id,
-    planName: plan.name,
-    durationDays: plan.duration_days,
-    durationMonths,
-    amount: plan.price_pkr,
-    amount_pkr: plan.price_pkr,
-    method: normalizedMethod,
-    TID: normalizedTid,
-    transactionId: normalizedTid,
-    status: 'pending',
-    createdAt: serverTimestamp(),
-  });
+    const durationMonths = plan.id === 'pro_annual' ? 12 : 1;
 
-  notifyProRequestReceived({
-    requestId: docRef.id,
-    studentUid: params.uid,
-    studentName: params.userName,
-    studentEmail: params.userEmail,
-    planName: plan.name,
-    durationDays: plan.duration_days,
-    pkrAmount: plan.price_pkr,
-    paymentMethod: normalizedMethod,
-    transactionId: normalizedTid,
-  });
+    const docRef = await addDoc(collection(db, 'paymentRequests'), {
+      uid: params.uid,
+      userId: params.uid,
+      userEmail: params.userEmail || '',
+      userName: params.userName || 'Student',
+      requestType: 'pro_pass',
+      plan: plan.id,
+      planName: plan.name,
+      durationDays: plan.duration_days,
+      durationMonths,
+      amount: plan.price_pkr,
+      amount_pkr: plan.price_pkr,
+      method: normalizedMethod,
+      TID: normalizedTid,
+      transactionId: normalizedTid,
+      status: 'pending',
+      createdAt: serverTimestamp(),
+    });
 
-  return {
-    requestId: docRef.id,
-    planName: plan.name,
-    amountPkr: plan.price_pkr,
-    tid: normalizedTid,
-  };
+    clearPlanCache(params.uid);
+    forceRefreshPaymentRequests(params.uid).catch(() => {});
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('boardly:plan-refresh'));
+    }
+
+    notifyProRequestReceived({
+      requestId: docRef.id,
+      studentUid: params.uid,
+      studentName: params.userName,
+      studentEmail: params.userEmail,
+      planName: plan.name,
+      durationDays: plan.duration_days,
+      pkrAmount: plan.price_pkr,
+      paymentMethod: normalizedMethod,
+      transactionId: normalizedTid,
+    });
+
+    return {
+      requestId: docRef.id,
+      planName: plan.name,
+      amountPkr: plan.price_pkr,
+      tid: normalizedTid,
+    };
+  } finally {
+    inFlightPurchaseUids.delete(params.uid);
+  }
 }
 
 /**

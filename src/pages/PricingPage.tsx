@@ -1,12 +1,13 @@
+import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { PageMeta } from '@/components/ui/PageMeta';
-import { Badge } from '@/components/ui/Badge';
-import { Card } from '@/components/ui/Card';
 import { Check, X, Shield } from 'lucide-react';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { GuestProBlockedView } from '@/components/plans/GuestProBlockedView';
+import { ProLockedStateCard } from '@/components/plans/ProLockedStateCard';
 import { FREE_DAILY_TESTS, FREE_DAILY_TOKEN_LIMIT, FREE_DAILY_ARENA_LIMIT } from '@/constants/limits';
 import { PAYMENT_METHODS as OFFICIAL_PAYMENT_METHODS } from '@/constants/branding';
 import { PLANS } from '@/config/plans';
@@ -50,11 +51,30 @@ const PAYMENT_METHODS = [
 export function PricingPage() {
   const { user, isGuest } = useAuth();
   const { requireAuth } = useAuthGate();
+  const { planStatus, refreshPlanStatus } = useEffectivePlan();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!user?.uid || isGuest) return;
+    refreshPlanStatus().catch(() => {});
+    const onFocus = () => {
+      refreshPlanStatus().catch(() => {});
+    };
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('boardly:plan-refresh', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('boardly:plan-refresh', onFocus);
+    };
+  }, [user?.uid, isGuest, refreshPlanStatus]);
 
   if (isGuest) {
     return <GuestProBlockedView variant="page" />;
   }
+
+  const isPurchaseLocked = Boolean(
+    user && (planStatus.state === 'active' || planStatus.state === 'pending')
+  );
 
   return (
     <>
@@ -81,169 +101,175 @@ export function PricingPage() {
           </p>
         </div>
 
-        {/* 3-Column Pricing Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto items-stretch">
-          {/* Free Tier Card */}
-          <div className="glass-card p-7 sm:p-8 flex flex-col justify-between rounded-[28px]">
-            <div className="space-y-5">
-              <span className="glass-pill px-3 py-1 text-xs font-semibold text-[var(--muted)]">Free</span>
-              <div>
-                <div className="flex items-baseline gap-2">
-                  <span
-                    className="text-4xl sm:text-5xl font-bold text-[var(--text)] font-dot"
-                    style={{ fontFamily: 'var(--font-dot)' }}
-                  >
-                    0 PKR
-                  </span>
-                </div>
-                <p className="text-xs sm:text-sm text-[var(--muted)] mt-2">
-                  The free tier is enough for students to practice and learn.
-                </p>
-              </div>
-
-              <div className="border-t border-white/10 dark:border-white/10 pt-5 space-y-3">
-                {[
-                  'The free tier is enough to practice and learn',
-                  'Sharing material in Commons is always free with no limit',
-                  `${FREE_DAILY_TESTS} practice tests per day`,
-                  `${FREE_DAILY_TOKEN_LIMIT} Boardy AI derivation tokens / day`,
-                  'KaTeX mathematical derivations for all questions',
-                  'Join or create Study Crews (up to 30 members)',
-                  'PKT midnight quota reset (Asia/Karachi UTC+5)',
-                ].map((item) => (
-                  <div key={item} className="flex items-center gap-3 text-xs sm:text-sm text-[var(--muted)]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="pt-8">
-              <Link to="/signup" className="btn-secondary w-full" style={{ height: '52px' }}>
-                Start Free
-              </Link>
-            </div>
+        {/* Locked state when Active or Pending vs 3-Column Pricing Cards */}
+        {isPurchaseLocked ? (
+          <div className="max-w-4xl mx-auto">
+            <ProLockedStateCard planStatus={planStatus} />
           </div>
-
-          {/* Unlimited Tier Card */}
-          <div className="glass-card-highlight p-7 sm:p-8 flex flex-col justify-between rounded-[28px] relative">
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <span className="glass-pill px-3 py-1 text-xs font-bold text-[#D71921] border-[#D71921]/40 bg-[#D71921]/15">
-                  Unlimited
-                </span>
-                <span className="text-xs font-semibold text-[var(--red)] uppercase tracking-wider font-mono">
-                  Full Access
-                </span>
-              </div>
-
-              <div>
-                <div className="flex items-baseline gap-2">
-                  <span
-                    className="text-4xl sm:text-5xl font-bold text-[var(--text)] font-dot"
-                    style={{ fontFamily: 'var(--font-dot)' }}
-                  >
-                    PKR {PLANS.pro_monthly.price_pkr}
-                  </span>
-                  <span className="text-sm text-[var(--muted)] font-medium">/ month</span>
-                </div>
-                <p className="text-xs sm:text-sm text-[var(--muted)] mt-2">
-                  PKR {PLANS.pro_monthly.price_pkr} ({PLANS.pro_monthly.price_kobans.toLocaleString()} Kobans) for 30 days, or PKR {PLANS.pro_annual.price_pkr.toLocaleString()} for 365 days (Save 25%).
-                </p>
-              </div>
-
-              <div className="border-t border-white/10 dark:border-white/10 pt-5 space-y-3">
-                {[
-                  `PKR ${PLANS.pro_monthly.price_pkr}/month or PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}/year`,
-                  'Unlimited practice tests & sprint drills',
-                  'Unlimited Boardy AI step derivations',
-                  'Complete subject question banks unlocked',
-                  'Advanced weak chapter diagnostics & mistake curves',
-                  'Unlimited Grand Line & public Arena tests',
-                  'Priority support desk via WhatsApp & Email',
-                ].map((item) => (
-                  <div key={item} className="flex items-center gap-3 text-xs sm:text-sm text-[var(--text)]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
-                    <span className="font-medium">{item}</span>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto items-stretch">
+            {/* Free Tier Card */}
+            <div className="glass-card p-7 sm:p-8 flex flex-col justify-between rounded-[28px]">
+              <div className="space-y-5">
+                <span className="glass-pill px-3 py-1 text-xs font-semibold text-[var(--muted)]">Free</span>
+                <div>
+                  <div className="flex items-baseline gap-2">
+                    <span
+                      className="text-4xl sm:text-5xl font-bold text-[var(--text)] font-dot"
+                      style={{ fontFamily: 'var(--font-dot)' }}
+                    >
+                      0 PKR
+                    </span>
                   </div>
-                ))}
-              </div>
-            </div>
+                  <p className="text-xs sm:text-sm text-[var(--muted)] mt-2">
+                    The free tier is enough for students to practice and learn.
+                  </p>
+                </div>
 
-            <div className="pt-8">
-              {user ? (
-                <Link to="/dashboard/plans" className="btn-primary w-full" style={{ height: '52px' }}>
-                  Get Unlimited (PKR {PLANS.pro_monthly.price_pkr})
+                <div className="border-t border-white/10 dark:border-white/10 pt-5 space-y-3">
+                  {[
+                    'The free tier is enough to practice and learn',
+                    'Sharing material in Commons is always free with no limit',
+                    `${FREE_DAILY_TESTS} practice tests per day`,
+                    `${FREE_DAILY_TOKEN_LIMIT} Boardy AI derivation tokens / day`,
+                    'KaTeX mathematical derivations for all questions',
+                    'Join or create Study Crews (up to 30 members)',
+                    'PKT midnight quota reset (Asia/Karachi UTC+5)',
+                  ].map((item) => (
+                    <div key={item} className="flex items-center gap-3 text-xs sm:text-sm text-[var(--muted)]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-8">
+                <Link to={user ? '/dashboard' : '/signup'} className="btn-secondary w-full" style={{ height: '52px' }}>
+                  {user ? 'Current Free Tier' : 'Start Free'}
                 </Link>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() =>
-                    requireAuth(
-                      `upgrade to the Unlimited plan (PKR ${PLANS.pro_monthly.price_pkr})`,
-                      () => navigate('/dashboard/plans'),
-                      '/dashboard/plans'
-                    )
-                  }
-                  className="btn-primary w-full cursor-pointer"
-                  style={{ height: '52px' }}
-                >
-                  Get Unlimited (PKR {PLANS.pro_monthly.price_pkr})
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Koban Pack Card */}
-          <div className="glass-card-gold p-7 sm:p-8 flex flex-col justify-between rounded-[28px] relative">
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <span className="glass-pill px-3 py-1 text-xs font-semibold text-[var(--muted)]">Koban Pack</span>
-                <div className="flex items-center gap-1 text-xs text-[#E8A317] font-semibold">
-                  <KobanIcon size={14} />
-                  <span>500 Kobans</span>
-                </div>
               </div>
+            </div>
 
-              <div>
-                <div className="flex items-baseline gap-2">
-                  <span
-                    className="text-4xl sm:text-5xl font-bold text-[var(--text)] font-dot"
-                    style={{ fontFamily: 'var(--font-dot)' }}
-                  >
-                    50 PKR
+            {/* Unlimited Tier Card */}
+            <div className="glass-card-highlight p-7 sm:p-8 flex flex-col justify-between rounded-[28px] relative">
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <span className="glass-pill px-3 py-1 text-xs font-bold text-[#D71921] border-[#D71921]/40 bg-[#D71921]/15">
+                    Unlimited
+                  </span>
+                  <span className="text-xs font-semibold text-[var(--red)] uppercase tracking-wider font-mono">
+                    Full Access
                   </span>
                 </div>
-                <p className="text-xs sm:text-sm text-[var(--muted)] mt-2">
-                  50 PKR for 500 kobans. Kobans are used to customize your profile.
-                </p>
+
+                <div>
+                  <div className="flex items-baseline gap-2">
+                    <span
+                      className="text-4xl sm:text-5xl font-bold text-[var(--text)] font-dot"
+                      style={{ fontFamily: 'var(--font-dot)' }}
+                    >
+                      PKR {PLANS.pro_monthly.price_pkr}
+                    </span>
+                    <span className="text-sm text-[var(--muted)] font-medium">/ month</span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-[var(--muted)] mt-2">
+                    PKR {PLANS.pro_monthly.price_pkr} ({PLANS.pro_monthly.price_kobans.toLocaleString()} Kobans) for 30 days, or PKR {PLANS.pro_annual.price_pkr.toLocaleString()} for 365 days (Save 25%).
+                  </p>
+                </div>
+
+                <div className="border-t border-white/10 dark:border-white/10 pt-5 space-y-3">
+                  {[
+                    `PKR ${PLANS.pro_monthly.price_pkr}/month or PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}/year`,
+                    'Unlimited practice tests & sprint drills',
+                    'Unlimited Boardy AI step derivations',
+                    'Complete subject question banks unlocked',
+                    'Advanced weak chapter diagnostics & mistake curves',
+                    'Unlimited Grand Line & public Arena tests',
+                    'Priority support desk via WhatsApp & Email',
+                  ].map((item) => (
+                    <div key={item} className="flex items-center gap-3 text-xs sm:text-sm text-[var(--text)]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
+                      <span className="font-medium">{item}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              <div className="border-t border-white/10 dark:border-white/10 pt-5 space-y-3">
-                {[
-                  '50 PKR for 500 kobans to personalize your student profile',
-                  'Unlock dot-matrix avatar frames in the Store',
-                  'Equip animated student nameplates',
-                  'Collect rising profile card aura effects',
-                  '100% aesthetic with zero unfair academic advantage',
-                  'Purchased Kobans never expire in your student wallet',
-                ].map((item) => (
-                  <div key={item} className="flex items-center gap-3 text-xs sm:text-sm text-[var(--muted)]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#E8A317] shrink-0" />
-                    <span>{item}</span>
-                  </div>
-                ))}
+              <div className="pt-8">
+                {user ? (
+                  <Link to="/dashboard/plans" className="btn-primary w-full" style={{ height: '52px' }}>
+                    Get Unlimited (PKR {PLANS.pro_monthly.price_pkr})
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      requireAuth(
+                        `upgrade to the Unlimited plan (PKR ${PLANS.pro_monthly.price_pkr})`,
+                        () => navigate('/dashboard/plans'),
+                        '/dashboard/plans'
+                      )
+                    }
+                    className="btn-primary w-full cursor-pointer"
+                    style={{ height: '52px' }}
+                  >
+                    Get Unlimited (PKR {PLANS.pro_monthly.price_pkr})
+                  </button>
+                )}
               </div>
             </div>
 
-            <div className="pt-8">
-              <Link to="/store" className="btn-secondary w-full" style={{ height: '52px' }}>
-                Explore Store &amp; Kobans
-              </Link>
+            {/* Koban Pack Card */}
+            <div className="glass-card-gold p-7 sm:p-8 flex flex-col justify-between rounded-[28px] relative">
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <span className="glass-pill px-3 py-1 text-xs font-semibold text-[var(--muted)]">Koban Pack</span>
+                  <div className="flex items-center gap-1 text-xs text-[#E8A317] font-semibold">
+                    <KobanIcon size={14} />
+                    <span>500 Kobans</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-baseline gap-2">
+                    <span
+                      className="text-4xl sm:text-5xl font-bold text-[var(--text)] font-dot"
+                      style={{ fontFamily: 'var(--font-dot)' }}
+                    >
+                      50 PKR
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-[var(--muted)] mt-2">
+                    50 PKR for 500 kobans. Kobans are used to customize your profile.
+                  </p>
+                </div>
+
+                <div className="border-t border-white/10 dark:border-white/10 pt-5 space-y-3">
+                  {[
+                    '50 PKR for 500 kobans to personalize your student profile',
+                    'Unlock dot-matrix avatar frames in the Store',
+                    'Equip animated student nameplates',
+                    'Collect rising profile card aura effects',
+                    '100% aesthetic with zero unfair academic advantage',
+                    'Purchased Kobans never expire in your student wallet',
+                  ].map((item) => (
+                    <div key={item} className="flex items-center gap-3 text-xs sm:text-sm text-[var(--muted)]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#E8A317] shrink-0" />
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-8">
+                <Link to="/store" className="btn-secondary w-full" style={{ height: '52px' }}>
+                  Explore Store &amp; Kobans
+                </Link>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Feature Comparison Table */}
         <div className="space-y-6 max-w-[880px] mx-auto">
@@ -348,21 +374,21 @@ export function PricingPage() {
               <div className="p-4 rounded-2xl glass-row text-xs space-y-2">
                 <span className="font-bold text-[var(--red)]">1. Transfer PKR {PLANS.pro_monthly.price_pkr}</span>
                 <p className="text-[var(--muted)]">
-                  Send PKR {PLANS.pro_monthly.price_pkr} (Monthly) or PKR {PLANS.pro_annual.price_pkr.toLocaleString()} (Annual) via {OFFICIAL_PAYMENT_METHODS.jazzcash.displayName} or {OFFICIAL_PAYMENT_METHODS.opay.displayName}, or pay instantly with Kobans.
+                  Send PKR {PLANS.pro_monthly.price_pkr} (Monthly) or PKR {PLANS.pro_annual.price_pkr.toLocaleString()} (Annual) via {OFFICIAL_PAYMENT_METHODS.jazzcash.displayName} or {OFFICIAL_PAYMENT_METHODS.opay.displayName}, or redeem your Kobans balance.
                 </p>
               </div>
 
               <div className="p-4 rounded-2xl glass-row text-xs space-y-2">
                 <span className="font-bold text-[var(--red)]">2. Submit Transaction Proof</span>
                 <p className="text-[var(--muted)]">
-                  Enter your Transaction ID (TRX) and attach your payment screenshot on the Plans &amp; Billing page. Your request is logged as &ldquo;pending&rdquo;.
+                  Enter your Transaction ID (TID) and payment proof on the Plans &amp; Billing page. All Pro and Premium purchases are final and non-refundable once submitted or activated (zero refunds).
                 </p>
               </div>
 
               <div className="p-4 rounded-2xl glass-row text-xs space-y-2">
-                <span className="font-bold text-[var(--red)]">3. Admin Approval &amp; Unlock</span>
+                <span className="font-bold text-[var(--red)]">3. Manual Verification (Within 24 Hours)</span>
                 <p className="text-[var(--muted)]">
-                  An administrator verifies the slip against bank ledger entries and approves your request, immediately unlocking full Unlimited access.
+                  Payments are verified manually by our team, and your plan is activated within 24 hours of submission.
                 </p>
               </div>
             </div>
@@ -378,7 +404,7 @@ export function PricingPage() {
             Have a question about plans or billing?
           </h2>
           <p className="text-sm text-[var(--muted)] max-w-lg mx-auto">
-            Our student desk is available on WhatsApp at <strong className="text-[var(--text)]">0305 8969050</strong> or via email at <strong className="text-[var(--text)]">support@boardly.cfd</strong>.
+            Our student desk is available on WhatsApp at <strong className="text-[var(--text)]">0305 8969050</strong> or via email at <strong className="text-[var(--text)]">shsvirtualadmin@gmail.com</strong>.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Link to="/contact" className="btn-primary" style={{ height: '52px' }}>

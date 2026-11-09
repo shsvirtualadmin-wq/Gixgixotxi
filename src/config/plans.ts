@@ -12,7 +12,8 @@
 
 export const KOBANS_PER_PKR = 10;
 
-export const REFUND_POLICY_TEXT = 'Pro passes are non-refundable once activated.';
+export const REFUND_POLICY_TEXT =
+  'All Pro and Premium purchases are final and non-refundable once submitted or activated (zero refunds).';
 
 export type ProPlanId = 'pro_monthly' | 'pro_annual';
 export type AnyPlanId = 'free' | 'pro_monthly' | 'pro_annual' | 'crew';
@@ -200,17 +201,17 @@ export const PRO_FAQ_ITEMS: ReadonlyArray<{
 }> = [
   {
     question: 'How do I pay?',
-    answer: `You can pay instantly using your Koban wallet balance (${PLANS.pro_monthly.price_kobans.toLocaleString()} Kobans for Monthly or ${PLANS.pro_annual.price_kobans.toLocaleString()} Kobans for Annual), or transfer PKR ${PLANS.pro_monthly.price_pkr} / PKR ${PLANS.pro_annual.price_pkr.toLocaleString()} via JazzCash or Opay and enter your Transaction ID (TID).`,
+    answer: `You can redeem your existing Koban wallet balance (${PLANS.pro_monthly.price_kobans.toLocaleString()} Kobans for Monthly or ${PLANS.pro_annual.price_kobans.toLocaleString()} Kobans for Annual), or transfer PKR ${PLANS.pro_monthly.price_pkr} / PKR ${PLANS.pro_annual.price_pkr.toLocaleString()} via JazzCash or Opay and submit your payment proof (Transaction ID / TID).`,
   },
   {
-    question: 'When does Pro activate?',
+    question: 'When does Pro activate & what is the refund policy?',
     answer:
-      'Paying with Kobans activates or extends your Boardly Pro pass immediately in one atomic transaction. JazzCash and Opay PKR transfers are verified by our team within 2 hours.',
+      'Payments are verified manually. After you submit your payment and proof, we verify it and activate your plan within 24 hours. All Pro and Premium purchases are final and non-refundable once submitted or activated (zero refunds).',
   },
   {
     question: 'What happens when it expires?',
     answer:
-      'Your account smoothly returns to the Free tier with all your test history, streaks, and cosmetics preserved. If you buy another pass while Pro is active, the new days are added onto your current expiry date.',
+      'Your account smoothly returns to the Free tier with all your test history, streaks, and cosmetics preserved. If you purchase another pass while Pro is active, the additional days are added onto your current expiry date.',
   },
 ];
 
@@ -235,28 +236,54 @@ export function getProPlanById(rawId?: string | null): ProPlanConfig {
 }
 
 /**
- * Safely parses any Firestore Timestamp, number (ms), Date, or ISO string into epoch milliseconds.
+ * Safely parses any Firestore Timestamp, REST timestampValue, number (seconds or ms),
+ * Date, or ISO string into epoch milliseconds.
  */
 export function parseExpiryMillis(expiryRaw: unknown): number | null {
-  if (!expiryRaw) return null;
+  if (expiryRaw === null || expiryRaw === undefined || expiryRaw === '') return null;
+
   if (typeof expiryRaw === 'number' && Number.isFinite(expiryRaw)) {
-    return expiryRaw;
+    if (expiryRaw <= 0) return null;
+    // If stored in Unix seconds (e.g. 1796000000 < 1e11), convert to milliseconds
+    return expiryRaw < 1e11 ? Math.round(expiryRaw * 1000) : Math.round(expiryRaw);
   }
+
   if (expiryRaw instanceof Date) {
     const t = expiryRaw.getTime();
     return Number.isNaN(t) ? null : t;
   }
-  if (typeof (expiryRaw as { toMillis?: () => number }).toMillis === 'function') {
-    const ms = (expiryRaw as { toMillis: () => number }).toMillis();
-    return Number.isFinite(ms) ? ms : null;
+
+  if (typeof expiryRaw === 'object') {
+    const obj = expiryRaw as Record<string, unknown>;
+    if (typeof obj.toMillis === 'function') {
+      const ms = (obj.toMillis as () => number)();
+      return Number.isFinite(ms) ? ms : null;
+    }
+    if (typeof obj.seconds === 'number' && Number.isFinite(obj.seconds)) {
+      return Math.round(obj.seconds * 1000);
+    }
+    if (typeof obj._seconds === 'number' && Number.isFinite(obj._seconds)) {
+      return Math.round(obj._seconds * 1000);
+    }
+    if (typeof obj.timestampValue === 'string') {
+      const parsed = new Date(obj.timestampValue).getTime();
+      return Number.isNaN(parsed) ? null : parsed;
+    }
   }
-  if (typeof (expiryRaw as { seconds?: number }).seconds === 'number') {
-    return (expiryRaw as { seconds: number }).seconds * 1000;
-  }
+
   if (typeof expiryRaw === 'string') {
-    const parsed = new Date(expiryRaw).getTime();
+    const trimmed = expiryRaw.trim();
+    if (!trimmed) return null;
+    if (/^\d+$/.test(trimmed)) {
+      const num = Number(trimmed);
+      if (Number.isFinite(num) && num > 0) {
+        return num < 1e11 ? Math.round(num * 1000) : Math.round(num);
+      }
+    }
+    const parsed = new Date(trimmed).getTime();
     return Number.isNaN(parsed) ? null : parsed;
   }
+
   return null;
 }
 
@@ -272,6 +299,304 @@ export function formatProExpiryDate(msOrDate: number | Date): string {
     month: 'short',
     year: 'numeric',
   }).format(date);
+}
+
+/**
+ * Formats a timestamp with date and time in PKT, e.g. "12 Dec 2026, 4:30 PM PKT".
+ */
+export function formatProDateTime(msOrDate: number | Date): string {
+  const date = typeof msOrDate === 'number' ? new Date(msOrDate) : msOrDate;
+  if (Number.isNaN(date.getTime())) return 'N/A';
+  return (
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Karachi',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(date) + ' PKT'
+  );
+}
+
+/**
+ * Formats remaining time between nowMs and expiryMs, e.g. "29 days, 14 hours left" or "18 hours left".
+ */
+export function formatProTimeLeft(expiryMs: number, nowMs: number = Date.now()): string {
+  const diffMs = Math.max(0, expiryMs - nowMs);
+  if (diffMs <= 0) return 'Expired';
+  const totalHours = Math.floor(diffMs / (60 * 60 * 1000));
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  const minutes = Math.max(1, Math.floor((diffMs % (60 * 60 * 1000)) / (60 * 1000)));
+
+  if (days >= 1) {
+    if (hours > 0) {
+      return `${days} ${days === 1 ? 'day' : 'days'}, ${hours} ${hours === 1 ? 'hour' : 'hours'} left`;
+    }
+    return `${days} ${days === 1 ? 'day' : 'days'} left`;
+  }
+  if (totalHours >= 1) {
+    return `${totalHours} ${totalHours === 1 ? 'hour' : 'hours'}, ${minutes} min left`;
+  }
+  return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} left`;
+}
+
+export type UnifiedPlanState = 'none' | 'pending' | 'active';
+
+export interface PendingProPaymentInfo {
+  id: string;
+  planId: ProPlanId;
+  planName: string;
+  amountPkr: number;
+  method: string;
+  tid: string;
+  submittedAtMs: number | null;
+  submittedFormatted: string;
+}
+
+export interface UnifiedPlanStatusResult {
+  state: UnifiedPlanState; // 'none' | 'pending' | 'active'
+  isPro: boolean;
+  isPersonalPro: boolean;
+  isSuperAdmin: boolean;
+  isCrewPro: boolean;
+  planId: ProPlanId | null;
+  planName: string;
+  startMs: number | null;
+  startFormatted: string | null;
+  expiryMs: number | null;
+  expiryFormatted: string | null;
+   expiryDateTimeFormatted: string | null;
+  daysLeft: number;
+  timeLeftLabel: string | null;
+  pendingRequest: PendingProPaymentInfo | null;
+  canStartPurchase: boolean;
+  blockReason: string | null;
+}
+
+/**
+ * ONE shared plan-status function used across:
+ * - Upgrade / Pricing screens (/dashboard/plans, /store Boardly Pro tab, /pricing, ProCheckoutSheet)
+ * - Header PRO chip (DashboardTopBar, DashboardSidebar, HamburgerMenuSheet)
+ * - "Current plan" card (StatusBanner)
+ * - Feature / reward checks (useEffectivePlan)
+ * - Server & Worker endpoints (/api/pro/status, /api/pro/purchase-guard)
+ *
+ * Returns state: 'none' | 'pending' | 'active' (with plan name, start, and expiry).
+ * Active strictly means the user's personal Pro expiry is in the future (expiryMs > nowMs),
+ * or the user is a Superadmin.
+ */
+export function resolveUnifiedPlanStatus(input: {
+  uid?: string | null;
+  email?: string | null;
+  role?: string | null;
+  isGuest?: boolean;
+  plan?: string | null;
+  isPremium?: boolean | null;
+  proPlanId?: string | null;
+  planStartedAt?: unknown;
+  updatedAt?: unknown;
+  planExpiresAt?: unknown;
+  premiumExpiresAt?: unknown;
+  pendingRequests?: Array<Record<string, any>> | null;
+  isCrewPro?: boolean;
+  crewName?: string | null;
+  isSuperAdmin?: boolean;
+  nowMs?: number;
+}): UnifiedPlanStatusResult {
+  const nowMs = typeof input.nowMs === 'number' && Number.isFinite(input.nowMs) ? input.nowMs : Date.now();
+  const isGuest = Boolean(input.isGuest || (input.uid && String(input.uid).startsWith('guest_')));
+
+  const emailLower = String(input.email || '').trim().toLowerCase();
+  const roleLower = String(input.role || '').trim().toLowerCase();
+  const isSuperAdmin = Boolean(
+    input.isSuperAdmin ||
+      input.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
+      emailLower === 'shsvirtualadmin@gmail.com' ||
+      emailLower === 'support@boardly.cfd' ||
+      emailLower === 'support@scholario.me' ||
+      roleLower === 'superadmin' ||
+      roleLower === 'admin'
+  );
+
+  // Parse expiry from either planExpiresAt or premiumExpiresAt (choosing the latest valid timestamp if both exist)
+  const expA = parseExpiryMillis(input.planExpiresAt);
+  const expB = parseExpiryMillis(input.premiumExpiresAt);
+  const expiryMs =
+    expA !== null && expB !== null ? Math.max(expA, expB) : expA !== null ? expA : expB;
+
+  const hasFutureExpiry = expiryMs !== null && expiryMs > nowMs;
+  const isExpired = expiryMs !== null && expiryMs <= nowMs;
+
+  const rawPlan = String(input.plan || '').trim().toLowerCase();
+  const rawPlanId = String(input.proPlanId || input.plan || '').trim().toLowerCase();
+  const isFlaggedPro = Boolean(
+    input.isPremium === true ||
+      rawPlan === 'pro' ||
+      rawPlan === 'pro_monthly' ||
+      rawPlan === 'pro_annual' ||
+      rawPlan === 'premium'
+  );
+
+  // Determine which Pro plan (Monthly vs Annual)
+  const durationHintDays =
+    hasFutureExpiry && expiryMs ? Math.ceil((expiryMs - nowMs) / (24 * 60 * 60 * 1000)) : 0;
+  const resolvedPlanConfig =
+    rawPlanId.includes('annual') || rawPlanId.includes('year') || durationHintDays > 45
+      ? PLANS.pro_annual
+      : PLANS.pro_monthly;
+
+  const startRaw = parseExpiryMillis(input.planStartedAt ?? input.updatedAt);
+  const estimatedStartMs =
+    startRaw ??
+    (hasFutureExpiry && expiryMs
+      ? expiryMs - resolvedPlanConfig.duration_days * 24 * 60 * 60 * 1000
+      : null);
+
+  // 1. Check if personal Pro plan is ACTIVE (expiry is in the future, OR flagged Pro with no expiry timestamp)
+  if (!isGuest && (hasFutureExpiry || (isFlaggedPro && !isExpired))) {
+    if (hasFutureExpiry && expiryMs !== null) {
+      const daysLeft = Math.max(1, Math.ceil((expiryMs - nowMs) / (24 * 60 * 60 * 1000)));
+      const expiryFormatted = formatProExpiryDate(expiryMs);
+      const expiryDateTimeFormatted = formatProDateTime(expiryMs);
+      const timeLeftLabel = formatProTimeLeft(expiryMs, nowMs);
+      return {
+        state: 'active',
+        isPro: true,
+        isPersonalPro: true,
+        isSuperAdmin,
+        isCrewPro: false,
+        planId: resolvedPlanConfig.id,
+        planName: resolvedPlanConfig.name,
+        startMs: estimatedStartMs,
+        startFormatted: estimatedStartMs ? formatProExpiryDate(estimatedStartMs) : null,
+        expiryMs,
+        expiryFormatted,
+        expiryDateTimeFormatted,
+        daysLeft,
+        timeLeftLabel,
+        pendingRequest: null,
+        canStartPurchase: false,
+        blockReason: `You already have Boardly Pro (${resolvedPlanConfig.name}) active until ${expiryFormatted} (${timeLeftLabel}). You can purchase a plan again after your current plan expires.`,
+      };
+    }
+
+    // Active Pro via admin override / role without an explicit expiry timestamp
+    return {
+      state: 'active',
+      isPro: true,
+      isPersonalPro: true,
+      isSuperAdmin,
+      isCrewPro: false,
+      planId: resolvedPlanConfig.id,
+      planName: resolvedPlanConfig.name,
+      startMs: startRaw,
+      startFormatted: startRaw ? formatProExpiryDate(startRaw) : null,
+      expiryMs: null,
+      expiryFormatted: 'Active (No expiry date set)',
+      expiryDateTimeFormatted: 'Active (No expiry date set)',
+      daysLeft: resolvedPlanConfig.duration_days,
+      timeLeftLabel: 'Active Pro membership',
+      pendingRequest: null,
+      canStartPurchase: false,
+      blockReason: `You already have an active ${resolvedPlanConfig.name} membership.`,
+    };
+  }
+
+  // 2. Superadmin without an explicit expiry timestamp is also treated as active Pro
+  if (!isGuest && isSuperAdmin) {
+    return {
+      state: 'active',
+      isPro: true,
+      isPersonalPro: true,
+      isSuperAdmin: true,
+      isCrewPro: false,
+      planId: 'pro_annual',
+      planName: 'Boardly Pro (Administrator Access)',
+      startMs: null,
+      startFormatted: null,
+      expiryMs: null,
+      expiryFormatted: 'Unlimited',
+      expiryDateTimeFormatted: 'Unlimited',
+      daysLeft: 365,
+      timeLeftLabel: 'Unlimited administrator access',
+      pendingRequest: null,
+      canStartPurchase: false,
+      blockReason: 'You already have active Boardly Pro administrator access.',
+    };
+  }
+
+  // 3. Check if the user has a PENDING Pro payment request waiting for manual verification
+  const rawReqs = Array.isArray(input.pendingRequests) ? input.pendingRequests : [];
+  const pendingDoc = rawReqs.find((r) => {
+    if (!r || typeof r !== 'object') return false;
+    const st = String(r.status || '').trim().toLowerCase();
+    const pl = String(r.plan || '').trim().toLowerCase();
+    return st === 'pending' && pl !== 'large_crew' && !r.crewId;
+  });
+
+  if (!isGuest && pendingDoc) {
+    const pConfig = getProPlanById(pendingDoc.plan || pendingDoc.planId);
+    const submittedMs = parseExpiryMillis(
+      pendingDoc.createdAt ?? pendingDoc.submittedAt ?? pendingDoc.timestamp
+    );
+    const submittedFormatted = submittedMs ? formatProDateTime(submittedMs) : 'Recently submitted';
+    const pendingInfo: PendingProPaymentInfo = {
+      id: String(pendingDoc.id || ''),
+      planId: pConfig.id,
+      planName: String(pendingDoc.planName || pConfig.name),
+      amountPkr: Number(pendingDoc.amount_pkr ?? pendingDoc.amount ?? pConfig.price_pkr),
+      method: String(pendingDoc.method || 'jazzcash'),
+      tid: String(pendingDoc.TID || pendingDoc.transactionId || ''),
+      submittedAtMs: submittedMs,
+      submittedFormatted,
+    };
+
+    return {
+      state: 'pending',
+      isPro: Boolean(input.isCrewPro),
+      isPersonalPro: false,
+      isSuperAdmin: false,
+      isCrewPro: Boolean(input.isCrewPro),
+      planId: pConfig.id,
+      planName: pendingInfo.planName,
+      startMs: null,
+      startFormatted: null,
+      expiryMs: null,
+      expiryFormatted: null,
+      expiryDateTimeFormatted: null,
+      daysLeft: 0,
+      timeLeftLabel: null,
+      pendingRequest: pendingInfo,
+      canStartPurchase: false,
+      blockReason:
+        'Your payment is being verified. This usually takes up to 24 hours. You cannot start another purchase while your payment is awaiting verification.',
+    };
+  }
+
+  // 4. Otherwise state is 'none' (Free or Expired personal plan)
+  const isCrewPro = Boolean(!isGuest && input.isCrewPro);
+  return {
+    state: 'none',
+    isPro: isCrewPro,
+    isPersonalPro: false,
+    isSuperAdmin: false,
+    isCrewPro,
+    planId: null,
+    planName: isCrewPro ? `${input.crewName || 'Study Crew'} Shared Pro` : PLANS.free.name,
+    startMs: null,
+    startFormatted: null,
+    expiryMs: expiryMs && expiryMs <= nowMs ? expiryMs : null,
+    expiryFormatted: expiryMs && expiryMs <= nowMs ? formatProExpiryDate(expiryMs) : null,
+    expiryDateTimeFormatted: expiryMs && expiryMs <= nowMs ? formatProDateTime(expiryMs) : null,
+    daysLeft: 0,
+    timeLeftLabel: null,
+    pendingRequest: null,
+    canStartPurchase: !isGuest,
+    blockReason: isGuest ? 'Create a registered account to upgrade to Boardly Pro.' : null,
+  };
 }
 
 /**
@@ -336,6 +661,7 @@ export interface ProStatusSummary {
   expiryFormatted: string | null;
   expiryDateLabel: string | null;
   daysLeft: number;
+  timeLeftLabel: string | null;
   isExpiringSoon: boolean; // true when active and <= 3 days remaining
   statusText: string | null;
   statusBannerText: string;
@@ -343,8 +669,7 @@ export interface ProStatusSummary {
 
 /**
  * Computes a unified status summary used by the Store header, Boardly Pro tab, and Plans page.
- * Accepts either a raw expiry timestamp/string/Date OR an object with planExpiresAt/premiumExpiresAt.
- * Example: "Pro active until 12 Dec 2026, 30 days left"
+ * Uses `resolveUnifiedPlanStatus` under the hood so it never disagrees with the header PRO chip or Upgrade screen.
  */
 export function getProStatusSummary(
   inputOrRawExpiry: unknown,
@@ -356,63 +681,69 @@ export function getProStatusSummary(
     !(inputOrRawExpiry instanceof Date) &&
     typeof (inputOrRawExpiry as any).toMillis !== 'function' &&
     typeof (inputOrRawExpiry as any).seconds !== 'number' &&
+    typeof (inputOrRawExpiry as any)._seconds !== 'number' &&
+    typeof (inputOrRawExpiry as any).timestampValue !== 'string' &&
     ('planExpiresAt' in (inputOrRawExpiry as Record<string, any>) ||
       'premiumExpiresAt' in (inputOrRawExpiry as Record<string, any>) ||
       'isPro' in (inputOrRawExpiry as Record<string, any>) ||
+      'plan' in (inputOrRawExpiry as Record<string, any>) ||
+      'isPremium' in (inputOrRawExpiry as Record<string, any>) ||
       'source' in (inputOrRawExpiry as Record<string, any>));
 
+  const inputObj = isConfigObj ? (inputOrRawExpiry as Record<string, any>) : {};
   const rawExpiry = isConfigObj
-    ? (inputOrRawExpiry as any).planExpiresAt ?? (inputOrRawExpiry as any).premiumExpiresAt
+    ? inputObj.planExpiresAt ?? inputObj.premiumExpiresAt
     : inputOrRawExpiry;
 
-  const expiryMs = parseExpiryMillis(rawExpiry);
-  const hasFutureExpiry = expiryMs !== null && expiryMs > nowMs;
-  const daysLeft = hasFutureExpiry
-    ? Math.max(1, Math.ceil((expiryMs - nowMs) / (24 * 60 * 60 * 1000)))
-    : 0;
-  const expiryFormatted = hasFutureExpiry ? formatProExpiryDate(expiryMs) : null;
+  const unified = resolveUnifiedPlanStatus({
+    uid: inputObj.uid,
+    email: inputObj.email,
+    role: inputObj.role,
+    plan: inputObj.plan,
+    isPremium: inputObj.isPremium,
+    proPlanId: inputObj.proPlanId,
+    planExpiresAt: rawExpiry,
+    premiumExpiresAt: isConfigObj ? inputObj.premiumExpiresAt : rawExpiry,
+    isSuperAdmin: Boolean(inputObj.isSuperAdmin || inputObj.source === 'superadmin'),
+    isCrewPro: Boolean(inputObj.source === 'crew'),
+    crewName: inputObj.crewName,
+    nowMs,
+  });
 
-  const inputObj = isConfigObj ? (inputOrRawExpiry as Record<string, any>) : {};
-  const isSuperAdmin = Boolean(inputObj.isSuperAdmin || inputObj.source === 'superadmin');
-  const isPersonalPro = Boolean(
-    !isSuperAdmin &&
-      (hasFutureExpiry ||
-        inputObj.source === 'personal' ||
-        ((inputObj.isPremium || inputObj.plan === 'pro') && hasFutureExpiry))
-  );
-  const isCrewPro = Boolean(!isSuperAdmin && !isPersonalPro && inputObj.source === 'crew');
-  const isPro = Boolean(hasFutureExpiry || isSuperAdmin || isPersonalPro || isCrewPro || inputObj.isPro);
-  const isExpiringSoon = Boolean(hasFutureExpiry && daysLeft <= 3);
+  const hasFutureExpiry = unified.expiryMs !== null && unified.expiryMs > nowMs;
+  const isExpiringSoon = Boolean(hasFutureExpiry && unified.daysLeft <= 3);
 
   const statusText =
-    hasFutureExpiry && expiryFormatted
-      ? `Pro active until ${expiryFormatted}, ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left`
+    hasFutureExpiry && unified.expiryFormatted
+      ? `Pro active until ${unified.expiryFormatted} (${unified.timeLeftLabel})`
       : null;
 
   let statusBannerText = 'Free Tier · 2 practice tests & 5 AI tokens per day';
-  if (isSuperAdmin) {
+  if (unified.isSuperAdmin) {
     statusBannerText = 'Superadmin · Unlimited Pro access active';
   } else if (statusText) {
     statusBannerText = statusText;
-  } else if (isPersonalPro) {
+  } else if (unified.isPersonalPro) {
     statusBannerText = 'Pro active · Unlimited tests & AI derivations';
-  } else if (isCrewPro) {
+  } else if (unified.isCrewPro) {
     statusBannerText = `Pro active via ${inputObj.crewName || 'Study Crew'}`;
   }
 
   return {
-    isActive: hasFutureExpiry,
-    isPro,
-    isPersonalPro,
-    isSuperAdmin,
-    isCrewPro,
+    isActive: unified.state === 'active',
+    isPro: unified.isPro,
+    isPersonalPro: unified.isPersonalPro,
+    isSuperAdmin: unified.isSuperAdmin,
+    isCrewPro: unified.isCrewPro,
     crewName: inputObj.crewName,
-    expiryMs: hasFutureExpiry ? expiryMs : null,
-    expiryFormatted,
-    expiryDateLabel: expiryFormatted,
-    daysLeft,
+    expiryMs: unified.expiryMs,
+    expiryFormatted: unified.expiryFormatted,
+    expiryDateLabel: unified.expiryFormatted,
+    daysLeft: unified.daysLeft,
+    timeLeftLabel: unified.timeLeftLabel,
     isExpiringSoon,
     statusText,
     statusBannerText,
   };
 }
+

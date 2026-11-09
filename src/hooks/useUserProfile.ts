@@ -1,15 +1,16 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
-import { debugTracker } from '@/utils/debugTracker';
 import { isQuotaExhaustedError } from '@/utils/quota';
 import { syncPublicProfile } from '@/services/publicProfileService';
 import type { UserProfile } from '@/types/index';
 
 function getLocalCachedProfile(uid: string): UserProfile | null {
   try {
-    const raw = localStorage.getItem(`cached_profile_${uid}`);
+    const raw =
+      localStorage.getItem(`cached_profile_${uid}`) ||
+      localStorage.getItem(`boardly_user_profile_${uid}`);
     if (raw) return JSON.parse(raw);
   } catch {
     // Ignore storage read errors
@@ -19,7 +20,9 @@ function getLocalCachedProfile(uid: string): UserProfile | null {
 
 function setLocalCachedProfile(uid: string, profile: UserProfile): void {
   try {
-    localStorage.setItem(`cached_profile_${uid}`, JSON.stringify(profile));
+    const serialized = JSON.stringify(profile);
+    localStorage.setItem(`cached_profile_${uid}`, serialized);
+    localStorage.setItem(`boardly_user_profile_${uid}`, serialized);
   } catch {
     // Ignore storage write errors
   }
@@ -68,6 +71,7 @@ let activeUid: string | null = null;
 let activeUnsub: (() => void) | null = null;
 let activeTimeoutTimer: NodeJS.Timeout | null = null;
 let teardownTimeout: NodeJS.Timeout | null = null;
+let lastFocusRefreshAt = 0;
 
 let sharedState: SharedUserProfileState = {
   profile: null,
@@ -90,7 +94,36 @@ function broadcastState() {
   }
 }
 
-function startSubscription(uid: string, authProfileFallback?: UserProfile | null) {
+export function forceRefreshUserProfile(uid?: string | null): Promise<void> {
+  const targetUid = uid || activeUid;
+  if (!targetUid || targetUid.startsWith('guest_')) return Promise.resolve();
+  return getDoc(doc(db, 'users', targetUid))
+    .then((snap) => {
+      if (activeUid !== targetUid) return;
+      if (snap.exists()) {
+        const data = snap.data() as UserProfile;
+        const fullProfile: UserProfile = {
+          ...(sharedState.profile || {}),
+          ...data,
+          uid: targetUid,
+          photoURL: null,
+          role: data.role || sharedState.profile?.role || 'student',
+        };
+        sharedState.docExists = true;
+        sharedState.fetchStatus = 'success';
+        sharedState.hasReceivedSnapshot = true;
+        sharedState.error = null;
+        sharedState.profile = fullProfile;
+        setLocalCachedProfile(targetUid, fullProfile);
+        broadcastState();
+      }
+    })
+    .catch(() => {
+      // Ignore transient refresh errors
+    });
+}
+
+function startSubscription(uid: string, authProfileFallback?: UserProfile | null, forceRestart = false) {
   if (teardownTimeout) {
     clearTimeout(teardownTimeout);
     teardownTimeout = null;
@@ -137,7 +170,7 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
     return;
   }
 
-  if (activeUid === uid && activeUnsub) {
+  if (activeUid === uid && activeUnsub && !forceRestart) {
     return;
   }
 
@@ -185,12 +218,9 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
   }, 8000);
 
   let cancelled = false;
-  activeUnsub = () => {
-    cancelled = true;
-  };
-
-  getDoc(doc(db, 'users', uid))
-    .then((snap) => {
+  const unsubSnapshot = onSnapshot(
+    doc(db, 'users', uid),
+    (snap) => {
       if (cancelled) return;
       if (activeTimeoutTimer) {
         clearTimeout(activeTimeoutTimer);
@@ -204,10 +234,12 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
       if (snap.exists()) {
         const data = snap.data() as UserProfile;
         const fullProfile: UserProfile = {
+          ...(sharedState.profile || {}),
           ...data,
           uid,
           photoURL: null,
-          role: data.role || 'student',
+          role: data.role || authProfileFallback?.role || 'student',
+          customRole: data.customRole ?? authProfileFallback?.customRole,
         };
         sharedState.docExists = true;
         sharedState.fetchStatus = 'success';
@@ -226,8 +258,8 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
         }
       }
       broadcastState();
-    })
-    .catch((err) => {
+    },
+    (err) => {
       if (cancelled) return;
       if (activeTimeoutTimer) {
         clearTimeout(activeTimeoutTimer);
@@ -252,7 +284,38 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
         sharedState.docExists = true;
       }
       broadcastState();
-    });
+    }
+  );
+
+  activeUnsub = () => {
+    cancelled = true;
+    try {
+      unsubSnapshot();
+    } catch {
+      // Ignore unsub error
+    }
+  };
+}
+
+if (typeof window !== 'undefined') {
+  const handleWindowRefresh = () => {
+    if (!activeUid || activeUid.startsWith('guest_')) return;
+    const now = Date.now();
+    if (now - lastFocusRefreshAt < 1500) return;
+    lastFocusRefreshAt = now;
+    forceRefreshUserProfile(activeUid).catch(() => {});
+  };
+  window.addEventListener('focus', handleWindowRefresh);
+  window.addEventListener('boardly:plan-refresh', () => {
+    if (activeUid && !activeUid.startsWith('guest_')) {
+      forceRefreshUserProfile(activeUid).catch(() => {});
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      handleWindowRefresh();
+    }
+  });
 }
 
 function releaseSubscription() {
@@ -273,7 +336,7 @@ function releaseSubscription() {
  */
 export function useUserProfile(): UserProfileHookResult {
   const { user, profile: authProfile, profileLoading: authLoading, updateLocalProfile, syncGuestProgress, isGuest } = useAuth();
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
 
   const updateLocalProfileRef = useRef(updateLocalProfile);
   useEffect(() => {
@@ -298,6 +361,29 @@ export function useUserProfile(): UserProfileHookResult {
     };
   }, [user?.uid, authProfile]);
 
+  // Keep AuthContext profile synchronized whenever Firestore user doc updates plan/expiry/role
+  useEffect(() => {
+    if (!user?.uid || isGuest) return;
+    const live = sharedState.profile;
+    if (!live || live.uid !== user.uid) return;
+    if (
+      authProfile &&
+      (authProfile.plan !== live.plan ||
+        authProfile.isPremium !== live.isPremium ||
+        authProfile.planExpiresAt !== live.planExpiresAt ||
+        authProfile.premiumExpiresAt !== live.premiumExpiresAt ||
+        authProfile.proPlanId !== live.proPlanId)
+    ) {
+      updateLocalProfileRef.current({
+        plan: live.plan,
+        isPremium: live.isPremium,
+        planExpiresAt: live.planExpiresAt,
+        premiumExpiresAt: live.premiumExpiresAt,
+        proPlanId: live.proPlanId,
+      });
+    }
+  }, [user?.uid, isGuest, authProfile, tick]);
+
   useEffect(() => {
     if (!user?.uid || !authProfile) return;
     if (sharedState.profile && sharedState.profile.uid === user.uid) {
@@ -313,9 +399,10 @@ export function useUserProfile(): UserProfileHookResult {
       ) {
         sharedState.profile = {
           ...sharedState.profile,
-          ...authProfile,
           role: nextRole,
           customRole: nextCustomRole,
+          username: nextUsername,
+          displayName: nextDisplayName,
         };
         setLocalCachedProfile(user.uid, sharedState.profile);
         broadcastState();
@@ -336,11 +423,8 @@ export function useUserProfile(): UserProfileHookResult {
 
   const retryFetch = useCallback(() => {
     if (user?.uid) {
-      if (activeUnsub) {
-        activeUnsub();
-        activeUnsub = null;
-      }
-      startSubscription(user.uid, authProfile);
+      startSubscription(user.uid, authProfile, true);
+      forceRefreshUserProfile(user.uid).catch(() => {});
     }
   }, [user?.uid, authProfile]);
 

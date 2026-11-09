@@ -2880,6 +2880,7 @@ ${entries
   const unwrapFirestoreField = (val: any): any => {
     if (!val || typeof val !== 'object') return undefined;
     if ('stringValue' in val) return String(val.stringValue);
+    if ('timestampValue' in val) return String(val.timestampValue);
     if ('integerValue' in val) return Number(val.integerValue);
     if ('doubleValue' in val) return Number(val.doubleValue);
     if ('booleanValue' in val) return Boolean(val.booleanValue);
@@ -9515,6 +9516,301 @@ ${entries
       dateKey: computeServerPKTDateKey(),
     });
   });
+
+  // ============================================================================
+  // SERVER-AUTHORITATIVE PRO PLAN STATUS & PURCHASE GUARD (/api/pro/*)
+  // Prevents users with an active Pro plan or pending manual payment from starting
+  // another purchase via direct API calls, double-tapping, or multiple tabs.
+  // ============================================================================
+  const inFlightProLocks = new Set<string>();
+
+  const ensureProPurchaseLocksArray = (store: any): Array<Record<string, any>> => {
+    if (!Array.isArray(store.pro_purchase_locks)) {
+      store.pro_purchase_locks = [];
+    }
+    return store.pro_purchase_locks;
+  };
+
+  const fetchFirestoreUserDocRest = async (
+    uid: string,
+    bearerHeader: string
+  ): Promise<Record<string, any> | null> => {
+    const dbIds = Array.from(new Set([FIRESTORE_DATABASE_ID, '(default)'].filter(Boolean)));
+    for (const dbId of dbIds) {
+      try {
+        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/${encodeURIComponent(
+          dbId
+        )}/documents/users/${encodeURIComponent(uid)}`;
+        const resp = await fetch(url, {
+          method: 'GET',
+          headers: {
+            Authorization: bearerHeader,
+            Accept: 'application/json',
+          },
+        });
+        if (resp.ok) {
+          const docJson = await resp.json().catch(() => null);
+          const parsed = parseFirestoreRestDoc(docJson);
+          if (parsed?.data) return parsed.data;
+        }
+      } catch {
+        // Continue to fallback database id
+      }
+    }
+    return null;
+  };
+
+  const fetchUserPendingPaymentRequestsRest = async (
+    uid: string,
+    bearerHeader: string
+  ): Promise<Array<Record<string, any>>> => {
+    const allReqs = await fetchFirestoreCollectionRest('paymentRequests', bearerHeader, 300);
+    return allReqs
+      .filter((r) => r.data && String(r.data.userId || '') === uid)
+      .map((r) => ({ id: r.id, ...r.data }));
+  };
+
+  const resolveServerProStatus = async (
+    uid: string,
+    email: string | undefined,
+    bearerHeader: string
+  ) => {
+    const serverNowMs = Date.now();
+    const { resolveUnifiedPlanStatus, parseExpiryMillis } = await import('../config/plans');
+    const store = loadD1Store() as any;
+    const locks = ensureProPurchaseLocksArray(store);
+    const roleInfo = resolveD1Role(store, { uid, email });
+
+    const [userDoc, userReqs] = await Promise.all([
+      bearerHeader ? fetchFirestoreUserDocRest(uid, bearerHeader) : Promise.resolve(null),
+      bearerHeader ? fetchUserPendingPaymentRequestsRest(uid, bearerHeader) : Promise.resolve([]),
+    ]);
+
+    // Check D1 lock table for recent atomic lock (protects against race conditions across tabs)
+    const lockIdx = locks.findIndex((l) => l && l.uid === uid);
+    const existingLock = lockIdx >= 0 ? locks[lockIdx] : null;
+
+    let effectivePlan = userDoc?.plan ?? null;
+    let effectiveIsPremium = userDoc?.isPremium ?? null;
+    let effectiveProPlanId = userDoc?.proPlanId ?? null;
+    let effectivePlanExpiresAt = userDoc?.planExpiresAt ?? null;
+    let effectivePremiumExpiresAt = userDoc?.premiumExpiresAt ?? null;
+    const mergedPendingReqs = [...userReqs];
+
+    if (existingLock) {
+      const lockExpiry = Number(existingLock.expires_at || 0);
+      if (existingLock.state === 'active' && lockExpiry > serverNowMs) {
+        const fsExp = parseExpiryMillis(effectivePlanExpiresAt ?? effectivePremiumExpiresAt);
+        // Only apply the D1 active lock if Firestore hasn't been explicitly cleared by an admin
+        if (userDoc === null || (fsExp !== null && fsExp > serverNowMs) || userDoc?.isPremium === true || userDoc?.plan === 'pro') {
+          effectivePlan = 'pro';
+          effectiveIsPremium = true;
+          effectiveProPlanId = existingLock.plan_id || effectiveProPlanId;
+          if (!fsExp || lockExpiry > fsExp) {
+            effectivePremiumExpiresAt = lockExpiry;
+            effectivePlanExpiresAt = new Date(lockExpiry).toISOString();
+          }
+        } else {
+          locks.splice(lockIdx, 1);
+          saveD1Store(store);
+        }
+      } else if (existingLock.state === 'pending') {
+        const lockAgeMs = serverNowMs - Number(existingLock.updated_at || 0);
+        // Check if Firestore already shows this request was approved or rejected
+        const matchingReq = userReqs.find((r) => r.id === existingLock.pending_request_id);
+        const matchingStatus = String(matchingReq?.status || '').toLowerCase();
+        if (matchingStatus === 'rejected' || matchingStatus === 'approved') {
+          locks.splice(lockIdx, 1);
+          saveD1Store(store);
+        } else if (
+          !mergedPendingReqs.some((r) => String(r.status || '').toLowerCase() === 'pending') &&
+          lockAgeMs < 15 * 60 * 1000
+        ) {
+          // Keep the atomic pending lock while Firestore write is in-flight
+          mergedPendingReqs.push({
+            id: existingLock.pending_request_id || `pending_${uid}`,
+            userId: uid,
+            plan: existingLock.plan_id || 'pro_monthly',
+            planName: existingLock.plan_name || 'Boardly Pro, Monthly Pass',
+            amount_pkr: existingLock.amount_pkr || 199,
+            method: existingLock.method || 'jazzcash',
+            TID: existingLock.tid || '',
+            status: 'pending',
+            createdAt: existingLock.started_at || existingLock.updated_at || serverNowMs,
+          });
+        } else if (lockAgeMs >= 15 * 60 * 1000 && !matchingReq) {
+          locks.splice(lockIdx, 1);
+          saveD1Store(store);
+        }
+      } else if (existingLock.state === 'active' && lockExpiry <= serverNowMs) {
+        locks.splice(lockIdx, 1);
+        saveD1Store(store);
+      }
+    }
+
+    const unified = resolveUnifiedPlanStatus({
+      uid,
+      email: email || userDoc?.email || null,
+      role: userDoc?.role || roleInfo.role || 'student',
+      isGuest: uid.startsWith('guest_') || Boolean(userDoc?.isGuest),
+      plan: effectivePlan,
+      isPremium: effectiveIsPremium,
+      proPlanId: effectiveProPlanId,
+      planStartedAt: userDoc?.planStartedAt,
+      updatedAt: userDoc?.updatedAt,
+      planExpiresAt: effectivePlanExpiresAt,
+      premiumExpiresAt: effectivePremiumExpiresAt,
+      pendingRequests: mergedPendingReqs,
+      nowMs: serverNowMs,
+    });
+
+    return { serverNowMs, status: unified, store, locks };
+  };
+
+  app.get('/api/pro/status', async (req: Request, res: Response) => {
+    const authHeader = String(req.headers.authorization || '').trim();
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user || !user.uid) {
+      return res.status(401).json({
+        ok: false,
+        code: 'UNAUTHENTICATED',
+        error: 'Authentication required to check plan status.',
+      });
+    }
+
+    if (user.uid.startsWith('guest_')) {
+      const serverNowMs = Date.now();
+      const { resolveUnifiedPlanStatus } = await import('../config/plans');
+      const status = resolveUnifiedPlanStatus({
+        uid: user.uid,
+        isGuest: true,
+        nowMs: serverNowMs,
+      });
+      return res.status(200).json({ ok: true, serverNowMs, status });
+    }
+
+    const { serverNowMs, status } = await resolveServerProStatus(
+      user.uid,
+      user.email,
+      authHeader
+    );
+    return res.status(200).json({
+      ok: true,
+      serverNowMs,
+      status,
+    });
+  });
+
+  const handleProPurchaseGuard = async (req: Request, res: Response) => {
+    const authHeader = String(req.headers.authorization || '').trim();
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    const body = req.body || {};
+
+    if (!user || !user.uid) {
+      return res.status(401).json({
+        ok: false,
+        code: 'UNAUTHENTICATED',
+        error: 'You must be signed in to purchase Boardly Pro.',
+      });
+    }
+
+    const uid = user.uid;
+    if (uid.startsWith('guest_') || body.isGuest === true) {
+      return res.status(403).json({
+        ok: false,
+        code: 'GUEST_UPGRADE_FORBIDDEN',
+        error: 'Guest accounts cannot purchase Boardly Pro. Please create a registered account to upgrade.',
+      });
+    }
+
+    if (inFlightProLocks.has(uid)) {
+      return res.status(409).json({
+        ok: false,
+        code: 'PURCHASE_IN_PROGRESS',
+        error: 'A purchase or payment verification request is already in progress for your account. Please wait a moment.',
+      });
+    }
+
+    inFlightProLocks.add(uid);
+    try {
+      const { serverNowMs, status, store, locks } = await resolveServerProStatus(
+        uid,
+        user.email,
+        authHeader
+      );
+
+      if (status.state === 'active') {
+        return res.status(409).json({
+          ok: false,
+          code: 'PRO_ALREADY_ACTIVE',
+          state: 'active',
+          serverNowMs,
+          status,
+          error:
+            status.blockReason ||
+            `You already have Boardly Pro (${status.planName}) active until ${status.expiryFormatted}. You can purchase again after your current plan expires.`,
+        });
+      }
+
+      if (status.state === 'pending') {
+        return res.status(409).json({
+          ok: false,
+          code: 'PAYMENT_PENDING_VERIFICATION',
+          state: 'pending',
+          serverNowMs,
+          status,
+          error:
+            'Your payment is being verified. This usually takes up to 24 hours. You cannot start another purchase while a payment is awaiting verification.',
+        });
+      }
+
+      // If client is committing a purchase or payment request, record the atomic lock in D1 store immediately
+      if (body.commitLock === true) {
+        const lockState = body.lockState === 'active' ? 'active' : 'pending';
+        const durationDays = Number(body.durationDays || (body.planId === 'pro_annual' ? 365 : 30));
+        const expiresAt =
+          lockState === 'active'
+            ? Number(body.expiresAtMs || serverNowMs + durationDays * 24 * 60 * 60 * 1000)
+            : null;
+        const lockRecord = {
+          uid,
+          state: lockState,
+          plan_id: String(body.planId || 'pro_monthly'),
+          plan_name: String(body.planName || 'Boardly Pro, Monthly Pass'),
+          amount_pkr: Number(body.amountPkr || 199),
+          method: String(body.method || 'koban'),
+          tid: String(body.tid || ''),
+          started_at: serverNowMs,
+          expires_at: expiresAt,
+          pending_request_id: body.pendingRequestId ? String(body.pendingRequestId) : null,
+          updated_at: serverNowMs,
+        };
+        const existingIdx = locks.findIndex((l) => l && l.uid === uid);
+        if (existingIdx >= 0) {
+          locks[existingIdx] = lockRecord;
+        } else {
+          locks.push(lockRecord);
+        }
+        saveD1Store(store);
+      }
+
+      return res.status(200).json({
+        ok: true,
+        code: 'PURCHASE_ALLOWED',
+        state: 'none',
+        canStartPurchase: true,
+        serverNowMs,
+        status,
+      });
+    } finally {
+      inFlightProLocks.delete(uid);
+    }
+  };
+
+  app.post('/api/pro/purchase-guard', handleProPurchaseGuard);
+  app.post('/api/pro/purchase', handleProPurchaseGuard);
+  app.post('/api/pro/submit-payment', handleProPurchaseGuard);
+  app.post('/api/pro/activate', handleProPurchaseGuard);
 }
 
 function escapeHtmlAttr(str: string): string {

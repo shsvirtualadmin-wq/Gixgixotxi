@@ -17,7 +17,9 @@ import { KobanIcon } from '@/components/koban/KobanIcon';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/contexts/AuthContext';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { GuestProBlockedView } from '@/components/plans/GuestProBlockedView';
+import { ProLockedStateCard } from '@/components/plans/ProLockedStateCard';
 import {
   PLANS,
   REFUND_POLICY_TEXT,
@@ -75,6 +77,7 @@ export function ProCheckoutSheet({
 }: ProCheckoutSheetProps) {
   const { isDark } = useTheme();
   const { isGuest } = useAuth();
+  const { planStatus, refreshPlanStatus } = useEffectivePlan();
   const isLight = !isDark;
 
   const [selectedPlanId, setSelectedPlanId] = useState<ProPlanId>(initialPlanId);
@@ -105,6 +108,7 @@ export function ProCheckoutSheet({
   // Reset state when sheet opens or initialPlanId changes
   useEffect(() => {
     if (open) {
+      refreshPlanStatus().catch(() => {});
       const resolvedPlan = getProPlanById(initialPlanId);
       setSelectedPlanId(resolvedPlan.id);
       setPaymentOption(kobanBalanceRef.current >= resolvedPlan.price_kobans ? 'kobans' : 'pkr');
@@ -113,7 +117,7 @@ export function ProCheckoutSheet({
       setCompletedState(null);
       setIdempotencyKey(`pro_chk_${resolvedPlan.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
     }
-  }, [open, initialPlanId]);
+  }, [open, initialPlanId, refreshPlanStatus]);
 
   // Update idempotencyKey when user switches plan inside the sheet
   const handleSelectPlan = (nextPlanId: ProPlanId) => {
@@ -176,9 +180,29 @@ export function ProCheckoutSheet({
     setTimeout(() => setCopiedField(null), 1800);
   };
 
+  const isLocked =
+    !completedState &&
+    (planStatus.state === 'active' || planStatus.state === 'pending' || hasPendingProRequest);
+
   const handlePrimarySubmit = async () => {
     if (!uid) {
       setErrorMsg('Please sign in to activate Boardly Pro.');
+      return;
+    }
+
+    if (planStatus.state === 'active') {
+      setErrorMsg(
+        planStatus.blockReason ||
+          `You already have Boardly Pro (${planStatus.planName}) active until ${planStatus.expiryFormatted}. You can purchase again after your current plan expires.`
+      );
+      return;
+    }
+
+    if (planStatus.state === 'pending' || hasPendingProRequest) {
+      setErrorMsg(
+        planStatus.blockReason ||
+          'Your payment is being verified. This usually takes up to 24 hours. You cannot start another purchase while a payment is awaiting verification.'
+      );
       return;
     }
 
@@ -228,7 +252,7 @@ export function ProCheckoutSheet({
       // Pay with PKR (JazzCash / Opay)
       if (hasPendingProRequest) {
         setErrorMsg(
-          'You already have a pending Pro pass request awaiting verification. We will verify it within 2 hours.'
+          'You already have a pending Pro pass request awaiting manual verification. We verify payments and activate plans within 24 hours.'
         );
         return;
       }
@@ -405,7 +429,7 @@ export function ProCheckoutSheet({
                     style={{ color: textPrimary }}
                     className="font-heading font-extrabold text-xl sm:text-2xl"
                   >
-                    Request received, we will verify within 2 hours
+                    Request received — verified within 24 hours
                   </h3>
                   <p style={{ color: textMuted }} className="text-xs sm:text-sm max-w-sm mx-auto">
                     We received your PKR {completedState.pkrAmount?.toLocaleString()} payment
@@ -413,8 +437,8 @@ export function ProCheckoutSheet({
                     <strong style={{ color: textPrimary }} className="font-mono">
                       {completedState.tid}
                     </strong>
-                    ) for {completedState.planName}. You will receive an email as soon as Pro is
-                    activated.
+                    ) for {completedState.planName}. Payments are verified manually and your plan
+                    will be activated within 24 hours.
                   </p>
                 </div>
               )}
@@ -444,6 +468,11 @@ export function ProCheckoutSheet({
                   </button>
                 )}
               </div>
+            </div>
+          ) : isLocked ? (
+            /* ─── LOCKED STATE (ACTIVE PRO OR PENDING VERIFICATION) ─────────────── */
+            <div className="py-2 space-y-4">
+              <ProLockedStateCard planStatus={planStatus} compact />
             </div>
           ) : (
             /* ─── CHECKOUT FORM ─────────────────────────────────────────────────── */
@@ -720,7 +749,7 @@ export function ProCheckoutSheet({
                           </span>
                         </div>
                         <p style={{ color: textMuted }} className="text-xs">
-                          Send exact PKR amount &amp; submit Transaction ID (verified within 2h)
+                          Send exact PKR amount &amp; submit Transaction ID (manually verified &amp; activated within 24 hours)
                         </p>
                       </div>
                     </div>
@@ -921,8 +950,8 @@ export function ProCheckoutSheet({
           )}
         </div>
 
-        {/* Sticky Footer CTA (only shown before completion) */}
-        {!completedState && (
+        {/* Sticky Footer CTA (only shown before completion and when not locked) */}
+        {!completedState && !isLocked && (
           <div
             style={{ backgroundColor: surfaceBg, borderColor: borderCol }}
             className="px-5 py-3.5 border-t shrink-0"

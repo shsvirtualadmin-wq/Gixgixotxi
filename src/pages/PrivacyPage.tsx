@@ -16,9 +16,9 @@ const SECTIONS = [
   { id: 'visibility-moderation', title: '6. Public Visibility, Anonymous Posts & Admin Access' },
   { id: 'security', title: '7. How We Protect Your Data' },
   { id: 'retention', title: '8. Data Retention & Cleanup Schedules' },
-  { id: 'emails', title: '9. Transactional vs. Optional Emails' },
+  { id: 'emails', title: '9. Transactional Emails Only (No Marketing)' },
   { id: 'your-rights', title: '10. Your Rights & Account Deletion' },
-  { id: 'minors', title: '11. Children & Minors' },
+  { id: 'minors', title: '11. Children & Minors (Age 13+)' },
   { id: 'changes-contact', title: '12. Policy Updates & Contact Details' },
 ];
 
@@ -119,14 +119,27 @@ export const PrivacyPage: React.FC = () => {
             </div>
             <ul className="list-disc pl-5 space-y-2 text-xs sm:text-sm text-[var(--text)]/90">
               <li>
+                <strong>Operated by SHS Virtual Academy:</strong> Boardly is a product of{' '}
+                <strong>SHS Virtual Academy</strong>, based in Rawalpindi, Pakistan. For all
+                privacy, support, data request, and legal inquiries, email us at{' '}
+                <a
+                  href="mailto:shsvirtualadmin@gmail.com"
+                  className="text-[var(--red)] hover:underline font-mono"
+                >
+                  shsvirtualadmin@gmail.com
+                </a>
+                .
+              </li>
+              <li>
                 <strong>We do not sell your personal data:</strong> Boardly never sells or rents
                 student emails, phone numbers, test scores, or personal data to advertisers or third
                 parties.
               </li>
               <li>
-                <strong>Your email stays private:</strong> Your email address is used for sign-in,
-                security codes, and account notifications. It is never displayed on your public
-                profile, leaderboards, or Boardly Commons.
+                <strong>Your email &amp; Google photo stay private:</strong> Your email address is
+                used for sign-in, security codes, and transactional notifications and is never shown
+                publicly. Your Google / Gmail profile photo is never used as your avatar or exposed
+                to other users.
               </li>
               <li>
                 <strong>Passwords &amp; security secrets are protected:</strong> Passwords are
@@ -142,15 +155,15 @@ export const PrivacyPage: React.FC = () => {
                 inactivity.
               </li>
               <li>
-                <strong>Anonymous Commons posts retain an internal ID:</strong> Posting anonymously
-                hides your identity from other students, but our database retains your internal user
-                ID (`author_uid`) for abuse prevention and moderation.
+                <strong>Manual payment verification &amp; zero refunds:</strong> Payment details and
+                payment proof are collected solely to verify your purchase manually and activate
+                your plan within 24 hours. All Pro and Premium purchases are final and
+                non-refundable once submitted or activated.
               </li>
               <li>
-                <strong>Trusted infrastructure:</strong> We use Google Firebase (Auth, Firestore,
-                Storage), Cloudflare (Workers, Pages, D1 database, R2 file storage), Resend
-                (transactional emails), and Google Gemini (when you use AI explanations or Study
-                Buddy).
+                <strong>Transactional emails only (zero marketing):</strong> We do not send
+                marketing or promotional emails. We only send transactional emails (verification
+                codes, security alerts, and purchase/plan updates).
               </li>
             </ul>
           </section>
@@ -160,11 +173,12 @@ export const PrivacyPage: React.FC = () => {
               1. Who We Are &amp; Legal Context
             </h2>
             <p>
-              Boardly is an educational exam preparation platform operated from Pakistan by{' '}
-              <strong>[BUSINESS NAME]</strong>, located at <strong>[ADDRESS]</strong>. This Privacy
-              Policy explains how we collect, use, store, and protect your information in accordance
-              with applicable Pakistani law (including electronic data and consumer protection
-              principles in Pakistan) and general data protection best practices.
+              <strong>Boardly</strong> is an educational exam preparation service operated by{' '}
+              <strong>SHS Virtual Academy</strong> (parent organization), located in{' '}
+              <strong>Rawalpindi, Pakistan</strong>. This Privacy Policy explains how SHS Virtual
+              Academy collects, uses, stores, and protects your information when you use Boardly in
+              accordance with applicable Pakistani law (including electronic data and consumer
+              protection principles in Pakistan) and general data protection standards.
             </p>
           </section>
 
@@ -192,9 +206,11 @@ export const PrivacyPage: React.FC = () => {
                     <td className="p-3 align-top">
                       <strong className="text-[var(--text)]">Account &amp; Identity</strong>
                       <br />
-                      Email address, display name, `@username`, profile photo / avatar, role, target
-                      university, password (handled by Firebase Auth; never readable by Boardly),
-                      Google OAuth account ID/profile (if using Google Sign-In).
+                      Email address, display name, `@username`, equipped store avatar or
+                      deterministic UID-seeded matrix avatar, role, target university, password
+                      (handled by Firebase Auth; never readable by Boardly), Google OAuth account ID
+                      (if using Google Sign-In; your Google/Gmail profile photo is never saved or
+                      displayed).
                     </td>
                     <td className="p-3 align-top">
                       Create and authenticate your account, allow username sign-in, and display your
@@ -202,8 +218,7 @@ export const PrivacyPage: React.FC = () => {
                     </td>
                     <td className="p-3 align-top">
                       Firebase Authentication, Cloud Firestore (`users`, `publicProfiles`,
-                      `usernames`), Cloudflare D1 (`user_usernames`, `user_roles`), Firebase
-                      Storage / local avatar store.
+                      `usernames`), Cloudflare D1 (`user_usernames`, `user_roles`).
                     </td>
                     <td className="p-3 align-top">
                       Google Firebase &amp; Cloudflare. Kept while your account is active until
@@ -288,10 +303,10 @@ export const PrivacyPage: React.FC = () => {
                       and student messaging.
                     </td>
                     <td className="p-3 align-top">
-                      Cloudflare D1 (`posts`, `comments`, `post_likes`, `post_saves`,
-                      `post_reports`), Cloudflare R2 (uploaded files), Cloud Firestore (`crews`,
-                      `crew_requests`, `applications`, `follows`, `chatRequests`, `conversations`
-                      &amp; `messages`, `notifications`).
+                      Cloudflare D1 (`commons_posts`, `commons_post_comments`, `commons_post_likes`,
+                      `commons_post_saves`, `commons_post_reports`, `notifications`), Cloudflare R2
+                      (uploaded files), Cloud Firestore (`crews`, `crew_requests`, `applications`,
+                      `follows`, `chatRequests`, `conversations` &amp; `messages`).
                     </td>
                     <td className="p-3 align-top">
                       Cloudflare &amp; Google Firebase. Kept until deleted by you or removed by
@@ -304,20 +319,24 @@ export const PrivacyPage: React.FC = () => {
                       <br />
                       Koban wallet balance and ledger, daily/milestone reward claims, referral codes
                       and IP hashes, Pro plan status/expiry, and manual payment verification records
-                      (method: JazzCash/Opay, PKR amount, Transaction ID / TID, phone number if
-                      provided).
+                      (payment method such as JazzCash/Opay, PKR amount, Transaction ID / TID, and
+                      payment proof if submitted).
                     </td>
                     <td className="p-3 align-top">
-                      Maintain your Koban balance, prevent referral farming, and verify manual PKR
-                      payments for Boardly Pro.
+                      Maintain your Koban balance, prevent referral farming, and manually verify
+                      your purchase to activate your plan within 24 hours. Payment proof and payment
+                      details are collected <strong>only</strong> to verify the purchase. All Pro
+                      and Premium purchases are final and non-refundable once submitted or
+                      activated.
                     </td>
                     <td className="p-3 align-top">
                       Cloud Firestore (`wallets`, `wallets/{'{uid}'}/ledger`, `payments`,
-                      `pro_requests`), Cloudflare D1 (`reward_daily_claims`,
+                      `pro_requests`, `kobanRequests`), Cloudflare D1 (`reward_daily_claims`,
                       `reward_milestone_claims`, `referral_codes`, `referrals`).
                     </td>
                     <td className="p-3 align-top">
-                      Google Firebase, Cloudflare, and Resend (for payment/Koban email receipts).
+                      Google Firebase, Cloudflare, and Resend (for transactional purchase and plan
+                      update emails).
                     </td>
                   </tr>
                   <tr>
@@ -424,25 +443,29 @@ export const PrivacyPage: React.FC = () => {
                 (`boardly-commons-r2`) for Commons attachments and certificates.
               </li>
               <li>
-                <strong>Resend (`api.resend.com`):</strong> Sends verification codes, 2FA security
-                alerts, Koban/Pro payment receipts, test reports, and support inquiry emails.
+                <strong>Resend (`api.resend.com`):</strong> Sends strictly transactional emails
+                (verification codes, 2FA security alerts, and purchase/plan updates).
               </li>
               <li>
                 <strong>Google Gemini API (Google LLC):</strong> Processes MCQ derivations,
                 explanations, and Study Buddy prompts when you invoke an AI feature.
               </li>
               <li>
-                <strong>Manual Payment Channels (JazzCash &amp; Opay):</strong> When you pay for
-                Boardly Pro in PKR, you transfer funds through your own JazzCash or Opay app and
-                submit the Transaction ID (TID) to Boardly for manual verification. Boardly does not
-                collect or store your bank card numbers or mobile wallet PINs.
+                <strong>Manual Payment Channels (JazzCash &amp; Opay):</strong> When you purchase a
+                Boardly Pro or Premium pass or Kobans in PKR, you transfer funds through your own
+                JazzCash or Opay account and submit the payment details and proof (Transaction ID /
+                TID) to Boardly. We collect payment proof and payment details <strong>only</strong>{' '}
+                to manually verify your purchase and activate your plan within 24 hours. Boardly
+                does not collect or store your bank card numbers or mobile wallet PINs. All Pro and
+                Premium purchases are final and non-refundable once submitted or activated (zero
+                refunds).
               </li>
             </ul>
             <p>
               <strong>Where Data Is Processed (International Transfers):</strong> Because Google
-              Firebase, Cloudflare, and Resend operate global cloud infrastructure, your data may be
-              processed and stored on servers located outside Pakistan (including in the United
-              States, Europe, or Asia-Pacific).<strong> [EXACT CLOUD REGIONS — TO CONFIRM]</strong>
+              Firebase, Cloudflare, and Resend operate distributed cloud infrastructure, your data
+              is processed and stored on secure cloud servers that may be located outside Pakistan
+              (including in the United States, Europe, and Asia-Pacific).
             </p>
           </section>
 
@@ -453,10 +476,11 @@ export const PrivacyPage: React.FC = () => {
             <ul className="list-disc pl-5 space-y-2.5">
               <li>
                 <strong>What Other Students Can See:</strong> Your display name, `@username`,
-                avatar, equipped profile cosmetics, role badge, target university, public Commons
+                equipped store avatar (or deterministic matrix avatar generated from your user ID),
+                equipped profile cosmetics, role badge, target university, public Commons
                 posts/comments, Study Crew membership, and leaderboard/Grand Line mock rankings are
-                visible to other users. Your email address, password, 2FA settings, and private
-                payment TIDs are <strong>never</strong> shown publicly.
+                visible to other users. Your email address, Google/Gmail profile photo, password,
+                2FA settings, and private payment TIDs are <strong>never</strong> shown publicly.
               </li>
               <li>
                 <strong>How Anonymous Commons Posts Work:</strong> If you publish a post or comment
@@ -467,12 +491,12 @@ export const PrivacyPage: React.FC = () => {
                 violations.
               </li>
               <li>
-                <strong>What Administrators Can See:</strong> Authorized Boardly administrators can
-                view user profiles, Commons posts/comments, community reports, Captain/Crew
-                applications, Pro payment requests, security audit logs (such as 2FA resets), and AI
-                Study Buddy logs (`study_buddy_logs`) for moderation, support, and billing
-                verification. Direct messages between students are stored in Cloud Firestore and are
-                not end-to-end encrypted.
+                <strong>What Administrators Can See:</strong> Authorized Boardly administrators at
+                SHS Virtual Academy can view user profiles, Commons posts/comments, community
+                reports, Captain/Crew applications, manual payment verification requests, security
+                audit logs (such as 2FA resets), and AI Study Buddy logs (`study_buddy_logs`) for
+                moderation, support, and payment verification. Direct messages between students are
+                stored in Cloud Firestore and are not end-to-end encrypted.
               </li>
             </ul>
           </section>
@@ -528,27 +552,29 @@ export const PrivacyPage: React.FC = () => {
                 <strong>30 days</strong>.
               </li>
               <li>
-                <strong>Payment &amp; Security Audit Records:</strong> Retained as needed for
-                billing verification, fraud prevention, and dispute resolution.{' '}
-                <strong>[LONG-TERM ARCHIVE RETENTION PERIOD — TO CONFIRM]</strong>
+                <strong>Payment &amp; Security Audit Records:</strong> Payment verification records
+                and security audit logs are retained as needed to verify purchases, prevent
+                duplicate or fraudulent transactions, and maintain account security.
               </li>
             </ul>
           </section>
 
           <section id="emails" className="scroll-mt-28 space-y-4">
             <h2 className="font-dot text-2xl text-[var(--text)]">
-              9. Transactional vs. Optional Emails
+              9. Transactional Emails Only (No Marketing Emails)
             </h2>
             <p>
-              <strong>Essential Transactional Emails:</strong> We always send critical account and
-              security emails to registered users — including 6-digit sign-up and 2FA verification
-              codes, password reset links, 2FA security change alerts, Pro payment/Koban purchase
-              confirmations, official test result reports, and Captain/Crew application updates.
+              <strong>Zero Marketing Emails:</strong> Boardly does <strong>not</strong> send
+              marketing, promotional, or advertising emails, and we never share your email address
+              with third-party marketers.
             </p>
             <p>
-              <strong>Optional Activity Emails:</strong> In <em>Settings &gt; Email Notifications</em>,
-              you can toggle optional activity emails (such as daily/milestone Koban receipts and
-              test-started notifications) on or off at any time.
+              <strong>Transactional Emails Only:</strong> We only send transactional emails
+              triggered by your account activity — specifically verification codes (sign-up and 2FA
+              codes), security alerts (such as password resets and 2FA changes), and purchase or
+              plan updates (such as Pro payment verification, plan activation, and Koban receipts).
+              In <em>Settings &gt; Email Notifications</em>, you can also toggle non-essential
+              activity notifications on or off at any time.
             </p>
           </section>
 
@@ -561,8 +587,11 @@ export const PrivacyPage: React.FC = () => {
               <li>
                 <strong>Access &amp; Update:</strong> View and update your username, custom role,
                 avatar, password, 2FA settings, trusted devices, and email notification preferences
-                directly in <Link to="/dashboard/settings" className="text-[var(--red)] hover:underline">Settings</Link>,
-                or submit a display name change request.
+                directly in{' '}
+                <Link to="/dashboard/settings" className="text-[var(--red)] hover:underline">
+                  Settings
+                </Link>
+                , or submit a display name change request.
               </li>
               <li>
                 <strong>Delete Posts &amp; Comments:</strong> Delete your own comments or posts in
@@ -573,38 +602,37 @@ export const PrivacyPage: React.FC = () => {
                 permanent deletion of your Boardly account (or a copy of your stored account data)
                 by emailing{' '}
                 <a
-                  href="mailto:support@boardly.cfd"
+                  href="mailto:shsvirtualadmin@gmail.com"
                   className="text-[var(--red)] hover:underline font-mono"
                 >
-                  support@boardly.cfd
+                  shsvirtualadmin@gmail.com
                 </a>{' '}
                 from your registered email address with the subject line{' '}
                 <code className="font-mono text-xs bg-[var(--surface-2)] px-1.5 py-0.5 rounded">
                   Account Deletion Request
                 </code>
-                . Our administrators will verify your identity and process your deletion request.
+                . Our administrators will verify your identity and process your request.
               </li>
             </ul>
           </section>
 
           <section id="minors" className="scroll-mt-28 space-y-4">
             <h2 className="font-dot text-2xl text-[var(--text)]">
-              11. Children &amp; Minors
+              11. Children &amp; Minors (Minimum Age 13)
             </h2>
             <p>
-              Boardly is designed for secondary, intermediate (Class 9–12 / FSc / A-Level), and
-              university entrance test students. You must be at least{' '}
-              <strong>[MINIMUM AGE, e.g., 13 — TO CONFIRM]</strong> years old to create an account.
-              We do not knowingly collect personal data from children under that minimum age. If a
-              parent or guardian believes their child under the minimum age has provided personal
-              information without consent, please contact us at{' '}
+              You must be at least <strong>13 years old</strong> to create an account or use
+              Boardly. Users under <strong>18 years of age</strong> should use Boardly with the
+              knowledge of a parent or legal guardian. We do not knowingly collect personal data
+              from children under 13. If you are a parent or guardian and believe your child has
+              provided personal information on Boardly, you can email us at{' '}
               <a
-                href="mailto:support@boardly.cfd"
+                href="mailto:shsvirtualadmin@gmail.com"
                 className="text-[var(--red)] hover:underline font-mono"
               >
-                support@boardly.cfd
+                shsvirtualadmin@gmail.com
               </a>{' '}
-              and we will promptly delete the account.
+              to request deletion of the account and associated data.
             </p>
           </section>
 
@@ -618,22 +646,26 @@ export const PrivacyPage: React.FC = () => {
               users.
             </p>
             <div className="rounded-xl bg-[var(--surface-2)] border border-[var(--border)] p-4 text-xs sm:text-sm space-y-1.5">
-              <p className="text-[var(--text)] font-semibold">Privacy &amp; Support Contact:</p>
+              <p className="text-[var(--text)] font-semibold">
+                Privacy, Support, Data Request &amp; Legal Contact:
+              </p>
               <p>
-                <strong>Operator / Business Name:</strong> [BUSINESS NAME]
+                <strong>Service Name:</strong> Boardly
+              </p>
+              <p>
+                <strong>Operator / Parent Organization:</strong> SHS Virtual Academy
               </p>
               <p>
                 <strong>Email:</strong>{' '}
                 <a
-                  href="mailto:support@boardly.cfd"
+                  href="mailto:shsvirtualadmin@gmail.com"
                   className="text-[var(--red)] hover:underline font-mono"
                 >
-                  support@boardly.cfd
-                </a>{' '}
-                / <strong>[CONTACT EMAIL]</strong>
+                  shsvirtualadmin@gmail.com
+                </a>
               </p>
               <p>
-                <strong>Address:</strong> [ADDRESS]
+                <strong>Address:</strong> Rawalpindi, Pakistan
               </p>
             </div>
           </section>
@@ -642,3 +674,4 @@ export const PrivacyPage: React.FC = () => {
     </div>
   );
 };
+export default PrivacyPage;
