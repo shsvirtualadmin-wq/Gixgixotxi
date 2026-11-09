@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   X,
@@ -140,40 +140,154 @@ export function UserOverrideDrawer({
   const [removingFromCrew, setRemovingFromCrew] = useState(false);
   const [verifiedNotice, setVerifiedNotice] = useState<string | null>(null);
 
-  // Two-Step Verification status & Super Admin Reset 2FA
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState<boolean>(false);
-  const [resetting2fa, setResetting2fa] = useState<boolean>(false);
+  // Two-Step Verification status, Security history & Super Admin 2FA Controls
+  type Admin2faActionType = 'reset' | 'approve_recovery' | 'cancel_recovery' | 'enable_email_2fa';
+  interface AdminAuditLogEntry {
+    id: string;
+    userId: string;
+    actorId: string;
+    eventType: string;
+    details: Record<string, any>;
+    createdAt: number;
+  }
 
-  useEffect(() => {
+  const [twoFactorStatus, setTwoFactorStatus] = useState<{
+    totpEnabled: boolean;
+    email2faEnabled: boolean;
+    twoFactorEnabled: boolean;
+    recoveryPending: boolean;
+    recoveryRequestedAt: number | null;
+    recoveryDisableAt: number | null;
+    backupCodesRemaining: number;
+    trustedDevicesCount: number;
+    lastChangedAt: number | null;
+    badgeLabel: 'Off' | 'Authenticator' | 'Email code' | 'Both' | 'Recovery pending';
+  }>({
+    totpEnabled: false,
+    email2faEnabled: false,
+    twoFactorEnabled: false,
+    recoveryPending: false,
+    recoveryRequestedAt: null,
+    recoveryDisableAt: null,
+    backupCodesRemaining: 0,
+    trustedDevicesCount: 0,
+    lastChangedAt: null,
+    badgeLabel: 'Off',
+  });
+  const [securityAuditLogs, setSecurityAuditLogs] = useState<AdminAuditLogEntry[]>([]);
+  const [canManage2fa, setCanManage2fa] = useState<boolean>(false);
+  const [canModifyTarget2fa, setCanModifyTarget2fa] = useState<boolean>(false);
+  const [targetIsSuperAdmin2fa, setTargetIsSuperAdmin2fa] = useState<boolean>(false);
+  const [targetIsSelf2fa, setTargetIsSelf2fa] = useState<boolean>(false);
+  const [callerHas2fa, setCallerHas2fa] = useState<boolean>(false);
+
+  // Admin 2FA Confirmation Modal state
+  const [pending2faAction, setPending2faAction] = useState<Admin2faActionType | null>(null);
+  const [admin2faReason, setAdmin2faReason] = useState<string>('');
+  const [admin2faIdentityVerified, setAdmin2faIdentityVerified] = useState<boolean>(false);
+  const [admin2faPassword, setAdmin2faPassword] = useState<string>('');
+  const [admin2faCode, setAdmin2faCode] = useState<string>('');
+  const [admin2faModalError, setAdmin2faModalError] = useState<string | null>(null);
+  const [submitting2faAction, setSubmitting2faAction] = useState<boolean>(false);
+
+  const fetchUser2faDetails = useCallback(async () => {
     if (!user || user.isGuest || user.accountType === 'guest') {
-      setTwoFactorEnabled(false);
       return;
     }
-    let cancelled = false;
-    (async () => {
-      try {
-        const idToken = auth.currentUser ? await auth.currentUser.getIdToken() : '';
-        if (!idToken) return;
-        const res = await fetch(`/api/auth/admin/2fa-status?uid=${encodeURIComponent(user.uid)}`, {
-          credentials: 'include',
-          headers: { Authorization: `Bearer ${idToken}` },
+    try {
+      const idToken = auth.currentUser ? await auth.currentUser.getIdToken() : '';
+      if (!idToken) return;
+      const res = await fetch(`/api/auth/admin/2fa-status?uid=${encodeURIComponent(user.uid)}`, {
+        credentials: 'include',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.ok) {
+        const s = data.userStatus || data.statusByUid?.[user.uid] || data;
+        const totpOn = Boolean(s.totpEnabled);
+        const emailOn = Boolean(s.email2faEnabled);
+        const recPending = Boolean(s.recoveryPending);
+        const badge =
+          s.badgeLabel ||
+          (recPending && (totpOn || emailOn)
+            ? 'Recovery pending'
+            : totpOn && emailOn
+            ? 'Both'
+            : totpOn
+            ? 'Authenticator'
+            : emailOn
+            ? 'Email code'
+            : 'Off');
+        setTwoFactorStatus({
+          totpEnabled: totpOn,
+          email2faEnabled: emailOn,
+          twoFactorEnabled: Boolean(s.twoFactorEnabled ?? (totpOn || emailOn)),
+          recoveryPending: recPending,
+          recoveryRequestedAt: s.recoveryRequestedAt ? Number(s.recoveryRequestedAt) : null,
+          recoveryDisableAt: s.recoveryDisableAt ? Number(s.recoveryDisableAt) : null,
+          backupCodesRemaining: Number(s.backupCodesRemaining ?? s.remainingBackupCodes ?? 0),
+          trustedDevicesCount: Number(s.trustedDevicesCount ?? 0),
+          lastChangedAt: s.lastChangedAt
+            ? Number(s.lastChangedAt)
+            : s.updatedAt
+            ? Number(s.updatedAt)
+            : null,
+          badgeLabel: badge,
         });
-        const data = await res.json().catch(() => ({}));
-        if (!cancelled && res.ok && data?.ok) {
-          setTwoFactorEnabled(Boolean(data.twoFactorEnabled));
-        }
-      } catch {
-        // Ignore
+        setSecurityAuditLogs(Array.isArray(data.auditLogs) ? data.auditLogs : []);
+        setCanManage2fa(Boolean(data.canManage2fa ?? isSuperAdmin));
+        setCanModifyTarget2fa(
+          data.canModifyTarget !== undefined
+            ? Boolean(data.canModifyTarget)
+            : Boolean(isSuperAdmin && auth.currentUser?.uid !== user.uid)
+        );
+        setTargetIsSuperAdmin2fa(Boolean(data.targetIsSuperAdmin));
+        setTargetIsSelf2fa(Boolean(data.targetIsSelf || auth.currentUser?.uid === user.uid));
+        setCallerHas2fa(Boolean(data.callerHas2fa));
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
+    } catch {
+      // Ignore
+    }
+  }, [user, isSuperAdmin]);
 
-  const handleResetUser2fa = async () => {
-    if (!user || !isSuperAdmin || resetting2fa) return;
-    setResetting2fa(true);
+  useEffect(() => {
+    void fetchUser2faDetails();
+  }, [fetchUser2faDetails]);
+
+  const open2faActionModal = (action: Admin2faActionType) => {
+    setPending2faAction(action);
+    setAdmin2faReason('');
+    setAdmin2faIdentityVerified(false);
+    setAdmin2faPassword('');
+    setAdmin2faCode('');
+    setAdmin2faModalError(null);
+  };
+
+  const handleExecute2faAction = async () => {
+    if (!user || !pending2faAction || submitting2faAction) return;
+    if (admin2faReason.trim().length < 3) {
+      setAdmin2faModalError('A reason is required before running this security action.');
+      return;
+    }
+    if (!admin2faIdentityVerified) {
+      setAdmin2faModalError(
+        "Please tick the identity checklist (\"I verified the person's identity by another method\")."
+      );
+      return;
+    }
+    if (!admin2faPassword.trim()) {
+      setAdmin2faModalError('Please re-enter your admin password to confirm.');
+      return;
+    }
+    if (callerHas2fa && !admin2faCode.trim()) {
+      setAdmin2faModalError(
+        'Your admin account has two-step verification enabled. Please enter your 6-digit authenticator or 2FA code.'
+      );
+      return;
+    }
+
+    setSubmitting2faAction(true);
+    setAdmin2faModalError(null);
     setError(null);
     setVerifiedNotice(null);
     try {
@@ -186,22 +300,39 @@ export function UserOverrideDrawer({
           Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({
+          action: pending2faAction,
           targetUid: user.uid,
-          reason: 'Super Admin Reset 2FA via Admin Portal',
+          targetEmail: user.email || '',
+          reason: admin2faReason.trim(),
+          identityVerified: admin2faIdentityVerified,
+          checklist: ["I verified the person's identity by another method"],
+          adminPassword: admin2faPassword,
+          adminTwoFactorCode: admin2faCode.trim() || undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) {
-        setError(data?.error || 'Could not reset user 2FA.');
+        setAdmin2faModalError(data?.error || 'Could not complete two-step verification action.');
       } else {
-        setTwoFactorEnabled(false);
-        setVerifiedNotice('Two-step verification reset for this user (logged in audit table & emailed user).');
+        setPending2faAction(null);
+        await fetchUser2faDetails();
+        const noticeMap: Record<Admin2faActionType, string> = {
+          reset:
+            'Two-step verification reset (all 2FA methods, backup codes, trusted devices, and active sessions cleared; user notified by email).',
+          approve_recovery:
+            'Pending recovery approved immediately (two-step verification reset and user notified by email).',
+          cancel_recovery:
+            'Pending 24-hour recovery request cancelled (logged in security history and user notified by email).',
+          enable_email_2fa:
+            'Email code verification turned on for this user (logged in security history and user notified by email).',
+        };
+        setVerifiedNotice(noticeMap[pending2faAction]);
         onSuccess();
       }
     } catch {
-      setError('Network error resetting user 2FA.');
+      setAdmin2faModalError('Network error while executing two-step verification action.');
     } finally {
-      setResetting2fa(false);
+      setSubmitting2faAction(false);
     }
   };
 
@@ -717,38 +848,209 @@ export function UserOverrideDrawer({
             )}
           </div>
 
+          {/* Security (Two-Step Verification & Security History) */}
+          {!user.isGuest && user.accountType !== 'guest' && (
+            <div className="pt-2 border-t border-[var(--border)] space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <label className="flex items-center gap-1.5 text-[12px] font-heading font-semibold text-[var(--text)]">
+                  <Shield size={14} className="text-[var(--muted)]" />
+                  <span>Security (Two-Step Verification)</span>
+                </label>
+                <span
+                  className={`text-[11px] font-mono px-2.5 py-0.5 rounded-full border ${
+                    twoFactorStatus.badgeLabel === 'Recovery pending'
+                      ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 font-semibold'
+                      : twoFactorStatus.badgeLabel !== 'Off'
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-semibold'
+                      : 'border-[var(--border)] text-[var(--muted)]'
+                  }`}
+                >
+                  2FA: {twoFactorStatus.badgeLabel}
+                </span>
+              </div>
+
+              <div className="p-3.5 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)] space-y-2.5 text-[12px] font-heading">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="p-2 rounded-[10px] bg-[var(--card)] border border-[var(--border)]">
+                    <span className="block text-[10px] font-mono uppercase text-[var(--muted)]">
+                      Authenticator App
+                    </span>
+                    <span
+                      className={`font-mono font-bold text-[12px] ${
+                        twoFactorStatus.totpEnabled ? 'text-emerald-400' : 'text-[var(--muted)]'
+                      }`}
+                    >
+                      {twoFactorStatus.totpEnabled ? 'On' : 'Off'}
+                    </span>
+                  </div>
+                  <div className="p-2 rounded-[10px] bg-[var(--card)] border border-[var(--border)]">
+                    <span className="block text-[10px] font-mono uppercase text-[var(--muted)]">
+                      Email Code
+                    </span>
+                    <span
+                      className={`font-mono font-bold text-[12px] ${
+                        twoFactorStatus.email2faEnabled ? 'text-emerald-400' : 'text-[var(--muted)]'
+                      }`}
+                    >
+                      {twoFactorStatus.email2faEnabled ? 'On' : 'Off'}
+                    </span>
+                  </div>
+                  <div className="p-2 rounded-[10px] bg-[var(--card)] border border-[var(--border)]">
+                    <span className="block text-[10px] font-mono uppercase text-[var(--muted)]">
+                      Backup Codes Left
+                    </span>
+                    <span className="font-mono font-bold text-[12px] text-[var(--text)]">
+                      {twoFactorStatus.backupCodesRemaining}
+                    </span>
+                  </div>
+                  <div className="p-2 rounded-[10px] bg-[var(--card)] border border-[var(--border)]">
+                    <span className="block text-[10px] font-mono uppercase text-[var(--muted)]">
+                      Trusted Devices
+                    </span>
+                    <span className="font-mono font-bold text-[12px] text-[var(--text)]">
+                      {twoFactorStatus.trustedDevicesCount}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-[var(--muted)] pt-1 border-t border-[var(--border)]/60">
+                  <span>Recovery request:</span>
+                  <span
+                    className={`font-mono ${
+                      twoFactorStatus.recoveryPending ? 'text-amber-400 font-semibold' : 'text-[var(--muted)]'
+                    }`}
+                  >
+                    {twoFactorStatus.recoveryPending && twoFactorStatus.recoveryDisableAt
+                      ? `Pending (takes effect ${new Date(
+                          twoFactorStatus.recoveryDisableAt
+                        ).toLocaleString('en-GB')})`
+                      : 'None'}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-[var(--muted)]">
+                  <span>Last changed:</span>
+                  <span className="font-mono text-[var(--text)]">
+                    {twoFactorStatus.lastChangedAt
+                      ? new Date(twoFactorStatus.lastChangedAt).toLocaleString('en-GB')
+                      : 'Never'}
+                  </span>
+                </div>
+
+                {/* Super Admin Controls for Users Who Lost Access */}
+                {(isSuperAdmin || canManage2fa) && (
+                  <div className="pt-2.5 border-t border-[var(--border)] space-y-2">
+                    {targetIsSelf2fa || targetIsSuperAdmin2fa || !canModifyTarget2fa ? (
+                      <p className="text-[11px] text-[var(--muted)] leading-relaxed">
+                        Super admin accounts (including your own) cannot be reset or modified through this panel. Use your own Security settings or the manual Cloudflare D1 console recovery steps.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="flex flex-col gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => open2faActionModal('reset')}
+                            className="w-full py-2 px-3 rounded-[10px] border border-[var(--red)]/50 text-[var(--red)] hover:bg-[var(--card)] text-[12px] font-heading font-semibold transition-colors cursor-pointer text-center"
+                          >
+                            Reset two-step verification
+                          </button>
+
+                          {twoFactorStatus.recoveryPending && (
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => open2faActionModal('approve_recovery')}
+                                className="py-2 px-2.5 rounded-[10px] border border-emerald-500/40 text-emerald-400 hover:bg-[var(--card)] text-[11px] font-heading font-semibold transition-colors cursor-pointer"
+                              >
+                                Approve pending recovery now
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => open2faActionModal('cancel_recovery')}
+                                className="py-2 px-2.5 rounded-[10px] border border-amber-500/40 text-amber-400 hover:bg-[var(--card)] text-[11px] font-heading font-semibold transition-colors cursor-pointer"
+                              >
+                                Cancel pending recovery
+                              </button>
+                            </div>
+                          )}
+
+                          {!twoFactorStatus.email2faEnabled && (
+                            <button
+                              type="button"
+                              onClick={() => open2faActionModal('enable_email_2fa')}
+                              className="w-full py-2 px-3 rounded-[10px] border border-[var(--border)] text-[var(--text)] hover:bg-[var(--card)] text-[12px] font-heading font-medium transition-colors cursor-pointer text-center"
+                            >
+                              Turn on email code verification
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-[var(--text-faint)] leading-relaxed">
+                          Admins cannot turn on an authenticator app for someone else because that would expose the user&apos;s secret.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Security History (Newest First, including failed-attempt bursts) */}
+              <div className="space-y-1.5">
+                <span className="block text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
+                  Security history ({securityAuditLogs.length})
+                </span>
+                {securityAuditLogs.length === 0 ? (
+                  <p className="text-[11px] font-heading text-[var(--text-faint)] py-2 px-3 rounded-[10px] bg-[var(--card-2)] border border-[var(--border)]">
+                    No security history events recorded for this user.
+                  </p>
+                ) : (
+                  <div className="max-h-[190px] overflow-y-auto space-y-1.5 pr-1">
+                    {securityAuditLogs.map((log) => {
+                      const isBurst = log.eventType === 'failed_attempt_burst';
+                      const isAdminEvent = log.eventType.startsWith('admin_2fa_');
+                      return (
+                        <div
+                          key={log.id}
+                          className={`p-2.5 rounded-[10px] border text-[11px] font-heading space-y-1 ${
+                            isBurst
+                              ? 'bg-red-500/10 border-red-500/30 text-red-300'
+                              : isAdminEvent
+                              ? 'bg-amber-500/5 border-amber-500/30 text-[var(--text)]'
+                              : 'bg-[var(--card-2)] border-[var(--border)] text-[var(--text)]'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-mono font-bold text-[11px]">
+                              {log.eventType}
+                            </span>
+                            <span className="font-mono text-[10px] text-[var(--muted)]">
+                              {new Date(log.createdAt).toLocaleString('en-GB')}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-[var(--muted)] flex flex-wrap gap-x-3 gap-y-0.5">
+                            <span>Actor: {log.details?.adminEmail || log.actorId || log.userId}</span>
+                            {log.details?.attempts && (
+                              <span>Failed attempts: {log.details.attempts}</span>
+                            )}
+                          </div>
+                          {log.details?.reason && (
+                            <p className="text-[11px] text-[var(--text)] pt-0.5">
+                              Reason: <span className="font-medium">{String(log.details.reason)}</span>
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Account Actions */}
           <div className="pt-2 border-t border-[var(--border)] space-y-2">
             <label className="block text-[12px] font-heading text-[var(--muted)]">
               Account actions
             </label>
-
-            {/* Two-Step Verification Status & Superadmin Reset 2FA */}
-            {!user.isGuest && user.accountType !== 'guest' && (
-              <div className="p-3 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-[12px] font-heading">
-                  <Shield size={14} className="text-[var(--muted)]" />
-                  <span className="text-[var(--text)]">Two-step verification:</span>
-                  <span
-                    className={`font-mono font-bold ${
-                      twoFactorEnabled ? 'text-emerald-400' : 'text-[var(--muted)]'
-                    }`}
-                  >
-                    {twoFactorEnabled ? 'On' : 'Off'}
-                  </span>
-                </div>
-                {isSuperAdmin && twoFactorEnabled && (
-                  <button
-                    type="button"
-                    disabled={resetting2fa}
-                    onClick={handleResetUser2fa}
-                    className="px-3 py-1.5 rounded-[10px] border border-[var(--red)]/50 text-[var(--red)] hover:bg-[var(--card)] text-[11px] font-heading font-semibold transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    {resetting2fa ? 'Resetting...' : 'Reset 2FA'}
-                  </button>
-                )}
-              </div>
-            )}
 
             {/* Suspend / Unsuspend */}
             <button
@@ -792,6 +1094,116 @@ export function UserOverrideDrawer({
           </button>
         </div>
       </div>
+
+      {/* ─── ADMIN 2FA STEP-UP CONFIRMATION MODAL ────────────────────────────── */}
+      {pending2faAction && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 overlay-blur bg-black/60 backdrop-blur-md"
+            onClick={() => !submitting2faAction && setPending2faAction(null)}
+          />
+          <div className="relative w-full max-w-[420px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 shadow-2xl">
+            <h3 className="font-heading font-bold text-[16px] text-[var(--text)]">
+              {pending2faAction === 'reset' && 'Reset two-step verification?'}
+              {pending2faAction === 'approve_recovery' && 'Approve pending recovery now?'}
+              {pending2faAction === 'cancel_recovery' && 'Cancel pending recovery request?'}
+              {pending2faAction === 'enable_email_2fa' && 'Turn on email code verification?'}
+            </h3>
+
+            <p className="font-heading text-[12px] text-[var(--muted)] leading-relaxed">
+              {pending2faAction === 'reset' &&
+                `This will turn off authenticator and email 2FA for ${displayName}, delete all backup codes and pending challenges, revoke all trusted devices, and sign out their active sessions in one atomic batch.`}
+              {pending2faAction === 'approve_recovery' &&
+                `This will immediately complete ${displayName}'s pending 24-hour recovery request, reset their 2FA, and sign out all active sessions and trusted devices.`}
+              {pending2faAction === 'cancel_recovery' &&
+                `This will stop ${displayName}'s pending 24-hour self-recovery request and keep their existing two-step verification active.`}
+              {pending2faAction === 'enable_email_2fa' &&
+                `This will turn on email code verification for ${displayName} using their verified email address (${user.email || 'verified email'}).`}
+            </p>
+
+            {admin2faModalError && (
+              <div className="p-2.5 rounded-[10px] bg-red-500/10 border border-red-500/30 text-[12px] font-heading text-red-400">
+                {admin2faModalError}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-mono uppercase text-[var(--muted)] mb-1">
+                  Reason (Required — saved in security audit log)
+                </label>
+                <textarea
+                  rows={2}
+                  value={admin2faReason}
+                  onChange={(e) => setAdmin2faReason(e.target.value)}
+                  placeholder="Describe why this action is needed and how identity was verified..."
+                  className="w-full px-3 py-2 rounded-[10px] bg-[var(--card-2)] border border-[var(--border)] text-[12px] font-heading text-[var(--text)] focus:outline-none focus:border-[var(--text)]"
+                />
+              </div>
+
+              <label className="flex items-start gap-2.5 p-2.5 rounded-[10px] bg-[var(--card-2)] border border-[var(--border)] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={admin2faIdentityVerified}
+                  onChange={(e) => setAdmin2faIdentityVerified(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span className="text-[12px] font-heading text-[var(--text)] leading-snug">
+                  I verified the person&apos;s identity by another method
+                </span>
+              </label>
+
+              <div>
+                <label className="block text-[11px] font-mono uppercase text-[var(--muted)] mb-1">
+                  Your Admin Password (Step-up check)
+                </label>
+                <input
+                  type="password"
+                  value={admin2faPassword}
+                  onChange={(e) => setAdmin2faPassword(e.target.value)}
+                  placeholder="Enter your admin password"
+                  className="w-full px-3 py-2 rounded-[10px] bg-[var(--card-2)] border border-[var(--border)] text-[12px] font-heading text-[var(--text)] focus:outline-none focus:border-[var(--text)]"
+                />
+              </div>
+
+              {callerHas2fa && (
+                <div>
+                  <label className="block text-[11px] font-mono uppercase text-[var(--muted)] mb-1">
+                    Your Admin 2FA / Authenticator Code
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={admin2faCode}
+                    onChange={(e) => setAdmin2faCode(e.target.value)}
+                    placeholder="6-digit code or backup code"
+                    className="w-full px-3 py-2 rounded-[10px] bg-[var(--card-2)] border border-[var(--border)] text-[12px] font-mono text-[var(--text)] focus:outline-none focus:border-[var(--text)]"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                disabled={submitting2faAction}
+                onClick={() => setPending2faAction(null)}
+                className="px-3.5 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={submitting2faAction}
+                onClick={handleExecute2faAction}
+                className="px-4 py-2 rounded-[12px] border border-[var(--red)] bg-[var(--red)] text-white text-[13px] font-heading font-semibold disabled:opacity-50 cursor-pointer"
+              >
+                {submitting2faAction ? 'Verifying & applying...' : 'Confirm action'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── CONFIRMATION MODALS FOR DESTRUCTIVE ACTIONS ─────────────────────── */}
       {confirmAction && (

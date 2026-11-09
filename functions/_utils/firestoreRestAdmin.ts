@@ -433,6 +433,15 @@ export async function isD1UserSessionVerified(
   );
 
   if (!has2fa) {
+    // If an administrator explicitly revoked active sessions (verified_auth_time < 0),
+    // any token issued at or before the revocation timestamp is no longer verified until the user logs in again.
+    if (sessionRow && Number(sessionRow.verified_auth_time) < 0) {
+      const revokedAtSec = Math.abs(Number(sessionRow.verified_auth_time));
+      const tokenAuthTimeSec = Number(verified.authTime || verified.iat || 0);
+      if (tokenAuthTimeSec <= 0 || tokenAuthTimeSec <= revokedAtSec) {
+        return false;
+      }
+    }
     // Normal login: email is verified and 2FA is OFF -> verified immediately without any code!
     return true;
   }
@@ -2365,13 +2374,21 @@ export class InMemoryD1Database implements RewardsD1Database {
 
     // 17. user_2fa
     if (upper.includes('FROM USER_2FA') && !upper.includes('FROM USER_2FA_BACKUP_CODES')) {
+      const includeSecrets = upper.includes('ENCRYPTED_SECRET') || upper.includes('SELECT *');
+      const sanitizeRow = (r: any) => {
+        if (includeSecrets) return { ...r };
+        const copy = { ...r };
+        delete copy.encrypted_secret;
+        delete copy.pending_encrypted_secret;
+        return copy;
+      };
       const all = Array.from(this.tables.user_2fa.values());
       if (upper.includes('WHERE USER_ID =')) {
         const uid = String(args[0] ?? '');
         const row = this.tables.user_2fa.get(uid);
-        return row ? [{ ...row }] : [];
+        return row ? [sanitizeRow(row)] : [];
       }
-      return all.map((r) => ({ ...r }));
+      return all.map(sanitizeRow);
     }
 
     // 18. user_2fa_backup_codes
@@ -2613,9 +2630,10 @@ export class InMemoryD1Database implements RewardsD1Database {
 
     if (upper.startsWith('UPDATE EMAIL_VERIFICATION_SESSIONS')) {
       if (upper.includes('SET VERIFIED_AUTH_TIME =')) {
-        const verified_auth_time = Number(args[0] ?? 0);
-        const updated_at = Number(args[1] ?? Date.now());
-        const user_id = String(args[2] ?? '');
+        const isLiteralZero = upper.includes('SET VERIFIED_AUTH_TIME = 0') && args.length === 2;
+        const verified_auth_time = isLiteralZero ? 0 : Number(args[0] ?? 0);
+        const updated_at = Number((isLiteralZero ? args[0] : args[1]) ?? Date.now());
+        const user_id = String((isLiteralZero ? args[1] : args[2]) ?? '');
         const existing = this.tables.email_verification_sessions.get(user_id);
         if (!existing) return 0;
         existing.verified_auth_time = verified_auth_time;
@@ -2713,6 +2731,28 @@ export class InMemoryD1Database implements RewardsD1Database {
       const existing = this.tables.reward_daily_claims.get(pk);
       if (!existing) return 0;
       existing.credit_status = credit_status;
+      return 1;
+    }
+
+    // 2b. user_roles (uid PRIMARY KEY)
+    if (upper.includes('INTO USER_ROLES')) {
+      const uid = String(args[0] ?? '');
+      if (!uid) return 0;
+      const email = String(args[1] ?? '');
+      const role = String(args[2] ?? 'student');
+      const custom_role = args[3] != null ? String(args[3]) : null;
+      const is_posting_banned = Number(args[4] ?? 0);
+      const updated_at = Number(args[5] ?? Date.now());
+      const created_at = Number(args[6] ?? updated_at);
+      this.tables.user_roles.set(uid, {
+        uid,
+        email,
+        role,
+        custom_role,
+        is_posting_banned,
+        updated_at,
+        created_at,
+      });
       return 1;
     }
 
@@ -3298,14 +3338,31 @@ export class InMemoryD1Database implements RewardsD1Database {
         return 1;
       }
       if (upper.includes('SET RECOVERY_REQUESTED_AT =') && upper.includes('RECOVERY_DISABLE_AT =')) {
-        const reqAt = args[0] != null ? Number(args[0]) : null;
-        const disAt = args[1] != null ? Number(args[1]) : null;
-        const updated_at = Number(args[2] ?? Date.now());
-        const user_id = String(args[3] ?? '');
+        const isLiteralNull =
+          upper.includes('SET RECOVERY_REQUESTED_AT = NULL') &&
+          upper.includes('RECOVERY_DISABLE_AT = NULL') &&
+          args.length === 2;
+        const reqAt = isLiteralNull ? null : args[0] != null ? Number(args[0]) : null;
+        const disAt = isLiteralNull ? null : args[1] != null ? Number(args[1]) : null;
+        const updated_at = Number(
+          (isLiteralNull ? args[0] : args.length >= 4 ? args[2] : args[0]) ?? Date.now()
+        );
+        const user_id = String(args[args.length - 1] ?? '');
         const row = this.tables.user_2fa.get(user_id);
         if (!row) return 0;
         row.recovery_requested_at = reqAt;
         row.recovery_disable_at = disAt;
+        row.updated_at = updated_at;
+        return 1;
+      }
+      if (upper.includes('SET EMAIL_2FA_ENABLED = 1')) {
+        const updated_at = Number(args[0] ?? Date.now());
+        const user_id = String(args[1] ?? '');
+        const row = this.tables.user_2fa.get(user_id);
+        if (!row) return 0;
+        row.email_2fa_enabled = 1;
+        row.recovery_requested_at = null;
+        row.recovery_disable_at = null;
         row.updated_at = updated_at;
         return 1;
       }

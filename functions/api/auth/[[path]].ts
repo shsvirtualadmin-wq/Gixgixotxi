@@ -18,6 +18,8 @@ import {
   ABANDONED_GUEST_GRACE_PERIOD_MS,
   DEFAULT_FIREBASE_PROJECT_ID,
   DEFAULT_FIRESTORE_DATABASE_ID,
+  DEFAULT_SUPERADMIN_EMAILS,
+  DEFAULT_SUPERADMIN_UIDS,
   FirestoreRestAdapter,
   INACTIVE_GUEST_TTL_MS,
   authenticateD1GuestSession,
@@ -31,6 +33,7 @@ import {
   resolveTargetFirestoreDatabaseId,
   resolveTargetFirestoreProjectId,
   verifyFirebaseIdToken,
+  type AuthenticatedD1User,
   type RewardsD1Database,
   type RewardsEnv,
   type ServiceAccountCredentials,
@@ -930,6 +933,244 @@ async function verifyUserCurrentPasswordOrFreshGoogle(params: {
   }
 
   return { ok: false, error: 'Current password is required.' };
+}
+
+export const ADMIN_2FA_ALLOWED_ROLES = ['superadmin'] as const;
+
+export type TwoFactorBadgeLabel =
+  | 'Off'
+  | 'Authenticator'
+  | 'Email code'
+  | 'Both'
+  | 'Recovery pending';
+
+export interface UserTwoFactorStatusSummary {
+  userId: string;
+  totpEnabled: boolean;
+  email2faEnabled: boolean;
+  twoFactorEnabled: boolean;
+  recoveryPending: boolean;
+  recoveryRequestedAt: number | null;
+  recoveryDisableAt: number | null;
+  backupCodesRemaining: number;
+  remainingBackupCodes: number;
+  trustedDevicesCount: number;
+  lastChangedAt: number | null;
+  updatedAt: number | null;
+  badgeLabel: TwoFactorBadgeLabel;
+}
+
+/**
+ * Single server-side source of truth for a user's two-step verification status from Cloudflare D1 by user ID.
+ * Used across:
+ *   1. Admin users list (`GET /api/auth/admin/2fa-status`)
+ *   2. Admin user profile Security section (`GET /api/auth/admin/2fa-status?uid=...`)
+ *   3. User's own Security settings page (`GET /api/auth/2fa/status`)
+ *   4. Auth session verification status (`GET /api/auth/verification-status`)
+ *
+ * Strictly NEVER queries or returns `encrypted_secret`, `pending_encrypted_secret`, `code_hash`, or `token_hash`.
+ */
+export async function getUserTwoFactorStatusFromD1(
+  db: RewardsD1Database,
+  userId: string,
+  nowMs = Date.now()
+): Promise<UserTwoFactorStatusSummary> {
+  const cleanUid = String(userId || '').trim();
+  if (!cleanUid) {
+    return {
+      userId: '',
+      totpEnabled: false,
+      email2faEnabled: false,
+      twoFactorEnabled: false,
+      recoveryPending: false,
+      recoveryRequestedAt: null,
+      recoveryDisableAt: null,
+      backupCodesRemaining: 0,
+      remainingBackupCodes: 0,
+      trustedDevicesCount: 0,
+      lastChangedAt: null,
+      updatedAt: null,
+      badgeLabel: 'Off',
+    };
+  }
+
+  let twoFaRow = await db
+    .prepare(
+      'SELECT user_id, totp_enabled, email_2fa_enabled, recovery_requested_at, recovery_disable_at, updated_at, created_at FROM user_2fa WHERE user_id = ?1 LIMIT 1'
+    )
+    .bind(cleanUid)
+    .first<{
+      user_id: string;
+      totp_enabled: number;
+      email_2fa_enabled: number;
+      recovery_requested_at: number | null;
+      recovery_disable_at: number | null;
+      updated_at: number;
+      created_at: number;
+    }>()
+    .catch(() => null);
+
+  // Auto-complete 24-hour self-recovery if the cooling-off window has elapsed
+  if (
+    twoFaRow &&
+    twoFaRow.recovery_disable_at != null &&
+    Number(twoFaRow.recovery_disable_at) > 0 &&
+    nowMs >= Number(twoFaRow.recovery_disable_at)
+  ) {
+    try {
+      await db.batch([
+        db
+          .prepare(
+            'UPDATE user_2fa SET totp_enabled = 0, email_2fa_enabled = 0, encrypted_secret = NULL, pending_encrypted_secret = NULL, recovery_requested_at = NULL, recovery_disable_at = NULL, updated_at = ?1 WHERE user_id = ?2'
+          )
+          .bind(nowMs, cleanUid),
+        db
+          .prepare('DELETE FROM user_2fa_backup_codes WHERE user_id = ?1')
+          .bind(cleanUid),
+        db
+          .prepare('DELETE FROM pending_2fa_challenges WHERE user_id = ?1')
+          .bind(cleanUid),
+      ]);
+      await logSecurityAuditEvent({
+        db,
+        userId: cleanUid,
+        eventType: '2fa_recovery_completed',
+        details: { reason: '24h_cooling_off_elapsed' },
+        nowMs,
+      });
+    } catch {
+      // Non-fatal
+    }
+    twoFaRow = {
+      ...twoFaRow,
+      totp_enabled: 0,
+      email_2fa_enabled: 0,
+      recovery_requested_at: null,
+      recovery_disable_at: null,
+      updated_at: nowMs,
+    };
+  }
+
+  const [backupCountRow, trustedCountRow] = await Promise.all([
+    db
+      .prepare('SELECT COUNT(*) as cnt FROM user_2fa_backup_codes WHERE user_id = ?1 AND used = 0')
+      .bind(cleanUid)
+      .first<{ cnt: number }>()
+      .catch(() => null),
+    db
+      .prepare(
+        'SELECT COUNT(*) as cnt FROM trusted_devices WHERE user_id = ?1 AND revoked = 0 AND expires_at > ?2'
+      )
+      .bind(cleanUid, nowMs)
+      .first<{ cnt: number }>()
+      .catch(() => null),
+  ]);
+
+  const totpEnabled = Boolean(twoFaRow && Number(twoFaRow.totp_enabled) === 1);
+  const email2faEnabled = Boolean(twoFaRow && Number(twoFaRow.email_2fa_enabled) === 1);
+  const twoFactorEnabled = totpEnabled || email2faEnabled;
+
+  const rawRecoveryDisableAt =
+    twoFaRow?.recovery_disable_at && Number(twoFaRow.recovery_disable_at) > nowMs
+      ? Number(twoFaRow.recovery_disable_at)
+      : null;
+  const rawRecoveryRequestedAt =
+    rawRecoveryDisableAt && twoFaRow?.recovery_requested_at && Number(twoFaRow.recovery_requested_at) > 0
+      ? Number(twoFaRow.recovery_requested_at)
+      : null;
+  const recoveryPending = Boolean(rawRecoveryDisableAt && twoFactorEnabled);
+
+  const backupCodesRemaining = Number(backupCountRow?.cnt || 0);
+  const trustedDevicesCount = Number(trustedCountRow?.cnt || 0);
+  const lastChangedAt =
+    twoFaRow?.updated_at && Number(twoFaRow.updated_at) > 0 ? Number(twoFaRow.updated_at) : null;
+
+  let badgeLabel: TwoFactorBadgeLabel = 'Off';
+  if (recoveryPending) {
+    badgeLabel = 'Recovery pending';
+  } else if (totpEnabled && email2faEnabled) {
+    badgeLabel = 'Both';
+  } else if (totpEnabled) {
+    badgeLabel = 'Authenticator';
+  } else if (email2faEnabled) {
+    badgeLabel = 'Email code';
+  }
+
+  return {
+    userId: cleanUid,
+    totpEnabled,
+    email2faEnabled,
+    twoFactorEnabled,
+    recoveryPending,
+    recoveryRequestedAt: rawRecoveryRequestedAt,
+    recoveryDisableAt: rawRecoveryDisableAt,
+    backupCodesRemaining,
+    remainingBackupCodes: backupCodesRemaining,
+    trustedDevicesCount,
+    lastChangedAt,
+    updatedAt: lastChangedAt,
+    badgeLabel,
+  };
+}
+
+function canCallerManageOthers2fa(
+  caller: AuthenticatedD1User | null,
+  env?: AuthWorkerEnv
+): boolean {
+  if (!caller || !caller.sessionVerified) return false;
+  const rawAllowed = String((env as Record<string, any> | undefined)?.ADMIN_2FA_ALLOWED_ROLES || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const allowedRoles = new Set<string>(
+    rawAllowed.length > 0 ? rawAllowed : ADMIN_2FA_ALLOWED_ROLES
+  );
+  if (caller.isSuperAdmin && allowedRoles.has('superadmin')) {
+    return true;
+  }
+  return allowedRoles.has(String(caller.role || '').toLowerCase());
+}
+
+async function isTargetAccountSuperAdmin(params: {
+  db: RewardsD1Database;
+  targetUid: string;
+  targetEmail?: string;
+  env?: AuthWorkerEnv;
+}): Promise<boolean> {
+  const { db, targetUid, targetEmail = '', env } = params;
+  const cleanUid = String(targetUid || '').trim();
+  const cleanEmail = String(targetEmail || '').trim().toLowerCase();
+
+  const superUids = new Set(
+    (env?.SUPERADMIN_UIDS || DEFAULT_SUPERADMIN_UIDS.join(','))
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  );
+  const superEmails = new Set(
+    (env?.SUPERADMIN_EMAILS || DEFAULT_SUPERADMIN_EMAILS.join(','))
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean)
+  );
+
+  if (superUids.has(cleanUid) || (cleanEmail.length > 0 && superEmails.has(cleanEmail))) {
+    return true;
+  }
+
+  const roleRow = await db
+    .prepare('SELECT uid, email, role FROM user_roles WHERE uid = ?1 LIMIT 1')
+    .bind(cleanUid)
+    .first<{ uid: string; email?: string; role?: string }>()
+    .catch(() => null);
+
+  if (roleRow) {
+    if (String(roleRow.role || '').toLowerCase() === 'superadmin') return true;
+    const roleEmail = String(roleRow.email || '').trim().toLowerCase();
+    if (roleEmail && superEmails.has(roleEmail)) return true;
+  }
+
+  return false;
 }
 
 function jsonResponse(
@@ -2458,6 +2699,56 @@ export async function handleAuthApiRequest(
     ).trim();
 
     try {
+      if (opts.passwordVerifierOverride) {
+        const isValidPassword = await opts.passwordVerifierOverride(resolvedEmail, password);
+        if (!isValidPassword) {
+          await Promise.all([recordFailedAttempt(ipRateKey), recordFailedAttempt(idRateKey)]);
+          return jsonResponse(
+            { ok: false, error: GENERIC_LOGIN_ERROR, code: 'INVALID_CREDENTIALS' },
+            401
+          );
+        }
+        await db
+          .prepare('DELETE FROM login_rate_limits WHERE rate_key = ?1')
+          .bind(idRateKey)
+          .run()
+          .catch(() => {});
+
+        const status2fa = await getUserTwoFactorStatusFromD1(db, usernameRow.uid, nowMs);
+        if (!status2fa.twoFactorEnabled) {
+          const emailHashForUser = await hashIdentifier(secret, 'email', resolvedEmail);
+          await db
+            .prepare(
+              `INSERT OR REPLACE INTO email_verification_sessions (user_id, email_hash, email_verified, verified_auth_time, verified_at, updated_at)
+               VALUES (?1, ?2, 1, ?3, ?4, ?5)`
+            )
+            .bind(
+              usernameRow.uid,
+              emailHashForUser,
+              Math.max(1, Math.floor(nowMs / 1000)),
+              nowMs,
+              nowMs
+            )
+            .run()
+            .catch(() => {});
+        }
+
+        return jsonResponse({
+          ok: true,
+          uid: usernameRow.uid,
+          username: usernameRow.username_display,
+          tokenResponse: {
+            kind: 'identitytoolkit#VerifyPasswordResponse',
+            localId: usernameRow.uid,
+            displayName: usernameRow.username_display,
+            idToken: `session_${usernameRow.uid}_${nowMs}`,
+            refreshToken: `refresh_${usernameRow.uid}_${nowMs}`,
+            expiresIn: '3600',
+            registered: true,
+          },
+        });
+      }
+
       const toolkitRes = await fetch(
         `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(firebaseApiKey)}`,
         {
@@ -2499,14 +2790,34 @@ export async function handleAuthApiRequest(
         .run()
         .catch(() => {});
 
+      const resolvedUid = String(toolkitData.localId || usernameRow.uid);
+      const status2fa = await getUserTwoFactorStatusFromD1(db, resolvedUid, nowMs);
+      if (!status2fa.twoFactorEnabled) {
+        const emailHashForUser = await hashIdentifier(secret, 'email', resolvedEmail);
+        await db
+          .prepare(
+            `INSERT OR REPLACE INTO email_verification_sessions (user_id, email_hash, email_verified, verified_auth_time, verified_at, updated_at)
+             VALUES (?1, ?2, 1, ?3, ?4, ?5)`
+          )
+          .bind(
+            resolvedUid,
+            emailHashForUser,
+            Math.max(1, Math.floor(nowMs / 1000)),
+            nowMs,
+            nowMs
+          )
+          .run()
+          .catch(() => {});
+      }
+
       // Return tokenResponse WITHOUT exposing the user's email in the HTTP response body
       return jsonResponse({
         ok: true,
-        uid: String(toolkitData.localId || usernameRow.uid),
+        uid: resolvedUid,
         username: usernameRow.username_display,
         tokenResponse: {
           kind: toolkitData.kind || 'identitytoolkit#VerifyPasswordResponse',
-          localId: String(toolkitData.localId || usernameRow.uid),
+          localId: resolvedUid,
           displayName: String(toolkitData.displayName || usernameRow.username_display),
           idToken: String(toolkitData.idToken),
           refreshToken: String(toolkitData.refreshToken),
@@ -2986,60 +3297,20 @@ export async function handleAuthApiRequest(
       }
     }
 
-    // Check 2FA status in D1
-    let twoFaRow = await db
-      .prepare(
-        'SELECT user_id, totp_enabled, email_2fa_enabled, recovery_requested_at, recovery_disable_at FROM user_2fa WHERE user_id = ?1 LIMIT 1'
-      )
-      .bind(uid)
-      .first<{
-        user_id: string;
-        totp_enabled: number;
-        email_2fa_enabled: number;
-        recovery_requested_at: number | null;
-        recovery_disable_at: number | null;
-      }>()
-      .catch(() => null);
-
-    // Auto-complete 24h recovery disable if elapsed
-    if (
-      twoFaRow &&
-      twoFaRow.recovery_disable_at != null &&
-      Number(twoFaRow.recovery_disable_at) > 0 &&
-      nowMs >= Number(twoFaRow.recovery_disable_at)
-    ) {
-      await db
-        .prepare(
-          'UPDATE user_2fa SET totp_enabled = 0, email_2fa_enabled = 0, encrypted_secret = NULL, pending_encrypted_secret = NULL, recovery_requested_at = NULL, recovery_disable_at = NULL, updated_at = ?1 WHERE user_id = ?2'
-        )
-        .bind(nowMs, uid)
-        .run()
-        .catch(() => {});
-      await db
-        .prepare('DELETE FROM user_2fa_backup_codes WHERE user_id = ?1')
-        .bind(uid)
-        .run()
-        .catch(() => {});
-      await logSecurityAuditEvent({
-        db,
-        userId: uid,
-        eventType: '2fa_recovery_completed',
-        ipHash,
-        details: { reason: '24h_cooling_off_elapsed' },
-        nowMs,
-      });
-      twoFaRow = {
-        ...twoFaRow,
-        totp_enabled: 0,
-        email_2fa_enabled: 0,
-        recovery_requested_at: null,
-        recovery_disable_at: null,
-      };
-    }
-
-    const totpEnabled = Boolean(twoFaRow && Number(twoFaRow.totp_enabled) === 1);
-    const email2faEnabled = Boolean(twoFaRow && Number(twoFaRow.email_2fa_enabled) === 1);
-    const twoFactorEnabled = totpEnabled || email2faEnabled;
+    // Check canonical 2FA status in D1 via single source of truth
+    const canonical2fa = await getUserTwoFactorStatusFromD1(db, uid, nowMs);
+    const {
+      totpEnabled,
+      email2faEnabled,
+      twoFactorEnabled,
+      recoveryPending,
+      recoveryRequestedAt,
+      recoveryDisableAt,
+      backupCodesRemaining: backupCount,
+      trustedDevicesCount,
+      lastChangedAt,
+      badgeLabel,
+    } = canonical2fa;
 
     // Check if request carries a valid 30-day trusted device cookie/token
     const rawDeviceToken = extractTrustedDeviceTokenFromRequest(request);
@@ -3056,6 +3327,25 @@ export async function handleAuthApiRequest(
       if (td && td.user_id === uid && Number(td.revoked) === 0 && Number(td.expires_at) > nowMs) {
         isTrustedDevice = true;
       }
+    }
+
+    // If this is a fresh login with 2FA OFF and email verified, restore verified_auth_time so a password login after admin reset succeeds
+    if (isFreshLogin && accountEmailVerified && !twoFactorEnabled) {
+      const freshAuthTime = Math.max(tokenAuthTime, Math.floor(nowMs / 1000), 1);
+      await db
+        .prepare(
+          `INSERT OR REPLACE INTO email_verification_sessions (user_id, email_hash, email_verified, verified_auth_time, verified_at, updated_at)
+           VALUES (?1, ?2, 1, ?3, ?4, ?5)`
+        )
+        .bind(uid, emailHash, freshAuthTime, sessionRow?.verified_at || nowMs, nowMs)
+        .run()
+        .catch(() => {});
+      sessionRow = {
+        user_id: uid,
+        email_verified: 1,
+        verified_auth_time: freshAuthTime,
+        verified_at: sessionRow?.verified_at || nowMs,
+      };
     }
 
     // If this is a fresh login with 2FA enabled and no trusted device cookie, create a 5-min pending 2FA challenge
@@ -3166,35 +3456,37 @@ export async function handleAuthApiRequest(
         Number(latestCode.attempt_count) < MAX_CODE_ATTEMPTS
     );
 
-    const backupCountRow = await db
-      .prepare('SELECT COUNT(*) as cnt FROM user_2fa_backup_codes WHERE user_id = ?1 AND used = 0')
-      .bind(uid)
-      .first<{ cnt: number }>()
-      .catch(() => null);
-    const trustedCountRow = await db
-      .prepare(
-        'SELECT COUNT(*) as cnt FROM trusted_devices WHERE user_id = ?1 AND revoked = 0 AND expires_at > ?2'
-      )
-      .bind(uid, nowMs)
-      .first<{ cnt: number }>()
-      .catch(() => null);
+    const sessionRevoked = Boolean(
+      !sessionVerified &&
+        accountEmailVerified &&
+        !twoFactorEnabled &&
+        sessionRow &&
+        Number(sessionRow.verified_auth_time) < 0
+    );
 
     const requiredPurpose: 'signup' | '2fa' | 'login' | null = sessionVerified
       ? null
       : !accountEmailVerified
       ? 'signup'
+      : sessionRevoked
+      ? 'login'
       : '2fa';
-
-    const backupCount = Number(backupCountRow?.cnt || 0);
 
     return jsonResponse({
       ok: true,
       verified: sessionVerified,
       emailVerified: accountEmailVerified,
+      sessionRevoked,
       requiredPurpose,
       twoFactorEnabled,
       totpEnabled,
       email2faEnabled,
+      recoveryPending,
+      recoveryRequestedAt,
+      recoveryDisableAt,
+      lastChangedAt,
+      updatedAt: lastChangedAt,
+      badgeLabel,
       twoFactorMethods: {
         totp: totpEnabled,
         email: email2faEnabled,
@@ -3202,9 +3494,8 @@ export async function handleAuthApiRequest(
       deviceTrusted: isTrustedDevice,
       backupCodesRemaining: backupCount,
       remainingBackupCodes: backupCount,
-      trustedDevicesCount: Number(trustedCountRow?.cnt || 0),
+      trustedDevicesCount,
       pendingExpiresAt,
-      recoveryDisableAt: twoFaRow?.recovery_disable_at ? Number(twoFaRow.recovery_disable_at) : null,
       hasActiveCode,
       maskedEmail,
       cooldownSeconds,
@@ -3698,51 +3989,10 @@ export async function handleAuthApiRequest(
 
   // ─── 5. GET /api/auth/2fa/status (Current User's Security & 2FA Settings) ───
   if (subPath === '2fa/status' && request.method === 'GET') {
-    const twoFaRow = await db
-      .prepare(
-        'SELECT user_id, totp_enabled, email_2fa_enabled, recovery_requested_at, recovery_disable_at, updated_at, created_at FROM user_2fa WHERE user_id = ?1 LIMIT 1'
-      )
-      .bind(uid)
-      .first<{
-        user_id: string;
-        totp_enabled: number;
-        email_2fa_enabled: number;
-        recovery_requested_at: number | null;
-        recovery_disable_at: number | null;
-        updated_at: number;
-        created_at: number;
-      }>()
-      .catch(() => null);
-
-    const backupCountRow = await db
-      .prepare('SELECT COUNT(*) as cnt FROM user_2fa_backup_codes WHERE user_id = ?1 AND used = 0')
-      .bind(uid)
-      .first<{ cnt: number }>()
-      .catch(() => null);
-
-    const trustedCountRow = await db
-      .prepare(
-        'SELECT COUNT(*) as cnt FROM trusted_devices WHERE user_id = ?1 AND revoked = 0 AND expires_at > ?2'
-      )
-      .bind(uid, nowMs)
-      .first<{ cnt: number }>()
-      .catch(() => null);
-
-    const totpEnabled = Boolean(twoFaRow && Number(twoFaRow.totp_enabled) === 1);
-    const email2faEnabled = Boolean(twoFaRow && Number(twoFaRow.email_2fa_enabled) === 1);
-    const backupCount = Number(backupCountRow?.cnt || 0);
-
+    const status = await getUserTwoFactorStatusFromD1(db, uid, nowMs);
     return jsonResponse({
       ok: true,
-      totpEnabled,
-      email2faEnabled,
-      twoFactorEnabled: totpEnabled || email2faEnabled,
-      backupCodesRemaining: backupCount,
-      remainingBackupCodes: backupCount,
-      trustedDevicesCount: Number(trustedCountRow?.cnt || 0),
-      recoveryRequestedAt: twoFaRow?.recovery_requested_at ? Number(twoFaRow.recovery_requested_at) : null,
-      recoveryDisableAt: twoFaRow?.recovery_disable_at ? Number(twoFaRow.recovery_disable_at) : null,
-      updatedAt: twoFaRow?.updated_at ? Number(twoFaRow.updated_at) : null,
+      ...status,
     });
   }
 
@@ -4733,44 +4983,49 @@ export async function handleAuthApiRequest(
     }
 
     const targetUidFilter = (url.searchParams.get('uid') || '').trim();
+    const rawUidsList = (url.searchParams.get('uids') || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
     const all2faRows = await db
-      .prepare(
-        'SELECT user_id, email, totp_enabled, email_2fa_enabled, recovery_requested_at, recovery_disable_at, updated_at, created_at FROM user_2fa'
-      )
-      .all<{
-        user_id: string;
-        email: string;
-        totp_enabled: number;
-        email_2fa_enabled: number;
-        recovery_requested_at: number | null;
-        recovery_disable_at: number | null;
-        updated_at: number;
-        created_at: number;
-      }>();
+      .prepare('SELECT user_id FROM user_2fa')
+      .all<{ user_id: string }>()
+      .catch(() => ({ results: [] as { user_id: string }[] }));
 
-    const users2fa: Record<
-      string,
-      {
-        userId: string;
-        totpEnabled: boolean;
-        email2faEnabled: boolean;
-        twoFactorEnabled: boolean;
-        recoveryDisableAt: number | null;
-        updatedAt: number;
-      }
-    > = {};
-
+    const uidsToResolve = new Set<string>();
     for (const r of all2faRows.results || []) {
-      const totpOn = Number(r.totp_enabled) === 1;
-      const emailOn = Number(r.email_2fa_enabled) === 1;
-      users2fa[r.user_id] = {
-        userId: r.user_id,
-        totpEnabled: totpOn,
-        email2faEnabled: emailOn,
-        twoFactorEnabled: totpOn || emailOn,
-        recoveryDisableAt: r.recovery_disable_at ? Number(r.recovery_disable_at) : null,
-        updatedAt: Number(r.updated_at || 0),
-      };
+      if (r.user_id) uidsToResolve.add(String(r.user_id));
+    }
+    for (const u of rawUidsList) {
+      uidsToResolve.add(u);
+    }
+    if (targetUidFilter) {
+      uidsToResolve.add(targetUidFilter);
+    }
+
+    const statusByUid: Record<string, UserTwoFactorStatusSummary> = {};
+    for (const targetId of uidsToResolve) {
+      statusByUid[targetId] = await getUserTwoFactorStatusFromD1(db, targetId, nowMs);
+    }
+
+    const callerStatus = await getUserTwoFactorStatusFromD1(db, caller.uid, nowMs);
+    const canManage2fa = canCallerManageOthers2fa(caller, env);
+
+    let targetStatus: UserTwoFactorStatusSummary | null = null;
+    let targetIsSuperAdmin = false;
+    let targetIsSelf = false;
+    if (targetUidFilter) {
+      targetStatus =
+        statusByUid[targetUidFilter] ||
+        (await getUserTwoFactorStatusFromD1(db, targetUidFilter, nowMs));
+      statusByUid[targetUidFilter] = targetStatus;
+      targetIsSelf = targetUidFilter === caller.uid;
+      targetIsSuperAdmin = await isTargetAccountSuperAdmin({
+        db,
+        targetUid: targetUidFilter,
+        env,
+      });
     }
 
     const auditLogsRes = targetUidFilter
@@ -4803,10 +5058,609 @@ export async function handleAuthApiRequest(
             created_at: number;
           }>();
 
+    const auditLogs = (auditLogsRes.results || []).map((l) => ({
+      id: l.id,
+      userId: l.user_id,
+      actorId: l.actor_id,
+      eventType: l.event_type,
+      details: (() => {
+        try {
+          const parsed = JSON.parse(l.details_json || '{}');
+          if (parsed && typeof parsed === 'object') {
+            delete parsed.secret;
+            delete parsed.encrypted_secret;
+            delete parsed.pending_encrypted_secret;
+            delete parsed.code_hash;
+            delete parsed.token_hash;
+          }
+          return parsed;
+        } catch {
+          return {};
+        }
+      })(),
+      createdAt: Number(l.created_at),
+    }));
+
     return jsonResponse({
       ok: true,
-      users2fa,
-      auditLogs: (auditLogsRes.results || []).map((l) => ({
+      statusByUid,
+      users2fa: statusByUid,
+      canManage2fa,
+      callerHas2fa: callerStatus.twoFactorEnabled,
+      callerTotpEnabled: callerStatus.totpEnabled,
+      callerEmail2faEnabled: callerStatus.email2faEnabled,
+      ...(targetStatus
+        ? {
+            ...targetStatus,
+            userStatus: targetStatus,
+            targetIsSuperAdmin,
+            targetIsSelf,
+            canModifyTarget: canManage2fa && !targetIsSelf && !targetIsSuperAdmin,
+          }
+        : {}),
+      auditLogs,
+    });
+  }
+
+  // ─── 17. POST /api/auth/admin/reset-2fa & /api/auth/admin/2fa-action (Super Admin 2FA Controls) ───
+  if (
+    (subPath === 'admin/reset-2fa' || subPath === 'admin/2fa-action') &&
+    request.method === 'POST'
+  ) {
+    const caller = await resolveCurrentUser({
+      request,
+      env,
+      db,
+      secret,
+      tokenVerifierOverride: opts.tokenVerifierOverride,
+    });
+    if (!caller || !caller.sessionVerified || !canCallerManageOthers2fa(caller, env)) {
+      return jsonResponse(
+        {
+          ok: false,
+          error:
+            "Forbidden: Only a Super Admin can reset or change another user's two-step verification.",
+          code: 'FORBIDDEN',
+        },
+        403
+      );
+    }
+
+    // Per-admin rate limits (max 10 actions per 15 min, max 5 failed step-up attempts per 15 min)
+    const adminActionRateKey = `admin_2fa_action:${caller.uid}`;
+    const adminStepUpFailRateKey = `admin_2fa_stepup_fail:${caller.uid}`;
+    if (await check2faRateLimit(adminStepUpFailRateKey)) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'Too many failed admin step-up verification attempts. Please wait 15 minutes.',
+          code: 'RATE_LIMITED',
+        },
+        429
+      );
+    }
+
+    const actionRateRow = await db
+      .prepare(
+        'SELECT attempts, window_start_ms, blocked_until_ms FROM login_rate_limits WHERE rate_key = ?1 LIMIT 1'
+      )
+      .bind(adminActionRateKey)
+      .first<{ attempts: number; window_start_ms: number; blocked_until_ms: number | null }>()
+      .catch(() => null);
+    if (
+      actionRateRow &&
+      ((actionRateRow.blocked_until_ms && nowMs < Number(actionRateRow.blocked_until_ms)) ||
+        (nowMs - Number(actionRateRow.window_start_ms) <= LOGIN_RATE_LIMIT_WINDOW_MS &&
+          Number(actionRateRow.attempts || 0) >= 10))
+    ) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'Admin two-step verification action rate limit reached. Please wait 15 minutes.',
+          code: 'RATE_LIMITED',
+        },
+        429
+      );
+    }
+
+    let body: {
+      action?: string;
+      targetUid?: string;
+      targetEmail?: string;
+      reason?: string;
+      identityVerified?: boolean;
+      checklistConfirmed?: boolean;
+      checklist?: string[];
+      adminPassword?: string;
+      password?: string;
+      currentPassword?: string;
+      adminTwoFactorCode?: string;
+      twoFactorCode?: string;
+      code?: string;
+    } = {};
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      body = {};
+    }
+
+    const rawAction = String(body.action || 'reset')
+      .trim()
+      .toLowerCase();
+
+    if (
+      rawAction === 'enable_totp' ||
+      rawAction === 'enable_authenticator' ||
+      rawAction === 'setup_totp'
+    ) {
+      return jsonResponse(
+        {
+          ok: false,
+          error:
+            "Admins cannot turn on an authenticator app for another user because that would give the admin access to the user's secret.",
+          code: 'CANNOT_ENABLE_TOTP_FOR_USER',
+        },
+        400
+      );
+    }
+
+    const validActions = new Set([
+      'reset',
+      'approve_recovery',
+      'cancel_recovery',
+      'enable_email_2fa',
+    ]);
+    if (!validActions.has(rawAction)) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: `Unsupported admin 2FA action: ${rawAction}`,
+          code: 'INVALID_ACTION',
+        },
+        400
+      );
+    }
+
+    const action = rawAction as
+      | 'reset'
+      | 'approve_recovery'
+      | 'cancel_recovery'
+      | 'enable_email_2fa';
+
+    const targetUid = String(body.targetUid || '').trim();
+    if (!targetUid) {
+      return jsonResponse(
+        { ok: false, error: 'targetUid is required.', code: 'MISSING_FIELDS' },
+        400
+      );
+    }
+
+    // Super admin cannot reset or modify themselves or another super admin through this UI/API
+    if (targetUid === caller.uid) {
+      return jsonResponse(
+        {
+          ok: false,
+          error:
+            'Super admins cannot reset or modify their own two-step verification through the admin UI. Use Settings > Security or the manual Cloudflare console recovery steps.',
+          code: 'CANNOT_MODIFY_SELF_2FA',
+        },
+        403
+      );
+    }
+
+    const existingTarget = await db
+      .prepare(
+        'SELECT user_id, email, totp_enabled, email_2fa_enabled, encrypted_secret, last_used_step, recovery_requested_at, recovery_disable_at, created_at FROM user_2fa WHERE user_id = ?1 LIMIT 1'
+      )
+      .bind(targetUid)
+      .first<{
+        user_id: string;
+        email: string;
+        totp_enabled: number;
+        email_2fa_enabled: number;
+        encrypted_secret: string | null;
+        last_used_step: number;
+        recovery_requested_at: number | null;
+        recovery_disable_at: number | null;
+        created_at: number;
+      }>()
+      .catch(() => null);
+
+    let resolvedTargetEmail = String(
+      body.targetEmail || existingTarget?.email || ''
+    )
+      .trim()
+      .toLowerCase();
+
+    if (!resolvedTargetEmail) {
+      const roleRow = await db
+        .prepare('SELECT email FROM user_roles WHERE uid = ?1 LIMIT 1')
+        .bind(targetUid)
+        .first<{ email?: string }>()
+        .catch(() => null);
+      if (roleRow?.email) {
+        resolvedTargetEmail = String(roleRow.email).trim().toLowerCase();
+      }
+    }
+    if (!resolvedTargetEmail) {
+      const unameRow = await db
+        .prepare('SELECT email FROM user_usernames WHERE uid = ?1 LIMIT 1')
+        .bind(targetUid)
+        .first<{ email?: string }>()
+        .catch(() => null);
+      if (unameRow?.email) {
+        resolvedTargetEmail = String(unameRow.email).trim().toLowerCase();
+      }
+    }
+
+    const targetIsSuper = await isTargetAccountSuperAdmin({
+      db,
+      targetUid,
+      targetEmail: resolvedTargetEmail,
+      env,
+    });
+    if (targetIsSuper) {
+      return jsonResponse(
+        {
+          ok: false,
+          error:
+            'Cannot reset or modify two-step verification for a Super Admin account through the admin UI. Use the manual Cloudflare console recovery steps.',
+          code: 'CANNOT_MODIFY_SUPERADMIN_2FA',
+        },
+        403
+      );
+    }
+
+    // 1. Require a non-empty free-text reason
+    const cleanReason = String(body.reason || '').trim();
+    if (cleanReason.length < 3) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'A reason is required to perform this security action.',
+          code: 'REASON_REQUIRED',
+        },
+        400
+      );
+    }
+
+    // 2. Require the identity verification checklist to be ticked
+    const checklistConfirmed =
+      body.identityVerified === true || body.checklistConfirmed === true;
+    if (!checklistConfirmed) {
+      return jsonResponse(
+        {
+          ok: false,
+          error:
+            "You must confirm the identity verification checklist (\"I verified the person's identity by another method\") before proceeding.",
+          code: 'CHECKLIST_REQUIRED',
+        },
+        400
+      );
+    }
+
+    // 3. Step-up check: Admin must re-enter their own password
+    const rawAdminPassword = String(
+      body.adminPassword ?? body.password ?? body.currentPassword ?? ''
+    );
+    if (!rawAdminPassword.trim()) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'Please re-enter your admin password to confirm this action.',
+          code: 'ADMIN_PASSWORD_REQUIRED',
+        },
+        401
+      );
+    }
+
+    const passwordCheck = await verifyUserCurrentPasswordOrFreshGoogle({
+      verifiedToken,
+      email: caller.email || email,
+      password: rawAdminPassword,
+      env,
+      passwordVerifierOverride: opts.passwordVerifierOverride,
+      nowMs,
+    });
+    if (!passwordCheck.ok) {
+      const fails = await record2faFailedAttempt(adminStepUpFailRateKey);
+      if (fails >= MAX_2FA_FAILURES_PER_WINDOW) {
+        await logSecurityAuditEvent({
+          db,
+          userId: targetUid,
+          actorId: caller.uid,
+          eventType: 'failed_attempt_burst',
+          ipHash,
+          details: { attempts: fails, context: 'admin_2fa_stepup_password' },
+          nowMs,
+        });
+      }
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'Invalid admin password. Step-up verification failed.',
+          code: 'INVALID_ADMIN_PASSWORD',
+        },
+        401
+      );
+    }
+
+    // 4. Step-up check: If the admin has 2FA enabled on their own account, require their 2FA code too
+    const caller2faStatus = await getUserTwoFactorStatusFromD1(db, caller.uid, nowMs);
+    if (caller2faStatus.twoFactorEnabled) {
+      const rawAdminCode = String(
+        body.adminTwoFactorCode ?? body.twoFactorCode ?? body.code ?? ''
+      ).trim();
+      if (!rawAdminCode) {
+        return jsonResponse(
+          {
+            ok: false,
+            error:
+              'Your admin account has two-step verification enabled. Please enter your authenticator or two-step code to confirm.',
+            code: 'ADMIN_2FA_CODE_REQUIRED',
+          },
+          401
+        );
+      }
+      const adminFactorRes = await verifyAny2faFactor({
+        rawCode: rawAdminCode,
+        allowBackupCode: true,
+      });
+      if (!adminFactorRes.valid) {
+        const fails = await record2faFailedAttempt(adminStepUpFailRateKey);
+        if (fails >= MAX_2FA_FAILURES_PER_WINDOW) {
+          await logSecurityAuditEvent({
+            db,
+            userId: targetUid,
+            actorId: caller.uid,
+            eventType: 'failed_attempt_burst',
+            ipHash,
+            details: { attempts: fails, context: 'admin_2fa_stepup_code' },
+            nowMs,
+          });
+        }
+        return jsonResponse(
+          {
+            ok: false,
+            error: 'Invalid admin two-step verification code.',
+            code: 'INVALID_ADMIN_2FA_CODE',
+          },
+          401
+        );
+      }
+    }
+
+    await clear2faRateLimit(adminStepUpFailRateKey);
+
+    // Record per-admin action rate counter
+    const expiredActionWindow =
+      !actionRateRow || nowMs - Number(actionRateRow.window_start_ms) > LOGIN_RATE_LIMIT_WINDOW_MS;
+    const nextActionCount = expiredActionWindow ? 1 : Number(actionRateRow.attempts || 0) + 1;
+    const nextActionWinStart = expiredActionWindow ? nowMs : Number(actionRateRow.window_start_ms);
+    const nextActionBlockedUntil =
+      nextActionCount >= 10 ? nowMs + LOGIN_RATE_LIMIT_WINDOW_MS : null;
+    await db
+      .prepare(
+        `INSERT OR REPLACE INTO login_rate_limits (rate_key, attempts, window_start_ms, blocked_until_ms, updated_at_ms)
+         VALUES (?1, ?2, ?3, ?4, ?5)`
+      )
+      .bind(
+        adminActionRateKey,
+        nextActionCount,
+        nextActionWinStart,
+        nextActionBlockedUntil,
+        nowMs
+      )
+      .run()
+      .catch(() => {});
+
+    const nowSec = Math.max(1, Math.floor(nowMs / 1000));
+    const formattedTimeUtc = new Date(nowMs).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+    let auditEventType = 'admin_2fa_reset';
+    let emailTitle = 'Two-step verification was reset by an administrator';
+    let emailBodyMessage = `Two-step verification on your Boardly account was reset by an administrator on ${formattedTimeUtc}. All active sessions and trusted devices were signed out. You can now sign in with your password and set up two-step verification again in Settings > Security. If you did not request this reset, please change your password and turn two-step verification back on immediately.`;
+
+    if (action === 'reset' || action === 'approve_recovery') {
+      if (
+        action === 'approve_recovery' &&
+        (!existingTarget || !existingTarget.recovery_disable_at || Number(existingTarget.recovery_disable_at) <= nowMs)
+      ) {
+        return jsonResponse(
+          {
+            ok: false,
+            error: 'This user does not have a pending two-step recovery request to approve.',
+            code: 'NO_PENDING_RECOVERY',
+          },
+          400
+        );
+      }
+
+      // Ensure user_2fa and email_verification_sessions rows exist before running the atomic D1 batch
+      if (!existingTarget) {
+        await db
+          .prepare(
+            `INSERT OR IGNORE INTO user_2fa (
+               user_id, email, totp_enabled, email_2fa_enabled, encrypted_secret, pending_encrypted_secret,
+               last_used_step, recovery_requested_at, recovery_disable_at, updated_at, created_at
+             ) VALUES (?1, ?2, 0, 0, NULL, NULL, 0, NULL, NULL, ?3, ?4)`
+          )
+          .bind(targetUid, resolvedTargetEmail, nowMs, nowMs)
+          .run()
+          .catch(() => {});
+      }
+
+      const existingSessionRow = await db
+        .prepare('SELECT user_id FROM email_verification_sessions WHERE user_id = ?1 LIMIT 1')
+        .bind(targetUid)
+        .first<{ user_id: string }>()
+        .catch(() => null);
+      if (!existingSessionRow) {
+        const targetEmailHash = await hashIdentifier(
+          secret,
+          'email',
+          resolvedTargetEmail || targetUid
+        );
+        await db
+          .prepare(
+            `INSERT OR REPLACE INTO email_verification_sessions (user_id, email_hash, email_verified, verified_auth_time, verified_at, updated_at)
+             VALUES (?1, ?2, 1, ?3, ?4, ?5)`
+          )
+          .bind(targetUid, targetEmailHash, -nowSec, nowMs, nowMs)
+          .run()
+          .catch(() => {});
+      }
+
+      // Execute ALL reset steps together in ONE D1 batch (all or nothing)
+      await db.batch([
+        db
+          .prepare(
+            'UPDATE user_2fa SET totp_enabled = 0, email_2fa_enabled = 0, encrypted_secret = NULL, pending_encrypted_secret = NULL, recovery_requested_at = NULL, recovery_disable_at = NULL, updated_at = ?1 WHERE user_id = ?2'
+          )
+          .bind(nowMs, targetUid),
+        db
+          .prepare('DELETE FROM user_2fa_backup_codes WHERE user_id = ?1')
+          .bind(targetUid),
+        db
+          .prepare('DELETE FROM pending_2fa_challenges WHERE user_id = ?1')
+          .bind(targetUid),
+        db
+          .prepare('UPDATE trusted_devices SET revoked = 1 WHERE user_id = ?1')
+          .bind(targetUid),
+        db
+          .prepare(
+            'UPDATE email_verification_sessions SET verified_auth_time = ?1, updated_at = ?2 WHERE user_id = ?3'
+          )
+          .bind(-nowSec, nowMs, targetUid),
+        db
+          .prepare('UPDATE guest_sessions SET revoked = 1 WHERE uid = ?1')
+          .bind(targetUid),
+      ]);
+
+      if (action === 'approve_recovery') {
+        auditEventType = 'admin_2fa_recovery_approved';
+        emailTitle = 'Two-step verification recovery was approved by an administrator';
+        emailBodyMessage = `Your pending two-step verification recovery request was approved immediately by an administrator on ${formattedTimeUtc}. Two-step verification has been reset and all active sessions and trusted devices were signed out. You can now sign in with your password and set up two-step verification again in Settings > Security. If you did not ask for this, please change your password immediately.`;
+      }
+    } else if (action === 'cancel_recovery') {
+      if (
+        !existingTarget ||
+        !existingTarget.recovery_disable_at ||
+        Number(existingTarget.recovery_disable_at) <= nowMs
+      ) {
+        return jsonResponse(
+          {
+            ok: false,
+            error: 'This user does not have a pending two-step recovery request to cancel.',
+            code: 'NO_PENDING_RECOVERY',
+          },
+          400
+        );
+      }
+
+      await db
+        .prepare(
+          'UPDATE user_2fa SET recovery_requested_at = NULL, recovery_disable_at = NULL, updated_at = ?1 WHERE user_id = ?2'
+        )
+        .bind(nowMs, targetUid)
+        .run();
+
+      auditEventType = 'admin_2fa_recovery_cancelled';
+      emailTitle = 'Pending two-step verification recovery was cancelled by an administrator';
+      emailBodyMessage = `A pending request to turn off two-step verification on your Boardly account was cancelled by an administrator on ${formattedTimeUtc}. Your existing two-step verification remains active. If you did not recognize the recovery request, we recommend changing your password immediately.`;
+    } else if (action === 'enable_email_2fa') {
+      if (!resolvedTargetEmail || !resolvedTargetEmail.includes('@')) {
+        return jsonResponse(
+          {
+            ok: false,
+            error: 'Cannot turn on email code verification: this user has no verified email address.',
+            code: 'TARGET_EMAIL_REQUIRED',
+          },
+          400
+        );
+      }
+
+      if (existingTarget) {
+        await db
+          .prepare(
+            'UPDATE user_2fa SET email_2fa_enabled = 1, recovery_requested_at = NULL, recovery_disable_at = NULL, updated_at = ?1 WHERE user_id = ?2'
+          )
+          .bind(nowMs, targetUid)
+          .run();
+      } else {
+        await db
+          .prepare(
+            `INSERT OR REPLACE INTO user_2fa (
+               user_id, email, totp_enabled, email_2fa_enabled, encrypted_secret, pending_encrypted_secret,
+               last_used_step, recovery_requested_at, recovery_disable_at, updated_at, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`
+          )
+          .bind(targetUid, resolvedTargetEmail, 0, 1, null, null, 0, null, null, nowMs, nowMs)
+          .run();
+      }
+
+      auditEventType = 'admin_2fa_email_enabled';
+      emailTitle = 'Email code two-step verification was turned on by an administrator';
+      emailBodyMessage = `Email code two-step verification was turned on for your Boardly account by an administrator on ${formattedTimeUtc} to help protect your account. At your next sign-in, a 6-digit verification code will be sent to your verified email address. If you have questions or did not expect this, please review your security settings on Boardly.`;
+    }
+
+    const checklistItems = Array.isArray(body.checklist) && body.checklist.length > 0
+      ? body.checklist.map((item) => String(item).slice(0, 120))
+      : ["I verified the person's identity by another method"];
+
+    await logSecurityAuditEvent({
+      db,
+      userId: targetUid,
+      actorId: caller.uid,
+      eventType: auditEventType,
+      ipHash,
+      details: {
+        action,
+        reason: cleanReason,
+        identityVerified: true,
+        checklist: checklistItems,
+        adminEmail: caller.email,
+      },
+      nowMs,
+    });
+
+    if (resolvedTargetEmail && resolvedTargetEmail.includes('@')) {
+      await sendSecurityNotificationEmail({
+        to: resolvedTargetEmail,
+        userId: targetUid,
+        studentName: resolvedTargetEmail.split('@')[0] || 'Student',
+        title: emailTitle,
+        message: emailBodyMessage,
+        eventType: auditEventType,
+        env,
+        senderOverride: opts.emailSenderOverride,
+      });
+    }
+
+    const updatedStatus = await getUserTwoFactorStatusFromD1(db, targetUid, nowMs);
+    const updatedLogsRes = await db
+      .prepare(
+        'SELECT id, user_id, actor_id, event_type, ip_hash, details_json, created_at FROM security_audit_logs WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 50'
+      )
+      .bind(targetUid)
+      .all<{
+        id: string;
+        user_id: string;
+        actor_id: string;
+        event_type: string;
+        ip_hash: string;
+        details_json: string;
+        created_at: number;
+      }>()
+      .catch(() => ({ results: [] }));
+
+    return jsonResponse({
+      ok: true,
+      action,
+      reset: action === 'reset' || action === 'approve_recovery',
+      targetUid,
+      status: updatedStatus,
+      ...updatedStatus,
+      auditLogs: (updatedLogsRes.results || []).map((l) => ({
         id: l.id,
         userId: l.user_id,
         actorId: l.actor_id,
@@ -4820,95 +5674,6 @@ export async function handleAuthApiRequest(
         })(),
         createdAt: Number(l.created_at),
       })),
-    });
-  }
-
-  // ─── 17. POST /api/auth/admin/reset-2fa (Super Admin Reset of a User's 2FA, Audited) ───
-  if (subPath === 'admin/reset-2fa' && request.method === 'POST') {
-    const caller = await resolveCurrentUser({
-      request,
-      env,
-      db,
-      secret,
-      tokenVerifierOverride: opts.tokenVerifierOverride,
-    });
-    if (!caller || !caller.isSuperAdmin || !caller.sessionVerified) {
-      return jsonResponse(
-        { ok: false, error: 'Forbidden: Only Super Admin can reset a user\'s 2FA.', code: 'FORBIDDEN' },
-        403
-      );
-    }
-
-    let body: { targetUid?: string; targetEmail?: string; reason?: string } = {};
-    try {
-      body = (await request.json()) as { targetUid?: string; targetEmail?: string; reason?: string };
-    } catch {
-      body = {};
-    }
-
-    const targetUid = String(body.targetUid || '').trim();
-    if (!targetUid) {
-      return jsonResponse(
-        { ok: false, error: 'targetUid is required.', code: 'MISSING_FIELDS' },
-        400
-      );
-    }
-
-    const existingTarget = await db
-      .prepare('SELECT email FROM user_2fa WHERE user_id = ?1 LIMIT 1')
-      .bind(targetUid)
-      .first<{ email: string }>()
-      .catch(() => null);
-
-    await db
-      .prepare(
-        'UPDATE user_2fa SET totp_enabled = 0, email_2fa_enabled = 0, encrypted_secret = NULL, pending_encrypted_secret = NULL, recovery_requested_at = NULL, recovery_disable_at = NULL, updated_at = ?1 WHERE user_id = ?2'
-      )
-      .bind(nowMs, targetUid)
-      .run();
-
-    await db
-      .prepare('DELETE FROM user_2fa_backup_codes WHERE user_id = ?1')
-      .bind(targetUid)
-      .run();
-
-    await db
-      .prepare('DELETE FROM pending_2fa_challenges WHERE user_id = ?1')
-      .bind(targetUid)
-      .run();
-
-    await logSecurityAuditEvent({
-      db,
-      userId: targetUid,
-      actorId: caller.uid,
-      eventType: 'admin_2fa_reset',
-      ipHash,
-      details: {
-        adminEmail: caller.email,
-        reason: String(body.reason || 'superadmin_reset'),
-      },
-      nowMs,
-    });
-
-    const notifyEmail = String(body.targetEmail || existingTarget?.email || '').trim().toLowerCase();
-    if (notifyEmail && notifyEmail.includes('@')) {
-      await sendSecurityNotificationEmail({
-        to: notifyEmail,
-        userId: targetUid,
-        studentName: notifyEmail.split('@')[0] || 'Student',
-        title: 'Your two-step verification was reset by an administrator',
-        message:
-          'A Boardly Super Administrator reset two-step verification on your account. You can sign in normally with your password and re-enable two-step verification anytime in Settings > Security.',
-        eventType: 'admin_2fa_reset',
-        env,
-        senderOverride: opts.emailSenderOverride,
-      });
-    }
-
-    return jsonResponse({
-      ok: true,
-      reset: true,
-      targetUid,
     });
   }
 

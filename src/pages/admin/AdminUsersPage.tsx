@@ -136,26 +136,70 @@ export function AdminUsersPage() {
     }
   };
 
+  type TwoFactorFilterValue =
+    | 'all'
+    | 'Off'
+    | 'Authenticator'
+    | 'Email code'
+    | 'Both'
+    | 'Recovery pending';
+
+  const [twoFactorFilter, setTwoFactorFilter] = useState<TwoFactorFilterValue>('all');
+
   const [user2faMap, setUser2faMap] = useState<
-    Record<string, { twoFactorEnabled: boolean; totpEnabled: boolean; email2faEnabled: boolean }>
+    Record<
+      string,
+      {
+        twoFactorEnabled: boolean;
+        totpEnabled: boolean;
+        email2faEnabled: boolean;
+        recoveryPending?: boolean;
+        recoveryDisableAt?: number | null;
+        badgeLabel?: 'Off' | 'Authenticator' | 'Email code' | 'Both' | 'Recovery pending';
+      }
+    >
   >({});
 
-  const load2faStatusMap = useCallback(async () => {
-    if (!user) return;
-    try {
-      const idToken = await user.getIdToken();
-      const res = await fetch('/api/auth/admin/2fa-status', {
-        credentials: 'include',
-        headers: { Authorization: `Bearer ${idToken}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data?.ok && data?.statusByUid) {
-        setUser2faMap(data.statusByUid);
+  const resolveUser2faBadge = useCallback(
+    (uid: string): 'Off' | 'Authenticator' | 'Email code' | 'Both' | 'Recovery pending' => {
+      const entry = user2faMap[uid];
+      if (!entry) return 'Off';
+      if (entry.badgeLabel) return entry.badgeLabel;
+      if (entry.recoveryPending && (entry.totpEnabled || entry.email2faEnabled)) {
+        return 'Recovery pending';
       }
-    } catch {
-      // Non-fatal
-    }
-  }, [user]);
+      if (entry.totpEnabled && entry.email2faEnabled) return 'Both';
+      if (entry.totpEnabled) return 'Authenticator';
+      if (entry.email2faEnabled) return 'Email code';
+      return 'Off';
+    },
+    [user2faMap]
+  );
+
+  const load2faStatusMap = useCallback(
+    async (uidsHint?: string[]) => {
+      if (!user) return;
+      try {
+        const idToken = await user.getIdToken();
+        const uidsParam =
+          uidsHint && uidsHint.length > 0
+            ? `?uids=${encodeURIComponent(uidsHint.slice(0, 150).join(','))}`
+            : '';
+        const res = await fetch(`/api/auth/admin/2fa-status${uidsParam}`, {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        const data = await res.json().catch(() => ({}));
+        const mapData = data?.statusByUid || data?.users2fa;
+        if (res.ok && data?.ok && mapData && typeof mapData === 'object') {
+          setUser2faMap((prev) => ({ ...prev, ...mapData }));
+        }
+      } catch {
+        // Non-fatal
+      }
+    },
+    [user]
+  );
 
   useEffect(() => {
     if (user) {
@@ -163,6 +207,13 @@ export function AdminUsersPage() {
       void load2faStatusMap();
     }
   }, [user, loadUsers, load2faStatusMap]);
+
+  useEffect(() => {
+    if (user && allUsers.length > 0) {
+      const uids = allUsers.map((u) => u.uid).filter(Boolean);
+      void load2faStatusMap(uids);
+    }
+  }, [user, allUsers, load2faStatusMap]);
 
   // Orphan profile cleanup state
   const [cleaningOrphans, setCleaningOrphans] = useState(false);
@@ -247,7 +298,17 @@ export function AdminUsersPage() {
         if (!u.suspended && !u.isSuspended) return false;
       }
 
-      // 4. Search Filter
+      // 4. Two-Step Verification (2FA) Filter
+      if (twoFactorFilter !== 'all') {
+        if (isGuestUser) {
+          if (twoFactorFilter !== 'Off') return false;
+        } else {
+          const badge = resolveUser2faBadge(u.uid);
+          if (badge !== twoFactorFilter) return false;
+        }
+      }
+
+      // 5. Search Filter
       if (debouncedSearch.trim()) {
         const st = debouncedSearch.toLowerCase().trim();
         const name = getUserDisplayName(u).toLowerCase();
@@ -268,7 +329,16 @@ export function AdminUsersPage() {
 
       return true;
     });
-  }, [allUsers, roleFilter, planFilter, statusFilter, accountTypeFilter, debouncedSearch]);
+  }, [
+    allUsers,
+    roleFilter,
+    planFilter,
+    statusFilter,
+    accountTypeFilter,
+    twoFactorFilter,
+    resolveUser2faBadge,
+    debouncedSearch,
+  ]);
 
   return (
     <div className="flex flex-col gap-6 w-full max-w-full">
@@ -524,6 +594,38 @@ export function AdminUsersPage() {
               </button>
             ))}
           </div>
+
+          <span className="hidden sm:inline text-[var(--border)]">|</span>
+
+          {/* 2FA Filter */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] mr-1">
+              2FA:
+            </span>
+            {(
+              [
+                ['all', 'All'],
+                ['Off', 'Off'],
+                ['Authenticator', 'Authenticator'],
+                ['Email code', 'Email code'],
+                ['Both', 'Both'],
+                ['Recovery pending', 'Recovery pending'],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTwoFactorFilter(id)}
+                className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
+                  twoFactorFilter === id
+                    ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
+                    : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -536,7 +638,11 @@ export function AdminUsersPage() {
             <p className="font-heading text-[14px] text-[var(--muted)]">
               No users match your filters or search criteria.
             </p>
-            {(search || roleFilter !== 'all' || planFilter !== 'all' || statusFilter !== 'all') && (
+            {(search ||
+              roleFilter !== 'all' ||
+              planFilter !== 'all' ||
+              statusFilter !== 'all' ||
+              twoFactorFilter !== 'all') && (
               <button
                 type="button"
                 onClick={() => {
@@ -544,6 +650,7 @@ export function AdminUsersPage() {
                   setRoleFilter('all');
                   setPlanFilter('all');
                   setStatusFilter('all');
+                  setTwoFactorFilter('all');
                 }}
                 className="text-[12px] font-heading px-3 py-1.5 rounded-full border border-[var(--border)] text-[var(--text)] hover:border-[var(--text)] transition-colors cursor-pointer"
               >
@@ -558,6 +665,7 @@ export function AdminUsersPage() {
             const isSuspended = !!(u.suspended || u.isSuspended);
             const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
             const isPro = !isGuestUser && (u.plan === 'pro' || u.isPremium);
+            const badge2fa = isGuestUser ? 'Off' : resolveUser2faBadge(u.uid);
 
             const studentId = formatStudentId(u);
             const qSolved = u.totalQuestionsSolved ?? ((u.testsCompleted || 0) * 15);
@@ -661,12 +769,14 @@ export function AdminUsersPage() {
                           </span>
                           <span
                             className={`text-[10px] font-heading px-2 py-0.5 rounded-full border ${
-                              user2faMap[u.uid]?.twoFactorEnabled
+                              badge2fa === 'Recovery pending'
+                                ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 font-semibold'
+                                : badge2fa !== 'Off'
                                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-semibold'
                                 : 'border-[var(--border)] text-[var(--muted)]'
                             }`}
                           >
-                            {user2faMap[u.uid]?.twoFactorEnabled ? '2FA On' : '2FA Off'}
+                            2FA: {badge2fa}
                           </span>
                         </>
                       )}
@@ -705,7 +815,12 @@ export function AdminUsersPage() {
                 <tr>
                   <td colSpan={9} className="py-12 px-5 text-center text-[var(--muted)]">
                     <p className="font-heading text-[14px] mb-2">No users match your filters or search criteria.</p>
-                    {(search || roleFilter !== 'all' || planFilter !== 'all' || statusFilter !== 'all' || accountTypeFilter !== 'all') && (
+                    {(search ||
+                      roleFilter !== 'all' ||
+                      planFilter !== 'all' ||
+                      statusFilter !== 'all' ||
+                      accountTypeFilter !== 'all' ||
+                      twoFactorFilter !== 'all') && (
                       <button
                         type="button"
                         onClick={() => {
@@ -714,6 +829,7 @@ export function AdminUsersPage() {
                           setPlanFilter('all');
                           setStatusFilter('all');
                           setAccountTypeFilter('all');
+                          setTwoFactorFilter('all');
                         }}
                         className="text-[12px] font-heading px-3 py-1 rounded-full border border-[var(--border)] text-[var(--text)] hover:border-[var(--text)] transition-colors cursor-pointer"
                       >
@@ -727,6 +843,7 @@ export function AdminUsersPage() {
                   const name = getUserDisplayName(u);
                   const initial = name[0].toUpperCase();
                   const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
+                  const badge2fa = isGuestUser ? 'Off' : resolveUser2faBadge(u.uid);
                   const studentId = formatStudentId(u);
                   const qSolved = u.totalQuestionsSolved ?? ((u.testsCompleted || 0) * 15);
                   const createdRaw = u.createdAt as any;
@@ -800,19 +917,21 @@ export function AdminUsersPage() {
                         🔥 {u.streak || 0}d
                       </td>
 
-                      {/* 6b. 2FA Status (On / Off only, never any secret) */}
+                      {/* 6b. 2FA Status Badge (Off, Authenticator, Email code, Both, or Recovery pending) */}
                       <td className="py-3.5 px-4 text-[12px]">
                         {isGuestUser ? (
                           <span className="text-[11px] text-[var(--text-faint)]">—</span>
                         ) : (
                           <span
-                            className={`text-[11px] font-mono px-2 py-0.5 rounded-full border ${
-                              user2faMap[u.uid]?.twoFactorEnabled
+                            className={`text-[11px] font-mono px-2 py-0.5 rounded-full border whitespace-nowrap ${
+                              badge2fa === 'Recovery pending'
+                                ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 font-semibold'
+                                : badge2fa !== 'Off'
                                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-semibold'
                                 : 'border-[var(--border)] text-[var(--muted)]'
                             }`}
                           >
-                            {user2faMap[u.uid]?.twoFactorEnabled ? 'On' : 'Off'}
+                            {badge2fa}
                           </span>
                         )}
                       </td>

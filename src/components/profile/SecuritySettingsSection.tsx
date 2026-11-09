@@ -29,6 +29,8 @@ interface TwoFactorStatusData {
   trustedDevicesCount: number;
   recoveryPending: boolean;
   recoveryDisableAt: number | null;
+  lastChangedAt: number | null;
+  badgeLabel: 'Off' | 'Authenticator' | 'Email code' | 'Both' | 'Recovery pending';
 }
 
 const ADMIN_2FA_BANNER_DISMISSED_KEY = 'boardly_admin_2fa_banner_dismissed';
@@ -44,6 +46,8 @@ export function SecuritySettingsSection() {
     trustedDevicesCount: 0,
     recoveryPending: false,
     recoveryDisableAt: null,
+    lastChangedAt: null,
+    badgeLabel: 'Off',
   });
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [adminBannerDismissed, setAdminBannerDismissed] = useState<boolean>(() => {
@@ -104,14 +108,30 @@ export function SecuritySettingsSection() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.ok) {
+        const totpOn = Boolean(data.totpEnabled);
+        const emailOn = Boolean(data.email2faEnabled);
+        const recPending = Boolean(data.recoveryPending);
+        const badge =
+          data.badgeLabel ||
+          (recPending && (totpOn || emailOn)
+            ? 'Recovery pending'
+            : totpOn && emailOn
+            ? 'Both'
+            : totpOn
+            ? 'Authenticator'
+            : emailOn
+            ? 'Email code'
+            : 'Off');
         setStatus({
-          totpEnabled: Boolean(data.totpEnabled),
-          email2faEnabled: Boolean(data.email2faEnabled),
-          twoFactorEnabled: Boolean(data.twoFactorEnabled),
-          remainingBackupCodes: Number(data.remainingBackupCodes || 0),
+          totpEnabled: totpOn,
+          email2faEnabled: emailOn,
+          twoFactorEnabled: Boolean(data.twoFactorEnabled ?? (totpOn || emailOn)),
+          remainingBackupCodes: Number(data.backupCodesRemaining ?? data.remainingBackupCodes ?? 0),
           trustedDevicesCount: Number(data.trustedDevicesCount || 0),
-          recoveryPending: Boolean(data.recoveryPending),
+          recoveryPending: recPending,
           recoveryDisableAt: data.recoveryDisableAt || null,
+          lastChangedAt: data.lastChangedAt || data.updatedAt || null,
+          badgeLabel: badge,
         });
       }
     } catch {
@@ -465,15 +485,20 @@ export function SecuritySettingsSection() {
       className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4"
     >
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Shield size={16} className="text-[var(--red)]" />
           <h2 className="text-base font-bold text-[var(--text)] font-heading">
             Security &amp; Two-Step Verification
           </h2>
           <Badge color={status.twoFactorEnabled ? 'green' : 'default'}>
-            {loadingStatus ? 'Checking...' : status.twoFactorEnabled ? '2FA On' : '2FA Off'}
+            {loadingStatus ? 'Checking...' : `2FA: ${status.badgeLabel}`}
           </Badge>
         </div>
+        {status.lastChangedAt && (
+          <span className="text-[11px] font-mono text-[var(--muted)]">
+            Last changed: {new Date(status.lastChangedAt).toLocaleDateString('en-GB')}
+          </span>
+        )}
       </div>
 
       {/* Gentle, dismissible recommendation banner for Admins & Super Admins ONLY */}
