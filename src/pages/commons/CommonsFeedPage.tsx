@@ -685,7 +685,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       </div>
 
       {/* ── Posts Stream (10 at a time, skeleton loaders, Facebook style) ── */}
-      <div className="boardly-feed-container w-full max-w-full min-w-0 box-border overflow-x-hidden space-y-3 pt-1">
+      <div className="boardly-feed-container w-full max-w-full min-w-0 box-border overflow-x-hidden space-y-3 pt-1 pb-[calc(112px+env(safe-area-inset-bottom,0px))]">
         {loading && displayedPosts.length === 0 ? (
           <LineLoader context="dashboard" variant="section" />
         ) : loadError ? (

@@ -391,8 +391,9 @@ export function useEffectivePlan(): EffectivePlanResult {
       crewSubscriptionRegistry.set(crewId, entry);
 
       const crewRef = doc(db, 'crews', crewId);
-      getDoc(crewRef)
-        .then((snap) => {
+      const unsubCrew = onSnapshot(
+        crewRef,
+        (snap) => {
           const cur = crewSubscriptionRegistry.get(crewId);
           if (!cur) return;
           cur.data = snap.exists() ? (snap.data() as PlanResolverInput['crew']) : null;
@@ -405,8 +406,8 @@ export function useEffectivePlan(): EffectivePlanResult {
               console.warn('[useEffectivePlan] subscriber notify error:', notifyErr);
             }
           }
-        })
-        .catch((err) => {
+        },
+        (err) => {
           console.warn('[useEffectivePlan] Error reading crew plan:', err);
           const cur = crewSubscriptionRegistry.get(crewId);
           if (!cur) return;
@@ -419,7 +420,9 @@ export function useEffectivePlan(): EffectivePlanResult {
               console.warn('[useEffectivePlan] subscriber notify error:', notifyErr);
             }
           }
-        });
+        }
+      );
+      entry.unsub = unsubCrew;
     }
 
     entry.subscribers.add(onUpdate);
@@ -429,11 +432,17 @@ export function useEffectivePlan(): EffectivePlanResult {
       const cur = crewSubscriptionRegistry.get(crewId);
       if (!cur) return;
       cur.subscribers.delete(onUpdate);
+      if (cur.subscribers.size === 0 && cur.unsub) {
+        cur.unsub();
+        cur.unsub = null;
+        crewSubscriptionRegistry.delete(crewId);
+      }
     };
   }, [isSuper, crewId]);
 
   const refreshPlanStatus = useCallback(async () => {
     if (!currentUid || isGuest || currentUid.startsWith('guest_')) return;
+    clearPlanCache(currentUid);
     await Promise.all([
       forceRefreshUserProfile(currentUid),
       forceRefreshPaymentRequests(currentUid),

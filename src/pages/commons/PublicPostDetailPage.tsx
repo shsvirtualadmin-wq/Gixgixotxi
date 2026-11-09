@@ -444,7 +444,7 @@ export const PublicPostDetailPage: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen w-full max-w-full min-w-0 box-border overflow-x-hidden bg-[var(--bg)] text-[var(--text)] pt-28 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-4 sm:px-6">
+    <div className="min-h-screen w-full max-w-full min-w-0 box-border overflow-x-hidden bg-[var(--bg)] text-[var(--text)] pt-28 pb-[calc(120px+env(safe-area-inset-bottom,0px))] px-4 sm:px-6">
       <PageMeta
         title={`${post.title} — ${resolvedPractice.subjectSlug ? resolvedPractice.label : post.subject || 'Boardly Commons'}`}
         description={

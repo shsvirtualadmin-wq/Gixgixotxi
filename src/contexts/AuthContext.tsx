@@ -387,7 +387,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (snap && typeof snap.exists === 'function' && snap.exists()) {
           loadedProfile = { ...(snap.data() as UserProfile), photoURL: null };
         } else if (snap && typeof snap.exists === 'function' && !snap.exists()) {
-          // Truly new user: initialize clean defaults (never copy Google photoURL)
+          // Truly new user: initialize clean defaults (never copy Google photoURL or write protected fields from client)
           const baseUserDoc: UserProfile = {
             uid: firebaseUser.uid,
             name: fallbackName,
@@ -403,7 +403,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             shortId: deriveFallbackShortId(firebaseUser.uid),
           };
           await setDoc(docRef, {
-            ...baseUserDoc,
+            uid: firebaseUser.uid,
+            name: fallbackName,
+            displayName: fallbackName,
+            email: emailLower,
+            photoURL: null,
+            profileCompleted: isSuperAdminAccount ? true : false,
+            onboardingCompleted: isSuperAdminAccount ? true : false,
+            streak: 0,
+            shortId: baseUserDoc.shortId,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
@@ -444,7 +452,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // Ensure displayName and default Student role are populated silently
+        // Ensure displayName and default Student role are populated in memory; only write non-protected fields
         const silentPatches: Record<string, unknown> = {};
         if (!loadedProfile.displayName || loadedProfile.displayName === 'Unnamed Student') {
           loadedProfile.displayName = fallbackName;
@@ -452,7 +460,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         if (!loadedProfile.role) {
           loadedProfile.role = isSuperAdminAccount ? 'admin' : 'student';
-          silentPatches.role = loadedProfile.role;
         }
         if (Object.keys(silentPatches).length > 0) {
           setDoc(docRef, silentPatches, { merge: true }).catch(() => {});
@@ -1424,10 +1431,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           streak: Number(upgData.streak ?? profile.streak ?? 0),
         };
 
+        const { role: _r1, plan: _p1, status: _s1, ...safeUpgradedEmailDoc } = upgradedProfileDoc;
         await setDoc(
           doc(db, 'users', newFirebaseUser.uid),
           {
-            ...upgradedProfileDoc,
+            ...safeUpgradedEmailDoc,
             emailVerified: true,
             upgradedFromGuestUid: guestUid,
             createdAt: serverTimestamp(),
@@ -1644,10 +1652,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         streak: Number(upgData?.streak ?? snapshotGuestProfile.streak ?? 0),
       };
 
+      const { role: _r2, plan: _p2, status: _s2, ...safeUpgradedGoogleDoc } = upgradedProfileDoc;
       await setDoc(
         doc(db, 'users', googleUser.uid),
         {
-          ...upgradedProfileDoc,
+          ...safeUpgradedGoogleDoc,
           emailVerified: true,
           upgradedFromGuestUid: guestUid,
           createdAt: serverTimestamp(),
@@ -2227,8 +2236,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }).catch(() => {});
         }
         try {
+          const safeUpdates: Record<string, unknown> = { ...updates };
+          for (const protectedKey of [
+            'plan',
+            'tier',
+            'kobans',
+            'kobanBalance',
+            'role',
+            'proUntil',
+            'paid_until',
+            'planExpiresAt',
+            'premiumExpiresAt',
+            'isPremium',
+            'proPlanId',
+            'status',
+          ]) {
+            delete safeUpdates[protectedKey];
+          }
           await withTimeout(
-            setDoc(doc(db, 'users', user.uid), updates, { merge: true }),
+            setDoc(doc(db, 'users', user.uid), safeUpdates, { merge: true }),
             6000,
             'Profile update timed out.'
           );

@@ -2,12 +2,13 @@ import d1Worker from '../../cloudflare/worker.js';
 import mainWorker, { Env } from '../../cloudflare/worker';
 import { handleAuthApiRequest } from './auth/[[path]]';
 import { handleRewardsApiRequest } from './rewards/[[path]]';
+import { handleEconomyApiRequest } from './economy/[[path]]';
 import { handleSendEmailRequest } from './send-email';
 import { handleKobanStyleRequest } from './koban-style';
 
 /**
  * Catch-all Cloudflare Pages Function for `/api/*` routes on the same site
- * (`/api/auth/*`, `/api/rewards/*`, `/api/koban-style`, `/api/send-email`, `/api/tests`, `/api/tests/:id/publish`, `/api/tests/:id/questions`,
+ * (`/api/auth/*`, `/api/rewards/*`, `/api/coupons/*`, `/api/store/purchase`, `/api/pro/*`, `/api/koban-style`, `/api/send-email`, `/api/tests`, `/api/tests/:id/publish`, `/api/tests/:id/questions`,
  * `/api/crews`, `/api/me/role`, `/api/attempts/mine`, `/api/leaderboard/grand-line`,
  * `/api/notifications`, `/api/admin/roles`, `/api/mcq-bank`, etc.).
  */
@@ -23,6 +24,24 @@ export async function onRequest(context: {
   // Delegate all /api/auth/* endpoints (guest mode, me, username checks, 6-digit OTP) to /api/auth handler
   if (path === '/api/auth' || path.startsWith('/api/auth/')) {
     return handleAuthApiRequest({
+      request,
+      env: (env || {}) as any,
+    });
+  }
+
+  // Delegate server-authoritative coupons, store Koban purchases, and Pro subscription execution
+  if (
+    path === '/api/coupons' ||
+    path.startsWith('/api/coupons/') ||
+    path === '/api/pro/coupon/validate' ||
+    path === '/api/pro/coupon/redeem' ||
+    path === '/api/pro/purchase-kobans' ||
+    path === '/api/pro/submit-payment' ||
+    path === '/api/store/purchase' ||
+    path === '/api/admin/coupons' ||
+    path.startsWith('/api/admin/coupons/')
+  ) {
+    return handleEconomyApiRequest({
       request,
       env: (env || {}) as any,
     });

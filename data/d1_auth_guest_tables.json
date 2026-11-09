@@ -1,0 +1,40 @@
+{
+  "user_usernames": [],
+  "guest_accounts": [],
+  "guest_sessions": [],
+  "email_verification_sessions": [
+    {
+      "user_id": "student_uid_mw98phh1",
+      "email_hash": "student1@example.com",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1794227466476,
+      "updated_at": 1794227466476
+    },
+    {
+      "user_id": "student_daily_mw98r59n",
+      "email_hash": "student@example.com",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1794227543999,
+      "updated_at": 1794227543999
+    },
+    {
+      "user_id": "student_daily_mw98tgqw",
+      "email_hash": "student@example.com",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1794227652182,
+      "updated_at": 1794227652182
+    },
+    {
+      "user_id": "student_daily_mw98ytqv",
+      "email_hash": "student@example.com",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1794227902307,
+      "updated_at": 1794227902307
+    }
+  ],
+  "user_koban_style": []
+}

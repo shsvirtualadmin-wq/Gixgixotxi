@@ -9764,6 +9764,57 @@ ${entries
         });
       }
 
+      // If client is submitting an actual payment request (with transactionId and not just commitLock), execute full server-side payment submission + coupon validation + TID duplicate check
+      if (
+        (req.path === '/api/pro/submit-payment' || req.originalUrl?.includes('/api/pro/submit-payment')) &&
+        body.transactionId &&
+        body.commitLock !== true
+      ) {
+        const { handleEconomyApiRequest } = await import('../../functions/api/economy/[[path]]');
+        const webReq = new Request(`http://localhost:3000/api/pro/submit-payment`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authHeader ? { Authorization: authHeader } : {}),
+          },
+          body: JSON.stringify(body),
+        });
+        const webRes = await handleEconomyApiRequest({
+          request: webReq,
+          env: {
+            FIREBASE_SERVICE_ACCOUNT: process.env.FIREBASE_SERVICE_ACCOUNT,
+            GOOGLE_SERVICE_ACCOUNT_KEY: process.env.GOOGLE_SERVICE_ACCOUNT_KEY,
+            FIREBASE_PROJECT_ID,
+            FIREBASE_DATABASE_ID: FIRESTORE_DATABASE_ID,
+          },
+        });
+        const payload = (await webRes.json().catch(() => ({}))) as Record<string, any>;
+        if (webRes.ok && payload.ok && payload.paymentRequest) {
+          const pr = payload.paymentRequest;
+          const lockRecord = {
+            uid,
+            state: 'pending',
+            plan_id: String(pr.plan || 'pro_monthly'),
+            plan_name: String(pr.planName || 'Boardly Pro, Monthly Pass'),
+            amount_pkr: Number(pr.amount_pkr ?? pr.amount ?? 199),
+            method: String(pr.method || 'jazzcash'),
+            tid: String(pr.TID || pr.transactionId || ''),
+            started_at: serverNowMs,
+            expires_at: null,
+            pending_request_id: String(pr.id || ''),
+            updated_at: serverNowMs,
+          };
+          const existingIdx = locks.findIndex((l) => l && l.uid === uid);
+          if (existingIdx >= 0) {
+            locks[existingIdx] = lockRecord;
+          } else {
+            locks.push(lockRecord);
+          }
+          saveD1Store(store);
+        }
+        return res.status(webRes.status).json(payload);
+      }
+
       // If client is committing a purchase or payment request, record the atomic lock in D1 store immediately
       if (body.commitLock === true) {
         const lockState = body.lockState === 'active' ? 'active' : 'pending';
@@ -9807,10 +9858,94 @@ ${entries
     }
   };
 
+  const delegateToEconomyWorker = async (req: Request, res: Response) => {
+    try {
+      const authHeader = String(req.headers.authorization || '').trim();
+      const { handleEconomyApiRequest } = await import('../../functions/api/economy/[[path]]');
+      const targetPath = req.path || req.originalUrl || '/api/coupons/validate';
+      const fullUrl = targetPath.startsWith('http')
+        ? targetPath
+        : `http://localhost:3000${targetPath.startsWith('/') ? '' : '/'}${targetPath}`;
+      const method = String(req.method || 'POST').toUpperCase();
+      const webReq = new Request(fullUrl, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authHeader ? { Authorization: authHeader } : {}),
+          ...(req.headers['x-idempotency-key']
+            ? { 'X-Idempotency-Key': String(req.headers['x-idempotency-key']) }
+            : {}),
+        },
+        body:
+          method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS'
+            ? JSON.stringify(req.body || {})
+            : undefined,
+      });
+
+      const webRes = await handleEconomyApiRequest({
+        request: webReq,
+        env: {
+          FIREBASE_SERVICE_ACCOUNT: process.env.FIREBASE_SERVICE_ACCOUNT,
+          GOOGLE_SERVICE_ACCOUNT_KEY: process.env.GOOGLE_SERVICE_ACCOUNT_KEY,
+          FIREBASE_PROJECT_ID,
+          FIREBASE_DATABASE_ID: FIRESTORE_DATABASE_ID,
+        },
+      });
+      const payload = (await webRes.json().catch(() => ({}))) as Record<string, any>;
+
+      // If this call activated Pro immediately (via 100%-off coupon or Koban Pro purchase), record the active lock in D1 store
+      if (webRes.ok && payload.ok && (payload.activatedPro || payload.newExpiryMs)) {
+        const verified = await verifyFirebaseJwtZeroFirestore(req);
+        if (verified?.uid && payload.newExpiryMs) {
+          const store = loadD1Store() as any;
+          const locks = ensureProPurchaseLocksArray(store);
+          const lockRecord = {
+            uid: verified.uid,
+            state: 'active',
+            plan_id: String(payload.planId || 'pro_annual'),
+            plan_name: String(payload.planName || 'Boardly Pro, Annual Pass'),
+            amount_pkr: 0,
+            method: payload.activatedPro ? 'coupon' : 'kobans',
+            tid: '',
+            started_at: Date.now(),
+            expires_at: Number(payload.newExpiryMs),
+            pending_request_id: null,
+            updated_at: Date.now(),
+          };
+          const existingIdx = locks.findIndex((l) => l && l.uid === verified.uid);
+          if (existingIdx >= 0) {
+            locks[existingIdx] = lockRecord;
+          } else {
+            locks.push(lockRecord);
+          }
+          saveD1Store(store);
+        }
+      }
+
+      return res.status(webRes.status).json(payload);
+    } catch (err: any) {
+      return res.status(500).json({
+        ok: false,
+        error: err?.message || 'Economy server error',
+      });
+    }
+  };
+
   app.post('/api/pro/purchase-guard', handleProPurchaseGuard);
   app.post('/api/pro/purchase', handleProPurchaseGuard);
   app.post('/api/pro/submit-payment', handleProPurchaseGuard);
   app.post('/api/pro/activate', handleProPurchaseGuard);
+
+  app.post('/api/pro/purchase-kobans', delegateToEconomyWorker);
+  app.post('/api/coupons/validate', delegateToEconomyWorker);
+  app.post('/api/coupons/redeem', delegateToEconomyWorker);
+  app.post('/api/pro/coupon/validate', delegateToEconomyWorker);
+  app.post('/api/pro/coupon/redeem', delegateToEconomyWorker);
+  app.post('/api/store/purchase', delegateToEconomyWorker);
+  app.get('/api/admin/coupons', delegateToEconomyWorker);
+  app.post('/api/admin/coupons', delegateToEconomyWorker);
+  app.patch('/api/admin/coupons', delegateToEconomyWorker);
+  app.put('/api/admin/coupons', delegateToEconomyWorker);
 }
 
 function escapeHtmlAttr(str: string): string {

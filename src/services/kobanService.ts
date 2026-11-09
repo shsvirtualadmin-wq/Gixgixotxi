@@ -178,303 +178,50 @@ export async function checkoutStoreCart(params: {
 
   inFlightCheckoutKeys.add(cacheKey);
 
-  const userRef = doc(db, 'users', userId);
-  const walletRef = doc(db, 'wallets', userId);
-
   try {
-    const txOutcome = await runTransaction(db, async (tx) => {
-      // 1. Perform ALL reads upfront (Firestore transaction requirement)
-      const [userSnap, walletSnap] = await Promise.all([
-        tx.get(userRef),
-        tx.get(walletRef),
-      ]);
+    const token = await auth.currentUser?.getIdToken().catch(() => null);
+    if (!token) {
+      throw new Error('Authentication required to purchase items from the Boardly Store.');
+    }
 
-      const itemReads = await Promise.all(
-        uniqueItems.map(async (item) => {
-          const unlockedRef = doc(db, 'users', userId, 'unlocked', item.id);
-          const storeItemRef = doc(db, 'storeItems', item.id);
-          const legacyStoreItemRef = doc(db, 'store_items', item.id);
-          const ledgerDocId = `purchase_${safeCheckoutKey}_${item.id}`.slice(0, 120);
-          const ledgerRef = doc(db, 'wallets', userId, 'ledger', ledgerDocId);
-
-          const [unlockedSnap, storeItemSnap, legacySnap, ledgerSnap] = await Promise.all([
-            tx.get(unlockedRef),
-            tx.get(storeItemRef),
-            tx.get(legacyStoreItemRef),
-            tx.get(ledgerRef),
-          ]);
-
-          return {
-            item,
-            unlockedRef,
-            ledgerRef,
-            ledgerDocId,
-            unlockedSnap,
-            storeItemSnap,
-            legacySnap,
-            ledgerSnap,
-          };
-        })
-      );
-
-      const walletData = walletSnap.exists() ? walletSnap.data() : null;
-      const userData = userSnap.exists() ? userSnap.data() : null;
-      const walletOwned: string[] = Array.isArray(walletData?.owned) ? walletData.owned : [];
-      const userOwned: string[] = Array.isArray(userData?.ownedCosmetics)
-        ? userData.ownedCosmetics
-        : [];
-      const currentOwned: string[] = Array.from(new Set([...walletOwned, ...userOwned]));
-
-      const userKobans =
-        userData && typeof userData.kobans === 'number' && Number.isFinite(userData.kobans)
-          ? Math.floor(userData.kobans)
-          : 0;
-      const userKobanBalance =
-        userData &&
-        typeof userData.kobanBalance === 'number' &&
-        Number.isFinite(userData.kobanBalance)
-          ? Math.floor(userData.kobanBalance)
-          : 0;
-      const userDocBalance = Math.max(userKobans, userKobanBalance);
-
-      const walletBalance =
-        walletData && typeof walletData.balance === 'number' && Number.isFinite(walletData.balance)
-          ? Math.floor(walletData.balance)
-          : null;
-
-      const currentBalance =
-        walletBalance !== null && walletBalance > 0
-          ? walletBalance
-          : Math.max(walletBalance ?? 0, userDocBalance);
-
-      // 2. Idempotency check: if ledger entries for this checkout key already exist, return without double-charging
-      const alreadyProcessed = itemReads.every((r) => r.ledgerSnap.exists());
-      if (alreadyProcessed) {
-        return {
-          alreadyProcessed: true,
-          abortedForFlagged: false,
-          balanceBefore: currentBalance,
-          delta: 0,
-          newBalance: currentBalance,
-          totalPaid: 0,
-          owned: currentOwned,
-          purchasedItems: uniqueItems.map((it) => ({
-            id: it.id,
-            name: it.name,
-            type: it.type,
-            rarity: it.rarity,
-            animated: Boolean(it.animated),
-            pricePaid: Math.max(0, Math.floor(Number(it.priceKobans) || 0)),
-          })),
-          flaggedItems: [] as CartCheckoutFlaggedItem[],
-        };
-      }
-
-      // 3. Server-side verification of ownership, availability, and live effective price for each item
-      const flaggedItems: CartCheckoutFlaggedItem[] = [];
-      const verifiedItems: Array<{
-        item: CosmeticItem;
-        unlockedRef: ReturnType<typeof doc>;
-        ledgerRef: ReturnType<typeof doc>;
-        ledgerDocId: string;
-        effectivePrice: number;
-      }> = [];
-
-      for (const read of itemReads) {
-        const { item, unlockedSnap, storeItemSnap, legacySnap, unlockedRef, ledgerRef, ledgerDocId } =
-          read;
-
-        if (unlockedSnap.exists() || currentOwned.includes(item.id)) {
-          flaggedItems.push({
-            id: item.id,
-            name: item.name,
-            reason: 'already_owned',
-          });
-          continue;
-        }
-
-        const v2StoreData =
-          legacySnap.exists() && legacySnap.data()?.priceSchemaV2
-            ? legacySnap.data()
-            : storeItemSnap.exists() && storeItemSnap.data()?.priceSchemaV2
-            ? storeItemSnap.data()
-            : storeItemSnap.exists()
-            ? storeItemSnap.data()
-            : legacySnap.exists()
-            ? legacySnap.data()
-            : null;
-
-        const { active, effectivePrice } = resolveServerLiveItemPrice(
-          item.priceKobans,
-          v2StoreData,
-          isSuperAdmin
-        );
-
-        if (!active) {
-          flaggedItems.push({
-            id: item.id,
-            name: item.name,
-            reason: 'unavailable',
-          });
-          continue;
-        }
-
-        verifiedItems.push({
-          item,
-          unlockedRef,
-          ledgerRef,
-          ledgerDocId,
-          effectivePrice,
-        });
-      }
-
-      // If any item became owned or unavailable since being added to cart, abort with zero writes and report flagged items
-      if (flaggedItems.length > 0) {
-        return {
-          alreadyProcessed: false,
-          abortedForFlagged: true,
-          balanceBefore: currentBalance,
-          delta: 0,
-          newBalance: currentBalance,
-          totalPaid: 0,
-          owned: currentOwned,
-          purchasedItems: [] as CartCheckoutPurchasedItem[],
-          flaggedItems,
-        };
-      }
-
-      // 4. Verify balance against server-computed total
-      const totalServerPrice = verifiedItems.reduce((sum, v) => sum + v.effectivePrice, 0);
-      if (currentBalance < totalServerPrice && !isSuperAdmin) {
-        throw new Error(
-          `Insufficient Kobans. You have ${currentBalance.toLocaleString()} Kobans, but this checkout costs ${totalServerPrice.toLocaleString()} Kobans.`
-        );
-      }
-
-      const freeOverride = isSuperAdmin && currentBalance < totalServerPrice;
-      const totalToDeduct = freeOverride ? 0 : totalServerPrice;
-      const balanceAfterAll = Math.max(0, currentBalance - totalToDeduct);
-      const updatedOwned = Array.from(
-        new Set([...currentOwned, ...verifiedItems.map((v) => v.item.id)])
-      );
-
-      // 5. Atomic Writes: deduct total once, grant all items, write one ledger entry per item
-      if (userSnap.exists()) {
-        tx.update(userRef, {
-          kobans: balanceAfterAll,
-          kobanBalance: balanceAfterAll,
-          ownedCosmetics: updatedOwned,
-          updatedAt: serverTimestamp(),
-        });
-      } else {
-        tx.set(
-          userRef,
-          {
-            uid: userId,
-            kobans: balanceAfterAll,
-            kobanBalance: balanceAfterAll,
-            ownedCosmetics: updatedOwned,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      }
-
-      const resolvedEquipped = walletData?.equipped ||
-        userData?.equipped || {
-          effect: null,
-          frame: null,
-          nameplate: null,
-          avatar: null,
-          banner: null,
-        };
-
-      if (walletSnap.exists()) {
-        tx.update(walletRef, {
-          balance: balanceAfterAll,
-          owned: updatedOwned,
-          updatedAt: serverTimestamp(),
-        });
-      } else {
-        tx.set(
-          walletRef,
-          {
-            uid: userId,
-            userId,
-            balance: balanceAfterAll,
-            owned: updatedOwned,
-            equipped: resolvedEquipped,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      }
-
-      let runningBalance = currentBalance;
-      const purchasedItems: CartCheckoutPurchasedItem[] = [];
-
-      for (const v of verifiedItems) {
-        const itemCost = freeOverride ? 0 : v.effectivePrice;
-        const nextRunningBalance = Math.max(0, runningBalance - itemCost);
-
-        // Grant unlocked item doc
-        tx.set(v.unlockedRef, {
-          itemId: v.item.id,
-          itemName: v.item.name,
-          category: v.item.type,
-          rarity: v.item.rarity,
-          animated: Boolean(v.item.animated),
-          pricePaid: itemCost,
-          checkoutId: safeCheckoutKey,
-          unlockedAt: serverTimestamp(),
-        });
-
-        // Write one immutable ledger entry per item
-        tx.set(v.ledgerRef, {
-          id: v.ledgerDocId,
-          checkoutId: safeCheckoutKey,
-          userId,
-          type: 'purchase',
-          amount: -itemCost,
-          balanceBefore: runningBalance,
-          balance_before: runningBalance,
-          balanceAfter: nextRunningBalance,
-          balance_after: nextRunningBalance,
-          itemId: v.item.id,
-          itemName: v.item.name,
-          reason:
-            verifiedItems.length > 1
-              ? `Store cart purchase: ${v.item.name}`
-              : `Store purchase: ${v.item.name}`,
-          timestamp: serverTimestamp(),
-        });
-
-        runningBalance = nextRunningBalance;
-        purchasedItems.push({
-          id: v.item.id,
-          name: v.item.name,
-          type: v.item.type,
-          rarity: v.item.rarity,
-          animated: Boolean(v.item.animated),
-          pricePaid: itemCost,
-        });
-      }
-
-      return {
-        alreadyProcessed: false,
-        abortedForFlagged: false,
-        balanceBefore: currentBalance,
-        delta: -totalToDeduct,
-        newBalance: balanceAfterAll,
-        totalPaid: totalToDeduct,
-        owned: updatedOwned,
-        purchasedItems,
-        flaggedItems: [] as CartCheckoutFlaggedItem[],
-      };
+    const resp = await fetch('/api/store/purchase', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'X-Idempotency-Key': safeCheckoutKey,
+      },
+      body: JSON.stringify({
+        userId,
+        idempotencyKey: safeCheckoutKey,
+        isSuperAdmin,
+        items: uniqueItems.map((it) => ({
+          id: it.id,
+          name: it.name,
+          type: it.type,
+          rarity: it.rarity,
+          animated: Boolean(it.animated),
+          price: Math.max(0, Math.floor(Number(it.priceKobans ?? it.price) || 0)),
+          priceKobans: Math.max(0, Math.floor(Number(it.priceKobans ?? it.price) || 0)),
+        })),
+      }),
     });
 
-    if (txOutcome.abortedForFlagged) {
-      const flaggedNames = txOutcome.flaggedItems
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data?.ok === false) {
+      throw new Error(data?.error || 'Could not complete Store purchase.');
+    }
+
+    const serverFlaggedRaw: Array<{ itemId?: string; id?: string; name: string; reason: string }> =
+      Array.isArray(data.flaggedItems) ? data.flaggedItems : [];
+    const mappedFlagged: CartCheckoutFlaggedItem[] = serverFlaggedRaw.map((f) => ({
+      id: String(f.itemId || f.id || ''),
+      name: String(f.name || ''),
+      reason: f.reason === 'already_owned' ? 'already_owned' : 'unavailable',
+    }));
+
+    if (mappedFlagged.length > 0 && (!Array.isArray(data.purchasedItems) || data.purchasedItems.length === 0)) {
+      const flaggedNames = mappedFlagged
         .map(
           (f) =>
             `"${f.name}" (${f.reason === 'already_owned' ? 'already owned' : 'no longer available'})`
@@ -483,63 +230,89 @@ export async function checkoutStoreCart(params: {
       return {
         success: false,
         checkoutId: safeCheckoutKey,
-        newBalance: txOutcome.newBalance,
+        newBalance: Number(data.newBalance ?? 0),
         totalPaid: 0,
-        owned: txOutcome.owned,
+        owned: Array.isArray(data.owned) ? data.owned : [],
         purchasedItems: [],
-        flaggedItems: txOutcome.flaggedItems,
+        flaggedItems: mappedFlagged,
         error: `Some items in your cart could not be purchased and were removed: ${flaggedNames}. Nothing was deducted — please review your updated cart.`,
       };
+    }
+
+    const purchasedIds = new Set<string>(
+      Array.isArray(data.purchasedItems) ? data.purchasedItems.map(String) : uniqueItems.map((i) => i.id)
+    );
+    const totalPaid = Number(data.totalDeducted ?? 0);
+    const newBalance = Number(data.newBalance ?? 0);
+    const balanceBefore = newBalance + totalPaid;
+
+    const purchasedItemsList: CartCheckoutPurchasedItem[] = uniqueItems
+      .filter((it) => purchasedIds.has(it.id))
+      .map((it) => ({
+        id: it.id,
+        name: it.name,
+        type: it.type,
+        rarity: it.rarity,
+        animated: Boolean(it.animated),
+        pricePaid: isSuperAdmin ? 0 : Math.max(0, Math.floor(Number(it.priceKobans ?? it.price) || 0)),
+      }));
+
+    // Update cached profile balance in localStorage so all hooks reflect the new Koban balance immediately
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        for (const lsKey of [`cached_profile_${userId}`, `boardly_user_profile_${userId}`]) {
+          const existingRaw = window.localStorage.getItem(lsKey);
+          if (existingRaw) {
+            const parsed = JSON.parse(existingRaw);
+            parsed.kobans = newBalance;
+            parsed.kobanBalance = newBalance;
+            if (Array.isArray(data.owned)) {
+              parsed.ownedCosmetics = data.owned;
+            }
+            window.localStorage.setItem(lsKey, JSON.stringify(parsed));
+          }
+        }
+      }
+    } catch {
+      // Ignore storage error
     }
 
     const finalResult: CartCheckoutResult = {
       success: true,
       checkoutId: safeCheckoutKey,
-      newBalance: txOutcome.newBalance,
-      totalPaid: txOutcome.totalPaid,
-      owned: txOutcome.owned,
-      purchasedItems: txOutcome.purchasedItems,
-      flaggedItems: [],
+      newBalance,
+      totalPaid,
+      owned: Array.isArray(data.owned) ? data.owned : [],
+      purchasedItems: purchasedItemsList,
+      flaggedItems: mappedFlagged,
     };
 
     completedCheckoutCache.set(cacheKey, finalResult);
 
-    // Send ONE receipt email per checkout with the full itemized list (only after transaction committed)
-    if (!txOutcome.alreadyProcessed && txOutcome.purchasedItems.length > 0) {
-      if (txOutcome.newBalance !== txOutcome.balanceBefore + txOutcome.delta) {
-        console.error(
-          '[kobanService] checkoutStoreCart balance sanity check failed; skipping email:',
-          {
-            balanceBefore: txOutcome.balanceBefore,
-            delta: txOutcome.delta,
-            balanceAfter: txOutcome.newBalance,
-          }
-        );
-      } else {
-        const count = txOutcome.purchasedItems.length;
-        const reasonLabel =
-          count === 1
-            ? `Store purchase: ${txOutcome.purchasedItems[0].name}`
-            : `Store checkout (${count} items)`;
+    if (purchasedItemsList.length > 0) {
+      const count = purchasedItemsList.length;
+      const reasonLabel =
+        count === 1
+          ? `Store purchase: ${purchasedItemsList[0].name}`
+          : `Store checkout (${count} items)`;
 
-        notifyKobanReceipt({
-          recordId: `store_chk_${userId}_${safeCheckoutKey}`,
-          studentUid: userId,
-          deltaAmount: txOutcome.delta,
-          balanceBefore: txOutcome.balanceBefore,
-          newBalance: txOutcome.newBalance,
-          transactionId: safeCheckoutKey,
-          reason: reasonLabel,
-          subType: 'store_purchase',
-          itemName: txOutcome.purchasedItems.map((i) => i.name).join(', '),
-          items: txOutcome.purchasedItems.map((i) => ({
-            id: i.id,
-            name: i.name,
-            category: i.type,
-            priceKobans: i.pricePaid,
-          })),
-        });
-      }
+      notifyKobanReceipt({
+        recordId: `store_chk_${userId}_${safeCheckoutKey}`,
+        studentUid: userId,
+        deltaAmount: -totalPaid,
+        balanceBefore,
+        newBalance,
+        transactionId: safeCheckoutKey,
+        reason: reasonLabel,
+        subType: 'store_purchase',
+        itemName: purchasedItemsList.map((i) => i.name).join(', '),
+        items: purchasedItemsList.map((i) => ({
+          id: i.id,
+          name: i.name,
+          category: i.type,
+          priceKobans: i.pricePaid,
+        })),
+      });
     }
 
     return finalResult;
@@ -626,6 +399,7 @@ export async function submitKobanRequest(params: {
   const resolvedMethod = getPaymentMethodConfig(params.paymentMethod).displayName;
 
   const docRef = await addDoc(collection(db, 'kobanRequests'), {
+    uid: params.userId,
     userId: params.userId,
     userEmail: params.userEmail || '',
     userName: params.userName || '',

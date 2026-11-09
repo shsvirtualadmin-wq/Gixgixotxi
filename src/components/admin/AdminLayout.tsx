@@ -249,110 +249,130 @@ export function AdminLayout() {
       </main>
 
       {/* ─── MOBILE FLOATING PILL BOTTOM NAV (Overview, Users, Questions, More) ──── */}
-      <div
-        className={`md:hidden fixed bottom-[calc(12px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[420px] z-40 ${
-          isMoreOpen ? 'opacity-0 pointer-events-none invisible' : 'pointer-events-auto'
-        }`}
-        aria-label="Admin Navigation Bar"
-        aria-hidden={isMoreOpen}
-      >
-        <nav
-          role="tablist"
-          className="rounded-full glass dashboard-glass-bar allow-backdrop-blur border p-1 flex items-center justify-between select-none relative h-[54px]"
-        >
-          {PRIMARY_NAV.map(({ to, label, icon: Icon, end }) => {
-            const isQuestions = to.includes('questions');
-            return (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                title={label}
-                aria-label={label}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            data-admin-bottom-nav="true"
+            style={{ zIndex: 90 }}
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+            className="md:hidden fixed bottom-[calc(12px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[420px] z-[90] pointer-events-auto"
+            aria-label="Admin Navigation Bar"
+          >
+            <nav
+              role="tablist"
+              className="rounded-full glass dashboard-glass-bar allow-backdrop-blur border p-1 flex items-center justify-between select-none relative h-[54px] pointer-events-auto"
+            >
+              {PRIMARY_NAV.map(({ to, label, icon: Icon, end }) => {
+                const isQuestions = to.includes('questions');
+                return (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    end={end}
+                    title={label}
+                    aria-label={label}
+                    onClick={(e) => e.stopPropagation()}
+                    className="relative rounded-full transition-colors duration-150 cursor-pointer h-full flex items-center justify-center text-center outline-none select-none flex-1 min-w-0 px-1"
+                  >
+                    {({ isActive }) => (
+                      <>
+                        {isActive && (
+                          <motion.div
+                            layoutId="adminActiveNavPill"
+                            className="absolute inset-0 rounded-full z-0"
+                            style={{
+                              backgroundColor: '#D71921',
+                              boxShadow:
+                                '0 4px 14px -2px rgba(215, 25, 33, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25)',
+                            }}
+                            transition={{
+                              type: 'spring',
+                              stiffness: 450,
+                              damping: 35,
+                              mass: 0.6,
+                            }}
+                          />
+                        )}
+                        <span
+                          className={`relative z-10 flex items-center justify-center transition-colors max-w-full ${
+                            isActive
+                              ? 'text-white'
+                              : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                          }`}
+                        >
+                          <div className="relative shrink-0 flex items-center justify-center">
+                            <Icon size={20} className={isActive ? 'text-white' : ''} />
+                            {isQuestions && (
+                              <span
+                                className={`absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[var(--red)] ring-2 ${
+                                  isActive ? 'ring-[#D71921]' : 'ring-[var(--nav-bg)]'
+                                }`}
+                              />
+                            )}
+                          </div>
+                          <span className="sr-only">{label}</span>
+                        </span>
+                      </>
+                    )}
+                  </NavLink>
+                );
+              })}
+
+              {/* 4th Tab: "More" button */}
+              <button
+                type="button"
+                role="tab"
+                data-admin-nav-tab="more"
+                aria-selected={isSecondaryActive}
+                title="More admin sections"
+                aria-label="More admin sections"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsMoreOpen(true);
+                }}
+                onTouchStart={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => e.stopPropagation()}
                 className="relative rounded-full transition-colors duration-150 cursor-pointer h-full flex items-center justify-center text-center outline-none select-none flex-1 min-w-0 px-1"
               >
-                {({ isActive }) => (
-                  <>
-                    {isActive && (
-                      <motion.div
-                        layoutId="adminActiveNavPill"
-                        className="absolute inset-0 rounded-full z-0"
-                        style={{
-                          backgroundColor: '#D71921',
-                          boxShadow: '0 4px 14px -2px rgba(215, 25, 33, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25)',
-                        }}
-                        transition={{
-                          type: 'spring',
-                          stiffness: 450,
-                          damping: 35,
-                          mass: 0.6,
-                        }}
-                      />
-                    )}
-                    <span
-                      className={`relative z-10 flex items-center justify-center transition-colors max-w-full ${
-                        isActive
-                          ? 'text-white'
-                          : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-                      }`}
-                    >
-                      <div className="relative shrink-0 flex items-center justify-center">
-                        <Icon size={20} className={isActive ? 'text-white' : ''} />
-                        {isQuestions && (
-                          <span className={`absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[var(--red)] ring-2 ${isActive ? 'ring-[#D71921]' : 'ring-[var(--nav-bg)]'}`} />
-                        )}
-                      </div>
-                      <span className="sr-only">{label}</span>
-                    </span>
-                  </>
+                {isSecondaryActive && (
+                  <motion.div
+                    layoutId="adminActiveNavPill"
+                    className="absolute inset-0 rounded-full z-0"
+                    style={{
+                      backgroundColor: '#D71921',
+                      boxShadow:
+                        '0 4px 14px -2px rgba(215, 25, 33, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25)',
+                    }}
+                    transition={{
+                      type: 'spring',
+                      stiffness: 450,
+                      damping: 35,
+                      mass: 0.6,
+                    }}
+                  />
                 )}
-              </NavLink>
-            );
-          })}
+                <span
+                  className={`relative z-10 flex items-center justify-center transition-colors max-w-full pointer-events-none ${
+                    isSecondaryActive
+                      ? 'text-white'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                  }`}
+                >
+                  <div className="relative shrink-0 flex items-center justify-center">
+                    <MoreHorizontal size={20} className={isSecondaryActive ? 'text-white' : ''} />
+                  </div>
+                  <span className="sr-only">More</span>
+                </span>
+              </button>
+            </nav>
+          </div>,
+          document.body
+        )}
 
-          {/* 4th Tab: "More" button */}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={isSecondaryActive}
-            title="More admin sections"
-            aria-label="More admin sections"
-            onClick={() => setIsMoreOpen(true)}
-            className="relative rounded-full transition-colors duration-150 cursor-pointer h-full flex items-center justify-center text-center outline-none select-none flex-1 min-w-0 px-1"
-          >
-            {isSecondaryActive && (
-              <motion.div
-                layoutId="adminActiveNavPill"
-                className="absolute inset-0 rounded-full z-0"
-                style={{
-                  backgroundColor: '#D71921',
-                  boxShadow: '0 4px 14px -2px rgba(215, 25, 33, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25)',
-                }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 450,
-                  damping: 35,
-                  mass: 0.6,
-                }}
-              />
-            )}
-            <span
-              className={`relative z-10 flex items-center justify-center transition-colors max-w-full ${
-                isSecondaryActive
-                  ? 'text-white'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-              }`}
-            >
-              <div className="relative shrink-0 flex items-center justify-center">
-                <MoreHorizontal size={20} className={isSecondaryActive ? 'text-white' : ''} />
-              </div>
-              <span className="sr-only">More</span>
-            </span>
-          </button>
-        </nav>
-      </div>
-
-      {/* ─── MOBILE "MORE" BOTTOM SHEET (Portaled to body so never nested inside blurred parent) ─── */}
+      {/* ─── MOBILE "MORE" BOTTOM SHEET (Portaled to body at z-[9999]) ─── */}
       {isMoreOpen &&
         typeof document !== 'undefined' &&
         createPortal(
@@ -361,14 +381,35 @@ export function AdminLayout() {
             aria-modal="true"
             aria-label="More admin sections"
             data-fullscreen-modal="true"
-            className="md:hidden fixed inset-0 z-[120] flex items-end justify-center"
+            style={{ zIndex: 9999, pointerEvents: 'auto' }}
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+            className="md:hidden fixed inset-0 z-[9999] pointer-events-auto flex items-end justify-center"
           >
             <div
-              className="fixed inset-0 z-0 bg-black/30 backdrop-blur-sm more-sheet-backdrop transition-opacity cursor-pointer"
-              onClick={() => setIsMoreOpen(false)}
+              style={{ pointerEvents: 'auto' }}
+              className="fixed inset-0 z-0 pointer-events-auto bg-black/45 backdrop-blur-sm more-sheet-backdrop transition-opacity cursor-pointer"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsMoreOpen(false);
+              }}
+              onTouchStart={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsMoreOpen(false);
+              }}
               aria-hidden="true"
             />
-            <div className="relative z-10 w-full max-h-[80dvh] glass more-sheet-panel allow-backdrop-blur rounded-t-[28px] p-5 pb-[calc(20px+env(safe-area-inset-bottom,0px))] flex flex-col gap-4 overflow-y-auto animate-in slide-in-from-bottom duration-200">
+            <div
+              style={{ pointerEvents: 'auto' }}
+              onClick={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => e.stopPropagation()}
+              className="relative z-10 pointer-events-auto w-full max-h-[80dvh] glass more-sheet-panel allow-backdrop-blur rounded-t-[28px] p-5 pb-[calc(20px+env(safe-area-inset-bottom,0px))] flex flex-col gap-4 overflow-y-auto animate-in slide-in-from-bottom duration-200"
+            >
               {/* Grab handle */}
               <div className="w-10 h-1 bg-[var(--glass-border)] rounded-full mx-auto -mt-1 mb-1 shrink-0" />
 
@@ -378,7 +419,11 @@ export function AdminLayout() {
                 </h2>
                 <button
                   type="button"
-                  onClick={() => setIsMoreOpen(false)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsMoreOpen(false);
+                  }}
                   className="p-1.5 rounded-full glass-pill text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
                 >
                   <X size={18} />

@@ -596,7 +596,9 @@ export const KobanIcon: React.FC<KobanIconProps> = ({
 };
 
 export interface KobanAmountProps {
-  value: number;
+  value?: number;
+  amount?: number;
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | KobanIconSize;
   iconSize?: KobanIconSize;
   showLabel?: boolean;
   showPkrEquivalent?: boolean;
@@ -609,25 +611,37 @@ export interface KobanAmountProps {
  */
 export const KobanAmount: React.FC<KobanAmountProps> = ({
   value,
-  iconSize = 18,
+  amount,
+  size,
+  iconSize,
   showLabel = false,
   showPkrEquivalent = false,
   animated = false,
   className = '',
 }) => {
-  const safeVal = Math.max(0, Math.floor(Number(value) || 0));
+  const resolvedVal = value ?? amount ?? 0;
+  const safeVal = Math.max(0, Math.floor(Number(resolvedVal) || 0));
   const formatted = safeVal.toLocaleString();
   const pkr = (safeVal / 10).toLocaleString(undefined, {
     minimumFractionDigits: safeVal % 10 === 0 ? 0 : 1,
     maximumFractionDigits: 1,
   });
 
+  const resolvedIconSize: KobanIconSize = iconSize ?? (
+    size === 'xs' ? 14 :
+    size === 'sm' ? 16 :
+    size === 'md' ? 18 :
+    size === 'lg' ? 24 :
+    size === 'xl' ? 28 :
+    typeof size === 'number' ? size : 18
+  );
+
   return (
     <span
       className={`inline-flex items-center gap-1.5 font-mono tabular-nums font-bold ${className}`}
       title={`${formatted} Kobans (PKR ${pkr})`}
     >
-      <KobanIcon size={iconSize} animated={animated} decorative />
+      <KobanIcon size={resolvedIconSize} animated={animated} decorative />
       <span>{formatted}</span>
       {showLabel && <span className="text-[0.85em] opacity-85 font-semibold">Kobans</span>}
       {showPkrEquivalent && (

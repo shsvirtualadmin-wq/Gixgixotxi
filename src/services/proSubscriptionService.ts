@@ -211,12 +211,124 @@ export function calculateProPurchaseOutcome(params: {
  * 6. Uses an `idempotencyKey` and per-UID lock so a double-tap or two tabs cannot charge twice
  * 7. Sends the "Pro activated" / receipt email after commit
  */
+export interface ValidatedCouponInfo {
+  id: string;
+  code: string;
+  label: string;
+  discountType: '1_year_free_pro' | 'percent' | 'fixed_pkr' | 'fixed_kobans' | 'free_pro';
+  percentOff: number;
+  amountOffPkr: number;
+  amountOffKobans: number;
+  durationMonths: number;
+  durationDays: number;
+  maxRedemptions: number;
+  redemptionCount: number;
+  planId: ProPlanId;
+  planName: string;
+  originalPkr: number;
+  discountPkr: number;
+  finalPkr: number;
+  originalKobans: number;
+  discountKobans: number;
+  finalKobans: number;
+  isFreeGrant: boolean;
+  effectiveDurationDays: number;
+}
+
+export async function validateProCoupon(params: {
+  code: string;
+  planId: ProPlanId;
+}): Promise<ValidatedCouponInfo> {
+  const token = await auth.currentUser?.getIdToken().catch(() => null);
+  if (!token) {
+    throw new Error('Please sign in to apply a coupon code.');
+  }
+  const resp = await fetch('/api/coupons/validate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      code: params.code.trim(),
+      planId: params.planId,
+    }),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data?.ok || !data?.coupon) {
+    throw new Error(data?.error || 'Invalid or expired coupon code.');
+  }
+  return data.coupon as ValidatedCouponInfo;
+}
+
+export async function redeemProCoupon(params: {
+  uid: string;
+  code: string;
+  planId: ProPlanId;
+}): Promise<{
+  activatedPro: boolean;
+  redemptionId?: string;
+  planId: ProPlanId;
+  planName: string;
+  durationDays: number;
+  newExpiryMs?: number;
+  newExpiryIso?: string;
+  newExpiryLabel?: string;
+  coupon: ValidatedCouponInfo;
+}> {
+  const token = await auth.currentUser?.getIdToken().catch(() => null);
+  if (!token) {
+    throw new Error('Please sign in to redeem a coupon code.');
+  }
+  const resp = await fetch('/api/coupons/redeem', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      code: params.code.trim(),
+      planId: params.planId,
+    }),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data?.ok) {
+    throw new Error(data?.error || 'Could not redeem coupon code.');
+  }
+
+  if (data.activatedPro && params.uid) {
+    clearPlanCache(params.uid);
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        for (const lsKey of [`cached_profile_${params.uid}`, `boardly_user_profile_${params.uid}`]) {
+          const existingRaw = window.localStorage.getItem(lsKey);
+          const parsed = existingRaw ? JSON.parse(existingRaw) : { uid: params.uid };
+          parsed.plan = 'pro';
+          parsed.isPremium = true;
+          parsed.proPlanId = data.planId;
+          parsed.premiumSource = 'coupon';
+          parsed.planExpiresAt = data.newExpiryIso;
+          parsed.premiumExpiresAt = data.newExpiryMs;
+          window.localStorage.setItem(lsKey, JSON.stringify(parsed));
+        }
+        window.dispatchEvent(new Event('boardly:plan-refresh'));
+      }
+    } catch {
+      // Ignore storage error
+    }
+    forceRefreshUserProfile(params.uid).catch(() => {});
+  }
+
+  return data;
+}
+
 export async function purchaseProWithKobans(params: {
   uid: string;
   userEmail?: string;
   userName?: string;
   planId: ProPlanId;
   idempotencyKey: string;
+  couponCode?: string | null;
 }): Promise<ProKobanPurchaseResult> {
   const { uid, planId } = params;
   if (!uid) {
@@ -250,23 +362,9 @@ export async function purchaseProWithKobans(params: {
   inFlightProKeys.add(cacheKey);
   inFlightPurchaseUids.add(uid);
 
-  const userRef = doc(db, 'users', uid);
-  const walletRef = doc(db, 'wallets', uid);
-  const ledgerDocId = `pro_koban_${safeKey}`.slice(0, 120);
-  const ledgerRef = doc(db, 'wallets', uid, 'ledger', ledgerDocId);
-
   try {
-    // 1. Pre-check pending paymentRequests in Firestore
-    const pendingReqsSnap = await getDocs(
-      query(collection(db, 'paymentRequests'), where('userId', '==', uid), limit(25))
-    );
-    const existingPendingDocs = pendingReqsSnap.docs.map((d) => ({
-      id: d.id,
-      ...(d.data() as Record<string, any>),
-    }));
-
-    // 2. Enforce server-authoritative guard before running transaction
-    const { serverNowMs } = await callServerProPurchaseGuard({
+    // 1. Enforce server-authoritative guard before executing purchase
+    await callServerProPurchaseGuard({
       endpoint: '/api/pro/purchase',
       uid,
       planId: plan.id,
@@ -278,236 +376,67 @@ export async function purchaseProWithKobans(params: {
       lockState: 'active',
     });
 
-    const txOutcome = await runTransaction(db, async (tx) => {
-      const [userSnap, walletSnap, ledgerSnap] = await Promise.all([
-        tx.get(userRef),
-        tx.get(walletRef),
-        tx.get(ledgerRef),
-      ]);
+    const token = await auth.currentUser?.getIdToken().catch(() => null);
+    if (!token) {
+      throw new Error('Authentication required to purchase Boardly Pro.');
+    }
 
-      const walletData = walletSnap.exists() ? walletSnap.data() : null;
-      const userData = userSnap.exists() ? userSnap.data() : null;
-
-      const userKobans =
-        userData && typeof userData.kobans === 'number' && Number.isFinite(userData.kobans)
-          ? Math.floor(userData.kobans)
-          : 0;
-      const userKobanBalance =
-        userData &&
-        typeof userData.kobanBalance === 'number' &&
-        Number.isFinite(userData.kobanBalance)
-          ? Math.floor(userData.kobanBalance)
-          : 0;
-      const userDocBalance = Math.max(userKobans, userKobanBalance);
-
-      const walletBalance =
-        walletData && typeof walletData.balance === 'number' && Number.isFinite(walletData.balance)
-          ? Math.floor(walletData.balance)
-          : null;
-
-      const currentBalance =
-        walletBalance !== null && walletBalance > 0
-          ? Math.max(walletBalance, userDocBalance)
-          : Math.max(walletBalance ?? 0, userDocBalance);
-
-      // Idempotency guard: if this exact ledger entry already exists, return the existing result without charging again
-      if (ledgerSnap.exists()) {
-        const lData = ledgerSnap.data();
-        const existingExpiryIso =
-          lData?.newExpiryIso ||
-          (typeof userData?.planExpiresAt === 'string'
-            ? userData.planExpiresAt
-            : new Date(Date.now() + plan.duration_days * 86_400_000).toISOString());
-        const existingExpiryMs = new Date(existingExpiryIso).getTime();
-        return {
-          alreadyProcessed: true,
-          planId: plan.id,
-          planName: plan.name,
-          durationDays: plan.duration_days,
-          kobansCharged: plan.price_kobans,
-          balanceBefore: Number(lData?.balanceBefore ?? lData?.balance_before ?? currentBalance),
-          balanceAfter: Number(lData?.balanceAfter ?? lData?.balance_after ?? currentBalance),
-          wasExtension: Boolean(lData?.wasExtension),
-          previousExpiryLabel: lData?.previousExpiryLabel || null,
-          newExpiryMs: existingExpiryMs,
-          newExpiryIso: existingExpiryIso,
-          newExpiryLabel:
-            lData?.newExpiryLabel ||
-            new Date(existingExpiryMs).toLocaleDateString('en-GB', {
-              day: 'numeric',
-              month: 'short',
-              year: 'numeric',
-            }),
-          ledgerId: ledgerDocId,
-          studentName: String(
-            params.userName || userData?.displayName || userData?.name || 'Student'
-          ),
-          studentEmail:
-            String(params.userEmail || userData?.email || '').trim() || undefined,
-        };
-      }
-
-      // Atomic check inside transaction: block if the user already has an active plan or pending payment
-      const liveStatus = resolveUnifiedPlanStatus({
+    const resp = await fetch('/api/pro/purchase-kobans', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'X-Idempotency-Key': safeKey,
+      },
+      body: JSON.stringify({
         uid,
-        email: params.userEmail || userData?.email,
-        role: userData?.role,
-        plan: userData?.plan,
-        isPremium: userData?.isPremium,
-        proPlanId: userData?.proPlanId,
-        planStartedAt: userData?.planStartedAt,
-        updatedAt: userData?.updatedAt,
-        planExpiresAt: userData?.planExpiresAt,
-        premiumExpiresAt: userData?.premiumExpiresAt,
-        pendingRequests: existingPendingDocs,
-        nowMs: serverNowMs,
-      });
-
-      if (liveStatus.state === 'active') {
-        const err = new Error(
-          liveStatus.blockReason ||
-            `You already have Boardly Pro (${liveStatus.planName}) active until ${liveStatus.expiryFormatted}. You can purchase again after your current plan expires.`
-        ) as Error & { code?: string; status?: number };
-        err.code = 'PRO_ALREADY_ACTIVE';
-        err.status = 409;
-        throw err;
-      }
-
-      if (liveStatus.state === 'pending') {
-        const err = new Error(
-          liveStatus.blockReason ||
-            'Your payment is being verified. This usually takes up to 24 hours. You cannot start another purchase while a payment is awaiting verification.'
-        ) as Error & { code?: string; status?: number };
-        err.code = 'PAYMENT_PENDING_VERIFICATION';
-        err.status = 409;
-        throw err;
-      }
-
-      const currentExpiryRaw = userData?.planExpiresAt ?? userData?.premiumExpiresAt ?? null;
-      const outcome = calculateProPurchaseOutcome({
         planId: plan.id,
-        currentBalance,
-        currentExpiryRaw,
-        nowMs: serverNowMs,
-      });
-
-      const curOwned: string[] =
-        walletData && Array.isArray(walletData.owned) ? walletData.owned : [];
-      const curEquipped = walletData?.equipped ||
-        userData?.equipped || {
-          effect: null,
-          frame: null,
-          nameplate: null,
-          avatar: null,
-          banner: null,
-        };
-
-      // 1. Update wallet balance
-      tx.set(
-        walletRef,
-        {
-          uid,
-          userId: uid,
-          balance: outcome.balanceAfter,
-          owned: curOwned,
-          equipped: curEquipped,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      // 2. Update user document with new balance AND activated Pro expiry
-      tx.set(
-        userRef,
-        {
-          uid,
-          kobans: outcome.balanceAfter,
-          kobanBalance: outcome.balanceAfter,
-          plan: 'pro',
-          isPremium: true,
-          proPlanId: outcome.planId,
-          premiumSource: 'kobans',
-          planStartedAt: new Date(serverNowMs).toISOString(),
-          planExpiresAt: outcome.newExpiryIso,
-          premiumExpiresAt: outcome.newExpiryMs,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      // 3. Write immutable ledger entry with balanceBefore / balance_before and balanceAfter / balance_after
-      tx.set(ledgerRef, {
-        id: ledgerDocId,
-        userId: uid,
-        type: 'pro_purchase',
-        amount: outcome.delta,
-        balanceBefore: outcome.balanceBefore,
-        balance_before: outcome.balanceBefore,
-        balanceAfter: outcome.balanceAfter,
-        balance_after: outcome.balanceAfter,
-        planId: outcome.planId,
-        planName: outcome.planName,
-        durationDays: outcome.durationDays,
-        wasExtension: outcome.wasExtension,
-        previousExpiryLabel: outcome.previousExpiryLabel,
-        newExpiryIso: outcome.newExpiryIso,
-        newExpiryLabel: outcome.newExpiryLabel,
-        transactionId: ledgerDocId,
-        reason: `${outcome.planName} (${outcome.durationDays} Days)`,
-        timestamp: serverTimestamp(),
-      });
-
-      return {
-        alreadyProcessed: false,
-        planId: outcome.planId,
-        planName: outcome.planName,
-        durationDays: outcome.durationDays,
-        kobansCharged: outcome.priceKobans,
-        balanceBefore: outcome.balanceBefore,
-        balanceAfter: outcome.balanceAfter,
-        wasExtension: outcome.wasExtension,
-        previousExpiryLabel: outcome.previousExpiryLabel,
-        newExpiryMs: outcome.newExpiryMs,
-        newExpiryIso: outcome.newExpiryIso,
-        newExpiryLabel: outcome.newExpiryLabel,
-        ledgerId: ledgerDocId,
-        studentName: String(
-          params.userName || userData?.displayName || userData?.name || 'Student'
-        ),
-        studentEmail:
-          String(params.userEmail || userData?.email || '').trim() || undefined,
-      };
+        couponCode: params.couponCode || null,
+        idempotencyKey: safeKey,
+      }),
     });
+
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data?.ok) {
+      const err = new Error(
+        data?.error || 'Could not complete Boardly Pro purchase with Kobans.'
+      ) as Error & { code?: string; status?: number };
+      err.code = data?.code || 'PRO_PURCHASE_FAILED';
+      err.status = resp.status;
+      throw err;
+    }
 
     // Record the active lock on the server D1 store so another tab is immediately aware
     callServerProPurchaseGuard({
       endpoint: '/api/pro/activate',
       uid,
-      planId: txOutcome.planId,
-      planName: txOutcome.planName,
-      durationDays: txOutcome.durationDays,
+      planId: data.planId || plan.id,
+      planName: data.planName || plan.name,
+      durationDays: data.durationDays || plan.duration_days,
       amountPkr: plan.price_pkr,
       method: 'kobans',
       commitLock: true,
       lockState: 'active',
-      expiresAtMs: txOutcome.newExpiryMs,
+      expiresAtMs: data.newExpiryMs,
     }).catch(() => {});
 
     const result: ProKobanPurchaseResult = {
       success: true,
-      alreadyProcessed: txOutcome.alreadyProcessed,
-      planId: txOutcome.planId,
-      planName: txOutcome.planName,
-      durationDays: txOutcome.durationDays,
-      kobansCharged: txOutcome.kobansCharged,
-      balanceBefore: txOutcome.balanceBefore,
-      balanceAfter: txOutcome.balanceAfter,
-      wasExtension: txOutcome.wasExtension,
-      previousExpiryLabel: txOutcome.previousExpiryLabel,
-      newExpiryMs: txOutcome.newExpiryMs,
-      newExpiryIso: txOutcome.newExpiryIso,
-      newExpiryLabel: txOutcome.newExpiryLabel,
-      ledgerId: txOutcome.ledgerId,
+      alreadyProcessed: false,
+      planId: data.planId || plan.id,
+      planName: data.planName || plan.name,
+      durationDays: data.durationDays || plan.duration_days,
+      kobansCharged: Number(data.kobansSpent ?? plan.price_kobans),
+      balanceBefore: Number(data.balanceBefore ?? 0),
+      balanceAfter: Number(data.newBalance ?? 0),
+      wasExtension: Boolean(data.wasExtension),
+      previousExpiryLabel: data.previousExpiryLabel || null,
+      newExpiryMs: Number(data.newExpiryMs || Date.now() + plan.duration_days * 86_400_000),
+      newExpiryIso: String(
+        data.newExpiryIso || new Date(Date.now() + plan.duration_days * 86_400_000).toISOString()
+      ),
+      newExpiryLabel: String(data.newExpiryLabel || 'Active'),
+      ledgerId: String(data.ledgerId || `pro_koban_${safeKey}`),
     };
 
     completedProCache.set(cacheKey, result);
@@ -521,11 +450,11 @@ export async function purchaseProWithKobans(params: {
           const parsed = existingRaw ? JSON.parse(existingRaw) : { uid };
           parsed.plan = 'pro';
           parsed.isPremium = true;
-          parsed.proPlanId = txOutcome.planId;
+          parsed.proPlanId = result.planId;
           parsed.premiumSource = 'kobans';
-          parsed.planExpiresAt = txOutcome.newExpiryIso;
-          parsed.premiumExpiresAt = txOutcome.newExpiryMs;
-          parsed.kobans = txOutcome.balanceAfter;
+          parsed.planExpiresAt = result.newExpiryIso;
+          parsed.premiumExpiresAt = result.newExpiryMs;
+          parsed.kobans = result.balanceAfter;
           window.localStorage.setItem(lsKey, JSON.stringify(parsed));
         }
         window.dispatchEvent(new Event('boardly:plan-refresh'));
@@ -536,44 +465,41 @@ export async function purchaseProWithKobans(params: {
 
     forceRefreshUserProfile(uid).catch(() => {});
 
-    if (!txOutcome.alreadyProcessed) {
-      // Create in-app notification for student
-      try {
-        await setDoc(
-          doc(db, 'notifications', `pro_active_${txOutcome.ledgerId}`),
-          {
-            userId: uid,
-            type: 'system',
-            title: 'Boardly Pro Activated!',
-            message: `${txOutcome.planName} is now active until ${txOutcome.newExpiryLabel}. Enjoy unlimited mock tests, full analytics, and exclusive Pro perks!`,
-            link: '/dashboard/plans',
-            read: false,
-            createdAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      } catch {
-        // Non-blocking
-      }
-
-      // Send "Pro activated" / receipt email with atomic balanceBefore & balanceAfter
-      notifyProActivated({
-        recordId: txOutcome.ledgerId,
-        studentUid: uid,
-        studentName: txOutcome.studentName,
-        studentEmail: txOutcome.studentEmail,
-        planName: txOutcome.planName,
-        durationDays: txOutcome.durationDays,
-        expiresAtLabel: txOutcome.newExpiryLabel,
-        wasExtension: txOutcome.wasExtension,
-        previousExpiryLabel: txOutcome.previousExpiryLabel,
-        paidWith: 'kobans',
-        kobansSpent: txOutcome.kobansCharged,
-        balanceBefore: txOutcome.balanceBefore,
-        newBalance: txOutcome.balanceAfter,
-        transactionId: txOutcome.ledgerId,
-      });
+    // Create in-app notification for student
+    try {
+      await setDoc(
+        doc(db, 'notifications', `pro_active_${result.ledgerId}`),
+        {
+          userId: uid,
+          type: 'system',
+          title: 'Boardly Pro Activated!',
+          message: `${result.planName} is now active until ${result.newExpiryLabel}. Enjoy unlimited mock tests, full analytics, and exclusive Pro perks!`,
+          link: '/dashboard/plans',
+          read: false,
+          createdAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch {
+      // Non-blocking
     }
+
+    notifyProActivated({
+      recordId: result.ledgerId,
+      studentUid: uid,
+      studentName: params.userName || 'Student',
+      studentEmail: params.userEmail,
+      planName: result.planName,
+      durationDays: result.durationDays,
+      expiresAtLabel: result.newExpiryLabel,
+      wasExtension: result.wasExtension,
+      previousExpiryLabel: result.previousExpiryLabel,
+      paidWith: 'kobans',
+      kobansSpent: result.kobansCharged,
+      balanceBefore: result.balanceBefore,
+      newBalance: result.balanceAfter,
+      transactionId: result.ledgerId,
+    });
 
     return result;
   } finally {
@@ -656,12 +582,9 @@ export function validateProPaymentRequestInput(params: {
 
 /**
  * Pay with PKR (JazzCash / Opay):
- * - Rejects if student already has an active Pro plan or pending manual payment (on both server and Firestore)
- * - Reads plan price & duration from `PLANS` config (`PKR 199` monthly, `PKR 1,791` annual)
- * - Allows only one pending Pro request per student at a time
- * - Rejects duplicate TIDs across `paymentRequests` and `kobanRequests`
- * - Creates a `pro_payment_request` record in `paymentRequests`
- * - Dispatches the "Pro request received" email to student and admins
+ * - Verifies Firebase ID token and executes duplicate TID check + optional coupon discount on the server (`/api/pro/submit-payment`)
+ * - Never queries other users' `paymentRequests` or `kobanRequests` from the client (fixing the "Missing or insufficient permissions." error)
+ * - Creates a `pending` payment request scoped strictly to the user's own `uid`
  */
 export async function submitProPaymentRequest(params: {
   uid: string;
@@ -670,6 +593,7 @@ export async function submitProPaymentRequest(params: {
   planId: ProPlanId;
   method: 'jazzcash' | 'opay';
   transactionId: string;
+  couponCode?: string | null;
 }): Promise<{ requestId: string; planName: string; amountPkr: number; tid: string }> {
   const preCheck = validateProPaymentRequestInput({
     uid: params.uid,
@@ -691,19 +615,21 @@ export async function submitProPaymentRequest(params: {
 
   try {
     const { normalizedTid, normalizedMethod, plan } = preCheck;
-    const rawTidTrimmed = params.transactionId.trim();
 
-    // 1. Read student's user profile AND existing paymentRequests in parallel
+    // 1. Read ONLY the current student's own profile and own paymentRequests (allowed by Firestore rules)
     const [userSnap, studentReqsSnap] = await Promise.all([
-      getDoc(doc(db, 'users', params.uid)),
-      getDocs(query(collection(db, 'paymentRequests'), where('userId', '==', params.uid), limit(25))),
+      getDoc(doc(db, 'users', params.uid)).catch(() => null),
+      getDocs(
+        query(collection(db, 'paymentRequests'), where('userId', '==', params.uid), limit(25))
+      ).catch(() => ({ docs: [] })),
     ]);
 
-    const userData = userSnap.exists() ? userSnap.data() : null;
-    const existingStudentReqs = studentReqsSnap.docs.map((d) => ({
-      id: d.id,
-      ...(d.data() as Record<string, any>),
-    }));
+    const userData = userSnap && userSnap.exists() ? userSnap.data() : null;
+    const existingStudentReqs: Array<{ id: string; status?: string; [key: string]: any }> =
+      studentReqsSnap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Record<string, any>),
+      }));
 
     // Check unified plan status before allowing any payment submission
     const currentStatus = resolveUnifiedPlanStatus({
@@ -741,41 +667,13 @@ export async function submitProPaymentRequest(params: {
     }
 
     const existingStudentPending = existingStudentReqs.filter((r) => r.status === 'pending');
-
-    // 2. Check for duplicate TID in paymentRequests and kobanRequests (case-insensitive check on trimmed & uppercase)
-    const [dupPaymentUpper, dupPaymentRaw, dupKobanUpper, dupKobanRaw] = await Promise.all([
-      getDocs(
-        query(collection(db, 'paymentRequests'), where('transactionId', '==', normalizedTid), limit(5))
-      ),
-      rawTidTrimmed !== normalizedTid
-        ? getDocs(
-            query(
-              collection(db, 'paymentRequests'),
-              where('transactionId', '==', rawTidTrimmed),
-              limit(5)
-            )
-          )
-        : Promise.resolve({ docs: [] }),
-      getDocs(
-        query(collection(db, 'kobanRequests'), where('transactionId', '==', normalizedTid), limit(5))
-      ),
-      rawTidTrimmed !== normalizedTid
-        ? getDocs(
-            query(
-              collection(db, 'kobanRequests'),
-              where('transactionId', '==', rawTidTrimmed),
-              limit(5)
-            )
-          )
-        : Promise.resolve({ docs: [] }),
-    ]);
-
-    const duplicateMatches = [
-      ...dupPaymentUpper.docs,
-      ...dupPaymentRaw.docs,
-      ...dupKobanUpper.docs,
-      ...dupKobanRaw.docs,
-    ].map((d) => ({ id: d.id }));
+    // Check own requests for duplicate TID
+    const ownDuplicateMatches = existingStudentReqs
+      .filter((r) => {
+        const t = String(r.transactionId || r.TID || '').trim().toUpperCase();
+        return t === normalizedTid && String(r.status || '').toLowerCase() !== 'rejected';
+      })
+      .map((r) => ({ id: r.id }));
 
     validateProPaymentRequestInput({
       uid: params.uid,
@@ -783,43 +681,93 @@ export async function submitProPaymentRequest(params: {
       method: params.method,
       transactionId: params.transactionId,
       existingStudentPendingRequests: existingStudentPending as any,
-      existingDuplicateTidMatches: duplicateMatches,
+      existingDuplicateTidMatches: ownDuplicateMatches,
     });
 
-    // 3. Enforce server-side purchase guard and atomically lock in D1 so a second tab cannot race
-    await callServerProPurchaseGuard({
-      endpoint: '/api/pro/submit-payment',
-      uid: params.uid,
-      planId: plan.id,
-      planName: plan.name,
-      durationDays: plan.duration_days,
-      amountPkr: plan.price_pkr,
-      method: normalizedMethod,
-      tid: normalizedTid,
-      commitLock: true,
-      lockState: 'pending',
-    });
+    // 2. Submit via server-side Worker endpoint (`/api/pro/submit-payment`) which performs cross-user TID duplicate checks, coupon validation, and D1 lock
+    const token = await auth.currentUser?.getIdToken().catch(() => null);
+    let serverRequestId = '';
+    let finalAmountPkr = plan.price_pkr;
+    let discountPkr = 0;
+    let appliedCouponCode: string | null = params.couponCode
+      ? params.couponCode.trim().toUpperCase()
+      : null;
+    let wroteOnServer = false;
+
+    if (token) {
+      const resp = await fetch('/api/pro/submit-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          uid: params.uid,
+          userEmail: params.userEmail || userData?.email || '',
+          userName: params.userName || userData?.displayName || userData?.name || 'Student',
+          planId: plan.id,
+          planName: plan.name,
+          durationDays: plan.duration_days,
+          paymentMethod: normalizedMethod,
+          method: normalizedMethod,
+          transactionId: normalizedTid,
+          tid: normalizedTid,
+          couponCode: appliedCouponCode,
+        }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || data?.ok === false) {
+        const err = new Error(
+          data?.error || 'Could not submit payment verification request.'
+        ) as Error & { code?: string; status?: number };
+        err.code = data?.code || 'PAYMENT_SUBMIT_FAILED';
+        err.status = resp.status;
+        throw err;
+      }
+      if (data?.requestId) {
+        serverRequestId = String(data.requestId);
+      }
+      if (data?.paymentRequest) {
+        finalAmountPkr = Number(data.paymentRequest.amount_pkr ?? data.paymentRequest.amount ?? plan.price_pkr);
+        discountPkr = Number(data.paymentRequest.discountPkr ?? 0);
+        appliedCouponCode = data.paymentRequest.couponCode || appliedCouponCode;
+      }
+      wroteOnServer = Boolean(data?.wroteOnServer);
+    }
 
     const durationMonths = plan.id === 'pro_annual' ? 12 : 1;
+    let finalDocId = serverRequestId;
 
-    const docRef = await addDoc(collection(db, 'paymentRequests'), {
-      uid: params.uid,
-      userId: params.uid,
-      userEmail: params.userEmail || '',
-      userName: params.userName || 'Student',
-      requestType: 'pro_pass',
-      plan: plan.id,
-      planName: plan.name,
-      durationDays: plan.duration_days,
-      durationMonths,
-      amount: plan.price_pkr,
-      amount_pkr: plan.price_pkr,
-      method: normalizedMethod,
-      TID: normalizedTid,
-      transactionId: normalizedTid,
-      status: 'pending',
-      createdAt: serverTimestamp(),
-    });
+    // 3. Ensure the paymentRequest document exists in Firestore (own-uid create with status: 'pending' is allowed by firestore.rules)
+    if (!wroteOnServer) {
+      const paymentPayload: Record<string, any> = {
+        uid: params.uid,
+        userId: params.uid,
+        userEmail: params.userEmail || userData?.email || '',
+        userName: params.userName || userData?.displayName || userData?.name || 'Student',
+        requestType: 'pro_pass',
+        plan: plan.id,
+        planName: plan.name,
+        durationDays: plan.duration_days,
+        durationMonths,
+        amount: finalAmountPkr,
+        amount_pkr: finalAmountPkr,
+        originalAmountPkr: plan.price_pkr,
+        discountPkr,
+        couponCode: appliedCouponCode,
+        method: normalizedMethod,
+        TID: normalizedTid,
+        transactionId: normalizedTid,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+      };
+      if (finalDocId) {
+        await setDoc(doc(db, 'paymentRequests', finalDocId), paymentPayload);
+      } else {
+        const docRef = await addDoc(collection(db, 'paymentRequests'), paymentPayload);
+        finalDocId = docRef.id;
+      }
+    }
 
     clearPlanCache(params.uid);
     forceRefreshPaymentRequests(params.uid).catch(() => {});
@@ -828,21 +776,21 @@ export async function submitProPaymentRequest(params: {
     }
 
     notifyProRequestReceived({
-      requestId: docRef.id,
+      requestId: finalDocId,
       studentUid: params.uid,
       studentName: params.userName,
       studentEmail: params.userEmail,
       planName: plan.name,
       durationDays: plan.duration_days,
-      pkrAmount: plan.price_pkr,
+      pkrAmount: finalAmountPkr,
       paymentMethod: normalizedMethod,
       transactionId: normalizedTid,
     });
 
     return {
-      requestId: docRef.id,
+      requestId: finalDocId,
       planName: plan.name,
-      amountPkr: plan.price_pkr,
+      amountPkr: finalAmountPkr,
       tid: normalizedTid,
     };
   } finally {

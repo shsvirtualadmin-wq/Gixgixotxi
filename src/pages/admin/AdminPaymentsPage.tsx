@@ -6,9 +6,12 @@ import {
   XCircle,
   Copy,
   Check,
+  Tag,
+  Plus,
 } from 'lucide-react';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
+import { auth } from '@/lib/firebase';
 import {
   fetchPaymentRequests,
   approvePaymentRequest,
@@ -28,15 +31,41 @@ import {
 } from '@/constants/branding';
 import type { PaymentRequest, KobanRequest } from '@/types';
 
+interface AdminCouponRecord {
+  id: string;
+  code: string;
+  label: string;
+  benefitType: string;
+  discountPercent: number;
+  discountPkr: number;
+  discountKobans: number;
+  durationDays: number;
+  maxRedemptions: number;
+  redemptionCount: number;
+  active: boolean;
+  expiresAt?: string | null;
+}
+
+interface AdminCouponRedemptionRecord {
+  id: string;
+  code: string;
+  userId: string;
+  userEmail: string;
+  planId: string;
+  mode: string;
+  redeemedAt: string;
+}
+
 export function AdminPaymentsPage() {
   const { user } = useAuth();
   const superadminEmail = user?.email || 'shsvirtualadmin@gmail.com';
 
-  const [paymentType, setPaymentType] = useState<'plans' | 'kobans'>(() => {
+  const [paymentType, setPaymentType] = useState<'plans' | 'kobans' | 'coupons'>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const t = params.get('type');
       if (t === 'kobans') return 'kobans';
+      if (t === 'coupons' || t === 'promos') return 'coupons';
       if (t === 'pro' || t === 'plans') return 'plans';
     }
     return 'plans';
@@ -51,6 +80,15 @@ export function AdminPaymentsPage() {
 
   // Koban Requests
   const [kobanRequestsList, setKobanRequestsList] = useState<KobanRequest[]>([]);
+
+  // Coupons & Redemptions
+  const [couponsList, setCouponsList] = useState<AdminCouponRecord[]>([]);
+  const [couponRedemptions, setCouponRedemptions] = useState<AdminCouponRedemptionRecord[]>([]);
+  const [newCouponCode, setNewCouponCode] = useState('');
+  const [newCouponLabel, setNewCouponLabel] = useState('');
+  const [newCouponDiscountPct, setNewCouponDiscountPct] = useState(50);
+  const [newCouponMaxUses, setNewCouponMaxUses] = useState(100);
+  const [creatingCoupon, setCreatingCoupon] = useState(false);
 
   // Plan Reject modal dialog
   const [planRejectTarget, setPlanRejectTarget] = useState<PaymentRequest | null>(null);
@@ -85,9 +123,19 @@ export function AdminPaymentsPage() {
       if (paymentType === 'plans') {
         const data = await fetchPaymentRequests(statusFilter);
         setPlanRequests(data);
-      } else {
+      } else if (paymentType === 'kobans') {
         const data = await fetchKobanRequests(statusFilter);
         setKobanRequestsList(data);
+      } else {
+        const token = await auth.currentUser?.getIdToken().catch(() => null);
+        const res = await fetch('/api/admin/coupons', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (payload?.ok) {
+          setCouponsList(Array.isArray(payload.coupons) ? payload.coupons : []);
+          setCouponRedemptions(Array.isArray(payload.redemptions) ? payload.redemptions : []);
+        }
       }
     } catch (err) {
       console.warn('Failed to load payment requests:', err);
@@ -99,6 +147,65 @@ export function AdminPaymentsPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const handleCreateCoupon = async () => {
+    const cleanCode = newCouponCode.trim().toUpperCase();
+    if (!cleanCode) return;
+    setCreatingCoupon(true);
+    try {
+      const token = await auth.currentUser?.getIdToken().catch(() => null);
+      const pct = Math.max(1, Math.min(100, Number(newCouponDiscountPct) || 50));
+      const res = await fetch('/api/admin/coupons', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          code: cleanCode,
+          label: newCouponLabel.trim() || `${pct}% Off Pro Pass`,
+          benefitType: pct >= 100 ? '1_year_free_pro' : 'percentage_discount',
+          discountPercent: pct,
+          maxRedemptions: Math.max(1, Number(newCouponMaxUses) || 100),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.ok) {
+        setNewCouponCode('');
+        setNewCouponLabel('');
+        setBannerNotice(`Created coupon ${cleanCode}.`);
+        setTimeout(() => setBannerNotice(null), 3000);
+        await loadData();
+      }
+    } catch (err) {
+      console.error('Failed to create coupon:', err);
+    } finally {
+      setCreatingCoupon(false);
+    }
+  };
+
+  const handleToggleCouponActive = async (coupon: AdminCouponRecord) => {
+    setActionInProgress(coupon.code);
+    try {
+      const token = await auth.currentUser?.getIdToken().catch(() => null);
+      await fetch('/api/admin/coupons', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          code: coupon.code,
+          active: !coupon.active,
+        }),
+      });
+      await loadData();
+    } catch (err) {
+      console.error('Failed to toggle coupon:', err);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
 
   // Plan actions
   const handleApprovePlan = async (req: PaymentRequest) => {
@@ -160,7 +267,7 @@ export function AdminPaymentsPage() {
       setTimeout(() => setBannerNotice(null), 3500);
       await loadData();
     } catch (err: unknown) {
-      alert((err as Error).message || 'Failed to approve Koban request');
+      setBannerNotice((err as Error).message || 'Failed to approve Koban request');
     } finally {
       setKobanApproving(false);
     }
@@ -181,7 +288,7 @@ export function AdminPaymentsPage() {
       setTimeout(() => setBannerNotice(null), 3000);
       await loadData();
     } catch (err: unknown) {
-      alert((err as Error).message || 'Failed to reject Koban request');
+      setBannerNotice((err as Error).message || 'Failed to reject Koban request');
     } finally {
       setKobanRejecting(false);
     }
@@ -206,7 +313,7 @@ export function AdminPaymentsPage() {
             Payments &amp; Transaction Verification
           </h1>
           <p className="font-heading text-xs sm:text-[13px] text-[var(--muted)] mt-1">
-            Verify {PAYMENT_METHODS_PAIR_LABEL} receipts for Pro plans and the Kobans cosmetics economy.
+            Verify {PAYMENT_METHODS_PAIR_LABEL} receipts for Pro plans, Kobans economy, and promo coupon redemptions.
           </p>
         </div>
 
@@ -232,7 +339,7 @@ export function AdminPaymentsPage() {
       {/* ─── SEGMENTED SWITCHER & STATUS FILTERS ─────────────────────────────── */}
       <div className="p-4 sm:p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         {/* Type Switcher */}
-        <div className="flex items-center p-1 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)]">
+        <div className="flex items-center p-1 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex-wrap">
           <button
             type="button"
             onClick={() => setPaymentType('plans')}
@@ -256,48 +363,62 @@ export function AdminPaymentsPage() {
             <KobanIcon size={14} />
             <span>Kobans Purchases</span>
           </button>
+          <button
+            type="button"
+            onClick={() => setPaymentType('coupons')}
+            className={`px-4 py-1.5 rounded-[12px] text-xs sm:text-[13px] font-heading font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+              paymentType === 'coupons'
+                ? 'bg-[var(--text)] text-[var(--bg)] font-semibold shadow-sm'
+                : 'text-[var(--muted)] hover:text-[var(--text)]'
+            }`}
+          >
+            <Tag size={13} />
+            <span>Coupons &amp; Promos</span>
+          </button>
         </div>
 
         {/* Status & Method Filter Controls */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-heading text-[var(--muted)] mr-1 shrink-0">
-            Status:
-          </span>
-          {[
-            { id: 'all', label: 'All' },
-            { id: 'pending', label: 'Pending' },
-            { id: 'approved', label: 'Approved' },
-            { id: 'rejected', label: 'Rejected' },
-          ].map(({ id, label }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setStatusFilter(id)}
-              className={`text-xs font-heading px-2.5 py-1 rounded-full border transition-colors cursor-pointer ${
-                statusFilter === id
-                  ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
-                  : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-
-          <select
-            aria-label="Filter by payment method"
-            value={methodFilter}
-            onChange={(e) => setMethodFilter(e.target.value)}
-            className="text-xs font-heading px-2.5 py-1 rounded-full border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] ml-1"
-          >
-            <option value="all">All Methods</option>
-            {PAYMENT_METHODS_LIST.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.displayName}
-              </option>
+        {paymentType !== 'coupons' && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-heading text-[var(--muted)] mr-1 shrink-0">
+              Status:
+            </span>
+            {[
+              { id: 'all', label: 'All' },
+              { id: 'pending', label: 'Pending' },
+              { id: 'approved', label: 'Approved' },
+              { id: 'rejected', label: 'Rejected' },
+            ].map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setStatusFilter(id)}
+                className={`text-xs font-heading px-2.5 py-1 rounded-full border transition-colors cursor-pointer ${
+                  statusFilter === id
+                    ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
+                    : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                {label}
+              </button>
             ))}
-            <option value="legacy">{formatPaymentMethodLabel('easy' + 'paisa')}</option>
-          </select>
-        </div>
+
+            <select
+              aria-label="Filter by payment method"
+              value={methodFilter}
+              onChange={(e) => setMethodFilter(e.target.value)}
+              className="text-xs font-heading px-2.5 py-1 rounded-full border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] ml-1"
+            >
+              <option value="all">All Methods</option>
+              {PAYMENT_METHODS_LIST.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.displayName}
+                </option>
+              ))}
+              <option value="legacy">{formatPaymentMethodLabel('easy' + 'paisa')}</option>
+            </select>
+          </div>
+        )}
       </div>
 
       {/* ─── PRO PLANS LIST ─────────────────────────────────────────────────── */}
@@ -310,98 +431,107 @@ export function AdminPaymentsPage() {
               No plan subscription payments found matching this filter.
             </div>
           ) : (
-            filteredPlanRequests.map((req) => (
-              <div
-                key={req.id}
-                className="p-4 sm:p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col md:flex-row md:items-center justify-between gap-4"
-              >
-                <div className="space-y-1.5 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-heading font-bold text-sm text-[var(--text)]">
-                      {req.userName || req.userEmail || 'Student'}
-                    </span>
-                    <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-md border border-[var(--red)]/40 bg-[var(--red)]/10 text-[var(--red)] font-bold">
-                      {req.plan === 'large_crew'
-                        ? 'Large Crew Pass'
-                        : req.plan === 'pro_annual' || req.durationDays === 365 || (req.durationMonths ?? 1) >= 12
-                        ? 'Pro Pass · Annual (365d)'
-                        : 'Pro Pass · Monthly (30d)'}
-                    </span>
-                    <span
-                      className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border font-bold ${
-                        req.status === 'approved'
-                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-                          : req.status === 'rejected'
-                          ? 'border-red-500 bg-red-500/10 text-red-400'
-                          : 'border-amber-500 bg-amber-500/10 text-amber-400'
-                      }`}
-                    >
-                      {req.status}
-                    </span>
-                    <span className="text-[11px] font-mono text-[var(--muted)]">
-                      PKR {(req.amount_pkr ?? req.amount ?? 0).toLocaleString()} via {formatPaymentMethodLabel(req.method)}
-                    </span>
+            filteredPlanRequests.map((req) => {
+              const reqAny = req as Record<string, any>;
+              return (
+                <div
+                  key={req.id}
+                  className="p-4 sm:p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col md:flex-row md:items-center justify-between gap-4"
+                >
+                  <div className="space-y-1.5 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-heading font-bold text-sm text-[var(--text)]">
+                        {req.userName || req.userEmail || 'Student'}
+                      </span>
+                      <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-md border border-[var(--red)]/40 bg-[var(--red)]/10 text-[var(--red)] font-bold">
+                        {req.plan === 'large_crew'
+                          ? 'Large Crew Pass'
+                          : req.plan === 'pro_annual' || req.durationDays === 365 || (req.durationMonths ?? 1) >= 12
+                          ? 'Pro Pass · Annual (365d)'
+                          : 'Pro Pass · Monthly (30d)'}
+                      </span>
+                      {reqAny.couponCode && (
+                        <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 font-bold inline-flex items-center gap-1">
+                          <Tag size={10} />
+                          <span>Coupon: {reqAny.couponCode}</span>
+                        </span>
+                      )}
+                      <span
+                        className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border font-bold ${
+                          req.status === 'approved'
+                            ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                            : req.status === 'rejected'
+                            ? 'border-red-500 bg-red-500/10 text-red-400'
+                            : 'border-amber-500 bg-amber-500/10 text-amber-400'
+                        }`}
+                      >
+                        {req.status}
+                      </span>
+                      <span className="text-[11px] font-mono text-[var(--muted)]">
+                        PKR {(req.amount_pkr ?? req.amount ?? 0).toLocaleString()} via {formatPaymentMethodLabel(req.method)}
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-[var(--muted)] font-mono flex items-center gap-3 flex-wrap pt-1">
+                      <div className="flex items-center gap-1.5 bg-[var(--surface-2)] px-2.5 py-1 rounded-lg border border-[var(--border)]">
+                        <span>TID:</span>
+                        <strong className="text-[var(--text)]">{req.TID || req.transactionId}</strong>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(req.TID || req.transactionId, req.id)}
+                          className="text-[var(--muted)] hover:text-[var(--text)]"
+                          title="Copy TID"
+                        >
+                          {copiedId === req.id ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                        </button>
+                      </div>
+                      {req.userEmail && (
+                        <span className="text-[11px] text-[var(--muted)]">{req.userEmail}</span>
+                      )}
+                      {req.screenshotUrl && (
+                        <a
+                          href={req.screenshotUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-cyan-400 hover:underline flex items-center gap-1"
+                        >
+                          <ExternalLink size={11} />
+                          <span>Receipt</span>
+                        </a>
+                      )}
+                    </div>
+                    {req.rejectionReason && (
+                      <p className="text-xs text-red-400 mt-1">Rejection reason: {req.rejectionReason}</p>
+                    )}
                   </div>
 
-                  <div className="text-xs text-[var(--muted)] font-mono flex items-center gap-3 flex-wrap pt-1">
-                    <div className="flex items-center gap-1.5 bg-[var(--surface-2)] px-2.5 py-1 rounded-lg border border-[var(--border)]">
-                      <span>TID:</span>
-                      <strong className="text-[var(--text)]">{req.TID || req.transactionId}</strong>
+                  {req.status === 'pending' && (
+                    <div className="flex items-center gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-[var(--border)]">
                       <button
                         type="button"
-                        onClick={() => handleCopy(req.TID || req.transactionId, req.id)}
-                        className="text-[var(--muted)] hover:text-[var(--text)]"
-                        title="Copy TID"
+                        disabled={actionInProgress === req.id}
+                        onClick={() => {
+                          setPlanRejectTarget(req);
+                          setPlanRejectReason(`Transaction ID could not be verified on ${PAYMENT_METHODS_PAIR_LABEL} portal.`);
+                        }}
+                        className="px-3 py-1.5 rounded-xl border border-[var(--red)]/40 text-[var(--red)] text-xs font-semibold cursor-pointer"
                       >
-                        {copiedId === req.id ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                        Reject
+                      </button>
+                      <button
+                        type="button"
+                        disabled={actionInProgress === req.id}
+                        onClick={() => handleApprovePlan(req)}
+                        className="btn-red px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm cursor-pointer"
+                      >
+                        <CheckCircle2 size={13} />
+                        <span>Approve &amp; Activate Pro</span>
                       </button>
                     </div>
-                    {req.userEmail && (
-                      <span className="text-[11px] text-[var(--muted)]">{req.userEmail}</span>
-                    )}
-                    {req.screenshotUrl && (
-                      <a
-                        href={req.screenshotUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-cyan-400 hover:underline flex items-center gap-1"
-                      >
-                        <ExternalLink size={11} />
-                        <span>Receipt</span>
-                      </a>
-                    )}
-                  </div>
-                  {req.rejectionReason && (
-                    <p className="text-xs text-red-400 mt-1">Rejection reason: {req.rejectionReason}</p>
                   )}
                 </div>
-
-                {req.status === 'pending' && (
-                  <div className="flex items-center gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-[var(--border)]">
-                    <button
-                      type="button"
-                      disabled={actionInProgress === req.id}
-                      onClick={() => {
-                        setPlanRejectTarget(req);
-                        setPlanRejectReason(`Transaction ID could not be verified on ${PAYMENT_METHODS_PAIR_LABEL} portal.`);
-                      }}
-                      className="px-3 py-1.5 rounded-xl border border-[var(--red)]/40 text-[var(--red)] text-xs font-semibold cursor-pointer"
-                    >
-                      Reject
-                    </button>
-                    <button
-                      type="button"
-                      disabled={actionInProgress === req.id}
-                      onClick={() => handleApprovePlan(req)}
-                      className="btn-red px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm cursor-pointer"
-                    >
-                      <CheckCircle2 size={13} />
-                      <span>Approve &amp; Activate Pro</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}
@@ -495,6 +625,169 @@ export function AdminPaymentsPage() {
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {/* ─── COUPONS & PROMO REDEMPTIONS TAB ────────────────────────────────── */}
+      {paymentType === 'coupons' && (
+        <div className="space-y-5">
+          {/* Create Coupon Form */}
+          <div className="p-4 sm:p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-3">
+            <h2 className="font-heading font-bold text-sm text-[var(--text)] flex items-center gap-2">
+              <Plus size={15} className="text-[var(--red)]" />
+              <span>Create Coupon Code</span>
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <input
+                type="text"
+                value={newCouponCode}
+                onChange={(e) => setNewCouponCode(e.target.value.toUpperCase())}
+                placeholder="Code (e.g. LAUNCH50)"
+                className="px-3 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-mono uppercase text-[var(--text)]"
+              />
+              <input
+                type="text"
+                value={newCouponLabel}
+                onChange={(e) => setNewCouponLabel(e.target.value)}
+                placeholder="Label (e.g. 50% Launch Discount)"
+                className="px-3 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--text)]"
+              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={newCouponDiscountPct}
+                  onChange={(e) => setNewCouponDiscountPct(Number(e.target.value))}
+                  className="w-20 px-3 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-mono text-[var(--text)]"
+                  title="Discount %"
+                />
+                <span className="text-xs text-[var(--muted)] font-mono">% OFF</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={10000}
+                  value={newCouponMaxUses}
+                  onChange={(e) => setNewCouponMaxUses(Number(e.target.value))}
+                  className="w-24 px-3 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-mono text-[var(--text)]"
+                  title="Max Redemptions"
+                />
+                <span className="text-xs text-[var(--muted)] font-mono">uses</span>
+              </div>
+              <button
+                type="button"
+                disabled={creatingCoupon || !newCouponCode.trim()}
+                onClick={handleCreateCoupon}
+                className="btn-red px-4 py-2 rounded-xl text-xs font-heading font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                <Plus size={14} />
+                <span>{creatingCoupon ? 'Creating...' : 'Save Coupon'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Active Coupons & Redemption Counts */}
+          <div className="space-y-3">
+            <h3 className="font-heading font-bold text-sm text-[var(--text)]">
+              Promo &amp; Coupon Codes ({couponsList.length})
+            </h3>
+            {loading ? (
+              <LineLoader context="admin" message="Loading coupons & redemption counts..." />
+            ) : couponsList.length === 0 ? (
+              <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center text-xs text-[var(--muted)]">
+                No coupons configured yet.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {couponsList.map((c) => (
+                  <div
+                    key={c.code}
+                    data-coupon-code={c.code}
+                    className="p-4 rounded-[20px] bg-[var(--card)] border border-[var(--border)] flex items-center justify-between gap-3"
+                  >
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono font-bold text-sm text-[var(--text)]">
+                          {c.code}
+                        </span>
+                        <span
+                          className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border font-bold ${
+                            c.active
+                              ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                              : 'border-zinc-500 bg-zinc-500/10 text-zinc-400'
+                          }`}
+                        >
+                          {c.active ? 'active' : 'disabled'}
+                        </span>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-[var(--red)]/10 text-[var(--red)] font-bold">
+                          {c.discountPercent >= 100
+                            ? '100% Free Pro'
+                            : `${c.discountPercent}% OFF`}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[var(--muted)] truncate">{c.label}</p>
+                      <div className="text-xs font-mono text-[var(--muted)]">
+                        Redemptions:{' '}
+                        <strong
+                          data-coupon-count={c.code}
+                          className="text-[var(--text)]"
+                        >
+                          {c.redemptionCount} / {c.maxRedemptions}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={actionInProgress === c.code}
+                      onClick={() => handleToggleCouponActive(c)}
+                      className="px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs font-heading font-semibold text-[var(--text)] hover:border-[var(--red)] cursor-pointer shrink-0"
+                    >
+                      {c.active ? 'Disable' : 'Enable'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Recent Coupon Redemptions Log */}
+          <div className="space-y-3">
+            <h3 className="font-heading font-bold text-sm text-[var(--text)]">
+              Recent Coupon Redemptions ({couponRedemptions.length})
+            </h3>
+            {couponRedemptions.length === 0 ? (
+              <div className="p-6 rounded-[20px] bg-[var(--card)] border border-[var(--border)] text-center text-xs text-[var(--muted)]">
+                No coupon redemptions recorded yet.
+              </div>
+            ) : (
+              <div className="rounded-[20px] bg-[var(--card)] border border-[var(--border)] overflow-hidden">
+                <div className="divide-y divide-[var(--border)]">
+                  {couponRedemptions.slice(0, 25).map((r) => (
+                    <div
+                      key={r.id}
+                      className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap text-xs"
+                    >
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <span className="font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400">
+                          {r.code}
+                        </span>
+                        <span className="font-heading font-semibold text-[var(--text)]">
+                          {r.userEmail || r.userId}
+                        </span>
+                        <span className="font-mono text-[11px] text-[var(--muted)]">
+                          ({r.planId} · {r.mode})
+                        </span>
+                      </div>
+                      <span className="font-mono text-[11px] text-[var(--muted)]">
+                        {r.redeemedAt ? new Date(r.redeemedAt).toLocaleString() : 'Just now'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

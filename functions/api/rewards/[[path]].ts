@@ -1571,7 +1571,7 @@ async function handleRewardsApiRequestInner(
   }
 
   // ─── ENDPOINT 2: POST /api/rewards/daily/claim ─────────────────────────────
-  if (subPath === 'daily/claim') {
+  if (subPath === 'daily/claim' || subPath === 'claim-daily' || subPath === 'daily-claim') {
     const pktDate = getPktDateString(nowMs);
     const dailyState = await computeD1DailyProgressForUser(db, uid, config, nowMs);
 

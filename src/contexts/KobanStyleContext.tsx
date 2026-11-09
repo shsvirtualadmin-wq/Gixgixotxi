@@ -88,7 +88,7 @@ const KobanStyleContext = createContext<KobanStyleContextValue>({
 });
 
 export function KobanStyleProvider({ children }: { children: React.ReactNode }) {
-  const { user, loading: authLoading } = useAuth();
+  const { user, profileLoading: authLoading } = useAuth();
   const [style, setStyle] = useState<KobanStyleSettings>(() => readStyleFromLocalStorage(null));
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);

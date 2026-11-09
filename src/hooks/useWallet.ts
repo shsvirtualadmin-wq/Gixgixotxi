@@ -203,6 +203,27 @@ export function useWallet() {
     }
 
     fetchWallet(user.uid, false);
+
+    const handleWalletRefresh = (ev: Event) => {
+      const customEv = ev as CustomEvent<{ balanceAfter?: number }>;
+      if (typeof customEv?.detail?.balanceAfter === 'number') {
+        const nextBalance = Math.max(0, Math.floor(customEv.detail.balanceAfter));
+        const nextWallet: WalletDoc = {
+          ...(sessionWalletCache[user.uid] || walletRef.current),
+          balance: nextBalance,
+        };
+        sessionWalletCache[user.uid] = nextWallet;
+        setWallet(nextWallet);
+      }
+      fetchWallet(user.uid, true).catch(() => {});
+    };
+
+    window.addEventListener('boardly:wallet-refresh', handleWalletRefresh);
+    window.addEventListener('boardly:plan-refresh', handleWalletRefresh);
+    return () => {
+      window.removeEventListener('boardly:wallet-refresh', handleWalletRefresh);
+      window.removeEventListener('boardly:plan-refresh', handleWalletRefresh);
+    };
   }, [user?.uid, fetchWallet]);
 
   /**

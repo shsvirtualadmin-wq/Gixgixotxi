@@ -368,11 +368,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         if (isAdminAccountUser) {
           cleanName = 'SHS Virtual Academy';
           if (uid === currentUid) {
-            if (uData && (!uData.displayName || uData.displayName !== 'SHS Virtual Academy' || uData.role !== 'admin')) {
-              setDoc(userDocRef, { displayName: 'SHS Virtual Academy', role: 'admin' }, { merge: true }).catch(() => {});
+            if (uData && (!uData.displayName || uData.displayName !== 'SHS Virtual Academy')) {
+              setDoc(userDocRef, { displayName: 'SHS Virtual Academy' }, { merge: true }).catch(() => {});
             }
-            if (pubData && (!pubData.displayName || pubData.displayName !== 'SHS Virtual Academy' || pubData.role !== 'admin')) {
-              setDoc(doc(db, 'publicProfiles', uid), { displayName: 'SHS Virtual Academy', role: 'admin' }, { merge: true }).catch(() => {});
+            if (pubData && (!pubData.displayName || pubData.displayName !== 'SHS Virtual Academy')) {
+              setDoc(doc(db, 'publicProfiles', uid), { displayName: 'SHS Virtual Academy' }, { merge: true }).catch(() => {});
             }
           }
         } else {

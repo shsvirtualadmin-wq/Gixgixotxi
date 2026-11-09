@@ -47,11 +47,13 @@ export function PublicLayout() {
     );
   }
 
+  const isCommonsPostDetail = location.pathname.startsWith('/commons/post/');
+
   if (isStoreMainPage) {
     return (
       <div className="relative min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)] antialiased overflow-x-hidden">
         <BackgroundCanvas />
-        <main className="flex-1 w-full flex flex-col">
+        <main className="flex-1 w-full flex flex-col pb-[calc(112px+env(safe-area-inset-bottom,0px))]">
           <BoardlySuspenseBoundary variant="page">
             <Outlet />
           </BoardlySuspenseBoundary>
@@ -68,7 +70,7 @@ export function PublicLayout() {
     return (
       <div className="relative min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)] antialiased overflow-x-hidden">
         <BackgroundCanvas />
-        <main className="flex-1 w-full max-w-6xl mx-auto px-3 sm:px-6 pt-3 sm:pt-4 pb-28 flex flex-col">
+        <main className="flex-1 w-full max-w-6xl mx-auto px-3 sm:px-6 pt-3 sm:pt-4 pb-[calc(112px+env(safe-area-inset-bottom,0px))] flex flex-col">
           <BoardlySuspenseBoundary variant="page">
             <Outlet />
           </BoardlySuspenseBoundary>
@@ -93,14 +95,14 @@ export function PublicLayout() {
           </BoardlySuspenseBoundary>
         </div>
       ) : (
-        <main className="flex-1 flex flex-col pt-20 sm:pt-24">
+        <main className="flex-1 flex flex-col pt-20 sm:pt-24 pb-[calc(112px+env(safe-area-inset-bottom,0px))]">
           <BoardlySuspenseBoundary variant="page">
             <Outlet />
           </BoardlySuspenseBoundary>
         </main>
       )}
       <Footer />
-      {!isHomePage && isAuthenticated && <DashboardBottomNav />}
+      {!isHomePage && (isAuthenticated || isCommonsPostDetail) && <DashboardBottomNav />}
     </div>
   );
 }

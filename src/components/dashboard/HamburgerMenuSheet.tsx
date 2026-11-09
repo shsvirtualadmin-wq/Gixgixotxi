@@ -507,27 +507,24 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         className="pt-2 mt-1 border-t flex items-center justify-between px-1"
         style={{ borderTopColor: 'var(--glass-menu-divider)' }}
       >
-        {user ? (
-          <button
-            type="button"
-            onClick={onSignOut}
-            className="min-h-[44px] px-2.5 py-2 -ml-1.5 rounded-xl inline-flex items-center gap-2 text-[13px] font-medium transition-colors duration-150 hover:bg-[var(--accent-soft)] active:scale-[0.98] cursor-pointer"
-            style={{ color: 'var(--accent)' }}
-          >
-            <LogOut size={16} strokeWidth={1.75} />
-            <span>Sign out</span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => onNavigate('/login')}
-            className="min-h-[44px] px-2.5 py-2 -ml-1.5 rounded-xl inline-flex items-center gap-2 text-[13px] font-medium transition-colors duration-150 hover:bg-[var(--accent-soft)] active:scale-[0.98] cursor-pointer"
-            style={{ color: 'var(--accent)' }}
-          >
-            <User size={16} strokeWidth={1.75} />
-            <span>Sign in</span>
-          </button>
-        )}
+        <button
+          type="button"
+          data-menu-item="sign-out"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (user) {
+              onSignOut();
+            } else {
+              onNavigate('/login');
+            }
+          }}
+          className="min-h-[44px] px-2.5 py-2 -ml-1.5 rounded-xl inline-flex items-center gap-2 text-[13px] font-medium transition-colors duration-150 hover:bg-[var(--accent-soft)] active:scale-[0.98] cursor-pointer"
+          style={{ color: 'var(--accent)' }}
+        >
+          <LogOut size={16} strokeWidth={1.75} />
+          <span>Sign out</span>
+        </button>
 
         <span
           className="text-[11px] font-mono tabular-nums font-medium select-none pr-1"
@@ -551,7 +548,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
 
   // Animation & sign-out states
   const [isRendered, setIsRendered] = useState(isOpen);
-  const [isVisible, setIsVisible] = useState(false);
+  const [isVisible, setIsVisible] = useState(isOpen);
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   // Swipe-to-dismiss & focus trap refs
@@ -561,20 +558,34 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
   const pushedHistoryRef = useRef<boolean>(false);
 
+  // Lock body scroll while sheet is open
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (isOpen) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      document.body.setAttribute('data-hamburger-sheet-open', 'true');
+      return () => {
+        document.body.style.overflow = prevOverflow;
+        document.body.removeAttribute('data-hamburger-sheet-open');
+      };
+    } else {
+      document.body.removeAttribute('data-hamburger-sheet-open');
+    }
+  }, [isOpen]);
+
   // Open (240ms ease-out) & close (200ms) lifecycle
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     if (isOpen) {
       previousActiveElementRef.current = document.activeElement as HTMLElement | null;
       setIsRendered(true);
+      setIsVisible(true);
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setIsVisible(true);
-          const firstFocusable = sheetRef.current?.querySelector<HTMLElement>(
-            'button, [href], [tabindex]:not([tabindex="-1"])'
-          );
-          firstFocusable?.focus({ preventScroll: true });
-        });
+        const firstFocusable = sheetRef.current?.querySelector<HTMLElement>(
+          'button, [href], [tabindex]:not([tabindex="-1"])'
+        );
+        firstFocusable?.focus({ preventScroll: true });
       });
     } else if (!isSigningOut) {
       setIsVisible(false);
@@ -662,11 +673,13 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
 
   // Touch handlers for swipe-down to close
   const handleTouchStart = (e: React.TouchEvent) => {
+    e.stopPropagation();
     touchStartY.current = e.touches[0].clientY;
     touchDeltaY.current = 0;
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    e.stopPropagation();
     const currentY = e.touches[0].clientY;
     const delta = currentY - touchStartY.current;
     if (delta > 0) {
@@ -677,7 +690,8 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
     }
   };
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    e.stopPropagation();
     if (sheetRef.current) {
       sheetRef.current.style.transform = '';
     }
@@ -720,7 +734,8 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
     return <LineLoader context="login" variant="page" immediate />;
   }
 
-  if (!isRendered) return null;
+  // Render synchronously on the same frame when isOpen becomes true so backdrop blocks any click-through
+  if (!isOpen && !isRendered) return null;
 
   // Coin balance is shown next to Boardly Store ONLY when DashboardTopBar is hidden on the current route
   const isHeaderVisible =
@@ -741,18 +756,47 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
     }
   };
 
+  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dismissSheet();
+  };
+
+  const stopAllPropagation = (e: React.SyntheticEvent) => {
+    e.stopPropagation();
+  };
+
   const sheetContent = (
     <div
-      className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-0 sm:p-4"
+      data-hamburger-sheet="true"
+      style={{ zIndex: 9999, pointerEvents: 'auto' }}
+      className="fixed inset-0 z-[9999] pointer-events-auto flex items-end sm:items-center justify-center p-0 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-label="More menu"
+      onClick={stopAllPropagation}
+      onMouseDown={stopAllPropagation}
+      onPointerDown={stopAllPropagation}
+      onPointerUp={stopAllPropagation}
+      onTouchStart={stopAllPropagation}
+      onTouchEnd={stopAllPropagation}
     >
       {/* Dimmed, blurred backdrop overlay */}
       <div
-        onClick={dismissSheet}
-        className={`fixed inset-0 z-0 cursor-pointer bg-black/30 backdrop-blur-sm more-sheet-backdrop ${
-          isVisible ? 'opacity-100' : 'opacity-0'
+        data-hamburger-backdrop="true"
+        style={{ pointerEvents: 'auto' }}
+        onClick={handleBackdropClick}
+        onMouseDown={stopAllPropagation}
+        onPointerDown={stopAllPropagation}
+        onPointerUp={stopAllPropagation}
+        onTouchStart={stopAllPropagation}
+        onTouchEnd={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dismissSheet();
+        }}
+        className={`fixed inset-0 z-0 pointer-events-auto cursor-pointer bg-black/45 backdrop-blur-sm more-sheet-backdrop ${
+          isOpen || isVisible ? 'opacity-100' : 'opacity-0'
         }`}
         aria-hidden="true"
       />
@@ -760,9 +804,15 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
       {/* Glassmorphic Bottom Sheet (max 85% screen height) */}
       <div
         ref={sheetRef}
-        onClick={(e) => e.stopPropagation()}
-        className={`z-10 glass more-sheet-panel allow-backdrop-blur ${
-          isVisible ? 'more-sheet-panel--open' : 'more-sheet-panel--closed'
+        style={{ pointerEvents: 'auto' }}
+        onClick={stopAllPropagation}
+        onMouseDown={stopAllPropagation}
+        onPointerDown={stopAllPropagation}
+        onPointerUp={stopAllPropagation}
+        onTouchStart={stopAllPropagation}
+        onTouchEnd={stopAllPropagation}
+        className={`relative z-10 pointer-events-auto glass more-sheet-panel allow-backdrop-blur ${
+          isOpen || isVisible ? 'more-sheet-panel--open' : 'more-sheet-panel--closed'
         }`}
       >
         {/* Drag Handle */}
@@ -770,7 +820,11 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          onClick={dismissSheet}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dismissSheet();
+          }}
           className="pt-3 pb-2 flex justify-center cursor-grab active:cursor-grabbing select-none shrink-0"
           aria-label="Drag down or tap to close menu"
         >

@@ -107,7 +107,12 @@ export function forceRefreshUserProfile(uid?: string | null): Promise<void> {
           ...data,
           uid: targetUid,
           photoURL: null,
-          role: data.role || sharedState.profile?.role || 'student',
+          role: data.role || 'student',
+          plan: data.plan || 'free',
+          isPremium: Boolean(data.isPremium),
+          planExpiresAt: data.planExpiresAt ?? undefined,
+          premiumExpiresAt: data.premiumExpiresAt ?? undefined,
+          proPlanId: data.proPlanId ?? undefined,
         };
         sharedState.docExists = true;
         sharedState.fetchStatus = 'success';
@@ -239,6 +244,11 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
           uid,
           photoURL: null,
           role: data.role || authProfileFallback?.role || 'student',
+          plan: data.plan || 'free',
+          isPremium: Boolean(data.isPremium),
+          planExpiresAt: data.planExpiresAt ?? undefined,
+          premiumExpiresAt: data.premiumExpiresAt ?? undefined,
+          proPlanId: data.proPlanId ?? undefined,
           customRole: data.customRole ?? authProfileFallback?.customRole,
         };
         sharedState.docExists = true;

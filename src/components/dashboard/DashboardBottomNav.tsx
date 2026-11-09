@@ -6,9 +6,8 @@ import React, {
   useRef,
   useCallback,
   memo,
-  lazy,
-  Suspense,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -26,10 +25,7 @@ import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 import { useUnreadMessagesCount } from '@/hooks/useUnreadMessagesCount';
 import { getHomeUrl, isUserAuthenticated } from '@/utils/homeUrl';
-
-const LazyHamburgerMenuSheet = lazy(() =>
-  import('./HamburgerMenuSheet').then((m) => ({ default: m.HamburgerMenuSheet }))
-);
+import { HamburgerMenuSheet } from './HamburgerMenuSheet';
 
 interface DockTabItem {
   id: string;
@@ -71,7 +67,6 @@ function DashboardBottomNavComponent() {
   const navigate = useNavigate();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [hasOpenedMenu, setHasOpenedMenu] = useState(false);
   const [isExternalModalOpen, setIsExternalModalOpen] = useState(false);
 
   const isAuthenticated = isUserAuthenticated(user, profileLoading);
@@ -82,23 +77,28 @@ function DashboardBottomNavComponent() {
     setIsMenuOpen(false);
   }, [location.pathname]);
 
-  // Detect any open full-screen modal across the app and hide the bottom navigation
+  // Detect any open full-screen external modal across the app and hide the bottom navigation
   useEffect(() => {
     if (typeof document === 'undefined') return;
 
     const checkModalState = () => {
+      if (document.body.getAttribute('data-hamburger-sheet-open') === 'true') {
+        setIsExternalModalOpen(false);
+        return;
+      }
       if (
         document.body.getAttribute('data-fullscreen-modal-open') === 'true' ||
-        document.body.style.overflow === 'hidden'
+        document.body.getAttribute('data-pro-checkout-open') === 'true'
       ) {
         setIsExternalModalOpen(true);
         return;
       }
       const overlays = document.querySelectorAll<HTMLElement>(
-        '[data-fullscreen-modal="true"], [role="dialog"], [aria-modal="true"], .fixed.inset-0'
+        '[data-fullscreen-modal="true"], [role="dialog"], [aria-modal="true"]'
       );
       const hasActiveModal = Array.from(overlays).some((el) => {
         if (
+          el.getAttribute('data-hamburger-sheet') === 'true' ||
           el.classList.contains('pointer-events-none') ||
           el.classList.contains('-z-10') ||
           el.getAttribute('aria-hidden') === 'true'
@@ -115,7 +115,13 @@ function DashboardBottomNavComponent() {
     const observer = new MutationObserver(checkModalState);
     observer.observe(document.body, {
       attributes: true,
-      attributeFilter: ['style', 'class', 'data-fullscreen-modal-open'],
+      attributeFilter: [
+        'style',
+        'class',
+        'data-fullscreen-modal-open',
+        'data-pro-checkout-open',
+        'data-hamburger-sheet-open',
+      ],
       childList: true,
       subtree: true,
     });
@@ -127,7 +133,7 @@ function DashboardBottomNavComponent() {
     };
   }, [location.pathname]);
 
-  const shouldHideBottomNav = isMenuOpen || isProfileModalOpen || isExternalModalOpen;
+  const shouldHideBottomNav = isProfileModalOpen || isExternalModalOpen;
 
   const role = profile?.role || 'student';
   const isApprovedCaptain =
@@ -209,7 +215,6 @@ function DashboardBottomNavComponent() {
         label: 'Menu',
         icon: <Menu size={18} strokeWidth={2} />,
         onClick: () => {
-          setHasOpenedMenu(true);
           setIsMenuOpen(true);
         },
       },
@@ -511,7 +516,11 @@ function DashboardBottomNavComponent() {
   );
 
   const handlePointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    e.stopPropagation();
     if (e.button !== 0 && e.pointerType === 'mouse') return;
+    // Never capture pointer on the hamburger menu button — use single onClick event only
+    const targetEl = e.target as HTMLElement | null;
+    if (targetEl?.closest('[data-nav-tab="menu"]')) return;
     const dockEl = dockRef.current;
     if (!dockEl) return;
 
@@ -645,6 +654,7 @@ function DashboardBottomNavComponent() {
   };
 
   const finishPointerInteraction = (e: React.PointerEvent<HTMLElement>) => {
+    e.stopPropagation();
     const ds = dragRef.current;
     if (!ds.active || ds.pointerId !== e.pointerId) return;
 
@@ -669,25 +679,22 @@ function DashboardBottomNavComponent() {
       // ignore pointer capture errors
     }
 
-    const dockEl = dockRef.current;
-    let targetItem = navItems.find((i) => i.id === activeTabId) || navItems[0];
-
+    // Only navigate on pointerup if the user actually dragged across tabs;
+    // taps (!ds.moved) and the hamburger menu button are handled exclusively by onClick
     if (ds.moved) {
       const dx = e.clientX - ds.startClientX;
       const finalLeft = Math.min(ds.maxLeft, Math.max(ds.minLeft, ds.initialLeft + dx));
-      targetItem = findNearestVisibleTab(finalLeft + ds.bubbleWidth / 2);
-    } else if (dockEl) {
-      const dockRect = dockEl.getBoundingClientRect();
-      const clickX = e.clientX - dockRect.left;
-      targetItem = findNearestVisibleTab(clickX);
+      const targetItem = findNearestVisibleTab(finalLeft + ds.bubbleWidth / 2);
+      if (targetItem.id !== 'menu') {
+        navigateToTab(targetItem);
+      }
     }
-
-    navigateToTab(targetItem);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, index: number, item: DockTabItem) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
+      e.stopPropagation();
       navigateToTab(item);
       return;
     }
@@ -707,98 +714,121 @@ function DashboardBottomNavComponent() {
   const fallbackLeft = `calc(7px + ((100% - 14px) * ${activeIdx} / ${navItems.length}))`;
   const fallbackRight = `calc(7px + ((100% - 14px) * ${navItems.length - 1 - activeIdx} / ${navItems.length}))`;
 
+  const stopNavPropagation = (e: React.SyntheticEvent) => {
+    e.stopPropagation();
+  };
+
+  const navBarElement = (
+    <div
+      data-bottom-nav-container="true"
+      style={{ zIndex: 90 }}
+      onClick={stopNavPropagation}
+      onMouseDown={stopNavPropagation}
+      onTouchStart={stopNavPropagation}
+      onTouchEnd={stopNavPropagation}
+      className={`fixed bottom-[calc(14px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[336px] z-[90] ${
+        shouldHideBottomNav
+          ? 'opacity-0 pointer-events-none invisible'
+          : 'pointer-events-auto'
+      }`}
+      aria-label="Student Navigation Bar"
+      aria-hidden={shouldHideBottomNav}
+    >
+      <nav
+        ref={dockRef}
+        role="tablist"
+        aria-label="Student Dashboard Navigation"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishPointerInteraction}
+        onPointerCancel={finishPointerInteraction}
+        className="sdn-dock pointer-events-auto"
+      >
+        {/* Single sliding & stretching red glass bubble behind icons */}
+        <div
+          ref={bubbleRef}
+          aria-hidden="true"
+          className={`sdn-bubble ${direction === 'left' ? 'dir-left' : 'dir-right'} ${
+            isInstant ? 'is-instant' : ''
+          } ${isDragging ? 'is-dragging' : ''} ${
+            isDragRelaxing ? 'is-drag-relaxing' : ''
+          } ${isPressed ? 'is-pressed' : ''} ${isSquashed ? 'is-squashed' : ''}`}
+          style={{
+            left: edges.dockWidth > 0 ? `${edges.left}px` : fallbackLeft,
+            right: edges.dockWidth > 0 ? `${edges.right}px` : fallbackRight,
+          }}
+        />
+
+        {navItems.map((item, index) => {
+          const isHighlighted = item.id === highlightedId;
+          const isSelected = item.id === activeTabId;
+
+          return (
+            <button
+              key={item.id}
+              data-nav-tab={item.id}
+              ref={(el) => {
+                btnRefs.current[item.id] = el;
+              }}
+              type="button"
+              role="tab"
+              tabIndex={0}
+              aria-selected={isSelected}
+              aria-label={item.label}
+              title={item.label}
+              onKeyDown={(e) => handleKeyDown(e, index, item)}
+              onPointerDown={(e) => {
+                if (item.id === 'menu') {
+                  e.stopPropagation();
+                }
+              }}
+              onPointerUp={(e) => {
+                if (item.id === 'menu') {
+                  e.stopPropagation();
+                }
+              }}
+              onTouchStart={stopNavPropagation}
+              onTouchEnd={stopNavPropagation}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                navigateToTab(item);
+              }}
+              className={`sdn-tab-btn pointer-events-auto ${isHighlighted ? 'is-active' : ''}`}
+            >
+              <span className="shrink-0 flex items-center justify-center relative pointer-events-none">
+                {item.icon}
+                {Boolean(item.badge) && (
+                  <span
+                    className={`absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-1 text-[9px] font-bold rounded-full flex items-center justify-center leading-none shadow-sm ${
+                      isHighlighted
+                        ? 'bg-white text-[#e11d2e] border border-black/20'
+                        : 'bg-[#e11d2e] text-white border border-black'
+                    }`}
+                  >
+                    {Number(item.badge) > 9 ? '9+' : item.badge}
+                  </span>
+                )}
+              </span>
+              <span className="sr-only">{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+    </div>
+  );
+
   return (
     <>
-      {/* ─── FIXED UNIFIED PILL BOTTOM NAVIGATION ────────────────────────────── */}
-      <div
-        className={`fixed bottom-[calc(14px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[336px] z-40 ${
-          shouldHideBottomNav
-            ? 'opacity-0 pointer-events-none invisible'
-            : 'pointer-events-auto'
-        }`}
-        aria-label="Student Navigation Bar"
-        aria-hidden={shouldHideBottomNav}
-      >
-        <nav
-          ref={dockRef}
-          role="tablist"
-          aria-label="Student Dashboard Navigation"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={finishPointerInteraction}
-          onPointerCancel={finishPointerInteraction}
-          className="sdn-dock"
-        >
-          {/* Single sliding & stretching red glass bubble behind icons */}
-          <div
-            ref={bubbleRef}
-            aria-hidden="true"
-            className={`sdn-bubble ${direction === 'left' ? 'dir-left' : 'dir-right'} ${
-              isInstant ? 'is-instant' : ''
-            } ${isDragging ? 'is-dragging' : ''} ${
-              isDragRelaxing ? 'is-drag-relaxing' : ''
-            } ${isPressed ? 'is-pressed' : ''} ${isSquashed ? 'is-squashed' : ''}`}
-            style={{
-              left: edges.dockWidth > 0 ? `${edges.left}px` : fallbackLeft,
-              right: edges.dockWidth > 0 ? `${edges.right}px` : fallbackRight,
-            }}
-          />
-
-          {navItems.map((item, index) => {
-            const isHighlighted = item.id === highlightedId;
-            const isSelected = item.id === activeTabId;
-
-            return (
-              <button
-                key={item.id}
-                ref={(el) => {
-                  btnRefs.current[item.id] = el;
-                }}
-                type="button"
-                role="tab"
-                tabIndex={0}
-                aria-selected={isSelected}
-                aria-label={item.label}
-                title={item.label}
-                onKeyDown={(e) => handleKeyDown(e, index, item)}
-                onClick={(e) => {
-                  // Keyboard-initiated click (detail === 0) is handled if not already handled by pointerup
-                  if (e.detail === 0) {
-                    navigateToTab(item);
-                  }
-                }}
-                className={`sdn-tab-btn ${isHighlighted ? 'is-active' : ''}`}
-              >
-                <span className="shrink-0 flex items-center justify-center relative">
-                  {item.icon}
-                  {Boolean(item.badge) && (
-                    <span
-                      className={`absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-1 text-[9px] font-bold rounded-full flex items-center justify-center leading-none shadow-sm ${
-                        isHighlighted
-                          ? 'bg-white text-[#e11d2e] border border-black/20'
-                          : 'bg-[#e11d2e] text-white border border-black'
-                      }`}
-                    >
-                      {Number(item.badge) > 9 ? '9+' : item.badge}
-                    </span>
-                  )}
-                </span>
-                <span className="sr-only">{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-      </div>
+      {typeof document !== 'undefined'
+        ? createPortal(navBarElement, document.body)
+        : navBarElement}
 
       {/* ─── REDESIGNED BOARDLY HAMBURGER MENU BOTTOM SHEET ───────────────── */}
-      {(hasOpenedMenu || isMenuOpen) && (
-        <Suspense fallback={null}>
-          <LazyHamburgerMenuSheet
-            isOpen={isMenuOpen}
-            onClose={() => setIsMenuOpen(false)}
-          />
-        </Suspense>
-      )}
+      <HamburgerMenuSheet
+        isOpen={isMenuOpen}
+        onClose={() => setIsMenuOpen(false)}
+      />
     </>
   );
 }
