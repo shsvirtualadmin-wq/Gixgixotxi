@@ -4,6 +4,7 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { isQuotaExhaustedError } from '@/utils/quota';
 import { syncPublicProfile } from '@/services/publicProfileService';
+import { ensureUserShortId } from '@/utils/shortId';
 import type { UserProfile } from '@/types/index';
 
 function getLocalCachedProfile(uid: string): UserProfile | null {
@@ -256,9 +257,7 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
         sharedState.profile = fullProfile;
         setLocalCachedProfile(uid, fullProfile);
         if (!data.shortId) {
-          import('@/utils/shortId').then(({ ensureUserShortId }) => {
-            ensureUserShortId(uid, data.shortId).catch(() => {});
-          });
+          ensureUserShortId(uid, data.shortId).catch(() => {});
         }
       } else {
         sharedState.docExists = false;

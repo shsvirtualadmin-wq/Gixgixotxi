@@ -1,5 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import {
   FirestoreRestAdapter,
   verifyFirebaseIdToken,
@@ -36,9 +34,6 @@ export interface NormalizedCoupon {
   updatedAt: string;
 }
 
-const PROMO_CODES_PATH = path.resolve(process.cwd(), 'data/promo_codes.json');
-const PROMO_REDEMPTIONS_PATH = path.resolve(process.cwd(), 'data/promo_redemptions.json');
-
 const SUPER_ADMIN_EMAILS = new Set([
   'shsvirtualadmin@gmail.com',
   'support@boardly.cfd',
@@ -68,125 +63,239 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
+// Edge-compatible in-memory seed store (backed by Firestore promoCodes/coupons & promoRedemptions/couponRedemptions)
+let edgePromoCodesStore: Array<Record<string, any>> = [
+  {
+    id: 'promo_1789444898730_4kcm',
+    code: 'TEST-LIVE-PROMO-99',
+    label: 'Live Test Campaign 99',
+    discount_type: '1_year_free_pro',
+    duration_months: 12,
+    max_redemptions: 3,
+    redemption_count: 2,
+    is_active: true,
+    created_by: 'shsvirtualadmin@gmail.com',
+    created_at: '2026-09-15T04:01:38.730Z',
+    expires_at: null,
+    updated_at: '2026-09-15T04:01:38.778Z',
+  },
+  {
+    id: 'promo_1789293710183_4auv',
+    code: 'TEST-VERIFY-123',
+    label: 'Test Campaign',
+    discount_type: '1_year_free_pro',
+    duration_months: 12,
+    max_redemptions: 5,
+    redemption_count: 1,
+    is_active: true,
+    created_by: 'shsvirtualadmin@gmail.com',
+    created_at: '2026-09-13T10:01:50.183Z',
+    expires_at: null,
+    updated_at: '2026-09-15T03:57:09.120Z',
+  },
+  {
+    id: 'promo_1789293410516_ifdm',
+    code: 'BOARDLY-1Y-USUTF',
+    label: 'Test Link Check',
+    discount_type: '1_year_free_pro',
+    duration_months: 12,
+    max_redemptions: 1,
+    redemption_count: 1,
+    is_active: false,
+    created_by: 'shsvirtualadmin@gmail.com',
+    created_at: '2026-09-13T09:56:50.516Z',
+    expires_at: null,
+    updated_at: '2026-09-15T03:57:09.120Z',
+  },
+  {
+    id: 'promo_1789287839826_0d39',
+    code: 'BOARDLY-1Y-2HB5V',
+    label: 'Test',
+    discount_type: '1_year_free_pro',
+    duration_months: 12,
+    max_redemptions: 1,
+    redemption_count: 1,
+    is_active: false,
+    created_by: 'shsvirtualadmin@gmail.com',
+    created_at: '2026-09-13T08:23:59.826Z',
+    expires_at: null,
+    updated_at: '2026-09-15T03:57:09.120Z',
+  },
+  {
+    id: 'promo_1789287835126_6x3g',
+    code: 'BOARDLY-1Y-Q2RK8',
+    label: 'Test',
+    discount_type: '1_year_free_pro',
+    duration_months: 12,
+    max_redemptions: 1,
+    redemption_count: 0,
+    is_active: true,
+    created_by: 'student@gmail.com',
+    created_at: '2026-09-13T08:23:55.126Z',
+    expires_at: null,
+    updated_at: '2026-09-15T03:57:09.120Z',
+  },
+  {
+    id: 'promo_1789287776252_wjnw',
+    code: 'BOARDLY-1Y-PP989',
+    label: '1-Year Free Pro Campaign',
+    discount_type: '1_year_free_pro',
+    duration_months: 12,
+    max_redemptions: 1,
+    redemption_count: 0,
+    is_active: true,
+    created_by: 'shsvirtualadmin@gmail.com',
+    created_at: '2026-09-13T08:22:56.252Z',
+    expires_at: null,
+    updated_at: '2026-09-15T03:57:09.120Z',
+  },
+  {
+    id: 'promo_1789287720650_spew',
+    code: 'BOARDLY-1Y-SH5HE',
+    label: 'Test Link',
+    discount_type: '1_year_free_pro',
+    duration_months: 12,
+    max_redemptions: 1,
+    redemption_count: 1,
+    is_active: false,
+    created_by: 'shsvirtualadmin@gmail.com',
+    created_at: '2026-09-13T08:22:00.650Z',
+    expires_at: null,
+    updated_at: '2026-09-15T04:01:30.369Z',
+  },
+  {
+    id: 'promo_default_1year',
+    code: 'BOARDLY-1Y-WELCOME',
+    label: 'Boardly Welcome 1-Year Free Pro',
+    discount_type: '1_year_free_pro',
+    duration_months: 12,
+    max_redemptions: 1,
+    redemption_count: 1,
+    is_active: false,
+    created_by: 'shsvirtualadmin@gmail.com',
+    created_at: '2026-09-13T00:00:00.000Z',
+    expires_at: null,
+    updated_at: '2026-09-15T04:02:42.079Z',
+  },
+  {
+    id: 'promo_boardly50_half',
+    code: 'BOARDLY50',
+    label: 'Boardly 50% Student Discount',
+    discount_type: 'percent',
+    percent_off: 50,
+    duration_months: 1,
+    max_redemptions: 500,
+    redemption_count: 0,
+    is_active: true,
+    created_by: 'shsvirtualadmin@gmail.com',
+    created_at: '2026-09-15T00:00:00.000Z',
+    expires_at: null,
+    updated_at: '2026-09-15T00:00:00.000Z',
+  },
+  {
+    id: 'promo_boardly20_discount',
+    code: 'BOARDLY20',
+    label: 'Boardly 20% Scholarship Coupon',
+    discount_type: 'percent',
+    percent_off: 20,
+    duration_months: 1,
+    max_redemptions: 1000,
+    redemption_count: 0,
+    is_active: true,
+    created_by: 'shsvirtualadmin@gmail.com',
+    created_at: '2026-09-15T00:00:00.000Z',
+    expires_at: null,
+    updated_at: '2026-09-15T00:00:00.000Z',
+  },
+];
+
+let edgePromoRedemptionsStore: Array<Record<string, any>> = [
+  {
+    id: 'red_1789444962079_9bk9l',
+    promo_code: 'BOARDLY-1Y-WELCOME',
+    student_id: 'student_verified_live',
+    student_email: 'student_verified_live@example.com',
+    student_name: 'student_verified_live',
+    redeemed_at: '2026-09-15T04:02:42.079Z',
+    granted_until: '2027-09-15T04:02:42.079Z',
+    track: 'Boardly Enrolled Track',
+  },
+  {
+    id: 'red_1789444898778_yoq34',
+    promo_code: 'TEST-LIVE-PROMO-99',
+    student_id: 'student_multi_2',
+    student_email: 'student_multi_2@test.com',
+    student_name: 'student_multi_2',
+    redeemed_at: '2026-09-15T04:01:38.778Z',
+    granted_until: '2027-09-15T04:01:38.778Z',
+    track: 'Boardly Enrolled Track',
+  },
+  {
+    id: 'red_1789444898758_iwstz',
+    promo_code: 'TEST-LIVE-PROMO-99',
+    student_id: 'student_multi_1',
+    student_email: 'student_multi_1@test.com',
+    student_name: 'student_multi_1',
+    redeemed_at: '2026-09-15T04:01:38.758Z',
+    granted_until: '2027-09-15T04:01:38.758Z',
+    track: 'Boardly Enrolled Track',
+  },
+  {
+    id: 'red_1789444890369_f4qdh',
+    promo_code: 'BOARDLY-1Y-SH5HE',
+    student_id: 'student_test_verify_1789444890351',
+    student_email: 'test_verify_1789444890351@example.com',
+    student_name: 'test_verify_1789444890351',
+    redeemed_at: '2026-09-15T04:01:30.369Z',
+    granted_until: '2027-09-15T04:01:30.369Z',
+    track: 'Boardly Enrolled Track',
+  },
+  {
+    id: 'red_1789444629120_mtgw2',
+    promo_code: 'TEST-VERIFY-123',
+    student_id: 'test_student_456',
+    student_email: 'teststudent456@gmail.com',
+    student_name: 'teststudent456',
+    redeemed_at: '2026-09-13T10:01:53.359Z',
+    granted_until: '2027-09-13T10:01:53.359Z',
+    track: 'Boardly Enrolled Track',
+  },
+  {
+    id: 'red_1789444629120_pmbxa',
+    promo_code: 'BOARDLY-1Y-USUTF',
+    student_id: 'test_student_123',
+    student_email: 'teststudent@example.com',
+    student_name: 'teststudent',
+    redeemed_at: '2026-09-13T09:56:56.264Z',
+    granted_until: '2027-09-13T09:56:56.264Z',
+    track: 'Boardly Enrolled Track',
+  },
+  {
+    id: 'red_1789444629120_i01sd',
+    promo_code: 'BOARDLY-1Y-2HB5V',
+    student_id: 'test_student_fix',
+    student_email: 'test_fix@example.com',
+    student_name: 'test_fix',
+    redeemed_at: '2026-09-15T03:54:56.362Z',
+    granted_until: '2027-09-15T03:54:56.362Z',
+    track: 'Boardly Enrolled Track',
+  },
+];
+
 function loadLocalPromoCodes(): Array<Record<string, any>> {
-  try {
-    if (fs.existsSync(PROMO_CODES_PATH)) {
-      const raw = fs.readFileSync(PROMO_CODES_PATH, 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch {
-    // Ignore local file read error in Cloudflare Worker edge runtime
-  }
-  return [
-    {
-      id: 'promo_1789444898730_4kcm',
-      code: 'TEST-LIVE-PROMO-99',
-      label: 'Live Test Campaign 99',
-      discount_type: '1_year_free_pro',
-      duration_months: 12,
-      max_redemptions: 3,
-      redemption_count: 2,
-      is_active: true,
-      created_by: 'shsvirtualadmin@gmail.com',
-      created_at: '2026-09-15T04:01:38.730Z',
-      expires_at: null,
-      updated_at: '2026-09-15T04:01:38.778Z',
-    },
-    {
-      id: 'promo_1789293710183_4auv',
-      code: 'TEST-VERIFY-123',
-      label: 'Test Campaign',
-      discount_type: '1_year_free_pro',
-      duration_months: 12,
-      max_redemptions: 5,
-      redemption_count: 1,
-      is_active: true,
-      created_by: 'shsvirtualadmin@gmail.com',
-      created_at: '2026-09-13T10:01:50.183Z',
-      expires_at: null,
-      updated_at: '2026-09-15T03:57:09.120Z',
-    },
-    {
-      id: 'promo_1789287776252_wjnw',
-      code: 'BOARDLY-1Y-PP989',
-      label: '1-Year Free Pro Campaign',
-      discount_type: '1_year_free_pro',
-      duration_months: 12,
-      max_redemptions: 1,
-      redemption_count: 0,
-      is_active: true,
-      created_by: 'shsvirtualadmin@gmail.com',
-      created_at: '2026-09-13T08:22:56.252Z',
-      expires_at: null,
-      updated_at: '2026-09-15T03:57:09.120Z',
-    },
-    {
-      id: 'promo_boardly50_half',
-      code: 'BOARDLY50',
-      label: 'Boardly 50% Student Discount',
-      discount_type: 'percent',
-      percent_off: 50,
-      duration_months: 1,
-      max_redemptions: 500,
-      redemption_count: 0,
-      is_active: true,
-      created_by: 'shsvirtualadmin@gmail.com',
-      created_at: '2026-09-15T00:00:00.000Z',
-      expires_at: null,
-      updated_at: '2026-09-15T00:00:00.000Z',
-    },
-    {
-      id: 'promo_boardly20_discount',
-      code: 'BOARDLY20',
-      label: 'Boardly 20% Scholarship Coupon',
-      discount_type: 'percent',
-      percent_off: 20,
-      duration_months: 1,
-      max_redemptions: 1000,
-      redemption_count: 0,
-      is_active: true,
-      created_by: 'shsvirtualadmin@gmail.com',
-      created_at: '2026-09-15T00:00:00.000Z',
-      expires_at: null,
-      updated_at: '2026-09-15T00:00:00.000Z',
-    },
-  ];
+  return edgePromoCodesStore.map((c) => ({ ...c }));
 }
 
 function saveLocalPromoCodes(codes: Array<Record<string, any>>): void {
-  try {
-    const dir = path.dirname(PROMO_CODES_PATH);
-    if (fs.existsSync(dir)) {
-      fs.writeFileSync(PROMO_CODES_PATH, JSON.stringify(codes, null, 2), 'utf-8');
-    }
-  } catch {
-    // Ignore write error on read-only edge filesystem
-  }
+  edgePromoCodesStore = codes.map((c) => ({ ...c }));
 }
 
 function loadLocalPromoRedemptions(): Array<Record<string, any>> {
-  try {
-    if (fs.existsSync(PROMO_REDEMPTIONS_PATH)) {
-      const raw = fs.readFileSync(PROMO_REDEMPTIONS_PATH, 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch {
-    // Ignore
-  }
-  return [];
+  return edgePromoRedemptionsStore.map((r) => ({ ...r }));
 }
 
 function saveLocalPromoRedemptions(redemptions: Array<Record<string, any>>): void {
-  try {
-    const dir = path.dirname(PROMO_REDEMPTIONS_PATH);
-    if (fs.existsSync(dir)) {
-      fs.writeFileSync(PROMO_REDEMPTIONS_PATH, JSON.stringify(redemptions, null, 2), 'utf-8');
-    }
-  } catch {
-    // Ignore
-  }
+  edgePromoRedemptionsStore = redemptions.map((r) => ({ ...r }));
 }
 
 function normalizeCouponRecord(raw: Record<string, any>): NormalizedCoupon {
@@ -309,12 +418,11 @@ class HybridFirestoreHelper {
     this.projectId =
       env.FIREBASE_PROJECT_ID ||
       env.VITE_FIREBASE_PROJECT_ID ||
-      process.env.VITE_FIREBASE_PROJECT_ID ||
       DEFAULT_FIREBASE_PROJECT_ID;
     this.databaseId =
       env.FIREBASE_DATABASE_ID ||
       env.VITE_FIREBASE_DATABASE_ID ||
-      process.env.VITE_FIREBASE_DATABASE_ID ||
+      env.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
       DEFAULT_FIRESTORE_DATABASE_ID;
 
     const sa = parseServiceAccountFromEnv(env);
@@ -742,7 +850,6 @@ export async function handleEconomyApiRequest(context: {
   const projectId =
     env?.FIREBASE_PROJECT_ID ||
     env?.VITE_FIREBASE_PROJECT_ID ||
-    process.env.VITE_FIREBASE_PROJECT_ID ||
     DEFAULT_FIREBASE_PROJECT_ID;
 
   let verifiedUser: { uid: string; email?: string; name?: string } | null = null;
