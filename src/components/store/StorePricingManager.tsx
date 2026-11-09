@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
+import { KobanIcon } from '@/components/koban/KobanIcon';
 import {
   fetchStoreItems,
   updateSingleItemPricing,
@@ -272,7 +273,7 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
         <div className="space-y-1">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500">
-              <Coins size={20} />
+              <KobanIcon size={20} decorative />
             </div>
             <div>
               <h1 className="text-lg sm:text-xl font-heading font-bold text-[var(--text)] flex items-center gap-2">

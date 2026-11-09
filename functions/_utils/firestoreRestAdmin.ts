@@ -1852,6 +1852,20 @@ export interface InMemoryD1Tables {
         accepted_at: number;
       }
     >;
+    user_koban_style: Map<
+      string,
+      {
+        user_id: string;
+        design: string;
+        main_color: string;
+        accent_color: string;
+        glow_color: string;
+        glow: number;
+        motion: string;
+        sparkle: number;
+        updated_at: number;
+      }
+    >;
   }
 
 export class InMemoryD1Database implements RewardsD1Database {
@@ -1878,6 +1892,7 @@ export class InMemoryD1Database implements RewardsD1Database {
     pending_2fa_challenges: new Map(),
     security_audit_logs: new Map(),
     legal_consent_records: new Map(),
+    user_koban_style: new Map(),
   };
 
   constructor() {
@@ -1937,6 +1952,11 @@ export class InMemoryD1Database implements RewardsD1Database {
           if (r && r.user_id) this.tables.email_verification_sessions.set(String(r.user_id), r);
         }
       }
+      if (Array.isArray(raw.user_koban_style)) {
+        for (const r of raw.user_koban_style) {
+          if (r && r.user_id) this.tables.user_koban_style.set(String(r.user_id), r);
+        }
+      }
     } catch {
       // Non-fatal
     }
@@ -1956,6 +1976,7 @@ export class InMemoryD1Database implements RewardsD1Database {
         guest_accounts: Array.from(this.tables.guest_accounts.values()),
         guest_sessions: Array.from(this.tables.guest_sessions.values()),
         email_verification_sessions: Array.from(this.tables.email_verification_sessions.values()),
+        user_koban_style: Array.from(this.tables.user_koban_style.values()),
       };
       fsMod.writeFileSync(diskPath, JSON.stringify(payload, null, 2), 'utf8');
     } catch {
@@ -2464,6 +2485,16 @@ export class InMemoryD1Database implements RewardsD1Database {
           .map((r) => ({ ...r }));
       }
       return all.sort((a, b) => b.accepted_at - a.accepted_at).map((r) => ({ ...r }));
+    }
+
+    // 23. user_koban_style
+    if (upper.includes('FROM USER_KOBAN_STYLE')) {
+      if (upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        const row = this.tables.user_koban_style.get(uid);
+        return row ? [{ ...row }] : [];
+      }
+      return Array.from(this.tables.user_koban_style.values()).map((r) => ({ ...r }));
     }
 
     return [];
@@ -3484,6 +3515,37 @@ export class InMemoryD1Database implements RewardsD1Database {
         accepted_at,
       });
       return 1;
+    }
+
+    // 17. user_koban_style
+    if (upper.includes('INTO USER_KOBAN_STYLE')) {
+      const user_id = String(args[0] ?? '');
+      if (!user_id) return 0;
+      const design = String(args[1] ?? 'chip');
+      const main_color = String(args[2] ?? '#ffc93f');
+      const accent_color = String(args[3] ?? '#e11d2e');
+      const glow_color = String(args[4] ?? '#ff8a1f');
+      const glow = Number(args[5] ?? 80);
+      const motion = String(args[6] ?? 'subtle');
+      const sparkle = Number(args[7] ?? 1);
+      const updated_at = Number(args[8] ?? Date.now());
+      this.tables.user_koban_style.set(user_id, {
+        user_id,
+        design,
+        main_color,
+        accent_color,
+        glow_color,
+        glow,
+        motion,
+        sparkle,
+        updated_at,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('DELETE FROM USER_KOBAN_STYLE')) {
+      const user_id = String(args[0] ?? '');
+      return this.tables.user_koban_style.delete(user_id) ? 1 : 0;
     }
 
     return 0;

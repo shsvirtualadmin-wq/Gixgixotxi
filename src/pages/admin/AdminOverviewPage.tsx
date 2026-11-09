@@ -18,6 +18,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
+import { KobanIcon } from '@/components/koban/KobanIcon';
 import {
   fetchAdminStats,
   getCachedAdminStats,
@@ -460,7 +461,7 @@ export function AdminOverviewPage() {
       <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-start gap-3.5">
           <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
-            <Coins size={20} />
+            <KobanIcon size={20} decorative />
           </div>
           <div>
             <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-2">

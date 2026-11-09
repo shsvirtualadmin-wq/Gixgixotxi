@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Sparkles, ShoppingBag, History, Coins, ArrowRight } from 'lucide-react';
+import { X, Sparkles, ShoppingBag, History, ArrowRight } from 'lucide-react';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 
 interface WalletModalProps {
@@ -34,14 +34,14 @@ export const WalletModal: React.FC<WalletModalProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-[#E8A317]/15 border border-[#E8A317]/30 flex items-center justify-center text-[#D97706] dark:text-[#FBBF24]">
-              <Coins size={16} />
+              <KobanIcon size={18} decorative />
             </div>
             <div>
               <h3 className="font-dot font-bold text-sm sm:text-base text-[var(--text)]">
                 Koban Wallet
               </h3>
               <p className="text-[11px] text-[var(--muted)]">
-                Boardly digital currency & cosmetics
+                Boardly digital currency &amp; cosmetics
               </p>
             </div>
           </div>
@@ -62,7 +62,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
             Available Balance
           </span>
           <div className="flex items-center gap-2.5 my-1">
-            <KobanIcon size={28} />
+            <KobanIcon size={28} decorative />
             <span className="font-dot font-black text-3xl sm:text-4xl text-[#D97706] dark:text-[#FBBF24] tracking-tight">
               {balance.toLocaleString()}
             </span>
@@ -70,6 +70,19 @@ export const WalletModal: React.FC<WalletModalProps> = ({
           <span className="text-xs text-[var(--muted)] font-medium">
             Kobans in your student vault
           </span>
+
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              navigate('/settings#koban-icon');
+            }}
+            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/15 text-[11px] font-semibold text-[var(--text)] transition-colors cursor-pointer"
+          >
+            <KobanIcon size={13} decorative />
+            <span>Customize Koban</span>
+            <ArrowRight size={11} />
+          </button>
         </div>
 
         {/* Action Buttons */}

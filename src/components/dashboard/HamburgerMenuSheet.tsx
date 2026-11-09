@@ -26,6 +26,7 @@ import { useTheme, type ThemeSetting } from '@/hooks/useTheme';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { LineLoader } from '@/components/ui/LineLoader';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { KobanIcon } from '@/components/koban/KobanIcon';
 
 export interface HamburgerMenuSheetProps {
   isOpen: boolean;
@@ -299,7 +300,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
                 className="more-glass-pill tabular-nums shrink-0"
                 title="Kobans balance"
               >
-                <Coins size={11} strokeWidth={1.75} />
+                <KobanIcon size={13} decorative />
                 <span>{(kobanBalance ?? 0).toLocaleString()}</span>
               </span>
             )}

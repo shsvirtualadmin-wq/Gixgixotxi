@@ -3,10 +3,11 @@ import mainWorker, { Env } from '../../cloudflare/worker';
 import { handleAuthApiRequest } from './auth/[[path]]';
 import { handleRewardsApiRequest } from './rewards/[[path]]';
 import { handleSendEmailRequest } from './send-email';
+import { handleKobanStyleRequest } from './koban-style';
 
 /**
  * Catch-all Cloudflare Pages Function for `/api/*` routes on the same site
- * (`/api/auth/*`, `/api/rewards/*`, `/api/send-email`, `/api/tests`, `/api/tests/:id/publish`, `/api/tests/:id/questions`,
+ * (`/api/auth/*`, `/api/rewards/*`, `/api/koban-style`, `/api/send-email`, `/api/tests`, `/api/tests/:id/publish`, `/api/tests/:id/questions`,
  * `/api/crews`, `/api/me/role`, `/api/attempts/mine`, `/api/leaderboard/grand-line`,
  * `/api/notifications`, `/api/admin/roles`, `/api/mcq-bank`, etc.).
  */
@@ -22,6 +23,14 @@ export async function onRequest(context: {
   // Delegate all /api/auth/* endpoints (guest mode, me, username checks, 6-digit OTP) to /api/auth handler
   if (path === '/api/auth' || path.startsWith('/api/auth/')) {
     return handleAuthApiRequest({
+      request,
+      env: (env || {}) as any,
+    });
+  }
+
+  // Delegate customizable Koban icon style endpoint to /api/koban-style handler
+  if (path === '/api/koban-style' || path.startsWith('/api/koban-style/')) {
+    return handleKobanStyleRequest({
       request,
       env: (env || {}) as any,
     });

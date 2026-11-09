@@ -140,6 +140,14 @@ export function KobansPage() {
                 <span>Get Kobans (from PKR 50)</span>
               </button>
             )}
+            <Link
+              to="/settings#koban-icon"
+              className="btn-secondary text-xs sm:text-sm px-5 py-3 rounded-full font-bold flex items-center gap-2"
+              style={{ height: '50px' }}
+            >
+              <KobanIcon size={16} decorative />
+              <span>Customize Koban</span>
+            </Link>
           </div>
         </div>
       </section>

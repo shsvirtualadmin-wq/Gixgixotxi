@@ -22,6 +22,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { BoardlyAvatar, resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
+import { KobanIcon } from '@/components/koban/KobanIcon';
 import {
   getPublicProfiles,
   getCachedPublicProfile,
@@ -1102,7 +1103,7 @@ export function NotificationsPage() {
                       if (category === 'reward') {
                         return (
                           <div className="notif-icon-circle notif-icon-circle--reward">
-                            <Coins className="w-5 h-5" strokeWidth={1.75} />
+                            <KobanIcon size={20} decorative />
                           </div>
                         );
                       }
@@ -1158,7 +1159,7 @@ export function NotificationsPage() {
                       if (category === 'reward') {
                         return (
                           <span className="rs-chip rs-chip--gold">
-                            <Coins className="w-2.5 h-2.5" strokeWidth={2} />
+                            <KobanIcon size={11} decorative />
                             REWARD
                           </span>
                         );

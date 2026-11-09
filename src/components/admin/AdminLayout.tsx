@@ -29,11 +29,16 @@ import { Button } from '@/components/ui/Button';
 import { Logo } from '@/components/ui/Logo';
 import { motion } from 'framer-motion';
 import { NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
+import { KobanIcon } from '@/components/koban/KobanIcon';
+
+const AdminKobanNavIcon = ({ size = 16, className = '' }: { size?: number; className?: string }) => (
+  <KobanIcon size={typeof size === 'number' ? size : 16} decorative className={className} />
+);
 
 interface AdminNavItem {
   to: string;
   label: string;
-  icon: typeof LayoutDashboard;
+  icon: typeof LayoutDashboard | typeof AdminKobanNavIcon;
   end?: boolean;
 }
 
@@ -51,7 +56,7 @@ const PRIMARY_NAV: AdminNavItem[] = [
 const SECONDARY_NAV: AdminNavItem[] = [
   { to: '/admin/signatures?tab=signature', label: 'Certificate Signature', icon: FileCheck2 },
   { to: '/admin/pricing', label: 'Store Pricing', icon: Tag },
-  { to: '/admin/kobans', label: 'Kobans', icon: Coins },
+  { to: '/admin/kobans', label: 'Kobans', icon: AdminKobanNavIcon },
   { to: '/admin/applications', label: 'Applications', icon: FileCheck2 },
   { to: '/admin/payments', label: 'Payments', icon: CreditCard },
   { to: '/admin/audit-logs', label: 'Audit log', icon: Terminal },

@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { KobanIcon } from '@/components/koban/KobanIcon';
 
 function isReducedMotionPreferred(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false;
@@ -168,50 +169,14 @@ export function spawnClaimCoinBurst(
 
 export function KobanCoinSvg({
   size = 18,
-  amber = false,
+  amber: _amber = false,
   className = '',
 }: {
   size?: number;
   amber?: boolean;
   className?: string;
 }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      className={`inline-block shrink-0 ${className}`}
-      aria-hidden="true"
-    >
-      <circle
-        cx="12"
-        cy="12"
-        r="10"
-        style={{
-          fill: amber ? 'var(--rw-amber-coin)' : 'var(--rw-gold)',
-          stroke: amber ? 'var(--rw-amber-coin-rim)' : 'var(--rw-card)',
-        }}
-        strokeWidth="1.5"
-      />
-      <circle
-        cx="12"
-        cy="12"
-        r="6.5"
-        style={{ stroke: 'var(--rw-card)' }}
-        strokeWidth="1"
-        strokeDasharray="2 1.5"
-      />
-      <rect
-        x="9.5"
-        y="9.5"
-        width="5"
-        height="5"
-        rx="1"
-        style={{ fill: 'var(--rw-card)' }}
-      />
-    </svg>
-  );
+  return <KobanIcon size={size} animated={false} decorative className={className} />;
 }
 
 export function TreasureChestSvg({

@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Zap,
   Users,
   ShieldCheck,
   Sparkles,
   BookOpen,
+  ArrowRight,
 } from 'lucide-react';
+import { KobanIcon } from '@/components/koban/KobanIcon';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
@@ -101,17 +103,38 @@ export function PlansBillingPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-4 pb-28 sm:pb-24 space-y-6">
       {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
-      <div className="space-y-1.5">
-        <div className="font-mono text-[11px] uppercase tracking-widest text-[var(--red)] font-semibold">
-          Account Subscription
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div className="space-y-1.5">
+          <div className="font-mono text-[11px] uppercase tracking-widest text-[var(--red)] font-semibold">
+            Account Subscription &amp; Wallet
+          </div>
+          <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-[var(--text)] tracking-tight">
+            Plans &amp; Billing
+          </h1>
+          <p className="text-xs sm:text-sm text-[var(--muted)] max-w-2xl leading-relaxed">
+            Upgrade your practice capacity with Boardly Pro or team up with classmates in a Nakama
+            Crew. {REFUND_POLICY_TEXT}
+          </p>
         </div>
-        <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-[var(--text)] tracking-tight">
-          Plans &amp; Billing
-        </h1>
-        <p className="text-xs sm:text-sm text-[var(--muted)] max-w-2xl leading-relaxed">
-          Upgrade your practice capacity with Boardly Pro or team up with classmates in a Nakama
-          Crew. {REFUND_POLICY_TEXT}
-        </p>
+
+        <div className="flex items-center gap-3 p-3 rounded-2xl bg-[var(--card)] border border-[var(--border)] shrink-0 self-start sm:self-auto">
+          <div className="flex items-center gap-2 pr-2 border-r border-[var(--border)]">
+            <KobanIcon size={20} decorative />
+            <div className="leading-tight">
+              <div className="text-[10px] font-mono uppercase text-[var(--muted)]">Kobans</div>
+              <div className="text-sm font-mono font-bold text-[var(--text)] tabular-nums">
+                {balance.toLocaleString()}
+              </div>
+            </div>
+          </div>
+          <Link
+            to="/settings#koban-icon"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--border)]/40 border border-[var(--border)] text-xs font-semibold text-[var(--text)] transition-colors"
+          >
+            <span>Customize Koban</span>
+            <ArrowRight size={12} />
+          </Link>
+        </div>
       </div>
 
       {/* ─── ACTIVE PLAN STATUS BANNER ─── */}

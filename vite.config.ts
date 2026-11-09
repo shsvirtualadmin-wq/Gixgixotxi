@@ -1419,6 +1419,63 @@ RULES:
         }
       });
 
+      server.middlewares.use('/api/koban-style', async (req: any, res: any) => {
+        try {
+          const rawBody = await new Promise<string>((resolve) => {
+            if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+              resolve('');
+              return;
+            }
+            let data = '';
+            req.on('data', (chunk: any) => {
+              data += chunk;
+            });
+            req.on('end', () => resolve(data));
+          });
+
+          const fullUrl = `http://localhost:3000/api/koban-style${req.url || ''}`;
+          const headers = new Headers();
+          for (const [k, v] of Object.entries(req.headers || {})) {
+            if (typeof v === 'string') headers.set(k, v);
+            else if (Array.isArray(v)) headers.set(k, v.join(', '));
+          }
+
+          const webReq = new Request(fullUrl, {
+            method: req.method || 'GET',
+            headers,
+            body:
+              req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS'
+                ? rawBody
+                : undefined,
+          });
+
+          const mod = await import('./functions/api/koban-style.ts');
+          const webRes = await mod.handleKobanStyleRequest({
+            request: webReq,
+            env: {
+              FIREBASE_SERVICE_ACCOUNT: process.env.FIREBASE_SERVICE_ACCOUNT,
+              GOOGLE_SERVICE_ACCOUNT_KEY: process.env.GOOGLE_SERVICE_ACCOUNT_KEY,
+              FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID,
+              FIREBASE_DATABASE_ID:
+                process.env.FIREBASE_DATABASE_ID ||
+                process.env.VITE_FIREBASE_DATABASE_ID ||
+                process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID,
+            },
+          });
+
+          const outHeaders: Record<string, string> = {};
+          webRes.headers.forEach((v, k) => {
+            outHeaders[k] = v;
+          });
+          res.writeHead(webRes.status, outHeaders);
+          const text = await webRes.text();
+          res.end(text);
+        } catch (err: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: err?.message || 'Koban style middleware error' }));
+        }
+      });
+
       // ─── TRANSACTIONAL EMAIL NOTIFICATIONS API (/api/send-email) ──────────
       server.middlewares.use('/api/send-email', async (req: any, res: any) => {
         try {

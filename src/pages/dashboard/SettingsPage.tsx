@@ -53,6 +53,8 @@ import {
   type EmailNotificationPreferences,
 } from '@/services/emailNotificationService';
 import { SecuritySettingsSection } from '@/components/profile/SecuritySettingsSection';
+import { KobanStyleCustomizer } from '@/components/koban/KobanStyleCustomizer';
+import { KobanIcon } from '@/components/koban/KobanIcon';
 
 const SELECTABLE_USER_ROLES = [
   'Student',
@@ -438,6 +440,22 @@ export function SettingsPage() {
     await signOutUser();
     navigate('/login');
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hash = window.location.hash;
+    if (hash === '#koban-icon' || hash === '#appearance-koban-icon') {
+      const t = setTimeout(() => {
+        const el =
+          document.getElementById('appearance-koban-icon') ||
+          document.getElementById('koban-icon');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 80);
+      return () => clearTimeout(t);
+    }
+  }, [loading]);
 
   if (loading && !profile) {
     return (
@@ -875,6 +893,28 @@ export function SettingsPage() {
 
         {/* ── 5b. Security & Optional Two-Step Verification ──────────────── */}
         <SecuritySettingsSection />
+
+        {/* ── 5c. Appearance > Koban icon ────────────────────────────────── */}
+        <section
+          id="appearance-koban-icon"
+          className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4"
+        >
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2.5">
+              <KobanIcon size={20} decorative />
+              <div>
+                <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--muted)]">
+                  Appearance
+                </div>
+                <h2 className="text-base font-bold text-[var(--text)] font-heading">
+                  Koban icon
+                </h2>
+              </div>
+            </div>
+            <Badge color="default">Cosmetic Only</Badge>
+          </div>
+          <KobanStyleCustomizer />
+        </section>
 
         {/* ── 6. Smooth Mode (Performance & Battery) ─────────────────────── */}
         <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap">
