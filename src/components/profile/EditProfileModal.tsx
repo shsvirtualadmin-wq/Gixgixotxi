@@ -124,9 +124,10 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                 <div className="-mt-6 mb-2 inline-block">
                   <AvatarFrame itemId={publicProfile.frame || 'none'} size={52} forceStatic>
                     <AvatarPicture
-                      itemId={publicProfile.avatar || 'none'}
+                      uid={publicProfile.uid}
+                      seed={publicProfile.uid}
+                      itemId={publicProfile.equipped?.avatar || publicProfile.avatar || 'none'}
                       size={44}
-                      photoURL={publicProfile.photoURL}
                     />
                   </AvatarFrame>
                 </div>

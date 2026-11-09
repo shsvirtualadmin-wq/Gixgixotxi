@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  LEGAL_LAST_UPDATED_LABEL,
+  LEGAL_VERSION_DISPLAY,
+} from '@/constants/legalConsent';
 import {
   doc,
   setDoc,
@@ -937,6 +941,37 @@ export function SettingsPage() {
               }`}
             />
           </button>
+        </section>
+
+        {/* ── 6c. Legal & Privacy Links ──────────────────────────────────── */}
+        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Shield size={16} className="text-[var(--muted)]" />
+              <h2 className="text-base font-bold text-[var(--text)] font-heading">
+                Legal &amp; Privacy
+              </h2>
+              <Badge color="gray">{LEGAL_VERSION_DISPLAY}</Badge>
+            </div>
+            <p className="text-xs text-[var(--muted)]">
+              Review Boardly&apos;s Terms of Service and Privacy Policy (Last updated: {LEGAL_LAST_UPDATED_LABEL}).
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <Link
+              to="/terms"
+              className="px-3.5 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:border-[var(--red)] transition-colors"
+            >
+              Terms of Service
+            </Link>
+            <Link
+              to="/privacy"
+              className="px-3.5 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:border-[var(--red)] transition-colors"
+            >
+              Privacy Policy
+            </Link>
+          </div>
         </section>
 
         {/* ── 7. Sign Out Section ────────────────────────────────────────── */}

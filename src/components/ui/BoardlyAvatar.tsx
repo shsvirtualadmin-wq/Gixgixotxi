@@ -1,5 +1,7 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { lazy, Suspense } from 'react';
 import { getCosmeticById } from '@/data/cosmeticsCatalog';
+import { MatrixAvatar } from '@/lib/matrixAvatars';
+import { getDefaultAvatar, type MatrixAvatarVariant } from '@/lib/matrixAvatarsData';
 
 const LazyAvatarPicture = lazy(() =>
   import('@/components/koban/CosmeticRenderers').then((m) => ({ default: m.AvatarPicture }))
@@ -8,25 +10,24 @@ const LazyAvatarFrame = lazy(() =>
   import('@/components/koban/CosmeticRenderers').then((m) => ({ default: m.AvatarFrame }))
 );
 
-function isImageUrl(val?: string | null): boolean {
+function isExternalOrDataUrl(val?: string | null): boolean {
   if (!val || typeof val !== 'string') return false;
-  const trimmed = val.trim();
-  if (!trimmed || trimmed === 'none' || trimmed === 'null' || trimmed === 'undefined') {
-    return false;
-  }
+  const trimmed = val.trim().toLowerCase();
   return (
     trimmed.startsWith('http://') ||
     trimmed.startsWith('https://') ||
-    trimmed.startsWith('/') ||
     trimmed.startsWith('data:') ||
-    trimmed.startsWith('blob:')
+    trimmed.startsWith('blob:') ||
+    trimmed.includes('googleusercontent.com') ||
+    trimmed.includes('ggpht.com')
   );
 }
 
 /**
  * Resolves a store-bought cosmetic ID (avatar or frame) from a raw value.
- * Handles direct catalog IDs (`pfp_pixel_pop_arcade`, `eclipse-wyrm`, `frame_topper_burst`),
+ * Handles direct catalog IDs (`pfp_pixel_pop_arcade`, `eclipse-wyrm`, `frame-topper-burst`),
  * legacy ID aliases (`pfp_eclipse_wyrm`), and store asset paths (`/assets/store/pfp_.../poster.webp`).
+ * Rejects Google/external photo URLs, matrix avatar keys (`skull-01`), and unknown strings.
  */
 export function resolveCosmeticItemId(
   val?: string | null,
@@ -35,6 +36,9 @@ export function resolveCosmeticItemId(
   if (!val || typeof val !== 'string') return null;
   const trimmed = val.trim();
   if (!trimmed || trimmed === 'none' || trimmed === 'null' || trimmed === 'undefined') {
+    return null;
+  }
+  if (isExternalOrDataUrl(trimmed)) {
     return null;
   }
 
@@ -51,30 +55,55 @@ export function resolveCosmeticItemId(
     }
   }
 
-  if (expectedSlot === 'avatar' && candidate.startsWith('pfp_')) {
-    return candidate;
-  }
-  if (expectedSlot === 'frame' && candidate.startsWith('frame_')) {
-    return candidate;
-  }
-
-  if (!isImageUrl(candidate)) {
-    if (expectedSlot === 'avatar' && !candidate.startsWith('frame_')) {
-      return candidate;
-    }
-    if (expectedSlot === 'frame' && !candidate.startsWith('pfp_')) {
-      return candidate;
-    }
-    if (!expectedSlot) {
-      return candidate;
-    }
-  }
-
   return null;
 }
 
+export interface ResolvedUserAvatar {
+  type: 'store' | 'matrix';
+  storeAvatarId: string | null;
+  uid: string;
+  matrixKey: string;
+  matrixVariant: MatrixAvatarVariant;
+}
+
+/**
+ * Single shared avatar resolver for the entire app.
+ * Rule:
+ * 1. If the user has bought or equipped a valid store avatar, return that store avatar ID.
+ * 2. Otherwise, return the deterministic default matrix avatar seeded strictly by `uid`.
+ * 3. Never return or expose a Google/Gmail photo URL.
+ */
+export function resolveUserAvatar(
+  uid?: string | null,
+  ...avatarCandidates: Array<string | null | undefined>
+): ResolvedUserAvatar {
+  const cleanUid = typeof uid === 'string' ? uid.trim() : '';
+  const matrix = getDefaultAvatar(cleanUid);
+
+  for (const cand of avatarCandidates) {
+    const storeAvatarId = resolveCosmeticItemId(cand, 'avatar');
+    if (storeAvatarId) {
+      return {
+        type: 'store',
+        storeAvatarId,
+        uid: cleanUid,
+        matrixKey: matrix.key,
+        matrixVariant: matrix.variant,
+      };
+    }
+  }
+
+  return {
+    type: 'matrix',
+    storeAvatarId: null,
+    uid: cleanUid,
+    matrixKey: matrix.key,
+    matrixVariant: matrix.variant,
+  };
+}
+
 export interface BoardlyAvatarProps {
-  uid?: string;
+  uid?: string | null;
   equippedAvatar?: string | null;
   avatarUrl?: string | null;
   photoURL?: string | null;
@@ -108,101 +137,43 @@ function normalizeAvatarSize(size?: number | 'sm' | 'md' | 'lg'): number {
   return 36;
 }
 
-const SOFT_AVATAR_PALETTES = [
-  { bg: 'rgba(225, 29, 46, 0.16)', text: '#ff4d5c', border: 'rgba(225, 29, 46, 0.28)' },
-  { bg: 'rgba(76, 195, 255, 0.16)', text: '#4cc3ff', border: 'rgba(76, 195, 255, 0.28)' },
-  { bg: 'rgba(61, 220, 132, 0.16)', text: '#3ddc84', border: 'rgba(61, 220, 132, 0.28)' },
-  { bg: 'rgba(245, 197, 66, 0.16)', text: '#f5c542', border: 'rgba(245, 197, 66, 0.28)' },
-  { bg: 'rgba(168, 85, 247, 0.16)', text: '#c084fc', border: 'rgba(168, 85, 247, 0.28)' },
-  { bg: 'rgba(249, 115, 22, 0.16)', text: '#fb923c', border: 'rgba(249, 115, 22, 0.28)' },
-];
-
-function getSoftPalette(seed: string) {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-  }
-  return SOFT_AVATAR_PALETTES[hash % SOFT_AVATAR_PALETTES.length];
-}
-
 /**
- * SHARED USER AVATAR HELPER
- * Enforces avatar priority:
- * 1. equippedAvatar (Boardly catalog cosmetic ID or pfp_)
- * 2. avatarUrl / photoURL (chosen/uploaded avatar image)
- * 3. Superadmin fallback: Boardly / SHS logo (if superadmin and no chosen avatar)
- * 4. User's initials on a soft colored circle (fallback for users without chosen avatar)
- *
- * Renders the equipped frame around the avatar if equipped.
+ * SHARED USER AVATAR COMPONENT (<BoardlyAvatar />)
+ * Enforces ONE rule everywhere:
+ * 1. If the user has bought or equipped a store avatar, show that avatar.
+ * 2. Otherwise show the deterministic default matrix avatar seeded strictly from `uid`.
+ * 3. NEVER show the Google / Gmail profile photo or letter initials anywhere in the app.
  */
 export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
-  uid: _uid,
+  uid,
   equippedAvatar,
   avatarUrl,
-  photoURL,
+  photoURL: _ignoredPhotoURL,
   avatar,
   customAvatarUrl,
   frame,
-  name,
   size: rawSize = 36,
   className = '',
-  avatarKey,
-  avatarVariant,
   forceStatic = false,
-  isSuperAdmin = false,
   priority,
   loading = false,
   avatarId,
   equippedAvatarId,
   frameId,
   equippedFrameId,
-  fallbackInitials,
 }) => {
   const size = normalizeAvatarSize(rawSize);
-  const resolvedName = name || fallbackInitials || 'Student';
-
-  const effectiveEquippedAvatar = equippedAvatar || equippedAvatarId || avatar || null;
-  const effectiveAvatarUrl = avatarUrl || customAvatarUrl || null;
   const effectiveFrame = frame || frameId || equippedFrameId || null;
 
-  // Resolve store-bought cosmetic avatar ID from explicit equipped avatar props
-  const storeCosmeticAvatar =
-    resolveCosmeticItemId(effectiveEquippedAvatar, 'avatar') ||
-    resolveCosmeticItemId(avatarId, 'avatar') ||
-    resolveCosmeticItemId(effectiveAvatarUrl, 'avatar') ||
-    resolveCosmeticItemId(photoURL, 'avatar') ||
-    null;
-
-  // Resolve custom image URL (avatarUrl / photoURL / uploaded photo)
-  const candidateUrl = [effectiveAvatarUrl, photoURL, effectiveEquippedAvatar, avatarId].find(
-    (v) => isImageUrl(v) && !resolveCosmeticItemId(v, 'avatar')
+  const resolved = resolveUserAvatar(
+    uid,
+    equippedAvatar,
+    equippedAvatarId,
+    avatarId,
+    avatar,
+    avatarUrl,
+    customAvatarUrl
   );
-
-  const [imageError, setImageError] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
-
-  useEffect(() => {
-    setImageError(false);
-    setImageLoaded(false);
-  }, [candidateUrl]);
-
-  const cleanAvatarUrl =
-    !storeCosmeticAvatar && !imageError && candidateUrl ? candidateUrl.trim() : null;
-
-  // Only fall back to avatarKey matrix avatar if there is no store cosmetic and no valid image URL
-  const resolvedCosmeticAvatar =
-    storeCosmeticAvatar ||
-    (!cleanAvatarUrl ? resolveCosmeticItemId(avatarKey, 'avatar') : null);
-
-  const hasEquipped = Boolean(resolvedCosmeticAvatar);
-
-  const initial = (
-    resolvedName && resolvedName.trim().length > 0
-      ? resolvedName.trim().charAt(0)
-      : 'S'
-  ).toUpperCase();
-
-  const softPalette = getSoftPalette(_uid || resolvedName || initial);
 
   const skeletonPlaceholder = (
     <div
@@ -218,56 +189,17 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
     />
   );
 
-  const initialFallback = (
-    <div
-      className="w-full h-full rounded-full flex items-center justify-center font-bold select-none font-sans"
-      style={{
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        fontSize: Math.max(11, Math.floor(size * 0.42)),
-        backgroundColor: softPalette.bg,
-        color: softPalette.text,
-        boxShadow: `inset 0 0 0 1px ${softPalette.border}`,
-      }}
-    >
-      {initial}
-    </div>
-  );
-
-  const superAdminLogoAvatar = (
-    <div
-      className="w-full h-full rounded-full bg-surface-raised border border-border flex items-center justify-center p-1 select-none overflow-hidden"
-      style={{ width: size, height: size, borderRadius: '50%' }}
-    >
-      <img
-        src="/logo.png"
-        alt="SHS Virtual Academy"
-        width={size}
-        height={size}
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        className="w-full h-full object-contain"
-        onError={(e) => {
-          (e.currentTarget as HTMLImageElement).src = '/favicon.svg';
-        }}
-      />
-    </div>
-  );
-
-  // Avatar inner content based on priority
   let innerAvatar: React.ReactNode;
 
-  if (loading && !hasEquipped && !cleanAvatarUrl && !isSuperAdmin) {
+  if (loading && resolved.type !== 'store') {
     innerAvatar = skeletonPlaceholder;
-  } else if (hasEquipped && resolvedCosmeticAvatar) {
-    // Priority 1: Boardly chosen cosmetic avatar
+  } else if (resolved.type === 'store' && resolved.storeAvatarId) {
     innerAvatar = (
       <Suspense fallback={skeletonPlaceholder}>
         <LazyAvatarPicture
-          avatarId={resolvedCosmeticAvatar}
-          avatarKey={avatarKey || undefined}
-          avatarVariant={avatarVariant || undefined}
+          avatarId={resolved.storeAvatarId}
+          uid={resolved.uid}
+          seed={resolved.uid}
           size={size}
           forceStatic={forceStatic}
           priority={priority ?? (size >= 56 ? 10 : 1)}
@@ -275,44 +207,17 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
         />
       </Suspense>
     );
-  } else if (cleanAvatarUrl) {
-    // Priority 2: Custom chosen avatar image with neutral skeleton loading & error fallback
-    innerAvatar = (
-      <div
-        className="relative w-full h-full rounded-full overflow-hidden flex items-center justify-center"
-        style={{ width: size, height: size, borderRadius: '50%' }}
-      >
-        {!imageLoaded && (
-          <div className="absolute inset-0">
-            {skeletonPlaceholder}
-          </div>
-        )}
-        <img
-          src={cleanAvatarUrl}
-          alt={resolvedName}
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-          width={size}
-          height={size}
-          onLoad={() => setImageLoaded(true)}
-          onError={() => setImageError(true)}
-          style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover' }}
-          className={`w-full h-full object-cover rounded-full select-none transition-opacity duration-150 ${
-            imageLoaded ? 'opacity-100' : 'opacity-0'
-          }`}
-        />
-      </div>
-    );
-  } else if (isSuperAdmin) {
-    // Priority 3: Superadmin account (SHS Virtual Academy) shows Boardly / SHS logo
-    innerAvatar = superAdminLogoAvatar;
   } else {
-    // Priority 4: User's initials on a soft colored circle
-    innerAvatar = initialFallback;
+    innerAvatar = (
+      <MatrixAvatar
+        uid={resolved.uid}
+        seed={resolved.uid}
+        size={size}
+        className="rounded-full"
+      />
+    );
   }
 
-  // If frame is equipped, calculate outer frame size and wrap
   const resolvedFrame =
     resolveCosmeticItemId(effectiveFrame, 'frame') ||
     resolveCosmeticItemId(frame, 'frame') ||
@@ -353,4 +258,5 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
 });
 
 export default BoardlyAvatar;
+
 

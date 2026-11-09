@@ -15,6 +15,7 @@ import type {
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { getFollowerIds, getFollowingIds } from '@/services/followService';
 import { notifyFollowersOfPost } from '@/services/notificationService';
+import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 
 /**
  * ============================================================================
@@ -307,10 +308,16 @@ export function normalizeCloudflarePost(raw: Record<string, any>): CommonsPost {
     authorName: raw.isAnonymous
       ? 'Anonymous Student'
       : String(raw.authorName || 'Student'),
-    authorAvatar: raw.isAnonymous ? null : raw.authorAvatar || null,
-    authorFrame: raw.isAnonymous ? null : raw.authorFrame || null,
-    authorEquippedAvatar: raw.isAnonymous ? null : raw.authorEquippedAvatar || null,
-    authorPhotoURL: raw.isAnonymous ? null : raw.authorPhotoURL || null,
+    authorAvatar: raw.isAnonymous
+      ? null
+      : resolveCosmeticItemId(raw.authorEquippedAvatar || raw.authorAvatar, 'avatar'),
+    authorFrame: raw.isAnonymous
+      ? null
+      : resolveCosmeticItemId(raw.authorFrame, 'frame'),
+    authorEquippedAvatar: raw.isAnonymous
+      ? null
+      : resolveCosmeticItemId(raw.authorEquippedAvatar || raw.authorAvatar, 'avatar'),
+    authorPhotoURL: null,
     authorRole: raw.isAnonymous
       ? 'student'
       : String(raw.authorUid || '').startsWith('bot_')
@@ -384,7 +391,7 @@ export async function createCommonsPost(params: {
     uid: auth.currentUser?.uid || '',
     email: auth.currentUser?.email || null,
     displayName: auth.currentUser?.displayName || 'Student',
-    photoURL: auth.currentUser?.photoURL || null,
+    photoURL: null,
   };
   const { isAnonymous } = params;
 
@@ -419,10 +426,14 @@ export async function createCommonsPost(params: {
       files: params.files,
       isAnonymous: Boolean(isAnonymous),
       authorName: cleanPublicName,
-      authorAvatar: isAnonymous ? null : author.avatarUrl || author.equippedAvatar || null,
-      authorFrame: isAnonymous ? null : author.frame || null,
-      authorEquippedAvatar: isAnonymous ? null : author.equippedAvatar || null,
-      authorPhotoURL: isAnonymous ? null : author.photoURL || null,
+      authorAvatar: isAnonymous
+        ? null
+        : resolveCosmeticItemId(author.equippedAvatar || author.avatarUrl, 'avatar'),
+      authorFrame: isAnonymous ? null : resolveCosmeticItemId(author.frame, 'frame'),
+      authorEquippedAvatar: isAnonymous
+        ? null
+        : resolveCosmeticItemId(author.equippedAvatar || author.avatarUrl, 'avatar'),
+      authorPhotoURL: null,
       authorRole: isAnonymous ? 'student' : author.role || 'student',
       authorCustomRole: isAnonymous ? null : author.customRole || null,
     }),
@@ -454,11 +465,10 @@ export async function createCommonsPost(params: {
             authorId: author.uid,
             authorName: normalized.authorName || cleanPublicName,
             authorAvatar:
-              author.avatarUrl ||
-              author.photoURL ||
-              author.equippedAvatar ||
-              normalized.authorAvatar ||
-              null,
+              resolveCosmeticItemId(
+                author.equippedAvatar || author.avatarUrl || normalized.authorAvatar,
+                'avatar'
+              ) || null,
             authorFrame: author.frame || normalized.authorFrame || null,
             postId: normalized.id,
             postSlug: (normalized as any).slug || normalized.id,
@@ -749,12 +759,20 @@ export async function addPostComment(params: {
         authorName: cleanName,
         authorAvatar: params.isAnonymous
           ? null
-          : params.author.avatarUrl || params.author.equippedAvatar || null,
-        authorFrame: params.isAnonymous ? null : params.author.frame || null,
+          : resolveCosmeticItemId(
+              params.author.equippedAvatar || params.author.avatarUrl,
+              'avatar'
+            ),
+        authorFrame: params.isAnonymous
+          ? null
+          : resolveCosmeticItemId(params.author.frame, 'frame'),
         authorEquippedAvatar: params.isAnonymous
           ? null
-          : params.author.equippedAvatar || null,
-        authorPhotoURL: params.isAnonymous ? null : params.author.photoURL || null,
+          : resolveCosmeticItemId(
+              params.author.equippedAvatar || params.author.avatarUrl,
+              'avatar'
+            ),
+        authorPhotoURL: null,
       }),
     }
   );
@@ -764,7 +782,17 @@ export async function addPostComment(params: {
     throw new Error(data?.error || 'Could not post comment.');
   }
 
-  return data.comment as CommonsComment;
+  const rawComment = data.comment as CommonsComment;
+  return {
+    ...rawComment,
+    authorAvatar: rawComment.isAnonymous
+      ? null
+      : resolveCosmeticItemId(rawComment.authorEquippedAvatar || rawComment.authorAvatar, 'avatar'),
+    authorEquippedAvatar: rawComment.isAnonymous
+      ? null
+      : resolveCosmeticItemId(rawComment.authorEquippedAvatar || rawComment.authorAvatar, 'avatar'),
+    authorPhotoURL: null,
+  };
 }
 
 export async function fetchPostComments(postId: string): Promise<CommonsComment[]> {
@@ -773,7 +801,17 @@ export async function fetchPostComments(postId: string): Promise<CommonsComment[
     const resp = await fetch(`/api/posts/${encodeURIComponent(postId)}/comments`);
     if (!resp.ok) return [];
     const data = await resp.json();
-    return Array.isArray(data?.comments) ? data.comments : [];
+    const list: CommonsComment[] = Array.isArray(data?.comments) ? data.comments : [];
+    return list.map((c) => ({
+      ...c,
+      authorAvatar: c.isAnonymous
+        ? null
+        : resolveCosmeticItemId(c.authorEquippedAvatar || c.authorAvatar, 'avatar'),
+      authorEquippedAvatar: c.isAnonymous
+        ? null
+        : resolveCosmeticItemId(c.authorEquippedAvatar || c.authorAvatar, 'avatar'),
+      authorPhotoURL: null,
+    }));
   } catch {
     return [];
   }
@@ -820,13 +858,17 @@ export async function searchPeople(searchTerm: string): Promise<CommonsUserPrevi
         displayName.toLowerCase().includes(cleaned) ||
         shortId.toLowerCase().includes(cleaned)
       ) {
+        const resolvedStoreAvatar = resolveCosmeticItemId(
+          data.equipped?.avatar || data.equippedAvatar || data.avatar || data.avatarUrl,
+          'avatar'
+        );
         results.push({
           uid: d.id,
           displayName,
-          avatarUrl: data.avatar || data.avatarUrl || data.equipped?.avatar || null,
-          frame: data.frame || data.equipped?.frame || null,
-          equippedAvatar: data.equipped?.avatar || data.equippedAvatar || null,
-          photoURL: data.photoURL || null,
+          avatarUrl: resolvedStoreAvatar,
+          frame: resolveCosmeticItemId(data.frame || data.equipped?.frame, 'frame'),
+          equippedAvatar: resolvedStoreAvatar,
+          photoURL: null,
           shortId: shortId || undefined,
           bio: bio || null,
           followersCount: Number(data.followersCount || 0),

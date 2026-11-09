@@ -496,8 +496,12 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             title={user ? 'View your profile' : 'Sign in to post'}
           >
             <BoardlyAvatar
-              equippedAvatar={profile?.equipped?.avatar || (profile as any)?.equippedAvatar}
-              avatarUrl={(profile as any)?.avatarUrl || profile?.photoURL || user?.photoURL}
+              uid={user?.uid}
+              equippedAvatar={
+                profile?.equipped?.avatar ||
+                (profile as any)?.equippedAvatar ||
+                (profile as any)?.avatar
+              }
               frame={profile?.equipped?.frame || (profile as any)?.frame}
               name={profile?.displayName || user?.displayName || 'Guest'}
               isSuperAdmin={
@@ -791,14 +795,14 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             uid: user.uid,
             email: user.email,
             displayName: profile?.displayName || user.displayName,
-            photoURL: profile?.photoURL || user.photoURL,
+            photoURL: null,
             equippedAvatar:
               profile?.equipped?.avatar ||
               (profile as any)?.avatar ||
               (profile as any)?.equippedAvatar ||
               null,
             frame: profile?.equipped?.frame || (profile as any)?.frame || null,
-            avatarUrl: (profile as any)?.avatarUrl || null,
+            avatarUrl: null,
             role: profile?.role || 'Student',
             customRole: (profile as any)?.customRole || null,
           }}
@@ -818,10 +822,13 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             ? {
                 uid: user.uid,
                 displayName: profile?.displayName || user.displayName,
-                photoURL: profile?.photoURL || user.photoURL,
-                equippedAvatar: profile?.equipped?.avatar || (profile as any)?.equippedAvatar,
+                photoURL: null,
+                equippedAvatar:
+                  profile?.equipped?.avatar ||
+                  (profile as any)?.avatar ||
+                  (profile as any)?.equippedAvatar,
                 frame: profile?.equipped?.frame || (profile as any)?.frame,
-                avatarUrl: (profile as any)?.avatarUrl || profile?.photoURL || user.photoURL,
+                avatarUrl: null,
               }
             : null
         }

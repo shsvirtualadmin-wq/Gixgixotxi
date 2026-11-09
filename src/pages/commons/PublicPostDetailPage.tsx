@@ -415,9 +415,9 @@ export const PublicPostDetailPage: React.FC = () => {
         uid: user.uid,
         email: user.email || null,
         displayName: profile?.displayName || user.displayName || 'Student',
-        photoURL: profile?.photoURL || user.photoURL || null,
-        equippedAvatar: profile?.equipped?.avatar || null,
-        frame: profile?.equipped?.frame || null,
+        photoURL: null,
+        equippedAvatar: profile?.equipped?.avatar || (profile as any)?.avatar || null,
+        frame: profile?.equipped?.frame || (profile as any)?.frame || null,
       };
       await addPostComment({
         postId: post.id,
@@ -482,9 +482,8 @@ export const PublicPostDetailPage: React.FC = () => {
                   title="View profile"
                 >
                   <BoardlyAvatar
-                    equippedAvatar={(post as any).authorEquippedAvatar}
-                    avatarUrl={post.authorAvatar || undefined}
-                    photoURL={(post as any).authorPhotoURL}
+                    uid={post.authorUid}
+                    equippedAvatar={(post as any).authorEquippedAvatar || post.authorAvatar || undefined}
                     frame={(post as any).authorFrame}
                     name={authorDisplay}
                     size={44}
@@ -493,9 +492,8 @@ export const PublicPostDetailPage: React.FC = () => {
               ) : (
                 <div className="shrink-0">
                   <BoardlyAvatar
-                    equippedAvatar={(post as any).authorEquippedAvatar}
-                    avatarUrl={post.authorAvatar || undefined}
-                    photoURL={(post as any).authorPhotoURL}
+                    uid={post.authorUid || post.id}
+                    equippedAvatar={(post as any).authorEquippedAvatar || post.authorAvatar || undefined}
                     frame={(post as any).authorFrame}
                     name={authorDisplay}
                     size={44}

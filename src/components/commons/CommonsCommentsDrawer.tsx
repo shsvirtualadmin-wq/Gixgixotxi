@@ -70,10 +70,10 @@ export function CommonsCommentsDrawer({
                   ...c,
                   authorName: p.displayName || c.authorName,
                   authorEquippedAvatar:
-                    p.equippedAvatar || p.avatar || (c as any).authorEquippedAvatar,
+                    p.equippedAvatar || p.avatar || (c as any).authorEquippedAvatar || undefined,
                   authorAvatar:
-                    p.avatarUrl || p.equippedAvatar || p.avatar || c.authorAvatar,
-                  authorPhotoURL: p.photoURL || (c as any).authorPhotoURL,
+                    p.equippedAvatar || p.avatar || c.authorAvatar || undefined,
+                  authorPhotoURL: null,
                   authorFrame: p.equippedFrame || p.frame || (c as any).authorFrame,
                   authorRole: p.role || (c as any).authorRole,
                   authorCustomRole: p.customRole || (c as any).authorCustomRole,
@@ -239,24 +239,9 @@ export function CommonsCommentsDrawer({
                       title="View profile"
                     >
                       <BoardlyAvatar
+                        uid={comment.authorUid}
                         equippedAvatar={
-                          (comment as any).authorEquippedAvatar ||
-                          (comment.authorAvatar?.startsWith('pfp_') || comment.authorAvatar === 'eclipse-wyrm'
-                            ? comment.authorAvatar
-                            : undefined)
-                        }
-                        avatarUrl={
-                          comment.authorAvatar &&
-                          !comment.authorAvatar.startsWith('pfp_') &&
-                          comment.authorAvatar !== 'eclipse-wyrm' &&
-                          !comment.authorAvatar.includes('googleusercontent')
-                            ? comment.authorAvatar
-                            : undefined
-                        }
-                        photoURL={
-                          comment.authorAvatar?.includes('googleusercontent')
-                            ? comment.authorAvatar
-                            : (comment as any).authorPhotoURL
+                          (comment as any).authorEquippedAvatar || comment.authorAvatar || undefined
                         }
                         frame={(comment as any).authorFrame}
                         name={sanitizeStudentDisplayName(

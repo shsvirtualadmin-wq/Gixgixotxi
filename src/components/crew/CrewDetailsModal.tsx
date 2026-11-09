@@ -219,10 +219,9 @@ export const CrewDetailsModal: React.FC<CrewDetailsModalProps> = ({
                   <div className="flex items-center gap-2.5">
                     <AvatarFrame itemId={m.equipped?.frame || 'none'} size={34}>
                       <AvatarPicture
-                        avatarId={m.equipped?.avatar}
-                        avatarKey={m.avatarKey}
-                        variant={m.avatarVariant}
+                        uid={m.uid}
                         seed={m.uid}
+                        avatarId={m.equipped?.avatar}
                         size={26}
                       />
                     </AvatarFrame>

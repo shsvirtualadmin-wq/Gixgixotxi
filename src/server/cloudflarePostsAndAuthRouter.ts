@@ -702,6 +702,36 @@ export function extractIdFromSlugOrId(slugOrId: string): string {
   return trimmed;
 }
 
+export function sanitizeStoreAvatarId(...candidates: unknown[]): string | null {
+  for (const val of candidates) {
+    if (!val || typeof val !== 'string') continue;
+    const trimmed = val.trim();
+    if (!trimmed || trimmed === 'none' || trimmed === 'null' || trimmed === 'undefined') continue;
+    const lower = trimmed.toLowerCase();
+    if (
+      lower.startsWith('http://') ||
+      lower.startsWith('https://') ||
+      lower.startsWith('data:') ||
+      lower.startsWith('blob:') ||
+      lower.includes('googleusercontent.com') ||
+      lower.includes('ggpht.com')
+    ) {
+      continue;
+    }
+    const storePathMatch = trimmed.match(
+      /^\/assets\/store\/(?:avatars\/|frames\/)?([^/?#]+)/i
+    );
+    const candidate = storePathMatch ? storePathMatch[1] : trimmed;
+    if (candidate === 'eclipse-wyrm' || candidate === 'pfp_eclipse_wyrm') {
+      return 'eclipse-wyrm';
+    }
+    if (candidate.startsWith('pfp_')) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 export function rowToCommonsPost(
   row: D1PostRow,
   currentUid?: string | null
@@ -785,10 +815,14 @@ export function rowToCommonsPost(
     anonymousAlias: row.anonymous_alias || 'Anonymous Student',
     authorUid: isAnon ? null : row.author_uid,
     authorName: isAnon ? 'Anonymous Student' : row.author_name || 'Student',
-    authorAvatar: isAnon ? null : row.author_avatar || null,
+    authorAvatar: isAnon
+      ? null
+      : sanitizeStoreAvatarId(row.author_equipped_avatar, row.author_avatar),
     authorFrame: isAnon ? null : row.author_frame || null,
-    authorEquippedAvatar: isAnon ? null : row.author_equipped_avatar || null,
-    authorPhotoURL: isAnon ? null : row.author_photo_url || null,
+    authorEquippedAvatar: isAnon
+      ? null
+      : sanitizeStoreAvatarId(row.author_equipped_avatar, row.author_avatar),
+    authorPhotoURL: null,
     authorRole: isAnon ? 'student' : row.author_role || 'student',
     authorCustomRole: isAnon ? null : row.author_custom_role || null,
     status: row.status || 'published',
@@ -1954,10 +1988,14 @@ ${entries
         author_name: isAnon
           ? 'Anonymous Student'
           : String(body.authorName || user.name || 'Student'),
-        author_avatar: isAnon ? null : body.authorAvatar || null,
+        author_avatar: isAnon
+          ? null
+          : sanitizeStoreAvatarId(body.authorEquippedAvatar, body.authorAvatar),
         author_frame: isAnon ? null : body.authorFrame || null,
-        author_equipped_avatar: isAnon ? null : body.authorEquippedAvatar || null,
-        author_photo_url: isAnon ? null : body.authorPhotoURL || user.picture || null,
+        author_equipped_avatar: isAnon
+          ? null
+          : sanitizeStoreAvatarId(body.authorEquippedAvatar, body.authorAvatar),
+        author_photo_url: null,
         author_role: isAnon ? 'student' : String(body.authorRole || user.role || 'student'),
         author_custom_role: isAnon ? null : body.authorCustomRole || user.customRole || null,
         status: 'published',
@@ -2003,11 +2041,10 @@ ${entries
               .map((f) => f.follower_uid)
           )
         );
-        const avatarVal =
-          newRow.author_avatar ||
-          newRow.author_photo_url ||
-          newRow.author_equipped_avatar ||
-          null;
+        const avatarVal = sanitizeStoreAvatarId(
+          newRow.author_equipped_avatar,
+          newRow.author_avatar
+        );
         const snippet = String(newRow.description || '').trim().slice(0, 140);
         for (const followerUid of followerUids) {
           const notifId = `post_${newRow.id}_follower_${followerUid}`;
@@ -2132,10 +2169,14 @@ ${entries
           row.author_photo_url = null;
         } else if (body.authorName) {
           row.author_name = String(body.authorName);
-          row.author_avatar = body.authorAvatar || row.author_avatar;
+          row.author_avatar =
+            sanitizeStoreAvatarId(body.authorEquippedAvatar, body.authorAvatar) ??
+            row.author_avatar;
           row.author_frame = body.authorFrame || row.author_frame;
-          row.author_equipped_avatar = body.authorEquippedAvatar || row.author_equipped_avatar;
-          row.author_photo_url = body.authorPhotoURL || row.author_photo_url;
+          row.author_equipped_avatar =
+            sanitizeStoreAvatarId(body.authorEquippedAvatar, body.authorAvatar) ??
+            row.author_equipped_avatar;
+          row.author_photo_url = null;
         }
       }
       if (body.isHidden !== undefined && user.role === 'superadmin') {
@@ -2284,7 +2325,7 @@ ${entries
               is_pinned: 0,
               author_id: user.uid,
               author_name: likerName,
-              author_avatar: user.picture || null,
+              author_avatar: null,
               author_frame: null,
               post_id: post.id,
               post_type: post.type || 'notes',
@@ -2370,10 +2411,14 @@ ${entries
         isAnonymous: Boolean(c.is_anonymous),
         authorUid: c.is_anonymous ? null : c.author_uid,
         authorName: c.is_anonymous ? 'Anonymous Student' : c.author_name,
-        authorAvatar: c.is_anonymous ? null : c.author_avatar,
+        authorAvatar: c.is_anonymous
+          ? null
+          : sanitizeStoreAvatarId(c.author_equipped_avatar, c.author_avatar),
         authorFrame: c.is_anonymous ? null : c.author_frame,
-        authorEquippedAvatar: c.is_anonymous ? null : c.author_equipped_avatar,
-        authorPhotoURL: c.is_anonymous ? null : c.author_photo_url,
+        authorEquippedAvatar: c.is_anonymous
+          ? null
+          : sanitizeStoreAvatarId(c.author_equipped_avatar, c.author_avatar),
+        authorPhotoURL: null,
         authorRole: c.is_anonymous ? 'student' : c.author_role,
         authorCustomRole: c.is_anonymous ? null : c.author_custom_role,
         createdAt: new Date(c.created_at).toISOString(),
@@ -2420,10 +2465,14 @@ ${entries
         author_name: isAnon
           ? 'Anonymous Student'
           : String(body.authorName || user.name || 'Student'),
-        author_avatar: isAnon ? null : body.authorAvatar || null,
+        author_avatar: isAnon
+          ? null
+          : sanitizeStoreAvatarId(body.authorEquippedAvatar, body.authorAvatar),
         author_frame: isAnon ? null : body.authorFrame || null,
-        author_equipped_avatar: isAnon ? null : body.authorEquippedAvatar || null,
-        author_photo_url: isAnon ? null : body.authorPhotoURL || user.picture || null,
+        author_equipped_avatar: isAnon
+          ? null
+          : sanitizeStoreAvatarId(body.authorEquippedAvatar, body.authorAvatar),
+        author_photo_url: null,
         author_role: isAnon ? 'student' : user.role,
         author_custom_role: isAnon ? null : user.customRole,
         created_at: now,
@@ -2470,7 +2519,7 @@ ${entries
           authorAvatar: row.author_avatar,
           authorFrame: row.author_frame,
           authorEquippedAvatar: row.author_equipped_avatar,
-          authorPhotoURL: row.author_photo_url,
+          authorPhotoURL: null,
           createdAt: new Date(now).toISOString(),
         },
       });
@@ -3113,14 +3162,14 @@ ${entries
           displayName: hasMissingName ? email || 'Unnamed Student' : rawName,
           handle: rawHandle,
           email,
-          avatar:
-            data.photoURL ||
-            data.avatar ||
-            data.equippedAvatar ||
-            pub.photoURL ||
-            pub.avatar ||
-            pub.equippedAvatar ||
-            null,
+          avatar: sanitizeStoreAvatarId(
+            data.equipped?.avatar,
+            data.equippedAvatar,
+            data.avatar,
+            pub.equipped?.avatar,
+            pub.equippedAvatar,
+            pub.avatar
+          ),
           shortId: String(data.shortId || pub.shortId || uid.slice(0, 5).toUpperCase()),
           plan: data.plan === 'pro' || data.isPremium === true ? 'pro' : 'free',
           role: String(data.role || 'student'),
@@ -3151,7 +3200,7 @@ ${entries
           displayName: rawName || email || `Orphan (${uid.slice(0, 6)})`,
           handle: rawHandle,
           email,
-          avatar: pub.photoURL || pub.avatar || pub.equippedAvatar || null,
+          avatar: sanitizeStoreAvatarId(pub.equipped?.avatar, pub.equippedAvatar, pub.avatar),
           shortId: String(pub.shortId || uid.slice(0, 5).toUpperCase()),
           plan: pub.plan === 'pro' ? 'pro' : 'free',
           role: String(pub.role || 'student'),
@@ -3229,7 +3278,7 @@ ${entries
           displayName: authorName || 'Student',
           handle: handleGuess,
           email: '',
-          avatar: p.author_avatar || p.author_photo_url || p.author_equipped_avatar || null,
+          avatar: sanitizeStoreAvatarId(p.author_equipped_avatar, p.author_avatar),
           shortId: uid.slice(0, 5).toUpperCase(),
           plan: 'free',
           role: p.author_role || 'student',
@@ -3257,7 +3306,7 @@ ${entries
           displayName: authorName || 'Student',
           handle: handleGuess,
           email: '',
-          avatar: c.author_avatar || c.author_photo_url || c.author_equipped_avatar || null,
+          avatar: sanitizeStoreAvatarId(c.author_equipped_avatar, c.author_avatar),
           shortId: uid.slice(0, 5).toUpperCase(),
           plan: 'free',
           role: c.author_role || 'student',
@@ -3617,7 +3666,7 @@ ${entries
       following = true;
 
       const followerName = String(body.followerName || user?.name || 'A student').trim();
-      const followerAvatar = body.followerAvatar || user?.picture || null;
+      const followerAvatar = sanitizeStoreAvatarId(body.followerAvatar);
       const followerFrame = body.followerFrame || null;
       const notifId = `follow_${followerUid}_${followingUid}`;
       const existingNotif = store.notifications.find((n) => n.id === notifId);
@@ -3699,7 +3748,7 @@ ${entries
         isPinned: Boolean(n.is_pinned),
         authorId: n.author_id || undefined,
         authorName: n.author_name || undefined,
-        authorAvatar: n.author_avatar || null,
+        authorAvatar: sanitizeStoreAvatarId(n.author_avatar),
         authorFrame: n.author_frame || null,
         postId: n.post_id || undefined,
         postType: n.post_type || undefined,
@@ -3788,7 +3837,7 @@ ${entries
         is_pinned: item.isPinned ? 1 : 0,
         author_id: authorId,
         author_name: item.authorName ? String(item.authorName) : null,
-        author_avatar: item.authorAvatar || null,
+        author_avatar: sanitizeStoreAvatarId(item.authorAvatar),
         author_frame: item.authorFrame || null,
         post_id: item.postId ? String(item.postId) : null,
         post_type: item.postType ? String(item.postType) : null,
@@ -7441,10 +7490,7 @@ ${entries
         user.tokenName,
         user.email
       );
-      const resolvedAvatar =
-        typeof body.userAvatar === 'string' && body.userAvatar.trim()
-          ? body.userAvatar.trim()
-          : user.picture || null;
+      const resolvedAvatar = sanitizeStoreAvatarId(body.userAvatar);
 
       const attempt = {
         id: crypto.randomUUID(),
@@ -7610,7 +7656,7 @@ ${entries
           userName: resolvedName,
           studentName: resolvedName,
           name: resolvedName,
-          userAvatar: a.userAvatar ?? a.user_avatar ?? null,
+          userAvatar: sanitizeStoreAvatarId(a.userAvatar, a.user_avatar),
           rank: idx + 1,
         };
       });
@@ -7628,7 +7674,7 @@ ${entries
       const uid = String(a.userUid || a.user_uid || '');
       if (!uid) continue;
       const resolvedName = resolveLeaderboardDisplayName(a, store);
-      const avatar = a.userAvatar ?? a.user_avatar ?? null;
+      const avatar = sanitizeStoreAvatarId(a.userAvatar, a.user_avatar);
       const timeSec = Number(a.timeTakenSeconds ?? a.time_taken_seconds ?? 0);
       const existing = byUser.get(uid);
       if (!existing) {

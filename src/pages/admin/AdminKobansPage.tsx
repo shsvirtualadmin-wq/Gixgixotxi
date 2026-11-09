@@ -22,6 +22,7 @@ import {
   Monitor,
 } from 'lucide-react';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { useAuth } from '@/contexts/AuthContext';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import {
@@ -865,17 +866,13 @@ export function AdminKobansPage() {
                     <div className="p-3.5 rounded-2xl border border-[var(--glass-border-strong)] bg-[var(--input-bg)] space-y-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className="akb-avatar">
-                            {selectedUser.avatar && selectedUser.avatar.startsWith('http') ? (
-                              <img
-                                src={selectedUser.avatar}
-                                alt={selectedUser.displayName}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              getInitials(selectedUser.name || selectedUser.email)
-                            )}
-                          </div>
+                          <BoardlyAvatar
+                            uid={selectedUser.uid}
+                            equippedAvatar={selectedUser.avatar}
+                            name={selectedUser.name || selectedUser.email}
+                            size={40}
+                            className="shrink-0"
+                          />
                           <div className="min-w-0 space-y-0.5">
                             <div className="font-heading font-bold text-sm text-[var(--text)] truncate">
                               {selectedUser.name || selectedUser.email || 'Unnamed Student'}
@@ -1111,17 +1108,13 @@ export function AdminKobansPage() {
                                 className="akb-result-row"
                               >
                                 <div className="flex items-start gap-3 min-w-0 flex-1">
-                                  <div className="akb-avatar">
-                                    {u.avatar && u.avatar.startsWith('http') ? (
-                                      <img
-                                        src={u.avatar}
-                                        alt={primaryName}
-                                        className="w-full h-full object-cover"
-                                      />
-                                    ) : (
-                                      getInitials(primaryName)
-                                    )}
-                                  </div>
+                                  <BoardlyAvatar
+                                    uid={u.uid}
+                                    equippedAvatar={u.avatar}
+                                    name={primaryName}
+                                    size={40}
+                                    className="shrink-0"
+                                  />
 
                                   <div className="min-w-0 flex-1 space-y-1">
                                     <div className="flex items-center gap-1.5 flex-wrap">

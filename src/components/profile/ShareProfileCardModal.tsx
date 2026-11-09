@@ -81,9 +81,9 @@ export const ShareProfileCardModal: React.FC<ShareProfileCardModalProps> = ({
                 <div className="p-1 rounded-full bg-neutral-950">
                   <AvatarFrame itemId={profile.frame || profile.equipped?.frame || 'none'} size={60}>
                     <AvatarPicture
-                      avatarId={profile.avatar}
-                      avatarKey={profile.avatarKey}
-                      variant={profile.avatarVariant}
+                      uid={profile.uid}
+                      seed={profile.uid}
+                      avatarId={profile.equipped?.avatar || profile.avatar}
                       size={52}
                     />
                   </AvatarFrame>

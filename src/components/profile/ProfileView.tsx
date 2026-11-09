@@ -80,7 +80,7 @@ import { db } from '@/lib/firebase';
 import { fetchUserCommonsPosts } from '@/services/commonsService';
 import { deriveFallbackShortId } from '@/utils/shortId';
 import { sanitizeStudentDisplayName, isAdminAccount } from '@/utils/privacy';
-import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { BoardlyAvatar, resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import type { PublicProfile } from '@/types';
 
@@ -374,9 +374,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             if (pubData && (!pubData.displayName || pubData.displayName !== 'SHS Virtual Academy' || pubData.role !== 'admin')) {
               setDoc(doc(db, 'publicProfiles', uid), { displayName: 'SHS Virtual Academy', role: 'admin' }, { merge: true }).catch(() => {});
             }
-            if (postAuthorPhotoURL && !uData?.photoURL) {
-              setDoc(userDocRef, { photoURL: postAuthorPhotoURL }, { merge: true }).catch(() => {});
-            }
           }
         } else {
           cleanName = sanitizeStudentDisplayName(candidateName, shortCode);
@@ -387,29 +384,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           ...(pubData?.equipped || {}),
           ...(uData?.equipped || {}),
         };
-        const rawEquippedAvatar =
-          (mergedEquipped?.avatar as string) ||
-          (uData?.equippedAvatar as string) ||
-          (pubData?.equippedAvatar as string) ||
-          (uData?.avatar as string) ||
-          (pubData?.avatar as string) ||
-          postAuthorEquippedAvatar ||
-          null;
         const avatar =
-          rawEquippedAvatar && !String(rawEquippedAvatar).includes('googleusercontent.com')
-            ? rawEquippedAvatar
-            : null;
-        const avatarUrl =
-          (uData?.avatarUrl as string) ||
-          (pubData?.avatarUrl as string) ||
-          (postAuthorAvatar && !postAuthorAvatar.startsWith('pfp_') && postAuthorAvatar !== 'eclipse-wyrm' && !postAuthorAvatar.includes('googleusercontent') ? postAuthorAvatar : null) ||
+          resolveCosmeticItemId(mergedEquipped?.avatar, 'avatar') ||
+          resolveCosmeticItemId(uData?.equippedAvatar, 'avatar') ||
+          resolveCosmeticItemId(pubData?.equippedAvatar, 'avatar') ||
+          resolveCosmeticItemId(uData?.avatar, 'avatar') ||
+          resolveCosmeticItemId(pubData?.avatar, 'avatar') ||
+          resolveCosmeticItemId(postAuthorEquippedAvatar, 'avatar') ||
+          resolveCosmeticItemId(postAuthorAvatar, 'avatar') ||
           null;
-        const photoURL =
-          (uData?.photoURL as string) ||
-          (pubData?.photoURL as string) ||
-          postAuthorPhotoURL ||
-          (postAuthorAvatar?.includes('googleusercontent') ? postAuthorAvatar : null) ||
-          null;
+        const avatarUrl = avatar;
+        const photoURL = null;
         const frame =
           (mergedEquipped?.frame as string) ||
           (uData?.equippedFrame as string) ||
@@ -564,18 +549,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       const resolvedUsername = op.username || authProfile?.username || (isGuest ? cleanName : undefined);
 
       setProfile((prev) => {
-        const candidateAvatar =
-          (ownEquipped?.avatar as string) ||
-          (op.equipped?.avatar as string) ||
-          (op.avatar as string) ||
-          prev?.avatar ||
-          op.avatarKey ||
-          prev?.avatarKey ||
-          null;
         const resolvedAvatar =
-          candidateAvatar && !String(candidateAvatar).includes('googleusercontent.com')
-            ? candidateAvatar
-            : prev?.avatar || null;
+          resolveCosmeticItemId(ownEquipped?.avatar, 'avatar') ||
+          resolveCosmeticItemId(op.equipped?.avatar, 'avatar') ||
+          resolveCosmeticItemId(op.avatar, 'avatar') ||
+          resolveCosmeticItemId(prev?.avatar, 'avatar') ||
+          null;
         const resolvedBanner =
           (ownEquipped?.banner as string) ||
           (op.equipped?.banner as string) ||
@@ -647,8 +626,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             avatar: resolvedAvatar,
             banner: resolvedBanner,
           },
-          avatarUrl: op.avatarUrl || prev?.avatarUrl || null,
-          photoURL: op.photoURL || prev?.photoURL || null,
+          avatarUrl: resolvedAvatar,
+          photoURL: null,
           avatarKey: op.avatarKey || prev?.avatarKey || null,
           avatarVariant: op.avatarVariant || prev?.avatarVariant || null,
         };
@@ -721,11 +700,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       await followUser(currentUid, targetId, {
         followerName: ownProfile?.displayName || authUser?.displayName || 'Student',
         followerAvatar:
-          (ownEquipped?.avatar as string) ||
-          (ownProfile?.equipped?.avatar as string) ||
-          (ownProfile as any)?.avatarUrl ||
-          ownProfile?.photoURL ||
-          authUser?.photoURL ||
+          resolveCosmeticItemId(ownEquipped?.avatar, 'avatar') ||
+          resolveCosmeticItemId(ownProfile?.equipped?.avatar, 'avatar') ||
+          resolveCosmeticItemId((ownProfile as any)?.avatar, 'avatar') ||
           null,
         followerFrame:
           (ownEquipped?.frame as string) || (ownProfile?.equipped?.frame as string) || null,
@@ -836,22 +813,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {
           displayName: ownProfile?.displayName || authUser?.displayName || 'Student',
           avatar:
-            (ownEquipped?.avatar as string) ||
-            (ownProfile?.equipped?.avatar as string) ||
-            (ownProfile as any)?.avatar ||
+            resolveCosmeticItemId(ownEquipped?.avatar, 'avatar') ||
+            resolveCosmeticItemId(ownProfile?.equipped?.avatar, 'avatar') ||
+            resolveCosmeticItemId((ownProfile as any)?.avatar, 'avatar') ||
             null,
           frame:
             (ownEquipped?.frame as string) ||
             (ownProfile?.equipped?.frame as string) ||
             null,
-          photoURL: authUser?.photoURL || null,
+          photoURL: null,
           role: ownProfile?.role || 'student',
         },
         {
           displayName: profile.displayName || 'Student',
-          avatar: profile.avatar || null,
+          avatar: resolveCosmeticItemId(profile.avatar, 'avatar') || null,
           frame: profile.frame || null,
-          photoURL: profile.photoURL || null,
+          photoURL: null,
         }
       );
 
@@ -1101,17 +1078,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             {/* Avatar container (88px mobile, 120px desktop, never clipped) */}
             <div className="p-1 rounded-full bg-[var(--card)] shrink-0 overflow-visible relative">
               <BoardlyAvatar
+                uid={profile?.uid || targetUid || currentUid}
                 equippedAvatar={profile?.avatar || (profile?.equipped?.avatar as string)}
-                avatarUrl={profile?.avatarUrl}
-                photoURL={
-                  profile?.avatar || (profile?.equipped?.avatar as string) || profile?.avatarUrl || profile?.avatarKey
-                    ? null
-                    : profile?.photoURL || (isViewingSelf ? (authUser?.photoURL as string) : null)
-                }
                 frame={profile?.frame || (profile?.equipped?.frame as string) || 'none'}
                 name={profile?.displayName || 'Student'}
-                avatarKey={profile?.avatarKey}
-                avatarVariant={profile?.avatarVariant}
                 size={window.innerWidth < 640 ? 76 : 104}
               />
               {/* Level Badge anchored to bottom-right of avatar (duplicate ADMIN tag removed) */}
@@ -1621,22 +1591,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 }
                 currentUserAvatar={
                   isViewingSelf
-                    ? (ownEquipped?.avatar as string) ||
-                      ((ownProfile as any)?.avatar as string) ||
-                      (ownProfile as any)?.avatarUrl ||
-                      (ownProfile?.photoURL as string) ||
-                      (authUser?.photoURL as string) ||
-                      profile?.avatar ||
+                    ? resolveCosmeticItemId(ownEquipped?.avatar, 'avatar') ||
+                      resolveCosmeticItemId((ownProfile as any)?.avatar, 'avatar') ||
+                      resolveCosmeticItemId(profile?.avatar, 'avatar') ||
                       null
-                    : profile?.avatar || profile?.avatarUrl || profile?.photoURL || null
+                    : resolveCosmeticItemId(profile?.avatar, 'avatar') || null
                 }
                 equippedAvatar={
                   isViewingSelf
-                    ? ownEquipped?.avatar || (profile?.equipped?.avatar as string) || profile?.avatar
-                    : (profile?.equipped?.avatar as string) || profile?.avatar
+                    ? resolveCosmeticItemId(ownEquipped?.avatar, 'avatar') ||
+                      resolveCosmeticItemId(profile?.equipped?.avatar, 'avatar') ||
+                      resolveCosmeticItemId(profile?.avatar, 'avatar')
+                    : resolveCosmeticItemId(profile?.equipped?.avatar, 'avatar') ||
+                      resolveCosmeticItemId(profile?.avatar, 'avatar')
                 }
-                avatarKey={isViewingSelf ? profile?.avatarKey || ownProfile?.avatarKey : profile?.avatarKey}
-                avatarVariant={isViewingSelf ? profile?.avatarVariant || ownProfile?.avatarVariant : profile?.avatarVariant}
                 accentColor={accentColor}
               />
             </div>
@@ -1774,7 +1742,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-center shrink-0">
-                        <AvatarPicture avatarId={profile?.avatar} size={36} />
+                        <AvatarPicture
+                          uid={profile?.uid || currentUid}
+                          seed={profile?.uid || currentUid}
+                          avatarId={profile?.avatar}
+                          size={36}
+                        />
                       </div>
                       <div className="flex flex-col">
                         <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Profile Picture</span>
@@ -1934,9 +1907,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                             <div className="p-0.5 rounded-full bg-[var(--card)] shrink-0 overflow-visible relative shadow-md">
                               <AvatarFrame itemId={profile?.frame || 'none'} size={window.innerWidth < 640 ? 76 : 96}>
                                 <AvatarPicture
+                                  uid={profile?.uid || currentUid}
+                                  seed={profile?.uid || currentUid}
                                   avatarId={profile?.avatar}
-                                  avatarKey={profile?.avatarKey}
-                                  variant={profile?.avatarVariant}
                                   size={window.innerWidth < 640 ? 64 : 84}
                                 />
                               </AvatarFrame>
@@ -2460,7 +2433,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   avatar: profile.avatar,
                   frame: profile.frame,
                   role: profile.role,
-                  photoURL: profile.photoURL,
+                  photoURL: null,
                 }
               : null
           }

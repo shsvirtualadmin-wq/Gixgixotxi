@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import {
   X,
   Zap,
@@ -888,10 +889,33 @@ export function ProCheckoutSheet({
                 </div>
               )}
 
-              {/* Terms Line: REFUND_POLICY_TEXT */}
-              <div className="flex items-center gap-2 text-[11px]" style={{ color: textMuted }}>
-                <ShieldCheck size={14} className="shrink-0 text-emerald-500" />
-                <span>{REFUND_POLICY_TEXT}</span>
+              {/* Terms Line: REFUND_POLICY_TEXT + Terms & Privacy links */}
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 text-[11px]" style={{ color: textMuted }}>
+                  <ShieldCheck size={14} className="shrink-0 text-emerald-500" />
+                  <span>{REFUND_POLICY_TEXT}</span>
+                </div>
+                <p className="text-[11px] pl-5" style={{ color: textMuted }}>
+                  By completing your purchase, you agree to our{' '}
+                  <Link
+                    to="/terms"
+                    onClick={onClose}
+                    className="underline hover:text-[#E8342A]"
+                    style={{ color: textPrimary }}
+                  >
+                    Terms of Service
+                  </Link>{' '}
+                  and{' '}
+                  <Link
+                    to="/privacy"
+                    onClick={onClose}
+                    className="underline hover:text-[#E8342A]"
+                    style={{ color: textPrimary }}
+                  >
+                    Privacy Policy
+                  </Link>
+                  .
+                </p>
               </div>
             </>
           )}

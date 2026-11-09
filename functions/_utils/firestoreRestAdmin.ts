@@ -1839,6 +1839,19 @@ export interface InMemoryD1Tables {
         created_at: number;
       }
     >;
+    legal_consent_records: Map<
+      string,
+      {
+        id: string;
+        user_id: string;
+        account_type: string;
+        document_version: string;
+        action_context: string;
+        ip_hash: string;
+        user_agent: string;
+        accepted_at: number;
+      }
+    >;
   }
 
 export class InMemoryD1Database implements RewardsD1Database {
@@ -1864,6 +1877,7 @@ export class InMemoryD1Database implements RewardsD1Database {
     trusted_devices: new Map(),
     pending_2fa_challenges: new Map(),
     security_audit_logs: new Map(),
+    legal_consent_records: new Map(),
   };
 
   constructor() {
@@ -2429,6 +2443,27 @@ export class InMemoryD1Database implements RewardsD1Database {
         .sort((a, b) => b.created_at - a.created_at)
         .slice(0, limit)
         .map((r) => ({ ...r }));
+    }
+
+    // 22. legal_consent_records
+    if (upper.includes('FROM LEGAL_CONSENT_RECORDS')) {
+      const all = Array.from(this.tables.legal_consent_records.values());
+      if (upper.includes('WHERE USER_ID =') && upper.includes('DOCUMENT_VERSION =')) {
+        const uid = String(args[0] ?? '');
+        const ver = String(args[1] ?? '');
+        return all
+          .filter((r) => r.user_id === uid && r.document_version === ver)
+          .sort((a, b) => b.accepted_at - a.accepted_at)
+          .map((r) => ({ ...r }));
+      }
+      if (upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        return all
+          .filter((r) => r.user_id === uid)
+          .sort((a, b) => b.accepted_at - a.accepted_at)
+          .map((r) => ({ ...r }));
+      }
+      return all.sort((a, b) => b.accepted_at - a.accepted_at).map((r) => ({ ...r }));
     }
 
     return [];
@@ -3424,6 +3459,29 @@ export class InMemoryD1Database implements RewardsD1Database {
         ip_hash,
         details_json,
         created_at,
+      });
+      return 1;
+    }
+
+    // 16. legal_consent_records
+    if (upper.includes('INTO LEGAL_CONSENT_RECORDS')) {
+      const id = String(args[0]);
+      const user_id = String(args[1] ?? '');
+      const account_type = String(args[2] ?? 'registered');
+      const document_version = String(args[3] ?? '');
+      const action_context = String(args[4] ?? 'signup');
+      const ip_hash = String(args[5] ?? '');
+      const user_agent = String(args[6] ?? '');
+      const accepted_at = Number(args[7] ?? Date.now());
+      this.tables.legal_consent_records.set(id, {
+        id,
+        user_id,
+        account_type,
+        document_version,
+        action_context,
+        ip_hash,
+        user_agent,
+        accepted_at,
       });
       return 1;
     }

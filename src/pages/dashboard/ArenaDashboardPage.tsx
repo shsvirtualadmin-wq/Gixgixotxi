@@ -259,10 +259,9 @@ export function ArenaDashboardPage() {
                       <div className="shrink-0">
                         <AvatarFrame itemId={(isCurrentUser ? myEquipped?.frame : item.equipped?.frame) || 'none'} size={44}>
                           <AvatarPicture
-                            avatarId={isCurrentUser ? myEquipped?.avatar : item.equipped?.avatar}
-                            avatarKey={item.avatarKey || (isCurrentUser ? profile?.avatarKey : undefined)}
-                            variant={item.avatarVariant || (isCurrentUser ? profile?.avatarVariant : undefined)}
+                            uid={item.uid}
                             seed={item.uid}
+                            avatarId={isCurrentUser ? myEquipped?.avatar : item.equipped?.avatar}
                             size={34}
                           />
                         </AvatarFrame>

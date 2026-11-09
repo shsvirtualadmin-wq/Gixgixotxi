@@ -160,7 +160,13 @@ export const CommonsSubjectPage: React.FC = () => {
             ? {
                 uid: user.uid,
                 displayName: profile?.displayName || user.displayName,
-                photoURL: profile?.photoURL || user.photoURL,
+                photoURL: null,
+                equippedAvatar:
+                  profile?.equipped?.avatar ||
+                  (profile as any)?.avatar ||
+                  (profile as any)?.equippedAvatar ||
+                  null,
+                frame: profile?.equipped?.frame || (profile as any)?.frame || null,
               }
             : null
         }

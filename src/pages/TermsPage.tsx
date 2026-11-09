@@ -1,262 +1,606 @@
+import React from 'react';
+import { Link } from 'react-router-dom';
 import { PageMeta } from '@/components/ui/PageMeta';
-import { Badge } from '@/components/ui/Badge';
-import { Card } from '@/components/ui/Card';
+import {
+  LEGAL_LAST_UPDATED_LABEL,
+  LEGAL_VERSION_DISPLAY,
+} from '@/constants/legalConsent';
 
-const TOC = [
-  { id: 'acceptance', title: '1. Acceptance & Operator' },
-  { id: 'accounts', title: '2. Student Accounts & Eligibility' },
-  { id: 'pricing-payments', title: '3. Pricing, Unlimited Access & Payment Verification' },
-  { id: 'kobans', title: '4. Kobans Virtual Credits & Profile Cosmetics' },
-  { id: 'commons-rules', title: '5. Boardly Commons & User-Generated Content' },
-  { id: 'anonymous-conduct', title: '6. Anonymous Posting & Safety Standards' },
-  { id: 'study-crews', title: '7. Study Crews & Collaborative Learning' },
-  { id: 'intellectual-property', title: '8. Intellectual Property & Shared Materials' },
-  { id: 'termination', title: '9. Suspension & Account Removal' },
-  { id: 'disclaimer', title: '10. General Service Disclaimer' },
-  { id: 'contact', title: '11. Contact Information' },
+const SECTIONS = [
+  { id: 'summary', title: 'Quick Summary' },
+  { id: 'acceptance', title: '1. Acceptance & Operator Details' },
+  { id: 'accounts', title: '2. Accounts, Guest Mode & Sign-In' },
+  { id: 'security-2fa', title: '3. Email Verification & Two-Step Security' },
+  { id: 'usernames', title: '4. Usernames, Display Names & Impersonation' },
+  { id: 'features', title: '5. Practice Tests, Streaks, Certificates & AI' },
+  { id: 'commons-community', title: '6. Boardly Commons, Crews & Direct Chat' },
+  { id: 'moderation-admin', title: '7. Moderation & Administrator Access' },
+  { id: 'rewards-kobans', title: '8. Rewards, Referrals & Kobans' },
+  { id: 'pro-payments', title: '9. Boardly Pro, Manual Payments & Refunds' },
+  { id: 'acceptable-use', title: '10. Acceptable Use & Anti-Abuse Rules' },
+  { id: 'intellectual-property', title: '11. Intellectual Property & User Content' },
+  { id: 'university-disclaimer', title: '12. University & Exam Non-Affiliation' },
+  { id: 'mobile-android', title: '13. Web, PWA & Mobile / Android Access' },
+  { id: 'termination', title: '14. Suspension, Termination & Disclaimers' },
+  { id: 'governing-law', title: '15. Governing Law & Contact' },
 ];
 
-export function TermsPage() {
+export const TermsPage: React.FC = () => {
+  const scrollTo = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   return (
-    <>
+    <div className="min-h-screen pt-24 pb-24 px-4 sm:px-6 max-w-6xl mx-auto">
       <PageMeta
-        title="Terms of Service — Boardly"
-        description="Official terms governing Boardly's MCQ practice platform, Study Crews, Boardly Commons, 199 PKR Unlimited access, and 50 PKR Koban packs. Operated by SHS Virtual Academy."
+        title="Terms of Service | Boardly"
+        description="Read the Terms of Service for Boardly covering registered and guest accounts, two-step verification, Commons, Study Crews, Kobans, Boardly Pro, and exam prep tools."
+        canonicalPath="/terms"
       />
-
-      <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12">
-        {/* Header */}
-        <div className="section-header max-w-3xl mx-auto text-center space-y-4">
-          <div className="flex justify-center">
-            <span className="section-chip-red">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] animate-pulse" />
-              Legal &amp; Terms
-            </span>
-          </div>
-          <h1
-            className="text-3xl sm:text-5xl font-black text-[var(--text)] tracking-tight font-dot"
-            style={{ fontFamily: 'var(--font-dot)' }}
-          >
-            Terms of Service
-          </h1>
-          <p className="text-sm sm:text-base text-[var(--muted)] leading-relaxed">
-            Last updated: <strong className="text-[var(--text)]">20 October 2026</strong> &bull; SHS Virtual Academy
-          </p>
+      <div className="text-center max-w-3xl mx-auto mb-12">
+        <div className="inline-flex items-center gap-2 mb-4 flex-wrap justify-center">
+          <span className="section-chip-red inline-block">LEGAL · {LEGAL_VERSION_DISPLAY}</span>
+          <span className="px-3 py-1 rounded-full text-xs font-mono bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)]">
+            Last updated: {LEGAL_LAST_UPDATED_LABEL}
+          </span>
         </div>
+        <h1 className="font-dot text-4xl sm:text-5xl text-[var(--text)] mb-4">
+          Terms of Service
+        </h1>
+        <p className="text-[var(--muted)] text-base sm:text-lg leading-relaxed">
+          Plain-language rules for using Boardly&apos;s practice tests, Grand Line national mocks,
+          Boardly Commons, Study Crews, Kobans rewards, and Boardly Pro.
+        </p>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start max-w-5xl mx-auto">
-          {/* Table of Contents Sticky Sidebar */}
-          <div className="lg:col-span-4 sticky top-28 hidden lg:block">
-            <div className="glass-card p-5 sm:p-6 rounded-[24px] space-y-4 ">
-              <h3
-                className="text-xs font-black uppercase tracking-wider text-[var(--text-faint)] font-dot"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                Table of Contents
-              </h3>
-              <nav className="flex flex-col space-y-1 text-xs text-[var(--muted)]">
-                {TOC.map((item) => (
-                  <a
-                    key={item.id}
-                    href={`#${item.id}`}
-                    className="hover:text-[var(--text)] hover:bg-white/[0.04] transition-all py-1.5 px-2 rounded-xl block"
-                  >
-                    {item.title}
-                  </a>
-                ))}
-              </nav>
-
-              <div className="pt-4 border-t border-white/[0.08] text-xs text-[var(--muted)] space-y-1">
-                <p>Questions regarding our terms?</p>
-                <a href="mailto:support@boardly.cfd" className="text-[#D71921] font-semibold hover:underline block">
-                  support@boardly.cfd
-                </a>
-              </div>
-            </div>
-          </div>
-
-          {/* Main Legal Content Column */}
-          <div className="lg:col-span-8 space-y-6">
-            {/* Section 1 */}
-            <div id="acceptance" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                1. Acceptance of Terms &amp; Operator Information
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                These Terms of Service (&ldquo;Terms&rdquo;) constitute a binding agreement between you (&ldquo;User&rdquo;, &ldquo;Student&rdquo;, or &ldquo;you&rdquo;) and <strong className="text-[var(--text)]">SHS Virtual Academy</strong> (<a href="https://shsvirtualacademy.pro" target="_blank" rel="noopener noreferrer" className="text-[#D71921] hover:underline">https://shsvirtualacademy.pro</a>), founded by <strong className="text-[var(--text)]">Muhammad Hashir</strong>, regarding the operation and use of the <strong className="text-[var(--text)]">Boardly</strong> platform.
-              </p>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                By creating an account, practicing MCQs, or participating in Boardly Commons, you agree to be bound by these Terms.
-              </p>
-            </div>
-
-            {/* Section 2 */}
-            <div id="accounts" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                2. Student Accounts &amp; Eligibility
-              </h2>
-              <ul className="space-y-2 text-xs sm:text-sm text-[var(--muted)] list-disc pl-5 leading-relaxed">
-                <li>Accounts are personal to each individual student. You agree not to share your login credentials or attempt automated scraping of practice questions.</li>
-                <li>Students under the age of 18 represent that they have received parental or guardian permission before registering an account or initiating any optional payment.</li>
-                <li>You are responsible for safeguarding your login credentials and for all activities that occur under your student profile.</li>
-              </ul>
-            </div>
-
-            {/* Section 3 */}
-            <div id="pricing-payments" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                3. Pricing, Unlimited Access &amp; Payment Verification
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                Boardly is built to make education accessible to all students. Our platform structure consists of:
-              </p>
-              <ul className="space-y-2 text-xs sm:text-sm text-[var(--muted)] list-disc pl-5 leading-relaxed">
-                <li><strong className="text-[var(--text)]">Free Tier:</strong> The free tier is generous and enough for students to practice and learn every day. Access to Boardly Commons and sharing study material is always free with no limit.</li>
-                <li><strong className="text-[var(--text)]">Unlimited Access (199 PKR):</strong> Students who wish to unlock unlimited practice tests, unlimited Boardy AI queries, full chapter analytics, and complete question bank access can purchase Unlimited access for 199 PKR.</li>
-              </ul>
-              <div className="glass-row p-4 sm:p-5 rounded-2xl  text-xs space-y-1.5 leading-relaxed">
-                <p className="font-bold text-[var(--text)]">How Payments Work:</p>
-                <p className="text-[var(--muted)]">
-                  Payments are conducted via manual local mobile and bank transfers in Pakistan (JazzCash, Opay, SadaPay, or direct bank transfer). After transferring the amount, you submit your Transaction ID (TRX) and receipt screenshot on the billing page. An administrator manually verifies the transaction against official bank records before activating your account.
-                </p>
-              </div>
-            </div>
-
-            {/* Section 4 */}
-            <div id="kobans" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                4. Kobans Virtual Credits &amp; Profile Cosmetics
-              </h2>
-              <ul className="space-y-2 text-xs sm:text-sm text-[var(--muted)] list-disc pl-5 leading-relaxed">
-                <li><strong className="text-[var(--text)]">Koban Pack (50 PKR for 500 Kobans):</strong> Kobans are virtual in-app credits used exclusively to customize your student profile.</li>
-                <li><strong className="text-[var(--text)]">Purely Aesthetic:</strong> Kobans can be used to unlock dot-matrix avatar frames, animated nameplates, and aura effects. They provide zero academic advantage or altered test scores.</li>
-                <li><strong className="text-[var(--text)]">Virtual Nature:</strong> Kobans have no real-world cash or monetary value, cannot be redeemed for fiat currency, and cannot be transferred between accounts. Unused Koban balances remain in your student wallet indefinitely.</li>
-              </ul>
-            </div>
-
-            {/* Section 5 */}
-            <div id="commons-rules" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                5. Boardly Commons &amp; User-Generated Content
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                Boardly Commons allows students to share study materials, notes, formula sheets, and questions freely with each other. All content published in Commons is user-generated.
-              </p>
-              <ul className="space-y-2 text-xs sm:text-sm text-[var(--muted)] list-disc pl-5 leading-relaxed">
-                <li><strong className="text-[var(--text)]">User Responsibility:</strong> You are solely responsible for the material, notes, and messages you post or share. You agree to share only educational materials that you have the right to share.</li>
-                <li><strong className="text-[var(--text)]">Community Rules:</strong> All members must be respectful, stay on academic topics, avoid spam or advertising, and never post malicious scripts or illegal content.</li>
-                <li><strong className="text-[var(--text)]">Prohibited Content:</strong> Commercial promotions, exam paper leaks, offensive language, executable binaries (.exe, .apk, .bat, etc.), and harassment of any kind are strictly prohibited.</li>
-              </ul>
-            </div>
-
-            {/* Section 6 */}
-            <div id="anonymous-conduct" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                6. Anonymous Posting &amp; Safety Standards
-              </h2>
-              <div className="glass-row p-4 sm:p-5 rounded-2xl  text-xs space-y-2 leading-relaxed">
-                <p className="font-bold text-[var(--text)]">Anonymity &amp; Accountability:</p>
-                <p className="text-[var(--muted)]">
-                  When posting anonymously in Commons, other students see an anonymous pseudonym rather than your name or profile picture.
-                </p>
-                <p className="text-[var(--muted)]">
-                  However, to protect community safety, Boardly maintains internal author records for every post and comment. Anonymous users must still adhere strictly to all community standards. Any user engaging in bullying, harassment, hate speech, or abuse while posting anonymously can and will be identified by administrators and removed from the platform.
-                </p>
-              </div>
-            </div>
-
-            {/* Section 7 */}
-            <div id="study-crews" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                7. Study Crews &amp; Collaborative Learning
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                Students can create or join Study Crews using unique room codes. Study Crews are collaborative study groups designed for coordinating practice drills, tracking shared streaks, and staying motivated. Squad leaders and members agree to maintain a positive, supportive academic culture.
-              </p>
-            </div>
-
-            {/* Section 8 */}
-            <div id="intellectual-property" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                8. Intellectual Property &amp; Shared Materials
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                The Boardly platform, its visual design, UI components, code, logo, and KaTeX derivation formats are the intellectual property of SHS Virtual Academy. When you share original notes or study material in Commons, you retain your ownership rights while granting Boardly a royalty-free license to display that material to other students on the platform.
-              </p>
-            </div>
-
-            {/* Section 9 */}
-            <div id="termination" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                9. Suspension &amp; Account Removal
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                SHS Virtual Academy reserves the right to suspend or permanently terminate student accounts that repeatedly violate community rules, engage in harassment or abusive behavior, attempt unauthorized access or security breaches, or submit fraudulent payment verification requests.
-              </p>
-            </div>
-
-            {/* Section 10 */}
-            <div id="disclaimer" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                10. General Service Disclaimer
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                Boardly is an independent educational practice platform and is not affiliated with, endorsed by, or partnered with any government testing agency or university board. Practice questions and AI derivations are provided for learning and self-study purposes.
-              </p>
-            </div>
-
-            {/* Section 11 */}
-            <div id="contact" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                11. Contact Information
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                For questions regarding these Terms of Service or to report a violation, please contact our administrative desk:
-              </p>
-              <div className="glass-row p-4 sm:p-5 rounded-2xl  text-xs space-y-1">
-                <p><strong className="text-[var(--text)]">Email:</strong> support@boardly.cfd</p>
-                <p><strong className="text-[var(--text)]">Phone / WhatsApp:</strong> 0305 8969050</p>
-                <p><strong className="text-[var(--text)]">Organization:</strong> SHS Virtual Academy (<a href="https://shsvirtualacademy.pro" target="_blank" rel="noopener noreferrer" className="text-[#D71921] hover:underline">shsvirtualacademy.pro</a>)</p>
-              </div>
-            </div>
-          </div>
+      {/* Mobile Table of Contents */}
+      <div className="lg:hidden glass-card p-5 mb-8">
+        <h2 className="font-dot text-xs text-[var(--muted)] uppercase tracking-wider mb-3">
+          Jump to a Section
+        </h2>
+        <div className="flex flex-wrap gap-2">
+          {SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => scrollTo(s.id)}
+              className="px-3 py-1.5 rounded-full text-xs bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--red)] transition-colors cursor-pointer"
+            >
+              {s.title}
+            </button>
+          ))}
         </div>
       </div>
-    </>
-  );
-}
 
-export default TermsPage;
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 sm:gap-12 items-start">
+        {/* Sticky Sidebar TOC (Desktop) */}
+        <aside className="hidden lg:block glass-card p-6 sticky top-28">
+          <h3 className="font-dot text-sm text-[var(--muted)] uppercase tracking-wider mb-4">
+            Contents
+          </h3>
+          <ul className="space-y-2.5 text-sm">
+            {SECTIONS.map((s) => (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  onClick={() => scrollTo(s.id)}
+                  className="text-[var(--muted)] hover:text-[var(--text)] transition-colors text-left w-full truncate cursor-pointer"
+                >
+                  {s.title}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-6 pt-4 border-t border-[var(--border)] text-xs text-[var(--muted)] space-y-2">
+            <p>Looking for how we handle your data?</p>
+            <Link
+              to="/privacy"
+              className="text-[var(--red)] font-semibold hover:underline inline-block"
+            >
+              Read our Privacy Policy →
+            </Link>
+          </div>
+        </aside>
+
+        {/* Main Content */}
+        <div className="lg:col-span-3 glass-card p-6 sm:p-8 md:p-12 space-y-12 text-[var(--muted)] leading-relaxed text-sm sm:text-base">
+          {/* Top Summary Box (5-7 bullets) */}
+          <section
+            id="summary"
+            className="scroll-mt-28 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] p-5 sm:p-6 space-y-3"
+          >
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h2 className="font-dot text-lg sm:text-xl text-[var(--text)]">
+                Summary (Key Points in Plain English)
+              </h2>
+              <span className="text-xs font-mono text-[var(--red)] font-semibold">
+                {LEGAL_VERSION_DISPLAY} · {LEGAL_LAST_UPDATED_LABEL}
+              </span>
+            </div>
+            <ul className="list-disc pl-5 space-y-2 text-xs sm:text-sm text-[var(--text)]/90">
+              <li>
+                <strong>Two ways to use Boardly:</strong> You can create a registered account (email
+                &amp; password or Google) or try Boardly with a temporary Guest account. Guest
+                accounts have no password, cannot be recovered after logging out or clearing browser
+                data, cannot use Rewards or Boardly Pro, and are automatically deleted after a
+                7-day post-logout grace period or 30 days of inactivity.
+              </li>
+              <li>
+                <strong>Account security &amp; 2FA:</strong> Email sign-ups require a 6-digit email
+                verification code. You can enable optional Two-Step Verification (Authenticator App
+                or Email codes) and 30-day trusted devices in Settings. Losing 2FA access triggers a
+                24-hour cooling-off recovery period.
+              </li>
+              <li>
+                <strong>Usernames &amp; fair play:</strong> Usernames are 3–20 characters,
+                case-insensitively unique, and subject to a 14-day cooldown between changes. We block
+                impersonation, lookalike handles, and multi-account reward farming.
+              </li>
+              <li>
+                <strong>Community &amp; anonymous posts:</strong> When you post or comment
+                anonymously in Boardly Commons, your name is hidden from other students, but our
+                system retains your internal user ID for safety, abuse prevention, and moderation.
+              </li>
+              <li>
+                <strong>Kobans &amp; Boardly Pro:</strong> Kobans are virtual in-app points with no
+                real-world cash value and cannot be withdrawn or transferred. Boardly Pro passes can
+                be unlocked using Kobans or manual PKR transfers (JazzCash / Opay) verified via
+                Transaction ID (TID).
+              </li>
+              <li>
+                <strong>Independent platform:</strong> Boardly is an independent educational
+                platform and is not affiliated with or endorsed by NUST, FAST-NUCES, IBA, LUMS, UET,
+                GIKI, PMDC/MDCAT, or any university or examination board.
+              </li>
+            </ul>
+          </section>
+
+          <section id="acceptance" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              1. Acceptance &amp; Operator Details
+            </h2>
+            <p>
+              Welcome to Boardly (&ldquo;Boardly&rdquo;, &ldquo;we&rdquo;, &ldquo;our&rdquo;, or
+              &ldquo;us&rdquo;), operated by <strong>[BUSINESS NAME]</strong> (formerly operating
+              under SHS Virtual Academy), located at <strong>[ADDRESS]</strong>. By creating an
+              account, continuing as a guest, or using our website (`boardly.cfd`), Progressive Web
+              App (PWA), or related services, you agree to these Terms of Service and our{' '}
+              <Link to="/privacy" className="text-[var(--red)] hover:underline font-medium">
+                Privacy Policy
+              </Link>
+              .
+            </p>
+            <p>
+              <strong>Eligibility &amp; Minors:</strong> You must be at least{' '}
+              <strong>[MINIMUM AGE, e.g., 13 — TO CONFIRM]</strong> years old to use Boardly. If you
+              are under 18 years of age, you confirm that you are using Boardly with the knowledge
+              and permission of your parent or legal guardian, particularly before submitting any
+              payment for Boardly Pro.
+            </p>
+          </section>
+
+          <section id="accounts" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              2. Accounts, Guest Mode &amp; Sign-In
+            </h2>
+            <p>Boardly offers two types of student accounts:</p>
+            <ul className="list-disc pl-5 space-y-2.5">
+              <li>
+                <strong>Registered Accounts:</strong> Created using an email address and password
+                (minimum 6 characters) or via Google Sign-In (Firebase Authentication). Registered
+                users can sign in using either their email address or their unique `@username`. You
+                are responsible for keeping your password confidential.
+              </li>
+              <li>
+                <strong>Temporary Guest Accounts:</strong> You may try Boardly without an email or
+                password by choosing a guest username. Guest accounts are bound to your current
+                browser via an `HttpOnly` session cookie (`boardly_guest_session`, valid for up to
+                30 days) and local browser backup tokens.
+              </li>
+            </ul>
+            <div className="rounded-xl bg-[var(--surface-2)] border border-[var(--border)] p-4 text-xs sm:text-sm space-y-2">
+              <p className="text-[var(--text)] font-semibold">
+                Important Rules for Temporary Guest Accounts:
+              </p>
+              <ul className="list-disc pl-5 space-y-1.5">
+                <li>
+                  Guest accounts have <strong>no password or linked email</strong>. If you log out,
+                  clear your browser cookies/storage, or switch devices without upgrading to a
+                  registered account first, <strong>you cannot recover the guest account</strong>.
+                </li>
+                <li>
+                  Guest accounts <strong>cannot</strong> access Boardly Rewards, claim or spend
+                  Kobans, use referral codes, or purchase Boardly Pro.
+                </li>
+                <li>
+                  When you confirm logout from a guest account, the account is marked as abandoned
+                  and permanently deleted after a <strong>7-day grace period</strong>. Guest
+                  accounts that remain inactive for <strong>30 consecutive days</strong> are also
+                  automatically purged by our scheduled cleanup job, releasing the username.
+                </li>
+                <li>
+                  You can upgrade a guest account in place at any time by linking an email &amp;
+                  password or Google account, which preserves your username, test attempts, and
+                  progress.
+                </li>
+              </ul>
+            </div>
+          </section>
+
+          <section id="security-2fa" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              3. Email Verification &amp; Two-Step Security
+            </h2>
+            <ul className="list-disc pl-5 space-y-2.5">
+              <li>
+                <strong>Email Verification at Sign-Up:</strong> New email and password sign-ups
+                require verifying your email address with a 6-digit verification code (or
+                verification link) sent via our email delivery provider (Resend). Codes expire after
+                10 minutes and allow up to 5 attempts per code.
+              </li>
+              <li>
+                <strong>Optional Two-Step Verification (2FA):</strong> Registered students can turn
+                on Two-Step Verification in <em>Settings &gt; Security</em> using an Authenticator
+                App (TOTP 6-digit codes) and/or Email 2FA codes.
+              </li>
+              <li>
+                <strong>Backup Codes:</strong> When enabling 2FA, Boardly generates 10 one-time
+                backup codes (`XXXX-XXXX`). Each backup code can be used only once. You are
+                responsible for storing your backup codes safely.
+              </li>
+              <li>
+                <strong>Remember This Device (30 Days):</strong> During 2FA verification, you can
+                choose &ldquo;Remember this device for 30 days&rdquo;, which sets a secure cookie
+                (`boardly_trusted_device`) so you are not prompted for a 2FA code on every login
+                from that browser for 30 days unless you revoke trusted devices in Settings.
+              </li>
+              <li>
+                <strong>Lost 2FA Access &amp; Recovery:</strong> If you lose access to your
+                authenticator app and backup codes, you can verify ownership of your account email
+                to initiate a 2FA recovery request. For your protection, disabling 2FA via recovery
+                is subject to a mandatory <strong>24-hour cooling-off waiting period</strong> (or
+                manual verification and reset by a Boardly Super Administrator).
+              </li>
+            </ul>
+          </section>
+
+          <section id="usernames" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              4. Usernames, Display Names &amp; Impersonation
+            </h2>
+            <ul className="list-disc pl-5 space-y-2.5">
+              <li>
+                <strong>Format &amp; Uniqueness:</strong> Usernames must be 3 to 20 characters long
+                and may contain only letters (`a–z`), numbers (`0–9`), dots (`.`), and underscores
+                (`_`), without leading, trailing, or consecutive dots/underscores. Usernames are
+                globally unique (case-insensitive) across all registered and active guest accounts.
+              </li>
+              <li>
+                <strong>Anti-Impersonation &amp; Reserved Handles:</strong> Our system normalizes
+                lookalike characters (such as `0`/`o` or `1`/`i`/`l`) to prevent impersonation and
+                blocks reserved handles (including `boardly`, `shs`, `admin`, `superadmin`,
+                `moderator`, `captain`, `founder`, `official`, and `support`).
+              </li>
+              <li>
+                <strong>Username &amp; Display Name Changes:</strong> Username changes are subject
+                to a <strong>14-day cooldown</strong> between changes (`[ENFORCEMENT SCOPE — TO
+                CONFIRM]`). Display name change requests are reviewed by administrators (up to 2
+                requests per month).
+              </li>
+              <li>
+                <strong>Right to Reclaim or Rename:</strong> Boardly reserves the right to reclaim,
+                reset, or change any username or display name that is offensive, misleading,
+                infringes trademarks, or impersonates another student, teacher, Captain, or staff
+                member.
+              </li>
+            </ul>
+          </section>
+
+          <section id="features" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              5. Practice Tests, Streaks, Certificates &amp; AI Study Tools
+            </h2>
+            <ul className="list-disc pl-5 space-y-2.5">
+              <li>
+                <strong>Practice Tests &amp; University MCQ Banks:</strong> Boardly provides timed
+                practice tests, subject drills, and Grand Line competitive mocks. Free accounts have
+                daily practice limits (such as 2 practice tests, 3 Arena mocks, and 5 Boardy AI
+                derivations per day), while Boardly Pro unlocks unlimited daily access.
+              </li>
+              <li>
+                <strong>Daily Streaks &amp; Zenryu Dragon Egg Companion:</strong> Daily study
+                streaks reset at midnight Pakistan Standard Time (`Asia/Karachi`, UTC+5) and track
+                your consistent practice and in-app Zenryu companion progression.
+              </li>
+              <li>
+                <strong>Grand Line 1st Position Certificates:</strong> Students who achieve 1st
+                Position on qualifying Grand Line national mocks may receive an automatically
+                generated digital achievement certificate with a unique verification ID (`cert_id`)
+                and public verification page (`/verify/:certId`). Certificates are recognition of
+                in-app mock performance only and are not formal academic credentials.
+              </li>
+              <li>
+                <strong>Boardy AI Derivations &amp; Study Buddy:</strong> Boardly uses Google Gemini
+                AI models to generate step-by-step MCQ derivations, formula explanations, and study
+                assistance. AI outputs may occasionally contain errors or inaccuracies; always
+                cross-check critical formulas and textbook concepts.
+              </li>
+            </ul>
+          </section>
+
+          <section id="commons-community" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              6. Boardly Commons, Study Crews &amp; Direct Chat
+            </h2>
+            <ul className="list-disc pl-5 space-y-2.5">
+              <li>
+                <strong>Boardly Commons (Posts, Notes &amp; PDFs):</strong> Students can share study
+                notes, MCQs, discussions, and file attachments (images and PDFs up to 25 MB; scripts
+                and executable files are blocked). You must only upload study materials that you own
+                or have the right to share.
+              </li>
+              <li>
+                <strong>Anonymous Posting &amp; Commenting:</strong> When you toggle
+                &ldquo;Anonymous&rdquo; on a Commons post or comment, your display name, username,
+                and avatar are hidden from public view (shown as &ldquo;Anonymous Student&rdquo;).
+                However, <strong>your internal account ID (`author_uid` / `real_author_uid`) is
+                still recorded on our server</strong> to prevent spam, enforce community rules, and
+                allow you to delete your own comment.
+              </li>
+              <li>
+                <strong>Nakama Captains &amp; Study Crews:</strong> Students can apply to become
+                Nakama Captains or join campus Study Crews (up to 30 members per standard squad).
+                Captains and administrators can manage crew membership, review join requests, and
+                publish crew practice tests.
+              </li>
+              <li>
+                <strong>Direct Messages &amp; Chat Requests:</strong> Direct messaging requires
+                either a mutual follow or an accepted chat request (up to 280 characters for an
+                introductory request). If a chat request is declined, a 24-hour cooldown applies
+                before another request can be sent. Harassment, spam, or abusive messages are
+                strictly prohibited.
+              </li>
+            </ul>
+          </section>
+
+          <section id="moderation-admin" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              7. Moderation &amp; Administrator Access
+            </h2>
+            <p>
+              To keep Boardly safe for students, our moderation systems and administrators operate
+              as follows:
+            </p>
+            <ul className="list-disc pl-5 space-y-2.5">
+              <li>
+                <strong>Community Reports &amp; Auto-Hide:</strong> Students can report posts or
+                comments. Posts that receive 3 or more community reports are automatically hidden
+                pending administrator review.
+              </li>
+              <li>
+                <strong>What Administrators Can Access:</strong> Boardly administrators and super
+                administrators can view and moderate public and hidden Commons posts, comments
+                (including internal author records for anonymous posts when investigating abuse),
+                user reports, Nakama Captain and crew applications, payment verification requests,
+                and AI Study Buddy logs (`study_buddy_logs`).
+              </li>
+              <li>
+                <strong>Direct Messages Storage:</strong> Direct chat messages and chat requests are
+                stored in our Google Cloud Firestore database (`conversations` and `chatRequests`
+                collections) so they sync across your devices. While there is no routine admin chat
+                browsing panel in the standard interface, messages are not end-to-end encrypted and
+                may be accessed in database records if required to investigate severe safety reports
+                or legal obligations.
+              </li>
+            </ul>
+          </section>
+
+          <section id="rewards-kobans" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              8. Rewards, Referrals &amp; Kobans
+            </h2>
+            <ul className="list-disc pl-5 space-y-2.5">
+              <li>
+                <strong>Virtual Credits Only (No Cash Value):</strong> &ldquo;Kobans&rdquo; are
+                virtual in-app points used solely within Boardly to unlock profile cosmetics
+                (avatars, frames, effects, banners) or redeem Boardly Pro passes. Kobans have{' '}
+                <strong>no real-world monetary or cash value</strong>, are not a currency or
+                financial instrument, cannot be withdrawn or exchanged for cash, and cannot be
+                transferred between accounts.
+              </li>
+              <li>
+                <strong>Earning Kobans &amp; Referral Rules:</strong> Registered users (excluding
+                guests) may earn Kobans through daily check-ins, MCQ practice milestones, and
+                verified student referrals when the Rewards program is active. Referral rewards
+                require two-way confirmation, require the invited student to complete at least 20
+                MCQs, are capped at a maximum of 10 paid referrals per calendar month, and are
+                screened via IP address hashes to prevent self-referrals.
+              </li>
+              <li>
+                <strong>Anti-Farming &amp; Revocation:</strong> Creating multiple accounts, using
+                bots or scripts, or exploiting bugs to farm Kobans is prohibited. We may adjust,
+                freeze, or revoke Koban balances obtained through fraud, abuse, or technical errors,
+                and we may modify or pause reward rates at any time.
+              </li>
+            </ul>
+          </section>
+
+          <section id="pro-payments" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              9. Boardly Pro, Manual Payments &amp; Refunds
+            </h2>
+            <ul className="list-disc pl-5 space-y-2.5">
+              <li>
+                <strong>Plans &amp; Pricing:</strong> Boardly offers fixed-duration Pro passes,
+                including the Monthly Pass (30 days, PKR 199 or 1,990 Kobans) and Annual Pass (365
+                days, PKR 1,791 or 17,910 Kobans), as well as optional Koban top-up packs. Prices
+                are displayed in Pakistani Rupees (PKR) before checkout.
+              </li>
+              <li>
+                <strong>Payment Methods:</strong> You can unlock Boardly Pro either (a) instantly
+                using your in-app Koban balance, or (b) via manual Pakistani mobile wallet/bank
+                transfer (currently <strong>JazzCash</strong> and <strong>Opay</strong>) by sending
+                the exact PKR amount to the official account displayed at checkout and submitting
+                your Transaction ID (TID / reference number).
+              </li>
+              <li>
+                <strong>Manual Verification &amp; Expiry Extension:</strong> Manual PKR transfers
+                are reviewed by our team (typically within 2 hours). Submitting fake, altered, or
+                duplicate Transaction IDs will result in rejection and may lead to account
+                suspension. Passes do not auto-charge your bank or wallet when they expire; if you
+                purchase a new pass while Pro is active, the additional days are added to your
+                existing expiry date.
+              </li>
+              <li>
+                <strong>Refund &amp; Cancellation Policy:</strong> Once a Boardly Pro pass or Koban
+                pack is activated on your account, it is non-refundable except where a duplicate
+                manual transfer occurred or where required by applicable law.{' '}
+                <strong>[REFUND &amp; CANCELLATION POLICY — TO CONFIRM]</strong>
+              </li>
+            </ul>
+          </section>
+
+          <section id="acceptable-use" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              10. Acceptable Use &amp; Anti-Abuse Rules
+            </h2>
+            <p>When using Boardly, you agree not to:</p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>
+                Scrape, copy, bulk-download, or redistribute Boardly&apos;s MCQ question banks,
+                explanations, or mock tests (PDF downloads are rate-limited to 1 download per hour
+                for personal study only).
+              </li>
+              <li>
+                Use automated bots, scripts, or headless browsers to submit tests, manipulate Grand
+                Line leaderboards, or farm streaks and Kobans.
+              </li>
+              <li>
+                Upload malware, executable files (`.exe`, `.bat`, `.sh`, `.apk`, `.js`, etc.),
+                unlawful content, hate speech, harassment, or copyrighted materials you do not have
+                permission to share.
+              </li>
+              <li>
+                Attempt to bypass rate limits, authentication checks, Two-Step Verification, or
+                server security controls.
+              </li>
+            </ul>
+          </section>
+
+          <section id="intellectual-property" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              11. Intellectual Property &amp; User Content
+            </h2>
+            <p>
+              <strong>Boardly Content:</strong> All platform software, visual designs, logos,
+              Zenryu companion artwork, curated MCQ explanations, and original study materials are
+              owned by Boardly or its licensors and are protected by copyright and intellectual
+              property laws. You receive a personal, non-exclusive, non-transferable license to use
+              Boardly solely for your own exam preparation.
+            </p>
+            <p>
+              <strong>Your Content:</strong> You retain ownership of the original notes, posts, and
+              comments you upload to Boardly Commons. By posting content on Boardly Commons, you
+              grant Boardly a worldwide, royalty-free, non-exclusive license to host, display,
+              format, and distribute that content to other students on the platform.
+            </p>
+          </section>
+
+          <section id="university-disclaimer" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              12. University &amp; Exam Non-Affiliation Disclaimer
+            </h2>
+            <p>
+              Boardly is an independent educational preparation platform. We are{' '}
+              <strong>not affiliated with, associated with, authorized by, endorsed by, or in any
+              way officially connected with</strong> any university, college, or examination
+              authority — including but not limited to NUST (NET), FAST-NUCES, IBA Karachi, LUMS,
+              GIKI, UET (ECAT), PIEAS, NED, NUMS, Aga Khan University (AKU), ETEA, NTS (NAT), HEC
+              (USAT), PMDC (MDCAT), or any Federal or Provincial Board of Intermediate and Secondary
+              Education (BISE). All university and exam names are used strictly for identification
+              of study tracks. Practice scores and mock rankings on Boardly do not guarantee
+              admission or official exam results.
+            </p>
+          </section>
+
+          <section id="mobile-android" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              13. Web, PWA &amp; Mobile / Android Access
+            </h2>
+            <p>
+              You may access Boardly through a standard web browser, by installing our Progressive
+              Web App (PWA) to your home screen, or through any official mobile/Android application
+              we release. You are responsible for any mobile data charges incurred while using
+              Boardly. If you download or access Boardly via Google Play or another app store in the
+              future, your use is also subject to that store&apos;s standard terms, while{' '}
+              <strong>[BUSINESS NAME]</strong> (and not Google Play) remains solely responsible for
+              the app and student support.
+            </p>
+          </section>
+
+          <section id="termination" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              14. Suspension, Termination &amp; Disclaimers
+            </h2>
+            <p>
+              <strong>Suspension &amp; Termination:</strong> You may stop using Boardly at any time
+              or request account deletion as described in our{' '}
+              <Link to="/privacy" className="text-[var(--red)] hover:underline font-medium">
+                Privacy Policy
+              </Link>
+              . We may suspend, restrict, or permanently delete accounts that violate these Terms,
+              submit fraudulent payment TIDs, abuse community features, or compromise platform
+              security.
+            </p>
+            <p>
+              <strong>Service Provided &ldquo;As Is&rdquo;:</strong> Boardly is provided on an
+              &ldquo;as is&rdquo; and &ldquo;as available&rdquo; basis without warranties of
+              uninterrupted availability or error-free content. To the fullest extent permitted by
+              law, Boardly&apos;s total liability for any claim arising out of your use of the
+              service is limited to the total amount you paid to Boardly for Pro access in the
+              twelve (12) months preceding the claim.
+            </p>
+          </section>
+
+          <section id="governing-law" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              15. Governing Law, Updates &amp; Contact
+            </h2>
+            <p>
+              <strong>Governing Law:</strong> These Terms are governed by the laws of the{' '}
+              <strong>Islamic Republic of Pakistan</strong>. Any disputes arising from these Terms
+              or your use of Boardly shall be subject to the jurisdiction of the courts of Pakistan.
+            </p>
+            <p>
+              <strong>Updates to These Terms:</strong> When we make material changes to these Terms,
+              we will update the version number and &ldquo;Last updated&rdquo; date at the top of
+              this page and display a notice inside the app for logged-in users.
+            </p>
+            <div className="rounded-xl bg-[var(--surface-2)] border border-[var(--border)] p-4 text-xs sm:text-sm space-y-1.5">
+              <p className="text-[var(--text)] font-semibold">Contact Us:</p>
+              <p>
+                <strong>Operator / Business Name:</strong> [BUSINESS NAME]
+              </p>
+              <p>
+                <strong>Support Email:</strong>{' '}
+                <a
+                  href="mailto:support@boardly.cfd"
+                  className="text-[var(--red)] hover:underline font-mono"
+                >
+                  support@boardly.cfd
+                </a>{' '}
+                / <strong>[CONTACT EMAIL]</strong>
+              </p>
+              <p>
+                <strong>Address:</strong> [ADDRESS]
+              </p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+};

@@ -952,6 +952,36 @@ export function normalizeStoredFileEntry(f: any): Record<string, any> {
   };
 }
 
+export function sanitizeStoreAvatarId(...candidates: unknown[]): string | null {
+  for (const val of candidates) {
+    if (!val || typeof val !== 'string') continue;
+    const trimmed = val.trim();
+    if (!trimmed || trimmed === 'none' || trimmed === 'null' || trimmed === 'undefined') continue;
+    const lower = trimmed.toLowerCase();
+    if (
+      lower.startsWith('http://') ||
+      lower.startsWith('https://') ||
+      lower.startsWith('data:') ||
+      lower.startsWith('blob:') ||
+      lower.includes('googleusercontent.com') ||
+      lower.includes('ggpht.com')
+    ) {
+      continue;
+    }
+    const storePathMatch = trimmed.match(
+      /^\/assets\/store\/(?:avatars\/|frames\/)?([^/?#]+)/i
+    );
+    const candidate = storePathMatch ? storePathMatch[1] : trimmed;
+    if (candidate === 'eclipse-wyrm' || candidate === 'pfp_eclipse_wyrm') {
+      return 'eclipse-wyrm';
+    }
+    if (candidate.startsWith('pfp_')) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 /**
  * Canonical serializer from a D1 `posts` row to the frontend `CommonsPost` JSON contract.
  * Never exposes `real_author_uid` or `author_uid` on anonymous posts in public responses.
@@ -1010,10 +1040,14 @@ export function rowToCommonsPost(row: Record<string, any>): Record<string, any> 
     // Strictly hide author UID on anonymous posts in all public responses
     authorUid: isAnon ? null : row.author_uid || null,
     authorName: isAnon ? 'Anonymous Student' : row.author_name || 'Student',
-    authorAvatar: isAnon ? null : row.author_avatar || null,
+    authorAvatar: isAnon
+      ? null
+      : sanitizeStoreAvatarId(row.author_equipped_avatar, row.author_avatar),
     authorFrame: isAnon ? null : row.author_frame || null,
-    authorEquippedAvatar: isAnon ? null : row.author_equipped_avatar || null,
-    authorPhotoURL: isAnon ? null : row.author_photo_url || null,
+    authorEquippedAvatar: isAnon
+      ? null
+      : sanitizeStoreAvatarId(row.author_equipped_avatar, row.author_avatar),
+    authorPhotoURL: null,
     authorRole: isAnon ? 'student' : row.author_role || 'student',
     authorCustomRole: isAnon ? null : row.author_custom_role || null,
     status: row.status || 'published',
@@ -2362,7 +2396,7 @@ ${urls
           following = true;
 
           const followerName = String(body.followerName || user?.name || 'A student').trim();
-          const followerAvatar = body.followerAvatar || user?.picture || null;
+          const followerAvatar = sanitizeStoreAvatarId(body.followerAvatar);
           const followerFrame = body.followerFrame || null;
           const notifId = `follow_${followerUid}_${followingUid}`;
           await env.DB.prepare(
@@ -2447,7 +2481,7 @@ ${urls
           isPinned: Boolean(r.is_pinned),
           authorId: r.author_id ? String(r.author_id) : undefined,
           authorName: r.author_name ? String(r.author_name) : undefined,
-          authorAvatar: r.author_avatar || null,
+          authorAvatar: sanitizeStoreAvatarId(r.author_avatar),
           authorFrame: r.author_frame || null,
           postId: r.post_id ? String(r.post_id) : undefined,
           postType: r.post_type ? String(r.post_type) : undefined,
@@ -2516,7 +2550,7 @@ ${urls
               item.isPinned ? 1 : 0,
               authorId,
               item.authorName ? String(item.authorName) : null,
-              item.authorAvatar || null,
+              sanitizeStoreAvatarId(item.authorAvatar),
               item.authorFrame || null,
               item.postId ? String(item.postId) : null,
               item.postType ? String(item.postType) : null,
@@ -5113,14 +5147,14 @@ ${urls
           displayName: hasMissingName ? email || 'Unnamed Student' : rawName,
           handle: rawHandle,
           email,
-          avatar:
-            data.photoURL ||
-            data.avatar ||
-            data.equippedAvatar ||
-            pub.photoURL ||
-            pub.avatar ||
-            pub.equippedAvatar ||
-            null,
+          avatar: sanitizeStoreAvatarId(
+            data.equipped?.avatar,
+            data.equippedAvatar,
+            data.avatar,
+            pub.equipped?.avatar,
+            pub.equippedAvatar,
+            pub.avatar
+          ),
           shortId: String(data.shortId || pub.shortId || uid.slice(0, 5).toUpperCase()),
           plan: data.plan === 'pro' || data.isPremium === true ? 'pro' : 'free',
           role: String(data.role || 'student'),
@@ -5151,7 +5185,7 @@ ${urls
           displayName: rawName || email || `Orphan (${uid.slice(0, 6)})`,
           handle: rawHandle,
           email,
-          avatar: pub.photoURL || pub.avatar || pub.equippedAvatar || null,
+          avatar: sanitizeStoreAvatarId(pub.equipped?.avatar, pub.equippedAvatar, pub.avatar),
           shortId: String(pub.shortId || uid.slice(0, 5).toUpperCase()),
           plan: pub.plan === 'pro' ? 'pro' : 'free',
           role: String(pub.role || 'student'),
@@ -5261,7 +5295,7 @@ ${urls
               displayName: authorName || 'Student',
               handle: handleGuess,
               email: '',
-              avatar: p.author_avatar || p.author_photo_url || p.author_equipped_avatar || null,
+              avatar: sanitizeStoreAvatarId(p.author_equipped_avatar, p.author_avatar),
               shortId: uid.slice(0, 5).toUpperCase(),
               plan: 'free',
               role: String(p.author_role || 'student'),
@@ -5890,10 +5924,10 @@ ${urls
               isAnon ? null : user.uid,
               user.uid, // Stored privately in real_author_uid for moderation & owner deletion
               isAnon ? 'Anonymous Student' : String(body.authorName || user.name || 'Student'),
-              isAnon ? null : body.authorAvatar || null,
+              isAnon ? null : sanitizeStoreAvatarId(body.authorEquippedAvatar, body.authorAvatar),
               isAnon ? null : body.authorFrame || null,
-              isAnon ? null : body.authorEquippedAvatar || null,
-              isAnon ? null : body.authorPhotoURL || user.picture || null,
+              isAnon ? null : sanitizeStoreAvatarId(body.authorEquippedAvatar, body.authorAvatar),
+              null,
               isAnon ? 'student' : user.role,
               isAnon ? null : user.customRole,
               now,
@@ -5935,8 +5969,10 @@ ${urls
 
             if (followerUids.length > 0) {
               const authorDisplay = String(body.authorName || user.name || 'Student');
-              const authorAvatarVal =
-                body.authorAvatar || body.authorPhotoURL || body.authorEquippedAvatar || user.picture || null;
+              const authorAvatarVal = sanitizeStoreAvatarId(
+                body.authorEquippedAvatar,
+                body.authorAvatar
+              );
               const authorFrameVal = body.authorFrame || null;
               const postTypeVal = String(body.type || 'notes');
               const snippet = description.slice(0, 140) || `New ${postTypeVal} in ${String(body.subject || 'Commons')}`;
@@ -6285,10 +6321,14 @@ ${urls
           isAnonymous: Boolean(c.is_anonymous),
           authorUid: c.is_anonymous ? null : c.author_uid,
           authorName: c.is_anonymous ? 'Anonymous Student' : c.author_name,
-          authorAvatar: c.is_anonymous ? null : c.author_avatar,
+          authorAvatar: c.is_anonymous
+            ? null
+            : sanitizeStoreAvatarId(c.author_equipped_avatar, c.author_avatar),
           authorFrame: c.is_anonymous ? null : c.author_frame,
-          authorEquippedAvatar: c.is_anonymous ? null : c.author_equipped_avatar,
-          authorPhotoURL: c.is_anonymous ? null : c.author_photo_url,
+          authorEquippedAvatar: c.is_anonymous
+            ? null
+            : sanitizeStoreAvatarId(c.author_equipped_avatar, c.author_avatar),
+          authorPhotoURL: null,
           authorRole: c.is_anonymous ? 'student' : c.author_role,
           authorCustomRole: c.is_anonymous ? null : c.author_custom_role,
           createdAt: new Date(Number(c.created_at || Date.now())).toISOString(),
@@ -6309,6 +6349,9 @@ ${urls
         const id = `cmt_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
         const isAnon = Boolean(body.isAnonymous);
         const now = Date.now();
+        const sanitizedCommentAvatar = isAnon
+          ? null
+          : sanitizeStoreAvatarId(body.authorEquippedAvatar, body.authorAvatar);
 
         await env.DB.prepare(
           `INSERT INTO post_comments (
@@ -6325,10 +6368,10 @@ ${urls
             isAnon ? null : user.uid,
             user.uid,
             isAnon ? 'Anonymous Student' : String(body.authorName || user.name || 'Student'),
-            isAnon ? null : body.authorAvatar || null,
+            sanitizedCommentAvatar,
             isAnon ? null : body.authorFrame || null,
-            isAnon ? null : body.authorEquippedAvatar || null,
-            isAnon ? null : body.authorPhotoURL || user.picture || null,
+            sanitizedCommentAvatar,
+            null,
             isAnon ? 'student' : user.role,
             isAnon ? null : user.customRole,
             now
@@ -6351,10 +6394,10 @@ ${urls
               authorName: isAnon
                 ? 'Anonymous Student'
                 : String(body.authorName || user.name || 'Student'),
-              authorAvatar: isAnon ? null : body.authorAvatar || null,
+              authorAvatar: sanitizedCommentAvatar,
               authorFrame: isAnon ? null : body.authorFrame || null,
-              authorEquippedAvatar: isAnon ? null : body.authorEquippedAvatar || null,
-              authorPhotoURL: isAnon ? null : body.authorPhotoURL || user.picture || null,
+              authorEquippedAvatar: sanitizedCommentAvatar,
+              authorPhotoURL: null,
               createdAt: new Date(now).toISOString(),
             },
           },

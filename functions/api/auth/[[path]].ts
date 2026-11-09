@@ -419,6 +419,17 @@ export async function ensureEmailVerificationD1Schema(db: RewardsD1Database): Pr
         created_at INTEGER NOT NULL
       )`),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_security_audit_logs_user ON security_audit_logs (user_id, created_at DESC)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS legal_consent_records (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        account_type TEXT NOT NULL DEFAULT 'registered',
+        document_version TEXT NOT NULL,
+        action_context TEXT NOT NULL DEFAULT 'signup',
+        ip_hash TEXT NOT NULL DEFAULT '',
+        user_agent TEXT NOT NULL DEFAULT '',
+        accepted_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_legal_consent_user_version ON legal_consent_records (user_id, document_version, accepted_at DESC)`),
     ]);
   } catch {
     // Tables already initialized
@@ -4898,6 +4909,94 @@ export async function handleAuthApiRequest(
       ok: true,
       reset: true,
       targetUid,
+    });
+  }
+
+  // ─── 18. GET & POST /api/auth/legal-consent (Record & Query Terms/Privacy Acceptance) ───
+  if (subPath === 'legal-consent' && (request.method === 'GET' || request.method === 'POST')) {
+    if (request.method === 'GET') {
+      const queryUid = String(url.searchParams.get('userId') || '').trim();
+      const queryVersion = String(url.searchParams.get('version') || '2026-11-08-v2.0').trim();
+      if (!queryUid) {
+        return jsonResponse({ ok: false, error: 'Missing userId.', code: 'MISSING_FIELDS' }, 400);
+      }
+      const row = await db
+        .prepare(
+          'SELECT id, user_id, account_type, document_version, action_context, accepted_at FROM legal_consent_records WHERE user_id = ?1 AND document_version = ?2 ORDER BY accepted_at DESC LIMIT 1'
+        )
+        .bind(queryUid, queryVersion)
+        .first<{
+          id: string;
+          user_id: string;
+          account_type: string;
+          document_version: string;
+          action_context: string;
+          accepted_at: number;
+        }>()
+        .catch(() => null);
+
+      return jsonResponse({
+        ok: true,
+        accepted: Boolean(row),
+        acceptedAt: row ? Number(row.accepted_at) : null,
+        documentVersion: row?.document_version || queryVersion,
+      });
+    }
+
+    let body: {
+      userId?: string;
+      accountType?: string;
+      documentVersion?: string;
+      actionContext?: string;
+      acceptedAt?: number;
+    } = {};
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return jsonResponse({ ok: false, error: 'Invalid JSON.', code: 'INVALID_JSON' }, 400);
+    }
+
+    const userId = String(body.userId || '').trim();
+    const documentVersion = String(body.documentVersion || '2026-11-08-v2.0').trim();
+    const accountType = body.accountType === 'guest' || userId.startsWith('guest_') ? 'guest' : 'registered';
+    const actionContext = String(body.actionContext || 'signup').trim().slice(0, 64);
+
+    if (!userId || !documentVersion) {
+      return jsonResponse(
+        { ok: false, error: 'userId and documentVersion are required.', code: 'MISSING_FIELDS' },
+        400
+      );
+    }
+
+    const clientIp = extractClientIp(request);
+    const consentIpHash = await hashIdentifier(secret, 'consent_ip', clientIp);
+    const userAgent = String(request.headers.get('User-Agent') || '').slice(0, 256);
+    const recordId = `lcr_${nowMs}_${generateRandomHex(8)}`;
+
+    await db
+      .prepare(
+        `INSERT INTO legal_consent_records (id, user_id, account_type, document_version, action_context, ip_hash, user_agent, accepted_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+      )
+      .bind(
+        recordId,
+        userId,
+        accountType,
+        documentVersion,
+        actionContext,
+        consentIpHash,
+        userAgent,
+        nowMs
+      )
+      .run();
+
+    return jsonResponse({
+      ok: true,
+      id: recordId,
+      userId,
+      accountType,
+      documentVersion,
+      acceptedAt: nowMs,
     });
   }
 

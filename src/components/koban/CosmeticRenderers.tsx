@@ -491,6 +491,7 @@ function useCosmeticAnimation(itemId: string, _isNameplate = false, forceStatic 
  * - Isolated within its own CosmeticErrorBoundary.
  */
 export interface AvatarPictureProps {
+  uid?: string | null;
   itemId?: string | null;
   photoURL?: string | null;
   avatarId?: string | null;
@@ -518,6 +519,7 @@ const VIDEO_LOOP_AVATAR_IDS = new Set([
 ]);
 
 const AvatarPictureInner: React.FC<AvatarPictureProps> = ({
+  uid,
   itemId,
   photoURL: _photoURL,
   avatarId: directAvatarId,
@@ -538,6 +540,7 @@ const AvatarPictureInner: React.FC<AvatarPictureProps> = ({
   const effectiveForceStatic = Boolean(forceStatic || isDenseList);
   const effectivePriority = priority ?? (numericSize >= 56 ? 10 : 1);
   const effectiveVariant = variant || avatarVariant;
+  const userSeed = (typeof uid === 'string' && uid.trim()) || (typeof seed === 'string' && seed.trim()) || null;
   const pfpItem = avatarId ? getCosmeticById(avatarId) : undefined;
   const PfpComp =
     avatarId === 'pfp_pixel_pop_arcade'
@@ -551,10 +554,11 @@ const AvatarPictureInner: React.FC<AvatarPictureProps> = ({
   const { containerRef, canAnimate } = useCosmeticAnimation(avatarId || '', false, effectiveForceStatic);
 
   if (isPfp && avatarId && PfpComp) {
+    const shapeClass = className.includes('rounded-') ? '' : 'rounded-full';
     return (
       <div
         ref={containerRef}
-        className={`inline-flex items-center justify-center rounded-xl overflow-hidden shrink-0 select-none shadow-sm ${className}`}
+        className={`inline-flex items-center justify-center ${shapeClass} overflow-hidden shrink-0 select-none shadow-sm ${className}`}
         style={{ width: numericSize, height: numericSize }}
         title={pfpItem?.name}
         aria-label={`${pfpItem?.name} Profile Picture`}
@@ -564,12 +568,13 @@ const AvatarPictureInner: React.FC<AvatarPictureProps> = ({
     );
   }
 
-  // Fallback to default dot-matrix avatar
+  // Fallback to default dot-matrix avatar (strictly uid-seeded when uid/seed is provided)
   return (
     <MatrixAvatar
-      avatarKey={avatarKey}
-      variant={effectiveVariant}
-      seed={seed}
+      uid={userSeed}
+      seed={userSeed}
+      avatarKey={userSeed ? undefined : avatarKey}
+      variant={userSeed ? undefined : effectiveVariant}
       size={numericSize}
       className={className}
     />
@@ -578,11 +583,16 @@ const AvatarPictureInner: React.FC<AvatarPictureProps> = ({
 
 export const AvatarPicture: React.FC<AvatarPictureProps> = (props) => {
   const numericSize = typeof props.size === 'number' ? props.size : parseInt(String(props.size), 10) || 40;
+  const userSeed =
+    (typeof props.uid === 'string' && props.uid.trim()) ||
+    (typeof props.seed === 'string' && props.seed.trim()) ||
+    null;
   const fallback = (
     <MatrixAvatar
-      avatarKey={props.avatarKey}
-      variant={props.variant || props.avatarVariant}
-      seed={props.seed}
+      uid={userSeed}
+      seed={userSeed}
+      avatarKey={userSeed ? undefined : props.avatarKey}
+      variant={userSeed ? undefined : props.variant || props.avatarVariant}
       size={numericSize}
       className={props.className}
     />

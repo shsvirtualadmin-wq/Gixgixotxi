@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { isFollowing } from '@/services/followService';
+import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 
 export const CHAT_REQUEST_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -125,14 +126,14 @@ function parseChatRequestDoc(id: string, data: Record<string, any>): ChatRequest
     fromUid: String(data.fromUid || ''),
     toUid: String(data.toUid || ''),
     fromName: String(data.fromName || 'Student'),
-    fromAvatar: data.fromAvatar || null,
-    fromFrame: data.fromFrame || null,
-    fromPhotoURL: data.fromPhotoURL || null,
+    fromAvatar: resolveCosmeticItemId(data.fromAvatar, 'avatar'),
+    fromFrame: resolveCosmeticItemId(data.fromFrame, 'frame'),
+    fromPhotoURL: null,
     fromRole: data.fromRole || null,
     toName: String(data.toName || 'Student'),
-    toAvatar: data.toAvatar || null,
-    toFrame: data.toFrame || null,
-    toPhotoURL: data.toPhotoURL || null,
+    toAvatar: resolveCosmeticItemId(data.toAvatar, 'avatar'),
+    toFrame: resolveCosmeticItemId(data.toFrame, 'frame'),
+    toPhotoURL: null,
     message: typeof data.message === 'string' ? data.message : '',
     conversationId: typeof data.conversationId === 'string' ? data.conversationId : '',
     status: (data.status as ChatRequestStatus) || 'pending',
@@ -302,14 +303,14 @@ export async function sendChatRequest(
     fromUid,
     toUid,
     fromName,
-    fromAvatar: fromMeta?.avatar || null,
-    fromFrame: fromMeta?.frame || null,
-    fromPhotoURL: fromMeta?.photoURL || auth.currentUser?.photoURL || null,
+    fromAvatar: resolveCosmeticItemId(fromMeta?.avatar, 'avatar'),
+    fromFrame: resolveCosmeticItemId(fromMeta?.frame, 'frame'),
+    fromPhotoURL: null,
     fromRole: fromMeta?.role || 'student',
     toName,
-    toAvatar: toMeta?.avatar || null,
-    toFrame: toMeta?.frame || null,
-    toPhotoURL: toMeta?.photoURL || null,
+    toAvatar: resolveCosmeticItemId(toMeta?.avatar, 'avatar'),
+    toFrame: resolveCosmeticItemId(toMeta?.frame, 'frame'),
+    toPhotoURL: null,
     message: message || '',
     conversationId: getConversationId(fromUid, toUid),
     status: 'pending' as ChatRequestStatus,
@@ -397,15 +398,15 @@ export async function respondToChatRequest(
       existing.fromUid,
       {
         displayName: responderMeta?.displayName || existing.toName || auth.currentUser?.displayName || 'Student',
-        avatar: responderMeta?.avatar ?? existing.toAvatar ?? null,
-        frame: responderMeta?.frame ?? existing.toFrame ?? null,
-        photoURL: responderMeta?.photoURL ?? existing.toPhotoURL ?? auth.currentUser?.photoURL ?? null,
+        avatar: resolveCosmeticItemId(responderMeta?.avatar ?? existing.toAvatar, 'avatar'),
+        frame: resolveCosmeticItemId(responderMeta?.frame ?? existing.toFrame, 'frame'),
+        photoURL: null,
       },
       {
         displayName: existing.fromName,
-        avatar: existing.fromAvatar || null,
-        frame: existing.fromFrame || null,
-        photoURL: existing.fromPhotoURL || null,
+        avatar: resolveCosmeticItemId(existing.fromAvatar, 'avatar'),
+        frame: resolveCosmeticItemId(existing.fromFrame, 'frame'),
+        photoURL: null,
       }
     ).catch(() => {});
 
@@ -613,15 +614,15 @@ export async function getOrCreateConversation(
     participantDetails: {
       [currentUserId]: {
         displayName: cMeta?.displayName || auth.currentUser?.displayName || 'Student',
-        avatar: cMeta?.avatar || null,
-        frame: cMeta?.frame || null,
-        photoURL: cMeta?.photoURL || auth.currentUser?.photoURL || null,
+        avatar: resolveCosmeticItemId(cMeta?.avatar, 'avatar'),
+        frame: resolveCosmeticItemId(cMeta?.frame, 'frame'),
+        photoURL: null,
       },
       [otherUserId]: {
         displayName: oMeta?.displayName || 'Student',
-        avatar: oMeta?.avatar || null,
-        frame: oMeta?.frame || null,
-        photoURL: oMeta?.photoURL || null,
+        avatar: resolveCosmeticItemId(oMeta?.avatar, 'avatar'),
+        frame: resolveCosmeticItemId(oMeta?.frame, 'frame'),
+        photoURL: null,
       },
     },
     lastMessage: '',

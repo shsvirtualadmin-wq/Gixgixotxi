@@ -1,275 +1,644 @@
+import React from 'react';
+import { Link } from 'react-router-dom';
 import { PageMeta } from '@/components/ui/PageMeta';
-import { Badge } from '@/components/ui/Badge';
-import { Card } from '@/components/ui/Card';
+import {
+  LEGAL_LAST_UPDATED_LABEL,
+  LEGAL_VERSION_DISPLAY,
+} from '@/constants/legalConsent';
 
-const TOC = [
-  { id: 'identity', title: '1. Who We Are & Operator' },
-  { id: 'collection', title: '2. Information We Collect' },
-  { id: 'commons-privacy', title: '3. Boardly Commons & Anonymous Posting' },
-  { id: 'payments', title: '4. Payments & Verification' },
-  { id: 'purpose', title: '5. How We Use Your Information' },
-  { id: 'services', title: '6. Service Providers We Use' },
-  { id: 'no-sale', title: '7. We Never Sell Your Data' },
-  { id: 'cookies', title: '8. Cookies & Local Storage' },
-  { id: 'security-retention', title: '9. Security & Data Retention' },
-  { id: 'rights', title: '10. Your Rights & Data Deletion' },
-  { id: 'contact', title: '11. Contact Information' },
+const SECTIONS = [
+  { id: 'summary', title: 'Quick Summary' },
+  { id: 'who-we-are', title: '1. Who We Are & Legal Context' },
+  { id: 'data-table', title: '2. Personal Data We Collect & Why' },
+  { id: 'guest-accounts', title: '3. Temporary Guest Accounts & Retention' },
+  { id: 'cookies-storage', title: '4. Cookies & Local Browser Storage' },
+  { id: 'third-parties', title: '5. Third-Party Services & International Transfers' },
+  { id: 'visibility-moderation', title: '6. Public Visibility, Anonymous Posts & Admin Access' },
+  { id: 'security', title: '7. How We Protect Your Data' },
+  { id: 'retention', title: '8. Data Retention & Cleanup Schedules' },
+  { id: 'emails', title: '9. Transactional vs. Optional Emails' },
+  { id: 'your-rights', title: '10. Your Rights & Account Deletion' },
+  { id: 'minors', title: '11. Children & Minors' },
+  { id: 'changes-contact', title: '12. Policy Updates & Contact Details' },
 ];
 
-export function PrivacyPage() {
+export const PrivacyPage: React.FC = () => {
+  const scrollTo = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   return (
-    <>
+    <div className="min-h-screen pt-24 pb-24 px-4 sm:px-6 max-w-6xl mx-auto">
       <PageMeta
-        title="Privacy Policy — Boardly"
-        description="Learn how SHS Virtual Academy and Boardly protect student data. Details on Firebase authentication, Commons posting, anonymous posts, and data privacy."
+        title="Privacy Policy | Boardly"
+        description="Learn what personal data Boardly collects, where it is stored (Firebase & Cloudflare), how guest accounts and 2FA work, and how to exercise your privacy rights."
+        canonicalPath="/privacy"
       />
-
-        <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12">
-        {/* Header */}
-        <div className="section-header max-w-3xl mx-auto text-center space-y-4">
-          <div className="flex justify-center">
-            <span className="section-chip-red">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] animate-pulse" />
-              Legal &amp; Privacy
-            </span>
-          </div>
-          <h1
-            className="text-3xl sm:text-5xl font-black text-[var(--text)] tracking-tight font-dot"
-            style={{ fontFamily: 'var(--font-dot)' }}
-          >
-            Privacy Policy
-          </h1>
-          <p className="text-sm sm:text-base text-[var(--muted)] leading-relaxed">
-            Last updated: <strong className="text-[var(--text)]">20 October 2026</strong> &bull; SHS Virtual Academy
-          </p>
+      <div className="text-center max-w-3xl mx-auto mb-12">
+        <div className="inline-flex items-center gap-2 mb-4 flex-wrap justify-center">
+          <span className="section-chip-red inline-block">PRIVACY · {LEGAL_VERSION_DISPLAY}</span>
+          <span className="px-3 py-1 rounded-full text-xs font-mono bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)]">
+            Last updated: {LEGAL_LAST_UPDATED_LABEL}
+          </span>
         </div>
+        <h1 className="font-dot text-4xl sm:text-5xl text-[var(--text)] mb-4">
+          Privacy Policy
+        </h1>
+        <p className="text-[var(--muted)] text-base sm:text-lg leading-relaxed">
+          A transparent, factual breakdown of what data Boardly collects, where it is stored, who
+          processes it, and how you stay in control.
+        </p>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start max-w-5xl mx-auto">
-          {/* Table of Contents Sticky Sidebar */}
-          <div className="lg:col-span-4 sticky top-28 hidden lg:block">
-            <div className="glass-card p-5 sm:p-6 rounded-[24px] space-y-4 ">
-              <h3
-                className="text-xs font-black uppercase tracking-wider text-[var(--text-faint)] font-dot"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                Table of Contents
-              </h3>
-              <nav className="flex flex-col space-y-1 text-xs text-[var(--muted)]">
-                {TOC.map((item) => (
-                  <a
-                    key={item.id}
-                    href={`#${item.id}`}
-                    className="hover:text-[var(--text)] hover:bg-white/[0.04] transition-all py-1.5 px-2 rounded-xl block"
-                  >
-                    {item.title}
-                  </a>
-                ))}
-              </nav>
-
-              <div className="pt-4 border-t border-white/[0.08] text-xs text-[var(--muted)] space-y-1">
-                <p>Have privacy questions?</p>
-                <a href="mailto:support@boardly.cfd" className="text-[#D71921] font-semibold hover:underline block">
-                  support@boardly.cfd
-                </a>
-              </div>
-            </div>
-          </div>
-
-          {/* Main Legal Content Column */}
-          <div className="lg:col-span-8 space-y-6">
-            {/* Section 1 */}
-            <div id="identity" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                1. Who We Are &amp; Operator Information
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                This Privacy Policy applies to <strong className="text-[var(--text)]">Boardly</strong> (&ldquo;Boardly&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;, or &ldquo;our&rdquo;), a general MCQ practice and learning platform built to make quality education accessible to every student.
-              </p>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                Boardly is owned and operated by <strong className="text-[var(--text)]">SHS Virtual Academy</strong> (<a href="https://shsvirtualacademy.pro" target="_blank" rel="noopener noreferrer" className="text-[#D71921] hover:underline">https://shsvirtualacademy.pro</a>), founded by <strong className="text-[var(--text)]">Muhammad Hashir</strong>.
-              </p>
-              <div className="glass-row p-4 sm:p-5 rounded-2xl  text-xs space-y-1.5">
-                <p><strong className="text-[var(--text)]">Organization:</strong> SHS Virtual Academy</p>
-                <p><strong className="text-[var(--text)]">Founder:</strong> Muhammad Hashir</p>
-                <p><strong className="text-[var(--text)]">Email:</strong> <a href="mailto:support@boardly.cfd" className="text-[#D71921] hover:underline">support@boardly.cfd</a></p>
-                <p><strong className="text-[var(--text)]">Official Helpline:</strong> <a href="tel:+923058969050" className="hover:underline">0305 8969050</a></p>
-                <p><strong className="text-[var(--text)]">Website:</strong> <a href="https://boardly.cfd" className="hover:underline">https://boardly.cfd</a></p>
-              </div>
-            </div>
-
-            {/* Section 2 */}
-            <div id="collection" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                2. Information We Collect
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                We collect only the minimum information necessary to operate your learning account and provide practice features:
-              </p>
-              <ul className="space-y-2 text-xs sm:text-sm text-[var(--muted)] list-disc pl-5 leading-relaxed">
-                <li><strong className="text-[var(--text)]">Account Credentials:</strong> Email address and password created via Firebase Authentication, or your Google account profile information (display name, email address, profile picture) if you choose to sign in with Google.</li>
-                <li><strong className="text-[var(--text)]">Student Profile Details:</strong> Your chosen display name, avatar style, and optional grade or subject preferences.</li>
-                <li><strong className="text-[var(--text)]">Learning &amp; Practice Activity:</strong> MCQ practice history, test scores, chosen answers, chapter-level accuracy metrics, and daily practice streaks stored in Google Cloud Firestore.</li>
-                <li><strong className="text-[var(--text)]">Virtual Economy (Kobans):</strong> Your virtual Koban coin balance and equipped cosmetic items (frames, nameplates, and effects).</li>
-              </ul>
-            </div>
-
-            {/* Section 3 */}
-            <div id="commons-privacy" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                3. Boardly Commons &amp; Anonymous Posting
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                Boardly Commons is our student community feed where learners share study notes, ask questions, and discuss solutions. All content in Commons is user-generated.
-              </p>
-              <div className="glass-row p-4 sm:p-5 rounded-2xl  text-xs space-y-2 leading-relaxed">
-                <p className="font-bold text-[var(--text)]">How Anonymous Posting Works:</p>
-                <p className="text-[var(--muted)]">
-                  When you select &ldquo;Post Anonymously&rdquo;, your real name and avatar are hidden from other students in the public feed, allowing you to ask questions freely without social anxiety.
-                </p>
-                <p className="text-[var(--muted)]">
-                  However, Boardly&apos;s system retains an internal, private record linking the post to your account identifier (<code className="font-mono text-[var(--text)]">authorUid</code>). This internal record is accessible only to authorized administrators strictly for student safety, spam prevention, and community rule enforcement.
-                </p>
-                <p className="text-[var(--muted)]">
-                  Posting anonymously does not shield abusive conduct. Any user who bullies, harasses, posts harmful scripts, or violates community rules can be identified, moderated, and suspended from the platform.
-                </p>
-              </div>
-            </div>
-
-            {/* Section 4 */}
-            <div id="payments" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                4. Payments &amp; Verification Data
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                Boardly offers simple and transparent paid options: Unlimited access at 199 PKR, and Koban cosmetic packs at 50 PKR for 500 kobans.
-              </p>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                Payments are made through local Pakistani payment services (JazzCash, Opay, SadaPay, or direct bank transfer). When submitting payment proof, you provide your Transaction ID (TRX) and an optional receipt image for manual verification. We do not process or store credit card numbers, debit card details, or automated bank mandates.
-              </p>
-            </div>
-
-            {/* Section 5 */}
-            <div id="purpose" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                5. How We Use Your Information
-              </h2>
-              <ul className="space-y-1.5 text-xs sm:text-sm text-[var(--muted)] list-disc pl-5 leading-relaxed">
-                <li>To maintain your student account and provide uninterrupted access to practice tests.</li>
-                <li>To calculate your chapter accuracy and help you identify weak topics.</li>
-                <li>To display your public display name, avatar, and rank on leaderboards and in Commons.</li>
-                <li>To calculate and preserve your consecutive daily practice streaks.</li>
-                <li>To verify and activate paid Unlimited access or credit Koban balances upon receipt verification.</li>
-                <li>To ensure community safety and enforce our anti-harassment standards.</li>
-              </ul>
-            </div>
-
-            {/* Section 6 */}
-            <div id="services" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                6. Service Providers We Use
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                We partner with established cloud infrastructure providers to run Boardly:
-              </p>
-              <ul className="space-y-2 text-xs sm:text-sm text-[var(--muted)] list-disc pl-5 leading-relaxed">
-                <li><strong className="text-[var(--text)]">Google Firebase:</strong> Manages authentication securely, hosts encrypted database records in Firestore, and stores user-uploaded study attachments in Firebase Storage.</li>
-                <li><strong className="text-[var(--text)]">Google Gemini AI:</strong> Powers the Boardy 24/7 AI tutor to generate step-by-step math and science explanations.</li>
-                <li><strong className="text-[var(--text)]">Resend:</strong> Delivers transactional messages sent via the contact support form.</li>
-              </ul>
-            </div>
-
-            {/* Section 7 */}
-            <div id="no-sale" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                7. We Never Sell Your Data
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                Boardly does not sell, rent, monetize, or trade student personal information, test scores, or study notes to third-party advertisers, data brokers, or coaching institutes. Your learning journey belongs strictly to you.
-              </p>
-            </div>
-
-            {/* Section 8 */}
-            <div id="cookies" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                8. Cookies &amp; Local Storage
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                We use browser <code className="font-mono text-xs text-[var(--text)]">localStorage</code> strictly for functional purposes: keeping you signed in across browser refreshes and saving your preferred theme mode (dark or light). We do not use third-party tracking pixels or cross-site advertising cookies.
-              </p>
-            </div>
-
-            {/* Section 9 */}
-            <div id="security-retention" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                9. Security &amp; Data Retention
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                All data transmission between your browser and our servers is encrypted using standard HTTPS/TLS protocols. Access to administrative moderation tools is strictly restricted to verified staff members. We retain your practice data and study records as long as your account remains active.
-              </p>
-            </div>
-
-            {/* Section 10 */}
-            <div id="rights" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                10. Your Rights &amp; Data Deletion
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                You have the right to request access to your stored personal information, update your profile details, or request full deletion of your student account and associated data. To submit a deletion or correction request, email our team at <a href="mailto:support@boardly.cfd" className="text-[#D71921] font-semibold hover:underline">support@boardly.cfd</a>.
-              </p>
-            </div>
-
-            {/* Section 11 */}
-            <div id="contact" className="glass-card p-6 sm:p-8 rounded-[24px] sm:rounded-[28px] space-y-3.5 scroll-mt-28 ">
-              <h2
-                className="text-lg sm:text-xl font-black text-[var(--text)] font-dot tracking-tight"
-                style={{ fontFamily: 'var(--font-dot)' }}
-              >
-                11. Contact Information
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                If you have any questions regarding this Privacy Policy or our data handling practices, please contact us:
-              </p>
-              <div className="glass-row p-4 sm:p-5 rounded-2xl  text-xs space-y-1">
-                <p><strong className="text-[var(--text)]">Email:</strong> support@boardly.cfd</p>
-                <p><strong className="text-[var(--text)]">Phone / WhatsApp:</strong> 0305 8969050</p>
-                <p><strong className="text-[var(--text)]">Organization:</strong> SHS Virtual Academy (<a href="https://shsvirtualacademy.pro" target="_blank" rel="noopener noreferrer" className="text-[#D71921] hover:underline">shsvirtualacademy.pro</a>)</p>
-              </div>
-            </div>
-          </div>
+      {/* Mobile Table of Contents */}
+      <div className="lg:hidden glass-card p-5 mb-8">
+        <h2 className="font-dot text-xs text-[var(--muted)] uppercase tracking-wider mb-3">
+          Jump to a Section
+        </h2>
+        <div className="flex flex-wrap gap-2">
+          {SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => scrollTo(s.id)}
+              className="px-3 py-1.5 rounded-full text-xs bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--red)] transition-colors cursor-pointer"
+            >
+              {s.title}
+            </button>
+          ))}
         </div>
       </div>
-    </>
-  );
-}
 
-export default PrivacyPage;
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 sm:gap-12 items-start">
+        {/* Sticky Sidebar TOC (Desktop) */}
+        <aside className="hidden lg:block glass-card p-6 sticky top-28">
+          <h3 className="font-dot text-sm text-[var(--muted)] uppercase tracking-wider mb-4">
+            Contents
+          </h3>
+          <ul className="space-y-2.5 text-sm">
+            {SECTIONS.map((s) => (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  onClick={() => scrollTo(s.id)}
+                  className="text-[var(--muted)] hover:text-[var(--text)] transition-colors text-left w-full truncate cursor-pointer"
+                >
+                  {s.title}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-6 pt-4 border-t border-[var(--border)] text-xs text-[var(--muted)] space-y-2">
+            <p>Looking for our platform rules?</p>
+            <Link
+              to="/terms"
+              className="text-[var(--red)] font-semibold hover:underline inline-block"
+            >
+              Read our Terms of Service →
+            </Link>
+          </div>
+        </aside>
+
+        {/* Main Content */}
+        <div className="lg:col-span-3 glass-card p-6 sm:p-8 md:p-12 space-y-12 text-[var(--muted)] leading-relaxed text-sm sm:text-base">
+          {/* Top Summary Box (5-7 bullets) */}
+          <section
+            id="summary"
+            className="scroll-mt-28 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] p-5 sm:p-6 space-y-3"
+          >
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h2 className="font-dot text-lg sm:text-xl text-[var(--text)]">
+                Summary (Key Points in Plain English)
+              </h2>
+              <span className="text-xs font-mono text-[var(--red)] font-semibold">
+                {LEGAL_VERSION_DISPLAY} · {LEGAL_LAST_UPDATED_LABEL}
+              </span>
+            </div>
+            <ul className="list-disc pl-5 space-y-2 text-xs sm:text-sm text-[var(--text)]/90">
+              <li>
+                <strong>We do not sell your personal data:</strong> Boardly never sells or rents
+                student emails, phone numbers, test scores, or personal data to advertisers or third
+                parties.
+              </li>
+              <li>
+                <strong>Your email stays private:</strong> Your email address is used for sign-in,
+                security codes, and account notifications. It is never displayed on your public
+                profile, leaderboards, or Boardly Commons.
+              </li>
+              <li>
+                <strong>Passwords &amp; security secrets are protected:</strong> Passwords are
+                managed by Google Firebase Authentication (we never see or store plaintext
+                passwords). Verification codes, backup codes, and IP/device rate-limit identifiers
+                are stored as one-way HMAC-SHA256 hashes, and Authenticator App (TOTP) secrets are
+                encrypted with AES-GCM (256-bit).
+              </li>
+              <li>
+                <strong>Temporary Guest accounts auto-delete:</strong> Guest accounts store only
+                your chosen guest username, test progress, and hashed session/rate-limit tokens.
+                They are automatically deleted 7 days after confirmed logout or after 30 days of
+                inactivity.
+              </li>
+              <li>
+                <strong>Anonymous Commons posts retain an internal ID:</strong> Posting anonymously
+                hides your identity from other students, but our database retains your internal user
+                ID (`author_uid`) for abuse prevention and moderation.
+              </li>
+              <li>
+                <strong>Trusted infrastructure:</strong> We use Google Firebase (Auth, Firestore,
+                Storage), Cloudflare (Workers, Pages, D1 database, R2 file storage), Resend
+                (transactional emails), and Google Gemini (when you use AI explanations or Study
+                Buddy).
+              </li>
+            </ul>
+          </section>
+
+          <section id="who-we-are" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              1. Who We Are &amp; Legal Context
+            </h2>
+            <p>
+              Boardly is an educational exam preparation platform operated from Pakistan by{' '}
+              <strong>[BUSINESS NAME]</strong>, located at <strong>[ADDRESS]</strong>. This Privacy
+              Policy explains how we collect, use, store, and protect your information in accordance
+              with applicable Pakistani law (including electronic data and consumer protection
+              principles in Pakistan) and general data protection best practices.
+            </p>
+          </section>
+
+          <section id="data-table" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              2. Personal Data We Collect, Purpose &amp; Where It Is Stored
+            </h2>
+            <p>
+              We only collect data that is necessary to run Boardly&apos;s features. Below is the
+              exact list of data categories collected by the app today:
+            </p>
+
+            <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
+              <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                <thead>
+                  <tr className="bg-[var(--surface-2)] text-[var(--text)] border-b border-[var(--border)]">
+                    <th className="p-3 font-semibold">Category &amp; Data Collected</th>
+                    <th className="p-3 font-semibold">Why We Collect It</th>
+                    <th className="p-3 font-semibold">Where It Is Stored</th>
+                    <th className="p-3 font-semibold">Who Receives It / Retention</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border)]">
+                  <tr>
+                    <td className="p-3 align-top">
+                      <strong className="text-[var(--text)]">Account &amp; Identity</strong>
+                      <br />
+                      Email address, display name, `@username`, profile photo / avatar, role, target
+                      university, password (handled by Firebase Auth; never readable by Boardly),
+                      Google OAuth account ID/profile (if using Google Sign-In).
+                    </td>
+                    <td className="p-3 align-top">
+                      Create and authenticate your account, allow username sign-in, and display your
+                      public student profile.
+                    </td>
+                    <td className="p-3 align-top">
+                      Firebase Authentication, Cloud Firestore (`users`, `publicProfiles`,
+                      `usernames`), Cloudflare D1 (`user_usernames`, `user_roles`), Firebase
+                      Storage / local avatar store.
+                    </td>
+                    <td className="p-3 align-top">
+                      Google Firebase &amp; Cloudflare. Kept while your account is active until
+                      deletion.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 align-top">
+                      <strong className="text-[var(--text)]">Security, Verification &amp; 2FA</strong>
+                      <br />
+                      Email OTP code hashes, 2FA settings, AES-GCM encrypted TOTP secret, hashed
+                      backup codes, trusted device token hashes, user agent, and HMAC-SHA256 hashed
+                      IP/email/device identifiers.
+                    </td>
+                    <td className="p-3 align-top">
+                      Verify email ownership, enforce optional Two-Step Verification, remember
+                      trusted devices for 30 days, prevent brute-force attacks, and log security
+                      events.
+                    </td>
+                    <td className="p-3 align-top">
+                      Cloudflare D1 (`email_verification_codes`, `email_verification_sessions`,
+                      `email_verification_send_logs`, `user_2fa`, `user_2fa_backup_codes`,
+                      `trusted_devices`, `pending_2fa_challenges`, `login_rate_limits`,
+                      `security_audit_logs`).
+                    </td>
+                    <td className="p-3 align-top">
+                      Cloudflare &amp; Resend (for sending email codes). OTP codes expire in 10
+                      minutes; trusted devices expire in 30 days.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 align-top">
+                      <strong className="text-[var(--text)]">Guest Account Data</strong>
+                      <br />
+                      Guest UID (`guest_*`), username, display name, practice stats/attempts JSON,
+                      session token hash, user agent, IP hash, and device ID hash.
+                    </td>
+                    <td className="p-3 align-top">
+                      Provide temporary passwordless access to practice tests and prevent automated
+                      guest account spam.
+                    </td>
+                    <td className="p-3 align-top">
+                      Cloudflare D1 (`guest_accounts`, `guest_sessions`,
+                      `guest_creation_rate_limits`).
+                    </td>
+                    <td className="p-3 align-top">
+                      Cloudflare. Purged 7 days after confirmed logout or after 30 days of
+                      inactivity (unless upgraded to a registered account).
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 align-top">
+                      <strong className="text-[var(--text)]">Study Activity &amp; Certificates</strong>
+                      <br />
+                      Practice test attempts, selected answers, scores, solve times, daily streaks,
+                      Zenryu companion state, and Grand Line 1st Position certificates (student
+                      name, score, rank, `cert_id`).
+                    </td>
+                    <td className="p-3 align-top">
+                      Calculate scores, track streaks, rank Grand Line leaderboards, and issue
+                      verifiable achievement certificates.
+                    </td>
+                    <td className="p-3 align-top">
+                      Cloud Firestore (`attempts`, `users`), Cloudflare D1 (`certificates`,
+                      `test_attempts`), Cloudflare R2 (`boardly-commons-r2` for certificate PDFs/PNGs).
+                    </td>
+                    <td className="p-3 align-top">
+                      Google Firebase &amp; Cloudflare. Leaderboard scores and certificate
+                      verification pages (`/verify/:certId`) are publicly viewable.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 align-top">
+                      <strong className="text-[var(--text)]">Commons, Crews &amp; Chat</strong>
+                      <br />
+                      Commons posts, comments, likes, saves, uploaded PDFs/images, reports, Study
+                      Crew memberships/applications, follows, direct chat requests, and chat
+                      messages.
+                    </td>
+                    <td className="p-3 align-top">
+                      Enable peer-to-peer note sharing, campus Study Crews, Nakama Captain programs,
+                      and student messaging.
+                    </td>
+                    <td className="p-3 align-top">
+                      Cloudflare D1 (`posts`, `comments`, `post_likes`, `post_saves`,
+                      `post_reports`), Cloudflare R2 (uploaded files), Cloud Firestore (`crews`,
+                      `crew_requests`, `applications`, `follows`, `chatRequests`, `conversations`
+                      &amp; `messages`, `notifications`).
+                    </td>
+                    <td className="p-3 align-top">
+                      Cloudflare &amp; Google Firebase. Kept until deleted by you or removed by
+                      moderation.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 align-top">
+                      <strong className="text-[var(--text)]">Rewards, Kobans &amp; Pro Payments</strong>
+                      <br />
+                      Koban wallet balance and ledger, daily/milestone reward claims, referral codes
+                      and IP hashes, Pro plan status/expiry, and manual payment verification records
+                      (method: JazzCash/Opay, PKR amount, Transaction ID / TID, phone number if
+                      provided).
+                    </td>
+                    <td className="p-3 align-top">
+                      Maintain your Koban balance, prevent referral farming, and verify manual PKR
+                      payments for Boardly Pro.
+                    </td>
+                    <td className="p-3 align-top">
+                      Cloud Firestore (`wallets`, `wallets/{'{uid}'}/ledger`, `payments`,
+                      `pro_requests`), Cloudflare D1 (`reward_daily_claims`,
+                      `reward_milestone_claims`, `referral_codes`, `referrals`).
+                    </td>
+                    <td className="p-3 align-top">
+                      Google Firebase, Cloudflare, and Resend (for payment/Koban email receipts).
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 align-top">
+                      <strong className="text-[var(--text)]">AI Derivations &amp; Study Buddy</strong>
+                      <br />
+                      MCQ prompt context (question stem, options, chosen answer) or study questions
+                      submitted to Boardy AI / Study Buddy, plus usage logs (`study_buddy_logs`).
+                    </td>
+                    <td className="p-3 align-top">
+                      Generate step-by-step math/science derivations and track daily AI usage caps.
+                    </td>
+                    <td className="p-3 align-top">
+                      Processed via server-side API calls to Google Gemini; usage and prompt logs
+                      stored in server/Firestore records.
+                    </td>
+                    <td className="p-3 align-top">
+                      Google Gemini API (`@google/genai` / `generativelanguage.googleapis.com`).
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="guest-accounts" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              3. Temporary Guest Accounts &amp; Automatic Deletion
+            </h2>
+            <p>
+              When you choose &ldquo;Continue as guest&rdquo;, we create a temporary profile in
+              Cloudflare D1 (`guest_accounts`) with your chosen username and a random guest ID. To
+              protect the platform from automated bot abuse without collecting an email address, we
+              store a one-way HMAC-SHA256 hash of your IP address and device identifier
+              (`guest_creation_rate_limits`, limited to 5 guest creations per hour / 15 per day per
+              IP, and 3 per hour / 8 per day per device).
+            </p>
+            <p>
+              <strong>Automatic Cleanup:</strong> If you confirm logout from a guest account, it
+              enters a <strong>7-day grace period</strong> (`status = &apos;abandoned&apos;`) and is
+              then permanently deleted along with its sessions and username reservation. Any guest
+              account that is inactive for <strong>30 days</strong> is also permanently deleted by
+              our daily scheduled cleanup job (`0 3 * * *` UTC).
+            </p>
+          </section>
+
+          <section id="cookies-storage" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              4. Cookies &amp; Local Browser Storage
+            </h2>
+            <p>
+              Boardly uses strictly necessary cookies and local browser storage (`localStorage` and
+              `sessionStorage`) to keep you signed in and remember your preferences. We do{' '}
+              <strong>not</strong> use third-party advertising or cross-site tracking cookies.
+            </p>
+            <ul className="list-disc pl-5 space-y-2.5">
+              <li>
+                <strong>Firebase Auth Session Storage:</strong> Stores your authenticated Firebase
+                session tokens in browser storage (`indexedDB` / `localStorage`) so you stay logged
+                in across page reloads.
+              </li>
+              <li>
+                <strong>`boardly_guest_session` (Cookie) &amp; `boardly_guest_session_token`
+                (`localStorage`):</strong> `HttpOnly; SameSite=Lax` cookie (max age 30 days) and
+                local backup token used to authenticate temporary guest sessions.
+              </li>
+              <li>
+                <strong>`boardly_trusted_device` (Cookie):</strong> `HttpOnly; Secure; SameSite=Lax`
+                cookie (max age 30 days) set only when you explicitly check &ldquo;Remember this
+                device for 30 days&rdquo; during Two-Step Verification.
+              </li>
+              <li>
+                <strong>`boardly_device_id` (`localStorage`):</strong> Random identifier used in
+                hashed form to enforce guest creation rate limits.
+              </li>
+              <li>
+                <strong>`boardly-theme` (`localStorage`):</strong> Remembers your dark or light mode
+                display preference.
+              </li>
+              <li>
+                <strong>`boardly_legal_consent_v2_*` (`localStorage`):</strong> Remembers that you
+                have accepted or dismissed the latest Terms and Privacy Policy notice on your
+                device, alongside our server-side consent table (`legal_consent_records`).
+              </li>
+            </ul>
+          </section>
+
+          <section id="third-parties" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              5. Third-Party Service Providers &amp; International Transfers
+            </h2>
+            <p>
+              We share data only with the infrastructure and service providers needed to operate
+              Boardly:
+            </p>
+            <ul className="list-disc pl-5 space-y-2.5">
+              <li>
+                <strong>Google Firebase (Google LLC):</strong> Provides Authentication (Email/Password
+                and Google OAuth), Cloud Firestore database, and Cloud Storage.
+              </li>
+              <li>
+                <strong>Cloudflare, Inc.:</strong> Provides edge hosting (Cloudflare Pages &amp;
+                Workers), D1 serverless SQL database (`boardly-posts-db`), and R2 object storage
+                (`boardly-commons-r2`) for Commons attachments and certificates.
+              </li>
+              <li>
+                <strong>Resend (`api.resend.com`):</strong> Sends verification codes, 2FA security
+                alerts, Koban/Pro payment receipts, test reports, and support inquiry emails.
+              </li>
+              <li>
+                <strong>Google Gemini API (Google LLC):</strong> Processes MCQ derivations,
+                explanations, and Study Buddy prompts when you invoke an AI feature.
+              </li>
+              <li>
+                <strong>Manual Payment Channels (JazzCash &amp; Opay):</strong> When you pay for
+                Boardly Pro in PKR, you transfer funds through your own JazzCash or Opay app and
+                submit the Transaction ID (TID) to Boardly for manual verification. Boardly does not
+                collect or store your bank card numbers or mobile wallet PINs.
+              </li>
+            </ul>
+            <p>
+              <strong>Where Data Is Processed (International Transfers):</strong> Because Google
+              Firebase, Cloudflare, and Resend operate global cloud infrastructure, your data may be
+              processed and stored on servers located outside Pakistan (including in the United
+              States, Europe, or Asia-Pacific).<strong> [EXACT CLOUD REGIONS — TO CONFIRM]</strong>
+            </p>
+          </section>
+
+          <section id="visibility-moderation" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              6. Public Visibility, Anonymous Posts &amp; Administrator Access
+            </h2>
+            <ul className="list-disc pl-5 space-y-2.5">
+              <li>
+                <strong>What Other Students Can See:</strong> Your display name, `@username`,
+                avatar, equipped profile cosmetics, role badge, target university, public Commons
+                posts/comments, Study Crew membership, and leaderboard/Grand Line mock rankings are
+                visible to other users. Your email address, password, 2FA settings, and private
+                payment TIDs are <strong>never</strong> shown publicly.
+              </li>
+              <li>
+                <strong>How Anonymous Commons Posts Work:</strong> If you publish a post or comment
+                with &ldquo;Anonymous&rdquo; enabled, other students only see &ldquo;Anonymous
+                Student&rdquo; and cannot see your username or profile. However, our database stores
+                your account UID (`author_uid` / `real_author_uid`) internally so you can manage
+                your comment and so administrators can act against spam, harassment, or policy
+                violations.
+              </li>
+              <li>
+                <strong>What Administrators Can See:</strong> Authorized Boardly administrators can
+                view user profiles, Commons posts/comments, community reports, Captain/Crew
+                applications, Pro payment requests, security audit logs (such as 2FA resets), and AI
+                Study Buddy logs (`study_buddy_logs`) for moderation, support, and billing
+                verification. Direct messages between students are stored in Cloud Firestore and are
+                not end-to-end encrypted.
+              </li>
+            </ul>
+          </section>
+
+          <section id="security" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              7. How We Protect Your Data
+            </h2>
+            <p>
+              We implement technical safeguards across our frontend and backend services, including:
+            </p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>HTTPS/TLS encryption for all data in transit.</li>
+              <li>
+                HMAC-SHA256 hashing with a server-side secret for email verification codes, 2FA
+                backup codes, session tokens, and IP/device rate-limit identifiers, verified using
+                constant-time comparison.
+              </li>
+              <li>
+                AES-GCM (256-bit) authenticated encryption for Authenticator App (TOTP) secrets at
+                rest in Cloudflare D1.
+              </li>
+              <li>
+                Strict file upload filtering (blocking executable/script extensions and enforcing a
+                25 MB limit) and rate limiting on login, OTP, and guest creation endpoints.
+              </li>
+            </ul>
+            <p>
+              No internet service can guarantee 100% security. We encourage you to use a strong,
+              unique password and enable Two-Step Verification in Settings.
+            </p>
+          </section>
+
+          <section id="retention" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              8. Data Retention &amp; Cleanup Schedules
+            </h2>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>
+                <strong>Registered Accounts:</strong> Kept for as long as your account remains
+                active, or until you request account deletion.
+              </li>
+              <li>
+                <strong>Temporary Guest Accounts:</strong> Deleted <strong>7 days</strong> after
+                confirmed logout (`ABANDONED_GUEST_GRACE_PERIOD_MS`) or after{' '}
+                <strong>30 days of inactivity</strong> (`INACTIVE_GUEST_TTL_MS`) via our daily cron
+                job.
+              </li>
+              <li>
+                <strong>Verification &amp; 2FA Tokens:</strong> Email verification codes expire
+                after <strong>10 minutes</strong>; pending 2FA login challenges expire after{' '}
+                <strong>10 minutes</strong>; trusted device tokens expire after{' '}
+                <strong>30 days</strong>.
+              </li>
+              <li>
+                <strong>Payment &amp; Security Audit Records:</strong> Retained as needed for
+                billing verification, fraud prevention, and dispute resolution.{' '}
+                <strong>[LONG-TERM ARCHIVE RETENTION PERIOD — TO CONFIRM]</strong>
+              </li>
+            </ul>
+          </section>
+
+          <section id="emails" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              9. Transactional vs. Optional Emails
+            </h2>
+            <p>
+              <strong>Essential Transactional Emails:</strong> We always send critical account and
+              security emails to registered users — including 6-digit sign-up and 2FA verification
+              codes, password reset links, 2FA security change alerts, Pro payment/Koban purchase
+              confirmations, official test result reports, and Captain/Crew application updates.
+            </p>
+            <p>
+              <strong>Optional Activity Emails:</strong> In <em>Settings &gt; Email Notifications</em>,
+              you can toggle optional activity emails (such as daily/milestone Koban receipts and
+              test-started notifications) on or off at any time.
+            </p>
+          </section>
+
+          <section id="your-rights" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              10. Your Rights &amp; How to Request Account Deletion
+            </h2>
+            <p>You have the right to:</p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>
+                <strong>Access &amp; Update:</strong> View and update your username, custom role,
+                avatar, password, 2FA settings, trusted devices, and email notification preferences
+                directly in <Link to="/dashboard/settings" className="text-[var(--red)] hover:underline">Settings</Link>,
+                or submit a display name change request.
+              </li>
+              <li>
+                <strong>Delete Posts &amp; Comments:</strong> Delete your own comments or posts in
+                Boardly Commons at any time.
+              </li>
+              <li>
+                <strong>Request Full Account Deletion or Data Copy:</strong> You may request
+                permanent deletion of your Boardly account (or a copy of your stored account data)
+                by emailing{' '}
+                <a
+                  href="mailto:support@boardly.cfd"
+                  className="text-[var(--red)] hover:underline font-mono"
+                >
+                  support@boardly.cfd
+                </a>{' '}
+                from your registered email address with the subject line{' '}
+                <code className="font-mono text-xs bg-[var(--surface-2)] px-1.5 py-0.5 rounded">
+                  Account Deletion Request
+                </code>
+                . Our administrators will verify your identity and process your deletion request.
+              </li>
+            </ul>
+          </section>
+
+          <section id="minors" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              11. Children &amp; Minors
+            </h2>
+            <p>
+              Boardly is designed for secondary, intermediate (Class 9–12 / FSc / A-Level), and
+              university entrance test students. You must be at least{' '}
+              <strong>[MINIMUM AGE, e.g., 13 — TO CONFIRM]</strong> years old to create an account.
+              We do not knowingly collect personal data from children under that minimum age. If a
+              parent or guardian believes their child under the minimum age has provided personal
+              information without consent, please contact us at{' '}
+              <a
+                href="mailto:support@boardly.cfd"
+                className="text-[var(--red)] hover:underline font-mono"
+              >
+                support@boardly.cfd
+              </a>{' '}
+              and we will promptly delete the account.
+            </p>
+          </section>
+
+          <section id="changes-contact" className="scroll-mt-28 space-y-4">
+            <h2 className="font-dot text-2xl text-[var(--text)]">
+              12. Policy Updates &amp; Contact Details
+            </h2>
+            <p>
+              When we update this Privacy Policy, we will revise the version number and &ldquo;Last
+              updated&rdquo; date at the top of this page and show a one-time notice to logged-in
+              users.
+            </p>
+            <div className="rounded-xl bg-[var(--surface-2)] border border-[var(--border)] p-4 text-xs sm:text-sm space-y-1.5">
+              <p className="text-[var(--text)] font-semibold">Privacy &amp; Support Contact:</p>
+              <p>
+                <strong>Operator / Business Name:</strong> [BUSINESS NAME]
+              </p>
+              <p>
+                <strong>Email:</strong>{' '}
+                <a
+                  href="mailto:support@boardly.cfd"
+                  className="text-[var(--red)] hover:underline font-mono"
+                >
+                  support@boardly.cfd
+                </a>{' '}
+                / <strong>[CONTACT EMAIL]</strong>
+              </p>
+              <p>
+                <strong>Address:</strong> [ADDRESS]
+              </p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+};

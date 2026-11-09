@@ -72,6 +72,7 @@ export interface StoreCardProps {
     isOnSale?: boolean;
   };
   userDisplayName: string;
+  userUid?: string | null;
   userPhotoURL?: string | null;
   isOwned: boolean;
   isEquipped: boolean;
@@ -89,7 +90,7 @@ export interface StoreCardProps {
 export const StoreCard: React.FC<StoreCardProps> = ({
   item,
   userDisplayName,
-  userPhotoURL,
+  userUid,
   isOwned,
   isEquipped,
   isInCart,
@@ -301,17 +302,12 @@ export const StoreCard: React.FC<StoreCardProps> = ({
               size={76}
               animated={item.animated !== false}
             >
-              {userPhotoURL ? (
-                <img
-                  src={userPhotoURL}
-                  alt={userDisplayName}
-                  className="w-full h-full object-cover rounded-full"
-                />
-              ) : (
-                <div className="w-full h-full rounded-full bg-white/10 flex items-center justify-center text-sm font-black text-white">
-                  {(userDisplayName || 'S')[0]?.toUpperCase()}
-                </div>
-              )}
+              <AvatarPicture
+                uid={userUid}
+                seed={userUid || undefined}
+                size={60}
+                animated={false}
+              />
             </AvatarFrame>
           </div>
         ) : item.type === 'effect' ? (

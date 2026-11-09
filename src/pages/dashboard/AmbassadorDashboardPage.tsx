@@ -1055,10 +1055,13 @@ export function AmbassadorDashboardPage() {
                               <BoardlyAvatar
                                 uid={uid || `${rank}-${displayName}`}
                                 name={displayName}
-                                photoURL={liveProfile?.photoURL || r.userAvatar || null}
-                                avatar={liveProfile?.avatar || null}
-                                equippedAvatarId={liveProfile?.equippedAvatarId || null}
-                                customAvatarUrl={liveProfile?.customAvatarUrl || null}
+                                equippedAvatar={
+                                  liveProfile?.equippedAvatar ||
+                                  liveProfile?.equippedAvatarId ||
+                                  liveProfile?.avatar ||
+                                  r.userAvatar ||
+                                  null
+                                }
                                 equippedFrameId={liveProfile?.equippedFrameId || null}
                                 isSuperAdmin={isSuperAdminActor}
                                 size={40}

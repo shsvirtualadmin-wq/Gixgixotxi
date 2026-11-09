@@ -179,9 +179,9 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
                   <div className="p-1 rounded-full bg-[var(--card-2)]">
                     <AvatarFrame itemId={profile.frame || profile.equipped?.frame || 'none'} size={52}>
                       <AvatarPicture
-                        avatarId={profile.avatar}
-                        avatarKey={profile.avatarKey}
-                        variant={profile.avatarVariant}
+                        uid={profile.uid}
+                        seed={profile.uid}
+                        avatarId={profile.equipped?.avatar || profile.avatar}
                         size={44}
                       />
                     </AvatarFrame>

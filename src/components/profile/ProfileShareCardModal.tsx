@@ -92,9 +92,10 @@ export const ProfileShareCardModal: React.FC<ProfileShareCardModalProps> = ({
                 forceStatic
               >
                 <AvatarPicture
-                  itemId={profile.avatar || 'none'}
+                  uid={profile.uid}
+                  seed={profile.uid}
+                  itemId={profile.equipped?.avatar || profile.avatar || 'none'}
                   size={64}
-                  photoURL={profile.photoURL}
                 />
               </AvatarFrame>
             </div>

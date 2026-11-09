@@ -206,6 +206,7 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
         const fullProfile: UserProfile = {
           ...data,
           uid,
+          photoURL: null,
           role: data.role || 'student',
         };
         sharedState.docExists = true;

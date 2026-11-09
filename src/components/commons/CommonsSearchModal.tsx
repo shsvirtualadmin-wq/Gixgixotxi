@@ -459,9 +459,8 @@ export function CommonsSearchModal({
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <BoardlyAvatar
+                      uid={u.uid}
                       equippedAvatar={u.equippedAvatar}
-                      avatarUrl={u.avatarUrl}
-                      photoURL={u.photoURL}
                       frame={u.frame}
                       name={u.displayName}
                       size={38}

@@ -68,6 +68,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
   // Status State
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [generalError, setGeneralError] = useState('');
   const [emailAlreadyInUse, setEmailAlreadyInUse] = useState(false);
@@ -313,6 +314,9 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
       if (password !== confirmPassword) {
         errors.confirmPassword = 'Passwords do not match.';
       }
+      if (!termsAccepted) {
+        errors.terms = 'Please agree to our Terms of Service and Privacy Policy to continue.';
+      }
     }
 
     if (Object.keys(errors).length > 0) {
@@ -557,6 +561,18 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           <div className="p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[11px] text-[var(--muted)] leading-relaxed text-left">
             You&apos;ll stay signed in on this device.
           </div>
+
+          <p className="text-[11px] text-[var(--muted)] leading-relaxed text-left">
+            By continuing you agree to our{' '}
+            <Link to="/terms" className="underline text-[var(--text)] hover:text-[#D71921]">
+              Terms of Service
+            </Link>{' '}
+            and{' '}
+            <Link to="/privacy" className="underline text-[var(--text)] hover:text-[#D71921]">
+              Privacy Policy
+            </Link>
+            .
+          </p>
 
           <button
             type="submit"
@@ -1028,6 +1044,55 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           </div>
         )}
 
+        {/* Required Terms & Privacy Consent Checkbox (Sign Up only) */}
+        {mode === 'signup' && (
+          <div className="flex flex-col gap-1.5 text-left mt-1">
+            <label
+              htmlFor="auth-terms-consent"
+              className="flex items-start gap-2.5 text-xs text-[var(--muted)] leading-relaxed cursor-pointer select-none"
+            >
+              <input
+                id="auth-terms-consent"
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(e) => {
+                  setTermsAccepted(e.target.checked);
+                  if (e.target.checked && fieldErrors.terms) {
+                    setFieldErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.terms;
+                      return next;
+                    });
+                  }
+                }}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border border-[var(--border)] accent-[#D71921] cursor-pointer"
+              />
+              <span>
+                By continuing you agree to our{' '}
+                <Link
+                  to="/terms"
+                  className="underline text-[var(--text)] hover:text-[#D71921] font-medium"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Terms of Service
+                </Link>{' '}
+                and{' '}
+                <Link
+                  to="/privacy"
+                  className="underline text-[var(--text)] hover:text-[#D71921] font-medium"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Privacy Policy
+                </Link>
+                .
+              </span>
+            </label>
+            {fieldErrors.terms && (
+              <span className="text-xs text-[#DC2626] font-medium">{fieldErrors.terms}</span>
+            )}
+          </div>
+        )}
+
         {/* Primary Red Button: 52px tall, full width, bottom 2px line when submitting */}
         <button
           type="submit"
@@ -1046,20 +1111,6 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           </span>
           {loading && <ButtonLineLoader />}
         </button>
-
-        {mode === 'signup' && (
-          <p className="text-[11px] text-center text-[var(--muted)] leading-relaxed mt-2">
-            By creating an account you agree to the{' '}
-            <Link to="/terms" className="underline hover:text-[var(--text)]">
-              Terms of Service
-            </Link>{' '}
-            and{' '}
-            <Link to="/privacy" className="underline hover:text-[var(--text)]">
-              Privacy Policy
-            </Link>
-            .
-          </p>
-        )}
 
         {/* Mode switch link + Continue as guest */}
         <div className="pt-2 border-t border-[var(--border)] flex flex-col items-center gap-3 text-center">

@@ -45,6 +45,10 @@ import { debugTracker } from '@/utils/debugTracker';
 import { deriveFallbackShortId, ensureUserShortId } from '@/utils/shortId';
 import { processAmbassadorReferralOnSignup } from '@/services/referralService';
 import { validateUsernameFormat } from '@/utils/usernameValidation';
+import {
+  LEGAL_DOCUMENT_VERSION,
+  recordLegalConsentOnServer,
+} from '@/constants/legalConsent';
 import { GuestLogoutConfirmModal } from '@/components/auth/GuestLogoutConfirmModal';
 import { GuestUpgradeModal } from '@/components/auth/GuestUpgradeModal';
 import { ChooseUsernameModal } from '@/components/auth/ChooseUsernameModal';
@@ -360,7 +364,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email: emailLower,
       displayName: fallbackName,
       name: fallbackName,
-      photoURL: firebaseUser.photoURL ?? null,
+      photoURL: null,
       role: isSuperAdminAccount ? 'admin' : 'student',
       plan: isSuperAdminAccount ? 'pro' : 'free',
       status: 'active',
@@ -381,15 +385,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
         ]);
         if (snap && typeof snap.exists === 'function' && snap.exists()) {
-          loadedProfile = snap.data() as UserProfile;
+          loadedProfile = { ...(snap.data() as UserProfile), photoURL: null };
         } else if (snap && typeof snap.exists === 'function' && !snap.exists()) {
-          // Truly new user: initialize clean defaults
+          // Truly new user: initialize clean defaults (never copy Google photoURL)
           const baseUserDoc: UserProfile = {
             uid: firebaseUser.uid,
             name: fallbackName,
             displayName: fallbackName,
             email: emailLower,
-            photoURL: firebaseUser.photoURL ?? null,
+            photoURL: null,
             role: isSuperAdminAccount ? 'admin' : 'student',
             plan: isSuperAdminAccount ? 'pro' : 'free',
             status: 'active',
@@ -1246,6 +1250,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStoredGuestSessionToken(sessionToken || `${g.uid}.cookie_session`);
 
       setGuestSessionToken(sessionToken);
+      void recordLegalConsentOnServer({
+        userId: g.uid,
+        accountType: 'guest',
+        actionContext: 'guest_signin',
+        documentVersion: LEGAL_DOCUMENT_VERSION,
+      });
       const synthUser = buildSyntheticGuestUser(g.uid, g.username, sessionToken);
       const guestProfile: UserProfile = {
         uid: g.uid,
@@ -1614,7 +1624,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         displayName: guestUsername,
         name: googleUser.displayName || guestUsername,
         username: guestUsername,
-        photoURL: googleUser.photoURL || null,
+        photoURL: null,
         shortId: upgData?.shortId || snapshotGuestProfile.shortId || deriveFallbackShortId(googleUser.uid),
         role: 'student',
         plan: 'free',
@@ -1939,6 +1949,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             deleted: false,
             emailVerified: false,
             onboardingCompleted: false,
+            legalDocumentVersion: LEGAL_DOCUMENT_VERSION,
+            termsAcceptedAt: serverTimestamp(),
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           },
@@ -1946,6 +1958,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ),
         6000
       );
+
+      void recordLegalConsentOnServer({
+        userId: newUser.uid,
+        accountType: 'registered',
+        actionContext: 'email_signup',
+        documentVersion: LEGAL_DOCUMENT_VERSION,
+      });
 
       // Send 6-digit verification code + fallback link via Worker + Resend
       await requestOtpCodeForUser(newUser, {

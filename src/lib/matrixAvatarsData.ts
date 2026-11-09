@@ -610,16 +610,17 @@ export function isValidAvatar(key?: string | null, variant?: string | null): boo
 }
 
 /**
- * Deterministic default avatar selector based on user id or string seed.
- * Ensures the avatar is stable per user, never random per load.
+ * Deterministic default avatar selector based strictly on the user's stable uid.
+ * Same uid always yields the exact same matrix pattern and color variant on every screen and device.
  */
 export function getDefaultAvatar(seed?: string | null): { key: string; variant: MatrixAvatarVariant } {
-  if (!seed || typeof seed !== 'string') {
+  const cleanSeed = typeof seed === 'string' ? seed.trim() : '';
+  if (!cleanSeed) {
     return { key: 'skull-01', variant: 'red-on-black' };
   }
   let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = (hash << 5) - hash + seed.charCodeAt(i);
+  for (let i = 0; i < cleanSeed.length; i++) {
+    hash = (hash << 5) - hash + cleanSeed.charCodeAt(i);
     hash |= 0;
   }
   const abs = Math.abs(hash);

@@ -17,7 +17,7 @@ import {
   fetchUserRecentAttempts,
   getUserDisplayName,
 } from '@/services/adminService';
-import { MatrixAvatar } from '@/lib/matrixAvatars';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { fetchCrewDetails, removeMemberFromCrew } from '@/services/crewService';
 import { isCrewPaidActive } from '@/services/crewBackend';
 import { maskEmail } from '@/utils/privacy';
@@ -429,10 +429,10 @@ export function UserOverrideDrawer({
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <MatrixAvatar
-                  avatarKey={user.avatarKey}
-                  variant={user.avatarVariant}
-                  seed={user.uid}
+                <BoardlyAvatar
+                  uid={user.uid}
+                  equippedAvatar={user.equipped?.avatar || user.avatar}
+                  name={user.displayName || user.email}
                   size={26}
                   className="shrink-0"
                 />

@@ -423,7 +423,7 @@ export const GrandLineTestInfoPage: React.FC = () => {
                       <BoardlyAvatar
                         uid={entry.studentUid || `${entry.rank}-${displayName}`}
                         name={displayName}
-                        photoURL={entry.userAvatar || null}
+                        equippedAvatar={entry.userAvatar || null}
                         size="sm"
                       />
                       <div className="min-w-0 flex-1">

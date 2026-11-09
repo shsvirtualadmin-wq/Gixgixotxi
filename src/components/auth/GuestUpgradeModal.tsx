@@ -1,10 +1,14 @@
 import React, { useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { X, Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle2, LogIn } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { Logo } from '@/components/ui/Logo';
+import {
+  LEGAL_DOCUMENT_VERSION,
+  recordLegalConsentOnServer,
+} from '@/constants/legalConsent';
 
 export interface GuestUpgradeModalProps {
   isOpen: boolean;
@@ -92,6 +96,14 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
         displayName.trim() || guestUsername
       );
       if (res.ok) {
+        if (user?.uid) {
+          void recordLegalConsentOnServer({
+            userId: user.uid,
+            accountType: 'registered',
+            actionContext: 'guest_upgrade',
+            documentVersion: LEGAL_DOCUMENT_VERSION,
+          });
+        }
         setSuccessMsg('Account upgraded! Your username, progress, attempts, and stats have been preserved.');
         setTimeout(() => {
           onClose();
@@ -288,6 +300,26 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
                   </button>
                 </div>
               </div>
+
+              <p className="text-[11px] text-[var(--muted)] leading-relaxed">
+                By continuing you agree to our{' '}
+                <Link
+                  to="/terms"
+                  onClick={onClose}
+                  className="underline text-[var(--text)] hover:text-[#D71921]"
+                >
+                  Terms of Service
+                </Link>{' '}
+                and{' '}
+                <Link
+                  to="/privacy"
+                  onClick={onClose}
+                  className="underline text-[var(--text)] hover:text-[#D71921]"
+                >
+                  Privacy Policy
+                </Link>
+                .
+              </p>
 
               <button
                 type="submit"

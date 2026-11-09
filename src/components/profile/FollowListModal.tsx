@@ -271,12 +271,9 @@ export const FollowListModal: React.FC<FollowListModalProps> = ({
                     className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer group"
                   >
                     <BoardlyAvatar
+                      uid={p.uid}
                       equippedAvatar={p.avatar || (p.equipped?.avatar as string)}
-                      avatarUrl={p.avatarUrl}
-                      photoURL={p.photoURL}
                       frame={p.frame || (p.equipped?.frame as string) || 'none'}
-                      avatarKey={p.avatarKey}
-                      avatarVariant={p.avatarVariant}
                       name={p.displayName || 'Student'}
                       size={36}
                     />

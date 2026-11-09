@@ -477,10 +477,8 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
             {/* Author Avatar Thumbnail */}
             <div className="shrink-0">
               <BoardlyAvatar
-                equippedAvatar={equippedAvatar || (currentUserAvatar && !currentUserAvatar.startsWith('http') ? currentUserAvatar : undefined)}
-                avatarUrl={currentUserAvatar?.startsWith('http') ? currentUserAvatar : undefined}
-                avatarKey={avatarKey}
-                avatarVariant={avatarVariant}
+                uid={currentUserId || targetUid}
+                equippedAvatar={equippedAvatar || currentUserAvatar || undefined}
                 name={currentUserDisplayName || 'You'}
                 size={36}
               />
@@ -619,20 +617,10 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <div className="shrink-0">
                       <BoardlyAvatar
+                        uid={post.user_id || targetUid}
                         equippedAvatar={
-                          post.author_avatar && !post.author_avatar.startsWith('http') && !post.author_avatar.startsWith('data:')
-                            ? post.author_avatar
-                            : isOwnProfile
-                            ? equippedAvatar
-                            : undefined
+                          post.author_avatar || (isOwnProfile ? equippedAvatar : undefined)
                         }
-                        avatarUrl={
-                          post.author_avatar && (post.author_avatar.startsWith('http') || post.author_avatar.startsWith('data:'))
-                            ? post.author_avatar
-                            : undefined
-                        }
-                        avatarKey={isOwnProfile ? avatarKey : undefined}
-                        avatarVariant={isOwnProfile ? avatarVariant : undefined}
                         name={post.author_name || 'Student'}
                         size={32}
                       />

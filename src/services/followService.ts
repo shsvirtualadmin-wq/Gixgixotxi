@@ -19,6 +19,7 @@ import {
   invalidatePublicProfileCache,
   type PublicProfile,
 } from '@/services/publicProfileService';
+import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 
 export interface FollowUserSummary {
   uid: string;
@@ -127,12 +128,17 @@ async function performFollowStateChange(
   }
 
   let resolvedFollowerName = followerMeta?.followerName?.trim() || '';
-  let resolvedFollowerAvatar: string | null = followerMeta?.followerAvatar || null;
-  let resolvedFollowerFrame: string | null = followerMeta?.followerFrame || null;
+  let resolvedFollowerAvatar: string | null = resolveCosmeticItemId(
+    followerMeta?.followerAvatar,
+    'avatar'
+  );
+  let resolvedFollowerFrame: string | null = resolveCosmeticItemId(
+    followerMeta?.followerFrame,
+    'frame'
+  );
 
   if (!resolvedFollowerName && auth.currentUser?.uid === currentUserId) {
     resolvedFollowerName = auth.currentUser.displayName?.trim() || '';
-    resolvedFollowerAvatar = resolvedFollowerAvatar || auth.currentUser.photoURL || null;
   }
 
   const currentUserDoc = doc(db, 'users', currentUserId);
@@ -167,15 +173,19 @@ async function performFollowStateChange(
     const d = curUserSnap.data();
     resolvedFollowerName = (d.displayName || d.username || '').trim();
     resolvedFollowerAvatar =
-      resolvedFollowerAvatar || d.photoURL || d.equipped?.avatar || d.avatar || null;
-    resolvedFollowerFrame = resolvedFollowerFrame || d.equipped?.frame || d.frame || null;
+      resolvedFollowerAvatar ||
+      resolveCosmeticItemId(d.equipped?.avatar || d.equippedAvatar || d.avatar, 'avatar');
+    resolvedFollowerFrame =
+      resolvedFollowerFrame || resolveCosmeticItemId(d.equipped?.frame || d.frame, 'frame');
   }
   if (!resolvedFollowerName && curPubSnap?.exists()) {
     const d = curPubSnap.data();
     resolvedFollowerName = (d.displayName || d.username || '').trim();
     resolvedFollowerAvatar =
-      resolvedFollowerAvatar || d.photoURL || d.equippedAvatar || d.avatar || null;
-    resolvedFollowerFrame = resolvedFollowerFrame || d.equippedFrame || d.frame || null;
+      resolvedFollowerAvatar ||
+      resolveCosmeticItemId(d.equippedAvatar || d.equipped?.avatar || d.avatar, 'avatar');
+    resolvedFollowerFrame =
+      resolvedFollowerFrame || resolveCosmeticItemId(d.equippedFrame || d.frame, 'frame');
   }
   if (!resolvedFollowerName) {
     resolvedFollowerName = 'A student';
@@ -519,12 +529,12 @@ export async function getUsersByIds(
       uid,
       displayName: p?.displayName || 'Student',
       username: p?.username,
-      avatar: p?.equippedAvatar || p?.avatar,
+      avatar: p?.equippedAvatar || resolveCosmeticItemId(p?.avatar, 'avatar'),
       avatarKey: p?.avatarKey,
       avatarVariant: p?.avatarVariant,
-      avatarUrl: p?.avatarUrl,
-      photoURL: p?.photoURL,
-      equippedAvatar: p?.equippedAvatar || p?.avatar || null,
+      avatarUrl: p?.equippedAvatar || resolveCosmeticItemId(p?.avatar, 'avatar'),
+      photoURL: null,
+      equippedAvatar: p?.equippedAvatar || resolveCosmeticItemId(p?.avatar, 'avatar') || null,
       frame: p?.equippedFrame || p?.frame || null,
       nameplate: p?.equippedNameplate || p?.nameplate || null,
       banner: p?.equippedBanner || p?.banner || null,

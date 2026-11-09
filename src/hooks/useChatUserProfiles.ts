@@ -170,30 +170,21 @@ export function useChatUserProfiles(seeds: ChatUserSeed[]): Record<string, Resol
       );
 
       const equippedAvatar =
-        prof?.equipped?.avatar ||
-        prof?.equippedAvatar ||
+        resolveCosmeticItemId(prof?.equipped?.avatar, 'avatar') ||
+        resolveCosmeticItemId(prof?.equippedAvatar, 'avatar') ||
         resolveCosmeticItemId(prof?.avatar, 'avatar') ||
         resolveCosmeticItemId(seed.avatar, 'avatar') ||
+        resolveCosmeticItemId(seed.avatarUrl, 'avatar') ||
         null;
 
-      const avatarUrl =
-        prof?.avatarUrl ||
-        (prof?.avatar && !resolveCosmeticItemId(prof.avatar, 'avatar') ? prof.avatar : null) ||
-        seed.avatarUrl ||
-        (seed.avatar && !resolveCosmeticItemId(seed.avatar, 'avatar') ? seed.avatar : null) ||
-        null;
-
-      const photoURL =
-        prof?.photoURL ||
-        seed.photoURL ||
-        avatarUrl ||
-        null;
+      const avatarUrl = equippedAvatar;
+      const photoURL = null;
 
       const frame =
-        prof?.equipped?.frame ||
-        prof?.equippedFrame ||
-        prof?.frame ||
-        seed.frame ||
+        resolveCosmeticItemId(prof?.equipped?.frame, 'frame') ||
+        resolveCosmeticItemId(prof?.equippedFrame, 'frame') ||
+        resolveCosmeticItemId(prof?.frame, 'frame') ||
+        resolveCosmeticItemId(seed.frame, 'frame') ||
         null;
 
       resolved[uid] = {
@@ -205,7 +196,7 @@ export function useChatUserProfiles(seeds: ChatUserSeed[]): Record<string, Resol
         equippedAvatar,
         avatarUrl,
         photoURL,
-        avatar: equippedAvatar || avatarUrl || photoURL || null,
+        avatar: equippedAvatar,
         frame,
         avatarKey: prof?.avatarKey || null,
         avatarVariant: prof?.avatarVariant || null,

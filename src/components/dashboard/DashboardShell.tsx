@@ -2,6 +2,7 @@ import { Outlet, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { isUserAuthenticated } from '@/utils/homeUrl';
 import { VerificationBanner } from '@/components/auth/VerificationBanner';
+import { LegalUpdateNoticeBanner } from '@/components/auth/LegalUpdateNoticeBanner';
 import { GuestUpgradeModal } from '@/components/auth/GuestUpgradeModal';
 import { DashboardTopBar } from './DashboardTopBar';
 import { DashboardBottomNav } from './DashboardBottomNav';
@@ -85,6 +86,7 @@ export function DashboardShell() {
       />
       {!isGuest && <VerificationBanner />}
       {!isProfileRoute && !isCommonsRoute && <DashboardTopBar />}
+      {!isGuest && <LegalUpdateNoticeBanner />}
 
       {/* Small non-blocking note for guests (Part B Rule 3) */}
       {isGuest && !guestNoteDismissed && (

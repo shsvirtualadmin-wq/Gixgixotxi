@@ -26,6 +26,7 @@ import {
   SUPER_ADMIN_NAME,
 } from '@/constants/superAdmin';
 import { DEFAULT_WELCOME_ANNOUNCEMENT, BOARDLY_BOT_ACCOUNTS } from '@/config/botsConfig';
+import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 
 export type NotificationType =
   | 'following_post'
@@ -321,25 +322,26 @@ export function extractNotificationActorMeta(
   }
 
   const authorAvatar =
-    raw.authorEquippedAvatar ||
-    raw.equippedAvatar ||
-    raw.authorAvatar ||
-    raw.author_avatar ||
-    raw.followerAvatar ||
-    raw.actorAvatar ||
-    raw.avatar ||
-    raw.avatarUrl ||
-    raw.photoURL ||
+    resolveCosmeticItemId(raw.authorEquippedAvatar, 'avatar') ||
+    resolveCosmeticItemId(raw.equippedAvatar, 'avatar') ||
+    resolveCosmeticItemId(raw.authorAvatar, 'avatar') ||
+    resolveCosmeticItemId(raw.author_avatar, 'avatar') ||
+    resolveCosmeticItemId(raw.followerAvatar, 'avatar') ||
+    resolveCosmeticItemId(raw.actorAvatar, 'avatar') ||
+    resolveCosmeticItemId(raw.avatar, 'avatar') ||
+    resolveCosmeticItemId(raw.avatarUrl, 'avatar') ||
     null;
 
   const authorFrame =
-    raw.authorFrame ||
-    raw.author_frame ||
-    raw.followerFrame ||
-    raw.actorFrame ||
-    raw.equippedFrame ||
-    raw.frame ||
-    null;
+    resolveCosmeticItemId(
+      raw.authorFrame ||
+        raw.author_frame ||
+        raw.followerFrame ||
+        raw.actorFrame ||
+        raw.equippedFrame ||
+        raw.frame,
+      'frame'
+    );
 
   return {
     authorId: resolvedUid ? String(resolvedUid) : undefined,

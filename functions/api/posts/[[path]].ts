@@ -1,6 +1,7 @@
 import worker, {
   Env,
   rowToCommonsPost,
+  sanitizeStoreAvatarId,
   verifyFirebaseIdToken,
   extractIdFromSlugOrId,
   buildSlug,
@@ -434,10 +435,14 @@ export async function onRequest(context: {
       author_uid: isAnon ? null : user.uid,
       real_author_uid: user.uid,
       author_name: isAnon ? 'Anonymous Student' : String(body.authorName || user.name || 'Student'),
-      author_avatar: isAnon ? null : body.authorAvatar || null,
+      author_avatar: isAnon
+        ? null
+        : sanitizeStoreAvatarId(body.authorEquippedAvatar, body.authorAvatar),
       author_frame: isAnon ? null : body.authorFrame || null,
-      author_equipped_avatar: isAnon ? null : body.authorEquippedAvatar || null,
-      author_photo_url: isAnon ? null : body.authorPhotoURL || user.picture || null,
+      author_equipped_avatar: isAnon
+        ? null
+        : sanitizeStoreAvatarId(body.authorEquippedAvatar, body.authorAvatar),
+      author_photo_url: null,
       author_role: isAnon ? 'student' : user.role,
       author_custom_role: isAnon ? null : user.customRole,
       status: 'published',
@@ -569,7 +574,10 @@ export async function onRequest(context: {
         isAnonymous: Boolean(c.is_anonymous),
         authorUid: c.is_anonymous ? null : c.author_uid,
         authorName: c.is_anonymous ? 'Anonymous Student' : c.author_name,
-        authorAvatar: c.is_anonymous ? null : c.author_avatar,
+        authorAvatar: c.is_anonymous
+          ? null
+          : sanitizeStoreAvatarId(c.author_equipped_avatar, c.author_avatar),
+        authorPhotoURL: null,
         createdAt: new Date(Number(c.created_at || Date.now())).toISOString(),
       }));
     return new Response(

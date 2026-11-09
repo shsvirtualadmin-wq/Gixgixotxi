@@ -645,6 +645,7 @@ export function AdminBotsPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <BoardlyAvatar
+                      uid={bot.uid}
                       equippedAvatar={bot.avatar}
                       name={bot.displayName}
                       size={44}

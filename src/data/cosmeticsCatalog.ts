@@ -2165,6 +2165,7 @@ export const COSMETICS_MAP = new Map<string, CosmeticItem>(
 );
 
 const LEGACY_COSMETIC_ID_ALIASES: Record<string, string> = {
+  pfp_eclipse_wyrm: 'eclipse-wyrm',
   frame_torii_gate: 'frame-stone-torii',
   'frame-torii-gate': 'frame-stone-torii',
   frame_hanko_seal: 'frame-talisman-seal',

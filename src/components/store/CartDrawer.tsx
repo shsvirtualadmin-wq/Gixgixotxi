@@ -32,6 +32,7 @@ export interface CartDrawerProps {
   balance: number;
   isSuperAdmin: boolean;
   userDisplayName: string;
+  userUid?: string | null;
   userPhotoURL?: string | null;
   processing: boolean;
   errorMessage: string | null;
@@ -57,7 +58,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   balance,
   isSuperAdmin,
   userDisplayName,
-  userPhotoURL,
+  userUid,
   processing,
   errorMessage,
   flaggedItemsNotice,
@@ -330,7 +331,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                         <CartItemThumbnail
                           item={fullItem}
                           userDisplayName={userDisplayName}
-                          userPhotoURL={userPhotoURL}
+                          userUid={userUid}
                         />
                         <div className="min-w-0">
                           <p className={`text-xs font-bold truncate ${primaryTextClass}`}>
@@ -568,7 +569,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                           <CartItemThumbnail
                             item={item}
                             userDisplayName={userDisplayName}
-                            userPhotoURL={userPhotoURL}
+                            userUid={userUid}
                           />
                           <div className="min-w-0 flex-1">
                             <button
@@ -749,8 +750,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 const CartItemThumbnail: React.FC<{
   item: CosmeticItem;
   userDisplayName: string;
+  userUid?: string | null;
   userPhotoURL?: string | null;
-}> = ({ item, userDisplayName, userPhotoURL }) => {
+}> = ({ item, userDisplayName, userUid }) => {
   return (
     <div className="w-14 h-14 rounded-xl bg-[#090A0F] dark-surface-preserve border border-white/10 flex items-center justify-center overflow-hidden shrink-0">
       {item.type === 'banner' ? (
@@ -763,17 +765,12 @@ const CartItemThumbnail: React.FC<{
         <AvatarPicture avatarId={item.id} size={42} animated={false} />
       ) : item.type === 'frame' ? (
         <AvatarFrame frameId={item.id} size={38} animated={false}>
-          {userPhotoURL ? (
-            <img
-              src={userPhotoURL}
-              alt={userDisplayName}
-              className="w-full h-full object-cover rounded-full"
-            />
-          ) : (
-            <div className="w-full h-full rounded-full bg-white/10 flex items-center justify-center text-[11px] font-bold text-white">
-              {(userDisplayName || 'S')[0]?.toUpperCase()}
-            </div>
-          )}
+          <AvatarPicture
+            uid={userUid}
+            seed={userUid || undefined}
+            size={30}
+            animated={false}
+          />
         </AvatarFrame>
       ) : item.type === 'effect' ? (
         <div className="w-full h-full scale-90">

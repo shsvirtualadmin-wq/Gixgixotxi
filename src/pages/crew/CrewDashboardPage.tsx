@@ -809,10 +809,10 @@ export function CrewDashboardPage() {
                       title={sanitizeStudentDisplayName(m.displayName, m.uid)}
                     >
                       <BoardlyAvatar
+                        uid={m.uid}
+                        equippedAvatar={m.equipped?.avatar}
                         name={m.displayName}
                         size={34}
-                        avatarKey={m.avatarKey}
-                        avatarVariant={m.avatarVariant}
                         frame={m.equipped?.frame}
                       />
                     </button>
@@ -1017,10 +1017,10 @@ export function CrewDashboardPage() {
                           {/* 34px Circle Avatar in card2 */}
                           <div className="cw-avatar-34 shrink-0">
                             <BoardlyAvatar
+                              uid={m.uid}
+                              equippedAvatar={m.equipped?.avatar}
                               name={m.displayName}
                               size={34}
-                              avatarKey={m.avatarKey}
-                              avatarVariant={m.avatarVariant}
                               frame={m.equipped?.frame}
                             />
                           </div>

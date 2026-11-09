@@ -17,7 +17,7 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
-import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { BoardlyAvatar, resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useChatUserProfiles, type ChatUserSeed } from '@/hooks/useChatUserProfiles';
 import { useUnreadMessagesState } from '@/hooks/useUnreadMessagesCount';
@@ -227,17 +227,16 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
     const displayName =
       op?.displayName || op?.username || authUser?.displayName || 'Student';
     const avatar =
-      (ownEquipped?.avatar as string) ||
-      (op?.equipped?.avatar as string) ||
-      op?.avatarUrl ||
-      op?.avatar ||
+      resolveCosmeticItemId(ownEquipped?.avatar, 'avatar') ||
+      resolveCosmeticItemId(op?.equipped?.avatar, 'avatar') ||
+      resolveCosmeticItemId(op?.avatar, 'avatar') ||
       null;
     const frame =
       (ownEquipped?.frame as string) ||
       (op?.equipped?.frame as string) ||
       op?.frame ||
       null;
-    const photoURL = op?.photoURL || authUser?.photoURL || null;
+    const photoURL = null;
     const role = isAdmin ? 'admin' : op?.role || 'student';
     return { displayName, avatar, frame, role, photoURL };
   }, [ownProfile, authProfile, ownEquipped, authUser, isAdmin]);
@@ -326,10 +325,10 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
             [currentUid]: mySenderProfile,
             [partner.uid]: {
               displayName: partnerName,
-              avatar: resolvedPartner?.avatar || partner.avatar || null,
+              avatar: resolvedPartner?.equippedAvatar || resolvedPartner?.avatar || partner.avatar || null,
               frame: resolvedPartner?.frame || partner.frame || null,
               role: resolvedPartner?.role || partner.role || 'student',
-              photoURL: resolvedPartner?.photoURL || partner.photoURL || null,
+              photoURL: null,
             },
           });
           if (isMounted) {
@@ -357,11 +356,10 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
     partner.avatar,
     partner.frame,
     partner.role,
-    partner.photoURL,
+    resolvedPartner?.equippedAvatar,
     resolvedPartner?.avatar,
     resolvedPartner?.frame,
     resolvedPartner?.role,
-    resolvedPartner?.photoURL,
     mySenderProfile,
     markConversationNotificationsRead,
   ]);
@@ -427,9 +425,9 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
         mySenderProfile,
         {
           displayName: partnerName,
-          avatar: resolvedPartner?.avatar || partner.avatar || null,
+          avatar: resolvedPartner?.equippedAvatar || resolvedPartner?.avatar || partner.avatar || null,
           frame: resolvedPartner?.frame || partner.frame || null,
-          photoURL: resolvedPartner?.photoURL || partner.photoURL || null,
+          photoURL: null,
         },
         requestNote
       );
@@ -442,10 +440,10 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
             [currentUid]: mySenderProfile,
             [partner.uid]: {
               displayName: partnerName,
-              avatar: resolvedPartner?.avatar || partner.avatar || null,
+              avatar: resolvedPartner?.equippedAvatar || resolvedPartner?.avatar || partner.avatar || null,
               frame: resolvedPartner?.frame || partner.frame || null,
               role: resolvedPartner?.role || partner.role || 'student',
-              photoURL: resolvedPartner?.photoURL || partner.photoURL || null,
+              photoURL: null,
             },
           });
           setActiveConversationId(convId);
@@ -508,12 +506,8 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
           <div className="shrink-0" style={{ width: 40, height: 40 }}>
             <BoardlyAvatar
               uid={partner.uid}
-              equippedAvatar={resolvedPartner?.equippedAvatar}
-              avatarUrl={resolvedPartner?.avatarUrl}
-              photoURL={resolvedPartner?.photoURL}
+              equippedAvatar={resolvedPartner?.equippedAvatar || partner.avatar}
               frame={resolvedPartner?.frame}
-              avatarKey={resolvedPartner?.avatarKey}
-              avatarVariant={resolvedPartner?.avatarVariant}
               isSuperAdmin={resolvedPartner?.isSuperAdmin}
               loading={resolvedPartner?.isLoadingProfile}
               name={partnerName}
@@ -734,11 +728,10 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                                 [currentUid]: mySenderProfile,
                                 [partner.uid]: {
                                   displayName: partnerName,
-                                  avatar: resolvedPartner?.avatar || partner.avatar || null,
+                                  avatar: resolvedPartner?.equippedAvatar || resolvedPartner?.avatar || partner.avatar || null,
                                   frame: resolvedPartner?.frame || partner.frame || null,
                                   role: resolvedPartner?.role || partner.role || 'student',
-                                  photoURL:
-                                    resolvedPartner?.photoURL || partner.photoURL || null,
+                                  photoURL: null,
                                 },
                               }
                             );
@@ -904,17 +897,16 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
     const displayName =
       op?.displayName || op?.username || authUser?.displayName || 'Student';
     const avatar =
-      (ownEquipped?.avatar as string) ||
-      (op?.equipped?.avatar as string) ||
-      op?.avatarUrl ||
-      op?.avatar ||
+      resolveCosmeticItemId(ownEquipped?.avatar, 'avatar') ||
+      resolveCosmeticItemId(op?.equipped?.avatar, 'avatar') ||
+      resolveCosmeticItemId(op?.avatar, 'avatar') ||
       null;
     const frame =
       (ownEquipped?.frame as string) ||
       (op?.equipped?.frame as string) ||
       op?.frame ||
       null;
-    const photoURL = op?.photoURL || authUser?.photoURL || null;
+    const photoURL = null;
     const role = isAdmin ? 'admin' : op?.role || 'student';
     return { displayName, avatar, frame, role, photoURL };
   }, [ownProfile, authProfile, ownEquipped, authUser, isAdmin]);
@@ -1005,10 +997,10 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
           setSelectedPartner({
             uid: req.fromUid,
             displayName: senderResolved?.displayName || req.fromName || 'Student',
-            avatar: senderResolved?.avatar || req.fromAvatar || null,
+            avatar: senderResolved?.equippedAvatar || senderResolved?.avatar || req.fromAvatar || null,
             frame: senderResolved?.frame || req.fromFrame || null,
             role: senderResolved?.role || req.fromRole || 'student',
-            photoURL: senderResolved?.photoURL || req.fromPhotoURL || null,
+            photoURL: null,
           });
           setActiveTab('chat');
         }
@@ -1232,10 +1224,10 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                       setSelectedPartner({
                         uid: otherUid,
                         displayName,
-                        avatar: resolved?.avatar || otherDetails.avatar || null,
+                        avatar: resolved?.equippedAvatar || resolved?.avatar || otherDetails.avatar || null,
                         frame: resolved?.frame || otherDetails.frame || null,
                         role: resolved?.role || otherDetails.role || 'student',
-                        photoURL: resolved?.photoURL || otherDetails.photoURL || null,
+                        photoURL: null,
                       });
                     }}
                     className={`msg-conv-card ${isUnread ? 'msg-conv-card--unread' : ''}`}
@@ -1244,11 +1236,7 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                       <BoardlyAvatar
                         uid={otherUid}
                         equippedAvatar={resolved?.equippedAvatar}
-                        avatarUrl={resolved?.avatarUrl}
-                        photoURL={resolved?.photoURL}
                         frame={resolved?.frame}
-                        avatarKey={resolved?.avatarKey}
-                        avatarVariant={resolved?.avatarVariant}
                         isSuperAdmin={resolved?.isSuperAdmin}
                         loading={resolved?.isLoadingProfile}
                         name={displayName}
@@ -1331,11 +1319,7 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                             <BoardlyAvatar
                               uid={req.fromUid}
                               equippedAvatar={resolved?.equippedAvatar}
-                              avatarUrl={resolved?.avatarUrl}
-                              photoURL={resolved?.photoURL}
                               frame={resolved?.frame}
-                              avatarKey={resolved?.avatarKey}
-                              avatarVariant={resolved?.avatarVariant}
                               isSuperAdmin={resolved?.isSuperAdmin}
                               loading={resolved?.isLoadingProfile}
                               name={senderName}
@@ -1436,11 +1420,7 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                             <BoardlyAvatar
                               uid={req.toUid}
                               equippedAvatar={resolved?.equippedAvatar}
-                              avatarUrl={resolved?.avatarUrl}
-                              photoURL={resolved?.photoURL}
                               frame={resolved?.frame}
-                              avatarKey={resolved?.avatarKey}
-                              avatarVariant={resolved?.avatarVariant}
                               isSuperAdmin={resolved?.isSuperAdmin}
                               loading={resolved?.isLoadingProfile}
                               name={recipientName}
@@ -1506,9 +1486,13 @@ export const DirectMessageModal: React.FC<DirectMessageModalProps> = ({
         const op = ownProfile as any;
         await respondToChatRequest(req.id, currentUid, decision, {
           displayName: op?.displayName || authUser?.displayName || 'Student',
-          avatar: (ownEquipped?.avatar as string) || op?.avatarUrl || op?.avatar || null,
+          avatar:
+            resolveCosmeticItemId(ownEquipped?.avatar, 'avatar') ||
+            resolveCosmeticItemId(op?.equipped?.avatar, 'avatar') ||
+            resolveCosmeticItemId(op?.avatar, 'avatar') ||
+            null,
           frame: (ownEquipped?.frame as string) || op?.frame || null,
-          photoURL: op?.photoURL || authUser?.photoURL || null,
+          photoURL: null,
         });
         if (onPermissionChange) onPermissionChange();
       } finally {

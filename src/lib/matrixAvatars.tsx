@@ -10,39 +10,53 @@ import {
 export type { MatrixAvatarVariant, MatrixAvatarDef };
 
 export interface MatrixAvatarProps {
+  uid?: string | null;
   avatarKey?: string | null;
   variant?: MatrixAvatarVariant | string | null;
   size?: number | string;
   className?: string;
-  seed?: string | null; // used as fallback if avatarKey is empty
+  seed?: string | null; // user uid seed
 }
 
 /**
  * Reusable Dot-Matrix Avatar Component
  * Renders an authentic 12x12 dot matrix using pure SVG circles.
+ * When `uid` or `seed` is provided (user avatar), the matrix pattern and color variant
+ * are deterministically computed from that stable id ONLY so the same user looks identical everywhere.
  */
 export const MatrixAvatar: React.FC<MatrixAvatarProps> = ({
+  uid,
   avatarKey,
   variant,
   size = 40,
   className = '',
   seed,
 }) => {
-  const fallback = getDefaultAvatar(seed || avatarKey);
-  const resolvedKey = avatarKey && MATRIX_AVATARS.some((a) => a.key === avatarKey) ? avatarKey : fallback.key;
-  const resolvedVariant: MatrixAvatarVariant =
-    variant && MATRIX_VARIANTS[variant as MatrixAvatarVariant]
+  const userSeed = (typeof uid === 'string' && uid.trim()) || (typeof seed === 'string' && seed.trim()) || '';
+  const hasUserSeed = Boolean(userSeed);
+  const deterministic = getDefaultAvatar(hasUserSeed ? userSeed : avatarKey);
+
+  const resolvedKey = hasUserSeed
+    ? deterministic.key
+    : avatarKey && MATRIX_AVATARS.some((a) => a.key === avatarKey)
+      ? avatarKey
+      : deterministic.key;
+
+  const resolvedVariant: MatrixAvatarVariant = hasUserSeed
+    ? deterministic.variant
+    : variant && MATRIX_VARIANTS[variant as MatrixAvatarVariant]
       ? (variant as MatrixAvatarVariant)
-      : fallback.variant;
+      : deterministic.variant;
 
   const avatarDef = MATRIX_AVATARS.find((a) => a.key === resolvedKey) || MATRIX_AVATARS[0];
   const palette = MATRIX_VARIANTS[resolvedVariant] || MATRIX_VARIANTS['red-on-black'];
 
   const numericSize = typeof size === 'number' ? size : parseInt(String(size), 10) || 40;
+  const shapeClass = className.includes('rounded-') ? '' : hasUserSeed ? 'rounded-full' : 'rounded-xl';
 
   return (
     <div
-      className={`inline-flex items-center justify-center rounded-xl overflow-hidden shrink-0 select-none shadow-sm ${className}`}
+      className={`inline-flex items-center justify-center ${shapeClass} overflow-hidden shrink-0 select-none shadow-sm ${className}`}
       style={{
         width: numericSize,
         height: numericSize,

@@ -268,10 +268,9 @@ export function DashboardSidebar() {
           <div className="shrink-0">
             <AvatarFrame itemId={equipped?.frame || 'none'} size={38}>
               <AvatarPicture
-                avatarId={equipped?.avatar}
-                avatarKey={profile?.avatarKey}
-                variant={profile?.avatarVariant}
+                uid={user?.uid}
                 seed={user?.uid}
+                avatarId={equipped?.avatar}
                 size={30}
               />
             </AvatarFrame>

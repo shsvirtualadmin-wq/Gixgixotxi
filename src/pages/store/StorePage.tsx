@@ -377,7 +377,7 @@ export const StorePage: React.FC<StorePageProps> = ({
 
   const displayName =
     userProfile?.displayName || user?.displayName || 'Hashir Ktk';
-  const photoURL = userProfile?.photoURL || user?.photoURL || null;
+  const photoURL: string | null = null;
 
   // Resolved items in the cart (preserving insertion order)
   const cartItems = useMemo(() => {
@@ -1182,6 +1182,8 @@ export const StorePage: React.FC<StorePageProps> = ({
                         {activeAvatar ? (
                           <div className="relative">
                             <AvatarPicture
+                              uid={user?.uid}
+                              seed={user?.uid}
                               avatarId={activeAvatar}
                               size={68}
                               animated={true}
@@ -1193,17 +1195,12 @@ export const StorePage: React.FC<StorePageProps> = ({
                             size={68}
                             animated={true}
                           >
-                            {photoURL ? (
-                              <img
-                                src={photoURL}
-                                alt={displayName}
-                                className="w-full h-full object-cover rounded-full"
-                              />
-                            ) : (
-                              <div className="w-full h-full rounded-full bg-white/10 flex items-center justify-center text-sm font-black text-white">
-                                {(displayName || 'S')[0]?.toUpperCase()}
-                              </div>
-                            )}
+                            <AvatarPicture
+                              uid={user?.uid}
+                              seed={user?.uid}
+                              size={54}
+                              animated={false}
+                            />
                           </AvatarFrame>
                         )}
                         <div className="flex-1 text-center sm:text-left space-y-1 min-w-0">
@@ -1456,7 +1453,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                       key={item.id}
                       item={item}
                       userDisplayName={displayName}
-                      userPhotoURL={photoURL}
+                      userUid={user?.uid}
                       isOwned={itemOwned}
                       isEquipped={itemEquipped}
                       isInCart={itemInCart}
@@ -1668,17 +1665,13 @@ export const StorePage: React.FC<StorePageProps> = ({
                       size={104}
                       animated={detailItem.animated !== false}
                     >
-                      {photoURL ? (
-                        <img
-                          src={photoURL}
-                          alt={displayName}
-                          className="w-full h-full object-cover rounded-full"
-                        />
-                      ) : (
-                        <div className="w-full h-full rounded-full bg-white/10 flex items-center justify-center text-lg font-black text-white">
-                          {(displayName || 'S')[0]?.toUpperCase()}
-                        </div>
-                      )}
+                      <AvatarPicture
+                        uid={user?.uid}
+                        seed={user?.uid}
+                        avatarId={activeAvatar || undefined}
+                        size={82}
+                        animated={false}
+                      />
                     </AvatarFrame>
                   ) : detailItem.type === 'effect' ? (
                     <div className="w-full max-w-xs aspect-[4/3] rounded-2xl overflow-hidden">
@@ -1970,7 +1963,7 @@ export const StorePage: React.FC<StorePageProps> = ({
         balance={balance}
         isSuperAdmin={isSuperAdmin}
         userDisplayName={displayName}
-        userPhotoURL={photoURL}
+        userUid={user?.uid}
         processing={cartProcessing}
         errorMessage={cartError}
         flaggedItemsNotice={flaggedItemsNotice}

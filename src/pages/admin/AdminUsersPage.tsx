@@ -16,6 +16,7 @@ import { formatStudentId } from '@/utils/shortId';
 import { maskEmail } from '@/utils/privacy';
 import type { UserProfile } from '@/types';
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 
 let cachedAdminUsers: UserProfile[] = [];
 
@@ -583,9 +584,13 @@ export function AdminUsersPage() {
                 >
                   <div className="flex items-center justify-between gap-3 min-w-0">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[14px] text-[var(--text)] shrink-0">
-                        {initial}
-                      </div>
+                      <BoardlyAvatar
+                        uid={u.uid}
+                        equippedAvatar={u.equipped?.avatar || u.avatar}
+                        name={name}
+                        size={40}
+                        className="shrink-0"
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-heading font-semibold text-[14px] text-[var(--text)] truncate">
@@ -748,9 +753,13 @@ export function AdminUsersPage() {
                       {/* 1. Student Name */}
                       <td className="py-3.5 px-5">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[12px] text-[var(--text)] shrink-0">
-                            {initial}
-                          </div>
+                          <BoardlyAvatar
+                            uid={u.uid}
+                            equippedAvatar={u.equipped?.avatar || u.avatar}
+                            name={name}
+                            size={32}
+                            className="shrink-0"
+                          />
                           <span className="font-heading font-semibold text-[13px] text-[var(--text)] truncate max-w-[140px]">
                             {name}
                           </span>

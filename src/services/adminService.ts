@@ -26,6 +26,7 @@ import {
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { auth, db, functions } from '@/lib/firebase';
+import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import type {
   UserProfile,
   Question,
@@ -520,7 +521,8 @@ export async function fetchUsersPaginated(options?: {
                 email: su.email,
                 displayName: su.displayName || su.name || su.email || 'Student',
                 name: su.name || su.displayName || '',
-                photoURL: su.avatar || undefined,
+                photoURL: null,
+                avatar: resolveCosmeticItemId(su.avatar, 'avatar') || undefined,
                 shortId: su.shortId,
                 plan: su.plan,
                 role: (su.role as any) || 'student',
@@ -829,13 +831,15 @@ export async function searchStudentsForKobans(
       handle: rawHandle,
       email,
       avatar:
-        data.photoURL ||
-        data.avatar ||
-        data.equippedAvatar ||
-        pub.photoURL ||
-        pub.avatar ||
-        pub.equippedAvatar ||
-        null,
+        resolveCosmeticItemId(
+          data.equipped?.avatar ||
+            data.equippedAvatar ||
+            data.avatar ||
+            pub.equipped?.avatar ||
+            pub.equippedAvatar ||
+            pub.avatar,
+          'avatar'
+        ) || null,
       shortId: String(data.shortId || pub.shortId || uid.slice(0, 5).toUpperCase()),
       plan: data.plan === 'pro' || data.isPremium === true ? 'pro' : 'free',
       role: String(data.role || 'student'),
@@ -867,7 +871,11 @@ export async function searchStudentsForKobans(
         displayName: rawName || email || `Orphan (${uid.slice(0, 6)})`,
         handle: rawHandle,
         email,
-        avatar: pub.photoURL || pub.avatar || pub.equippedAvatar || null,
+        avatar:
+          resolveCosmeticItemId(
+            pub.equipped?.avatar || pub.equippedAvatar || pub.avatar,
+            'avatar'
+          ) || null,
         shortId: String(pub.shortId || uid.slice(0, 5).toUpperCase()),
         plan: pub.plan === 'pro' ? 'pro' : 'free',
         role: String(pub.role || 'student'),

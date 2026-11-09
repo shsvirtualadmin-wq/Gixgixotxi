@@ -352,24 +352,9 @@ export const CommonsPostCard = memo(function CommonsPostCard({
               className="shrink-0 cursor-pointer transition-transform hover:scale-105"
             >
               <BoardlyAvatar
+                uid={post.authorUid}
                 equippedAvatar={
-                  (post as any).authorEquippedAvatar ||
-                  (post.authorAvatar?.startsWith('pfp_') || post.authorAvatar === 'eclipse-wyrm'
-                    ? post.authorAvatar
-                    : undefined)
-                }
-                avatarUrl={
-                  post.authorAvatar &&
-                  !post.authorAvatar.startsWith('pfp_') &&
-                  post.authorAvatar !== 'eclipse-wyrm' &&
-                  !post.authorAvatar.includes('googleusercontent')
-                    ? post.authorAvatar
-                    : undefined
-                }
-                photoURL={
-                  post.authorAvatar?.includes('googleusercontent')
-                    ? post.authorAvatar
-                    : (post as any).authorPhotoURL
+                  (post as any).authorEquippedAvatar || post.authorAvatar || undefined
                 }
                 frame={(post as any).authorFrame}
                 name={sanitizeStudentDisplayName(post.authorName, post.authorUid)}

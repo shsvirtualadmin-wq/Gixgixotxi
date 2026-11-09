@@ -517,7 +517,7 @@ export function NotificationsPage() {
                   authorName: post.authorName || undefined,
                   authorEquippedAvatar: (post as any).authorEquippedAvatar || null,
                   authorAvatar: post.authorAvatar || null,
-                  authorPhotoURL: (post as any).authorPhotoURL || null,
+                  authorPhotoURL: null,
                   authorFrame: (post as any).authorFrame || null,
                   authorRole: (post as any).authorRole || undefined,
                 };
@@ -1042,8 +1042,8 @@ export function NotificationsPage() {
 
                         // Prefer live profile avatar/frame; only fall back to post/notification values if live profile has none
                         const resolvedEquippedAvatar =
-                          actorProfile?.equipped?.avatar ||
-                          actorProfile?.equippedAvatar ||
+                          resolveCosmeticItemId(actorProfile?.equipped?.avatar, 'avatar') ||
+                          resolveCosmeticItemId(actorProfile?.equippedAvatar, 'avatar') ||
                           resolveCosmeticItemId(actorProfile?.avatar, 'avatar') ||
                           resolveCosmeticItemId(
                             postMeta?.authorEquippedAvatar || postMeta?.authorAvatar,
@@ -1051,25 +1051,6 @@ export function NotificationsPage() {
                           ) ||
                           resolveCosmeticItemId(notif.authorAvatar, 'avatar') ||
                           undefined;
-
-                        const resolvedAvatarUrl =
-                          actorProfile?.avatarUrl ||
-                          (actorProfile?.avatar &&
-                          !resolveCosmeticItemId(actorProfile.avatar, 'avatar')
-                            ? actorProfile.avatar
-                            : null) ||
-                          (postMeta?.authorAvatar &&
-                          !resolveCosmeticItemId(postMeta.authorAvatar, 'avatar')
-                            ? postMeta.authorAvatar
-                            : null) ||
-                          (notif.authorAvatar &&
-                          !resolveCosmeticItemId(notif.authorAvatar, 'avatar')
-                            ? notif.authorAvatar
-                            : null) ||
-                          undefined;
-
-                        const resolvedPhotoURL =
-                          actorProfile?.photoURL || postMeta?.authorPhotoURL || undefined;
 
                         const resolvedFrame =
                           actorProfile?.equipped?.frame ||
@@ -1092,12 +1073,9 @@ export function NotificationsPage() {
                         return (
                           <div className="notif-icon-circle notif-icon-circle--avatar">
                             <BoardlyAvatar
+                              uid={actorUid || postMeta?.authorUid || notif.authorId || notif.actorId || notif.followerId || notif.id}
                               equippedAvatar={resolvedEquippedAvatar}
-                              avatarUrl={resolvedAvatarUrl}
-                              photoURL={resolvedPhotoURL}
                               frame={resolvedFrame}
-                              avatarKey={actorProfile?.avatarKey}
-                              avatarVariant={actorProfile?.avatarVariant}
                               name={resolvedActorName}
                               isSuperAdmin={isActorSuperAdmin}
                               size={46}

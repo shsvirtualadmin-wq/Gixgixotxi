@@ -123,9 +123,13 @@ export const CaptainPublicProfilePage: React.FC = () => {
         <section className="glass-panel p-8 mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
             <BoardlyAvatar
-              equippedAvatar={captainProfile?.equipped?.avatar}
-              avatarUrl={captainProfile?.photoURL}
-              frame={captainProfile?.equipped?.frame}
+              uid={captainProfile?.uid || username}
+              equippedAvatar={
+                captainProfile?.equipped?.avatar ||
+                captainProfile?.equippedAvatar ||
+                captainProfile?.avatar
+              }
+              frame={captainProfile?.equipped?.frame || captainProfile?.frame}
               name={displayName}
               size={64}
             />

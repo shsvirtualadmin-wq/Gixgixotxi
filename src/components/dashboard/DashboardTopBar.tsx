@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
 import { Sun, Moon, Bell } from 'lucide-react';
@@ -15,25 +15,11 @@ import {
   HamburgerMenuSheet,
   clearCachedAuthAndAdminStorage,
 } from './HamburgerMenuSheet';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { LineLoader } from '@/components/ui/LineLoader';
 
 interface Props {
   sidebarCollapsed?: boolean;
-}
-
-function isUsablePhotoUrl(val?: unknown): val is string {
-  if (!val || typeof val !== 'string') return false;
-  const trimmed = val.trim();
-  if (!trimmed || trimmed === 'none' || trimmed === 'null' || trimmed === 'undefined') {
-    return false;
-  }
-  return (
-    trimmed.startsWith('http://') ||
-    trimmed.startsWith('https://') ||
-    trimmed.startsWith('/') ||
-    trimmed.startsWith('data:') ||
-    trimmed.startsWith('blob:')
-  );
 }
 
 export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) {
@@ -43,7 +29,6 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   const navigate = useNavigate();
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [avatarImgFailed, setAvatarImgFailed] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.innerWidth < 640 : false
   );
@@ -58,41 +43,6 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
 
   const { theme, toggle: toggleTheme } = useTheme();
   const unreadCount = useUnreadNotificationsCount();
-
-  // Resolve real user profile photo URL across profile and Firebase Auth user fields
-  const resolvedPhotoUrl = useMemo(() => {
-    const profileRecord = profile as Record<string, unknown> | null;
-    const candidates = [
-      profileRecord?.avatarUrl,
-      profile?.photoURL,
-      profile?.avatar,
-      profileRecord?.customAvatarUrl,
-      user?.photoURL,
-    ];
-    for (const c of candidates) {
-      if (isUsablePhotoUrl(c)) {
-        return c.trim();
-      }
-    }
-    return null;
-  }, [profile, user?.photoURL]);
-
-  useEffect(() => {
-    setAvatarImgFailed(false);
-  }, [resolvedPhotoUrl]);
-
-  const avatarInitial = useMemo(() => {
-    const rawName = (
-      profile?.displayName ||
-      profile?.name ||
-      profile?.username ||
-      user?.displayName ||
-      user?.email ||
-      'S'
-    ).trim();
-    const cleaned = rawName.replace(/^@+/, '').trim();
-    return (cleaned.charAt(0) || 'S').toUpperCase();
-  }, [profile?.displayName, profile?.name, profile?.username, user?.displayName, user?.email]);
 
   // Track viewport size so phones (<640px) use the bottom sheet and desktop uses the avatar dropdown
   useEffect(() => {
@@ -169,7 +119,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   };
 
   const effectivePlan = useEffectivePlan();
-  const { balance: kobanBalance, loading: walletLoading } = useWallet();
+  const { balance: kobanBalance, loading: walletLoading, equipped } = useWallet();
   const isPro = !isGuest && effectivePlan.isUnlimited;
 
   if (isSigningOut) {
@@ -274,7 +224,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
               )}
             </button>
 
-            {/* Profile Avatar (36px circle with red ring; real photo or clean circular first-letter fallback) */}
+            {/* Profile Avatar (36px circle with red ring; store avatar or deterministic matrix default) */}
             <button
               ref={avatarBtnRef}
               type="button"
@@ -290,29 +240,14 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
                 backgroundColor: 'color-mix(in srgb, var(--cw-red, #D71921) 14%, rgba(22,22,26,0.65))',
               }}
             >
-              {resolvedPhotoUrl && !avatarImgFailed ? (
-                <img
-                  src={resolvedPhotoUrl}
-                  alt={profile?.displayName || user?.displayName || 'Profile'}
-                  width={36}
-                  height={36}
-                  referrerPolicy="no-referrer"
-                  onError={() => setAvatarImgFailed(true)}
-                  className="w-9 h-9 rounded-full object-cover block shrink-0"
-                  style={{ width: 36, height: 36, objectFit: 'cover' }}
-                />
-              ) : (
-                <span
-                  className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm select-none leading-none"
-                  style={{
-                    width: 36,
-                    height: 36,
-                    color: 'var(--cw-red-text, #ff4d5c)',
-                  }}
-                >
-                  {avatarInitial}
-                </span>
-              )}
+              <BoardlyAvatar
+                uid={user?.uid}
+                equippedAvatar={
+                  equipped?.avatar ||
+                  (profile as Record<string, unknown> | null)?.avatar as string | undefined
+                }
+                size={36}
+              />
             </button>
           </div>
         </div>

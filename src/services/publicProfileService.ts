@@ -158,8 +158,6 @@ export function normalizePublicProfileDoc(
     p.avatarId,
     u.avatarUrl,
     p.avatarUrl,
-    u.photoURL,
-    p.photoURL,
     botMatch?.equippedAvatar,
   ];
 
@@ -172,44 +170,9 @@ export function normalizePublicProfileDoc(
     }
   }
 
-  const urlCandidates = [
-    u.avatarUrl,
-    p.avatarUrl,
-    u.photoURL,
-    p.photoURL,
-    u.photoUrl,
-    p.photoUrl,
-    u.profilePicture,
-    p.profilePicture,
-    u.picture,
-    p.picture,
-    u.image,
-    p.image,
-    u.avatar,
-    p.avatar,
-    u.equipped?.avatar,
-    p.equippedAvatar,
-    w.avatarUrl,
-    w.photoURL,
-    botMatch?.equippedAvatar,
-  ];
-
-  let resolvedAvatarUrl: string | null = null;
-  for (const cand of urlCandidates) {
-    if (isLikelyHttpOrPathUrl(cand) && !resolveCosmeticItemId(cand, 'avatar')) {
-      resolvedAvatarUrl = cand.trim();
-      break;
-    }
-  }
-
-  const resolvedPhotoURL =
-    (isLikelyHttpOrPathUrl(u.photoURL) && !resolveCosmeticItemId(u.photoURL, 'avatar')
-      ? u.photoURL.trim()
-      : null) ||
-    (isLikelyHttpOrPathUrl(p.photoURL) && !resolveCosmeticItemId(p.photoURL, 'avatar')
-      ? p.photoURL.trim()
-      : null) ||
-    resolvedAvatarUrl;
+  // Never expose Google/external photoURLs as user avatars
+  const resolvedAvatarUrl: string | null = equippedAvatar;
+  const resolvedPhotoURL: string | null = null;
 
   const frameCandidates = [
     u.equipped?.frame,
@@ -570,20 +533,22 @@ export async function syncUserPublicProfile(
     const cleanUsername = input.username ? String(input.username).trim() : existingData.username;
     const cleanUsernameLower = cleanUsername ? cleanUsername.toLowerCase() : undefined;
 
-    const equippedAvatar =
+    const rawEquippedAvatar =
       input.equipped?.avatar ??
       input.equippedAvatar ??
       input.avatar ??
       existingData.equippedAvatar ??
       existingData.avatar ??
       null;
-    const equippedFrame =
+    const equippedAvatar = resolveCosmeticItemId(rawEquippedAvatar, 'avatar');
+    const rawEquippedFrame =
       input.equipped?.frame ??
       input.equippedFrame ??
       input.frame ??
       existingData.equippedFrame ??
       existingData.frame ??
       null;
+    const equippedFrame = resolveCosmeticItemId(rawEquippedFrame, 'frame');
     const equippedNameplate =
       input.equipped?.nameplate ??
       input.equippedNameplate ??
@@ -630,8 +595,7 @@ export async function syncUserPublicProfile(
       avatar: equippedAvatar,
       avatarKey: input.avatarKey ?? existingData.avatarKey ?? null,
       avatarVariant: input.avatarVariant ?? existingData.avatarVariant ?? null,
-      avatarUrl: input.avatarUrl ?? existingData.avatarUrl ?? null,
-      photoURL: input.photoURL ?? existingData.photoURL ?? null,
+      avatarUrl: equippedAvatar,
       equippedAvatar,
       equippedFrame,
       equippedNameplate,

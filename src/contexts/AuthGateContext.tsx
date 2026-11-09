@@ -333,6 +333,26 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                       You&apos;ll stay signed in on this device.
                     </div>
 
+                    <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                      By continuing you agree to our{' '}
+                      <Link
+                        to="/terms"
+                        onClick={closeSignInModal}
+                        className="underline text-[var(--text-primary)] hover:text-[#D71921]"
+                      >
+                        Terms of Service
+                      </Link>{' '}
+                      and{' '}
+                      <Link
+                        to="/privacy"
+                        onClick={closeSignInModal}
+                        className="underline text-[var(--text-primary)] hover:text-[#D71921]"
+                      >
+                        Privacy Policy
+                      </Link>
+                      .
+                    </p>
+
                     <button
                       type="submit"
                       disabled={!canSubmitGuest}

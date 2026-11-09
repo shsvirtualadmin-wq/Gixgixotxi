@@ -27,6 +27,7 @@ import {
   type GradedAttemptQuestion,
 } from '@/services/ambassadorTestService';
 import { MathText } from '@/components/ui/MathText';
+import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { extractIdFromSlug } from '@/utils/privacy';
 import { routes } from '@/utils/routes';
@@ -102,13 +103,12 @@ export function GrandLineTestRunnerPage() {
   const resolveStudentAvatar = useCallback((): string | null => {
     const pAny = profile as any;
     return (
-      pAny?.equipped?.avatar ||
-      pAny?.equippedAvatar ||
-      profile?.photoURL ||
-      user?.photoURL ||
+      resolveCosmeticItemId(pAny?.equipped?.avatar, 'avatar') ||
+      resolveCosmeticItemId(pAny?.equippedAvatar, 'avatar') ||
+      resolveCosmeticItemId(pAny?.avatar, 'avatar') ||
       null
     );
-  }, [profile, user]);
+  }, [profile]);
 
   const handleViewMyExistingResult = useCallback(async () => {
     if (!testId) return;

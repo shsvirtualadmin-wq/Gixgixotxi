@@ -548,16 +548,10 @@ export function GrandLinePage() {
                       </div>
 
                       <BoardlyAvatar
+                        uid={entry.userUid || entry.studentUid || entry.id || `${rank}-${studentName}`}
                         size={32}
                         name={studentName}
-                        equippedAvatar={
-                          entry.userAvatar?.startsWith('pfp_') ? entry.userAvatar : undefined
-                        }
-                        avatarUrl={
-                          entry.userAvatar && !entry.userAvatar.startsWith('pfp_')
-                            ? entry.userAvatar
-                            : undefined
-                        }
+                        equippedAvatar={entry.userAvatar || undefined}
                         forceStatic
                       />
 
