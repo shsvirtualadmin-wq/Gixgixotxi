@@ -256,7 +256,12 @@ export function useWallet() {
         await runTransaction(db, async (tx) => {
           const snap = await tx.get(walletDocRef);
           const curData = snap.exists() ? (snap.data() as WalletDoc) : current;
-          const ownedList = Array.isArray(curData.owned) ? curData.owned : current.owned;
+          const ownedList = Array.from(
+            new Set([
+              ...(Array.isArray(curData.owned) ? curData.owned : []),
+              ...(Array.isArray(current.owned) ? current.owned : []),
+            ])
+          );
           if (!isSuperAdminUser && itemId !== null && !ownedList.includes(itemId)) {
             throw new Error('Item not owned');
           }
@@ -416,7 +421,12 @@ export function useWallet() {
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(walletDocRef);
         const curData = snap.exists() ? (snap.data() as WalletDoc) : current;
-        const ownedList = Array.isArray(curData.owned) ? curData.owned : current.owned;
+        const ownedList = Array.from(
+          new Set([
+            ...(Array.isArray(curData.owned) ? curData.owned : []),
+            ...(Array.isArray(current.owned) ? current.owned : []),
+          ])
+        );
         if (snap.exists()) {
           tx.update(walletDocRef, {
             equipped: updatedEquipped,

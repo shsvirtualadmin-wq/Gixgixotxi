@@ -38,6 +38,9 @@ export async function onRequest(context: {
     path === '/api/pro/purchase-kobans' ||
     path === '/api/pro/submit-payment' ||
     path === '/api/store/purchase' ||
+    path === '/api/store/unlock' ||
+    path === '/api/store/buy' ||
+    path === '/api/kobans/purchase' ||
     path === '/api/admin/coupons' ||
     path.startsWith('/api/admin/coupons/')
   ) {

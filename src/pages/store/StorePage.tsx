@@ -618,6 +618,14 @@ export const StorePage: React.FC<StorePageProps> = ({
       navigate('/login');
       return;
     }
+    if (isGuest || user.uid.startsWith('guest_')) {
+      showToast(
+        'error',
+        'Guest accounts cannot purchase items with Kobans. Please create a registered account to use the Boardly Store.'
+      );
+      setConfirmBuyItem(null);
+      return;
+    }
     setPurchasingSingle(true);
     try {
       await purchaseCosmetic(confirmBuyItem);
@@ -631,7 +639,7 @@ export const StorePage: React.FC<StorePageProps> = ({
       setConfirmBuyItem(null);
       setDetailItemId(null);
     } catch (err: any) {
-      showToast('error', err?.message || 'Purchase failed');
+      showToast('error', err?.message || 'Purchase could not be completed.');
     } finally {
       setPurchasingSingle(false);
     }
@@ -687,6 +695,12 @@ export const StorePage: React.FC<StorePageProps> = ({
     if (!user) {
       setCartOpen(false);
       navigate('/login');
+      return;
+    }
+    if (isGuest || user.uid.startsWith('guest_')) {
+      setCartError(
+        'Guest accounts cannot purchase items with Kobans. Please create a registered account to complete your purchase.'
+      );
       return;
     }
     if (cartItems.length === 0 || cartProcessing) return;
@@ -1922,7 +1936,24 @@ export const StorePage: React.FC<StorePageProps> = ({
                 </div>
               </div>
 
-              {!isSuperAdmin && balance < confirmBuyItem.price ? (
+              {isGuest || user?.uid.startsWith('guest_') ? (
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-[#E11D2A]">
+                    Guest accounts cannot purchase items with Kobans. Please create a registered account to unlock cosmetics and keep them forever.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirmBuyItem(null);
+                      setDetailItemId(null);
+                      navigate('/signup');
+                    }}
+                    className="w-full h-11 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-2"
+                  >
+                    <span>Create an Account</span>
+                  </button>
+                </div>
+              ) : !isSuperAdmin && balance < confirmBuyItem.price ? (
                 <div className="space-y-3">
                   <p className="text-xs font-bold text-[#E11D2A]">
                     You need {(confirmBuyItem.price - balance).toLocaleString()} more Kobans to unlock this item.

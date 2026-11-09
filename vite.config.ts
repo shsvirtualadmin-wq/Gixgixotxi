@@ -915,10 +915,12 @@ RULES:
           res.writeHead = function (statusCode: number, ...whArgs: any[]) {
             try {
               if (
+                req.method === 'GET' &&
                 statusCode === 200 &&
-                !capturedUrl.startsWith('/api/') &&
+                !capturedUrl.startsWith('/api') &&
                 !capturedUrl.startsWith('/src/') &&
-                !capturedUrl.startsWith('/@')
+                !capturedUrl.startsWith('/@') &&
+                !cfMod.isAuthenticatedAppRoute(capturedUrl)
               ) {
                 const routeMeta = cfMod.resolveServerRouteMeta(capturedUrl);
                 if (routeMeta?.statusCode && routeMeta.statusCode !== 200) {
@@ -935,11 +937,11 @@ RULES:
           res.end = function (chunk: any, ...args: any[]) {
             try {
               const ct = String(res.getHeader?.('content-type') || res.getHeader?.('Content-Type') || '');
-              if (ct.includes('text/html') && chunk) {
+              if (req.method === 'GET' && !capturedUrl.startsWith('/api') && ct.includes('text/html') && chunk) {
                 const rawStr = typeof chunk === 'string' ? chunk : Buffer.isBuffer(chunk) ? chunk.toString('utf-8') : null;
                 if (rawStr && rawStr.includes('<title>')) {
                   const routeMeta = cfMod.resolveServerRouteMeta(capturedUrl);
-                  if (routeMeta?.statusCode && !res.headersSent) {
+                  if (routeMeta?.statusCode && !res.headersSent && !cfMod.isAuthenticatedAppRoute(capturedUrl)) {
                     res.statusCode = routeMeta.statusCode;
                   }
                   const enriched = cfMod.injectRouteMetaIntoHtml(rawStr, capturedUrl);

@@ -118,6 +118,11 @@ async function callServerProPurchaseGuard(params: {
 
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok || data?.ok === false) {
+    console.error('[proSubscriptionService] Pro purchase guard rejected:', {
+      status: resp.status,
+      url: resp.url || params.endpoint,
+      body: data,
+    });
     const message =
       data?.error ||
       (resp.status === 403
@@ -398,6 +403,11 @@ export async function purchaseProWithKobans(params: {
 
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || !data?.ok) {
+      console.error('[proSubscriptionService] Pro purchase with Kobans failed:', {
+        status: resp.status,
+        url: resp.url || '/api/pro/purchase-kobans',
+        body: data,
+      });
       const err = new Error(
         data?.error || 'Could not complete Boardly Pro purchase with Kobans.'
       ) as Error & { code?: string; status?: number };

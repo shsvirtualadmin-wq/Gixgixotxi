@@ -18,6 +18,35 @@
  */
 
 import { resolveStaticOrPatternRouteMeta } from '../src/utils/routeSeoMeta';
+import { onRequest as onApiRequest } from './api/[[path]]';
+
+const AUTHENTICATED_APP_ROUTE_PREFIXES = [
+  '/dashboard',
+  '/admin',
+  '/store',
+  '/rewards',
+  '/wallet',
+  '/checkout',
+  '/settings',
+  '/saved',
+  '/notifications',
+  '/messages',
+  '/results',
+  '/practice',
+  '/test',
+  '/onboarding',
+  '/verify-email',
+  '/profile/edit',
+  '/arena/register',
+  '/arena/test',
+];
+
+export function isAuthenticatedAppRoute(pathname: string): boolean {
+  const clean = pathname.replace(/\/+$/, '') || '/';
+  return AUTHENTICATED_APP_ROUTE_PREFIXES.some(
+    (prefix) => clean === prefix || clean.startsWith(`${prefix}/`)
+  );
+}
 
 interface Env {
   DB?: {
@@ -302,6 +331,33 @@ export const onRequest = async (context: {
   const url = new URL(request.url);
   const pathname = url.pathname;
 
+  // 0. Never redirect, rewrite, or 404 any /api/* path — delegate directly to the API handler
+  if (pathname === '/api' || pathname.startsWith('/api/')) {
+    return onApiRequest({
+      request,
+      env: (env || {}) as any,
+      waitUntil: context.waitUntil || (() => {}),
+    });
+  }
+
+  // Never apply SEO redirects, trailing-slash rules, or 404 handling to non-GET requests or static assets
+  if (
+    request.method !== 'GET' ||
+    pathname.startsWith('/assets/') ||
+    /\.(js|css|png|jpg|jpeg|webp|svg|ico|xml|txt|json|woff2?|map|pdf)$/i.test(pathname)
+  ) {
+    // Allow dynamic sitemap XML generation for GET /sitemap*.xml
+    if (
+      request.method === 'GET' &&
+      (pathname === '/sitemap.xml' || pathname === '/sitemap-posts.xml' || pathname === '/sitemap-index.xml') &&
+      env?.DB
+    ) {
+      // Fall through to sitemap block below
+    } else {
+      return next();
+    }
+  }
+
   // 1. Dynamic Sitemap XML from D1 (lists every public post with lastmod)
   if (
     (pathname === '/sitemap.xml' || pathname === '/sitemap-posts.xml' || pathname === '/sitemap-index.xml') &&
@@ -394,14 +450,25 @@ ${postEntries
     }
   }
 
-  // Skip API routes and static assets
-  if (
-    request.method !== 'GET' ||
-    pathname.startsWith('/api/') ||
-    pathname.startsWith('/assets/') ||
-    /\.(js|css|png|jpg|jpeg|webp|svg|ico|xml|txt|json|woff2?|map|pdf)$/i.test(pathname)
-  ) {
-    return next();
+  // 2. Exclude all authenticated app routes from SEO redirects, trailing-slash 301s, and 404 handling
+  const isAuthAppRoute = isAuthenticatedAppRoute(pathname);
+
+  // 3. SEO 301 redirects & trailing-slash normalization (ONLY on public GET page URLs)
+  if (!isAuthAppRoute) {
+    const cleanPublicPath = pathname.replace(/\/+$/, '') || '/';
+    if (cleanPublicPath === '/about-kobans') {
+      return Response.redirect(`${url.origin}/kobans${url.search}`, 301);
+    }
+    if (cleanPublicPath === '/study-material') {
+      return Response.redirect(`${url.origin}/material${url.search}`, 301);
+    }
+    if (cleanPublicPath.startsWith('/study-material/')) {
+      const rest = cleanPublicPath.slice('/study-material'.length);
+      return Response.redirect(`${url.origin}/material${rest}${url.search}`, 301);
+    }
+    if (pathname.length > 1 && pathname.endsWith('/')) {
+      return Response.redirect(`${url.origin}${cleanPublicPath}${url.search}`, 301);
+    }
   }
 
   const response = await next();
@@ -670,8 +737,8 @@ ${postEntries
   newHeaders.set('content-type', 'text/html; charset=utf-8');
 
   return new Response(html, {
-    status: pathname === '/410' ? 410 : response.status,
-    statusText: response.statusText,
+    status: isAuthAppRoute ? 200 : pathname === '/410' ? 410 : response.status,
+    statusText: isAuthAppRoute ? 'OK' : response.statusText,
     headers: newHeaders,
   });
 };

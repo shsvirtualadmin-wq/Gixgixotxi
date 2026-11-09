@@ -40,6 +40,7 @@ import {
 
 
 import { isD1UserSessionVerified } from '../functions/_utils/firestoreRestAdmin';
+import { handleEconomyApiRequest } from '../functions/api/economy/[[path]]';
 
 export interface Env {
   DB?: D1Database;
@@ -5376,6 +5377,526 @@ ${urls
       );
     }
 
+    // 2b. Economy, Store Koban Purchases, Coupons, and Pro Subscription Guard Routes
+    const cleanWorkerPath = url.pathname.replace(/\/+$/, '') || '/';
+    const workerMethod = req.method.toUpperCase();
+
+    if (
+      cleanWorkerPath === '/api/coupons' ||
+      cleanWorkerPath.startsWith('/api/coupons/') ||
+      cleanWorkerPath === '/api/pro/coupon/validate' ||
+      cleanWorkerPath === '/api/pro/coupon/redeem' ||
+      cleanWorkerPath === '/api/pro/purchase-kobans' ||
+      cleanWorkerPath === '/api/store/purchase' ||
+      cleanWorkerPath === '/api/store/unlock' ||
+      cleanWorkerPath === '/api/store/buy' ||
+      cleanWorkerPath === '/api/kobans/purchase' ||
+      cleanWorkerPath === '/api/admin/coupons' ||
+      cleanWorkerPath.startsWith('/api/admin/coupons/')
+    ) {
+      return handleEconomyApiRequest({
+        request: req,
+        env: (env || {}) as any,
+        tokenVerifierOverride: async () => {
+          const verified = await verifyFirebaseIdToken(req, env);
+          if (!verified?.uid) return null;
+          return {
+            uid: verified.uid,
+            email: verified.email || undefined,
+            name: verified.name || undefined,
+          };
+        },
+      });
+    }
+
+    if (
+      cleanWorkerPath === '/api/pro/status' ||
+      cleanWorkerPath === '/api/pro/purchase-guard' ||
+      cleanWorkerPath === '/api/pro/purchase' ||
+      cleanWorkerPath === '/api/pro/submit-payment' ||
+      cleanWorkerPath === '/api/pro/activate'
+    ) {
+      const path = cleanWorkerPath;
+      const method = workerMethod;
+      const authHeader = req.headers.get('Authorization') || '';
+      const authedUser = await verifyFirebaseIdToken(req, env).catch(() => null);
+      if (!authedUser || !authedUser.uid) {
+        return jsonResponse(
+          {
+            ok: false,
+            code: 'UNAUTHENTICATED',
+            error: 'Authentication required to check or purchase Boardly Pro.',
+          },
+          401,
+          cors
+        );
+      }
+
+      const uid = authedUser.uid;
+      const serverNowMs = Date.now();
+
+      if (uid.startsWith('guest_')) {
+        if (path === '/api/pro/status' && method === 'GET') {
+          return jsonResponse(
+            {
+              ok: true,
+              serverNowMs,
+              status: {
+                state: 'none',
+                isPro: false,
+                isPersonalPro: false,
+                isSuperAdmin: false,
+                isCrewPro: false,
+                planId: null,
+                planName: 'Free Tier',
+                startMs: null,
+                startFormatted: null,
+                expiryMs: null,
+                expiryFormatted: null,
+                expiryDateTimeFormatted: null,
+                daysLeft: 0,
+                timeLeftLabel: null,
+                pendingRequest: null,
+                canStartPurchase: false,
+                blockReason: 'Create a registered account to upgrade to Boardly Pro.',
+              },
+            },
+            200,
+            cors
+          );
+        }
+        return jsonResponse(
+          {
+            ok: false,
+            code: 'GUEST_UPGRADE_FORBIDDEN',
+            error: 'Guest accounts cannot purchase Boardly Pro. Please create a registered account to upgrade.',
+          },
+          403,
+          cors
+        );
+      }
+
+      if (env.DB) {
+        await env.DB.prepare(
+          `CREATE TABLE IF NOT EXISTS pro_purchase_locks (
+            uid TEXT PRIMARY KEY,
+            state TEXT NOT NULL,
+            plan_id TEXT,
+            plan_name TEXT,
+            amount_pkr INTEGER,
+            method TEXT,
+            tid TEXT,
+            started_at INTEGER,
+            expires_at INTEGER,
+            pending_request_id TEXT,
+            updated_at INTEGER NOT NULL
+          )`
+        )
+          .run()
+          .catch(() => {});
+      }
+
+      const projectId = env.FIREBASE_PROJECT_ID || BOARDLY_CLOUDFLARE_CONFIG.firebaseProjectId;
+      const defaultFsDbId = 'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
+
+      const unwrapField = (val: any): any => {
+        if (!val || typeof val !== 'object') return undefined;
+        if ('stringValue' in val) return String(val.stringValue);
+        if ('timestampValue' in val) return String(val.timestampValue);
+        if ('integerValue' in val) return Number(val.integerValue);
+        if ('doubleValue' in val) return Number(val.doubleValue);
+        if ('booleanValue' in val) return Boolean(val.booleanValue);
+        if ('nullValue' in val) return null;
+        return undefined;
+      };
+
+      const parseDoc = (docObj: any): { id: string; data: Record<string, any> } | null => {
+        if (!docObj || typeof docObj.name !== 'string') return null;
+        const docId = docObj.name.split('/').pop() || '';
+        if (!docId) return null;
+        const fields = docObj.fields || {};
+        const data: Record<string, any> = {};
+        for (const [k, v] of Object.entries(fields)) {
+          data[k] = unwrapField(v);
+        }
+        return { id: docId, data };
+      };
+
+      const parseAnyMs = (raw: unknown): number | null => {
+        if (raw === null || raw === undefined || raw === '') return null;
+        if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+          return raw < 1e11 ? Math.round(raw * 1000) : Math.round(raw);
+        }
+        if (typeof raw === 'string') {
+          const tr = raw.trim();
+          if (/^\d+$/.test(tr)) {
+            const n = Number(tr);
+            if (n > 0) return n < 1e11 ? Math.round(n * 1000) : Math.round(n);
+          }
+          const parsed = new Date(tr).getTime();
+          return Number.isNaN(parsed) ? null : parsed;
+        }
+        return null;
+      };
+
+      const formatDateShort = (ms: number): string =>
+        new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Asia/Karachi',
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        }).format(new Date(ms));
+
+      const formatDateTimePkt = (ms: number): string =>
+        new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Asia/Karachi',
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        }).format(new Date(ms)) + ' PKT';
+
+      const formatTimeLeft = (expMs: number, now: number): string => {
+        const diff = Math.max(0, expMs - now);
+        if (diff <= 0) return 'Expired';
+        const totalHours = Math.floor(diff / (60 * 60 * 1000));
+        const days = Math.floor(totalHours / 24);
+        const hours = totalHours % 24;
+        const mins = Math.max(1, Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000)));
+        if (days >= 1) {
+          return hours > 0
+            ? `${days} ${days === 1 ? 'day' : 'days'}, ${hours} ${hours === 1 ? 'hour' : 'hours'} left`
+            : `${days} ${days === 1 ? 'day' : 'days'} left`;
+        }
+        return totalHours >= 1
+          ? `${totalHours} ${totalHours === 1 ? 'hour' : 'hours'}, ${mins} min left`
+          : `${mins} min left`;
+      };
+
+      let userDoc: Record<string, any> | null = null;
+      const userReqs: Array<Record<string, any>> = [];
+
+      if (authHeader) {
+        for (const dbId of [defaultFsDbId, '(default)']) {
+          try {
+            const uResp = await fetch(
+              `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${encodeURIComponent(
+                dbId
+              )}/documents/users/${encodeURIComponent(uid)}`,
+              { headers: { Authorization: authHeader, Accept: 'application/json' } }
+            );
+            if (uResp.ok) {
+              const parsed = parseDoc(await uResp.json().catch(() => null));
+              if (parsed?.data) {
+                userDoc = parsed.data;
+                break;
+              }
+            }
+          } catch {
+            // Ignore
+          }
+        }
+
+        for (const dbId of [defaultFsDbId, '(default)']) {
+          try {
+            const rResp = await fetch(
+              `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${encodeURIComponent(
+                dbId
+              )}/documents/paymentRequests?pageSize=250`,
+              { headers: { Authorization: authHeader, Accept: 'application/json' } }
+            );
+            if (rResp.ok) {
+              const rJson = (await rResp.json().catch(() => ({}))) as { documents?: any[] };
+              const docs = Array.isArray(rJson.documents) ? rJson.documents : [];
+              for (const d of docs) {
+                const p = parseDoc(d);
+                if (p && String(p.data.userId || '') === uid) {
+                  userReqs.push({ id: p.id, ...p.data });
+                }
+              }
+              if (docs.length > 0 || dbId === defaultFsDbId) break;
+            }
+          } catch {
+            // Ignore
+          }
+        }
+      }
+
+      let d1Lock: Record<string, any> | null = null;
+      if (env.DB) {
+        d1Lock = await env.DB.prepare('SELECT * FROM pro_purchase_locks WHERE uid = ? LIMIT 1')
+          .bind(uid)
+          .first<Record<string, any>>()
+          .catch(() => null);
+      }
+
+      const expA = parseAnyMs(userDoc?.planExpiresAt);
+      const expB = parseAnyMs(userDoc?.premiumExpiresAt);
+      let expiryMs = expA !== null && expB !== null ? Math.max(expA, expB) : expA ?? expB;
+
+      if (d1Lock && d1Lock.state === 'active' && Number(d1Lock.expires_at || 0) > serverNowMs) {
+        const lockExp = Number(d1Lock.expires_at);
+        if (userDoc === null || (expiryMs !== null && expiryMs > serverNowMs) || userDoc?.isPremium === true || userDoc?.plan === 'pro') {
+          expiryMs = expiryMs ? Math.max(expiryMs, lockExp) : lockExp;
+        } else if (env.DB) {
+          await env.DB.prepare('DELETE FROM pro_purchase_locks WHERE uid = ?').bind(uid).run().catch(() => {});
+        }
+      }
+
+      const hasFutureExpiry = expiryMs !== null && expiryMs > serverNowMs;
+      const isExpired = expiryMs !== null && expiryMs <= serverNowMs;
+      const rawPlan = String(userDoc?.proPlanId || userDoc?.plan || d1Lock?.plan_id || '').toLowerCase();
+      const isFlaggedPro = Boolean(
+        userDoc?.isPremium === true ||
+          rawPlan === 'pro' ||
+          rawPlan === 'pro_monthly' ||
+          rawPlan === 'pro_annual'
+      );
+
+      const pendingFromFs = userReqs.find((r) => {
+        const st = String(r.status || '').toLowerCase();
+        const pl = String(r.plan || '').toLowerCase();
+        return st === 'pending' && pl !== 'large_crew' && !r.crewId;
+      });
+
+      let activePending = pendingFromFs || null;
+      if (!activePending && d1Lock && d1Lock.state === 'pending') {
+        const lockAge = serverNowMs - Number(d1Lock.updated_at || 0);
+        const matchInFs = userReqs.find((r) => r.id === d1Lock?.pending_request_id);
+        const matchSt = String(matchInFs?.status || '').toLowerCase();
+        if (matchSt === 'rejected' || matchSt === 'approved') {
+          if (env.DB) {
+            await env.DB.prepare('DELETE FROM pro_purchase_locks WHERE uid = ?').bind(uid).run().catch(() => {});
+          }
+        } else if (lockAge < 15 * 60 * 1000) {
+          activePending = {
+            id: String(d1Lock.pending_request_id || `pending_${uid}`),
+            plan: String(d1Lock.plan_id || 'pro_monthly'),
+            planName: String(d1Lock.plan_name || 'Boardly Pro, Monthly Pass'),
+            amount_pkr: Number(d1Lock.amount_pkr || 199),
+            method: String(d1Lock.method || 'jazzcash'),
+            TID: String(d1Lock.tid || ''),
+            createdAt: Number(d1Lock.started_at || d1Lock.updated_at || serverNowMs),
+          };
+        }
+      }
+
+      const isAnnual = rawPlan.includes('annual') || (hasFutureExpiry && expiryMs! - serverNowMs > 45 * 86400000);
+      const planId = isAnnual ? 'pro_annual' : 'pro_monthly';
+      const planName = isAnnual ? 'Boardly Pro, Annual Pass' : 'Boardly Pro, Monthly Pass';
+
+      let resolvedStatus: Record<string, any>;
+      if (hasFutureExpiry || (isFlaggedPro && !isExpired)) {
+        const daysLeft = hasFutureExpiry
+          ? Math.max(1, Math.ceil((expiryMs! - serverNowMs) / 86400000))
+          : isAnnual
+          ? 365
+          : 30;
+        const expFmt = hasFutureExpiry ? formatDateShort(expiryMs!) : 'Active (No expiry date set)';
+        const expDtFmt = hasFutureExpiry ? formatDateTimePkt(expiryMs!) : 'Active (No expiry date set)';
+        const timeLeft = hasFutureExpiry ? formatTimeLeft(expiryMs!, serverNowMs) : 'Active Pro membership';
+        resolvedStatus = {
+          state: 'active',
+          isPro: true,
+          isPersonalPro: true,
+          isSuperAdmin: authedUser.role === 'superadmin',
+          isCrewPro: false,
+          planId,
+          planName,
+          startMs: parseAnyMs(userDoc?.planStartedAt ?? userDoc?.updatedAt),
+          startFormatted: null,
+          expiryMs: hasFutureExpiry ? expiryMs : null,
+          expiryFormatted: expFmt,
+          expiryDateTimeFormatted: expDtFmt,
+          daysLeft,
+          timeLeftLabel: timeLeft,
+          pendingRequest: null,
+          canStartPurchase: false,
+          blockReason: `You already have Boardly Pro (${planName}) active until ${expFmt} (${timeLeft}). You can purchase a plan again after your current plan expires.`,
+        };
+      } else if (activePending) {
+        const pAnnual = String(activePending.plan || '').toLowerCase().includes('annual');
+        const pName = String(
+          activePending.planName || (pAnnual ? 'Boardly Pro, Annual Pass' : 'Boardly Pro, Monthly Pass')
+        );
+        const subMs = parseAnyMs(activePending.createdAt ?? activePending.submittedAt);
+        resolvedStatus = {
+          state: 'pending',
+          isPro: false,
+          isPersonalPro: false,
+          isSuperAdmin: false,
+          isCrewPro: false,
+          planId: pAnnual ? 'pro_annual' : 'pro_monthly',
+          planName: pName,
+          startMs: null,
+          startFormatted: null,
+          expiryMs: null,
+          expiryFormatted: null,
+          expiryDateTimeFormatted: null,
+          daysLeft: 0,
+          timeLeftLabel: null,
+          pendingRequest: {
+            id: String(activePending.id || ''),
+            planId: pAnnual ? 'pro_annual' : 'pro_monthly',
+            planName: pName,
+            amountPkr: Number(activePending.amount_pkr ?? activePending.amount ?? (pAnnual ? 1791 : 199)),
+            method: String(activePending.method || 'jazzcash'),
+            tid: String(activePending.TID || activePending.transactionId || ''),
+            submittedAtMs: subMs,
+            submittedFormatted: subMs ? formatDateTimePkt(subMs) : 'Recently submitted',
+          },
+          canStartPurchase: false,
+          blockReason:
+            'Your payment is being verified. This usually takes up to 24 hours. You cannot start another purchase while your payment is awaiting verification.',
+        };
+      } else {
+        resolvedStatus = {
+          state: 'none',
+          isPro: false,
+          isPersonalPro: false,
+          isSuperAdmin: false,
+          isCrewPro: false,
+          planId: null,
+          planName: 'Free Tier',
+          startMs: null,
+          startFormatted: null,
+          expiryMs: null,
+          expiryFormatted: null,
+          expiryDateTimeFormatted: null,
+          daysLeft: 0,
+          timeLeftLabel: null,
+          pendingRequest: null,
+          canStartPurchase: true,
+          blockReason: null,
+        };
+      }
+
+      if (path === '/api/pro/status' && method === 'GET') {
+        return jsonResponse({ ok: true, serverNowMs, status: resolvedStatus }, 200, cors);
+      }
+
+      if (method === 'POST') {
+        const body = (await req.clone().json().catch(() => ({}))) as Record<string, any>;
+        if (resolvedStatus.state === 'active') {
+          return jsonResponse(
+            {
+              ok: false,
+              code: 'PRO_ALREADY_ACTIVE',
+              state: 'active',
+              serverNowMs,
+              status: resolvedStatus,
+              error: resolvedStatus.blockReason,
+            },
+            409,
+            cors
+          );
+        }
+
+        if (resolvedStatus.state === 'pending') {
+          return jsonResponse(
+            {
+              ok: false,
+              code: 'PAYMENT_PENDING_VERIFICATION',
+              state: 'pending',
+              serverNowMs,
+              status: resolvedStatus,
+              error: resolvedStatus.blockReason,
+            },
+            409,
+            cors
+          );
+        }
+
+        if (path === '/api/pro/submit-payment' && body.transactionId && body.commitLock !== true) {
+          return handleEconomyApiRequest({
+            request: req,
+            env: (env || {}) as any,
+          });
+        }
+
+        if (body.commitLock === true && env.DB) {
+          const lockState = body.lockState === 'active' ? 'active' : 'pending';
+          const durDays = Number(body.durationDays || (body.planId === 'pro_annual' ? 365 : 30));
+          const expAt =
+            lockState === 'active'
+              ? Number(body.expiresAtMs || serverNowMs + durDays * 86400000)
+              : null;
+          const existingRow = await env.DB.prepare(
+            'SELECT state, expires_at, updated_at FROM pro_purchase_locks WHERE uid = ? LIMIT 1'
+          )
+            .bind(uid)
+            .first<{ state: string; expires_at: number | null; updated_at: number }>()
+            .catch(() => null);
+          if (
+            existingRow &&
+            ((existingRow.state === 'active' && Number(existingRow.expires_at || 0) > serverNowMs) ||
+              (existingRow.state === 'pending' && serverNowMs - Number(existingRow.updated_at || 0) < 15 * 60 * 1000))
+          ) {
+            return jsonResponse(
+              {
+                ok: false,
+                code: existingRow.state === 'active' ? 'PRO_ALREADY_ACTIVE' : 'PAYMENT_PENDING_VERIFICATION',
+                state: existingRow.state,
+                serverNowMs,
+                error:
+                  existingRow.state === 'active'
+                    ? 'You already have an active Boardly Pro plan.'
+                    : 'Your payment is being verified. This usually takes up to 24 hours.',
+              },
+              409,
+              cors
+            );
+          }
+
+          await env.DB.prepare(
+            `INSERT INTO pro_purchase_locks (uid, state, plan_id, plan_name, amount_pkr, method, tid, started_at, expires_at, pending_request_id, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+             ON CONFLICT(uid) DO UPDATE SET
+               state = excluded.state,
+               plan_id = excluded.plan_id,
+               plan_name = excluded.plan_name,
+               amount_pkr = excluded.amount_pkr,
+               method = excluded.method,
+               tid = excluded.tid,
+               started_at = excluded.started_at,
+               expires_at = excluded.expires_at,
+               pending_request_id = excluded.pending_request_id,
+               updated_at = excluded.updated_at`
+          )
+            .bind(
+              uid,
+              lockState,
+              String(body.planId || 'pro_monthly'),
+              String(body.planName || 'Boardly Pro, Monthly Pass'),
+              Number(body.amountPkr || 199),
+              String(body.method || 'koban'),
+              String(body.tid || ''),
+              serverNowMs,
+              expAt,
+              body.pendingRequestId ? String(body.pendingRequestId) : null,
+              serverNowMs
+            )
+            .run()
+            .catch(() => {});
+        }
+
+        return jsonResponse(
+          {
+            ok: true,
+            code: 'PURCHASE_ALLOWED',
+            state: 'none',
+            canStartPurchase: true,
+            serverNowMs,
+            status: resolvedStatus,
+          },
+          200,
+          cors
+        );
+      }
+    }
+
     // 3. API Routes under /api/posts
     if (!url.pathname.startsWith('/api/posts')) {
       return jsonResponse({ error: 'Not Found' }, 404, cors);
@@ -6456,493 +6977,6 @@ ${urls
           .run();
 
         return jsonResponse({ success: true, reportId: id }, 201, cors);
-      }
-
-      // ============================================================================
-      // SERVER-AUTHORITATIVE PRO PLAN STATUS & PURCHASE GUARD (/api/pro/*)
-      // Rejects starting a purchase, submitting payment proof, or activating a plan
-      // when the user already has an active Pro plan or pending manual payment (409/403).
-      // ============================================================================
-      if (
-        path === '/api/pro/status' ||
-        path === '/api/pro/purchase-guard' ||
-        path === '/api/pro/purchase' ||
-        path === '/api/pro/submit-payment' ||
-        path === '/api/pro/activate'
-      ) {
-        const authHeader = req.headers.get('Authorization') || '';
-        const authedUser = await verifyFirebaseIdToken(req, env).catch(() => null);
-        if (!authedUser || !authedUser.uid) {
-          return jsonResponse(
-            {
-              ok: false,
-              code: 'UNAUTHENTICATED',
-              error: 'Authentication required to check or purchase Boardly Pro.',
-            },
-            401,
-            cors
-          );
-        }
-
-        const uid = authedUser.uid;
-        const serverNowMs = Date.now();
-
-        if (uid.startsWith('guest_')) {
-          if (path === '/api/pro/status' && method === 'GET') {
-            return jsonResponse(
-              {
-                ok: true,
-                serverNowMs,
-                status: {
-                  state: 'none',
-                  isPro: false,
-                  isPersonalPro: false,
-                  isSuperAdmin: false,
-                  isCrewPro: false,
-                  planId: null,
-                  planName: 'Free Tier',
-                  startMs: null,
-                  startFormatted: null,
-                  expiryMs: null,
-                  expiryFormatted: null,
-                  expiryDateTimeFormatted: null,
-                  daysLeft: 0,
-                  timeLeftLabel: null,
-                  pendingRequest: null,
-                  canStartPurchase: false,
-                  blockReason: 'Create a registered account to upgrade to Boardly Pro.',
-                },
-              },
-              200,
-              cors
-            );
-          }
-          return jsonResponse(
-            {
-              ok: false,
-              code: 'GUEST_UPGRADE_FORBIDDEN',
-              error: 'Guest accounts cannot purchase Boardly Pro. Please create a registered account to upgrade.',
-            },
-            403,
-            cors
-          );
-        }
-
-        if (env.DB) {
-          await env.DB.prepare(
-            `CREATE TABLE IF NOT EXISTS pro_purchase_locks (
-              uid TEXT PRIMARY KEY,
-              state TEXT NOT NULL,
-              plan_id TEXT,
-              plan_name TEXT,
-              amount_pkr INTEGER,
-              method TEXT,
-              tid TEXT,
-              started_at INTEGER,
-              expires_at INTEGER,
-              pending_request_id TEXT,
-              updated_at INTEGER NOT NULL
-            )`
-          )
-            .run()
-            .catch(() => {});
-        }
-
-        const projectId = env.FIREBASE_PROJECT_ID || BOARDLY_CLOUDFLARE_CONFIG.firebaseProjectId;
-        const defaultFsDbId = 'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
-
-        const unwrapField = (val: any): any => {
-          if (!val || typeof val !== 'object') return undefined;
-          if ('stringValue' in val) return String(val.stringValue);
-          if ('timestampValue' in val) return String(val.timestampValue);
-          if ('integerValue' in val) return Number(val.integerValue);
-          if ('doubleValue' in val) return Number(val.doubleValue);
-          if ('booleanValue' in val) return Boolean(val.booleanValue);
-          if ('nullValue' in val) return null;
-          return undefined;
-        };
-
-        const parseDoc = (docObj: any): { id: string; data: Record<string, any> } | null => {
-          if (!docObj || typeof docObj.name !== 'string') return null;
-          const docId = docObj.name.split('/').pop() || '';
-          if (!docId) return null;
-          const fields = docObj.fields || {};
-          const data: Record<string, any> = {};
-          for (const [k, v] of Object.entries(fields)) {
-            data[k] = unwrapField(v);
-          }
-          return { id: docId, data };
-        };
-
-        const parseAnyMs = (raw: unknown): number | null => {
-          if (raw === null || raw === undefined || raw === '') return null;
-          if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
-            return raw < 1e11 ? Math.round(raw * 1000) : Math.round(raw);
-          }
-          if (typeof raw === 'string') {
-            const tr = raw.trim();
-            if (/^\d+$/.test(tr)) {
-              const n = Number(tr);
-              if (n > 0) return n < 1e11 ? Math.round(n * 1000) : Math.round(n);
-            }
-            const parsed = new Date(tr).getTime();
-            return Number.isNaN(parsed) ? null : parsed;
-          }
-          return null;
-        };
-
-        const formatDateShort = (ms: number): string =>
-          new Intl.DateTimeFormat('en-GB', {
-            timeZone: 'Asia/Karachi',
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-          }).format(new Date(ms));
-
-        const formatDateTimePkt = (ms: number): string =>
-          new Intl.DateTimeFormat('en-GB', {
-            timeZone: 'Asia/Karachi',
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true,
-          }).format(new Date(ms)) + ' PKT';
-
-        const formatTimeLeft = (expMs: number, now: number): string => {
-          const diff = Math.max(0, expMs - now);
-          if (diff <= 0) return 'Expired';
-          const totalHours = Math.floor(diff / (60 * 60 * 1000));
-          const days = Math.floor(totalHours / 24);
-          const hours = totalHours % 24;
-          const mins = Math.max(1, Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000)));
-          if (days >= 1) {
-            return hours > 0
-              ? `${days} ${days === 1 ? 'day' : 'days'}, ${hours} ${hours === 1 ? 'hour' : 'hours'} left`
-              : `${days} ${days === 1 ? 'day' : 'days'} left`;
-          }
-          return totalHours >= 1
-            ? `${totalHours} ${totalHours === 1 ? 'hour' : 'hours'}, ${mins} min left`
-            : `${mins} min left`;
-        };
-
-        // Fetch Firestore user doc and paymentRequests
-        let userDoc: Record<string, any> | null = null;
-        const userReqs: Array<Record<string, any>> = [];
-
-        if (authHeader) {
-          for (const dbId of [defaultFsDbId, '(default)']) {
-            try {
-              const uResp = await fetch(
-                `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${encodeURIComponent(
-                  dbId
-                )}/documents/users/${encodeURIComponent(uid)}`,
-                { headers: { Authorization: authHeader, Accept: 'application/json' } }
-              );
-              if (uResp.ok) {
-                const parsed = parseDoc(await uResp.json().catch(() => null));
-                if (parsed?.data) {
-                  userDoc = parsed.data;
-                  break;
-                }
-              }
-            } catch {
-              // Ignore
-            }
-          }
-
-          for (const dbId of [defaultFsDbId, '(default)']) {
-            try {
-              const rResp = await fetch(
-                `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${encodeURIComponent(
-                  dbId
-                )}/documents/paymentRequests?pageSize=250`,
-                { headers: { Authorization: authHeader, Accept: 'application/json' } }
-              );
-              if (rResp.ok) {
-                const rJson = (await rResp.json().catch(() => ({}))) as { documents?: any[] };
-                const docs = Array.isArray(rJson.documents) ? rJson.documents : [];
-                for (const d of docs) {
-                  const p = parseDoc(d);
-                  if (p && String(p.data.userId || '') === uid) {
-                    userReqs.push({ id: p.id, ...p.data });
-                  }
-                }
-                if (docs.length > 0 || dbId === defaultFsDbId) break;
-              }
-            } catch {
-              // Ignore
-            }
-          }
-        }
-
-        // Check D1 pro_purchase_locks row
-        let d1Lock: Record<string, any> | null = null;
-        if (env.DB) {
-          d1Lock = await env.DB.prepare('SELECT * FROM pro_purchase_locks WHERE uid = ? LIMIT 1')
-            .bind(uid)
-            .first<Record<string, any>>()
-            .catch(() => null);
-        }
-
-        const expA = parseAnyMs(userDoc?.planExpiresAt);
-        const expB = parseAnyMs(userDoc?.premiumExpiresAt);
-        let expiryMs = expA !== null && expB !== null ? Math.max(expA, expB) : expA ?? expB;
-
-        if (d1Lock && d1Lock.state === 'active' && Number(d1Lock.expires_at || 0) > serverNowMs) {
-          const lockExp = Number(d1Lock.expires_at);
-          if (userDoc === null || (expiryMs !== null && expiryMs > serverNowMs) || userDoc?.isPremium === true || userDoc?.plan === 'pro') {
-            expiryMs = expiryMs ? Math.max(expiryMs, lockExp) : lockExp;
-          } else if (env.DB) {
-            await env.DB.prepare('DELETE FROM pro_purchase_locks WHERE uid = ?').bind(uid).run().catch(() => {});
-          }
-        }
-
-        const hasFutureExpiry = expiryMs !== null && expiryMs > serverNowMs;
-        const isExpired = expiryMs !== null && expiryMs <= serverNowMs;
-        const rawPlan = String(userDoc?.proPlanId || userDoc?.plan || d1Lock?.plan_id || '').toLowerCase();
-        const isFlaggedPro = Boolean(
-          userDoc?.isPremium === true ||
-            rawPlan === 'pro' ||
-            rawPlan === 'pro_monthly' ||
-            rawPlan === 'pro_annual'
-        );
-
-        const pendingFromFs = userReqs.find((r) => {
-          const st = String(r.status || '').toLowerCase();
-          const pl = String(r.plan || '').toLowerCase();
-          return st === 'pending' && pl !== 'large_crew' && !r.crewId;
-        });
-
-        let activePending = pendingFromFs || null;
-        if (!activePending && d1Lock && d1Lock.state === 'pending') {
-          const lockAge = serverNowMs - Number(d1Lock.updated_at || 0);
-          const matchInFs = userReqs.find((r) => r.id === d1Lock?.pending_request_id);
-          const matchSt = String(matchInFs?.status || '').toLowerCase();
-          if (matchSt === 'rejected' || matchSt === 'approved') {
-            if (env.DB) {
-              await env.DB.prepare('DELETE FROM pro_purchase_locks WHERE uid = ?').bind(uid).run().catch(() => {});
-            }
-          } else if (lockAge < 15 * 60 * 1000) {
-            activePending = {
-              id: String(d1Lock.pending_request_id || `pending_${uid}`),
-              plan: String(d1Lock.plan_id || 'pro_monthly'),
-              planName: String(d1Lock.plan_name || 'Boardly Pro, Monthly Pass'),
-              amount_pkr: Number(d1Lock.amount_pkr || 199),
-              method: String(d1Lock.method || 'jazzcash'),
-              TID: String(d1Lock.tid || ''),
-              createdAt: Number(d1Lock.started_at || d1Lock.updated_at || serverNowMs),
-            };
-          }
-        }
-
-        const isAnnual = rawPlan.includes('annual') || (hasFutureExpiry && expiryMs! - serverNowMs > 45 * 86400000);
-        const planId = isAnnual ? 'pro_annual' : 'pro_monthly';
-        const planName = isAnnual ? 'Boardly Pro, Annual Pass' : 'Boardly Pro, Monthly Pass';
-
-        let resolvedStatus: Record<string, any>;
-        if (hasFutureExpiry || (isFlaggedPro && !isExpired)) {
-          const daysLeft = hasFutureExpiry
-            ? Math.max(1, Math.ceil((expiryMs! - serverNowMs) / 86400000))
-            : isAnnual
-            ? 365
-            : 30;
-          const expFmt = hasFutureExpiry ? formatDateShort(expiryMs!) : 'Active (No expiry date set)';
-          const expDtFmt = hasFutureExpiry ? formatDateTimePkt(expiryMs!) : 'Active (No expiry date set)';
-          const timeLeft = hasFutureExpiry ? formatTimeLeft(expiryMs!, serverNowMs) : 'Active Pro membership';
-          resolvedStatus = {
-            state: 'active',
-            isPro: true,
-            isPersonalPro: true,
-            isSuperAdmin: authedUser.role === 'superadmin',
-            isCrewPro: false,
-            planId,
-            planName,
-            startMs: parseAnyMs(userDoc?.planStartedAt ?? userDoc?.updatedAt),
-            startFormatted: null,
-            expiryMs: hasFutureExpiry ? expiryMs : null,
-            expiryFormatted: expFmt,
-            expiryDateTimeFormatted: expDtFmt,
-            daysLeft,
-            timeLeftLabel: timeLeft,
-            pendingRequest: null,
-            canStartPurchase: false,
-            blockReason: `You already have Boardly Pro (${planName}) active until ${expFmt} (${timeLeft}). You can purchase a plan again after your current plan expires.`,
-          };
-        } else if (activePending) {
-          const pAnnual = String(activePending.plan || '').toLowerCase().includes('annual');
-          const pName = String(
-            activePending.planName || (pAnnual ? 'Boardly Pro, Annual Pass' : 'Boardly Pro, Monthly Pass')
-          );
-          const subMs = parseAnyMs(activePending.createdAt ?? activePending.submittedAt);
-          resolvedStatus = {
-            state: 'pending',
-            isPro: false,
-            isPersonalPro: false,
-            isSuperAdmin: false,
-            isCrewPro: false,
-            planId: pAnnual ? 'pro_annual' : 'pro_monthly',
-            planName: pName,
-            startMs: null,
-            startFormatted: null,
-            expiryMs: null,
-            expiryFormatted: null,
-            expiryDateTimeFormatted: null,
-            daysLeft: 0,
-            timeLeftLabel: null,
-            pendingRequest: {
-              id: String(activePending.id || ''),
-              planId: pAnnual ? 'pro_annual' : 'pro_monthly',
-              planName: pName,
-              amountPkr: Number(activePending.amount_pkr ?? activePending.amount ?? (pAnnual ? 1791 : 199)),
-              method: String(activePending.method || 'jazzcash'),
-              tid: String(activePending.TID || activePending.transactionId || ''),
-              submittedAtMs: subMs,
-              submittedFormatted: subMs ? formatDateTimePkt(subMs) : 'Recently submitted',
-            },
-            canStartPurchase: false,
-            blockReason:
-              'Your payment is being verified. This usually takes up to 24 hours. You cannot start another purchase while your payment is awaiting verification.',
-          };
-        } else {
-          resolvedStatus = {
-            state: 'none',
-            isPro: false,
-            isPersonalPro: false,
-            isSuperAdmin: false,
-            isCrewPro: false,
-            planId: null,
-            planName: 'Free Tier',
-            startMs: null,
-            startFormatted: null,
-            expiryMs: null,
-            expiryFormatted: null,
-            expiryDateTimeFormatted: null,
-            daysLeft: 0,
-            timeLeftLabel: null,
-            pendingRequest: null,
-            canStartPurchase: true,
-            blockReason: null,
-          };
-        }
-
-        if (path === '/api/pro/status' && method === 'GET') {
-          return jsonResponse({ ok: true, serverNowMs, status: resolvedStatus }, 200, cors);
-        }
-
-        if (method === 'POST') {
-          const body = (await req.json().catch(() => ({}))) as Record<string, any>;
-          if (resolvedStatus.state === 'active') {
-            return jsonResponse(
-              {
-                ok: false,
-                code: 'PRO_ALREADY_ACTIVE',
-                state: 'active',
-                serverNowMs,
-                status: resolvedStatus,
-                error: resolvedStatus.blockReason,
-              },
-              409,
-              cors
-            );
-          }
-
-          if (resolvedStatus.state === 'pending') {
-            return jsonResponse(
-              {
-                ok: false,
-                code: 'PAYMENT_PENDING_VERIFICATION',
-                state: 'pending',
-                serverNowMs,
-                status: resolvedStatus,
-                error: resolvedStatus.blockReason,
-              },
-              409,
-              cors
-            );
-          }
-
-          if (body.commitLock === true && env.DB) {
-            const lockState = body.lockState === 'active' ? 'active' : 'pending';
-            const durDays = Number(body.durationDays || (body.planId === 'pro_annual' ? 365 : 30));
-            const expAt =
-              lockState === 'active'
-                ? Number(body.expiresAtMs || serverNowMs + durDays * 86400000)
-                : null;
-            // Atomic INSERT OR ABORT if another concurrent request just inserted an active/pending lock
-            const existingRow = await env.DB.prepare(
-              'SELECT state, expires_at, updated_at FROM pro_purchase_locks WHERE uid = ? LIMIT 1'
-            )
-              .bind(uid)
-              .first<{ state: string; expires_at: number | null; updated_at: number }>()
-              .catch(() => null);
-            if (
-              existingRow &&
-              ((existingRow.state === 'active' && Number(existingRow.expires_at || 0) > serverNowMs) ||
-                (existingRow.state === 'pending' && serverNowMs - Number(existingRow.updated_at || 0) < 15 * 60 * 1000))
-            ) {
-              return jsonResponse(
-                {
-                  ok: false,
-                  code: existingRow.state === 'active' ? 'PRO_ALREADY_ACTIVE' : 'PAYMENT_PENDING_VERIFICATION',
-                  state: existingRow.state,
-                  serverNowMs,
-                  error:
-                    existingRow.state === 'active'
-                      ? 'You already have an active Boardly Pro plan.'
-                      : 'Your payment is being verified. This usually takes up to 24 hours.',
-                },
-                409,
-                cors
-              );
-            }
-
-            await env.DB.prepare(
-              `INSERT INTO pro_purchase_locks (uid, state, plan_id, plan_name, amount_pkr, method, tid, started_at, expires_at, pending_request_id, updated_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-               ON CONFLICT(uid) DO UPDATE SET
-                 state = excluded.state,
-                 plan_id = excluded.plan_id,
-                 plan_name = excluded.plan_name,
-                 amount_pkr = excluded.amount_pkr,
-                 method = excluded.method,
-                 tid = excluded.tid,
-                 started_at = excluded.started_at,
-                 expires_at = excluded.expires_at,
-                 pending_request_id = excluded.pending_request_id,
-                 updated_at = excluded.updated_at`
-            )
-              .bind(
-                uid,
-                lockState,
-                String(body.planId || 'pro_monthly'),
-                String(body.planName || 'Boardly Pro, Monthly Pass'),
-                Number(body.amountPkr || 199),
-                String(body.method || 'koban'),
-                String(body.tid || ''),
-                serverNowMs,
-                expAt,
-                body.pendingRequestId ? String(body.pendingRequestId) : null,
-                serverNowMs
-              )
-              .run()
-              .catch(() => {});
-          }
-
-          return jsonResponse(
-            {
-              ok: true,
-              code: 'PURCHASE_ALLOWED',
-              state: 'none',
-              canStartPurchase: true,
-              serverNowMs,
-              status: resolvedStatus,
-            },
-            200,
-            cors
-          );
-        }
       }
 
       return jsonResponse({ error: 'Endpoint not found' }, 404, cors);

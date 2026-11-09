@@ -13999,11 +13999,13 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   app.use((req, res, next) => {
     const rawPath = req.path.replace(/\/+$/, '') || '/';
     if (
-      rawPath.startsWith('/api') ||
+      req.method !== 'GET' ||
+      rawPath === '/api' ||
+      rawPath.startsWith('/api/') ||
       rawPath.startsWith('/assets') ||
       rawPath.startsWith('/src') ||
       rawPath.startsWith('/@') ||
-      /\.(js|css|png|jpg|jpeg|webp|svg|ico|xml|txt|json|woff2?)$/i.test(rawPath)
+      /\.(js|css|png|jpg|jpeg|webp|svg|ico|xml|txt|json|woff2?|map|pdf)$/i.test(rawPath)
     ) {
       return next();
     }

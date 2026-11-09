@@ -1,10 +1,15 @@
 /_headers /_headers 200
 /_redirects /_redirects 200
+/api/* /api/:splat 200
+/about-kobans /kobans 301
+/study-material /material 301
+/study-material/* /material/:splat 301
 /mcqs /index.html 200
 /subjects /index.html 200
-/study-material /index.html 200
 /material /index.html 200
+/material/* /index.html 200
 /commons /index.html 200
+/commons/* /index.html 200
 /leaderboard /index.html 200
 /crew/apply /index.html 200
 /captain/apply /index.html 200
@@ -23,6 +28,7 @@
 /terms /index.html 200
 /guidelines /index.html 200
 /store /index.html 200
+/store/* /index.html 200
 /kobans /index.html 200
 /rewards /index.html 200
 /search /index.html 200
@@ -32,6 +38,7 @@
 /verify-email /index.html 200
 /onboarding /index.html 200
 /dashboard /index.html 200
+/dashboard/* /index.html 200
 /practice /index.html 200
 /results /index.html 200
 /messages /index.html 200
@@ -41,6 +48,7 @@
 /wallet /index.html 200
 /checkout /index.html 200
 /admin /index.html 200
+/admin/* /index.html 200
 /arena /index.html 200
 /arena/register /index.html 200
 /arena/leaderboard /index.html 200
@@ -49,3 +57,4 @@
 /events/arena /index.html 200
 /grand-line /index.html 200
 /nakama-captains /index.html 200
+/* /index.html 200

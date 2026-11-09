@@ -22,7 +22,7 @@ import { Plus } from 'lucide-react';
 
 export const StoreItemDetailPage: React.FC = () => {
   const { item: itemParam = '' } = useParams<{ item: string }>();
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
   const { owned, equipped, purchaseCosmetic, equipCosmetic } = useWallet();
   const { requireAuth } = useAuthGate();
   const { isInCart, toggleCartItem } = useStoreCart({
@@ -77,7 +77,10 @@ export const StoreItemDetailPage: React.FC = () => {
   };
 
   const handleAction = async () => {
-    if (!user) {
+    if (!user || isGuest || user.uid.startsWith('guest_')) {
+      setFeedback(
+        'Guest accounts cannot purchase items with Kobans. Please create a registered account to unlock this item.'
+      );
       requireAuth(`unlock "${cosmetic.name}" in the Boardly Store`);
       return;
     }
@@ -94,7 +97,11 @@ export const StoreItemDetailPage: React.FC = () => {
         }
       }
     } catch (err: unknown) {
-      setFeedback(err instanceof Error ? err.message : 'Insufficient Kobans.');
+      setFeedback(
+        err instanceof Error
+          ? err.message
+          : 'Could not complete Store purchase. Please try again.'
+      );
     } finally {
       setBusy(false);
     }

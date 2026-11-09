@@ -12,7 +12,7 @@ import {
   runTransaction,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import type { CosmeticItem } from '@/data/cosmeticsCatalog';
 import type { KobanRequest, WalletLedgerEntry } from '@/types';
 import { logAdminAction } from './adminService';
@@ -149,7 +149,22 @@ export async function checkoutStoreCart(params: {
 }): Promise<CartCheckoutResult> {
   const { userId, items, isSuperAdmin = false } = params;
   if (!userId) {
-    throw new Error('Please sign in to purchase cosmetics.');
+    const err = new Error('Please sign in to purchase cosmetics.') as Error & {
+      code?: string;
+      status?: number;
+    };
+    err.code = 'UNAUTHENTICATED';
+    err.status = 401;
+    throw err;
+  }
+
+  if (userId.startsWith('guest_')) {
+    const err = new Error(
+      'Guest accounts cannot purchase items with Kobans. Please create a registered account to use the Boardly Store.'
+    ) as Error & { code?: string; status?: number };
+    err.code = 'GUEST_FORBIDDEN';
+    err.status = 403;
+    throw err;
   }
 
   // Deduplicate items by ID while preserving the order they were added to cart
@@ -163,7 +178,10 @@ export async function checkoutStoreCart(params: {
   }
 
   if (uniqueItems.length === 0) {
-    throw new Error('Your cart is empty.');
+    const err = new Error('Your cart is empty.') as Error & { code?: string; status?: number };
+    err.code = 'EMPTY_CART';
+    err.status = 400;
+    throw err;
   }
 
   const safeCheckoutKey = sanitizeIdempotencyKey(params.idempotencyKey);
@@ -173,7 +191,13 @@ export async function checkoutStoreCart(params: {
     return completedCheckoutCache.get(cacheKey)!;
   }
   if (inFlightCheckoutKeys.has(cacheKey)) {
-    throw new Error('Checkout is already processing. Please wait.');
+    const err = new Error('Checkout is already processing. Please wait.') as Error & {
+      code?: string;
+      status?: number;
+    };
+    err.code = 'CHECKOUT_IN_PROGRESS';
+    err.status = 409;
+    throw err;
   }
 
   inFlightCheckoutKeys.add(cacheKey);
@@ -181,10 +205,16 @@ export async function checkoutStoreCart(params: {
   try {
     const token = await auth.currentUser?.getIdToken().catch(() => null);
     if (!token) {
-      throw new Error('Authentication required to purchase items from the Boardly Store.');
+      const err = new Error(
+        'Authentication required to purchase items from the Boardly Store.'
+      ) as Error & { code?: string; status?: number };
+      err.code = 'UNAUTHENTICATED';
+      err.status = 401;
+      throw err;
     }
 
-    const resp = await fetch('/api/store/purchase', {
+    const requestUrl = '/api/store/purchase';
+    const resp = await fetch(requestUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -207,9 +237,52 @@ export async function checkoutStoreCart(params: {
       }),
     });
 
-    const data = await resp.json().catch(() => ({}));
+    const rawText = await resp.text().catch(() => '');
+    let data: Record<string, any> = {};
+    try {
+      data = rawText ? JSON.parse(rawText) : {};
+    } catch {
+      data = { rawBody: rawText };
+    }
+
     if (!resp.ok || data?.ok === false) {
-      throw new Error(data?.error || 'Could not complete Store purchase.');
+      console.error('[kobanService] Store purchase request failed:', {
+        status: resp.status,
+        url: resp.url || requestUrl,
+        body: data,
+      });
+
+      const serverFlaggedRaw: Array<{ itemId?: string; id?: string; name: string; reason: string }> =
+        Array.isArray(data?.flaggedItems) ? data.flaggedItems : [];
+      if (resp.status === 409 && serverFlaggedRaw.length > 0 && uniqueItems.length > 1) {
+        const mappedFlagged: CartCheckoutFlaggedItem[] = serverFlaggedRaw.map((f) => ({
+          id: String(f.itemId || f.id || ''),
+          name: String(f.name || ''),
+          reason: f.reason === 'already_owned' ? 'already_owned' : 'unavailable',
+        }));
+        return {
+          success: false,
+          checkoutId: safeCheckoutKey,
+          newBalance: Number(data.newBalance ?? 0),
+          totalPaid: 0,
+          owned: Array.isArray(data.owned) ? data.owned : [],
+          purchasedItems: [],
+          flaggedItems: mappedFlagged,
+          error:
+            data?.error ||
+            'Some items in your cart are already owned or unavailable. Nothing was deducted.',
+        };
+      }
+
+      const err = new Error(
+        data?.error ||
+          data?.message ||
+          `Store purchase failed (HTTP ${resp.status}). Please try again.`
+      ) as Error & { code?: string; status?: number; responseBody?: unknown };
+      err.code = data?.code || `HTTP_${resp.status}`;
+      err.status = resp.status;
+      err.responseBody = data;
+      throw err;
     }
 
     const serverFlaggedRaw: Array<{ itemId?: string; id?: string; name: string; reason: string }> =

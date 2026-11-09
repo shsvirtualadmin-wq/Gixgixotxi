@@ -9862,6 +9862,7 @@ ${entries
     try {
       const authHeader = String(req.headers.authorization || '').trim();
       const { handleEconomyApiRequest } = await import('../../functions/api/economy/[[path]]');
+      const { verifyFirebaseIdToken } = await import('../../functions/_utils/firestoreRestAdmin');
       const targetPath = req.path || req.originalUrl || '/api/coupons/validate';
       const fullUrl = targetPath.startsWith('http')
         ? targetPath
@@ -9875,6 +9876,10 @@ ${entries
           ...(req.headers['x-idempotency-key']
             ? { 'X-Idempotency-Key': String(req.headers['x-idempotency-key']) }
             : {}),
+          ...(req.headers['x-guest-session']
+            ? { 'X-Guest-Session': String(req.headers['x-guest-session']) }
+            : {}),
+          ...(req.headers.cookie ? { Cookie: String(req.headers.cookie) } : {}),
         },
         body:
           method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS'
@@ -9889,6 +9894,24 @@ ${entries
           GOOGLE_SERVICE_ACCOUNT_KEY: process.env.GOOGLE_SERVICE_ACCOUNT_KEY,
           FIREBASE_PROJECT_ID,
           FIREBASE_DATABASE_ID: FIRESTORE_DATABASE_ID,
+        },
+        tokenVerifierOverride: async (hdr) => {
+          if (!hdr) return null;
+          try {
+            const verified = await verifyFirebaseIdToken(hdr, FIREBASE_PROJECT_ID);
+            if (verified?.uid) return verified;
+          } catch {
+            // Fall through to zero-firestore JWT verifier
+          }
+          const fallback = await verifyFirebaseJwtZeroFirestore(req);
+          if (fallback?.uid) {
+            return {
+              uid: fallback.uid,
+              email: fallback.email,
+              name: fallback.name,
+            };
+          }
+          return null;
         },
       });
       const payload = (await webRes.json().catch(() => ({}))) as Record<string, any>;
@@ -9937,15 +9960,51 @@ ${entries
   app.post('/api/pro/activate', handleProPurchaseGuard);
 
   app.post('/api/pro/purchase-kobans', delegateToEconomyWorker);
+  app.get('/api/pro/purchase-kobans', delegateToEconomyWorker);
   app.post('/api/coupons/validate', delegateToEconomyWorker);
   app.post('/api/coupons/redeem', delegateToEconomyWorker);
   app.post('/api/pro/coupon/validate', delegateToEconomyWorker);
   app.post('/api/pro/coupon/redeem', delegateToEconomyWorker);
   app.post('/api/store/purchase', delegateToEconomyWorker);
+  app.get('/api/store/purchase', delegateToEconomyWorker);
+  app.post('/api/store/unlock', delegateToEconomyWorker);
+  app.get('/api/store/unlock', delegateToEconomyWorker);
+  app.post('/api/store/buy', delegateToEconomyWorker);
+  app.get('/api/store/buy', delegateToEconomyWorker);
+  app.post('/api/kobans/purchase', delegateToEconomyWorker);
+  app.get('/api/kobans/purchase', delegateToEconomyWorker);
   app.get('/api/admin/coupons', delegateToEconomyWorker);
   app.post('/api/admin/coupons', delegateToEconomyWorker);
   app.patch('/api/admin/coupons', delegateToEconomyWorker);
   app.put('/api/admin/coupons', delegateToEconomyWorker);
+}
+
+const AUTHENTICATED_APP_ROUTE_PREFIXES = [
+  '/dashboard',
+  '/admin',
+  '/store',
+  '/rewards',
+  '/wallet',
+  '/checkout',
+  '/settings',
+  '/saved',
+  '/notifications',
+  '/messages',
+  '/results',
+  '/practice',
+  '/test',
+  '/onboarding',
+  '/verify-email',
+  '/profile/edit',
+  '/arena/register',
+  '/arena/test',
+];
+
+export function isAuthenticatedAppRoute(pathname: string): boolean {
+  const clean = (pathname || '/').split('?')[0].split('#')[0].replace(/\/+$/, '') || '/';
+  return AUTHENTICATED_APP_ROUTE_PREFIXES.some(
+    (prefix) => clean === prefix || clean.startsWith(`${prefix}/`)
+  );
 }
 
 function escapeHtmlAttr(str: string): string {
@@ -9959,6 +10018,10 @@ function escapeHtmlAttr(str: string): string {
 
 export function resolveServerRouteMeta(pathname: string) {
   const cleanPath = (pathname || '/').split('?')[0].split('#')[0].replace(/\/+$/, '') || '/';
+  const isApiOrAuthRoute =
+    cleanPath === '/api' ||
+    cleanPath.startsWith('/api/') ||
+    isAuthenticatedAppRoute(cleanPath);
   const rawBase = resolveStaticOrPatternRouteMeta(cleanPath);
   const baseMeta: {
     title: string;
@@ -9978,8 +10041,12 @@ export function resolveServerRouteMeta(pathname: string) {
       ? 'noindex, nofollow'
       : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1',
     h1: rawBase.title.split('—')[0].split('|')[0].trim() || rawBase.title,
-    statusCode: cleanPath === '/410' ? 410 : 200,
+    statusCode: isApiOrAuthRoute ? 200 : cleanPath === '/410' ? 410 : 200,
   };
+
+  if (isApiOrAuthRoute) {
+    return baseMeta;
+  }
 
   if (
     cleanPath.startsWith('/commons/post/') ||
@@ -10300,16 +10367,39 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
     const fullUrl = req.originalUrl || req.url || '/';
     const parsedUrl = new URL(fullUrl, 'http://localhost');
     const pathname = parsedUrl.pathname;
+    const isApiRoute = pathname === '/api' || pathname.startsWith('/api/');
+    const isAuthRoute = isAuthenticatedAppRoute(pathname);
 
-    // 1. Pre-rendered SEO HTML for search engine & social crawlers on any page route
+    // 1. Public GET-only SEO redirects, trailing-slash rule, and crawler pre-rendered HTML
+    //    Strictly excludes every /api/* path, every non-GET request, and all authenticated app routes.
     if (
       req.method === 'GET' &&
-      !pathname.startsWith('/api/') &&
+      !isApiRoute &&
+      !isAuthRoute &&
       !pathname.startsWith('/assets/') &&
       !pathname.startsWith('/src/') &&
       !pathname.startsWith('/@') &&
-      !/\.(js|css|png|jpg|jpeg|webp|svg|ico|xml|txt|json|woff2?|map)$/i.test(pathname)
+      !/\.(js|css|png|jpg|jpeg|webp|svg|ico|xml|txt|json|woff2?|map|pdf)$/i.test(pathname)
     ) {
+      const cleanPublicPath = pathname.replace(/\/+$/, '') || '/';
+      const searchSuffix = parsedUrl.search || '';
+
+      if (cleanPublicPath === '/about-kobans') {
+        res.writeHead(301, { Location: `/kobans${searchSuffix}` });
+        res.end();
+        return;
+      }
+      if (cleanPublicPath === '/study-material') {
+        res.writeHead(301, { Location: `/material${searchSuffix}` });
+        res.end();
+        return;
+      }
+      if (pathname.length > 1 && pathname.endsWith('/')) {
+        res.writeHead(301, { Location: `${cleanPublicPath}${searchSuffix}` });
+        res.end();
+        return;
+      }
+
       const ua = String(req.headers?.['user-agent'] || '').toLowerCase();
       const isBot =
         /facebookexternalhit|whatsapp|twitterbot|telegrambot|discordbot|linkedinbot|slackbot|googlebot|bingbot|yandex|duckduckbot|applebot|crawler|spider/i.test(
@@ -10376,6 +10466,10 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
         pathname.startsWith('/api/r2') ||
         pathname.startsWith('/api/auth') ||
         pathname.startsWith('/api/pro') ||
+        pathname.startsWith('/api/store') ||
+        pathname.startsWith('/api/coupons') ||
+        pathname.startsWith('/api/kobans') ||
+        pathname.startsWith('/api/rewards') ||
         pathname.startsWith('/api/payments') ||
         pathname.startsWith('/api/checkout') ||
         pathname.startsWith('/api/bots') ||
@@ -10389,7 +10483,8 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Bot-Run-Secret, X-Guest-Session, X-Device-Id',
+        'Access-Control-Allow-Headers':
+          'Content-Type, Authorization, X-Idempotency-Key, X-Bot-Run-Secret, X-Guest-Session, X-Device-Id',
       });
       res.end();
       return;
