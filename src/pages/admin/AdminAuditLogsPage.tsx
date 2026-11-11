@@ -21,10 +21,12 @@ import {
   type AdminEmailLogItem,
   type AdminEmailConfigInfo,
 } from '@/services/emailNotificationService';
+import { useAuth } from '@/contexts/AuthContext';
 import type { AuditLog } from '@/types';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 
 export function AdminAuditLogsPage() {
+  const { user, isAdmin, profileLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<'email_logs' | 'audit_logs'>('email_logs');
 
   // System Audit Logs state
@@ -52,7 +54,11 @@ export function AdminAuditLogsPage() {
       const data = await fetchAuditLogs(120);
       setLogs(data);
     } catch (err) {
-      console.warn('Failed to load audit logs:', err);
+      console.error('[AdminAuditLogsPage] Failed to load audit logs:', err);
+      setBannerNotice({
+        type: 'error',
+        text: 'Could not load system audit logs. Click Refresh to retry.',
+      });
     } finally {
       setLoadingAudit(false);
     }
@@ -67,16 +73,22 @@ export function AdminAuditLogsPage() {
       }
       setEmailLogs(res.logs || []);
     } catch (err) {
-      console.warn('Failed to load email logs:', err);
+      console.error('[AdminAuditLogsPage] Failed to load email logs:', err);
+      setBannerNotice({
+        type: 'error',
+        text: 'Could not load email logs. Click Refresh to retry.',
+      });
     } finally {
       setLoadingEmailLogs(false);
     }
   }, []);
 
   useEffect(() => {
-    loadEmailLogsData();
-    loadAuditData();
-  }, [loadEmailLogsData, loadAuditData]);
+    if (!profileLoading && user && isAdmin) {
+      void loadEmailLogsData();
+      void loadAuditData();
+    }
+  }, [profileLoading, user, isAdmin, loadEmailLogsData, loadAuditData]);
 
   const handleSendTestEmail = async () => {
     setSendingTestEmail(true);
@@ -289,7 +301,9 @@ export function AdminAuditLogsPage() {
               }`}
             >
               <Mail size={14} />
-              <span>Email Logs ({emailLogs.length})</span>
+              <span>
+                Email Logs ({loadingEmailLogs && emailLogs.length === 0 ? '—' : emailLogs.length})
+              </span>
             </button>
             <button
               type="button"
@@ -300,7 +314,9 @@ export function AdminAuditLogsPage() {
                   : 'text-[var(--muted)] hover:text-[var(--text)]'
               }`}
             >
-              <span>System Audit Logs ({logs.length})</span>
+              <span>
+                System Audit Logs ({loadingAudit && logs.length === 0 ? '—' : logs.length})
+              </span>
             </button>
           </div>
 

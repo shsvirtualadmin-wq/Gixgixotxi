@@ -10,12 +10,16 @@ import {
   UserMinus,
   ExternalLink,
 } from 'lucide-react';
-import type { UserProfile, UserRole, UserPlan } from '@/types';
+import type { UserProfile, UserRole, UserPlan, UserTwoFactorSummary } from '@/types';
 import {
   updateUserOverride,
   deleteUserAccount,
   fetchUserRecentAttempts,
   getUserDisplayName,
+  normalizeTwoFactorSummary,
+  getCachedAdminUsersState,
+  updateCachedAdminUser2fa,
+  fetchAdminJsonWithRetry,
 } from '@/services/adminService';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { fetchCrewDetails, removeMemberFromCrew } from '@/services/crewService';
@@ -37,6 +41,8 @@ interface RecentAttemptItem {
 interface UserOverrideDrawerProps {
   user: UserProfile | null;
   adminEmail: string;
+  initialTwoFactorStatus?: Partial<UserTwoFactorSummary> | null;
+  onUpdate2faStatus?: (uid: string, status: UserTwoFactorSummary) => void;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -82,6 +88,8 @@ function formatPlanExpiry(plan?: string, planExpiresAt?: unknown): string {
 export function UserOverrideDrawer({
   user,
   adminEmail,
+  initialTwoFactorStatus,
+  onUpdate2faStatus,
   onClose,
   onSuccess,
 }: UserOverrideDrawerProps) {
@@ -105,35 +113,6 @@ export function UserOverrideDrawer({
   const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
   const [deleteInProgress, setDeleteInProgress] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      setRole((user.role as UserRole) || 'student');
-      setPlan(user.plan || 'free');
-      setExtendMonths(0);
-      setIsSuspended(!!(user.suspended || user.isSuspended));
-      setError(null);
-      setConfirmAction(null);
-
-      // Load recent test attempts
-      setLoadingAttempts(true);
-      fetchUserRecentAttempts(user.uid, 5)
-        .then((attempts) => setRecentAttempts(attempts))
-        .catch(() => setRecentAttempts([]))
-        .finally(() => setLoadingAttempts(false));
-
-      // Load user crew if joined
-      if (user.crewId) {
-        setLoadingCrew(true);
-        fetchCrewDetails(user.crewId)
-          .then((c) => setUserCrew(c))
-          .catch(() => setUserCrew(null))
-          .finally(() => setLoadingCrew(false));
-      } else {
-        setUserCrew(null);
-      }
-    }
-  }, [user]);
-
   const navigate = useNavigate();
   const [userCrew, setUserCrew] = useState<CrewDoc | null>(null);
   const [loadingCrew, setLoadingCrew] = useState(false);
@@ -151,29 +130,18 @@ export function UserOverrideDrawer({
     createdAt: number;
   }
 
-  const [twoFactorStatus, setTwoFactorStatus] = useState<{
-    totpEnabled: boolean;
-    email2faEnabled: boolean;
-    twoFactorEnabled: boolean;
-    recoveryPending: boolean;
-    recoveryRequestedAt: number | null;
-    recoveryDisableAt: number | null;
-    backupCodesRemaining: number;
-    trustedDevicesCount: number;
-    lastChangedAt: number | null;
-    badgeLabel: 'Off' | 'Authenticator' | 'Email code' | 'Both' | 'Recovery pending';
-  }>({
-    totpEnabled: false,
-    email2faEnabled: false,
-    twoFactorEnabled: false,
-    recoveryPending: false,
-    recoveryRequestedAt: null,
-    recoveryDisableAt: null,
-    backupCodesRemaining: 0,
-    trustedDevicesCount: 0,
-    lastChangedAt: null,
-    badgeLabel: 'Off',
-  });
+  const resolveSeedTwoFactorStatus = useCallback(
+    (targetUser: UserProfile | null, seedOverride?: Partial<UserTwoFactorSummary> | null): UserTwoFactorSummary => {
+      if (!targetUser) return normalizeTwoFactorSummary(null);
+      const cachedEntry = getCachedAdminUsersState()?.user2faMap?.[targetUser.uid];
+      return normalizeTwoFactorSummary(seedOverride || targetUser.twoFactorStatus || cachedEntry || null);
+    },
+    []
+  );
+
+  const [twoFactorStatus, setTwoFactorStatus] = useState<UserTwoFactorSummary>(() =>
+    resolveSeedTwoFactorStatus(user, initialTwoFactorStatus)
+  );
   const [securityAuditLogs, setSecurityAuditLogs] = useState<AdminAuditLogEntry[]>([]);
   const [canManage2fa, setCanManage2fa] = useState<boolean>(false);
   const [canModifyTarget2fa, setCanModifyTarget2fa] = useState<boolean>(false);
@@ -190,39 +158,54 @@ export function UserOverrideDrawer({
   const [admin2faModalError, setAdmin2faModalError] = useState<string | null>(null);
   const [submitting2faAction, setSubmitting2faAction] = useState<boolean>(false);
 
+  useEffect(() => {
+    if (user) {
+      setRole((user.role as UserRole) || 'student');
+      setPlan(user.plan || 'free');
+      setExtendMonths(0);
+      setIsSuspended(!!(user.suspended || user.isSuspended));
+      setError(null);
+      setConfirmAction(null);
+
+      // Immediately seed 2FA status from the table row / shared cache so it never flips to 'Off' and back!
+      setTwoFactorStatus(resolveSeedTwoFactorStatus(user, initialTwoFactorStatus));
+
+      // Load recent test attempts in the background
+      setLoadingAttempts(true);
+      fetchUserRecentAttempts(user.uid, 5)
+        .then((attempts) => setRecentAttempts(attempts))
+        .catch(() => setRecentAttempts([]))
+        .finally(() => setLoadingAttempts(false));
+
+      // Load user crew if joined
+      if (user.crewId) {
+        setLoadingCrew(true);
+        fetchCrewDetails(user.crewId)
+          .then((c) => setUserCrew(c))
+          .catch(() => setUserCrew(null))
+          .finally(() => setLoadingCrew(false));
+      } else {
+        setUserCrew(null);
+      }
+    }
+  }, [user, initialTwoFactorStatus, resolveSeedTwoFactorStatus]);
+
   const fetchUser2faDetails = useCallback(async () => {
     if (!user || user.isGuest || user.accountType === 'guest') {
       return;
     }
     try {
-      const idToken = auth.currentUser ? await auth.currentUser.getIdToken() : '';
-      if (!idToken) return;
-      const res = await fetch(`/api/auth/admin/2fa-status?uid=${encodeURIComponent(user.uid)}`, {
-        credentials: 'include',
-        headers: { Authorization: `Bearer ${idToken}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data?.ok) {
+      const { ok, data } = await fetchAdminJsonWithRetry<any>(
+        `/api/auth/admin/2fa-status?uid=${encodeURIComponent(user.uid)}`,
+        { credentials: 'include' }
+      );
+      if (ok && data?.ok) {
         const s = data.userStatus || data.statusByUid?.[user.uid] || data;
-        const totpOn = Boolean(s.totpEnabled);
-        const emailOn = Boolean(s.email2faEnabled);
-        const recPending = Boolean(s.recoveryPending);
-        const badge =
-          s.badgeLabel ||
-          (recPending && (totpOn || emailOn)
-            ? 'Recovery pending'
-            : totpOn && emailOn
-            ? 'Both'
-            : totpOn
-            ? 'Authenticator'
-            : emailOn
-            ? 'Email code'
-            : 'Off');
-        setTwoFactorStatus({
-          totpEnabled: totpOn,
-          email2faEnabled: emailOn,
-          twoFactorEnabled: Boolean(s.twoFactorEnabled ?? (totpOn || emailOn)),
-          recoveryPending: recPending,
+        const normalized = normalizeTwoFactorSummary({
+          totpEnabled: Boolean(s.totpEnabled),
+          email2faEnabled: Boolean(s.email2faEnabled),
+          twoFactorEnabled: Boolean(s.twoFactorEnabled ?? (s.totpEnabled || s.email2faEnabled)),
+          recoveryPending: Boolean(s.recoveryPending),
           recoveryRequestedAt: s.recoveryRequestedAt ? Number(s.recoveryRequestedAt) : null,
           recoveryDisableAt: s.recoveryDisableAt ? Number(s.recoveryDisableAt) : null,
           backupCodesRemaining: Number(s.backupCodesRemaining ?? s.remainingBackupCodes ?? 0),
@@ -232,8 +215,12 @@ export function UserOverrideDrawer({
             : s.updatedAt
             ? Number(s.updatedAt)
             : null,
-          badgeLabel: badge,
+          badgeLabel: s.badgeLabel,
         });
+        setTwoFactorStatus(normalized);
+        updateCachedAdminUser2fa(user.uid, normalized);
+        onUpdate2faStatus?.(user.uid, normalized);
+
         setSecurityAuditLogs(Array.isArray(data.auditLogs) ? data.auditLogs : []);
         setCanManage2fa(Boolean(data.canManage2fa ?? isSuperAdmin));
         setCanModifyTarget2fa(
@@ -245,10 +232,10 @@ export function UserOverrideDrawer({
         setTargetIsSelf2fa(Boolean(data.targetIsSelf || auth.currentUser?.uid === user.uid));
         setCallerHas2fa(Boolean(data.callerHas2fa));
       }
-    } catch {
-      // Ignore
+    } catch (err) {
+      console.warn('[UserOverrideDrawer] Background 2FA detail refresh warning:', err);
     }
-  }, [user, isSuperAdmin]);
+  }, [user, isSuperAdmin, onUpdate2faStatus]);
 
   useEffect(() => {
     void fetchUser2faDetails();

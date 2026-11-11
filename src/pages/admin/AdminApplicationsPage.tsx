@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
+import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   fetchCaptainApplications,
@@ -28,7 +29,7 @@ import { KobanIcon } from '@/components/koban/KobanIcon';
 import type { CaptainApplication, CrewApplication } from '@/types';
 
 export function AdminApplicationsPage() {
-  const { user } = useAuth();
+  const { user, isAdmin, profileLoading } = useAuth();
   const superadminEmail = user?.email || 'shsvirtualadmin@gmail.com';
 
   const [activeTab, setActiveTab] = useState<'captain' | 'crew'>('captain');
@@ -36,6 +37,7 @@ export function AdminApplicationsPage() {
   const [captains, setCaptains] = useState<CaptainApplication[]>([]);
   const [crew, setCrew] = useState<CrewApplication[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<AdminDiagnosticError | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
 
   // Captain Monthly Allotment status map { [captainUid]: { granted, date, monthLabel } }
@@ -60,7 +62,9 @@ export function AdminApplicationsPage() {
   const { label: currentMonthLabel } = getCurrentPktMonth();
 
   const loadData = useCallback(async () => {
+    if (!user || !isAdmin) return;
     setLoading(true);
+    setError(null);
     try {
       if (activeTab === 'captain') {
         const data = await fetchCaptainApplications(statusFilter);
@@ -80,16 +84,25 @@ export function AdminApplicationsPage() {
         const data = await fetchCrewApplications(statusFilter);
         setCrew(data);
       }
-    } catch (err) {
-      console.warn('Failed to load applications:', err);
+    } catch (err: unknown) {
+      console.error('[AdminApplicationsPage] Failed to load applications:', err);
+      const e = err as Partial<AdminDiagnosticError>;
+      setError({
+        code: e?.code || 'APPLICATIONS_LOAD_FAILED',
+        message: e?.message || 'Failed to load applications. Please retry.',
+        collection: activeTab === 'captain' ? 'captainApplications' : 'crewApplications',
+        operation: 'loadData',
+      });
     } finally {
       setLoading(false);
     }
-  }, [activeTab, statusFilter]);
+  }, [user, isAdmin, activeTab, statusFilter]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (!profileLoading && user && isAdmin) {
+      void loadData();
+    }
+  }, [profileLoading, user, isAdmin, loadData]);
 
   const handleApproveCaptain = async (app: CaptainApplication) => {
     if (!user?.email) return;
@@ -216,6 +229,13 @@ export function AdminApplicationsPage() {
           <span>Refresh</span>
         </button>
       </div>
+
+      <AdminDiagnosticBanner
+        error={error}
+        collectionName={activeTab === 'captain' ? 'captainApplications' : 'crewApplications'}
+        onRetry={loadData}
+        retrying={loading}
+      />
 
       {bannerNotice && (
         <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500 text-emerald-300 text-xs font-heading flex items-center gap-2 animate-in fade-in">

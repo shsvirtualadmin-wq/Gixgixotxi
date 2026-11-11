@@ -71,6 +71,22 @@ export interface UserProfile {
   isGuest?: boolean;
   accountType?: 'guest' | 'registered';
   lastActiveAt?: Timestamp | number | string | null;
+  twoFactorStatus?: UserTwoFactorSummary;
+}
+
+export type UserTwoFactorBadgeLabel = 'Off' | 'Authenticator' | 'Email code' | 'Both' | 'Recovery pending';
+
+export interface UserTwoFactorSummary {
+  totpEnabled: boolean;
+  email2faEnabled: boolean;
+  twoFactorEnabled: boolean;
+  recoveryPending: boolean;
+  recoveryRequestedAt?: number | null;
+  recoveryDisableAt?: number | null;
+  backupCodesRemaining: number;
+  trustedDevicesCount: number;
+  lastChangedAt?: number | null;
+  badgeLabel: UserTwoFactorBadgeLabel;
 }
 
 export type CosmeticType = 'effect' | 'frame' | 'nameplate' | 'avatar' | 'banner';

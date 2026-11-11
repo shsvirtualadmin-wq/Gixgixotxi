@@ -29,6 +29,8 @@ import { auth, db, functions } from '@/lib/firebase';
 import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import type {
   UserProfile,
+  UserTwoFactorSummary,
+  UserTwoFactorBadgeLabel,
   Question,
   QuestionKey,
   QuestionReport,
@@ -38,6 +40,7 @@ import type {
   CaptainApplication,
   CrewApplication,
 } from '@/types';
+export type { UserTwoFactorSummary, UserTwoFactorBadgeLabel };
 import {
   findSubjectSlug,
   findChapterSlug,
@@ -144,9 +147,15 @@ export function getUserDisplayName(
   return 'Student';
 }
 
-// ─── ADMIN OVERVIEW STATS ────────────────────────────────────────────────────
+// ─── ADMIN OVERVIEW STATS & SHARED SWR CACHE ─────────────────────────────────
 export interface AdminStats {
   totalUsers: number;
+  studentCount?: number;
+  captainCount?: number;
+  proCount?: number;
+  guestCount?: number;
+  adminCount?: number;
+  twoFactorEnabledCount?: number;
   totalQuestions: number;
   totalAttempts: number;
   totalQuestionsSolved: number;
@@ -184,14 +193,290 @@ export const CORE_SUBJECTS = [
   'Analytical Reasoning',
 ] as const;
 
+export const DEFAULT_OFF_2FA_SUMMARY: UserTwoFactorSummary = {
+  totpEnabled: false,
+  email2faEnabled: false,
+  twoFactorEnabled: false,
+  recoveryPending: false,
+  recoveryRequestedAt: null,
+  recoveryDisableAt: null,
+  backupCodesRemaining: 0,
+  trustedDevicesCount: 0,
+  lastChangedAt: null,
+  badgeLabel: 'Off',
+};
+
+export function normalizeTwoFactorSummary(raw?: Partial<UserTwoFactorSummary> | null): UserTwoFactorSummary {
+  if (!raw) return { ...DEFAULT_OFF_2FA_SUMMARY };
+  const totpEnabled = Boolean(raw.totpEnabled);
+  const email2faEnabled = Boolean(raw.email2faEnabled);
+  const recoveryPending = Boolean(raw.recoveryPending);
+  let badgeLabel: UserTwoFactorBadgeLabel = 'Off';
+  if (recoveryPending) {
+    badgeLabel = 'Recovery pending';
+  } else if (totpEnabled && email2faEnabled) {
+    badgeLabel = 'Both';
+  } else if (totpEnabled) {
+    badgeLabel = 'Authenticator';
+  } else if (email2faEnabled) {
+    badgeLabel = 'Email code';
+  }
+  return {
+    totpEnabled,
+    email2faEnabled,
+    twoFactorEnabled: totpEnabled || email2faEnabled,
+    recoveryPending,
+    recoveryRequestedAt: raw.recoveryRequestedAt ?? null,
+    recoveryDisableAt: raw.recoveryDisableAt ?? null,
+    backupCodesRemaining: Number(raw.backupCodesRemaining || 0),
+    trustedDevicesCount: Number(raw.trustedDevicesCount || 0),
+    lastChangedAt: raw.lastChangedAt ?? null,
+    badgeLabel: (raw.badgeLabel as UserTwoFactorBadgeLabel) || badgeLabel,
+  };
+}
+
+export interface CachedAdminUsersDirectory {
+  users: UserProfile[];
+  allDirectoryUsers: UserProfile[];
+  user2faMap: Record<string, UserTwoFactorSummary>;
+  securityLogs: any[];
+  totalCount: number;
+  studentCount: number;
+  captainCount: number;
+  proCount: number;
+  guestCount: number;
+  adminCount: number;
+  twoFactorEnabledCount: number;
+  lastDoc: QueryDocumentSnapshot<DocumentData> | null;
+  hasMore: boolean;
+  loadedAt: number;
+  queryTimeMs: number;
+}
+
 let cachedAdminStats: AdminStats | null = null;
+let inFlightAdminStatsPromise: Promise<AdminStats> | null = null;
+
+let cachedAdminUsersDirectory: CachedAdminUsersDirectory | null = null;
+let inFlightUsersFirstPagePromise: Promise<PaginatedUsersResult> | null = null;
 
 export function getCachedAdminStats(): AdminStats | null {
   return cachedAdminStats;
 }
 
+export function getCachedAdminUsersState(): CachedAdminUsersDirectory | null {
+  return cachedAdminUsersDirectory;
+}
+
+function computeUserDirectoryBreakdown(
+  directoryUsers: UserProfile[],
+  map2fa: Record<string, UserTwoFactorSummary>
+) {
+  let studentCount = 0;
+  let captainCount = 0;
+  let proCount = 0;
+  let guestCount = 0;
+  let adminCount = 0;
+  let twoFactorEnabledCount = 0;
+
+  for (const u of directoryUsers) {
+    const isGuest = Boolean(u.isGuest || u.accountType === 'guest');
+    if (isGuest) {
+      guestCount += 1;
+    } else if (u.role === 'captain') {
+      captainCount += 1;
+    } else if (u.role === 'admin' || u.role === 'superadmin') {
+      adminCount += 1;
+    } else {
+      studentCount += 1;
+    }
+    if (u.plan === 'pro' || u.isPremium) {
+      proCount += 1;
+    }
+    const tf = map2fa[u.uid] || u.twoFactorStatus;
+    if (tf?.twoFactorEnabled || tf?.totpEnabled || tf?.email2faEnabled) {
+      twoFactorEnabledCount += 1;
+    }
+  }
+
+  return {
+    totalCount: directoryUsers.length,
+    studentCount,
+    captainCount,
+    proCount,
+    guestCount,
+    adminCount,
+    twoFactorEnabledCount,
+  };
+}
+
+function syncCachedStatsWithUsersDirectory(dir: CachedAdminUsersDirectory) {
+  if (!cachedAdminStats) return;
+  cachedAdminStats = {
+    ...cachedAdminStats,
+    totalUsers: Math.max(cachedAdminStats.totalUsers, dir.totalCount),
+    studentCount: dir.studentCount,
+    captainCount: dir.captainCount,
+    proCount: dir.proCount,
+    guestCount: dir.guestCount,
+    adminCount: dir.adminCount,
+    twoFactorEnabledCount: dir.twoFactorEnabledCount,
+  };
+}
+
+export function updateCachedAdminUser2fa(uid: string, status: Partial<UserTwoFactorSummary>) {
+  const normalized = normalizeTwoFactorSummary(status);
+  if (!cachedAdminUsersDirectory) return;
+  const nextMap = {
+    ...cachedAdminUsersDirectory.user2faMap,
+    [uid]: normalized,
+  };
+  const patchList = (list: UserProfile[]) =>
+    list.map((u) => (u.uid === uid ? { ...u, twoFactorStatus: normalized } : u));
+  const nextAll = patchList(cachedAdminUsersDirectory.allDirectoryUsers);
+  const nextUsers = patchList(cachedAdminUsersDirectory.users);
+  const breakdown = computeUserDirectoryBreakdown(nextAll, nextMap);
+  cachedAdminUsersDirectory = {
+    ...cachedAdminUsersDirectory,
+    users: nextUsers,
+    allDirectoryUsers: nextAll,
+    user2faMap: nextMap,
+    ...breakdown,
+  };
+  syncCachedStatsWithUsersDirectory(cachedAdminUsersDirectory);
+}
+
+export function patchCachedAdminUser(uid: string, patch: Partial<UserProfile>) {
+  if (!cachedAdminUsersDirectory) return;
+  const patchList = (list: UserProfile[]) =>
+    list.map((u) => (u.uid === uid ? { ...u, ...patch } : u));
+  const nextAll = patchList(cachedAdminUsersDirectory.allDirectoryUsers);
+  const nextUsers = patchList(cachedAdminUsersDirectory.users);
+  const breakdown = computeUserDirectoryBreakdown(nextAll, cachedAdminUsersDirectory.user2faMap);
+  cachedAdminUsersDirectory = {
+    ...cachedAdminUsersDirectory,
+    users: nextUsers,
+    allDirectoryUsers: nextAll,
+    ...breakdown,
+  };
+  syncCachedStatsWithUsersDirectory(cachedAdminUsersDirectory);
+}
+
+export function removeCachedAdminUser(uid: string) {
+  if (!cachedAdminUsersDirectory) return;
+  const nextAll = cachedAdminUsersDirectory.allDirectoryUsers.filter((u) => u.uid !== uid);
+  const nextUsers = cachedAdminUsersDirectory.users.filter((u) => u.uid !== uid);
+  const nextMap = { ...cachedAdminUsersDirectory.user2faMap };
+  delete nextMap[uid];
+  const breakdown = computeUserDirectoryBreakdown(nextAll, nextMap);
+  cachedAdminUsersDirectory = {
+    ...cachedAdminUsersDirectory,
+    users: nextUsers,
+    allDirectoryUsers: nextAll,
+    user2faMap: nextMap,
+    ...breakdown,
+  };
+  if (cachedAdminStats) {
+    cachedAdminStats = {
+      ...cachedAdminStats,
+      totalUsers: breakdown.totalCount,
+      studentCount: breakdown.studentCount,
+      captainCount: breakdown.captainCount,
+      proCount: breakdown.proCount,
+      guestCount: breakdown.guestCount,
+      adminCount: breakdown.adminCount,
+      twoFactorEnabledCount: breakdown.twoFactorEnabledCount,
+    };
+  }
+}
+
+/**
+ * Waits for Firebase Auth currentUser & ID token to be ready before firing admin requests.
+ */
+export async function ensureAdminAuthToken(forceRefresh = false, maxWaitMs = 3000): Promise<string> {
+  const start = Date.now();
+  while (!auth?.currentUser && Date.now() - start < maxWaitMs) {
+    await new Promise((resolve) => setTimeout(resolve, 60));
+  }
+  if (!auth?.currentUser) {
+    return '';
+  }
+  try {
+    return await auth.currentUser.getIdToken(forceRefresh);
+  } catch (err) {
+    if (!forceRefresh) {
+      try {
+        return await auth.currentUser.getIdToken(true);
+      } catch {
+        return '';
+      }
+    }
+    return '';
+  }
+}
+
+/**
+ * Executes an authenticated admin API fetch and retries once automatically
+ * with a refreshed token if the first call fails because the token was not ready.
+ */
+export async function fetchAdminJsonWithRetry<T = any>(
+  url: string,
+  init?: RequestInit
+): Promise<{ ok: boolean; status: number; data: T | null; errorMessage?: string }> {
+  const attemptFetch = async (forceRefresh: boolean) => {
+    const idToken = await ensureAdminAuthToken(forceRefresh);
+    const headers: Record<string, string> = {
+      ...(init?.headers as Record<string, string> | undefined),
+    };
+    if (idToken) {
+      headers.Authorization = `Bearer ${idToken}`;
+    }
+    const res = await fetch(url, { ...init, headers });
+    const data = (await res.json().catch(() => null)) as T | null;
+    return { res, data };
+  };
+
+  try {
+    let { res, data } = await attemptFetch(false);
+    if (!res.ok && (res.status === 401 || res.status === 403 || res.status >= 500)) {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      const retryResult = await attemptFetch(true);
+      res = retryResult.res;
+      data = retryResult.data;
+    }
+    if (!res.ok) {
+      const serverMsg =
+        (data as any)?.error?.message ||
+        (data as any)?.message ||
+        `HTTP ${res.status} from ${url}`;
+      return { ok: false, status: res.status, data, errorMessage: serverMsg };
+    }
+    return { ok: true, status: res.status, data };
+  } catch (err: any) {
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const { res, data } = await attemptFetch(true);
+      if (res.ok) {
+        return { ok: true, status: res.status, data };
+      }
+      const serverMsg =
+        (data as any)?.error?.message ||
+        (data as any)?.message ||
+        `HTTP ${res.status} from ${url}`;
+      return { ok: false, status: res.status, data, errorMessage: serverMsg };
+    } catch (retryErr: any) {
+      return {
+        ok: false,
+        status: 0,
+        data: null,
+        errorMessage: retryErr?.message || err?.message || `Network error calling ${url}`,
+      };
+    }
+  }
+}
+
 export async function fetchAdminAmbassadorsList(): Promise<AdminAmbassadorItem[]> {
   try {
+    await ensureAdminAuthToken();
     // 1. Fetch all referrals
     const refSnap = await getDocs(collection(db, 'referrals'));
     const referralsByAmbassador: Record<string, Array<{ name: string; shortId: string; joinedDate: string; track: string }>> = {};
@@ -276,37 +561,58 @@ export async function fetchAdminAmbassadorsList(): Promise<AdminAmbassadorItem[]
   }
 }
 
-export async function fetchAdminStats(): Promise<AdminStats> {
-  const startTime = performance.now();
-  const questionsCol = collection(db, 'questions');
-  const usersCol = collection(db, 'users');
-  const attemptsCol = collection(db, 'attempts');
-  const crewsCol = collection(db, 'crews');
+export async function fetchAdminStats(options?: { force?: boolean }): Promise<AdminStats> {
+  if (inFlightAdminStatsPromise && !options?.force) {
+    return inFlightAdminStatsPromise;
+  }
 
-  // Fast 3.5-second timeout helper for individual queries to eliminate infinite hangs
-  const withTimeout = <T>(p: Promise<T>, fallback: T, ms = 3500): Promise<T> =>
-    Promise.race([
-      p,
-      new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
-    ]);
+  const runStatsLoad = async (): Promise<AdminStats> => {
+    const startTime = performance.now();
+    await ensureAdminAuthToken(false);
 
-  const safeCount = async (targetQuery: Parameters<typeof getCountFromServer>[0]): Promise<number> => {
-    try {
-      const snap = await withTimeout(getCountFromServer(targetQuery), null);
-      if (snap && typeof snap.data === 'function') {
-        return snap.data().count;
+    const questionsCol = collection(db, 'questions');
+    const usersCol = collection(db, 'users');
+    const attemptsCol = collection(db, 'attempts');
+    const crewsCol = collection(db, 'crews');
+
+    const withTimeout = <T>(p: Promise<T>, fallback: T, ms = 4000): Promise<T> =>
+      Promise.race([
+        p,
+        new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+      ]);
+
+    let firestoreCountFailureCount = 0;
+    const safeCount = async (targetQuery: Parameters<typeof getCountFromServer>[0]): Promise<number> => {
+      try {
+        let snap = await withTimeout(getCountFromServer(targetQuery), null);
+        if (!snap && auth?.currentUser) {
+          await ensureAdminAuthToken(true);
+          snap = await withTimeout(getCountFromServer(targetQuery), null, 3500);
+        }
+        if (snap && typeof snap.data === 'function') {
+          return snap.data().count;
+        }
+        firestoreCountFailureCount += 1;
+        return 0;
+      } catch (err) {
+        try {
+          await ensureAdminAuthToken(true);
+          const retrySnap = await withTimeout(getCountFromServer(targetQuery), null, 3500);
+          if (retrySnap && typeof retrySnap.data === 'function') {
+            return retrySnap.data().count;
+          }
+        } catch {
+          // ignore second failure
+        }
+        firestoreCountFailureCount += 1;
+        console.warn('[AdminService] safeCount query fallback:', err);
+        return 0;
       }
-      return 0;
-    } catch (err) {
-      console.warn('[AdminService] safeCount query fallback:', err);
-      return 0;
-    }
-  };
+    };
 
-  try {
-    // 1. Run all aggregate count queries IN PARALLEL with Promise.all
+    // Run summary aggregate counts AND first page of users (50 per page + 2FA status) in parallel right away!
     const [
-      usersTotal,
+      usersTotalFromCount,
       questionsTotal,
       attemptsTotal,
       crewsTotal,
@@ -316,6 +622,7 @@ export async function fetchAdminStats(): Promise<AdminStats> {
       pendingPaymentsCount,
       pendingReviewsCount,
       multiSourceCounts,
+      usersPageResult,
     ] = await Promise.all([
       safeCount(usersCol),
       safeCount(questionsCol),
@@ -327,7 +634,26 @@ export async function fetchAdminStats(): Promise<AdminStats> {
       safeCount(query(collection(db, 'paymentRequests'), where('status', '==', 'pending'))),
       safeCount(query(collection(db, 'reviews'), where('status', '==', 'pending'))),
       getMultiSourceQuestionCounts(),
+      fetchUsersPaginated({ limitCount: 50 }).catch((err) => {
+        console.error('[AdminService] Parallel first-page users load in fetchAdminStats failed:', err);
+        return null;
+      }),
     ]);
+
+    const directoryState = getCachedAdminUsersState();
+    const resolvedTotalUsers = Math.max(
+      usersTotalFromCount,
+      usersPageResult?.totalCount ?? 0,
+      directoryState?.totalCount ?? 0
+    );
+
+    if (firestoreCountFailureCount >= 8 && !usersPageResult && resolvedTotalUsers === 0) {
+      const fatalErr = new Error(
+        'Failed to load admin overview statistics: authentication token or Firestore connection was not ready.'
+      );
+      console.error('[AdminService] fetchAdminStats failed:', fatalErr);
+      throw fatalErr;
+    }
 
     // Subject cards must sum all active banks (Core Bank, Alpha Bank, Beta Bank)
     const msSubjects = multiSourceCounts?.subjectCounts || {};
@@ -337,7 +663,6 @@ export async function fetchAdminStats(): Promise<AdminStats> {
       CORE_SUBJECTS.map(async (subj) => {
         const slug = findSubjectSlug(subj) || subj.toLowerCase().trim();
         let count = (msSubjects[slug] || 0) + (msSubjects[subj] || 0);
-        // Fallback if stats document hadn't been rebuilt yet
         if (count === 0 && questionsTotal > 0) {
           try {
             count = await safeCount(
@@ -356,18 +681,24 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     const totalQ = Math.max(questionsTotal, multiSourceTotal);
 
     // Questions solved estimate based on recorded attempts and active streaks
-    const totalQuestionsSolved = Math.max(attemptsTotal * 15, usersTotal * 12);
+    const totalQuestionsSolved = Math.max(attemptsTotal * 15, resolvedTotalUsers * 12);
 
     const elapsed = Math.round(performance.now() - startTime);
-    console.log(`%c[AdminService] fetchAdminStats completed in ${elapsed}ms`, 'color: #10b981; font-weight: bold;');
+    console.log(`%c[AdminService] fetchAdminStats completed in ${elapsed}ms (totalUsers=${resolvedTotalUsers})`, 'color: #10b981; font-weight: bold;');
 
     const result: AdminStats = {
-      totalUsers: usersTotal,
+      totalUsers: resolvedTotalUsers,
+      studentCount: directoryState?.studentCount ?? resolvedTotalUsers,
+      captainCount: directoryState?.captainCount ?? 0,
+      proCount: directoryState?.proCount ?? 0,
+      guestCount: directoryState?.guestCount ?? 0,
+      adminCount: directoryState?.adminCount ?? 0,
+      twoFactorEnabledCount: directoryState?.twoFactorEnabledCount ?? 0,
       totalQuestions: totalQ,
       totalAttempts: attemptsTotal,
       totalQuestionsSolved,
       totalActiveCrews: Math.max(crewsTotal, 1),
-      totalAmbassadors: Math.max(ambassadorsTotal, 1),
+      totalAmbassadors: Math.max(ambassadorsTotal, directoryState?.captainCount ? directoryState.captainCount : 1),
       pendingCaptains: pendingCaptainsCount,
       pendingCrew: pendingCrewCount,
       pendingPayments: pendingPaymentsCount,
@@ -377,22 +708,12 @@ export async function fetchAdminStats(): Promise<AdminStats> {
 
     cachedAdminStats = result;
     return result;
-  } catch (err) {
-    console.warn('[AdminService] Parallel stats fetch failed, returning zeroed stats:', err);
-    return {
-      totalUsers: 0,
-      totalQuestions: 0,
-      totalAttempts: 0,
-      totalQuestionsSolved: 0,
-      totalActiveCrews: 0,
-      totalAmbassadors: 0,
-      pendingCaptains: 0,
-      pendingCrew: 0,
-      pendingPayments: 0,
-      pendingReviews: 0,
-      subjectCounts: {},
-    };
-  }
+  };
+
+  inFlightAdminStatsPromise = runStatsLoad().finally(() => {
+    inFlightAdminStatsPromise = null;
+  });
+  return inFlightAdminStatsPromise;
 }
 
 // ─── 500+ BALANCED MCQ POOL SEEDER ───────────────────────────────────────────
@@ -407,6 +728,9 @@ export async function seedBalancedMCQPool(
 // ─── USER MANAGEMENT & OVERRIDES ─────────────────────────────────────────────
 export interface PaginatedUsersResult {
   users: UserProfile[];
+  totalCount: number;
+  user2faMap: Record<string, UserTwoFactorSummary>;
+  securityLogs: any[];
   lastDoc: QueryDocumentSnapshot<DocumentData> | null;
   hasMore: boolean;
   queryTimeMs: number;
@@ -418,38 +742,45 @@ export async function fetchUsersPaginated(options?: {
   role?: string;
   plan?: string;
   searchQuery?: string;
+  force?: boolean;
 }): Promise<PaginatedUsersResult> {
-  const startTime = performance.now();
-  const ref = collection(db, 'users');
-  const count = options?.limitCount ?? 20;
+  const count = options?.limitCount ?? 50;
   const hasSearch = Boolean(options?.searchQuery && options.searchQuery.trim());
-  const queryConstraints: QueryConstraint[] = [];
+  const isDefaultFirstPage =
+    !hasSearch &&
+    !options?.startAfterDoc &&
+    (!options?.role || options.role === 'all') &&
+    (!options?.plan || options.plan === 'all') &&
+    count === 50;
 
-  if (options?.role && options.role !== 'all') {
-    queryConstraints.push(where('role', '==', options.role));
-  } else if (options?.plan && options.plan !== 'all') {
-    queryConstraints.push(where('plan', '==', options.plan));
+  if (isDefaultFirstPage && inFlightUsersFirstPagePromise && !options?.force) {
+    return inFlightUsersFirstPagePromise;
   }
 
-  if (options?.startAfterDoc && !hasSearch) {
-    queryConstraints.push(startAfter(options.startAfterDoc));
-  }
+  const runUsersQuery = async (): Promise<PaginatedUsersResult> => {
+    const startTime = performance.now();
+    await ensureAdminAuthToken(false);
 
-  // Never cut off the collection at limit(10) before in-memory search filtering runs!
-  queryConstraints.push(limit(hasSearch ? 1000 : count));
+    const ref = collection(db, 'users');
+    const queryConstraints: QueryConstraint[] = [];
 
-  const fetchGuestAccountsFallback = async (): Promise<UserProfile[]> => {
-    try {
-      const headers: Record<string, string> = {};
-      if (auth?.currentUser) {
-        const idToken = await auth.currentUser.getIdToken().catch(() => '');
-        if (idToken) headers.Authorization = `Bearer ${idToken}`;
-      }
-      const res = await fetch('/api/auth/guests', { headers });
-      if (!res.ok) return [];
-      const data = await res.json().catch(() => null);
-      if (!data?.guests || !Array.isArray(data.guests)) return [];
-      return data.guests
+    if (options?.role && options.role !== 'all') {
+      queryConstraints.push(where('role', '==', options.role));
+    } else if (options?.plan && options.plan !== 'all') {
+      queryConstraints.push(where('plan', '==', options.plan));
+    }
+
+    if (options?.startAfterDoc && !hasSearch) {
+      queryConstraints.push(startAfter(options.startAfterDoc));
+    }
+
+    // Fetch up to 1000 when searching or building full directory count, paginated to `count` (default 50)
+    queryConstraints.push(limit(hasSearch ? 1000 : Math.max(count, 100)));
+
+    const fetchGuestAccounts = async (): Promise<UserProfile[]> => {
+      const res = await fetchAdminJsonWithRetry<{ ok?: boolean; guests?: any[] }>('/api/auth/guests');
+      if (!res.ok || !res.data?.guests || !Array.isArray(res.data.guests)) return [];
+      return res.data.guests
         .filter((g: any) => !g.upgradedToUid)
         .map((g: any) => ({
           uid: g.uid,
@@ -468,133 +799,287 @@ export async function fetchUsersPaginated(options?: {
           createdAt: g.createdAt,
           lastActiveAt: g.lastActiveAt || g.createdAt,
         } as unknown as UserProfile));
-    } catch {
-      return [];
+    };
+
+    const fetchD1TwoFactorAndUsers = async (): Promise<{
+      user2faMap: Record<string, UserTwoFactorSummary>;
+      d1Users: UserProfile[];
+      securityLogs: any[];
+    }> => {
+      const res = await fetchAdminJsonWithRetry<{
+        ok?: boolean;
+        users?: Record<string, Partial<UserTwoFactorSummary>>;
+        statusByUid?: Record<string, Partial<UserTwoFactorSummary>>;
+        users2fa?: Record<string, Partial<UserTwoFactorSummary>>;
+        d1Users?: any[];
+        logs?: any[];
+        auditLogs?: any[];
+      }>('/api/auth/admin/2fa-status');
+      if (!res.ok || !res.data) {
+        if (res.errorMessage) {
+          console.warn('[AdminService] /api/auth/admin/2fa-status warning:', res.errorMessage);
+        }
+        return { user2faMap: {}, d1Users: [], securityLogs: [] };
+      }
+
+      const rawMap = res.data.statusByUid || res.data.users2fa || res.data.users;
+      const map: Record<string, UserTwoFactorSummary> = {};
+      if (rawMap && typeof rawMap === 'object') {
+        for (const [uid, rawSummary] of Object.entries(rawMap)) {
+          map[uid] = normalizeTwoFactorSummary(rawSummary);
+        }
+      }
+
+      const d1UsersList: UserProfile[] = [];
+      if (Array.isArray(res.data.d1Users)) {
+        for (const row of res.data.d1Users) {
+          if (!row?.uid || String(row.uid).startsWith('bot_')) continue;
+          const summary = row.twoFactorStatus
+            ? normalizeTwoFactorSummary(row.twoFactorStatus)
+            : map[row.uid] || { ...DEFAULT_OFF_2FA_SUMMARY };
+          map[row.uid] = summary;
+          d1UsersList.push({
+            uid: String(row.uid),
+            email: String(row.email || ''),
+            username: row.username || null,
+            displayName: row.displayName || row.username || (row.email ? String(row.email).split('@')[0] : 'Student'),
+            name: row.displayName || row.username || '',
+            role: row.role || 'student',
+            plan: row.plan === 'pro' ? 'pro' : 'free',
+            isGuest: Boolean(row.isGuest || row.accountType === 'guest'),
+            accountType: row.accountType === 'guest' ? 'guest' : 'registered',
+            onboardingCompleted: true,
+            createdAt: row.createdAt,
+            twoFactorStatus: summary,
+          } as unknown as UserProfile);
+        }
+      }
+
+      return {
+        user2faMap: map,
+        d1Users: d1UsersList,
+        securityLogs: Array.isArray(res.data.logs) ? res.data.logs : [],
+      };
+    };
+
+    const fetchFirestoreUsersWithRetry = async () => {
+      const q = query(ref, ...queryConstraints);
+      try {
+        return await Promise.race([
+          getDocs(q),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Users list query timed out after 8 seconds')), 8000)
+          ),
+        ]);
+      } catch (firstErr) {
+        await ensureAdminAuthToken(true);
+        return await Promise.race([
+          getDocs(q),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Users list query timed out after 8 seconds (retry)')), 8000)
+          ),
+        ]);
+      }
+    };
+
+    try {
+      const [snapResult, guestUsers, d1Bundle] = await Promise.all([
+        fetchFirestoreUsersWithRetry().catch((err) => {
+          console.warn('[AdminService] Firestore users query warning, falling back to D1/guest directory:', err);
+          return null;
+        }),
+        fetchGuestAccounts(),
+        fetchD1TwoFactorAndUsers(),
+      ]);
+
+      const { user2faMap, d1Users, securityLogs } = d1Bundle;
+
+      if (!snapResult && d1Users.length === 0 && guestUsers.length === 0) {
+        throw new Error('Failed to load users from Firestore and D1.');
+      }
+
+      const firestoreUsers = snapResult
+        ? snapResult.docs
+            .map((d) => ({ uid: d.id, ...d.data() } as UserProfile))
+            .filter((u) => !u.uid.startsWith('bot_') && (u as any).role !== 'bot')
+        : [];
+
+      const byUid = new Map<string, UserProfile>();
+      for (const u of firestoreUsers) {
+        byUid.set(u.uid, u);
+      }
+
+      // Merge D1 registered users so any user in D1 (including 2FA-enabled accounts) is guaranteed to appear and have full metadata
+      for (const d1u of d1Users) {
+        if (options?.role && options.role !== 'all' && d1u.role !== options.role) continue;
+        if (options?.plan && options.plan !== 'all' && d1u.plan !== options.plan) continue;
+        if (!byUid.has(d1u.uid)) {
+          byUid.set(d1u.uid, d1u);
+        } else {
+          const existing = byUid.get(d1u.uid)!;
+          byUid.set(d1u.uid, {
+            ...existing,
+            username: existing.username || d1u.username,
+            email: existing.email || d1u.email,
+            displayName: existing.displayName || d1u.displayName,
+            name: existing.name || d1u.name,
+          });
+        }
+      }
+
+      // Merge Guest users when allowed by role/plan filter
+      if (
+        guestUsers.length > 0 &&
+        (!options?.plan || options.plan === 'all' || options.plan === 'free') &&
+        (!options?.role || options.role === 'all' || options.role === 'student')
+      ) {
+        for (const gu of guestUsers) {
+          if (!byUid.has(gu.uid)) {
+            byUid.set(gu.uid, gu);
+          }
+        }
+      }
+
+      // Attach normalized twoFactorStatus to EVERY user in the list so no row ever lacks its real 2FA badge
+      let allMatchingUsers = Array.from(byUid.values()).map((u) => {
+        const resolved2fa = user2faMap[u.uid] || u.twoFactorStatus || { ...DEFAULT_OFF_2FA_SUMMARY };
+        user2faMap[u.uid] = resolved2fa;
+        return {
+          ...u,
+          twoFactorStatus: resolved2fa,
+        };
+      });
+
+      if (hasSearch && options?.searchQuery) {
+        const qLower = options.searchQuery.toLowerCase().trim();
+        const qNoSpaces = qLower.replace(/\s+/g, '');
+        const qHandle = qNoSpaces.replace(/^@+/, '');
+
+        if (qNoSpaces.length >= 2 && auth?.currentUser) {
+          try {
+            const sharedRes = await searchStudentsForKobans(options.searchQuery.trim(), {
+              limit: count,
+              includeInactive: true,
+            });
+            for (const su of sharedRes.users) {
+              const resolved2fa = user2faMap[su.uid] || { ...DEFAULT_OFF_2FA_SUMMARY };
+              user2faMap[su.uid] = resolved2fa;
+              if (!byUid.has(su.uid)) {
+                byUid.set(su.uid, {
+                  uid: su.uid,
+                  email: su.email,
+                  displayName: su.displayName || su.name || su.email || 'Student',
+                  name: su.name || su.displayName || '',
+                  photoURL: null,
+                  avatar: resolveCosmeticItemId(su.avatar, 'avatar') || undefined,
+                  shortId: su.shortId,
+                  plan: su.plan,
+                  role: (su.role as any) || 'student',
+                  kobans: su.kobans,
+                  onboardingCompleted: true,
+                  twoFactorStatus: resolved2fa,
+                } as unknown as UserProfile);
+              } else {
+                const existing = byUid.get(su.uid)!;
+                byUid.set(su.uid, {
+                  ...existing,
+                  email: existing.email || su.email,
+                  displayName: existing.displayName || su.displayName || su.name,
+                  twoFactorStatus: existing.twoFactorStatus || resolved2fa,
+                  ...((typeof (existing as any).kobans === 'number' || typeof su.kobans === 'number')
+                    ? { kobans: typeof (existing as any).kobans === 'number' ? (existing as any).kobans : su.kobans }
+                    : {}),
+                });
+              }
+            }
+            allMatchingUsers = Array.from(byUid.values());
+          } catch (sharedErr) {
+            console.warn('[AdminService] Shared user search fallback in fetchUsersPaginated:', sharedErr);
+          }
+        }
+
+        allMatchingUsers = allMatchingUsers.filter((u) => {
+          if (options?.role && options.role !== 'all' && u.role !== options.role) return false;
+          if (options?.plan && options.plan !== 'all' && u.plan !== options.plan) return false;
+          const email = (u.email || '').toLowerCase().trim();
+          const displayName = (u.displayName || '').toLowerCase().trim();
+          const name = (u.name || '').toLowerCase().trim();
+          const username = String((u as any).username || (u as any).handle || '')
+            .toLowerCase()
+            .trim()
+            .replace(/^@+/, '');
+          const shortId = (u.shortId || '').toLowerCase().trim();
+          const uid = (u.uid || '').toLowerCase().trim();
+          return (
+            (email && (email.includes(qNoSpaces) || email.includes(qLower))) ||
+            (displayName && (displayName.includes(qLower) || displayName.includes(qNoSpaces))) ||
+            (name && (name.includes(qLower) || name.includes(qNoSpaces))) ||
+            (username && (username.includes(qHandle) || username.includes(qNoSpaces))) ||
+            (shortId && shortId.includes(qNoSpaces.replace(/^#/, ''))) ||
+            (uid && uid.includes(qNoSpaces))
+          );
+        });
+      }
+
+      const totalCount = allMatchingUsers.length;
+      const pagedUsers = allMatchingUsers.slice(0, count);
+      const lastDoc =
+        snapResult && snapResult.docs.length > 0
+          ? snapResult.docs[Math.min(snapResult.docs.length - 1, count - 1)]
+          : null;
+      const hasMore = allMatchingUsers.length > count || Boolean(snapResult && snapResult.docs.length > count);
+      const queryTimeMs = Math.round(performance.now() - startTime);
+
+      if (isDefaultFirstPage) {
+        const breakdown = computeUserDirectoryBreakdown(allMatchingUsers, user2faMap);
+        cachedAdminUsersDirectory = {
+          users: pagedUsers,
+          allDirectoryUsers: allMatchingUsers,
+          user2faMap,
+          securityLogs,
+          ...breakdown,
+          lastDoc,
+          hasMore,
+          loadedAt: Date.now(),
+          queryTimeMs,
+        };
+        syncCachedStatsWithUsersDirectory(cachedAdminUsersDirectory);
+      }
+
+      console.log(
+        `%c[AdminService] fetchUsersPaginated (${pagedUsers.length}/${totalCount} users, 2FA map=${Object.keys(user2faMap).length}) in ${queryTimeMs}ms`,
+        'color: #10b981;'
+      );
+
+      return {
+        users: pagedUsers,
+        totalCount,
+        user2faMap,
+        securityLogs,
+        lastDoc,
+        hasMore,
+        queryTimeMs,
+      };
+    } catch (err: unknown) {
+      const e = err as { message?: string; code?: string };
+      console.error('[AdminService] fetchUsersPaginated error:', err);
+      throw new AdminFirestoreError(
+        e?.message || 'Failed to fetch users from collection "users". Check Firestore permissions.',
+        e?.code || 'users-fetch-error',
+        'users',
+        'fetchUsersPaginated'
+      );
     }
   };
 
-  try {
-    const q = query(ref, ...queryConstraints);
-    const [snap, guestUsers] = await Promise.all([
-      Promise.race([
-        getDocs(q),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Users list query timed out after 8 seconds')), 8000)
-        ),
-      ]),
-      fetchGuestAccountsFallback(),
-    ]);
-
-    let users = snap.docs
-      .map((d) => ({ uid: d.id, ...d.data() } as UserProfile))
-      .filter((u) => !u.uid.startsWith('bot_') && (u as any).role !== 'bot');
-
-    if (guestUsers.length > 0 && (!options?.plan || options.plan === 'all' || options.plan === 'free')) {
-      const existingUids = new Set(users.map((u) => u.uid));
-      for (const gu of guestUsers) {
-        if (!existingUids.has(gu.uid)) {
-          users.push(gu);
-        }
-      }
-    }
-
-    if (hasSearch && options?.searchQuery) {
-      const qLower = options.searchQuery.toLowerCase().trim();
-      const qNoSpaces = qLower.replace(/\s+/g, '');
-      const qHandle = qNoSpaces.replace(/^@+/, '');
-
-      // Also query the shared /api/admin/users/search endpoint so Users and Kobans pages return identical results
-      if (qNoSpaces.length >= 2 && auth?.currentUser) {
-        try {
-          const sharedRes = await searchStudentsForKobans(options.searchQuery.trim(), {
-            limit: count,
-            includeInactive: true,
-          });
-          const byUid = new Map<string, UserProfile>();
-          for (const u of users) {
-            byUid.set(u.uid, u);
-          }
-          for (const su of sharedRes.users) {
-            if (!byUid.has(su.uid)) {
-              byUid.set(su.uid, {
-                uid: su.uid,
-                email: su.email,
-                displayName: su.displayName || su.name || su.email || 'Student',
-                name: su.name || su.displayName || '',
-                photoURL: null,
-                avatar: resolveCosmeticItemId(su.avatar, 'avatar') || undefined,
-                shortId: su.shortId,
-                plan: su.plan,
-                role: (su.role as any) || 'student',
-                kobans: su.kobans,
-                onboardingCompleted: true,
-              } as unknown as UserProfile);
-            } else {
-              const existing = byUid.get(su.uid)!;
-              byUid.set(su.uid, {
-                ...existing,
-                email: existing.email || su.email,
-                displayName: existing.displayName || su.displayName || su.name,
-                ...((typeof (existing as any).kobans === 'number' || typeof su.kobans === 'number')
-                  ? { kobans: typeof (existing as any).kobans === 'number' ? (existing as any).kobans : su.kobans }
-                  : {}),
-              });
-            }
-          }
-          users = Array.from(byUid.values());
-        } catch (sharedErr) {
-          console.warn('[AdminService] Shared user search fallback in fetchUsersPaginated:', sharedErr);
-        }
-      }
-
-      users = users.filter((u) => {
-        if (options?.role && options.role !== 'all' && u.role !== options.role) return false;
-        if (options?.plan && options.plan !== 'all' && u.plan !== options.plan) return false;
-        const email = (u.email || '').toLowerCase().trim();
-        const displayName = (u.displayName || '').toLowerCase().trim();
-        const name = (u.name || '').toLowerCase().trim();
-        const username = String((u as any).username || (u as any).handle || '')
-          .toLowerCase()
-          .trim()
-          .replace(/^@+/, '');
-        const shortId = (u.shortId || '').toLowerCase().trim();
-        const uid = (u.uid || '').toLowerCase().trim();
-        return (
-          (email && (email.includes(qNoSpaces) || email.includes(qLower))) ||
-          (displayName && (displayName.includes(qLower) || displayName.includes(qNoSpaces))) ||
-          (name && (name.includes(qLower) || name.includes(qNoSpaces))) ||
-          (username && (username.includes(qHandle) || username.includes(qNoSpaces))) ||
-          (shortId && shortId.includes(qNoSpaces.replace(/^#/, ''))) ||
-          (uid && uid.includes(qNoSpaces))
-        );
-      });
-      users = users.slice(0, count);
-    }
-    const lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
-    const hasMore = hasSearch ? users.length >= count : snap.docs.length >= count;
-    const queryTimeMs = Math.round(performance.now() - startTime);
-
-    console.log(`%c[AdminService] fetchUsersPaginated (${users.length} users) in ${queryTimeMs}ms`, 'color: #10b981;');
-
-    return { users, lastDoc, hasMore, queryTimeMs };
-  } catch (err: unknown) {
-    const guestFallback = await fetchGuestAccountsFallback();
-    if (guestFallback.length > 0) {
-      return {
-        users: guestFallback,
-        lastDoc: null,
-        hasMore: false,
-        queryTimeMs: Math.round(performance.now() - startTime),
-      };
-    }
-    const e = err as { message?: string; code?: string };
-    throw new AdminFirestoreError(
-      e?.message || 'Failed to fetch users from collection "users". Check Firestore permissions.',
-      e?.code || 'users-fetch-error',
-      'users',
-      'fetchUsersPaginated'
-    );
+  if (isDefaultFirstPage) {
+    inFlightUsersFirstPagePromise = runUsersQuery().finally(() => {
+      inFlightUsersFirstPagePromise = null;
+    });
+    return inFlightUsersFirstPagePromise;
   }
+
+  return runUsersQuery();
 }
 
 // ─── ADMIN KOBANS STUDENT SEARCH (CANONICAL USERS + LEFT JOIN WALLETS) ───────

@@ -14,6 +14,7 @@ import {
   Coins,
   Megaphone,
   Gift,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
@@ -22,6 +23,8 @@ import { KobanIcon } from '@/components/koban/KobanIcon';
 import {
   fetchAdminStats,
   getCachedAdminStats,
+  getCachedAdminUsersState,
+  getUserDisplayName,
   seedBalancedMCQPool,
   fetchAuditLogs,
   type AdminStats,
@@ -34,7 +37,7 @@ import {
   type RewardsHealthResponse,
 } from '@/services/rewardsService';
 import type { RewardsMode } from '@/lib/rewardsEngine';
-import type { AuditLog } from '@/types';
+import type { AuditLog, UserProfile } from '@/types';
 
 const SUBJECT_TARGET_PILLS = [
   '125 Mathematics',
@@ -48,9 +51,17 @@ const SUBJECT_TARGET_PILLS = [
   '100 NED / UET',
 ];
 
+type LoadState = 'loading' | 'loaded' | 'error';
+
 export function AdminOverviewPage() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, profileLoading } = useAuth();
   const [stats, setStats] = useState<AdminStats | null>(() => getCachedAdminStats());
+  const [previewUsers, setPreviewUsers] = useState<UserProfile[] | null>(
+    () => getCachedAdminUsersState()?.users ?? null
+  );
+  const [loadState, setLoadState] = useState<LoadState>(() =>
+    getCachedAdminStats() ? 'loaded' : 'loading'
+  );
   const [loading, setLoading] = useState(() => !getCachedAdminStats());
   const [error, setError] = useState<AdminDiagnosticError | null>(null);
   const [recentLogs, setRecentLogs] = useState<AuditLog[]>([]);
@@ -81,59 +92,76 @@ export function AdminOverviewPage() {
     }
   }, []);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [s, logs, rState, rHealth] = await Promise.all([
-        fetchAdminStats(),
-        fetchAuditLogs(5),
-        fetchRewardsState(user?.uid),
-        fetchRewardsHealth(),
-      ]);
-      setStats(s);
-      setRecentLogs(logs);
-      if (rState?.loadError) {
-        setRewardsMode(null);
-        setRewardsModeError(rState.loadError);
-      } else if (rState?.mode) {
-        setRewardsMode(rState.mode);
+  const loadData = useCallback(
+    async (options?: { force?: boolean }) => {
+      if (!user || !isAdmin) return;
+      const hasCached = Boolean(getCachedAdminStats());
+      setLoading(true);
+      if (!hasCached || options?.force) {
+        if (!hasCached) setLoadState('loading');
       }
-      if (rHealth) {
-        setRewardsHealth(rHealth);
-      }
-    } catch (err: unknown) {
-      console.warn('Failed to load admin stats (using fallback stats):', err);
-      const e = err as Partial<AdminDiagnosticError>;
-      setError({
-        code: e?.code || 'FETCH_STATS_FAILED',
-        message: e?.message || 'Failed to fetch overview metrics. Check Firestore rules or collection names.',
-        collection: e?.collection || 'questions/users',
-        operation: e?.operation || 'fetchAdminStats',
-      });
-      setStats({
-        totalUsers: 0,
-        totalQuestions: 0,
-        totalAttempts: 0,
-        totalQuestionsSolved: 0,
-        totalActiveCrews: 0,
-        totalAmbassadors: 0,
-        pendingCaptains: 0,
-        pendingCrew: 0,
-        pendingPayments: 0,
-        pendingReviews: 0,
-        subjectCounts: {},
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.uid]);
+      setError(null);
 
+      try {
+        const [s, logs, rState, rHealth] = await Promise.all([
+          fetchAdminStats({ force: options?.force }),
+          fetchAuditLogs(5).catch((err) => {
+            console.warn('[AdminOverviewPage] Audit logs load warning:', err);
+            return [] as AuditLog[];
+          }),
+          fetchRewardsState(user.uid).catch((err) => {
+            console.warn('[AdminOverviewPage] Rewards state load warning:', err);
+            return null;
+          }),
+          fetchRewardsHealth().catch((err) => {
+            console.warn('[AdminOverviewPage] Rewards health load warning:', err);
+            return null;
+          }),
+        ]);
+
+        setStats(s);
+        const cachedUsersDir = getCachedAdminUsersState();
+        if (cachedUsersDir) {
+          setPreviewUsers(cachedUsersDir.users);
+        }
+        setLoadState('loaded');
+        setRecentLogs(logs);
+
+        if (rState?.loadError) {
+          setRewardsMode(null);
+          setRewardsModeError(rState.loadError);
+        } else if (rState?.mode) {
+          setRewardsMode(rState.mode);
+        }
+        if (rHealth) {
+          setRewardsHealth(rHealth);
+        }
+      } catch (err: unknown) {
+        console.error('[AdminOverviewPage] Failed to load admin overview:', err);
+        const e = err as Partial<AdminDiagnosticError>;
+        setError({
+          code: e?.code || 'FETCH_STATS_FAILED',
+          message:
+            e?.message || 'Failed to fetch overview metrics. Check Firestore rules or collection names.',
+          collection: e?.collection || 'questions/users',
+          operation: e?.operation || 'fetchAdminStats',
+        });
+        if (!getCachedAdminStats()) {
+          setLoadState('error');
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [user, isAdmin]
+  );
+
+  // Wait for auth AND admin-role check to finish before starting fetches
   useEffect(() => {
-    if (user) {
+    if (!profileLoading && user && isAdmin) {
       loadData();
     }
-  }, [user, loadData]);
+  }, [profileLoading, user, isAdmin, loadData]);
 
   const handleConfirmSeed = async () => {
     setIsConfirmSeedOpen(false);
@@ -148,7 +176,7 @@ export function AdminOverviewPage() {
         setSeedProgress({ done, total });
       });
       setSeedSuccess(`Added or verified all ${res.seeded} questions successfully.`);
-      await loadData();
+      await loadData({ force: true });
     } catch (err: unknown) {
       console.warn('Seeding warning:', err);
       setSeedError('Failed to complete question pool seeding. Check network connection.');
@@ -227,6 +255,12 @@ export function AdminOverviewPage() {
     }
   };
 
+  const isInitialLoading = (profileLoading || loadState === 'loading') && !stats;
+  const formatMetricValue = (val: number | undefined | null): string => {
+    if (isInitialLoading || !stats) return '—';
+    return (Number.isFinite(Number(val)) ? Number(val) : 0).toLocaleString();
+  };
+
   return (
     <div className="flex flex-col gap-6 w-full max-w-full">
       {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
@@ -242,28 +276,26 @@ export function AdminOverviewPage() {
 
         <button
           type="button"
-          onClick={loadData}
+          onClick={() => loadData({ force: true })}
           disabled={loading}
           className="relative overflow-hidden flex items-center gap-2 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
         >
-          <RefreshCw size={14} />
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
           {loading && <ButtonLineLoader />}
         </button>
       </div>
 
-      {loading && !stats && (
+      {isInitialLoading && (
         <LineLoader context="admin" message="Loading admin panel..." />
       )}
 
       <AdminDiagnosticBanner
         error={error}
         collectionName="questions, users, attempts"
-        onRetry={loadData}
+        onRetry={() => loadData({ force: true })}
         retrying={loading}
       />
-
-
 
       {/* ─── 6 STAT CARDS (2 cols mobile, 4 cols desktop) ───────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
@@ -275,9 +307,39 @@ export function AdminOverviewPage() {
             </span>
             <Users size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-            {(Number.isFinite(Number(stats?.totalUsers)) ? Number(stats?.totalUsers) : 0).toLocaleString()}
-          </p>
+          {isInitialLoading ? (
+            <div className="my-2 flex items-center gap-2">
+              <span className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--muted)] leading-none">
+                —
+              </span>
+              <span className="h-7 w-20 rounded-lg bg-[var(--surface-hover)] animate-pulse" />
+            </div>
+          ) : (
+            <p
+              data-testid="admin-overview-total-users"
+              className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2"
+            >
+              {formatMetricValue(stats?.totalUsers)}
+            </p>
+          )}
+          {stats && !isInitialLoading ? (
+            <div className="flex flex-wrap items-center gap-1.5 mb-2 text-[10px] font-mono text-[var(--muted)]">
+              <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
+                Students: {stats.studentCount ?? stats.totalUsers}
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
+                Captains: {stats.captainCount ?? 0}
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
+                Pro: {stats.proCount ?? 0}
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
+                Guests: {stats.guestCount ?? 0}
+              </span>
+            </div>
+          ) : (
+            <div className="h-4 w-32 rounded bg-[var(--surface-hover)] animate-pulse mb-2" />
+          )}
           <Link
             to="/admin/users"
             className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
@@ -295,9 +357,18 @@ export function AdminOverviewPage() {
             </span>
             <Database size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-            {(Number.isFinite(Number(stats?.totalQuestions)) ? Number(stats?.totalQuestions) : 0).toLocaleString()}
-          </p>
+          {isInitialLoading ? (
+            <div className="my-2 flex items-center gap-2">
+              <span className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--muted)] leading-none">
+                —
+              </span>
+              <span className="h-7 w-20 rounded-lg bg-[var(--surface-hover)] animate-pulse" />
+            </div>
+          ) : (
+            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {formatMetricValue(stats?.totalQuestions)}
+            </p>
+          )}
           <Link
             to="/admin/questions"
             className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
@@ -315,9 +386,18 @@ export function AdminOverviewPage() {
             </span>
             <Activity size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-            {(Number.isFinite(Number(stats?.totalAttempts)) ? Number(stats?.totalAttempts) : 0).toLocaleString()}
-          </p>
+          {isInitialLoading ? (
+            <div className="my-2 flex items-center gap-2">
+              <span className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--muted)] leading-none">
+                —
+              </span>
+              <span className="h-7 w-20 rounded-lg bg-[var(--surface-hover)] animate-pulse" />
+            </div>
+          ) : (
+            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {formatMetricValue(stats?.totalAttempts)}
+            </p>
+          )}
           <span className="font-heading text-[12px] text-[var(--muted)] mt-auto pt-1">
             Student submissions
           </span>
@@ -331,12 +411,23 @@ export function AdminOverviewPage() {
             </span>
             <Award size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-            {(
-              (Number.isFinite(Number(stats?.pendingCaptains)) ? Number(stats?.pendingCaptains) : 0) +
-              (Number.isFinite(Number(stats?.pendingCrew)) ? Number(stats?.pendingCrew) : 0)
-            ).toLocaleString()}
-          </p>
+          {isInitialLoading ? (
+            <div className="my-2 flex items-center gap-2">
+              <span className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--muted)] leading-none">
+                —
+              </span>
+              <span className="h-7 w-20 rounded-lg bg-[var(--surface-hover)] animate-pulse" />
+            </div>
+          ) : (
+            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {stats
+                ? (
+                    (Number.isFinite(Number(stats.pendingCaptains)) ? Number(stats.pendingCaptains) : 0) +
+                    (Number.isFinite(Number(stats.pendingCrew)) ? Number(stats.pendingCrew) : 0)
+                  ).toLocaleString()
+                : '—'}
+            </p>
+          )}
           <Link
             to="/admin/applications"
             className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
@@ -354,9 +445,18 @@ export function AdminOverviewPage() {
             </span>
             <CreditCard size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-            {(Number.isFinite(Number(stats?.pendingPayments)) ? Number(stats?.pendingPayments) : 0).toLocaleString()}
-          </p>
+          {isInitialLoading ? (
+            <div className="my-2 flex items-center gap-2">
+              <span className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--muted)] leading-none">
+                —
+              </span>
+              <span className="h-7 w-20 rounded-lg bg-[var(--surface-hover)] animate-pulse" />
+            </div>
+          ) : (
+            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {formatMetricValue(stats?.pendingPayments)}
+            </p>
+          )}
           <Link
             to="/admin/payments"
             className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
@@ -374,9 +474,18 @@ export function AdminOverviewPage() {
             </span>
             <FileCheck2 size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-            {(Number.isFinite(Number(stats?.pendingReviews)) ? Number(stats?.pendingReviews) : 0).toLocaleString()}
-          </p>
+          {isInitialLoading ? (
+            <div className="my-2 flex items-center gap-2">
+              <span className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--muted)] leading-none">
+                —
+              </span>
+              <span className="h-7 w-20 rounded-lg bg-[var(--surface-hover)] animate-pulse" />
+            </div>
+          ) : (
+            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {formatMetricValue(stats?.pendingReviews)}
+            </p>
+          )}
           <Link
             to="/admin/commons"
             className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
@@ -385,6 +494,83 @@ export function AdminOverviewPage() {
             <ArrowRight size={12} />
           </Link>
         </div>
+      </div>
+
+      {/* ─── REGISTERED USERS PREVIEW (LOADED IN PARALLEL ON DASHBOARD OPEN) ─── */}
+      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <Users size={16} className="text-red-500 shrink-0" />
+            <h2 className="font-heading font-semibold text-[15px] text-[var(--text)]">
+              Users directory ({isInitialLoading ? '—' : formatMetricValue(stats?.totalUsers)})
+            </h2>
+          </div>
+          <Link
+            to="/admin/users"
+            className="font-heading text-[12px] font-bold text-red-400 hover:text-red-300 flex items-center gap-1"
+          >
+            <span>Open full users directory</span>
+            <ArrowRight size={13} />
+          </Link>
+        </div>
+
+        {isInitialLoading || !previewUsers ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3 animate-pulse"
+              >
+                <div className="flex flex-col gap-1.5 flex-1">
+                  <div className="h-3.5 w-28 rounded bg-[var(--surface-hover)]" />
+                  <div className="h-2.5 w-20 rounded bg-[var(--surface-hover)]" />
+                </div>
+                <div className="h-5 w-16 rounded-md bg-[var(--surface-hover)]" />
+              </div>
+            ))}
+          </div>
+        ) : previewUsers.length === 0 ? (
+          <p className="text-xs font-mono text-[var(--muted)] py-2">
+            No users found in directory.
+          </p>
+        ) : (
+          <div
+            data-testid="admin-overview-users-list"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5"
+          >
+            {previewUsers.slice(0, 6).map((u) => {
+              const badge = u.twoFactorStatus?.badgeLabel || 'Off';
+              return (
+                <Link
+                  key={u.uid}
+                  to="/admin/users"
+                  className="p-3 rounded-[14px] bg-[var(--card-2)] hover:bg-[var(--surface-hover)] border border-[var(--border)] flex items-center justify-between gap-3 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="font-heading font-semibold text-xs text-[var(--text)] truncate">
+                      {getUserDisplayName(u)}
+                    </div>
+                    <div className="text-[11px] font-mono text-[var(--muted)] truncate">
+                      {u.username ? `@${u.username}` : u.email || u.uid}
+                    </div>
+                  </div>
+                  <span
+                    className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${
+                      badge === 'Recovery pending'
+                        ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                        : badge === 'Off'
+                        ? 'bg-[var(--surface-hover)] text-[var(--muted)] border-[var(--border)]'
+                        : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                    }`}
+                  >
+                    <ShieldCheck size={10} />
+                    2FA: {badge}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* ─── QUESTIONS PER SUBJECT BREAKDOWN ─────────────────────────────────── */}
@@ -399,7 +585,7 @@ export function AdminOverviewPage() {
             </span>
             <button
               type="button"
-              onClick={loadData}
+              onClick={() => loadData({ force: true })}
               disabled={loading}
               className="p-1 rounded-md text-[var(--muted)] hover:text-white hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
               title="Refresh subject counts"
@@ -422,7 +608,7 @@ export function AdminOverviewPage() {
                   {subj}
                 </span>
                 <span className="tabular-nums text-[22px] font-bold text-[var(--text)] mt-2">
-                  {count.toLocaleString()}
+                  {isInitialLoading || !stats ? '—' : count.toLocaleString()}
                 </span>
               </div>
             );

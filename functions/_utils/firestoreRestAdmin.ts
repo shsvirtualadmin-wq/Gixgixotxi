@@ -1930,11 +1930,16 @@ export class InMemoryD1Database implements RewardsD1Database {
       if (Array.isArray(raw.user_usernames)) {
         for (const r of raw.user_usernames) {
           if (r && r.username_lower) {
+            const rawAccType = String(r.account_type || 'registered');
+            const rawEmail = String(r.email || '');
+            const isSwapped =
+              rawAccType.includes('@') && /^\d{10,}$/.test(rawEmail);
             this.tables.user_usernames.set(String(r.username_lower), {
               ...r,
               username: r.username || r.username_display || r.username_lower,
               username_display: r.username_display || r.username || r.username_lower,
-              email: r.email || '',
+              account_type: isSwapped ? 'registered' : rawAccType,
+              email: isSwapped ? rawAccType.toLowerCase() : rawEmail,
             });
           }
         }
@@ -1966,6 +1971,82 @@ export class InMemoryD1Database implements RewardsD1Database {
           if (r && r.user_id) this.tables.user_koban_style.set(String(r.user_id), r);
         }
       }
+      if (Array.isArray(raw.user_2fa)) {
+        for (const r of raw.user_2fa) {
+          if (r && r.user_id) {
+            this.tables.user_2fa.set(String(r.user_id), {
+              user_id: String(r.user_id),
+              email: String(r.email || ''),
+              totp_enabled: Number(r.totp_enabled ?? 0),
+              email_2fa_enabled: Number(r.email_2fa_enabled ?? 0),
+              encrypted_secret: r.encrypted_secret ?? null,
+              pending_encrypted_secret: r.pending_encrypted_secret ?? null,
+              last_used_step: Number(r.last_used_step ?? 0),
+              recovery_requested_at:
+                r.recovery_requested_at != null ? Number(r.recovery_requested_at) : null,
+              recovery_disable_at:
+                r.recovery_disable_at != null ? Number(r.recovery_disable_at) : null,
+              updated_at: Number(r.updated_at ?? Date.now()),
+              created_at: Number(r.created_at ?? Date.now()),
+            });
+          }
+        }
+      }
+      if (Array.isArray(raw.user_2fa_backup_codes)) {
+        for (const r of raw.user_2fa_backup_codes) {
+          if (r && r.id) this.tables.user_2fa_backup_codes.set(String(r.id), r);
+        }
+      }
+      if (Array.isArray(raw.trusted_devices)) {
+        for (const r of raw.trusted_devices) {
+          if (r && r.id) this.tables.trusted_devices.set(String(r.id), r);
+        }
+      }
+      if (Array.isArray(raw.security_audit_logs)) {
+        for (const r of raw.security_audit_logs) {
+          if (r && r.id) this.tables.security_audit_logs.set(String(r.id), r);
+        }
+      }
+      if (Array.isArray(raw.user_roles)) {
+        for (const r of raw.user_roles) {
+          if (r && r.uid) this.tables.user_roles.set(String(r.uid), r);
+        }
+      }
+
+      // Restore canonical 2FA rows for existing seeded test accounts if prior saveToDisk omitted user_2fa
+      for (const u of this.tables.user_usernames.values()) {
+        const uid = String(u.uid || '');
+        if (!uid || this.tables.user_2fa.has(uid)) continue;
+        if (uid === 'uid_student_totp' || uid.startsWith('utotp_')) {
+          this.tables.user_2fa.set(uid, {
+            user_id: uid,
+            email: String(u.email || `${uid}@example.com`),
+            totp_enabled: 1,
+            email_2fa_enabled: 0,
+            encrypted_secret: null,
+            pending_encrypted_secret: null,
+            last_used_step: 0,
+            recovery_requested_at: null,
+            recovery_disable_at: null,
+            updated_at: Number(u.updated_at || 1775000000000),
+            created_at: Number(u.created_at || 1775000000000),
+          });
+        } else if (uid === 'uid_student_rec' || uid.startsWith('urec_')) {
+          this.tables.user_2fa.set(uid, {
+            user_id: uid,
+            email: String(u.email || `${uid}@example.com`),
+            totp_enabled: 0,
+            email_2fa_enabled: 1,
+            encrypted_secret: null,
+            pending_encrypted_secret: null,
+            last_used_step: 0,
+            recovery_requested_at: null,
+            recovery_disable_at: null,
+            updated_at: Number(u.updated_at || 1775000000000),
+            created_at: Number(u.created_at || 1775000000000),
+          });
+        }
+      }
     } catch {
       // Non-fatal
     }
@@ -1986,6 +2067,11 @@ export class InMemoryD1Database implements RewardsD1Database {
         guest_sessions: Array.from(this.tables.guest_sessions.values()),
         email_verification_sessions: Array.from(this.tables.email_verification_sessions.values()),
         user_koban_style: Array.from(this.tables.user_koban_style.values()),
+        user_2fa: Array.from(this.tables.user_2fa.values()),
+        user_2fa_backup_codes: Array.from(this.tables.user_2fa_backup_codes.values()),
+        trusted_devices: Array.from(this.tables.trusted_devices.values()),
+        security_audit_logs: Array.from(this.tables.security_audit_logs.values()),
+        user_roles: Array.from(this.tables.user_roles.values()),
       };
       fsMod.writeFileSync(diskPath, JSON.stringify(payload, null, 2), 'utf8');
     } catch {
@@ -2388,12 +2474,27 @@ export class InMemoryD1Database implements RewardsD1Database {
         const row = this.tables.user_2fa.get(uid);
         return row ? [sanitizeRow(row)] : [];
       }
+      if (upper.includes('WHERE USER_ID IN')) {
+        const uidSet = new Set(args.map((a) => String(a ?? '')));
+        return all.filter((r) => uidSet.has(String(r.user_id))).map(sanitizeRow);
+      }
       return all.map(sanitizeRow);
     }
 
     // 18. user_2fa_backup_codes
     if (upper.includes('FROM USER_2FA_BACKUP_CODES')) {
       const all = Array.from(this.tables.user_2fa_backup_codes.values());
+      if (upper.includes('GROUP BY USER_ID')) {
+        const onlyUnused = upper.includes('USED = 0');
+        const counts = new Map<string, number>();
+        for (const r of all) {
+          if (onlyUnused && Number(r.used) !== 0) continue;
+          const uid = String(r.user_id || '');
+          if (!uid) continue;
+          counts.set(uid, (counts.get(uid) || 0) + 1);
+        }
+        return Array.from(counts.entries()).map(([user_id, cnt]) => ({ user_id, cnt }));
+      }
       if (upper.includes('COUNT(*)') && upper.includes('WHERE USER_ID =')) {
         const uid = String(args[0] ?? '');
         const onlyUnused = upper.includes('AND USED = 0');
@@ -2416,6 +2517,18 @@ export class InMemoryD1Database implements RewardsD1Database {
     // 19. trusted_devices
     if (upper.includes('FROM TRUSTED_DEVICES')) {
       const all = Array.from(this.tables.trusted_devices.values());
+      if (upper.includes('GROUP BY USER_ID')) {
+        const nowMs = args.length > 0 ? Number(args[0] ?? 0) : 0;
+        const counts = new Map<string, number>();
+        for (const r of all) {
+          if (Number(r.revoked) !== 0) continue;
+          if (nowMs > 0 && Number(r.expires_at) <= nowMs) continue;
+          const uid = String(r.user_id || '');
+          if (!uid) continue;
+          counts.set(uid, (counts.get(uid) || 0) + 1);
+        }
+        return Array.from(counts.entries()).map(([user_id, cnt]) => ({ user_id, cnt }));
+      }
       if (upper.includes('WHERE TOKEN_HASH =')) {
         const th = String(args[0] ?? '');
         const onlyActive = upper.includes('REVOKED = 0');
@@ -2912,15 +3025,20 @@ export class InMemoryD1Database implements RewardsD1Database {
     // 6. user_usernames (username_lower PRIMARY KEY, uid UNIQUE)
     if (upper.includes('INTO USER_USERNAMES')) {
       const isReplace = upper.includes('OR REPLACE') || upper.includes('ON CONFLICT');
-      const hasLookalikeCol = upper.includes('NORMALIZED_LOOKALIKE');
-      const hasEmailCol = upper.includes('EMAIL');
+      const colMatch = upper.match(/INTO\s+USER_USERNAMES\s*\(([^)]+)\)/);
+      const cols = colMatch
+        ? colMatch[1].split(',').map((c) => c.trim().toUpperCase())
+        : [];
+      const hasLookalikeCol = cols.length > 0 ? cols.includes('NORMALIZED_LOOKALIKE') : upper.includes('NORMALIZED_LOOKALIKE');
+      const hasAccountTypeCol = cols.length > 0 ? cols.includes('ACCOUNT_TYPE') : true;
+      const hasEmailCol = cols.length > 0 ? cols.includes('EMAIL') : upper.includes('EMAIL');
       const username_lower = String(args[0] ?? '').toLowerCase();
       const usernameDisplay = String(args[1] ?? '');
 
       let idx = 2;
       const normalized_lookalike = hasLookalikeCol ? String(args[idx++] ?? '') : username_lower;
       const uid = String(args[idx++] ?? '');
-      const account_type = String(args[idx++] ?? 'guest');
+      const account_type = hasAccountTypeCol ? String(args[idx++] ?? 'guest') : 'registered';
       const email = hasEmailCol ? String(args[idx++] ?? '').trim().toLowerCase() : '';
       const created_at = Number(args[idx++] ?? Date.now());
       const updated_at = Number(args[idx++] ?? created_at);

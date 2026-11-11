@@ -28,7 +28,7 @@ import {
 } from '@/services/notificationService';
 
 export function AdminAnnouncementsPage() {
-  const { user } = useAuth();
+  const { user, isAdmin, profileLoading } = useAuth();
   const isSuperAdmin = isUserSuperAdmin(user);
 
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
@@ -69,8 +69,10 @@ export function AdminAnnouncementsPage() {
   };
 
   useEffect(() => {
-    void loadData();
-  }, []);
+    if (!profileLoading && user && isAdmin) {
+      void loadData();
+    }
+  }, [profileLoading, user, isAdmin]);
 
   const handleSaveWelcome = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -218,9 +220,18 @@ export function AdminAnnouncementsPage() {
       )}
 
       {errorMsg && (
-        <div className="p-4 rounded-2xl bg-red-950/30 border border-red-500/40 text-red-300 text-xs flex items-center gap-2.5">
-          <AlertTriangle size={16} className="text-red-400 shrink-0" />
-          <span>{errorMsg}</span>
+        <div className="p-4 rounded-2xl bg-red-950/30 border border-red-500/40 text-red-300 text-xs flex items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle size={16} className="text-red-400 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+          <button
+            type="button"
+            onClick={loadData}
+            className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-200 font-semibold cursor-pointer"
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -380,7 +391,7 @@ export function AdminAnnouncementsPage() {
             className="text-base font-bold text-[var(--text)]"
             style={{ fontFamily: 'var(--font-heading)' }}
           >
-            Published Broadcasts ({announcements.length})
+            Published Broadcasts ({loading && announcements.length === 0 ? '—' : announcements.length})
           </h2>
           <span className="text-xs text-[var(--muted)]">Visible to all users</span>
         </div>

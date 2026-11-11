@@ -970,12 +970,33 @@ export interface UserTwoFactorStatusSummary {
  *
  * Strictly NEVER queries or returns `encrypted_secret`, `pending_encrypted_secret`, `code_hash`, or `token_hash`.
  */
-export async function getUserTwoFactorStatusFromD1(
-  db: RewardsD1Database,
-  userId: string,
-  nowMs = Date.now()
-): Promise<UserTwoFactorStatusSummary> {
-  const cleanUid = String(userId || '').trim();
+export interface RawUser2faStatusRow {
+  user_id: string;
+  email?: string;
+  totp_enabled: number;
+  email_2fa_enabled: number;
+  recovery_requested_at: number | null;
+  recovery_disable_at: number | null;
+  updated_at: number;
+  created_at: number;
+}
+
+/**
+ * Shared server-side 2FA status calculator used by BOTH the Admin Users list endpoint
+ * and the single-user profile drawer endpoint.
+ * Strictly NEVER accepts or returns `encrypted_secret`, `pending_encrypted_secret`, `code_hash`, or `token_hash`.
+ */
+export function computeUserTwoFactorStatusSummary(params: {
+  userId: string;
+  twoFaRow: RawUser2faStatusRow | null;
+  backupCodesRemaining: number;
+  trustedDevicesCount: number;
+  nowMs?: number;
+}): UserTwoFactorStatusSummary {
+  const cleanUid = String(params.userId || '').trim();
+  const nowMs = params.nowMs ?? Date.now();
+  const twoFaRow = params.twoFaRow;
+
   if (!cleanUid) {
     return {
       userId: '',
@@ -994,20 +1015,77 @@ export async function getUserTwoFactorStatusFromD1(
     };
   }
 
+  const totpEnabled = Boolean(twoFaRow && Number(twoFaRow.totp_enabled) === 1);
+  const email2faEnabled = Boolean(twoFaRow && Number(twoFaRow.email_2fa_enabled) === 1);
+  const twoFactorEnabled = totpEnabled || email2faEnabled;
+
+  const rawRecoveryDisableAt =
+    twoFaRow?.recovery_disable_at && Number(twoFaRow.recovery_disable_at) > nowMs
+      ? Number(twoFaRow.recovery_disable_at)
+      : null;
+  const rawRecoveryRequestedAt =
+    rawRecoveryDisableAt &&
+    twoFaRow?.recovery_requested_at &&
+    Number(twoFaRow.recovery_requested_at) > 0
+      ? Number(twoFaRow.recovery_requested_at)
+      : null;
+  const recoveryPending = Boolean(rawRecoveryDisableAt && twoFactorEnabled);
+
+  const backupCodesRemaining = Math.max(0, Number(params.backupCodesRemaining || 0));
+  const trustedDevicesCount = Math.max(0, Number(params.trustedDevicesCount || 0));
+  const lastChangedAt =
+    twoFaRow?.updated_at && Number(twoFaRow.updated_at) > 0 ? Number(twoFaRow.updated_at) : null;
+
+  let badgeLabel: TwoFactorBadgeLabel = 'Off';
+  if (recoveryPending) {
+    badgeLabel = 'Recovery pending';
+  } else if (totpEnabled && email2faEnabled) {
+    badgeLabel = 'Both';
+  } else if (totpEnabled) {
+    badgeLabel = 'Authenticator';
+  } else if (email2faEnabled) {
+    badgeLabel = 'Email code';
+  }
+
+  return {
+    userId: cleanUid,
+    totpEnabled,
+    email2faEnabled,
+    twoFactorEnabled,
+    recoveryPending,
+    recoveryRequestedAt: rawRecoveryRequestedAt,
+    recoveryDisableAt: rawRecoveryDisableAt,
+    backupCodesRemaining,
+    remainingBackupCodes: backupCodesRemaining,
+    trustedDevicesCount,
+    lastChangedAt,
+    updatedAt: lastChangedAt,
+    badgeLabel,
+  };
+}
+
+export async function getUserTwoFactorStatusFromD1(
+  db: RewardsD1Database,
+  userId: string,
+  nowMs = Date.now()
+): Promise<UserTwoFactorStatusSummary> {
+  const cleanUid = String(userId || '').trim();
+  if (!cleanUid) {
+    return computeUserTwoFactorStatusSummary({
+      userId: '',
+      twoFaRow: null,
+      backupCodesRemaining: 0,
+      trustedDevicesCount: 0,
+      nowMs,
+    });
+  }
+
   let twoFaRow = await db
     .prepare(
       'SELECT user_id, totp_enabled, email_2fa_enabled, recovery_requested_at, recovery_disable_at, updated_at, created_at FROM user_2fa WHERE user_id = ?1 LIMIT 1'
     )
     .bind(cleanUid)
-    .first<{
-      user_id: string;
-      totp_enabled: number;
-      email_2fa_enabled: number;
-      recovery_requested_at: number | null;
-      recovery_disable_at: number | null;
-      updated_at: number;
-      created_at: number;
-    }>()
+    .first<RawUser2faStatusRow>()
     .catch(() => null);
 
   // Auto-complete 24-hour self-recovery if the cooling-off window has elapsed
@@ -1066,51 +1144,122 @@ export async function getUserTwoFactorStatusFromD1(
       .catch(() => null),
   ]);
 
-  const totpEnabled = Boolean(twoFaRow && Number(twoFaRow.totp_enabled) === 1);
-  const email2faEnabled = Boolean(twoFaRow && Number(twoFaRow.email_2fa_enabled) === 1);
-  const twoFactorEnabled = totpEnabled || email2faEnabled;
+  return computeUserTwoFactorStatusSummary({
+    userId: cleanUid,
+    twoFaRow,
+    backupCodesRemaining: Number(backupCountRow?.cnt || 0),
+    trustedDevicesCount: Number(trustedCountRow?.cnt || 0),
+    nowMs,
+  });
+}
 
-  const rawRecoveryDisableAt =
-    twoFaRow?.recovery_disable_at && Number(twoFaRow.recovery_disable_at) > nowMs
-      ? Number(twoFaRow.recovery_disable_at)
-      : null;
-  const rawRecoveryRequestedAt =
-    rawRecoveryDisableAt && twoFaRow?.recovery_requested_at && Number(twoFaRow.recovery_requested_at) > 0
-      ? Number(twoFaRow.recovery_requested_at)
-      : null;
-  const recoveryPending = Boolean(rawRecoveryDisableAt && twoFactorEnabled);
+/**
+ * Batched 2FA status resolver for the Admin Users list.
+ * Runs 3 parallel aggregate queries instead of 3*N sequential queries,
+ * and computes every user's status via `computeUserTwoFactorStatusSummary`.
+ */
+export async function getBatchUsersTwoFactorStatusFromD1(
+  db: RewardsD1Database,
+  requestedUids: string[],
+  nowMs = Date.now()
+): Promise<Record<string, UserTwoFactorStatusSummary>> {
+  const [all2faRes, backupCountsRes, trustedCountsRes] = await Promise.all([
+    db
+      .prepare(
+        'SELECT user_id, totp_enabled, email_2fa_enabled, recovery_requested_at, recovery_disable_at, updated_at, created_at FROM user_2fa'
+      )
+      .all<RawUser2faStatusRow>()
+      .catch(() => ({ results: [] as RawUser2faStatusRow[] })),
+    db
+      .prepare(
+        'SELECT user_id, COUNT(*) as cnt FROM user_2fa_backup_codes WHERE used = 0 GROUP BY user_id'
+      )
+      .all<{ user_id: string; cnt: number }>()
+      .catch(() => ({ results: [] as { user_id: string; cnt: number }[] })),
+    db
+      .prepare(
+        'SELECT user_id, COUNT(*) as cnt FROM trusted_devices WHERE revoked = 0 AND expires_at > ?1 GROUP BY user_id'
+      )
+      .bind(nowMs)
+      .all<{ user_id: string; cnt: number }>()
+      .catch(() => ({ results: [] as { user_id: string; cnt: number }[] })),
+  ]);
 
-  const backupCodesRemaining = Number(backupCountRow?.cnt || 0);
-  const trustedDevicesCount = Number(trustedCountRow?.cnt || 0);
-  const lastChangedAt =
-    twoFaRow?.updated_at && Number(twoFaRow.updated_at) > 0 ? Number(twoFaRow.updated_at) : null;
+  const rowByUid = new Map<string, RawUser2faStatusRow>();
+  const expiredRecoveryUids: string[] = [];
 
-  let badgeLabel: TwoFactorBadgeLabel = 'Off';
-  if (recoveryPending) {
-    badgeLabel = 'Recovery pending';
-  } else if (totpEnabled && email2faEnabled) {
-    badgeLabel = 'Both';
-  } else if (totpEnabled) {
-    badgeLabel = 'Authenticator';
-  } else if (email2faEnabled) {
-    badgeLabel = 'Email code';
+  for (const row of all2faRes.results || []) {
+    const uid = String(row.user_id || '').trim();
+    if (!uid) continue;
+    if (
+      row.recovery_disable_at != null &&
+      Number(row.recovery_disable_at) > 0 &&
+      nowMs >= Number(row.recovery_disable_at)
+    ) {
+      expiredRecoveryUids.push(uid);
+      rowByUid.set(uid, {
+        ...row,
+        totp_enabled: 0,
+        email_2fa_enabled: 0,
+        recovery_requested_at: null,
+        recovery_disable_at: null,
+        updated_at: nowMs,
+      });
+    } else {
+      rowByUid.set(uid, row);
+    }
   }
 
-  return {
-    userId: cleanUid,
-    totpEnabled,
-    email2faEnabled,
-    twoFactorEnabled,
-    recoveryPending,
-    recoveryRequestedAt: rawRecoveryRequestedAt,
-    recoveryDisableAt: rawRecoveryDisableAt,
-    backupCodesRemaining,
-    remainingBackupCodes: backupCodesRemaining,
-    trustedDevicesCount,
-    lastChangedAt,
-    updatedAt: lastChangedAt,
-    badgeLabel,
-  };
+  if (expiredRecoveryUids.length > 0) {
+    for (const uid of expiredRecoveryUids) {
+      try {
+        await db.batch([
+          db
+            .prepare(
+              'UPDATE user_2fa SET totp_enabled = 0, email_2fa_enabled = 0, encrypted_secret = NULL, pending_encrypted_secret = NULL, recovery_requested_at = NULL, recovery_disable_at = NULL, updated_at = ?1 WHERE user_id = ?2'
+            )
+            .bind(nowMs, uid),
+          db
+            .prepare('DELETE FROM user_2fa_backup_codes WHERE user_id = ?1')
+            .bind(uid),
+          db
+            .prepare('DELETE FROM pending_2fa_challenges WHERE user_id = ?1')
+            .bind(uid),
+        ]);
+      } catch {
+        // Non-fatal
+      }
+    }
+  }
+
+  const backupMap = new Map<string, number>();
+  for (const b of backupCountsRes.results || []) {
+    if (b.user_id) backupMap.set(String(b.user_id), Number(b.cnt || 0));
+  }
+
+  const trustedMap = new Map<string, number>();
+  for (const t of trustedCountsRes.results || []) {
+    if (t.user_id) trustedMap.set(String(t.user_id), Number(t.cnt || 0));
+  }
+
+  const allUids = new Set<string>(rowByUid.keys());
+  for (const rawUid of requestedUids) {
+    const clean = String(rawUid || '').trim();
+    if (clean) allUids.add(clean);
+  }
+
+  const statusByUid: Record<string, UserTwoFactorStatusSummary> = {};
+  for (const uid of allUids) {
+    statusByUid[uid] = computeUserTwoFactorStatusSummary({
+      userId: uid,
+      twoFaRow: rowByUid.get(uid) || null,
+      backupCodesRemaining: backupMap.get(uid) || 0,
+      trustedDevicesCount: trustedMap.get(uid) || 0,
+      nowMs,
+    });
+  }
+
+  return statusByUid;
 }
 
 function canCallerManageOthers2fa(
@@ -4975,7 +5124,13 @@ export async function handleAuthApiRequest(
       secret,
       tokenVerifierOverride: opts.tokenVerifierOverride,
     });
-    if (!caller || !caller.isAdminOrAbove || !caller.sessionVerified) {
+    if (!caller) {
+      return jsonResponse(
+        { ok: false, error: 'Authentication required. Please sign in.', code: 'UNAUTHENTICATED' },
+        401
+      );
+    }
+    if (!caller.isAdminOrAbove || !caller.sessionVerified) {
       return jsonResponse(
         { ok: false, error: 'Forbidden: Admin access required.', code: 'FORBIDDEN' },
         403
@@ -4988,28 +5143,118 @@ export async function handleAuthApiRequest(
       .map((s) => s.trim())
       .filter(Boolean);
 
-    const all2faRows = await db
-      .prepare('SELECT user_id FROM user_2fa')
-      .all<{ user_id: string }>()
-      .catch(() => ({ results: [] as { user_id: string }[] }));
-
-    const uidsToResolve = new Set<string>();
-    for (const r of all2faRows.results || []) {
-      if (r.user_id) uidsToResolve.add(String(r.user_id));
-    }
-    for (const u of rawUidsList) {
-      uidsToResolve.add(u);
-    }
+    const uidsToResolve = new Set<string>(rawUidsList);
     if (targetUidFilter) {
       uidsToResolve.add(targetUidFilter);
     }
+    uidsToResolve.add(caller.uid);
 
-    const statusByUid: Record<string, UserTwoFactorStatusSummary> = {};
-    for (const targetId of uidsToResolve) {
-      statusByUid[targetId] = await getUserTwoFactorStatusFromD1(db, targetId, nowMs);
+    const [statusByUid, d1UsernamesRes, d1RolesRes] = await Promise.all([
+      getBatchUsersTwoFactorStatusFromD1(db, Array.from(uidsToResolve), nowMs),
+      db
+        .prepare(
+          'SELECT username_lower, username_display, uid, account_type, email, created_at, updated_at FROM user_usernames ORDER BY created_at DESC LIMIT 500'
+        )
+        .all<{
+          username_lower: string;
+          username_display: string;
+          uid: string;
+          account_type: string;
+          email?: string;
+          created_at: number;
+          updated_at: number;
+        }>()
+        .catch(() => ({ results: [] })),
+      db
+        .prepare('SELECT uid, email, role, custom_role, is_posting_banned, updated_at FROM user_roles')
+        .all<{
+          uid: string;
+          email: string;
+          role: string;
+          custom_role: string | null;
+          is_posting_banned: number;
+          updated_at: number;
+        }>()
+        .catch(() => ({ results: [] })),
+    ]);
+
+    const rolesByUid = new Map<string, { role: string; customRole: string | null; isPostingBanned: boolean }>();
+    for (const r of d1RolesRes.results || []) {
+      if (r.uid) {
+        rolesByUid.set(String(r.uid), {
+          role: String(r.role || 'student'),
+          customRole: r.custom_role || null,
+          isPostingBanned: Boolean(r.is_posting_banned),
+        });
+      }
     }
 
-    const callerStatus = await getUserTwoFactorStatusFromD1(db, caller.uid, nowMs);
+    // Ensure every D1 registered account also has a resolved 2FA summary in statusByUid
+    const d1Users: Array<{
+      uid: string;
+      username: string;
+      displayName: string;
+      email: string;
+      accountType: 'guest' | 'registered';
+      role: string;
+      createdAt: number;
+      updatedAt: number;
+      twoFactorStatus: UserTwoFactorStatusSummary;
+    }> = [];
+
+    for (const u of d1UsernamesRes.results || []) {
+      const uid = String(u.uid || '').trim();
+      if (!uid || uid.startsWith('bot_')) continue;
+      if (!statusByUid[uid]) {
+        statusByUid[uid] = computeUserTwoFactorStatusSummary({
+          userId: uid,
+          twoFaRow: null,
+          backupCodesRemaining: 0,
+          trustedDevicesCount: 0,
+          nowMs,
+        });
+      }
+      // Exclude ephemeral 6-digit test run artifacts from the default directory unless explicitly queried
+      const isEphemeralTestRow = /^(?:sa1|sa2|reg|utotp|uoff|urec)_\d{6}$/i.test(uid);
+      if (isEphemeralTestRow && !uidsToResolve.has(uid)) continue;
+
+      const roleInfo = rolesByUid.get(uid);
+      const rawEmail = String(u.email || '').trim().toLowerCase();
+      const rawAccType = String(u.account_type || 'registered');
+      const isSwapped = rawAccType.includes('@') && /^\d{10,}$/.test(rawEmail);
+      const cleanEmail = isSwapped ? rawAccType.toLowerCase() : rawEmail;
+      const cleanAccType = (isSwapped ? 'registered' : rawAccType) === 'guest' ? 'guest' : 'registered';
+      const usernameDisplay = String(u.username_display || u.username_lower || uid);
+
+      let inferredRole = roleInfo?.role || 'student';
+      if (
+        uid === 'uid_superadmin_1' ||
+        uid === 'uid_superadmin_2' ||
+        cleanEmail === 'superadmin@boardly.cfd' ||
+        cleanEmail === 'superadmin2@boardly.cfd' ||
+        cleanEmail === 'shsvirtualadmin@gmail.com' ||
+        cleanEmail === 'support@boardly.cfd'
+      ) {
+        inferredRole = 'admin';
+      } else if (uid === 'uid_regular_admin' || cleanEmail === 'regularadmin@boardly.cfd') {
+        inferredRole = 'admin';
+      }
+
+      d1Users.push({
+        uid,
+        username: usernameDisplay,
+        displayName: usernameDisplay,
+        email: cleanEmail,
+        accountType: cleanAccType,
+        role: inferredRole,
+        createdAt: Number(u.created_at || nowMs),
+        updatedAt: Number(u.updated_at || u.created_at || nowMs),
+        twoFactorStatus: statusByUid[uid],
+      });
+    }
+
+    const callerStatus =
+      statusByUid[caller.uid] || (await getUserTwoFactorStatusFromD1(db, caller.uid, nowMs));
     const canManage2fa = canCallerManageOthers2fa(caller, env);
 
     let targetStatus: UserTwoFactorStatusSummary | null = null;
@@ -5043,11 +5288,11 @@ export async function handleAuthApiRequest(
             details_json: string;
             created_at: number;
           }>()
+          .catch(() => ({ results: [] }))
       : await db
           .prepare(
             'SELECT id, user_id, actor_id, event_type, ip_hash, details_json, created_at FROM security_audit_logs ORDER BY created_at DESC LIMIT 100'
           )
-          .bind(100)
           .all<{
             id: string;
             user_id: string;
@@ -5056,7 +5301,8 @@ export async function handleAuthApiRequest(
             ip_hash: string;
             details_json: string;
             created_at: number;
-          }>();
+          }>()
+          .catch(() => ({ results: [] }));
 
     const auditLogs = (auditLogsRes.results || []).map((l) => ({
       id: l.id,
@@ -5083,8 +5329,10 @@ export async function handleAuthApiRequest(
 
     return jsonResponse({
       ok: true,
+      users: statusByUid,
       statusByUid,
       users2fa: statusByUid,
+      d1Users,
       canManage2fa,
       callerHas2fa: callerStatus.twoFactorEnabled,
       callerTotpEnabled: callerStatus.totpEnabled,

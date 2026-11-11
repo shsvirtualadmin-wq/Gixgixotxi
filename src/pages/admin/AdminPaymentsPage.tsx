@@ -10,12 +10,14 @@ import {
   Plus,
 } from 'lucide-react';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
+import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import { useAuth } from '@/contexts/AuthContext';
 import { auth } from '@/lib/firebase';
 import {
   fetchPaymentRequests,
   approvePaymentRequest,
   rejectPaymentRequest,
+  fetchAdminJsonWithRetry,
 } from '@/services/adminService';
 import {
   fetchKobanRequests,
@@ -57,7 +59,7 @@ interface AdminCouponRedemptionRecord {
 }
 
 export function AdminPaymentsPage() {
-  const { user } = useAuth();
+  const { user, isAdmin, profileLoading } = useAuth();
   const superadminEmail = user?.email || 'shsvirtualadmin@gmail.com';
 
   const [paymentType, setPaymentType] = useState<'plans' | 'kobans' | 'coupons'>(() => {
@@ -73,6 +75,7 @@ export function AdminPaymentsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [methodFilter, setMethodFilter] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<AdminDiagnosticError | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
 
   // Pro Plan Requests
@@ -118,7 +121,9 @@ export function AdminPaymentsPage() {
   };
 
   const loadData = useCallback(async () => {
+    if (!user || !isAdmin) return;
     setLoading(true);
+    setError(null);
     try {
       if (paymentType === 'plans') {
         const data = await fetchPaymentRequests(statusFilter);
@@ -127,26 +132,32 @@ export function AdminPaymentsPage() {
         const data = await fetchKobanRequests(statusFilter);
         setKobanRequestsList(data);
       } else {
-        const token = await auth.currentUser?.getIdToken().catch(() => null);
-        const res = await fetch('/api/admin/coupons', {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const payload = await res.json().catch(() => ({}));
-        if (payload?.ok) {
-          setCouponsList(Array.isArray(payload.coupons) ? payload.coupons : []);
-          setCouponRedemptions(Array.isArray(payload.redemptions) ? payload.redemptions : []);
+        const { ok, data: payload, errorMessage } = await fetchAdminJsonWithRetry<any>('/api/admin/coupons');
+        if (!ok || !payload?.ok) {
+          throw new Error(errorMessage || 'Failed to load coupons from server.');
         }
+        setCouponsList(Array.isArray(payload.coupons) ? payload.coupons : []);
+        setCouponRedemptions(Array.isArray(payload.redemptions) ? payload.redemptions : []);
       }
-    } catch (err) {
-      console.warn('Failed to load payment requests:', err);
+    } catch (err: unknown) {
+      console.error('[AdminPaymentsPage] Failed to load payment requests:', err);
+      const e = err as Partial<AdminDiagnosticError>;
+      setError({
+        code: e?.code || 'PAYMENTS_LOAD_FAILED',
+        message: e?.message || 'Failed to load payment records. Please retry.',
+        collection: paymentType === 'plans' ? 'paymentRequests' : paymentType,
+        operation: 'loadData',
+      });
     } finally {
       setLoading(false);
     }
-  }, [paymentType, statusFilter]);
+  }, [user, isAdmin, paymentType, statusFilter]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (!profileLoading && user && isAdmin) {
+      void loadData();
+    }
+  }, [profileLoading, user, isAdmin, loadData]);
 
   const handleCreateCoupon = async () => {
     const cleanCode = newCouponCode.trim().toUpperCase();
@@ -328,6 +339,13 @@ export function AdminPaymentsPage() {
           {loading && <ButtonLineLoader />}
         </button>
       </div>
+
+      <AdminDiagnosticBanner
+        error={error}
+        collectionName={paymentType === 'plans' ? 'paymentRequests' : paymentType}
+        onRetry={loadData}
+        retrying={loading}
+      />
 
       {bannerNotice && (
         <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500 text-emerald-300 text-xs font-heading flex items-center gap-2 animate-in fade-in">
