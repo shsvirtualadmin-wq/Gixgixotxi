@@ -18,6 +18,16 @@ import {
   Pencil,
   Search,
   X,
+  User,
+  AtSign,
+  Lock,
+  Bell,
+  Mail,
+  Trash2,
+  MessageCircle,
+  Users,
+  Flame,
+  FileText,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -27,7 +37,7 @@ import { useWallet } from '@/hooks/useWallet';
 import { useTheme, type ThemeSetting } from '@/hooks/useTheme';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { LineLoader } from '@/components/ui/LineLoader';
-import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { sanitizeStudentDisplayName, isAdminAccount } from '@/utils/privacy';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { useProBadge } from '@/contexts/ProBadgeContext';
@@ -94,6 +104,78 @@ interface MenuRowDefinition {
   rightBadge?: React.ReactNode;
 }
 
+export type UniversalSearchSection = 'Menu items' | 'Settings' | 'Pages' | 'Actions';
+
+export interface UniversalSearchIndexItem {
+  id: string;
+  label: string;
+  subtitle?: string;
+  keywords: string[];
+  section: UniversalSearchSection;
+  route?: string;
+  action?: () => void;
+  icon: React.ReactNode;
+  rightBadge?: React.ReactNode;
+  danger?: boolean;
+}
+
+const UNIVERSAL_SEARCH_SECTION_ORDER: UniversalSearchSection[] = [
+  'Menu items',
+  'Settings',
+  'Pages',
+  'Actions',
+];
+
+function scoreUniversalSearchItem(item: UniversalSearchIndexItem, rawQuery: string): number {
+  const q = rawQuery.trim().toLowerCase();
+  if (!q) return 0;
+
+  const labelLower = item.label.toLowerCase();
+  const subtitleLower = (item.subtitle || '').toLowerCase();
+  const keywordsLower = item.keywords.map((k) => k.toLowerCase());
+  const tokens = q.split(/\s+/).filter(Boolean);
+
+  // Every query token must match at least one of label, keywords, or subtitle
+  for (const token of tokens) {
+    const inLabel = labelLower.includes(token);
+    const inKeywords = keywordsLower.some((k) => k.includes(token));
+    const inSubtitle = subtitleLower.includes(token);
+    if (!inLabel && !inKeywords && !inSubtitle) {
+      return 0;
+    }
+  }
+
+  let score = 0;
+
+  if (labelLower === q) {
+    score += 1000;
+  } else if (labelLower.startsWith(q)) {
+    score += 650;
+  } else if (labelLower.split(/[\s/&()-]+/).some((w) => w.startsWith(q))) {
+    score += 480;
+  } else if (labelLower.includes(q)) {
+    score += 300;
+  }
+
+  if (keywordsLower.some((k) => k === q)) {
+    score += 520;
+  } else if (keywordsLower.some((k) => k.startsWith(q))) {
+    score += 360;
+  } else if (keywordsLower.some((k) => k.includes(q))) {
+    score += 220;
+  }
+
+  for (const token of tokens) {
+    if (labelLower.startsWith(token)) score += 90;
+    else if (labelLower.includes(token)) score += 55;
+    if (keywordsLower.some((k) => k === token)) score += 80;
+    else if (keywordsLower.some((k) => k.startsWith(token))) score += 50;
+    else if (keywordsLower.some((k) => k.includes(token))) score += 30;
+  }
+
+  return score;
+}
+
 export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   onNavigate,
   onOpenProfile,
@@ -109,22 +191,22 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   const { themeSetting, resolvedTheme, setTheme } = useTheme();
   const { effectiveProBadge } = useProBadge();
 
+  // Single trusted server-verified role value keyed strictly by uid
   const confirmedRole: string | null =
     !profileLoading && user && profile?.role ? profile.role : null;
+
+  const isConfirmedSuperAdmin = Boolean(
+    !profileLoading &&
+      user &&
+      !isGuest &&
+      (isAdminAccount(user.uid) || confirmedRole === 'superadmin')
+  );
 
   const isConfirmedAdmin = Boolean(
     !profileLoading &&
       user &&
-      (confirmedRole === 'admin' ||
-        confirmedRole === 'superadmin' ||
-        isAdmin)
-  );
-
-  const isConfirmedSuperAdmin = Boolean(
-    isConfirmedAdmin &&
-      (confirmedRole === 'superadmin' ||
-        effectivePlan.isSuperAdmin ||
-        user?.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2')
+      !isGuest &&
+      (isConfirmedSuperAdmin || confirmedRole === 'admin' || isAdmin)
   );
 
   const role = profile?.role || 'student';
@@ -163,6 +245,9 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
 
   const pathname = location.pathname;
   const commonsTarget = user ? '/dashboard/commons' : '/commons';
+  const messagesTarget = user ? '/dashboard/messages' : '/messages';
+  const notificationsTarget = user ? '/dashboard/notifications' : '/notifications';
+  const crewTarget = user ? '/dashboard/crew' : '/crew';
   const isCommonsActive =
     pathname.startsWith('/commons') || pathname.startsWith('/dashboard/commons');
   const isGrandLineActive = pathname.startsWith('/grand-line');
@@ -181,65 +266,56 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
 
   const q = searchQuery.trim().toLowerCase();
 
-  // Group 1: Boardly Commons, Grand Line Mock Tests, Boardly Store (with coin count badge), Leaderboard, Rewards (subtitle "Daily Check-in & Referrals")
-  const group1Rows = useMemo<MenuRowDefinition[]>(() => {
-    const rows: MenuRowDefinition[] = [
-      {
-        id: 'commons',
-        label: 'Boardly Commons',
-        keywords: 'boardly commons community feed posts discussions',
-        icon: <Compass size={18} strokeWidth={1.9} />,
-        active: isCommonsActive,
-        onClick: () => onNavigate(commonsTarget),
-      },
-      {
-        id: 'grand-line',
-        label: 'Grand Line Mock Tests',
-        keywords: 'grand line mock tests exams practice drills',
-        icon: <Award size={18} strokeWidth={1.9} />,
-        active: isGrandLineActive,
-        onClick: () => onNavigate('/grand-line'),
-      },
-      {
-        id: 'store',
-        label: 'Boardly Store',
-        keywords: 'boardly store shop kobans coins cosmetics frames avatars',
-        icon: <ShoppingBag size={18} strokeWidth={1.9} />,
-        active: isStoreActive,
-        onClick: () => onNavigate('/store'),
-        rightBadge: (
-          <span className="fsm-coin-badge" title="Kobans balance">
-            <KobanIcon size={14} decorative />
-            <span>{(kobanBalance ?? 0).toLocaleString()}</span>
-          </span>
-        ),
-      },
-      {
-        id: 'leaderboard',
-        label: 'Leaderboard',
-        keywords: 'leaderboard rankings top scorers standings',
-        icon: <Trophy size={18} strokeWidth={1.9} />,
-        active: isLeaderboardActive,
-        onClick: () => onNavigate('/leaderboard'),
-      },
-      {
-        id: 'rewards',
-        label: 'Rewards',
-        subtitle: 'Daily Check-in & Referrals',
-        keywords: 'rewards daily check-in referrals kobans streaks bonus',
-        icon: <Sparkles size={18} strokeWidth={1.9} />,
-        active: isRewardsActive,
-        onClick: () => onNavigate('/rewards'),
-      },
-    ];
-    if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        r.label.toLowerCase().includes(q) ||
-        (r.subtitle && r.subtitle.toLowerCase().includes(q)) ||
-        r.keywords.includes(q)
-    );
-  }, [
+  // Group 1: Boardly Commons, Grand Line Mock Tests, Boardly Store (with coin count badge), Leaderboard, Rewards
+  const group1Rows = useMemo<MenuRowDefinition[]>(() => [
+    {
+      id: 'commons',
+      label: 'Boardly Commons',
+      keywords: 'boardly commons community feed posts discussions',
+      icon: <Compass size={18} strokeWidth={1.9} />,
+      active: isCommonsActive,
+      onClick: () => onNavigate(commonsTarget),
+    },
+    {
+      id: 'grand-line',
+      label: 'Grand Line Mock Tests',
+      keywords: 'grand line mock tests exams practice drills',
+      icon: <Award size={18} strokeWidth={1.9} />,
+      active: isGrandLineActive,
+      onClick: () => onNavigate('/grand-line'),
+    },
+    {
+      id: 'store',
+      label: 'Boardly Store',
+      keywords: 'boardly store shop kobans coins cosmetics frames avatars',
+      icon: <ShoppingBag size={18} strokeWidth={1.9} />,
+      active: isStoreActive,
+      onClick: () => onNavigate('/store'),
+      rightBadge: (
+        <span className="fsm-coin-badge" title="Kobans balance">
+          <KobanIcon size={14} decorative />
+          <span>{(kobanBalance ?? 0).toLocaleString()}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'leaderboard',
+      label: 'Leaderboard',
+      keywords: 'leaderboard rankings top scorers standings',
+      icon: <Trophy size={18} strokeWidth={1.9} />,
+      active: isLeaderboardActive,
+      onClick: () => onNavigate('/leaderboard'),
+    },
+    {
+      id: 'rewards',
+      label: 'Rewards',
+      subtitle: 'Daily Check-in & Referrals',
+      keywords: 'rewards daily check-in referrals kobans streaks bonus',
+      icon: <Sparkles size={18} strokeWidth={1.9} />,
+      active: isRewardsActive,
+      onClick: () => onNavigate('/rewards'),
+    },
+  ], [
     isCommonsActive,
     commonsTarget,
     isGrandLineActive,
@@ -248,7 +324,6 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
     isLeaderboardActive,
     isRewardsActive,
     onNavigate,
-    q,
   ]);
 
   // Group 2: Settings, Superadmin Portal (super admins / admins only) + Captain Deck (for captains)
@@ -275,24 +350,27 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
       });
     }
 
-    if (isConfirmedAdmin) {
+    if (isConfirmedSuperAdmin) {
       rows.push({
         id: 'superadmin-portal',
-        label: isConfirmedSuperAdmin ? 'Superadmin Portal' : 'Admin Portal',
+        label: 'Superadmin Portal',
         keywords: 'superadmin admin portal dashboard moderation users',
+        icon: <Shield size={18} strokeWidth={1.9} />,
+        active: isAdminActive,
+        onClick: () => onNavigate('/admin'),
+      });
+    } else if (isConfirmedAdmin) {
+      rows.push({
+        id: 'admin-portal',
+        label: 'Admin Portal',
+        keywords: 'admin portal dashboard moderation users',
         icon: <Shield size={18} strokeWidth={1.9} />,
         active: isAdminActive,
         onClick: () => onNavigate('/admin'),
       });
     }
 
-    if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        r.label.toLowerCase().includes(q) ||
-        (r.subtitle && r.subtitle.toLowerCase().includes(q)) ||
-        r.keywords.includes(q)
-    );
+    return rows;
   }, [
     isSettingsActive,
     isApprovedCaptain,
@@ -301,27 +379,517 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
     isConfirmedSuperAdmin,
     isAdminActive,
     onNavigate,
-    q,
   ]);
 
-  // Group 3: Appearance with Light / Dark / System dropdown
-  const showAppearanceGroup = useMemo(() => {
-    if (!q) return true;
-    return 'appearance theme light dark system mode color'.includes(q);
-  }, [q]);
+  // Central Universal Search Index across Menu items, Settings, Pages, and Actions
+  const universalSearchIndex = useMemo<UniversalSearchIndexItem[]>(() => {
+    const themeIcon =
+      resolvedTheme === 'dark' ? (
+        <Moon size={18} strokeWidth={1.9} />
+      ) : (
+        <Sun size={18} strokeWidth={1.9} />
+      );
 
-  // Group 4: Sign out + v1.0.0
-  const showSignOutGroup = useMemo(() => {
-    if (!q) return true;
-    return 'sign out logout log out exit version v1.0.0'.includes(q);
-  }, [q]);
+    const items: UniversalSearchIndexItem[] = [
+      // ── Section 1: Menu items ──
+      {
+        id: 'menu-commons',
+        label: 'Boardly Commons',
+        subtitle: 'Community feed & study notes',
+        keywords: ['boardly commons', 'commons', 'community', 'feed', 'posts', 'discussions', 'notes'],
+        section: 'Menu items',
+        route: commonsTarget,
+        icon: <Compass size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'menu-grand-line',
+        label: 'Grand Line Mock Tests',
+        subtitle: 'Timed entry test simulations',
+        keywords: ['grand line', 'mock tests', 'exams', 'practice', 'drills', 'mcq', 'tests'],
+        section: 'Menu items',
+        route: '/grand-line',
+        icon: <Award size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'menu-store',
+        label: 'Boardly Store',
+        subtitle: 'Cosmetics, avatars & frames',
+        keywords: ['boardly store', 'store', 'shop', 'kobans', 'coins', 'cosmetics', 'avatars', 'frames', 'buy'],
+        section: 'Menu items',
+        route: '/store',
+        icon: <ShoppingBag size={18} strokeWidth={1.9} />,
+        rightBadge: (
+          <span className="fsm-coin-badge" title="Kobans balance">
+            <KobanIcon size={14} decorative />
+            <span>{(kobanBalance ?? 0).toLocaleString()}</span>
+          </span>
+        ),
+      },
+      {
+        id: 'menu-leaderboard',
+        label: 'Leaderboard',
+        subtitle: 'Top scorers & rankings',
+        keywords: ['leaderboard', 'rankings', 'top scorers', 'standings', 'rank', 'scores'],
+        section: 'Menu items',
+        route: '/leaderboard',
+        icon: <Trophy size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'menu-rewards',
+        label: 'Rewards',
+        subtitle: 'Daily Check-in & Referrals',
+        keywords: ['rewards', 'daily check-in', 'referrals', 'kobans', 'streaks', 'bonus', 'claim'],
+        section: 'Menu items',
+        route: '/rewards',
+        icon: <Sparkles size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'menu-settings',
+        label: 'Settings',
+        subtitle: 'Account, security & preferences',
+        keywords: ['settings', 'preferences', 'account', 'options', 'configuration', 'profile'],
+        section: 'Menu items',
+        route: '/settings',
+        icon: <Settings size={18} strokeWidth={1.9} />,
+      },
+      ...(isApprovedCaptain
+        ? [
+            {
+              id: 'menu-captain-deck',
+              label: 'Captain Deck',
+              subtitle: 'Ambassador & referral tools',
+              keywords: ['captain', 'captain deck', 'ambassador', 'referrals', 'crew'],
+              section: 'Menu items' as UniversalSearchSection,
+              route: '/dashboard/captain',
+              icon: <Award size={18} strokeWidth={1.9} />,
+            },
+          ]
+        : []),
+      ...(isConfirmedSuperAdmin
+        ? [
+            {
+              id: 'menu-superadmin-portal',
+              label: 'Superadmin Portal',
+              subtitle: 'User management & moderation',
+              keywords: ['superadmin', 'super admin', 'admin', 'portal', 'moderation', 'users', 'dashboard'],
+              section: 'Menu items' as UniversalSearchSection,
+              route: '/admin',
+              icon: <Shield size={18} strokeWidth={1.9} />,
+            },
+          ]
+        : []),
+      {
+        id: 'menu-appearance',
+        label: 'Appearance',
+        subtitle: 'Light, Dark & System theme',
+        keywords: ['appearance', 'theme', 'light', 'dark', 'system', 'mode', 'color', 'colour'],
+        section: 'Menu items',
+        route: '/settings#settings-theme',
+        icon: themeIcon,
+      },
+      {
+        id: 'menu-sign-out',
+        label: 'Sign out',
+        subtitle: 'Open session sign-out in Settings',
+        keywords: ['sign out', 'logout', 'log out', 'exit', 'leave', 'end session'],
+        section: 'Menu items',
+        route: '/settings#settings-sign-out',
+        icon: <LogOut size={18} strokeWidth={1.9} />,
+        danger: true,
+      },
 
-  const noResults =
-    q.length > 0 &&
-    group1Rows.length === 0 &&
-    group2Rows.length === 0 &&
-    !showAppearanceGroup &&
-    !showSignOutGroup;
+      // ── Section 2: Settings ──
+      {
+        id: 'setting-username',
+        label: 'Change username',
+        subtitle: 'Settings · Username & Study Role',
+        keywords: [
+          'change username',
+          'username',
+          'handle',
+          '@handle',
+          'edit username',
+          'user id',
+          'study role',
+          'academic role',
+        ],
+        section: 'Settings',
+        route: '/settings#settings-username',
+        icon: <AtSign size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'setting-display-name',
+        label: 'Change display name',
+        subtitle: 'Settings · Display Name',
+        keywords: [
+          'change display name',
+          'display name',
+          'nickname',
+          'name',
+          'edit name',
+          'profile name',
+          'full name',
+          'rename',
+        ],
+        section: 'Settings',
+        route: '/settings#settings-display-name',
+        icon: <User size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'setting-password',
+        label: 'Change password',
+        subtitle: 'Settings · Account Password',
+        keywords: [
+          'change password',
+          'password',
+          'set password',
+          'reset password',
+          'update password',
+          'security',
+          'credentials',
+          'login',
+        ],
+        section: 'Settings',
+        route: '/settings#settings-password',
+        icon: <Lock size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'setting-delete-account',
+        label: 'Delete account',
+        subtitle: 'Settings · Permanently close your account',
+        keywords: [
+          'delete',
+          'remove',
+          'deactivate',
+          'close account',
+          'delete account',
+          'erase account',
+          'wipe account',
+          'cancel account',
+          'terminate',
+        ],
+        section: 'Settings',
+        route: '/settings#settings-delete-account',
+        icon: <Trash2 size={18} strokeWidth={1.9} />,
+        danger: true,
+      },
+      {
+        id: 'setting-theme',
+        label: 'Theme & Appearance',
+        subtitle: 'Settings · Light, Dark & System mode',
+        keywords: [
+          'theme',
+          'change theme',
+          'appearance',
+          'dark mode',
+          'light mode',
+          'system theme',
+          'color',
+          'colour',
+          'night mode',
+        ],
+        section: 'Settings',
+        route: '/settings#settings-theme',
+        icon: themeIcon,
+      },
+      {
+        id: 'setting-notifications',
+        label: 'Notifications',
+        subtitle: 'Settings · Email & activity notifications',
+        keywords: [
+          'notifications',
+          'email notifications',
+          'alerts',
+          'receipts',
+          'test notifications',
+          'preferences',
+          'unsubscribe',
+        ],
+        section: 'Settings',
+        route: '/settings#settings-notifications',
+        icon: <Bell size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'setting-email',
+        label: 'Account email',
+        subtitle: 'Settings · Verified email address',
+        keywords: ['email', 'account email', 'email address', 'verified email', 'contact', 'mail'],
+        section: 'Settings',
+        route: '/settings#settings-email',
+        icon: <Mail size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'setting-plan',
+        label: 'Plan & Pro subscription',
+        subtitle: 'Settings · Current Plan & Upgrade',
+        keywords: [
+          'plan',
+          'pro',
+          'upgrade',
+          'subscription',
+          'billing',
+          'free plan',
+          'pro plan',
+          'unlimited',
+          'membership',
+        ],
+        section: 'Settings',
+        route: '/settings#settings-plan',
+        icon: <Sparkles size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'setting-2fa',
+        label: 'Two-step verification (2FA)',
+        subtitle: 'Settings · Authenticator app, email code & backup codes',
+        keywords: [
+          '2fa',
+          'two-step verification',
+          'two factor',
+          'authenticator',
+          'totp',
+          'backup codes',
+          'security',
+          'trusted devices',
+        ],
+        section: 'Settings',
+        route: '/settings#settings-security',
+        icon: <Shield size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'setting-pro-badge',
+        label: 'Pro badge',
+        subtitle: 'Settings · Choose your Pro badge design',
+        keywords: ['pro badge', 'badge', 'emblem', 'tag', 'cosmetic badge', 'appearance'],
+        section: 'Settings',
+        route: '/settings#appearance-pro-badge',
+        icon: <Sparkles size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'setting-koban-icon',
+        label: 'Koban icon style',
+        subtitle: 'Settings · Customize your coin icon',
+        keywords: ['koban', 'koban icon', 'coin', 'coin style', 'gold coin', 'appearance'],
+        section: 'Settings',
+        route: '/settings#appearance-koban-icon',
+        icon: <ShoppingBag size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'setting-reduce-effects',
+        label: 'Reduce effects (Smooth Mode)',
+        subtitle: 'Settings · Performance & animations',
+        keywords: ['reduce effects', 'smooth mode', 'animations', 'blur', 'performance', 'battery', 'lag'],
+        section: 'Settings',
+        route: '/settings#appearance-reduce-effects',
+        icon: <Sparkles size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'setting-legal',
+        label: 'Legal & Privacy',
+        subtitle: 'Settings · Terms of Service & Privacy Policy',
+        keywords: ['legal', 'privacy', 'privacy policy', 'terms', 'terms of service', 'rules'],
+        section: 'Settings',
+        route: '/settings#settings-legal',
+        icon: <FileText size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'setting-sign-out',
+        label: 'Sign out',
+        subtitle: 'Settings · End your current session',
+        keywords: ['sign out', 'logout', 'log out', 'end session', 'exit', 'switch account'],
+        section: 'Settings',
+        route: '/settings#settings-sign-out',
+        icon: <LogOut size={18} strokeWidth={1.9} />,
+        danger: true,
+      },
+
+      // ── Section 3: Pages ──
+      {
+        id: 'page-commons',
+        label: 'Commons',
+        subtitle: 'Community study feed & posts',
+        keywords: ['commons', 'boardly commons', 'feed', 'posts', 'community', 'notes', 'questions'],
+        section: 'Pages',
+        route: commonsTarget,
+        icon: <Compass size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'page-mock-tests',
+        label: 'Mock Tests',
+        subtitle: 'Grand Line & university practice exams',
+        keywords: ['mock tests', 'tests', 'grand line', 'practice', 'exams', 'mcqs', 'universities', 'nust', 'mdcat', 'ecat'],
+        section: 'Pages',
+        route: '/grand-line',
+        icon: <Award size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'page-store',
+        label: 'Store',
+        subtitle: 'Kobans wallet, avatars & frames',
+        keywords: ['store', 'boardly store', 'shop', 'kobans', 'wallet', 'coins', 'cosmetics', 'avatars', 'frames'],
+        section: 'Pages',
+        route: '/store',
+        icon: <ShoppingBag size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'page-leaderboard',
+        label: 'Leaderboard',
+        subtitle: 'Global & university standings',
+        keywords: ['leaderboard', 'rankings', 'top scorers', 'standings', 'hall of fame'],
+        section: 'Pages',
+        route: '/leaderboard',
+        icon: <Trophy size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'page-rewards',
+        label: 'Rewards',
+        subtitle: 'Daily check-in & referral bonuses',
+        keywords: ['rewards', 'daily check-in', 'referrals', 'bonus', 'earn kobans'],
+        section: 'Pages',
+        route: '/rewards',
+        icon: <Sparkles size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'page-messages',
+        label: 'Messages',
+        subtitle: 'Direct messages & study chat',
+        keywords: ['messages', 'chat', 'dm', 'direct messages', 'inbox', 'conversations'],
+        section: 'Pages',
+        route: messagesTarget,
+        icon: <MessageCircle size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'page-notifications',
+        label: 'Notifications',
+        subtitle: 'Activity alerts & updates',
+        keywords: ['notifications', 'alerts', 'bell', 'updates', 'mentions', 'activity'],
+        section: 'Pages',
+        route: notificationsTarget,
+        icon: <Bell size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'page-friends',
+        label: 'Friends',
+        subtitle: 'Squad, crew & study partners',
+        keywords: ['friends', 'squad', 'crew', 'nakama', 'teammates', 'study group', 'members'],
+        section: 'Pages',
+        route: crewTarget,
+        icon: <Users size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'page-streak',
+        label: 'Streak',
+        subtitle: 'Daily study streak tracker',
+        keywords: ['streak', 'streaks', 'daily streak', 'flame', 'fire', 'consistency', 'calendar'],
+        section: 'Pages',
+        route: '/dashboard/streaks',
+        icon: <Flame size={18} strokeWidth={1.9} />,
+      },
+      ...(isConfirmedSuperAdmin
+        ? [
+            {
+              id: 'page-superadmin-portal',
+              label: 'Superadmin Portal',
+              subtitle: 'Admin dashboard & user controls',
+              keywords: [
+                'superadmin portal',
+                'superadmin',
+                'super admin',
+                'admin',
+                'admin dashboard',
+                'portal',
+                'moderation',
+                'users',
+              ],
+              section: 'Pages' as UniversalSearchSection,
+              route: '/admin',
+              icon: <Shield size={18} strokeWidth={1.9} />,
+            },
+          ]
+        : []),
+
+      // ── Section 4: Actions ──
+      {
+        id: 'action-sign-out',
+        label: 'Sign out',
+        subtitle: 'Review & confirm signing out in Settings',
+        keywords: ['sign out', 'logout', 'log out', 'exit', 'leave', 'end session', 'switch account'],
+        section: 'Actions',
+        route: '/settings#settings-sign-out',
+        icon: <LogOut size={18} strokeWidth={1.9} />,
+        danger: true,
+      },
+      {
+        id: 'action-delete-account',
+        label: 'Delete account',
+        subtitle: 'Review & confirm account deletion in Settings',
+        keywords: [
+          'delete',
+          'remove',
+          'deactivate',
+          'close account',
+          'delete account',
+          'erase account',
+          'wipe account',
+          'cancel account',
+        ],
+        section: 'Actions',
+        route: '/settings#settings-delete-account',
+        icon: <Trash2 size={18} strokeWidth={1.9} />,
+        danger: true,
+      },
+      {
+        id: 'action-change-theme',
+        label: 'Change theme',
+        subtitle: 'Switch between Light, Dark & System in Settings',
+        keywords: [
+          'change theme',
+          'theme',
+          'appearance',
+          'dark mode',
+          'light mode',
+          'system',
+          'toggle theme',
+          'switch theme',
+          'color',
+          'colour',
+        ],
+        section: 'Actions',
+        route: '/settings#settings-theme',
+        icon: themeIcon,
+      },
+    ];
+
+    return items;
+  }, [
+    resolvedTheme,
+    commonsTarget,
+    kobanBalance,
+    isApprovedCaptain,
+    isConfirmedSuperAdmin,
+    messagesTarget,
+    notificationsTarget,
+    crewTarget,
+  ]);
+
+  // Ranked universal search results grouped by section
+  const groupedSearchResults = useMemo(() => {
+    if (!q) return [];
+
+    const scored = universalSearchIndex
+      .map((item) => ({
+        item,
+        score: scoreUniversalSearchItem(item, q),
+      }))
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    return UNIVERSAL_SEARCH_SECTION_ORDER.map((section) => ({
+      section,
+      items: scored.filter((s) => s.item.section === section).map((s) => s.item),
+    })).filter((group) => group.items.length > 0);
+  }, [q, universalSearchIndex]);
+
+  const noResults = q.length > 0 && groupedSearchResults.length === 0;
 
   return (
     <div className="space-y-4">
@@ -375,144 +943,184 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         </div>
       )}
 
-      {noResults && (
-        <div
-          className="fsm-card p-6 text-center text-sm"
-          style={{ color: 'var(--menu-subtext)' }}
-        >
-          No menu items matching &ldquo;{searchQuery.trim()}&rdquo;
-        </div>
-      )}
+      {/* Universal Search Results (when typing in Search Boardly) */}
+      {q.length > 0 ? (
+        noResults ? (
+          <div
+            className="fsm-card p-6 text-center text-sm"
+            style={{ color: 'var(--menu-subtext)' }}
+          >
+            No results matching &ldquo;{searchQuery.trim()}&rdquo;
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {groupedSearchResults.map((group) => (
+              <div key={group.section} className="space-y-1.5">
+                <div className="fsm-section-header">{group.section}</div>
+                <div className="fsm-card">
+                  {group.items.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        if (item.route) {
+                          onNavigate(item.route);
+                        } else if (item.action) {
+                          item.action();
+                        }
+                      }}
+                      className={`fsm-row ${item.danger ? 'fsm-row--danger' : ''}`}
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                        <span className="fsm-row-icon">{item.icon}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="fsm-row-label truncate">{item.label}</div>
+                          {item.subtitle && (
+                            <div className="fsm-row-subtitle truncate">{item.subtitle}</div>
+                          )}
+                        </div>
+                      </div>
 
-      {/* Group 1: Boardly Commons, Grand Line Mock Tests, Boardly Store (with coin badge), Leaderboard, Rewards */}
-      {group1Rows.length > 0 && (
-        <div className="fsm-card">
-          {group1Rows.map((row) => (
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        {item.rightBadge}
+                        <ChevronRight size={18} strokeWidth={2} className="fsm-row-chevron" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : (
+        <>
+          {/* Group 1: Boardly Commons, Grand Line Mock Tests, Boardly Store (with coin badge), Leaderboard, Rewards */}
+          {group1Rows.length > 0 && (
+            <div className="fsm-card">
+              {group1Rows.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  onClick={row.onClick}
+                  className={`fsm-row ${row.active ? 'fsm-row--active' : ''}`}
+                >
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                    <span className="fsm-row-icon">{row.icon}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="fsm-row-label truncate">{row.label}</div>
+                      {row.subtitle && (
+                        <div className="fsm-row-subtitle truncate">{row.subtitle}</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    {row.rightBadge}
+                    <ChevronRight size={18} strokeWidth={2} className="fsm-row-chevron" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Group 2: Settings, Superadmin Portal (super admins / admins only) */}
+          {group2Rows.length > 0 && (
+            <div className="fsm-card">
+              {group2Rows.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  onClick={row.onClick}
+                  className={`fsm-row ${row.active ? 'fsm-row--active' : ''}`}
+                >
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                    <span className="fsm-row-icon">{row.icon}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="fsm-row-label truncate">{row.label}</div>
+                      {row.subtitle && (
+                        <div className="fsm-row-subtitle truncate">{row.subtitle}</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <ChevronRight size={18} strokeWidth={2} className="fsm-row-chevron" />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Group 3: Appearance with Light / Dark / System dropdown */}
+          <div className="fsm-card">
+            <div className="fsm-row" style={{ cursor: 'default' }}>
+              <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                <span className="fsm-row-icon">
+                  {resolvedTheme === 'dark' ? (
+                    <Moon size={18} strokeWidth={1.9} />
+                  ) : (
+                    <Sun size={18} strokeWidth={1.9} />
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="fsm-row-label truncate">Appearance</div>
+                </div>
+              </div>
+
+              <div className="fsm-appearance-select-wrap shrink-0">
+                <select
+                  aria-label="Appearance"
+                  value={themeSetting}
+                  onChange={(e) => setTheme(e.target.value as ThemeSetting)}
+                  className="fsm-appearance-select"
+                >
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                  <option value="system">System</option>
+                </select>
+                <ChevronDown
+                  size={15}
+                  strokeWidth={2}
+                  className="pointer-events-none absolute right-2.5"
+                  style={{ color: 'var(--menu-subtext)' }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Last: Separate card with red "Sign out" row and "v1.0.0" label */}
+          <div className="fsm-card">
             <button
-              key={row.id}
               type="button"
-              onClick={row.onClick}
-              className={`fsm-row ${row.active ? 'fsm-row--active' : ''}`}
+              data-menu-item="sign-out"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (user) {
+                  onSignOut();
+                } else {
+                  onNavigate('/login');
+                }
+              }}
+              className="fsm-row fsm-row--danger"
             >
               <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                <span className="fsm-row-icon">{row.icon}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="fsm-row-label truncate">{row.label}</div>
-                  {row.subtitle && (
-                    <div className="fsm-row-subtitle truncate">{row.subtitle}</div>
-                  )}
-                </div>
+                <span className="fsm-row-icon">
+                  <LogOut size={18} strokeWidth={1.9} />
+                </span>
+                <span className="fsm-row-label truncate">Sign out</span>
               </div>
 
               <div className="flex items-center gap-2.5 shrink-0">
-                {row.rightBadge}
+                <span
+                  className="text-xs font-mono tabular-nums font-medium"
+                  style={{ color: 'var(--menu-subtext)' }}
+                >
+                  {APP_VERSION}
+                </span>
                 <ChevronRight size={18} strokeWidth={2} className="fsm-row-chevron" />
               </div>
             </button>
-          ))}
-        </div>
-      )}
-
-      {/* Group 2: Settings, Superadmin Portal (super admins / admins only) */}
-      {group2Rows.length > 0 && (
-        <div className="fsm-card">
-          {group2Rows.map((row) => (
-            <button
-              key={row.id}
-              type="button"
-              onClick={row.onClick}
-              className={`fsm-row ${row.active ? 'fsm-row--active' : ''}`}
-            >
-              <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                <span className="fsm-row-icon">{row.icon}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="fsm-row-label truncate">{row.label}</div>
-                  {row.subtitle && (
-                    <div className="fsm-row-subtitle truncate">{row.subtitle}</div>
-                  )}
-                </div>
-              </div>
-
-              <ChevronRight size={18} strokeWidth={2} className="fsm-row-chevron" />
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Group 3: Appearance with Light / Dark / System dropdown */}
-      {showAppearanceGroup && (
-        <div className="fsm-card">
-          <div className="fsm-row" style={{ cursor: 'default' }}>
-            <div className="flex items-center gap-3.5 min-w-0 flex-1">
-              <span className="fsm-row-icon">
-                {resolvedTheme === 'dark' ? (
-                  <Moon size={18} strokeWidth={1.9} />
-                ) : (
-                  <Sun size={18} strokeWidth={1.9} />
-                )}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="fsm-row-label truncate">Appearance</div>
-              </div>
-            </div>
-
-            <div className="fsm-appearance-select-wrap shrink-0">
-              <select
-                aria-label="Appearance"
-                value={themeSetting}
-                onChange={(e) => setTheme(e.target.value as ThemeSetting)}
-                className="fsm-appearance-select"
-              >
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-                <option value="system">System</option>
-              </select>
-              <ChevronDown
-                size={15}
-                strokeWidth={2}
-                className="pointer-events-none absolute right-2.5"
-                style={{ color: 'var(--menu-subtext)' }}
-              />
-            </div>
           </div>
-        </div>
-      )}
-
-      {/* Last: Separate card with red "Sign out" row and "v1.0.0" label */}
-      {showSignOutGroup && (
-        <div className="fsm-card">
-          <button
-            type="button"
-            data-menu-item="sign-out"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (user) {
-                onSignOut();
-              } else {
-                onNavigate('/login');
-              }
-            }}
-            className="fsm-row fsm-row--danger"
-          >
-            <div className="flex items-center gap-3.5 min-w-0 flex-1">
-              <span className="fsm-row-icon">
-                <LogOut size={18} strokeWidth={1.9} />
-              </span>
-              <span className="fsm-row-label truncate">Sign out</span>
-            </div>
-
-            <div className="flex items-center gap-2.5 shrink-0">
-              <span
-                className="text-xs font-mono tabular-nums font-medium"
-                style={{ color: 'var(--menu-subtext)' }}
-              >
-                {APP_VERSION}
-              </span>
-              <ChevronRight size={18} strokeWidth={2} className="fsm-row-chevron" />
-            </div>
-          </button>
-        </div>
+        </>
       )}
     </div>
   );
@@ -531,6 +1139,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
   const [isVisible, setIsVisible] = useState(isOpen);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   // Swipe-back (left-to-right horizontal swipe) & focus trap refs
   const touchStartX = useRef<number>(0);
@@ -563,6 +1172,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
     if (isOpen) {
       previousActiveElementRef.current = document.activeElement as HTMLElement | null;
       setSearchQuery('');
+      setIsSearchFocused(false);
       setIsRendered(true);
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -795,21 +1405,23 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
         </div>
       </div>
 
-      {/* Floating pill-shaped liquid-glass "Search menu" bar at the bottom */}
+      {/* Floating pill-shaped liquid-glass "Search Boardly" bar at the bottom */}
       <div className="fsm-search-wrap">
-        <div className="fsm-search-pill">
+        <div className={`fsm-search-pill ${isSearchFocused ? 'is-focused' : ''}`}>
           <Search
             size={18}
             strokeWidth={2}
             className="shrink-0"
-            style={{ color: 'var(--menu-subtext)' }}
+            style={{ color: isSearchFocused ? 'var(--nav-icon-active)' : 'var(--menu-subtext)' }}
           />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search menu"
-            aria-label="Search menu"
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setIsSearchFocused(false)}
+            placeholder="Search Boardly"
+            aria-label="Search Boardly"
             className="fsm-search-input"
           />
           {searchQuery.length > 0 && (
@@ -817,7 +1429,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
               type="button"
               onClick={() => setSearchQuery('')}
               aria-label="Clear search"
-              className="w-6 h-6 rounded-full flex items-center justify-center cursor-pointer"
+              className="w-6 h-6 rounded-full flex items-center justify-center cursor-pointer shrink-0"
               style={{
                 backgroundColor: 'var(--menu-icon-bg)',
                 color: 'var(--menu-subtext)',

@@ -1338,8 +1338,8 @@
   width: 100%;
 }
 
-/* Focus ring */
-:focus-visible {
+/* Focus ring (excludes menu search input which puts focus ring on its parent pill) */
+:focus-visible:not(.fsm-search-input) {
   outline: 2px solid var(--red) !important;
   outline-offset: 2px;
 }
@@ -7685,19 +7685,21 @@ html:not(.dark) .zenryu-stage--active {
   backdrop-filter: blur(28px) saturate(180%);
 }
 
-/* Sibling (b): .g — the active-tab glass lens bubble (80px tall, ~76px wide, extending 8px above and below the 64px pill) */
+/* Sibling (b): .g — the active-tab glass bubble:
+   - Resting state: sits flat ("laid down") inside the 64px pill (52px tall x 64px wide, top: 6px, zero overflow above or below).
+   - Pressed / dragging state: lifts and scales up to 1.35x, extending above and below the 64px pill. */
 .sdn-dock > .g {
   position: absolute;
-  top: -8px;
-  height: 80px;
-  width: 76px;
+  top: 6px;
+  height: 52px;
+  width: 64px;
   z-index: 2;
   pointer-events: none;
   overflow: visible;
   will-change: left, width, transform;
   transition:
-    left 450ms cubic-bezier(0.34, 1.56, 0.64, 1),
-    width 450ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    left 350ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    width 350ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* Instant placement on initial load / window resize */
@@ -7709,42 +7711,54 @@ html:not(.dark) .zenryu-stage--active {
 /* Follow finger horizontally while dragging */
 .sdn-dock > .g.is-dragging {
   transition:
-    left 60ms linear,
+    left 45ms linear,
     width 120ms ease-out !important;
 }
 
-/* Inner glass lens (.gi) */
+/* Inner glass bubble (.gi):
+   - Resting state: flat subtle glass tint inside the pill (scale(1)).
+   - Pressed / dragging state: scales to 1.35 with intensified blur and rim highlight, animating back down with 350ms cubic-bezier(0.34,1.56,0.64,1). */
 .sdn-dock > .g > .gi {
   width: 100%;
   height: 100%;
   border-radius: 9999px;
   pointer-events: none;
   background-color: var(--bubble-bg);
-  -webkit-backdrop-filter: blur(16px) saturate(200%);
-  backdrop-filter: blur(16px) saturate(200%);
-  box-shadow:
-    inset 0 0 0 1.5px var(--bubble-rim),
-    inset 0 2px 6px var(--bubble-rim),
-    var(--bubble-inner-shadow),
-    var(--bubble-outer-glow);
+  -webkit-backdrop-filter: blur(10px) saturate(150%);
+  backdrop-filter: blur(10px) saturate(150%);
+  border: 1px solid color-mix(in srgb, var(--bubble-rim) 55%, transparent);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--bubble-rim) 45%, transparent);
   transform-origin: center center;
   transform: scale(1);
-  will-change: transform;
+  will-change: transform, box-shadow, backdrop-filter;
   transition:
-    transform 450ms cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow 300ms ease;
+    transform 350ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 350ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    border-color 250ms ease,
+    backdrop-filter 250ms ease,
+    -webkit-backdrop-filter 250ms ease;
 }
 
-/* Slight liquid stretch while sliding between tabs */
-.sdn-dock > .g.is-moving > .gi {
-  transform: scaleX(1.12) scaleY(0.95);
+/* Slight liquid stretch while sliding between tabs when not pressed */
+.sdn-dock > .g.is-moving:not(.is-pressed):not(.is-dragging) > .gi {
+  transform: scaleX(1.06) scaleY(0.96);
 }
 
-/* Pressing and holding a tab scales the bubble to ~1.1 */
+/* Pressed or dragging on the nav lifts the bubble to 1.35x above and below the pill with intensified glass blur & rim highlight */
+.sdn-dock.is-pressed > .g > .gi,
 .sdn-dock > .g.out > .gi,
 .sdn-dock > .g > .gi.out,
-.sdn-dock > .g.is-pressed > .gi {
-  transform: scale(1.1);
+.sdn-dock > .g.is-pressed > .gi,
+.sdn-dock > .g.is-dragging > .gi {
+  transform: scale(1.35);
+  -webkit-backdrop-filter: blur(22px) saturate(210%);
+  backdrop-filter: blur(22px) saturate(210%);
+  border-color: var(--bubble-rim);
+  box-shadow:
+    inset 0 0 0 1.5px var(--bubble-rim),
+    inset 0 2px 8px var(--bubble-rim),
+    var(--bubble-inner-shadow),
+    var(--bubble-outer-glow);
 }
 
 .sdn-dock > .g.is-instant > .gi {
@@ -8090,7 +8104,7 @@ html:not(.dark) .zenryu-stage--active {
   background-color: var(--bubble-bg);
 }
 
-/* Floating pill-shaped liquid-glass "Search menu" bar at the bottom */
+/* Floating pill-shaped liquid-glass "Search Boardly" bar at the bottom */
 .fsm-search-wrap {
   position: fixed;
   left: 12px;
@@ -8115,21 +8129,47 @@ html:not(.dark) .zenryu-stage--active {
   box-shadow: var(--nav-glass-shadow);
   -webkit-backdrop-filter: blur(28px) saturate(180%);
   backdrop-filter: blur(28px) saturate(180%);
+  transition: box-shadow 180ms ease, border-color 180ms ease;
 }
 
-.fsm-search-input {
-  flex: 1 1 0%;
+.fsm-search-pill:focus-within,
+.fsm-search-pill.is-focused {
+  outline: none;
+  border-color: var(--nav-icon-active);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--nav-icon-active) 45%, transparent),
+    var(--nav-glass-shadow);
+}
+
+.fsm-search-input,
+.fsm-search-input:focus,
+.fsm-search-input:focus-visible {
+  flex: 1;
   min-width: 0;
   height: 100%;
-  background: transparent;
-  border: none;
-  outline: none;
+  outline: none !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  border-radius: 9999px;
   font-size: 15px;
   font-weight: 500;
   color: var(--menu-text);
 }
 
 .fsm-search-input::placeholder {
+  color: var(--menu-subtext);
+}
+
+.fsm-section-header {
+  padding: 0 8px 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--menu-subtext);
 }
 

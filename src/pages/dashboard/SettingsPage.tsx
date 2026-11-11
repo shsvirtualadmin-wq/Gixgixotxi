@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   LEGAL_LAST_UPDATED_LABEL,
   LEGAL_VERSION_DISPLAY,
@@ -45,11 +45,16 @@ import {
   Send,
   CheckCircle2,
   AtSign,
+  Sun,
+  Moon,
+  Trash2,
 } from 'lucide-react';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { validateNickname, validateUsernameFormat, isForbiddenAdminRole } from '@/utils/usernameValidation';
 import { submitNameRequest } from '@/services/nameRequestService';
 import { useSmoothMode } from '@/utils/smoothMode';
+import { useTheme, type ThemeSetting } from '@/hooks/useTheme';
+import { wipeStudentAccount } from '@/services/userAccountService';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import {
   useDragonHiddenPreference,
@@ -82,8 +87,17 @@ export function SettingsPage() {
   const { profile, loading } = useUserProfile();
   const effectivePlan = useEffectivePlan();
   const { smoothMode, setSmoothMode } = useSmoothMode();
+  const { themeSetting, resolvedTheme, setTheme } = useTheme();
   const { hideDragon, setHideDragon } = useDragonHiddenPreference();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const [highlightedSection, setHighlightedSection] = useState<string | null>(null);
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+  const [confirmingDeleteAccount, setConfirmingDeleteAccount] = useState(false);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
 
   // Display Name state
   const [displayName, setDisplayName] = useState('');
@@ -483,21 +497,65 @@ export function SettingsPage() {
     navigate('/login');
   };
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const hash = window.location.hash;
-    if (hash === '#koban-icon' || hash === '#appearance-koban-icon') {
-      const t = setTimeout(() => {
-        const el =
-          document.getElementById('appearance-koban-icon') ||
-          document.getElementById('koban-icon');
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 80);
-      return () => clearTimeout(t);
+  const handleConfirmDeleteAccount = async () => {
+    if (!user) return;
+    if (deleteConfirmInput.trim().toUpperCase() !== 'DELETE') {
+      setDeleteAccountError('Please type DELETE to confirm account deletion.');
+      return;
     }
-  }, [loading]);
+    setDeletingAccount(true);
+    setDeleteAccountError(null);
+    try {
+      await wipeStudentAccount(user.uid);
+      navigate('/login', { replace: true });
+    } catch (err: unknown) {
+      setDeletingAccount(false);
+      setDeleteAccountError(
+        (err as { message?: string })?.message || 'Could not delete account. Please sign in again and retry.'
+      );
+    }
+  };
+
+  // Scroll to and highlight any targeted Settings section when navigated via #hash
+  useEffect(() => {
+    if (typeof window === 'undefined' || loading) return;
+    const rawHash = (location.hash || window.location.hash || '').replace(/^#/, '').trim();
+    if (!rawHash) return;
+
+    const targetId =
+      rawHash === 'koban-icon'
+        ? 'appearance-koban-icon'
+        : rawHash;
+
+    if (targetId === 'settings-delete-account') {
+      setConfirmingDeleteAccount(true);
+    } else if (targetId === 'settings-sign-out') {
+      setConfirmingSignOut(true);
+    }
+
+    setHighlightedSection(targetId);
+
+    const scrollTimer = setTimeout(() => {
+      const el = document.getElementById(targetId);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 90);
+
+    const clearHighlightTimer = setTimeout(() => {
+      setHighlightedSection((prev) => (prev === targetId ? null : prev));
+    }, 2600);
+
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(clearHighlightTimer);
+    };
+  }, [loading, location.hash]);
+
+  const sectionHighlightClass = (id: string) =>
+    highlightedSection === id
+      ? 'ring-2 ring-[var(--nav-icon-active)] border-[var(--nav-icon-active)] transition-all duration-300'
+      : 'transition-all duration-300';
 
   if (loading && !profile) {
     return (
@@ -532,7 +590,10 @@ export function SettingsPage() {
         </div>
 
         {/* ── 1. Current Plan & Upgrade Section ──────────────────────────── */}
-        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4">
+        <section
+          id="settings-plan"
+          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 scroll-mt-24 ${sectionHighlightClass('settings-plan')}`}
+        >
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
@@ -583,7 +644,10 @@ export function SettingsPage() {
         </section>
 
         {/* ── 2. Account Email (Read-Only) ───────────────────────────────── */}
-        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-3">
+        <section
+          id="settings-email"
+          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-3 scroll-mt-24 ${sectionHighlightClass('settings-email')}`}
+        >
           <div className="flex items-center gap-2">
             <Mail size={16} className="text-[var(--muted)]" />
             <h2 className="text-base font-bold text-[var(--text)] font-heading">
@@ -606,7 +670,10 @@ export function SettingsPage() {
         </section>
 
         {/* ── 2b. Email Notification Preferences (Optional vs Transactional) ── */}
-        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4">
+        <section
+          id="settings-notifications"
+          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 scroll-mt-24 ${sectionHighlightClass('settings-notifications')}`}
+        >
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2">
               <Mail size={16} className="text-[var(--red)]" />
@@ -693,7 +760,10 @@ export function SettingsPage() {
         </section>
 
         {/* ── 3. Display Name Section (with Reserved Name Admin Request) ─── */}
-        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4">
+        <section
+          id="settings-display-name"
+          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 scroll-mt-24 ${sectionHighlightClass('settings-display-name')}`}
+        >
           <div className="flex items-center gap-2">
             <UserIcon size={16} className="text-[var(--muted)]" />
             <h2 className="text-base font-bold text-[var(--text)] font-heading">
@@ -764,7 +834,10 @@ export function SettingsPage() {
         </section>
 
         {/* ── 4. Username (@handle) & Study Role Selection ───────────────── */}
-        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4">
+        <section
+          id="settings-username"
+          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 scroll-mt-24 ${sectionHighlightClass('settings-username')}`}
+        >
           <div className="flex items-center gap-2">
             <AtSign size={16} className="text-[var(--muted)]" />
             <h2 className="text-base font-bold text-[var(--text)] font-heading">
@@ -842,7 +915,10 @@ export function SettingsPage() {
         </section>
 
         {/* ── 5. Set Password (for Google-only users) / Change Password ──── */}
-        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4">
+        <section
+          id="settings-password"
+          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 scroll-mt-24 ${sectionHighlightClass('settings-password')}`}
+        >
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2">
               <Lock size={16} className="text-[var(--muted)]" />
@@ -934,12 +1010,62 @@ export function SettingsPage() {
         </section>
 
         {/* ── 5b. Security & Optional Two-Step Verification ──────────────── */}
-        <SecuritySettingsSection />
+        <div
+          id="settings-security"
+          className={`rounded-2xl scroll-mt-24 ${sectionHighlightClass('settings-security')}`}
+        >
+          <SecuritySettingsSection />
+        </div>
+
+        {/* ── 5b-2. Appearance > Theme (Light / Dark / System) ───────────── */}
+        <section
+          id="settings-theme"
+          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap scroll-mt-24 ${sectionHighlightClass('settings-theme')}`}
+        >
+          <div className="space-y-1 max-w-lg">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--muted)]">
+              Appearance
+            </div>
+            <div className="flex items-center gap-2">
+              {resolvedTheme === 'dark' ? (
+                <Moon size={16} className="text-[var(--muted)]" />
+              ) : (
+                <Sun size={16} className="text-[var(--muted)]" />
+              )}
+              <h2 className="text-base font-bold text-[var(--text)] font-heading">
+                Theme
+              </h2>
+            </div>
+            <p className="text-xs text-[var(--muted)] leading-relaxed">
+              Choose between Light, Dark, or automatic System theme across Boardly.
+            </p>
+          </div>
+
+          <div className="inline-flex items-center gap-1.5 p-1 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+            {(['light', 'dark', 'system'] as ThemeSetting[]).map((mode) => {
+              const active = themeSetting === mode;
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setTheme(mode)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors cursor-pointer ${
+                    active
+                      ? 'bg-[var(--red)] text-white'
+                      : 'text-[var(--muted)] hover:text-[var(--text)]'
+                  }`}
+                >
+                  {mode}
+                </button>
+              );
+            })}
+          </div>
+        </section>
 
         {/* ── 5c. Appearance > Koban icon ────────────────────────────────── */}
         <section
           id="appearance-koban-icon"
-          className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4"
+          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 scroll-mt-24 ${sectionHighlightClass('appearance-koban-icon')}`}
         >
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2.5">
@@ -961,7 +1087,7 @@ export function SettingsPage() {
         {/* ── 5d. Appearance > Pro badge ─────────────────────────────────── */}
         <section
           id="appearance-pro-badge"
-          className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4"
+          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 scroll-mt-24 ${sectionHighlightClass('appearance-pro-badge')}`}
         >
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2.5">
@@ -983,7 +1109,7 @@ export function SettingsPage() {
         {/* ── 6. Appearance > Reduce effects (Smooth Mode) ───────────────── */}
         <section
           id="appearance-reduce-effects"
-          className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap"
+          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap scroll-mt-24 ${sectionHighlightClass('appearance-reduce-effects')}`}
         >
           <div className="space-y-1 max-w-lg">
             <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--muted)]">
@@ -1021,7 +1147,10 @@ export function SettingsPage() {
         </section>
 
         {/* ── 6b. Hide Dragon Companion (Cockpit) ────────────────────────── */}
-        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap">
+        <section
+          id="settings-dragon"
+          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap scroll-mt-24 ${sectionHighlightClass('settings-dragon')}`}
+        >
           <div className="space-y-1 max-w-lg">
             <div className="flex items-center gap-2">
               <Sparkles size={16} className="text-[var(--muted)]" />
@@ -1055,7 +1184,10 @@ export function SettingsPage() {
         </section>
 
         {/* ── 6c. Legal & Privacy Links ──────────────────────────────────── */}
-        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap">
+        <section
+          id="settings-legal"
+          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap scroll-mt-24 ${sectionHighlightClass('settings-legal')}`}
+        >
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <Shield size={16} className="text-[var(--muted)]" />
@@ -1086,24 +1218,130 @@ export function SettingsPage() {
         </section>
 
         {/* ── 7. Sign Out Section ────────────────────────────────────────── */}
-        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h2 className="text-base font-bold text-[var(--text)] font-heading">
-              Sign Out
-            </h2>
-            <p className="text-xs text-[var(--muted)] mt-0.5">
-              End your current session on this device.
-            </p>
+        <section
+          id="settings-sign-out"
+          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-3 scroll-mt-24 ${sectionHighlightClass('settings-sign-out')}`}
+        >
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-base font-bold text-[var(--text)] font-heading">
+                Sign Out
+              </h2>
+              <p className="text-xs text-[var(--muted)] mt-0.5">
+                End your current session on this device.
+              </p>
+            </div>
+
+            {!confirmingSignOut ? (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setConfirmingSignOut(true)}
+              >
+                <LogOut size={14} />
+                <span>Sign Out</span>
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setConfirmingSignOut(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={handleSignOut}
+                >
+                  <LogOut size={14} />
+                  <span>Confirm Sign Out</span>
+                </Button>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ── 8. Delete Account Section (with confirmation step) ─────────── */}
+        <section
+          id="settings-delete-account"
+          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 scroll-mt-24 ${sectionHighlightClass('settings-delete-account')}`}
+        >
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="space-y-1 max-w-lg">
+              <div className="flex items-center gap-2">
+                <Trash2 size={16} className="text-[var(--red)]" />
+                <h2 className="text-base font-bold text-[var(--text)] font-heading">
+                  Delete Account
+                </h2>
+              </div>
+              <p className="text-xs text-[var(--muted)] leading-relaxed">
+                Permanently remove your Boardly account, practice test history, and personal profile data. This action cannot be undone.
+              </p>
+            </div>
+
+            {!confirmingDeleteAccount && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => {
+                  setConfirmingDeleteAccount(true);
+                  setDeleteAccountError(null);
+                }}
+              >
+                <Trash2 size={14} />
+                <span>Delete Account</span>
+              </Button>
+            )}
           </div>
 
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={handleSignOut}
-          >
-            <LogOut size={14} />
-            <span>Sign Out</span>
-          </Button>
+          {confirmingDeleteAccount && (
+            <div className="p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] space-y-3">
+              <p className="text-xs text-[var(--text)] leading-relaxed">
+                To confirm permanent deletion of your account, type <strong>DELETE</strong> below and press Confirm Delete:
+              </p>
+              <input
+                type="text"
+                value={deleteConfirmInput}
+                onChange={(e) => {
+                  setDeleteConfirmInput(e.target.value);
+                  if (deleteAccountError) setDeleteAccountError(null);
+                }}
+                placeholder="Type DELETE to confirm"
+                className="w-full h-10 px-3.5 rounded-xl bg-[var(--card)] border border-[var(--border)] text-sm font-mono text-[var(--text)] focus:border-[var(--red)] focus:outline-none"
+              />
+              {deleteAccountError && (
+                <div className="text-xs text-[var(--red)] flex items-center gap-1.5">
+                  <AlertCircle size={13} className="shrink-0" />
+                  <span>{deleteAccountError}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={deletingAccount}
+                  onClick={() => {
+                    setConfirmingDeleteAccount(false);
+                    setDeleteConfirmInput('');
+                    setDeleteAccountError(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  disabled={deletingAccount || deleteConfirmInput.trim().toUpperCase() !== 'DELETE'}
+                  onClick={handleConfirmDeleteAccount}
+                >
+                  <Trash2 size={14} />
+                  <span>{deletingAccount ? 'Deleting...' : 'Confirm Delete'}</span>
+                </Button>
+              </div>
+            </div>
+          )}
         </section>
       </div>
     </>
