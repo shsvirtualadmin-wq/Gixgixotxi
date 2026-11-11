@@ -13,6 +13,7 @@ import {
   Users,
 } from 'lucide-react';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
+import { ProBadge } from '@/components/ui/ProBadge';
 import type { PublicCrewSummary } from '@/types/crew';
 import {
   fetchCrewLeaderboard,
@@ -337,9 +338,9 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
                         {c.name}
                       </span>
 
-                      {/* PRO BADGE RULE: only show Pro chip when crew actually has active Pro */}
+                      {/* PRO BADGE RULE: only show Pro badge when crew actually has active Pro */}
                       {Boolean(c.isPaidActive) && (
-                        <span className="cw-chip cw-chip-pro">Pro</span>
+                        <ProBadge design={(c as any).proBadge || 'ember'} size="sm" listMode />
                       )}
 
                       {isUserCrew && (

@@ -34,6 +34,7 @@ import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { MathText } from '@/components/ui/MathText';
 import { sanitizeStudentDisplayName, maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
 import { RoleBadge } from '@/components/ui/RoleBadge';
+import { ProBadge } from '@/components/ui/ProBadge';
 import { useTheme } from '@/hooks/useTheme';
 import {
   getCachedPublicProfile,
@@ -429,6 +430,13 @@ export const CommonsPostCard = memo(function CommonsPostCard({
                       post.authorUid
                     )}
                   </span>
+                  {(liveAuthor?.proBadge ?? post.authorProBadge ?? post.proBadge) && (
+                    <ProBadge
+                      design={liveAuthor?.proBadge ?? post.authorProBadge ?? post.proBadge}
+                      size="sm"
+                      listMode
+                    />
+                  )}
                   <RoleBadge
                     role={
                       String(post.authorUid || '').startsWith('bot_')

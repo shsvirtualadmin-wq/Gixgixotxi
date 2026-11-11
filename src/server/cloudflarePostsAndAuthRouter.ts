@@ -46,6 +46,13 @@ import {
 } from './certificateServerEngine';
 import { buildCertificateIssuedStudentEmail } from '../lib/emailTemplates';
 import { getSharedLocalD1Database } from '../../functions/_utils/firestoreRestAdmin';
+import { resolveUnifiedPlanStatus } from '../config/plans';
+import {
+  DEFAULT_PRO_BADGE_DESIGN,
+  normalizeProBadgeDesign,
+  type ProBadgeDesignId,
+} from '../lib/proBadgeDesigns';
+import { setCachedUserProStatusAndBadge } from '../../functions/api/pro-badge';
 
 const R2_PUBLIC_BASE_URL = (
   process.env.R2_PUBLIC_BASE_URL ||
@@ -741,13 +748,14 @@ export interface LiveAuthorResolved {
   frame: string | null;
   role: string | null;
   customRole: string | null;
+  proBadge: ProBadgeDesignId | null;
   isDeleted?: boolean;
 }
 
 /**
- * Resolves the live username, displayName, avatar, frame, and role for a batch of UIDs
- * in ONE single lookup against the shared D1 tables (user_usernames, guest_accounts, user_roles)
- * and the D1 posts store's userRoles table.
+ * Resolves the live username, displayName, avatar, frame, role, and proBadge for a batch of UIDs
+ * in ONE single lookup against the shared D1 tables (user_usernames, guest_accounts, user_roles, user_pro_badge)
+ * and the D1 posts store's userRoles + proPurchaseLocks tables.
  * Never makes per-item network calls.
  */
 export function resolveLiveAuthorsBatchSync(
@@ -767,12 +775,24 @@ export function resolveLiveAuthorsBatchSync(
   const d1 = getSharedLocalD1Database();
   const tables = d1.tables;
   const activeStore = store || d1Cache;
+  const nowMs = Date.now();
 
   // Build O(1) lookup map of uid -> user_usernames row once per batch
   const usernameByUid = new Map<string, any>();
   for (const row of tables.user_usernames.values()) {
     if (row && row.uid) {
       usernameByUid.set(row.uid, row);
+    }
+  }
+
+  // Build O(1) lookup map of uid -> active pro purchase lock once per batch
+  const proLocksByUid = new Map<string, any>();
+  const rawLocks = Array.isArray((activeStore as any)?.proPurchaseLocks)
+    ? (activeStore as any).proPurchaseLocks
+    : [];
+  for (const lock of rawLocks) {
+    if (lock && lock.uid) {
+      proLocksByUid.set(String(lock.uid), lock);
     }
   }
 
@@ -790,6 +810,7 @@ export function resolveLiveAuthorsBatchSync(
         frame: null,
         role: null,
         customRole: null,
+        proBadge: null,
         isDeleted: true,
       });
       continue;
@@ -801,6 +822,8 @@ export function resolveLiveAuthorsBatchSync(
       tables.user_roles.get(uid) ||
       activeStore?.userRoles?.find((r) => r.uid === uid) ||
       null;
+    const badgeRow = tables.user_pro_badge.get(uid);
+    const proLock = proLocksByUid.get(uid);
 
     const liveUsername = uRow?.username_display || uRow?.username_lower || gRow?.username || null;
     const liveDisplayName =
@@ -813,7 +836,39 @@ export function resolveLiveAuthorsBatchSync(
     const liveRole = rRow?.role || uRow?.role || (gRow ? 'guest' : null);
     const liveCustomRole = rRow?.custom_role || uRow?.custom_role || null;
 
-    if (liveUsername || liveDisplayName || liveAvatar || liveFrame || liveRole || liveCustomRole) {
+    const isGuest = Boolean(gRow || uid.startsWith('guest_') || uRow?.account_type === 'guest');
+    let liveProBadge: ProBadgeDesignId | null = null;
+    if (!isGuest) {
+      const hasActiveLock =
+        proLock && proLock.state === 'active' && Number(proLock.expires_at || 0) > nowMs;
+      const unified = resolveUnifiedPlanStatus({
+        uid,
+        email: uRow?.email || rRow?.email || null,
+        role: liveRole || 'student',
+        isGuest: false,
+        plan: hasActiveLock ? 'pro' : (uRow as any)?.plan ?? null,
+        isPremium: hasActiveLock ? true : (uRow as any)?.is_pro ?? (uRow as any)?.isPremium ?? null,
+        planExpiresAt: hasActiveLock ? Number(proLock.expires_at) : (uRow as any)?.planExpiresAt ?? null,
+        nowMs,
+      });
+      const isActivePro = unified.state === 'active' || Boolean(unified.isPro);
+      const isVisible = badgeRow ? Number(badgeRow.visible ?? 1) !== 0 : true;
+      if (isActivePro && isVisible) {
+        liveProBadge = badgeRow
+          ? normalizeProBadgeDesign(badgeRow.design)
+          : DEFAULT_PRO_BADGE_DESIGN;
+      }
+    }
+
+    if (
+      liveUsername ||
+      liveDisplayName ||
+      liveAvatar ||
+      liveFrame ||
+      liveRole ||
+      liveCustomRole ||
+      liveProBadge
+    ) {
       result.set(uid, {
         uid,
         username: liveUsername,
@@ -822,6 +877,7 @@ export function resolveLiveAuthorsBatchSync(
         frame: liveFrame,
         role: liveRole,
         customRole: liveCustomRole,
+        proBadge: liveProBadge,
       });
     }
   }
@@ -951,6 +1007,8 @@ export function rowToCommonsPost(
     authorPhotoURL: null,
     authorRole: resolvedAuthorRole,
     authorCustomRole: resolvedAuthorCustomRole,
+    authorProBadge: isAnon || !useLive ? null : liveAuthor?.proBadge ?? null,
+    proBadge: isAnon || !useLive ? null : liveAuthor?.proBadge ?? null,
     isOwner,
     status: row.status || 'published',
     visibility: row.visibility || 'public',
@@ -2603,6 +2661,8 @@ ${entries
         authorPhotoURL: null,
         authorRole: resolvedRole,
         authorCustomRole: resolvedCustomRole,
+        authorProBadge: isAnon || isDeleted ? null : liveAuthor?.proBadge ?? null,
+        proBadge: isAnon || isDeleted ? null : liveAuthor?.proBadge ?? null,
         createdAt: new Date(c.created_at).toISOString(),
       };
     });
@@ -3609,7 +3669,32 @@ ${entries
         return (b.item.kobans || 0) - (a.item.kobans || 0);
       });
 
-      const matched = scored.map((s) => s.item);
+      const d1BadgeTable = getSharedLocalD1Database().tables.user_pro_badge;
+      const nowSearchMs = Date.now();
+      const matched = scored.map((s) => {
+        const item = s.item;
+        const badgeRow = d1BadgeTable.get(item.uid);
+        const savedDesign = badgeRow
+          ? normalizeProBadgeDesign(badgeRow.design)
+          : DEFAULT_PRO_BADGE_DESIGN;
+        const isVisible = badgeRow ? Number(badgeRow.visible ?? 1) !== 0 : true;
+        const unified = resolveUnifiedPlanStatus({
+          uid: item.uid,
+          email: item.email,
+          role: item.role,
+          isGuest: item.uid.startsWith('guest_'),
+          plan: item.plan,
+          isPremium: item.plan === 'pro',
+          nowMs: nowSearchMs,
+        });
+        const activePro = unified.state === 'active' || Boolean(unified.isPro);
+        return {
+          ...item,
+          proBadge: activePro && isVisible ? savedDesign : null,
+          proBadgeDesign: activePro ? savedDesign : badgeRow ? savedDesign : null,
+          proBadgeVisible: isVisible,
+        };
+      });
       const paged = matched.slice(offsetCount, offsetCount + limitCount);
       return res.status(200).json({
         success: true,
@@ -7920,6 +8005,7 @@ ${entries
         userAvatar:
           (live && !live.isDeleted && live.avatar) ||
           sanitizeStoreAvatarId(a.userAvatar, a.user_avatar),
+        proBadge: (live && !live.isDeleted && live.proBadge) || null,
         rank: idx + 1,
       };
     });
@@ -7957,6 +8043,7 @@ ${entries
           studentName: resolvedName,
           name: resolvedName,
           userAvatar: avatar,
+          proBadge: (live && !live.isDeleted && live.proBadge) || null,
           testsCompleted: 1,
           totalScore: Number(a.score || 0),
           totalQuestions: Number(a.totalQuestions || 0),
@@ -8017,6 +8104,7 @@ ${entries
           'Captain',
         captainUsername: (useLive && live?.username) || c.captainUsername || undefined,
         captainAvatar: (useLive && live?.avatar) || c.captainAvatar || null,
+        proBadge: (useLive && live?.proBadge) || null,
       };
     });
     return res.status(200).json({ crews });
@@ -8049,6 +8137,7 @@ ${entries
         'Captain',
       captainUsername: (capLive && !capLive.isDeleted && capLive.username) || undefined,
       captainAvatar: (capLive && !capLive.isDeleted && capLive.avatar) || crew.captainAvatar || null,
+      proBadge: (capLive && !capLive.isDeleted && capLive.proBadge) || null,
     };
     const members = rawMembers.map((m: any) => {
       const live = m.userUid ? liveMap.get(m.userUid) : undefined;
@@ -8061,6 +8150,7 @@ ${entries
           'Student',
         username: (useLive && live?.username) || m.username || undefined,
         userAvatar: (useLive && live?.avatar) || m.userAvatar || null,
+        proBadge: (useLive && live?.proBadge) || null,
       };
     });
     return res.status(200).json({ crew: hydratedCrew, members });
@@ -8166,6 +8256,7 @@ ${entries
           'Student',
         username: (useLive && live?.username) || m.username || undefined,
         userAvatar: (useLive && live?.avatar) || m.userAvatar || null,
+        proBadge: (useLive && live?.proBadge) || null,
       };
     });
     return res.status(200).json({ members });
@@ -9992,6 +10083,11 @@ ${entries
       planExpiresAt: effectivePlanExpiresAt,
       premiumExpiresAt: effectivePremiumExpiresAt,
       pendingRequests: mergedPendingReqs,
+      nowMs: serverNowMs,
+    });
+
+    setCachedUserProStatusAndBadge(uid, {
+      activePro: unified.state === 'active' || Boolean(unified.isPro),
       nowMs: serverNowMs,
     });
 

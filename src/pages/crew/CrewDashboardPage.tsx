@@ -10,6 +10,7 @@ import {
   type CrewSliderOption,
 } from '@/components/crew/CrewGlassPrimitives';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { ProBadge } from '@/components/ui/ProBadge';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import {
   EmailVerificationRequiredCard,
@@ -657,9 +658,9 @@ export function CrewDashboardPage() {
                       </button>
                     )}
 
-                    {/* PRO BADGE RULE: Show "PRO ACTIVE" badge ONLY when crew actually has active Pro */}
+                    {/* PRO BADGE RULE: Show Pro badge ONLY when crew actually has active Pro */}
                     {crewHasActivePro && (
-                      <span className="cw-chip cw-chip-pro">PRO ACTIVE</span>
+                      <ProBadge design={crew?.proBadge || 'ember'} size="md" animated />
                     )}
 
                     {crew.isLocked && (
@@ -1041,9 +1042,9 @@ export function CrewDashboardPage() {
                                 </span>
                               )}
 
-                              {/* PRO BADGE RULE: Show Pro chip ONLY when crew has active Pro AND member is Pro */}
-                              {crewHasActivePro && m.isPro && (
-                                <span className="cw-chip cw-chip-pro">Pro</span>
+                              {/* PRO BADGE RULE: Show Pro badge ONLY when crew has active Pro AND member is Pro */}
+                              {crewHasActivePro && (m.proBadge || m.isPro) && (
+                                <ProBadge design={m.proBadge || 'ember'} size="sm" listMode />
                               )}
 
                               {isCurrentUser && (

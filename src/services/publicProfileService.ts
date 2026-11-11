@@ -17,6 +17,12 @@ import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import { SUPER_ADMIN_UID, SUPER_ADMIN_NAME, isAdminAccount } from '@/constants/superAdmin';
 import { BOARDLY_BOT_ACCOUNTS } from '@/config/botsConfig';
+import { resolveUnifiedPlanStatus } from '@/config/plans';
+import {
+  DEFAULT_PRO_BADGE_DESIGN,
+  isValidProBadgeDesign,
+  normalizeProBadgeDesign,
+} from '@/lib/proBadgeDesigns';
 import type { PublicProfile as BasePublicProfile } from '@/types';
 
 export interface PublicProfile extends BasePublicProfile {
@@ -32,6 +38,7 @@ export interface PublicProfile extends BasePublicProfile {
   equippedBanner?: string | null;
   equippedEffect?: string | null;
   equippedStreakBadges?: string[];
+  proBadge?: string | null;
 }
 
 const SESSION_CACHE_PREFIX = 'boardly_pub_prof_v4_';
@@ -173,6 +180,11 @@ export function broadcastPublicProfileUpdate(
   if (partial.bio !== undefined) merged.bio = String(partial.bio ?? '');
   if (partial.status !== undefined) merged.status = String(partial.status ?? '');
   if (partial.accent !== undefined) merged.accent = String(partial.accent || '#D71921');
+  if ('proBadge' in partial) {
+    merged.proBadge = partial.proBadge && isValidProBadgeDesign(partial.proBadge)
+      ? normalizeProBadgeDesign(partial.proBadge)
+      : null;
+  }
   saveToCaches(uid, merged, true);
   return merged;
 }
@@ -461,6 +473,45 @@ export function normalizePublicProfileDoc(
         : typeof u.followingCount === 'number'
         ? Math.max(0, u.followingCount)
         : 0,
+    proBadge: (() => {
+      if (uid.startsWith('guest_') || botMatch) return null;
+      // If server D1 explicitly resolved proBadge (string or null), respect it if active Pro
+      if (p.proBadge !== undefined) {
+        if (p.proBadge === null) {
+          // Check if Firestore user doc has active Pro and badge wasn't explicitly hidden
+          if (u.proBadgeVisible === false || p.proBadgeVisible === false) return null;
+        } else if (isValidProBadgeDesign(p.proBadge)) {
+          return normalizeProBadgeDesign(p.proBadge);
+        }
+      }
+      const unified = resolveUnifiedPlanStatus({
+        uid,
+        email: u.email || p.email || null,
+        role: isSuperAdmin ? 'admin' : u.role || p.role || 'student',
+        isGuest: Boolean(u.isGuest || uid.startsWith('guest_')),
+        plan: u.plan ?? p.plan ?? null,
+        isPremium: u.isPremium ?? p.isPremium ?? null,
+        proPlanId: u.proPlanId ?? p.proPlanId ?? null,
+        planStartedAt: u.planStartedAt ?? p.planStartedAt,
+        updatedAt: u.updatedAt ?? p.updatedAt,
+        planExpiresAt: u.planExpiresAt ?? p.planExpiresAt ?? p.verifiedBadges?.proUntil,
+        premiumExpiresAt: u.premiumExpiresAt ?? p.premiumExpiresAt,
+        isSuperAdmin,
+      });
+      const isActivePro = unified.state === 'active' || Boolean(unified.isPro);
+      if (!isActivePro) return null;
+      const isVisible =
+        u.proBadgeVisible !== undefined
+          ? Boolean(u.proBadgeVisible)
+          : p.proBadgeVisible !== undefined
+          ? Boolean(p.proBadgeVisible)
+          : true;
+      if (!isVisible) return null;
+      const candidateDesign = u.proBadgeDesign || p.proBadgeDesign || p.proBadge || u.proBadge;
+      return isValidProBadgeDesign(candidateDesign)
+        ? normalizeProBadgeDesign(candidateDesign)
+        : DEFAULT_PRO_BADGE_DESIGN;
+    })(),
     updatedAt: u.updatedAt || p.updatedAt || null,
   };
 }
@@ -522,6 +573,7 @@ async function fetchPublicProfileFromNetwork(uid: string): Promise<PublicProfile
             ...(d1Data.bio !== null && d1Data.bio !== undefined ? { bio: d1Data.bio } : {}),
             ...(d1Data.status !== null && d1Data.status !== undefined ? { status: d1Data.status } : {}),
             ...(d1Data.accent ? { accent: d1Data.accent } : {}),
+            ...(d1Data.proBadge !== undefined ? { proBadge: d1Data.proBadge } : {}),
           }
         : {}),
     };
@@ -691,6 +743,7 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
                   ...(d1Data.frame ? { frame: d1Data.frame, equippedFrame: d1Data.frame } : {}),
                   ...(d1Data.role ? { role: d1Data.role } : {}),
                   ...(d1Data.customRole ? { customRole: d1Data.customRole } : {}),
+                  ...(d1Data.proBadge !== undefined ? { proBadge: d1Data.proBadge } : {}),
                 }
               : {}),
           };

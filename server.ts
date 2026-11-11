@@ -13992,6 +13992,48 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     }
   });
 
+  // Pro badge collection endpoint (GET and PUT /api/pro-badge and /api/user/pro-badge)
+  app.all(["/api/pro-badge", "/api/user/pro-badge"], async (req, res) => {
+    try {
+      const fullUrl = `http://localhost:3000${req.originalUrl || req.url || "/api/pro-badge"}`;
+      const headers = new Headers();
+      for (const [k, v] of Object.entries(req.headers || {})) {
+        if (typeof v === "string") headers.set(k, v);
+        else if (Array.isArray(v)) headers.set(k, v.join(", "));
+      }
+      const method = (req.method || "GET").toUpperCase();
+      const rawBody =
+        method !== "GET" && method !== "HEAD" && method !== "OPTIONS"
+          ? typeof req.body === "string"
+            ? req.body
+            : JSON.stringify(req.body || {})
+          : undefined;
+      const webReq = new Request(fullUrl, {
+        method,
+        headers,
+        body: rawBody,
+      });
+      const mod = await import("./functions/api/pro-badge.js");
+      const webRes = await mod.handleProBadgeRequest({
+        request: webReq,
+        env: {
+          FIREBASE_SERVICE_ACCOUNT: process.env.FIREBASE_SERVICE_ACCOUNT,
+          GOOGLE_SERVICE_ACCOUNT_KEY: process.env.GOOGLE_SERVICE_ACCOUNT_KEY,
+          FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID,
+          FIREBASE_DATABASE_ID:
+            process.env.FIREBASE_DATABASE_ID ||
+            process.env.VITE_FIREBASE_DATABASE_ID ||
+            process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID,
+        },
+      });
+      webRes.headers.forEach((v, k) => res.setHeader(k, v));
+      const text = await webRes.text();
+      res.status(webRes.status).send(text);
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err?.message || "Pro badge server error" });
+    }
+  });
+
   // Mount Cloudflare D1 + R2 Post API (/api/posts, /api/r2, /sitemap.xml) & Auth/Admin deletion endpoints
   registerCloudflarePostsAndAuthRoutes(app, { getGoogleAccessToken });
 

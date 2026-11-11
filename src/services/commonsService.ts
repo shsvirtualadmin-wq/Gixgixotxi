@@ -300,6 +300,10 @@ export function applyLiveAuthorToPost(
     authorFrame: resolvedFrame,
     authorRole: (prof.role as any) || post.authorRole || 'student',
     authorCustomRole: prof.customRole || post.authorCustomRole || null,
+    authorProBadge:
+      prof.proBadge !== undefined ? prof.proBadge : post.authorProBadge ?? post.proBadge ?? null,
+    proBadge:
+      prof.proBadge !== undefined ? prof.proBadge : post.proBadge ?? post.authorProBadge ?? null,
   };
 }
 
@@ -369,6 +373,8 @@ export function normalizeCloudflarePost(raw: Record<string, any>): CommonsPost {
       ? 'bot'
       : raw.authorRole || 'student',
     authorCustomRole: raw.isAnonymous ? null : raw.authorCustomRole || null,
+    authorProBadge: raw.isAnonymous ? null : raw.authorProBadge ?? raw.proBadge ?? null,
+    proBadge: raw.isAnonymous ? null : raw.proBadge ?? raw.authorProBadge ?? null,
     upvotes: snapshot.count,
     downvotes: Number(raw.downvotes ?? 0),
     views: Number(raw.views ?? 0),
@@ -999,6 +1005,10 @@ export async function fetchPostComments(postId: string): Promise<CommonsComment[
         authorEquippedAvatar: resolvedAvatar,
         authorFrame: resolvedFrame,
         authorPhotoURL: null,
+        authorProBadge:
+          live?.proBadge !== undefined ? live.proBadge : c.authorProBadge ?? c.proBadge ?? null,
+        proBadge:
+          live?.proBadge !== undefined ? live.proBadge : c.proBadge ?? c.authorProBadge ?? null,
       };
     });
   } catch {
@@ -1066,6 +1076,7 @@ export async function searchPeople(searchTerm: string): Promise<CommonsUserPrevi
           followingCount: Number(data.followingCount || 0),
           role: data.role || 'student',
           customRole: data.customRole || null,
+          proBadge: data.proBadge ?? null,
         });
       }
     });

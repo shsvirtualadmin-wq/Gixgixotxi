@@ -6,6 +6,7 @@ import { db } from '@/lib/firebase';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { ProBadge } from '@/components/ui/ProBadge';
 import { LineLoader } from '@/components/ui/LineLoader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import {
@@ -368,7 +369,9 @@ export function CaptainDashboardPage() {
                     ) : (
                       <span style={{ fontSize: 10, color: 'var(--text-faint)' }}>Signed Up</span>
                     )}
-                    {st.isPro && <Badge color="brand">PRO</Badge>}
+                    {st.isPro && (
+                      <ProBadge design={(st as any).proBadge || 'ember'} size="sm" listMode />
+                    )}
                   </div>
                 </div>
               ))}

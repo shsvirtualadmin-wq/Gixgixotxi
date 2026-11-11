@@ -21,6 +21,7 @@ export interface ResolvedChatUser {
   frame?: string | null;
   avatarKey?: string | null;
   avatarVariant?: string | null;
+  proBadge?: string | null;
   isLoadingProfile: boolean;
 }
 
@@ -200,6 +201,7 @@ export function useChatUserProfiles(seeds: ChatUserSeed[]): Record<string, Resol
         frame,
         avatarKey: prof?.avatarKey || null,
         avatarVariant: prof?.avatarVariant || null,
+        proBadge: prof?.proBadge || null,
         isLoadingProfile,
       };
     }

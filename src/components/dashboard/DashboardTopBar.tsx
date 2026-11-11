@@ -17,6 +17,8 @@ import {
 } from './HamburgerMenuSheet';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { LineLoader } from '@/components/ui/LineLoader';
+import { ProBadge } from '@/components/ui/ProBadge';
+import { useProBadge } from '@/contexts/ProBadgeContext';
 
 interface Props {
   sidebarCollapsed?: boolean;
@@ -42,6 +44,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   const dropdownPanelRef = useRef<HTMLDivElement>(null);
 
   const { theme, toggle: toggleTheme } = useTheme();
+  const { effectiveProBadge } = useProBadge();
   const unreadCount = useUnreadNotificationsCount();
 
   // Track viewport size so phones (<640px) use the bottom sheet and desktop uses the avatar dropdown
@@ -154,17 +157,14 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
                 Boardly
               </Link>
 
-              {isPro && (
-                <span
-                  className="-mt-1 inline-flex items-center text-[9px] leading-none font-extrabold uppercase tracking-wider px-1.5 py-[3px] rounded-full shrink-0 whitespace-nowrap"
-                  style={{
-                    backgroundColor: 'color-mix(in srgb, var(--cw-red) 16%, transparent)',
-                    color: 'var(--cw-red-text)',
-                    boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--cw-red) 38%, transparent)',
-                  }}
-                >
-                  PRO
-                </span>
+              {isPro && effectiveProBadge && (
+                <ProBadge
+                  design={effectiveProBadge}
+                  size="md"
+                  animated
+                  priority
+                  className="-mt-0.5 ml-0.5"
+                />
               )}
             </div>
 

@@ -27,6 +27,8 @@ import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { LineLoader } from '@/components/ui/LineLoader';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { KobanIcon } from '@/components/koban/KobanIcon';
+import { ProBadge } from '@/components/ui/ProBadge';
+import { useProBadge } from '@/contexts/ProBadgeContext';
 
 export interface HamburgerMenuSheetProps {
   isOpen: boolean;
@@ -126,6 +128,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   );
 
   const isPro = Boolean((effectivePlan.isUnlimited || isConfirmedAdmin) && !isGuest);
+  const { effectiveProBadge } = useProBadge();
 
   // Single Role/Plan badge (shown ONCE in the profile card)
   const singleBadgeLabel = !user || isGuest
@@ -207,13 +210,24 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
                 {handleText}
               </span>
 
-              <span
-                className={`more-glass-pill ${
-                  isBadgeAccent ? 'more-glass-pill--accent' : ''
-                }`}
-              >
-                {singleBadgeLabel}
-              </span>
+              {singleBadgeLabel === 'Pro' ? (
+                effectiveProBadge ? (
+                  <ProBadge design={effectiveProBadge} size="sm" animated priority />
+                ) : null
+              ) : (
+                <>
+                  <span
+                    className={`more-glass-pill ${
+                      isBadgeAccent ? 'more-glass-pill--accent' : ''
+                    }`}
+                  >
+                    {singleBadgeLabel}
+                  </span>
+                  {isPro && effectiveProBadge && (
+                    <ProBadge design={effectiveProBadge} size="sm" animated priority />
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>

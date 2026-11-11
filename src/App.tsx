@@ -259,6 +259,7 @@ const StoreItemsDevPreviewPage = lazyWithRetry(() =>
 import { BoardlySuspenseBoundary } from './components/ui/BoardlyLoader';
 import { AuthGateProvider } from './contexts/AuthGateContext';
 import { KobanStyleProvider } from './contexts/KobanStyleContext';
+import { ProBadgeProvider } from './contexts/ProBadgeContext';
 
 function AppInner() {
   useReferralCapture();
@@ -529,11 +530,13 @@ export function App() {
   return (
     <AuthProvider>
       <KobanStyleProvider>
-        <ProfileModalProvider>
-          <AuthGateProvider>
-            <AppInner />
-          </AuthGateProvider>
-        </ProfileModalProvider>
+        <ProBadgeProvider>
+          <ProfileModalProvider>
+            <AuthGateProvider>
+              <AppInner />
+            </AuthGateProvider>
+          </ProfileModalProvider>
+        </ProBadgeProvider>
       </KobanStyleProvider>
     </AuthProvider>
   );

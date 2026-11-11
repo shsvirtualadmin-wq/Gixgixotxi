@@ -18,6 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
 import { BoardlyAvatar, resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
+import { ProBadge } from '@/components/ui/ProBadge';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useChatUserProfiles, type ChatUserSeed } from '@/hooks/useChatUserProfiles';
 import { useUnreadMessagesState } from '@/hooks/useUnreadMessagesCount';
@@ -523,6 +524,9 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
               >
                 {partnerName}
               </span>
+              {resolvedPartner?.proBadge && (
+                <ProBadge design={resolvedPartner.proBadge} size="sm" animated />
+              )}
               <span
                 className={`rs-chip ${isPartnerAdmin ? 'rs-chip--red' : ''} shrink-0`}
               >
@@ -1246,7 +1250,12 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="msg-conv-name truncate">{displayName}</span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="msg-conv-name truncate">{displayName}</span>
+                          {resolved?.proBadge && (
+                            <ProBadge design={resolved.proBadge} size="sm" listMode />
+                          )}
+                        </div>
                         <span className="msg-conv-time">
                           {formatRelativeTime(conv.lastMessageAtMs, conv.updatedAt)}
                         </span>
@@ -1329,9 +1338,14 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
 
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="msg-conv-name truncate">
-                                {senderName}
-                              </span>
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="msg-conv-name truncate">
+                                  {senderName}
+                                </span>
+                                {resolved?.proBadge && (
+                                  <ProBadge design={resolved.proBadge} size="sm" listMode />
+                                )}
+                              </div>
                               <span className="msg-conv-time">
                                 {formatRelativeTime(req.createdAtMs, req.createdAt)}
                               </span>
@@ -1429,9 +1443,14 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                           </div>
 
                           <div className="min-w-0 flex-1">
-                            <span className="msg-conv-name block truncate">
-                              {recipientName}
-                            </span>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="msg-conv-name truncate">
+                                {recipientName}
+                              </span>
+                              {resolved?.proBadge && (
+                                <ProBadge design={resolved.proBadge} size="sm" listMode />
+                              )}
+                            </div>
                             <span className="msg-conv-time block mt-0.5">
                               {formatRelativeTime(req.createdAtMs, req.createdAt) ||
                                 'Sent recently'}

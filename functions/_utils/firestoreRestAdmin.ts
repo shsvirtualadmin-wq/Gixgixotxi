@@ -1893,6 +1893,15 @@ export interface InMemoryD1Tables {
         updated_at: number;
       }
     >;
+    user_pro_badge: Map<
+      string,
+      {
+        user_id: string;
+        design: string;
+        visible: number;
+        updated_at: number;
+      }
+    >;
   }
 
 export class InMemoryD1Database implements RewardsD1Database {
@@ -1921,6 +1930,7 @@ export class InMemoryD1Database implements RewardsD1Database {
     security_audit_logs: new Map(),
     legal_consent_records: new Map(),
     user_koban_style: new Map(),
+    user_pro_badge: new Map(),
   };
 
   constructor() {
@@ -2001,6 +2011,18 @@ export class InMemoryD1Database implements RewardsD1Database {
       if (Array.isArray(raw.user_koban_style)) {
         for (const r of raw.user_koban_style) {
           if (r && r.user_id) this.tables.user_koban_style.set(String(r.user_id), r);
+        }
+      }
+      if (Array.isArray(raw.user_pro_badge)) {
+        for (const r of raw.user_pro_badge) {
+          if (r && r.user_id) {
+            this.tables.user_pro_badge.set(String(r.user_id), {
+              user_id: String(r.user_id),
+              design: String(r.design || 'ember'),
+              visible: Number(r.visible ?? 1),
+              updated_at: Number(r.updated_at || Date.now()),
+            });
+          }
         }
       }
       if (Array.isArray(raw.user_2fa)) {
@@ -2100,6 +2122,7 @@ export class InMemoryD1Database implements RewardsD1Database {
         guest_sessions: Array.from(this.tables.guest_sessions.values()),
         email_verification_sessions: Array.from(this.tables.email_verification_sessions.values()),
         user_koban_style: Array.from(this.tables.user_koban_style.values()),
+        user_pro_badge: Array.from(this.tables.user_pro_badge.values()),
         user_2fa: Array.from(this.tables.user_2fa.values()),
         user_2fa_backup_codes: Array.from(this.tables.user_2fa_backup_codes.values()),
         trusted_devices: Array.from(this.tables.trusted_devices.values()),
@@ -2692,6 +2715,22 @@ export class InMemoryD1Database implements RewardsD1Database {
         return row ? [{ ...row }] : [];
       }
       return Array.from(this.tables.user_koban_style.values()).map((r) => ({ ...r }));
+    }
+
+    // 24. user_pro_badge
+    if (upper.includes('FROM USER_PRO_BADGE')) {
+      if (upper.includes('WHERE USER_ID IN')) {
+        const uidSet = new Set(args.map((a) => String(a ?? '').trim()).filter(Boolean));
+        return Array.from(this.tables.user_pro_badge.values())
+          .filter((r) => uidSet.has(r.user_id))
+          .map((r) => ({ ...r }));
+      }
+      if (upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        const row = this.tables.user_pro_badge.get(uid);
+        return row ? [{ ...row }] : [];
+      }
+      return Array.from(this.tables.user_pro_badge.values()).map((r) => ({ ...r }));
     }
 
     return [];
@@ -3844,6 +3883,27 @@ export class InMemoryD1Database implements RewardsD1Database {
     if (upper.startsWith('DELETE FROM USER_KOBAN_STYLE')) {
       const user_id = String(args[0] ?? '');
       return this.tables.user_koban_style.delete(user_id) ? 1 : 0;
+    }
+
+    // 18. user_pro_badge
+    if (upper.includes('INTO USER_PRO_BADGE')) {
+      const user_id = String(args[0] ?? '');
+      if (!user_id) return 0;
+      const design = String(args[1] ?? 'ember');
+      const visible = Number(args[2] ?? 1) ? 1 : 0;
+      const updated_at = Number(args[3] ?? Date.now());
+      this.tables.user_pro_badge.set(user_id, {
+        user_id,
+        design,
+        visible,
+        updated_at,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('DELETE FROM USER_PRO_BADGE')) {
+      const user_id = String(args[0] ?? '');
+      return this.tables.user_pro_badge.delete(user_id) ? 1 : 0;
     }
 
     return 0;

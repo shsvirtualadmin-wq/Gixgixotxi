@@ -4,6 +4,7 @@ import { Trophy, ArrowRight, Sparkles, AlertTriangle, RefreshCw } from 'lucide-r
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { ProBadge } from '@/components/ui/ProBadge';
 import {
   getGlobalGrandLineTopScorers,
   getAllPublicGrandLineTests,
@@ -189,6 +190,7 @@ export const GrandLineLeaderboardPage: React.FC = () => {
                 const isCurrentUser = Boolean(user?.uid && uid && uid === user.uid);
                 const isSuperAdminActor =
                   Boolean(liveProfile?.isSuperAdmin) || isAdminAccount(uid, displayName);
+                const proBadgeDesign = liveProfile?.proBadge || (entry as any).proBadge || null;
 
                 return (
                   <div
@@ -220,6 +222,9 @@ export const GrandLineLeaderboardPage: React.FC = () => {
                           <span className="text-xs sm:text-sm font-bold text-[var(--text)] truncate">
                             {displayName}
                           </span>
+                          {proBadgeDesign && (
+                            <ProBadge design={proBadgeDesign} size="sm" listMode />
+                          )}
                           {isCurrentUser && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#D71921] text-white shrink-0">
                               You

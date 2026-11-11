@@ -243,6 +243,7 @@ export async function fetchCrewDetails(crewId: string): Promise<any> {
     role: (m.role === 'captain' ? 'leader' : 'member') as 'leader' | 'member',
     streak: 1,
     questionsSolved: 0,
+    proBadge: (m as any).proBadge || null,
   }));
   return {
     id: c.id,
@@ -253,6 +254,7 @@ export async function fetchCrewDetails(crewId: string): Promise<any> {
     avatarVariant: 'red-on-black',
     leaderId: c.captainUid,
     leaderName: c.captainName,
+    proBadge: (c as any).proBadge || null,
     tier: 'paid',
     joinMode: 'direct',
     minStreak: 0,
@@ -301,6 +303,7 @@ export async function fetchCrewLeaderboard(params?: {
     maxMembers: 30,
     tier: 'paid',
     isPaidActive: true,
+    proBadge: (c as any).proBadge || 'ember',
     paid_until: null,
     joinMode: 'direct',
     minStreak: 0,

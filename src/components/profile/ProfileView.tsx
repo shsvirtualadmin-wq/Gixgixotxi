@@ -36,6 +36,14 @@ import {
   subscribeIncomingChatRequests,
   type ChatPermissionState,
 } from '@/services/chatService';
+import { ProBadge } from '@/components/ui/ProBadge';
+import { useProBadge } from '@/contexts/ProBadgeContext';
+import { resolveUnifiedPlanStatus } from '@/config/plans';
+import {
+  DEFAULT_PRO_BADGE_DESIGN,
+  isValidProBadgeDesign,
+  normalizeProBadgeDesign,
+} from '@/lib/proBadgeDesigns';
 
 // Fast in-memory cache for instant profile reopening (kept in sync via subscribePublicProfile)
 const profileMemoryCache = new Map<string, { profile: PublicProfile; timestamp: number }>();
@@ -131,6 +139,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     loading: walletLoading,
   } = useWallet();
   const effectivePlan = useEffectivePlan();
+  const { effectiveProBadge } = useProBadge();
 
   // Determine true mode
   const currentUid = authUser?.uid || authProfile?.uid || null;
@@ -344,6 +353,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               ...(d1Live?.bio !== null && d1Live?.bio !== undefined ? { bio: d1Live.bio } : {}),
               ...(d1Live?.status !== null && d1Live?.status !== undefined ? { status: d1Live.status } : {}),
               ...(d1Live?.accent ? { accent: d1Live.accent } : {}),
+              ...(d1Live?.proBadge !== undefined ? { proBadge: d1Live.proBadge } : {}),
             }
           : null;
 
@@ -542,6 +552,38 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           photoURL,
           avatarKey: uData?.avatarKey || pubData?.avatarKey || null,
           avatarVariant: uData?.avatarVariant || pubData?.avatarVariant || null,
+          proBadge: (() => {
+            if (uid.startsWith('guest_')) return null;
+            if (pubData?.proBadge && isValidProBadgeDesign(pubData.proBadge)) {
+              return normalizeProBadgeDesign(pubData.proBadge);
+            }
+            if (uData?.proBadgeVisible === false || pubData?.proBadgeVisible === false) {
+              return null;
+            }
+            const unified = resolveUnifiedPlanStatus({
+              uid,
+              email: uData?.email || pubData?.email || null,
+              role: isAdminAccountUser ? 'admin' : uData?.role || pubData?.role || 'student',
+              isGuest: Boolean(uData?.isGuest || uid.startsWith('guest_')),
+              plan: uData?.plan ?? pubData?.plan ?? null,
+              isPremium: uData?.isPremium ?? pubData?.isPremium ?? null,
+              proPlanId: uData?.proPlanId ?? pubData?.proPlanId ?? null,
+              planStartedAt: uData?.planStartedAt ?? pubData?.planStartedAt,
+              updatedAt: uData?.updatedAt ?? pubData?.updatedAt,
+              planExpiresAt: uData?.planExpiresAt ?? pubData?.planExpiresAt,
+              premiumExpiresAt: uData?.premiumExpiresAt ?? pubData?.premiumExpiresAt,
+              isSuperAdmin: isAdminAccountUser,
+            });
+            const isActivePro = unified.state === 'active' || Boolean(unified.isPro);
+            if (!isActivePro) return null;
+            if (pubData?.proBadge === null && !uData?.proBadgeDesign && !pubData?.proBadgeDesign) {
+              return DEFAULT_PRO_BADGE_DESIGN;
+            }
+            const candidateDesign = uData?.proBadgeDesign || pubData?.proBadgeDesign || pubData?.proBadge;
+            return isValidProBadgeDesign(candidateDesign)
+              ? normalizeProBadgeDesign(candidateDesign)
+              : DEFAULT_PRO_BADGE_DESIGN;
+          })(),
         };
 
         if (!isMounted) return;
@@ -595,6 +637,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           accent: updatedProf.accent || prev.accent,
           avatar: updatedProf.avatar ?? prev.avatar,
           frame: updatedProf.frame ?? prev.frame,
+          proBadge: updatedProf.proBadge !== undefined ? updatedProf.proBadge : prev.proBadge,
           equipped: {
             ...(prev.equipped || { effect: null, frame: null, nameplate: null, avatar: null, banner: null }),
             ...(updatedProf.equipped || {}),
@@ -1221,6 +1264,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </span>
               )}
 
+              {/* Active Pro Badge (size="lg" = 34px on Profile) */}
+              {(isViewingSelf ? effectiveProBadge : profile?.proBadge) && (
+                <ProBadge
+                  design={(isViewingSelf ? effectiveProBadge : profile?.proBadge) || 'ember'}
+                  size="lg"
+                  animated
+                  priority
+                  onClick={() =>
+                    setBadgePopover({
+                      name: 'Pro Member',
+                      meaning: 'Unlimited mock exams & AI assistance',
+                    })
+                  }
+                  className="cursor-pointer"
+                />
+              )}
+
               {/* Explicit Guest badge when account is a guest */}
               {((isViewingSelf && isGuest) || (profile as any)?.isGuest || profile?.uid?.startsWith('guest_')) && (
                 <span className="font-mono text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-500">
@@ -1294,18 +1354,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           {/* ── 5. BADGE ICONS ROW (Small icon-only 24px, 6px gap, original SVG) ── */}
           <div className="relative flex items-center gap-1.5 flex-wrap pt-1">
-            {/* Pro badge */}
-            {((isViewingSelf && effectivePlan.isUnlimited) || profile?.role === 'pro' || profile?.badges?.includes('pro')) && (
-              <button
-                type="button"
-                onClick={() => setBadgePopover({ name: 'Pro Member', meaning: 'Unlimited mock exams & AI assistance' })}
-                className="w-6 h-6 rounded-md bg-amber-500/10 border border-amber-500/30 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
-                title="Pro Member"
-              >
-                <Sparkles size={13} className="text-amber-500" />
-              </button>
-            )}
-
             {/* Captain badge */}
             {(profile?.role === 'captain' || profile?.badges?.includes('captain')) && (
               <button

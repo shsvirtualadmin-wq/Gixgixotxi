@@ -24,6 +24,8 @@ import { useTheme } from '@/hooks/useTheme';
 import { useWallet } from '@/hooks/useWallet';
 import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
+import { ProBadge } from '@/components/ui/ProBadge';
+import { useProBadge } from '@/contexts/ProBadgeContext';
 
 export function DashboardSidebar() {
   const { isAdmin, isGuest, signOutUser } = useAuth();
@@ -41,6 +43,7 @@ export function DashboardSidebar() {
   };
 
   const isPro = !isGuest && effectivePlan.isUnlimited;
+  const { effectiveProBadge } = useProBadge();
   const role = profile?.role || 'student';
   const rawDisplayName = profile?.displayName || user?.displayName || 'Student';
   const displayName = sanitizeStudentDisplayName(rawDisplayName, profile?.shortId || user?.uid);
@@ -277,16 +280,26 @@ export function DashboardSidebar() {
           </div>
           <div className="min-w-0 flex-1">
             {equipped?.nameplate ? (
-              <Nameplate
-                itemId={equipped.nameplate}
-                name={displayName}
-                shortId={profile?.shortId || (user?.uid ? user.uid.slice(0, 5) : '00000')}
-                roleBadge={profile?.role === 'captain' ? 'CAPTAIN' : undefined}
-              />
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Nameplate
+                  itemId={equipped.nameplate}
+                  name={displayName}
+                  shortId={profile?.shortId || (user?.uid ? user.uid.slice(0, 5) : '00000')}
+                  roleBadge={profile?.role === 'captain' ? 'CAPTAIN' : undefined}
+                />
+                {isPro && effectiveProBadge && (
+                  <ProBadge design={effectiveProBadge} size="sm" animated priority />
+                )}
+              </div>
             ) : (
-              <p className="font-heading font-semibold text-xs text-[var(--text)] truncate">
-                {displayName}
-              </p>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <p className="font-heading font-semibold text-xs text-[var(--text)] truncate">
+                  {displayName}
+                </p>
+                {isPro && effectiveProBadge && (
+                  <ProBadge design={effectiveProBadge} size="sm" animated priority />
+                )}
+              </div>
             )}
             <p className="font-heading text-[10px] text-[var(--muted)] truncate mt-0.5">
               {isGuest ? 'Guest' : isPro ? 'Pro Member' : 'Free Starter'}

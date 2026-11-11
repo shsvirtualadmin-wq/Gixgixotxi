@@ -21,6 +21,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { BoardlyAvatar, resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
+import { ProBadge } from '@/components/ui/ProBadge';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import {
@@ -1014,6 +1015,11 @@ export function NotificationsPage() {
                       isAnnouncement && expandedAnnouncementIds.has(notif.id);
                     const { heading, preview, expandedBody } =
                       formatHeadingAndPreview(notif);
+                    const directActorUid = resolveDirectActorUid(notif);
+                    const directActorProfile = directActorUid
+                      ? actorProfilesByUid.get(directActorUid) || getCachedPublicProfile(directActorUid)
+                      : null;
+                    const actorProBadge = directActorProfile?.proBadge || null;
 
                     const renderLeftAvatarOrIcon = () => {
                       if (category === 'announcement') {
@@ -1223,7 +1229,12 @@ export function NotificationsPage() {
                               </div>
                             </div>
 
-                            <h3 className="notif-card-title">{heading}</h3>
+                            <h3 className="notif-card-title flex items-center gap-1.5 flex-wrap">
+                              <span>{heading}</span>
+                              {actorProBadge && (
+                                <ProBadge design={actorProBadge} size="sm" listMode />
+                              )}
+                            </h3>
 
                             {(isExpanded ? expandedBody : preview) && (
                               <p

@@ -30,6 +30,7 @@ import { maskEmail } from '@/utils/privacy';
 import type { UserProfile, UserTwoFactorBadgeLabel, UserTwoFactorSummary } from '@/types';
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { ProBadge } from '@/components/ui/ProBadge';
 
 const PAGE_SIZE = 50;
 
@@ -164,9 +165,19 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
               <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)] capitalize">
                 {u.role || 'Student'}
               </span>
-              <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
-                {isPro ? 'Pro' : 'Free'}
-              </span>
+              {isPro ? (
+                <>
+                  <ProBadge design={(u as any).proBadge || (u as any).proBadgeDesign || 'ember'} size="sm" listMode />
+                  <span className="text-[10px] font-mono text-[var(--muted)]">
+                    badge: {(u as any).proBadgeDesign || (u as any).proBadge || 'ember'}
+                    {(u as any).proBadgeVisible === false ? ' (hidden)' : ''}
+                  </span>
+                </>
+              ) : (
+                <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
+                  Free
+                </span>
+              )}
               <span
                 data-testid={`user-2fa-badge-${u.uid}`}
                 className={`text-[10px] font-heading px-2 py-0.5 rounded-full border ${
@@ -195,6 +206,8 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
 }: UserRowProps) {
   const name = getUserDisplayName(u);
   const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
+  const isPro = !isGuestUser && (u.plan === 'pro' || u.isPremium);
+  const badgeId = (u as any).proBadgeDesign || (u as any).proBadge || (isPro ? 'ember' : null);
   const studentId = formatStudentId(u);
   const qSolved = u.totalQuestionsSolved ?? (u.testsCompleted || 0) * 15;
   const joinedDate = formatUserTimestamp(u.createdAt, 'Recent') || 'Recent';
@@ -216,14 +229,26 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
             size={32}
             className="shrink-0"
           />
-          <span className="font-heading font-semibold text-[13px] text-[var(--text)] truncate max-w-[140px]">
-            {name}
-          </span>
-          {isGuestUser && (
-            <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
-              Guest
-            </span>
-          )}
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="font-heading font-semibold text-[13px] text-[var(--text)] truncate max-w-[140px]">
+                {name}
+              </span>
+              {isPro && (
+                <ProBadge design={badgeId || 'ember'} size="sm" listMode />
+              )}
+              {isGuestUser && (
+                <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
+                  Guest
+                </span>
+              )}
+            </div>
+            {isPro && badgeId && (
+              <span className="text-[10px] font-mono text-[var(--muted)] block leading-tight mt-0.5">
+                badge: {badgeId}{(u as any).proBadgeVisible === false ? ' (hidden)' : ''}
+              </span>
+            )}
+          </div>
         </div>
       </td>
 

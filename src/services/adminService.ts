@@ -803,6 +803,7 @@ export async function fetchUsersPaginated(options?: {
 
     const fetchD1TwoFactorAndUsers = async (): Promise<{
       user2faMap: Record<string, UserTwoFactorSummary>;
+      proBadgesByUid: Record<string, { design: string; visible: boolean }>;
       d1Users: UserProfile[];
       securityLogs: any[];
     }> => {
@@ -811,6 +812,7 @@ export async function fetchUsersPaginated(options?: {
         users?: Record<string, Partial<UserTwoFactorSummary>>;
         statusByUid?: Record<string, Partial<UserTwoFactorSummary>>;
         users2fa?: Record<string, Partial<UserTwoFactorSummary>>;
+        proBadgesByUid?: Record<string, { design: string; visible: boolean }>;
         d1Users?: any[];
         logs?: any[];
         auditLogs?: any[];
@@ -819,7 +821,7 @@ export async function fetchUsersPaginated(options?: {
         if (res.errorMessage) {
           console.warn('[AdminService] /api/auth/admin/2fa-status warning:', res.errorMessage);
         }
-        return { user2faMap: {}, d1Users: [], securityLogs: [] };
+        return { user2faMap: {}, proBadgesByUid: {}, d1Users: [], securityLogs: [] };
       }
 
       const rawMap = res.data.statusByUid || res.data.users2fa || res.data.users;
@@ -830,6 +832,11 @@ export async function fetchUsersPaginated(options?: {
         }
       }
 
+      const proBadgesByUid: Record<string, { design: string; visible: boolean }> =
+        res.data.proBadgesByUid && typeof res.data.proBadgesByUid === 'object'
+          ? res.data.proBadgesByUid
+          : {};
+
       const d1UsersList: UserProfile[] = [];
       if (Array.isArray(res.data.d1Users)) {
         for (const row of res.data.d1Users) {
@@ -838,6 +845,7 @@ export async function fetchUsersPaginated(options?: {
             ? normalizeTwoFactorSummary(row.twoFactorStatus)
             : map[row.uid] || { ...DEFAULT_OFF_2FA_SUMMARY };
           map[row.uid] = summary;
+          const pbEntry = proBadgesByUid[row.uid];
           d1UsersList.push({
             uid: String(row.uid),
             email: String(row.email || ''),
@@ -851,12 +859,15 @@ export async function fetchUsersPaginated(options?: {
             onboardingCompleted: true,
             createdAt: row.createdAt,
             twoFactorStatus: summary,
+            proBadgeDesign: row.proBadgeDesign || pbEntry?.design || 'ember',
+            proBadgeVisible: row.proBadgeVisible ?? pbEntry?.visible ?? true,
           } as unknown as UserProfile);
         }
       }
 
       return {
         user2faMap: map,
+        proBadgesByUid,
         d1Users: d1UsersList,
         securityLogs: Array.isArray(res.data.logs) ? res.data.logs : [],
       };
@@ -892,7 +903,7 @@ export async function fetchUsersPaginated(options?: {
         fetchD1TwoFactorAndUsers(),
       ]);
 
-      const { user2faMap, d1Users, securityLogs } = d1Bundle;
+      const { user2faMap, proBadgesByUid, d1Users, securityLogs } = d1Bundle;
 
       if (!snapResult && d1Users.length === 0 && guestUsers.length === 0) {
         throw new Error('Failed to load users from Firestore and D1.');
@@ -923,6 +934,8 @@ export async function fetchUsersPaginated(options?: {
             email: existing.email || d1u.email,
             displayName: existing.displayName || d1u.displayName,
             name: existing.name || d1u.name,
+            proBadgeDesign: (existing as any).proBadgeDesign || (d1u as any).proBadgeDesign,
+            proBadgeVisible: (existing as any).proBadgeVisible ?? (d1u as any).proBadgeVisible,
           });
         }
       }
@@ -940,13 +953,20 @@ export async function fetchUsersPaginated(options?: {
         }
       }
 
-      // Attach normalized twoFactorStatus to EVERY user in the list so no row ever lacks its real 2FA badge
+      // Attach normalized twoFactorStatus and proBadge info to EVERY user in the list
       let allMatchingUsers = Array.from(byUid.values()).map((u) => {
         const resolved2fa = user2faMap[u.uid] || u.twoFactorStatus || { ...DEFAULT_OFF_2FA_SUMMARY };
         user2faMap[u.uid] = resolved2fa;
+        const pbEntry = proBadgesByUid[u.uid];
+        const isProUser = !u.isGuest && u.accountType !== 'guest' && (u.plan === 'pro' || u.isPremium);
+        const pbDesign = pbEntry?.design || (u as any).proBadgeDesign || 'ember';
+        const pbVisible = pbEntry ? pbEntry.visible : ((u as any).proBadgeVisible ?? true);
         return {
           ...u,
           twoFactorStatus: resolved2fa,
+          proBadgeDesign: pbDesign,
+          proBadgeVisible: pbVisible,
+          proBadge: isProUser && pbVisible ? pbDesign : null,
         };
       });
 

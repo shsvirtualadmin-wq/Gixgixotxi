@@ -6,6 +6,7 @@ import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { MathText } from '@/components/ui/MathText';
 import { sanitizeStudentDisplayName, maskPublicUserText } from '@/utils/privacy';
 import { RoleBadge } from '@/components/ui/RoleBadge';
+import { ProBadge } from '@/components/ui/ProBadge';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { getPublicProfiles } from '@/services/publicProfileService';
@@ -276,6 +277,13 @@ export function CommonsCommentsDrawer({
                                 comment.authorUid
                               )}
                             </button>
+                            {(comment.authorProBadge || comment.proBadge) && (
+                              <ProBadge
+                                design={comment.authorProBadge || comment.proBadge}
+                                size="sm"
+                                listMode
+                              />
+                            )}
                             <RoleBadge
                               role={(comment as any).authorRole || 'Student'}
                               customRole={(comment as any).authorCustomRole}

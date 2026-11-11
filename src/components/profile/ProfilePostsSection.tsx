@@ -26,6 +26,8 @@ import {
 } from '@/services/userPostService';
 import { getPostLikeSnapshot, subscribeAnyPostLike } from '@/services/commonsService';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { ProBadge } from '@/components/ui/ProBadge';
+import { useProBadge } from '@/contexts/ProBadgeContext';
 import {
   getCachedPublicProfile,
   subscribePublicProfile,
@@ -59,6 +61,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
 }) => {
   // Feed state
   const [posts, setPosts] = useState<UserPost[]>([]);
+  const { effectiveProBadge } = useProBadge();
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -655,13 +658,26 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                       />
                     </div>
                     <div className="flex flex-col min-w-0 flex-1">
-                      <span className="font-heading font-semibold text-xs text-[var(--text)] truncate">
-                        {(isOwnProfile ? currentUserDisplayName : undefined) ||
-                          liveTargetProfile?.displayName ||
-                          liveTargetProfile?.username ||
-                          post.author_name ||
-                          'Student'}
-                      </span>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-heading font-semibold text-xs text-[var(--text)] truncate">
+                          {(isOwnProfile ? currentUserDisplayName : undefined) ||
+                            liveTargetProfile?.displayName ||
+                            liveTargetProfile?.username ||
+                            post.author_name ||
+                            'Student'}
+                        </span>
+                        {(isOwnProfile ? effectiveProBadge : liveTargetProfile?.proBadge || (post as any).authorProBadge) && (
+                          <ProBadge
+                            design={
+                              (isOwnProfile
+                                ? effectiveProBadge
+                                : liveTargetProfile?.proBadge || (post as any).authorProBadge) || 'ember'
+                            }
+                            size="sm"
+                            listMode
+                          />
+                        )}
+                      </div>
                       <span className="text-[10px] font-mono text-[var(--muted)] flex items-center gap-1">
                         <Clock size={10} />
                         {formatDate(post.created_at)}

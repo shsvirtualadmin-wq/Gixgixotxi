@@ -5,10 +5,11 @@ import { handleRewardsApiRequest } from './rewards/[[path]]';
 import { handleEconomyApiRequest } from './economy/[[path]]';
 import { handleSendEmailRequest } from './send-email';
 import { handleKobanStyleRequest } from './koban-style';
+import { handleProBadgeRequest } from './pro-badge';
 
 /**
  * Catch-all Cloudflare Pages Function for `/api/*` routes on the same site
- * (`/api/auth/*`, `/api/rewards/*`, `/api/coupons/*`, `/api/store/purchase`, `/api/pro/*`, `/api/koban-style`, `/api/send-email`, `/api/tests`, `/api/tests/:id/publish`, `/api/tests/:id/questions`,
+ * (`/api/auth/*`, `/api/rewards/*`, `/api/coupons/*`, `/api/store/purchase`, `/api/pro/*`, `/api/koban-style`, `/api/pro-badge`, `/api/send-email`, `/api/tests`, `/api/tests/:id/publish`, `/api/tests/:id/questions`,
  * `/api/crews`, `/api/me/role`, `/api/attempts/mine`, `/api/leaderboard/grand-line`,
  * `/api/notifications`, `/api/admin/roles`, `/api/mcq-bank`, etc.).
  */
@@ -53,6 +54,18 @@ export async function onRequest(context: {
   // Delegate customizable Koban icon style endpoint to /api/koban-style handler
   if (path === '/api/koban-style' || path.startsWith('/api/koban-style/')) {
     return handleKobanStyleRequest({
+      request,
+      env: (env || {}) as any,
+    });
+  }
+
+  // Delegate Pro badge collection endpoint to /api/pro-badge handler
+  if (
+    path === '/api/pro-badge' ||
+    path.startsWith('/api/pro-badge/') ||
+    path === '/api/user/pro-badge'
+  ) {
+    return handleProBadgeRequest({
       request,
       env: (env || {}) as any,
     });

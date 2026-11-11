@@ -63,6 +63,8 @@ import {
 import { SecuritySettingsSection } from '@/components/profile/SecuritySettingsSection';
 import { KobanStyleCustomizer } from '@/components/koban/KobanStyleCustomizer';
 import { KobanIcon } from '@/components/koban/KobanIcon';
+import { ProBadgeCustomizer } from '@/components/plans/ProBadgeCustomizer';
+import { ProBadge } from '@/components/ui/ProBadge';
 
 const SELECTABLE_USER_ROLES = [
   'Student',
@@ -954,6 +956,28 @@ export function SettingsPage() {
             <Badge color="default">Cosmetic Only</Badge>
           </div>
           <KobanStyleCustomizer />
+        </section>
+
+        {/* ── 5d. Appearance > Pro badge ─────────────────────────────────── */}
+        <section
+          id="appearance-pro-badge"
+          className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4"
+        >
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2.5">
+              <ProBadge design="ember" size="sm" animated priority />
+              <div>
+                <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--muted)]">
+                  Appearance
+                </div>
+                <h2 className="text-base font-bold text-[var(--text)] font-heading">
+                  Pro badge
+                </h2>
+              </div>
+            </div>
+            <Badge color="default">Cosmetic Only</Badge>
+          </div>
+          <ProBadgeCustomizer userDisplayName={displayName || profile?.displayName || user?.displayName || 'Student'} />
         </section>
 
         {/* ── 6. Appearance > Reduce effects (Smooth Mode) ───────────────── */}

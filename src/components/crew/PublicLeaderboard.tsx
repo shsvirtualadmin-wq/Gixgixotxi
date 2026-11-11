@@ -12,6 +12,7 @@ import {
   Users,
 } from 'lucide-react';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
+import { ProBadge } from '@/components/ui/ProBadge';
 import type { PublicCrewSummary } from '@/types/crew';
 import { fetchCrewLeaderboard } from '@/services/crewService';
 import { CrewDetailsModal } from './CrewDetailsModal';
@@ -221,9 +222,9 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
                         {c.name}
                       </span>
 
-                      {/* PRO BADGE RULE: Show Pro chip ONLY when crew has active Pro */}
+                      {/* PRO BADGE RULE: Show Pro badge ONLY when crew has active Pro */}
                       {Boolean(c.isPaidActive) && (
-                        <span className="cw-chip cw-chip-pro">Pro</span>
+                        <ProBadge design={(c as any).proBadge || 'ember'} size="sm" listMode />
                       )}
 
                       {isUserCrew && (

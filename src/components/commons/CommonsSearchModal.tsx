@@ -19,6 +19,7 @@ import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { Link } from 'react-router-dom';
 import { RoleBadge } from '@/components/ui/RoleBadge';
+import { ProBadge } from '@/components/ui/ProBadge';
 import { sanitizeStudentDisplayName, buildEntitySlug } from '@/utils/privacy';
 import { useTheme } from '@/hooks/useTheme';
 import { LineLoader } from '@/components/ui/LineLoader';
@@ -471,6 +472,9 @@ export function CommonsSearchModal({
                         <span className="text-sm font-bold text-primary group-hover:text-accent transition-colors truncate">
                           {u.displayName}
                         </span>
+                        {u.proBadge && (
+                          <ProBadge design={u.proBadge} size="sm" listMode />
+                        )}
                         <RoleBadge
                           role={u.role || 'Student'}
                           customRole={u.customRole}

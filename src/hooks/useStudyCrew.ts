@@ -24,6 +24,7 @@ export interface CrewMember {
   questionsSolved?: number;
   streak?: number;
   isPro?: boolean;
+  proBadge?: string | null;
   avatarKey?: string;
   avatarVariant?: string;
   equipped?: {
@@ -40,6 +41,7 @@ export interface CrewDoc {
   code: string;
   leaderId: string;
   leaderName: string;
+  proBadge?: string | null;
   goalQuestions: number;
   currentQuestions: number;
   members: CrewMember[];
@@ -79,6 +81,7 @@ function mapD1ToCrewDoc(crew: D1Crew, members: D1CrewMember[]): CrewDoc {
     questionsSolved: 0,
     streak: 1,
     isPro: true,
+    proBadge: (m as any).proBadge || null,
   }));
 
   if (mappedMembers.length === 0) {
@@ -93,6 +96,7 @@ function mapD1ToCrewDoc(crew: D1Crew, members: D1CrewMember[]): CrewDoc {
       questionsSolved: 0,
       streak: 1,
       isPro: true,
+      proBadge: (crew as any).proBadge || null,
     });
   }
 
@@ -102,6 +106,7 @@ function mapD1ToCrewDoc(crew: D1Crew, members: D1CrewMember[]): CrewDoc {
     code: crew.code,
     leaderId: crew.captainUid,
     leaderName: crew.captainName,
+    proBadge: (crew as any).proBadge || null,
     goalQuestions: 500,
     currentQuestions: 0,
     members: mappedMembers,

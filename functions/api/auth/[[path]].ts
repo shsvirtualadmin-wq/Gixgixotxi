@@ -2924,6 +2924,7 @@ export async function handleAuthApiRequest(
 
   // ─── G1c. GET /api/auth/resolve-profiles (Batched Live Author & 14-Day Hold Username Lookup) ───
   if (subPath === 'resolve-profiles' && request.method === 'GET') {
+    const { resolveProBadgesBatch } = await import('../pro-badge');
     const queryUsername = (url.searchParams.get('username') || '').trim().replace(/^@+/, '').toLowerCase();
     const rawUids = (url.searchParams.get('uids') || '').trim();
 
@@ -2937,6 +2938,7 @@ export async function handleAuthApiRequest(
         .first<any>();
 
       if (activeRow && activeRow.uid) {
+        const badgeMap = await resolveProBadgesBatch([activeRow.uid], db, env, nowMs);
         return jsonResponse({
           ok: true,
           found: true,
@@ -2954,6 +2956,7 @@ export async function handleAuthApiRequest(
             bio: activeRow.bio || '',
             status: activeRow.status || '',
             accent: activeRow.accent || '',
+            proBadge: badgeMap.get(String(activeRow.uid)) ?? null,
           },
         });
       }
@@ -2978,6 +2981,7 @@ export async function handleAuthApiRequest(
             frame: null,
             role: guestRow.role || 'student',
             customRole: null,
+            proBadge: null,
           },
         });
       }
@@ -2998,6 +3002,7 @@ export async function handleAuthApiRequest(
           .bind(historyRow.uid)
           .first<any>();
 
+        const badgeMap = await resolveProBadgesBatch([historyRow.uid], db, env, nowMs);
         const currentUsername = currentRow?.username_display || currentRow?.username_lower || historyRow.uid;
         return jsonResponse({
           ok: true,
@@ -3018,6 +3023,7 @@ export async function handleAuthApiRequest(
                 bio: currentRow.bio || '',
                 status: currentRow.status || '',
                 accent: currentRow.accent || '',
+                proBadge: badgeMap.get(String(historyRow.uid)) ?? null,
               }
             : null,
         });
@@ -3040,7 +3046,7 @@ export async function handleAuthApiRequest(
     }
 
     const placeholders = uids.map((_, i) => `?${i + 1}`).join(', ');
-    const [unameRes, guestRes, roleRes] = await Promise.all([
+    const [unameRes, guestRes, roleRes, proBadgesMap] = await Promise.all([
       db
         .prepare(
           `SELECT username_lower, username_display, uid, display_name, avatar, frame, role, custom_role, bio, status, accent, updated_at
@@ -3065,6 +3071,7 @@ export async function handleAuthApiRequest(
         .bind(...uids)
         .all<any>()
         .catch(() => ({ results: [] })),
+      resolveProBadgesBatch(uids, db, env, nowMs),
     ]);
 
     const roleByUid = new Map<string, { role?: string; custom_role?: string | null }>();
@@ -3084,15 +3091,17 @@ export async function handleAuthApiRequest(
         frame: null,
         role: rInfo?.role || g.role || 'student',
         customRole: rInfo?.custom_role ?? null,
+        proBadge: null,
       };
     }
 
     for (const u of unameRes.results || []) {
       if (!u?.uid) continue;
-      const rInfo = roleByUid.get(String(u.uid));
+      const uidStr = String(u.uid);
+      const rInfo = roleByUid.get(uidStr);
       const uname = u.username_display || u.username || u.username_lower || '';
-      profiles[String(u.uid)] = {
-        uid: String(u.uid),
+      profiles[uidStr] = {
+        uid: uidStr,
         username: uname,
         displayName: u.display_name || uname || 'Student',
         avatar: u.avatar || '',
@@ -3102,7 +3111,20 @@ export async function handleAuthApiRequest(
         bio: u.bio || '',
         status: u.status || '',
         accent: u.accent || '',
+        proBadge: proBadgesMap.get(uidStr) ?? null,
       };
+    }
+
+    for (const uid of uids) {
+      if (!profiles[uid]) {
+        const badge = proBadgesMap.get(uid) ?? null;
+        if (badge) {
+          profiles[uid] = {
+            uid,
+            proBadge: badge,
+          };
+        }
+      }
     }
 
     return jsonResponse({ ok: true, profiles });
@@ -5604,7 +5626,7 @@ export async function handleAuthApiRequest(
     }
     uidsToResolve.add(caller.uid);
 
-    const [statusByUid, d1UsernamesRes, d1RolesRes] = await Promise.all([
+    const [statusByUid, d1UsernamesRes, d1RolesRes, d1ProBadgesRes] = await Promise.all([
       getBatchUsersTwoFactorStatusFromD1(db, Array.from(uidsToResolve), nowMs),
       db
         .prepare(
@@ -5631,7 +5653,21 @@ export async function handleAuthApiRequest(
           updated_at: number;
         }>()
         .catch(() => ({ results: [] })),
+      db
+        .prepare('SELECT user_id, design, visible FROM user_pro_badge')
+        .all<{ user_id: string; design: string; visible: number }>()
+        .catch(() => ({ results: [] })),
     ]);
+
+    const proBadgesByUid: Record<string, { design: string; visible: boolean }> = {};
+    for (const pb of d1ProBadgesRes.results || []) {
+      if (pb.user_id) {
+        proBadgesByUid[String(pb.user_id)] = {
+          design: String(pb.design || 'ember'),
+          visible: Number(pb.visible) !== 0,
+        };
+      }
+    }
 
     const rolesByUid = new Map<string, { role: string; customRole: string | null; isPostingBanned: boolean }>();
     for (const r of d1RolesRes.results || []) {
@@ -5655,6 +5691,8 @@ export async function handleAuthApiRequest(
       createdAt: number;
       updatedAt: number;
       twoFactorStatus: UserTwoFactorStatusSummary;
+      proBadgeDesign?: string;
+      proBadgeVisible?: boolean;
     }> = [];
 
     for (const u of d1UsernamesRes.results || []) {
@@ -5695,6 +5733,7 @@ export async function handleAuthApiRequest(
         inferredRole = 'admin';
       }
 
+      const pbEntry = proBadgesByUid[uid];
       d1Users.push({
         uid,
         username: usernameDisplay,
@@ -5705,6 +5744,8 @@ export async function handleAuthApiRequest(
         createdAt: Number(u.created_at || nowMs),
         updatedAt: Number(u.updated_at || u.created_at || nowMs),
         twoFactorStatus: statusByUid[uid],
+        proBadgeDesign: pbEntry ? pbEntry.design : 'ember',
+        proBadgeVisible: pbEntry ? pbEntry.visible : true,
       });
     }
 
@@ -5787,6 +5828,7 @@ export async function handleAuthApiRequest(
       users: statusByUid,
       statusByUid,
       users2fa: statusByUid,
+      proBadgesByUid,
       d1Users,
       canManage2fa,
       callerHas2fa: callerStatus.twoFactorEnabled,

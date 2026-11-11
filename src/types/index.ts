@@ -168,6 +168,7 @@ export interface PublicProfile {
   equippedAvatarId?: string | null;
   customAvatarUrl?: string | null;
   equippedFrameId?: string | null;
+  proBadge?: string | null;
   updatedAt?: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;
 }
 

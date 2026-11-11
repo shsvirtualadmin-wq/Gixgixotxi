@@ -21,6 +21,7 @@ import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { RoleBadge } from '@/components/ui/RoleBadge';
+import { ProBadge } from '@/components/ui/ProBadge';
 import { MathText } from '@/components/ui/MathText';
 import { CommonsImageAttachment } from '@/components/commons/CommonsImageAttachment';
 import { CommonsImageViewerModal } from '@/components/commons/CommonsImageViewerModal';
@@ -514,6 +515,13 @@ export const PublicPostDetailPage: React.FC = () => {
                       {authorDisplay}
                     </Link>
                   )}
+                  {!post.isAnonymous && (post.authorProBadge || post.proBadge) && (
+                    <ProBadge
+                      design={post.authorProBadge || post.proBadge}
+                      size="sm"
+                      animated
+                    />
+                  )}
                   {!post.isAnonymous && (
                     <RoleBadge role={(post as any).authorRole || 'Student'} size="sm" />
                   )}
@@ -810,6 +818,13 @@ export const PublicPostDetailPage: React.FC = () => {
                           </Link>
                         ) : (
                           <span className="text-xs font-bold text-white truncate">{cAuthor}</span>
+                        )}
+                        {!c.isAnonymous && (c.authorProBadge || c.proBadge) && (
+                          <ProBadge
+                            design={c.authorProBadge || c.proBadge}
+                            size="sm"
+                            listMode
+                          />
                         )}
                         <span className="text-white/35">·</span>
                         <a
