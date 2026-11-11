@@ -1,7 +1,13 @@
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { getCosmeticById } from '@/data/cosmeticsCatalog';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
 import { getDefaultAvatar, type MatrixAvatarVariant } from '@/lib/matrixAvatarsData';
+import {
+  getCachedPublicProfile,
+  getPublicProfile,
+  subscribePublicProfile,
+  type PublicUserProfile,
+} from '@/services/publicProfileService';
 
 const LazyAvatarPicture = lazy(() =>
   import('@/components/koban/CosmeticRenderers').then((m) => ({ default: m.AvatarPicture }))
@@ -69,18 +75,26 @@ export interface ResolvedUserAvatar {
 /**
  * Single shared avatar resolver for the entire app.
  * Rule:
- * 1. If the user has bought or equipped a valid store avatar, return that store avatar ID.
- * 2. Otherwise, return the deterministic default matrix avatar seeded strictly by `uid`.
- * 3. Never return or expose a Google/Gmail photo URL.
+ * 1. Equipped store avatar -> 2. Profile avatar -> 3. Deterministic default matrix avatar by `uid`.
+ * Never return or expose a Google/Gmail photo URL.
  */
 export function resolveUserAvatar(
   uid?: string | null,
   ...avatarCandidates: Array<string | null | undefined>
 ): ResolvedUserAvatar {
   const cleanUid = typeof uid === 'string' ? uid.trim() : '';
+  const cached = cleanUid && cleanUid !== 'anonymous' ? getCachedPublicProfile(cleanUid) : null;
   const matrix = getDefaultAvatar(cleanUid);
 
-  for (const cand of avatarCandidates) {
+  const orderedCandidates: Array<string | null | undefined> = [
+    cached?.equipped?.avatar,
+    cached?.equippedAvatar,
+    ...avatarCandidates,
+    cached?.avatar,
+    cached?.avatarUrl,
+  ];
+
+  for (const cand of orderedCandidates) {
     const storeAvatarId = resolveCosmeticItemId(cand, 'avatar');
     if (storeAvatarId) {
       return {
@@ -139,10 +153,9 @@ function normalizeAvatarSize(size?: number | 'sm' | 'md' | 'lg'): number {
 
 /**
  * SHARED USER AVATAR COMPONENT (<BoardlyAvatar />)
- * Enforces ONE rule everywhere:
- * 1. If the user has bought or equipped a store avatar, show that avatar.
- * 2. Otherwise show the deterministic default matrix avatar seeded strictly from `uid`.
- * 3. NEVER show the Google / Gmail profile photo or letter initials anywhere in the app.
+ * Enforces ONE live fallback order everywhere by `uid`:
+ * 1. Equipped store avatar -> 2. Profile avatar -> 3. Deterministic default matrix avatar.
+ * NEVER shows Google / Gmail profile photos or letter initials.
  */
 export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
   uid,
@@ -162,13 +175,53 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
   frameId,
   equippedFrameId,
 }) => {
-  const size = normalizeAvatarSize(rawSize);
-  const effectiveFrame = frame || frameId || equippedFrameId || null;
+  const cleanUid = typeof uid === 'string' ? uid.trim() : '';
+  const canLookupLive = Boolean(cleanUid && cleanUid !== 'anonymous');
 
+  const [liveProfile, setLiveProfile] = useState<PublicUserProfile | null>(() =>
+    canLookupLive ? getCachedPublicProfile(cleanUid) : null
+  );
+
+  useEffect(() => {
+    if (!canLookupLive) {
+      setLiveProfile(null);
+      return;
+    }
+    const cached = getCachedPublicProfile(cleanUid);
+    if (cached) {
+      setLiveProfile(cached);
+    } else {
+      void getPublicProfile(cleanUid)
+        .then((prof) => {
+          if (prof) setLiveProfile(prof);
+        })
+        .catch(() => {});
+    }
+
+    return subscribePublicProfile(cleanUid, (updated) => {
+      setLiveProfile(updated);
+    });
+  }, [cleanUid, canLookupLive]);
+
+  const size = normalizeAvatarSize(rawSize);
+  const effectiveFrame =
+    liveProfile?.equipped?.frame ||
+    liveProfile?.equippedFrame ||
+    liveProfile?.frame ||
+    frame ||
+    frameId ||
+    equippedFrameId ||
+    null;
+
+  // Fallback order: 1. Equipped store avatar -> 2. Profile avatar -> 3. Default matrix avatar
   const resolved = resolveUserAvatar(
-    uid,
+    cleanUid,
+    liveProfile?.equipped?.avatar,
+    liveProfile?.equippedAvatar,
     equippedAvatar,
     equippedAvatarId,
+    liveProfile?.avatar,
+    liveProfile?.avatarUrl,
     avatarId,
     avatar,
     avatarUrl,

@@ -713,24 +713,24 @@ export const KobanChip: React.FC<KobanChipProps> = React.memo(({
         animated={true}
         styleOverride={styleOverride}
         decorative
-        className={isBumping ? 'scale-110 transition-transform' : ''}
+        className={`shrink-0 ${isBumping ? 'scale-110 transition-transform' : ''}`}
       />
       <span
-        className={`font-mono tabular-nums text-xs font-bold tracking-tight transition-colors ${
+        className={`font-mono tabular-nums text-xs max-[399px]:text-[11px] font-bold tracking-tight transition-colors ${
           isBumping ? 'text-[#FFD66B]' : 'text-[var(--text)]'
         }`}
       >
         {loading ? '•••' : displayBalance.toLocaleString()}
       </span>
       {showPlus && (
-        <span className="w-4 h-4 rounded-full bg-[#E8A317]/20 border border-[#E8A317]/40 flex items-center justify-center text-[#FFD66B] group-hover:bg-[#E8A317] group-hover:text-black transition-colors">
+        <span className="max-[399px]:hidden w-4 h-4 rounded-full bg-[#E8A317]/20 border border-[#E8A317]/40 flex items-center justify-center text-[#FFD66B] group-hover:bg-[#E8A317] group-hover:text-black transition-colors shrink-0">
           <Plus size={10} strokeWidth={3} />
         </span>
       )}
     </>
   );
 
-  const baseClasses = `group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--surface-glass)] hover:bg-[var(--surface-glass-heavy)] border border-[#E8A317]/35 hover:border-[#E8A317]/60 shadow-[0_0_16px_rgba(232,163,23,0.12)] transition-all duration-200 cursor-pointer ${
+  const baseClasses = `group inline-flex items-center justify-center shrink-0 h-10 max-[399px]:h-10 max-[399px]:min-w-[40px] max-[399px]:px-2 max-[399px]:gap-1 gap-1.5 px-2.5 py-1 rounded-full bg-[var(--surface-glass)] hover:bg-[var(--surface-glass-heavy)] border border-[#E8A317]/35 hover:border-[#E8A317]/60 shadow-[0_0_16px_rgba(232,163,23,0.12)] transition-all duration-200 cursor-pointer ${
     isBumping ? 'scale-105 border-[#FFD66B] shadow-[0_0_22px_rgba(255,214,107,0.35)]' : ''
   } ${className}`;
 

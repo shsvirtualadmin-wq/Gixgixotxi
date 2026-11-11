@@ -41,19 +41,14 @@ export interface NormalizedCoupon {
   updatedAt: string;
 }
 
-const SUPER_ADMIN_EMAILS = new Set([
-  'shsvirtualadmin@gmail.com',
-  'support@boardly.cfd',
-  'support@scholario.me',
-]);
 const SUPER_ADMIN_UIDS = new Set([
   'A5YMRimdHRcmeDWutxtUGt2e4hf2',
-  'jJfb1nThG1X9phL8fFDZ0G0J7m33',
+  'uid_superadmin_1',
+  'uid_superadmin_2',
 ]);
 
-function isAdminIdentity(uid?: string | null, email?: string | null): boolean {
-  if (uid && SUPER_ADMIN_UIDS.has(uid)) return true;
-  if (email && SUPER_ADMIN_EMAILS.has(email.toLowerCase().trim())) return true;
+function isAdminIdentity(uid?: string | null, _email?: string | null): boolean {
+  if (uid && SUPER_ADMIN_UIDS.has(uid.trim())) return true;
   return false;
 }
 

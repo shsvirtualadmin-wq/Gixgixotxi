@@ -483,7 +483,6 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
               name={profile?.displayName || user?.displayName || 'Guest'}
               isSuperAdmin={
                 isAdmin ||
-                user?.email === 'admin@shsvirtual.org' ||
                 user?.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2'
               }
               size={38}

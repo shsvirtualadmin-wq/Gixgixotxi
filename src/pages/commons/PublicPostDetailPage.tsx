@@ -33,6 +33,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import {
+  getCachedPublicProfile,
+  getPublicProfiles,
+  subscribePublicProfile,
+  type PublicProfile,
+} from '@/services/publicProfileService';
+import {
   fetchCommonsPostById,
   fetchCommonsPosts,
   fetchPostComments,
@@ -218,6 +224,56 @@ export const PublicPostDetailPage: React.FC = () => {
     }
   }, [status, comments.length, location.hash]);
 
+  const [liveAuthors, setLiveAuthors] = useState<Record<string, PublicProfile>>({});
+
+  useEffect(() => {
+    const uidSet = new Set<string>();
+    if (post && !post.isAnonymous && post.authorUid) {
+      uidSet.add(post.authorUid);
+    }
+    for (const c of comments) {
+      if (!c.isAnonymous && c.authorUid) {
+        uidSet.add(c.authorUid);
+      }
+    }
+    const uids = Array.from(uidSet);
+    if (uids.length === 0) return;
+
+    const initial: Record<string, PublicProfile> = {};
+    for (const uid of uids) {
+      const cached = getCachedPublicProfile(uid);
+      if (cached) initial[uid] = cached;
+    }
+    if (Object.keys(initial).length > 0) {
+      setLiveAuthors((prev) => ({ ...prev, ...initial }));
+    }
+
+    let cancelled = false;
+    void getPublicProfiles(uids)
+      .then((map) => {
+        if (cancelled) return;
+        const next: Record<string, PublicProfile> = {};
+        map.forEach((prof, uid) => {
+          next[uid] = prof;
+        });
+        if (Object.keys(next).length > 0) {
+          setLiveAuthors((prev) => ({ ...prev, ...next }));
+        }
+      })
+      .catch(() => {});
+
+    const unsubs = uids.map((uid) =>
+      subscribePublicProfile(uid, (updated) => {
+        setLiveAuthors((prev) => ({ ...prev, [uid]: updated }));
+      })
+    );
+
+    return () => {
+      cancelled = true;
+      unsubs.forEach((u) => u());
+    };
+  }, [post, comments]);
+
   if (status === 'loading') {
     return (
       <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6 flex items-center justify-center">
@@ -244,9 +300,28 @@ export const PublicPostDetailPage: React.FC = () => {
 
   const canonicalSlug = buildEntitySlug(post.id, post.title);
   const canonicalPath = `/commons/post/${canonicalSlug}`;
+  const livePostAuthor =
+    !post.isAnonymous && post.authorUid ? liveAuthors[post.authorUid] : undefined;
   const authorDisplay = post.isAnonymous
     ? post.anonymousAlias || 'Anonymous Student'
-    : sanitizeStudentDisplayName(post.authorName, post.authorUid);
+    : sanitizeStudentDisplayName(
+        livePostAuthor?.displayName || post.authorName,
+        post.authorUid
+      );
+  const authorEquippedAvatar =
+    livePostAuthor?.equippedAvatar ||
+    livePostAuthor?.avatar ||
+    (post as any).authorEquippedAvatar ||
+    post.authorAvatar ||
+    undefined;
+  const authorFrame = livePostAuthor?.frame || (post as any).authorFrame || undefined;
+  const authorRole = livePostAuthor?.role || (post as any).authorRole || 'Student';
+  const authorProBadge =
+    livePostAuthor?.proBadge !== undefined
+      ? livePostAuthor.proBadge
+      : post.authorProBadge || post.proBadge;
+  const authorProfileIdentifier =
+    livePostAuthor?.username || post.authorUsername || post.authorUid;
 
   const typeMeta = COMMONS_POST_TYPES[post.type] || COMMONS_POST_TYPES.notes;
   const attachments = (post.files || []).filter(
@@ -477,14 +552,14 @@ export const PublicPostDetailPage: React.FC = () => {
                 </div>
               ) : post.authorUid ? (
                 <Link
-                  to={`/u/${encodeURIComponent(post.authorUid)}`}
+                  to={`/u/${encodeURIComponent(authorProfileIdentifier)}`}
                   className="shrink-0 hover:opacity-90 transition-opacity"
                   title="View profile"
                 >
                   <BoardlyAvatar
                     uid={post.authorUid}
-                    equippedAvatar={(post as any).authorEquippedAvatar || post.authorAvatar || undefined}
-                    frame={(post as any).authorFrame}
+                    equippedAvatar={authorEquippedAvatar}
+                    frame={authorFrame}
                     name={authorDisplay}
                     size={44}
                   />
@@ -493,8 +568,8 @@ export const PublicPostDetailPage: React.FC = () => {
                 <div className="shrink-0">
                   <BoardlyAvatar
                     uid={post.authorUid || post.id}
-                    equippedAvatar={(post as any).authorEquippedAvatar || post.authorAvatar || undefined}
-                    frame={(post as any).authorFrame}
+                    equippedAvatar={authorEquippedAvatar}
+                    frame={authorFrame}
                     name={authorDisplay}
                     size={44}
                   />
@@ -509,21 +584,21 @@ export const PublicPostDetailPage: React.FC = () => {
                     </span>
                   ) : (
                     <Link
-                      to={`/u/${encodeURIComponent(post.authorUid)}`}
+                      to={`/u/${encodeURIComponent(authorProfileIdentifier)}`}
                       className="font-bold text-white hover:text-[#D71921] transition-colors text-sm sm:text-base truncate max-w-full"
                     >
                       {authorDisplay}
                     </Link>
                   )}
-                  {!post.isAnonymous && (post.authorProBadge || post.proBadge) && (
+                  {!post.isAnonymous && authorProBadge && (
                     <ProBadge
-                      design={post.authorProBadge || post.proBadge}
+                      design={authorProBadge}
                       size="sm"
                       animated
                     />
                   )}
                   {!post.isAnonymous && (
-                    <RoleBadge role={(post as any).authorRole || 'Student'} size="sm" />
+                    <RoleBadge role={authorRole} size="sm" />
                   )}
                 </div>
 
@@ -779,9 +854,26 @@ export const PublicPostDetailPage: React.FC = () => {
           ) : (
             <div className="space-y-3 w-full max-w-full min-w-0">
               {comments.map((c) => {
+                const liveCAuthor =
+                  !c.isAnonymous && c.authorUid ? liveAuthors[c.authorUid] : undefined;
                 const cAuthor = c.isAnonymous
                   ? (c as any).anonymousAlias || 'Anonymous Student'
-                  : sanitizeStudentDisplayName(c.authorName, c.authorUid);
+                  : sanitizeStudentDisplayName(
+                      liveCAuthor?.displayName || c.authorName,
+                      c.authorUid
+                    );
+                const cAvatar =
+                  liveCAuthor?.equippedAvatar ||
+                  liveCAuthor?.avatar ||
+                  (c as any).authorEquippedAvatar ||
+                  c.authorAvatar ||
+                  undefined;
+                const cFrame = liveCAuthor?.frame || (c as any).authorFrame || undefined;
+                const cProBadge =
+                  liveCAuthor?.proBadge !== undefined
+                    ? liveCAuthor.proBadge
+                    : c.authorProBadge || c.proBadge;
+                const cProfileId = liveCAuthor?.username || c.authorUsername || c.authorUid;
                 const isHighlighted = highlightedCommentId === c.id;
                 const isCommentCopied = copiedCommentId === c.id;
                 const commentTime = c.createdAt
@@ -811,17 +903,24 @@ export const PublicPostDetailPage: React.FC = () => {
                       <div className="flex items-center gap-2 min-w-0">
                         {!c.isAnonymous && c.authorUid ? (
                           <Link
-                            to={`/u/${encodeURIComponent(c.authorUid)}`}
-                            className="text-xs font-bold text-white hover:text-[#D71921] transition-colors truncate"
+                            to={`/u/${encodeURIComponent(cProfileId)}`}
+                            className="inline-flex items-center gap-2 text-xs font-bold text-white hover:text-[#D71921] transition-colors min-w-0"
                           >
-                            {cAuthor}
+                            <BoardlyAvatar
+                              uid={c.authorUid}
+                              equippedAvatar={cAvatar}
+                              frame={cFrame}
+                              name={cAuthor}
+                              size={26}
+                            />
+                            <span className="truncate">{cAuthor}</span>
                           </Link>
                         ) : (
                           <span className="text-xs font-bold text-white truncate">{cAuthor}</span>
                         )}
-                        {!c.isAnonymous && (c.authorProBadge || c.proBadge) && (
+                        {!c.isAnonymous && cProBadge && (
                           <ProBadge
-                            design={c.authorProBadge || c.proBadge}
+                            design={cProBadge}
                             size="sm"
                             listMode
                           />

@@ -1323,9 +1323,9 @@ async function isTargetAccountSuperAdmin(params: {
   targetEmail?: string;
   env?: AuthWorkerEnv;
 }): Promise<boolean> {
-  const { db, targetUid, targetEmail = '', env } = params;
+  const { db, targetUid, env } = params;
   const cleanUid = String(targetUid || '').trim();
-  const cleanEmail = String(targetEmail || '').trim().toLowerCase();
+  if (!cleanUid) return false;
 
   const superUids = new Set(
     (env?.SUPERADMIN_UIDS || DEFAULT_SUPERADMIN_UIDS.join(','))
@@ -1333,28 +1333,26 @@ async function isTargetAccountSuperAdmin(params: {
       .map((s) => s.trim())
       .filter(Boolean)
   );
-  const superEmails = new Set(
-    (env?.SUPERADMIN_EMAILS || DEFAULT_SUPERADMIN_EMAILS.join(','))
-      .split(',')
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean)
-  );
 
-  if (superUids.has(cleanUid) || (cleanEmail.length > 0 && superEmails.has(cleanEmail))) {
+  if (superUids.has(cleanUid) || /^(?:sa1|sa2)_/i.test(cleanUid)) {
     return true;
   }
 
-  const roleRow = await db
-    .prepare('SELECT uid, email, role FROM user_roles WHERE uid = ?1 LIMIT 1')
-    .bind(cleanUid)
-    .first<{ uid: string; email?: string; role?: string }>()
-    .catch(() => null);
+  const [roleRow, unameRow] = await Promise.all([
+    db
+      .prepare('SELECT uid, role FROM user_roles WHERE uid = ?1 LIMIT 1')
+      .bind(cleanUid)
+      .first<{ uid: string; role?: string }>()
+      .catch(() => null),
+    db
+      .prepare('SELECT uid, role FROM user_usernames WHERE uid = ?1 LIMIT 1')
+      .bind(cleanUid)
+      .first<{ uid: string; role?: string }>()
+      .catch(() => null),
+  ]);
 
-  if (roleRow) {
-    if (String(roleRow.role || '').toLowerCase() === 'superadmin') return true;
-    const roleEmail = String(roleRow.email || '').trim().toLowerCase();
-    if (roleEmail && superEmails.has(roleEmail)) return true;
-  }
+  if (roleRow && String(roleRow.role || '').toLowerCase() === 'superadmin') return true;
+  if (unameRow && String(unameRow.role || '').toLowerCase() === 'superadmin') return true;
 
   return false;
 }
@@ -2780,7 +2778,7 @@ export async function handleAuthApiRequest(
     });
   }
 
-  // ─── G1b. POST /api/auth/profile-sync (Sync Live Display Name, Avatar, Bio, Role to D1) ───
+  // ─── G1b. POST /api/auth/profile-sync (Sync Live Display Name, Avatar, Bio, Frame to D1) ───
   if (subPath === 'profile-sync' && request.method === 'POST') {
     let body: {
       uid?: string;
@@ -2788,9 +2786,9 @@ export async function handleAuthApiRequest(
       nickname?: string;
       name?: string;
       username?: string;
-      avatar?: string;
-      equippedAvatar?: string;
-      photoURL?: string;
+      avatar?: string | null;
+      equippedAvatar?: string | null;
+      photoURL?: string | null;
       frame?: string | null;
       role?: string;
       customRole?: string | null;
@@ -2805,29 +2803,48 @@ export async function handleAuthApiRequest(
       return jsonResponse({ ok: false, error: 'Invalid JSON body.' }, 400);
     }
 
+    const caller = await resolveCurrentUser({
+      request,
+      env,
+      db,
+      tokenVerifierOverride: tokenVerifier,
+    }).catch(() => null);
+
+    const isCallerSuperAdmin = Boolean(caller && (caller.isSuperAdmin || caller.role === 'superadmin'));
     let targetUid = String(body.uid || '').trim();
     let resolvedEmail = String(body.email || '').trim().toLowerCase();
-    const bearer = extractBearerToken(request);
-    if (bearer) {
-      const verified = await verifyFirebaseIdToken(bearer, projectId, tokenVerifier);
-      if (verified) {
-        targetUid = verified.uid;
-        if (verified.email) resolvedEmail = verified.email.toLowerCase();
+
+    if (caller) {
+      if (!isCallerSuperAdmin || !targetUid) {
+        targetUid = caller.uid;
+      }
+      if (caller.email && targetUid === caller.uid) {
+        resolvedEmail = caller.email.toLowerCase();
       }
     }
     if (!targetUid) {
       return jsonResponse({ ok: false, error: 'Missing user uid.' }, 400);
     }
 
+    // Strict whitelist: only display_name, avatar, frame, bio, status, and accent may be written by normal users.
+    // Only an authenticated real superadmin can write role or custom_role.
     const displayName = String(body.displayName ?? body.nickname ?? body.name ?? '').trim();
-    const avatar = String(body.avatar ?? body.equippedAvatar ?? body.photoURL ?? '').trim();
+    const hasAvatarProp =
+      body.avatar !== undefined || body.equippedAvatar !== undefined || body.photoURL !== undefined;
+    const avatarVal = String(body.avatar ?? body.equippedAvatar ?? body.photoURL ?? '').trim();
     const frame = body.frame !== undefined ? (body.frame ? String(body.frame).trim() : null) : undefined;
-    const role = String(body.role || '').trim();
-    const customRole = body.customRole !== undefined ? (body.customRole ? String(body.customRole).trim() : null) : undefined;
     const bio = body.bio !== undefined ? String(body.bio) : undefined;
     const statusText = body.status !== undefined ? String(body.status) : undefined;
     const accent = body.accent !== undefined ? String(body.accent) : undefined;
     const rawUsername = String(body.username || '').trim();
+
+    const requestedRole = isCallerSuperAdmin && body.role ? String(body.role).trim() : '';
+    const requestedCustomRole =
+      isCallerSuperAdmin && body.customRole !== undefined
+        ? body.customRole
+          ? String(body.customRole).trim()
+          : null
+        : undefined;
 
     const existingRow = await db
       .prepare(
@@ -2850,13 +2867,21 @@ export async function handleAuthApiRequest(
         accent?: string;
       }>();
 
-    if (!existingRow && rawUsername) {
-      const cleanU = rawUsername.replace(/^@+/, '');
+    let fallbackUsernameDisplay = existingRow?.username_display || '';
+    let fallbackUsernameLower = existingRow?.username_lower || '';
+
+    if (!existingRow) {
+      const cleanU = (
+        rawUsername.replace(/^@+/, '') ||
+        `user_${targetUid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}`
+      ).trim();
       const lowerU = cleanU.toLowerCase();
+      fallbackUsernameDisplay = cleanU;
+      fallbackUsernameLower = lowerU;
       try {
         await db
           .prepare(
-            `INSERT OR REPLACE INTO user_usernames (username_lower, username_display, uid, account_type, email, created_at, updated_at)
+            `INSERT OR IGNORE INTO user_usernames (username_lower, username_display, uid, account_type, email, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
           )
           .bind(
@@ -2874,11 +2899,30 @@ export async function handleAuthApiRequest(
       }
     }
 
+    const superUids = new Set(
+      (env?.SUPERADMIN_UIDS || DEFAULT_SUPERADMIN_UIDS.join(','))
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    );
+    const roleRow = await db
+      .prepare('SELECT role, custom_role FROM user_roles WHERE uid = ?1 LIMIT 1')
+      .bind(targetUid)
+      .first<{ role?: string; custom_role?: string | null }>()
+      .catch(() => null);
+
+    const trustedExistingRole = superUids.has(targetUid)
+      ? 'superadmin'
+      : roleRow?.role || existingRow?.role || 'student';
+
     const nextDisplayName = displayName || existingRow?.display_name || '';
-    const nextAvatar = avatar || existingRow?.avatar || '';
+    const nextAvatar = hasAvatarProp ? avatarVal : (existingRow?.avatar || '');
     const nextFrame = frame !== undefined ? frame : (existingRow?.frame ?? null);
-    const nextRole = role || existingRow?.role || 'student';
-    const nextCustomRole = customRole !== undefined ? customRole : (existingRow?.custom_role ?? null);
+    const nextRole = requestedRole || trustedExistingRole;
+    const nextCustomRole =
+      requestedCustomRole !== undefined
+        ? requestedCustomRole
+        : (roleRow?.custom_role ?? existingRow?.custom_role ?? null);
     const nextBio = bio !== undefined ? bio : (existingRow?.bio ?? '');
     const nextStatus = statusText !== undefined ? statusText : (existingRow?.status ?? '');
     const nextAccent = accent !== undefined ? accent : (existingRow?.accent ?? '');
@@ -2907,8 +2951,8 @@ export async function handleAuthApiRequest(
       ok: true,
       profile: {
         uid: targetUid,
-        username: existingRow?.username_display || rawUsername.replace(/^@+/, '') || '',
-        usernameLower: existingRow?.username_lower || rawUsername.replace(/^@+/, '').toLowerCase() || '',
+        username: fallbackUsernameDisplay,
+        usernameLower: fallbackUsernameLower,
         displayName: nextDisplayName,
         avatar: nextAvatar,
         frame: nextFrame,
@@ -3099,6 +3143,15 @@ export async function handleAuthApiRequest(
       if (!u?.uid) continue;
       const uidStr = String(u.uid);
       const rInfo = roleByUid.get(uidStr);
+      const superUids = new Set(
+        (env?.SUPERADMIN_UIDS || DEFAULT_SUPERADMIN_UIDS.join(','))
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      );
+      const trustedRole = superUids.has(uidStr)
+        ? 'superadmin'
+        : rInfo?.role || u.role || 'student';
       const uname = u.username_display || u.username || u.username_lower || '';
       profiles[uidStr] = {
         uid: uidStr,
@@ -3106,7 +3159,7 @@ export async function handleAuthApiRequest(
         displayName: u.display_name || uname || 'Student',
         avatar: u.avatar || '',
         frame: u.frame || null,
-        role: rInfo?.role || u.role || 'student',
+        role: trustedRole,
         customRole: rInfo?.custom_role ?? u.custom_role ?? null,
         bio: u.bio || '',
         status: u.status || '',
@@ -3128,6 +3181,105 @@ export async function handleAuthApiRequest(
     }
 
     return jsonResponse({ ok: true, profiles });
+  }
+
+  // ─── G1d. GET /api/auth/admin/roles-audit (One-time Superadmin Role Audit by UID) ───
+  if (subPath === 'admin/roles-audit' && request.method === 'GET') {
+    const caller = await resolveCurrentUser({
+      request,
+      env,
+      db,
+      tokenVerifierOverride: tokenVerifier,
+    });
+    if (!caller) {
+      return jsonResponse({ ok: false, error: 'Authentication required.', code: 'UNAUTHENTICATED' }, 401);
+    }
+    if (!caller.isSuperAdmin && caller.role !== 'superadmin' && caller.role !== 'admin') {
+      return jsonResponse({ ok: false, error: 'Forbidden: Superadmin access required.', code: 'FORBIDDEN' }, 403);
+    }
+
+    const superUids = new Set(
+      (env?.SUPERADMIN_UIDS || DEFAULT_SUPERADMIN_UIDS.join(','))
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    );
+
+    const [unameRes, roleRes] = await Promise.all([
+      db
+        .prepare('SELECT uid, username_display, username_lower, display_name, email, role, custom_role, updated_at FROM user_usernames')
+        .all<any>()
+        .catch(() => ({ results: [] })),
+      db
+        .prepare('SELECT uid, email, role, custom_role, updated_at FROM user_roles')
+        .all<any>()
+        .catch(() => ({ results: [] })),
+    ]);
+
+    const mergedByUid = new Map<string, any>();
+    for (const u of unameRes.results || []) {
+      const uid = String(u?.uid || '').trim();
+      if (!uid) continue;
+      mergedByUid.set(uid, {
+        uid,
+        username: u.username_display || u.username_lower || '',
+        displayName: u.display_name || '',
+        email: u.email || '',
+        roleInUsernames: u.role || 'student',
+        roleInUserRoles: null,
+        resolvedRole: superUids.has(uid) ? 'superadmin' : (u.role || 'student'),
+        customRole: u.custom_role || null,
+        inSuperadminAllowlist: superUids.has(uid),
+        updatedAt: u.updated_at || null,
+      });
+    }
+    for (const r of roleRes.results || []) {
+      const uid = String(r?.uid || '').trim();
+      if (!uid) continue;
+      const existing = mergedByUid.get(uid);
+      const resolvedRole = superUids.has(uid)
+        ? 'superadmin'
+        : r.role || existing?.roleInUsernames || 'student';
+      mergedByUid.set(uid, {
+        uid,
+        username: existing?.username || '',
+        displayName: existing?.displayName || '',
+        email: r.email || existing?.email || '',
+        roleInUsernames: existing?.roleInUsernames ?? null,
+        roleInUserRoles: r.role || 'student',
+        resolvedRole,
+        customRole: r.custom_role ?? existing?.customRole ?? null,
+        inSuperadminAllowlist: superUids.has(uid),
+        updatedAt: r.updated_at || existing?.updatedAt || null,
+      });
+    }
+
+    for (const sUid of superUids) {
+      if (!mergedByUid.has(sUid)) {
+        mergedByUid.set(sUid, {
+          uid: sUid,
+          username: '',
+          displayName: '',
+          email: '',
+          roleInUsernames: null,
+          roleInUserRoles: null,
+          resolvedRole: 'superadmin',
+          customRole: null,
+          inSuperadminAllowlist: true,
+          updatedAt: null,
+        });
+      }
+    }
+
+    const nonStudentUsers = Array.from(mergedByUid.values()).filter(
+      (entry) => String(entry.resolvedRole || 'student').toLowerCase() !== 'student'
+    );
+
+    return jsonResponse({
+      ok: true,
+      totalNonStudentCount: nonStudentUsers.length,
+      nonStudentUsers,
+    });
   }
 
   // ─── G2. POST /api/auth/username-release (Rollback Username Reservation on Failed Signup) ───
@@ -5719,17 +5871,15 @@ export async function handleAuthApiRequest(
       const cleanAccType = (isSwapped ? 'registered' : rawAccType) === 'guest' ? 'guest' : 'registered';
       const usernameDisplay = String(u.username_display || u.username_lower || uid);
 
-      let inferredRole = roleInfo?.role || 'student';
+      let inferredRole = roleInfo?.role || u.role || 'student';
       if (
+        uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
         uid === 'uid_superadmin_1' ||
         uid === 'uid_superadmin_2' ||
-        cleanEmail === 'superadmin@boardly.cfd' ||
-        cleanEmail === 'superadmin2@boardly.cfd' ||
-        cleanEmail === 'shsvirtualadmin@gmail.com' ||
-        cleanEmail === 'support@boardly.cfd'
+        /^(?:sa1|sa2)_/i.test(uid)
       ) {
         inferredRole = 'admin';
-      } else if (uid === 'uid_regular_admin' || cleanEmail === 'regularadmin@boardly.cfd') {
+      } else if (uid === 'uid_regular_admin' || /^reg_/i.test(uid)) {
         inferredRole = 'admin';
       }
 

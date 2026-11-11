@@ -70,10 +70,12 @@ const ChooseUsernameModal = lazy(() =>
 );
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-const SUPER_ADMIN_EMAIL = 'shsvirtualadmin@gmail.com';
-const SUPER_ADMIN_EMAIL_SUPPORT = 'support@boardly.cfd';
-const SUPER_ADMIN_EMAIL_SCHOLARIO = 'support@scholario.me';
 const SUPER_ADMIN_UID = 'A5YMRimdHRcmeDWutxtUGt2e4hf2';
+const SUPER_ADMIN_UID_ALLOWLIST = new Set([
+  'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+  'uid_superadmin_1',
+  'uid_superadmin_2',
+]);
 const REFERRAL_LS_KEY = 'boardly_ref_code';
 
 // ─── Timeout Helper (prevents hanging Firestore calls from freezing auth) ────
@@ -302,16 +304,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = !!(
     !isGuest &&
     isSessionVerified &&
-    ((user?.uid && user.uid === SUPER_ADMIN_UID) ||
-      (user?.email &&
-        (user.email.toLowerCase() === SUPER_ADMIN_EMAIL ||
-          user.email.toLowerCase() === SUPER_ADMIN_EMAIL_SUPPORT ||
-          user.email.toLowerCase() === SUPER_ADMIN_EMAIL_SCHOLARIO)) ||
-      (profile?.uid && profile.uid === SUPER_ADMIN_UID) ||
-      (profile?.email &&
-        (profile.email.toLowerCase() === SUPER_ADMIN_EMAIL ||
-          profile.email.toLowerCase() === SUPER_ADMIN_EMAIL_SUPPORT ||
-          profile.email.toLowerCase() === SUPER_ADMIN_EMAIL_SCHOLARIO)) ||
+    ((user?.uid && SUPER_ADMIN_UID_ALLOWLIST.has(user.uid)) ||
+      (profile?.uid && SUPER_ADMIN_UID_ALLOWLIST.has(profile.uid)) ||
       profile?.role === 'admin' ||
       profile?.role === 'superadmin' ||
       (profile as any)?.isSuperAdmin === true)
@@ -361,11 +355,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const path = `users/${firebaseUser.uid}`;
 
     const emailLower = (firebaseUser.email ?? '').toLowerCase();
-    const isSuperAdminAccount =
-      firebaseUser.uid === SUPER_ADMIN_UID ||
-      emailLower === SUPER_ADMIN_EMAIL ||
-      emailLower === SUPER_ADMIN_EMAIL_SUPPORT ||
-      emailLower === SUPER_ADMIN_EMAIL_SCHOLARIO;
+    const isSuperAdminAccount = SUPER_ADMIN_UID_ALLOWLIST.has(firebaseUser.uid);
 
     const fallbackName =
       firebaseUser.displayName?.trim() ||
@@ -468,14 +458,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // Ensure displayName and default Student role are populated in memory; only write non-protected fields
+        // Ensure displayName and default Student role are populated in memory; never trust client Firestore role for admin unless UID is in allowlist (until verified by /api/auth/me)
         const silentPatches: Record<string, unknown> = {};
         if (!loadedProfile.displayName || loadedProfile.displayName === 'Unnamed Student') {
           loadedProfile.displayName = fallbackName;
           silentPatches.displayName = fallbackName;
         }
-        if (!loadedProfile.role) {
-          loadedProfile.role = isSuperAdminAccount ? 'admin' : 'student';
+        if (
+          !isSuperAdminAccount &&
+          String(loadedProfile.displayName || '').trim().toLowerCase() === 'shs virtual academy'
+        ) {
+          loadedProfile.displayName = loadedProfile.username || fallbackName;
+          silentPatches.displayName = loadedProfile.displayName;
+        }
+        if (isSuperAdminAccount) {
+          loadedProfile.role = 'admin';
+        } else if (
+          !loadedProfile.role ||
+          loadedProfile.role === 'admin' ||
+          loadedProfile.role === 'superadmin'
+        ) {
+          loadedProfile.role = 'student';
         }
         if (Object.keys(silentPatches).length > 0) {
           setDoc(docRef, silentPatches, { merge: true }).catch(() => {});
@@ -1081,14 +1084,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (!isMounted) return;
 
-        // Apply server-side username from `/api/auth/me` if registered user has one in D1
+        // Apply server-side username and trusted role from `/api/auth/me` if registered user has one in D1
         if (meCheck?.ok && meCheck.meData?.user) {
           const { meData, idToken } = meCheck;
-          if (meData.user.username) {
-            setProfile((prev) =>
-              prev ? { ...prev, username: meData.user.username } : prev
-            );
-          }
+          const serverRoleRaw = String(meData.user.role || '').trim().toLowerCase();
+          const trustedRole = SUPER_ADMIN_UID_ALLOWLIST.has(firebaseUser.uid)
+            ? 'admin'
+            : serverRoleRaw === 'superadmin' || serverRoleRaw === 'admin'
+            ? 'admin'
+            : serverRoleRaw === 'captain' || serverRoleRaw === 'crew'
+            ? (serverRoleRaw as UserProfile['role'])
+            : 'student';
+          setProfile((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  ...(meData.user.username ? { username: meData.user.username } : {}),
+                  role: trustedRole,
+                }
+              : prev
+          );
           const hasRegUsername = Boolean(
             meData.hasRegisteredUsername || meData.user.hasRegisteredUsername
           );

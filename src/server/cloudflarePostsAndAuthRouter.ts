@@ -70,17 +70,12 @@ const FIRESTORE_DATABASE_ID =
 
 const SUPERADMIN_UIDS = new Set([
   'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+  'uid_superadmin_1',
+  'uid_superadmin_2',
   ...(process.env.SUPERADMIN_UIDS || '').split(',').map((s) => s.trim()).filter(Boolean),
 ]);
 
-const SUPERADMIN_EMAILS = new Set([
-  'shsvirtualadmin@gmail.com',
-  'support@boardly.cfd',
-  ...(process.env.SUPERADMIN_EMAILS || '')
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean),
-]);
+const SUPERADMIN_EMAILS = new Set<string>();
 
 const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
@@ -833,7 +828,9 @@ export function resolveLiveAuthorsBatchSync(
       null;
     const liveAvatar = sanitizeStoreAvatarId(uRow?.avatar, gRow?.avatar);
     const liveFrame = uRow?.frame || null;
-    const liveRole = rRow?.role || uRow?.role || (gRow ? 'guest' : null);
+    const liveRole = SUPERADMIN_UIDS.has(uid)
+      ? 'superadmin'
+      : rRow?.role || uRow?.role || (gRow ? 'guest' : 'student');
     const liveCustomRole = rRow?.custom_role || uRow?.custom_role || null;
 
     const isGuest = Boolean(gRow || uid.startsWith('guest_') || uRow?.account_type === 'guest');
@@ -1207,25 +1204,39 @@ export async function verifyFirebaseJwtZeroFirestore(
     }
 
     const store = loadD1Store();
-    const roleRow = store.userRoles.find(
-      (r) => r.uid === uid || (email && r.email.toLowerCase() === email)
-    );
+    const roleRow = store.userRoles.find((r) => r.uid === uid);
+    let unameRole: string | null = null;
+    let unameCustomRole: string | null = null;
+    try {
+      const localD1 = getSharedLocalD1Database();
+      for (const u of localD1.tables.user_usernames.values()) {
+        if (u.uid === uid) {
+          unameRole = u.role || null;
+          unameCustomRole = u.custom_role || null;
+          break;
+        }
+      }
+    } catch {
+      // Ignore if local D1 not initialized
+    }
 
     if (roleRow?.is_posting_banned) {
       throw new Error('POSTING_BANNED');
     }
 
     let role: 'student' | 'captain' | 'superadmin' = 'student';
-    let customRole: string | null = payload.customRole || roleRow?.custom_role || null;
+    let customRole: string | null =
+      payload.customRole || roleRow?.custom_role || unameCustomRole || null;
 
     if (
       SUPERADMIN_UIDS.has(uid) ||
-      SUPERADMIN_EMAILS.has(email) ||
       payload.role === 'superadmin' ||
       payload.role === 'admin' ||
       payload.admin === true ||
       roleRow?.role === 'superadmin' ||
-      roleRow?.role === 'admin'
+      roleRow?.role === 'admin' ||
+      unameRole === 'superadmin' ||
+      unameRole === 'admin'
     ) {
       role = 'superadmin';
     } else if (
@@ -1233,7 +1244,8 @@ export async function verifyFirebaseJwtZeroFirestore(
       payload.nakamaCaptain === true ||
       payload.customRole === 'Nakama Captain' ||
       roleRow?.role === 'captain' ||
-      roleRow?.custom_role === 'Nakama Captain'
+      roleRow?.custom_role === 'Nakama Captain' ||
+      unameRole === 'captain'
     ) {
       role = 'captain';
       customRole = customRole || 'Nakama Captain';
@@ -5060,7 +5072,7 @@ ${entries
   // /api/questions — Cloudflare D1 Question Bank Endpoints
   // ===========================================================================
   const isStrictQuestionBankAdmin = (user: VerifiedFirebaseUser | null): boolean => {
-    return Boolean(user && String(user.email || '').trim().toLowerCase() === 'shsvirtualadmin@gmail.com');
+    return Boolean(user && (SUPERADMIN_UIDS.has(user.uid) || user.role === 'superadmin'));
   };
 
   const normalizeQSubject = (raw: string): string => {
@@ -5849,13 +5861,10 @@ ${entries
   // ===========================================================================
   const isAdminOrSuperadmin = (user: VerifiedFirebaseUser | null, store: D1StoreData): boolean => {
     if (!user) return false;
-    const email = String(user.email || '').trim().toLowerCase();
-    if (SUPERADMIN_UIDS.has(user.uid) || SUPERADMIN_EMAILS.has(email) || user.role === 'superadmin') {
+    if (SUPERADMIN_UIDS.has(user.uid) || user.role === 'superadmin') {
       return true;
     }
-    const roleRow = (store.userRoles || []).find(
-      (r) => r.uid === user.uid || (email && r.email.toLowerCase() === email)
-    );
+    const roleRow = (store.userRoles || []).find((r) => r.uid === user.uid);
     if (roleRow && (roleRow.role === 'admin' || roleRow.role === 'superadmin')) {
       return true;
     }
@@ -7093,13 +7102,24 @@ ${entries
     }
     if (!Array.isArray(store.userRoles)) store.userRoles = [];
     let row = store.userRoles.find((r: any) => r.uid === user.uid);
-    const isSuper =
-      SUPERADMIN_UIDS.has(user.uid) || SUPERADMIN_EMAILS.has(user.email.toLowerCase());
+    const isSuper = SUPERADMIN_UIDS.has(user.uid);
+    let unameRole: string | null = null;
+    try {
+      const localD1 = getSharedLocalD1Database();
+      for (const u of localD1.tables.user_usernames.values()) {
+        if (u.uid === user.uid && u.role) {
+          unameRole = u.role;
+          break;
+        }
+      }
+    } catch {
+      // Ignore if local D1 not initialized
+    }
     if (!row) {
       row = {
         uid: user.uid,
         email: user.email,
-        role: isSuper ? 'superadmin' : 'captain',
+        role: isSuper ? 'superadmin' : (unameRole || 'student'),
         custom_role: null,
         is_posting_banned: 0,
         updated_at: Date.now(),
@@ -7141,6 +7161,68 @@ ${entries
       return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
     }
     return res.status(200).json({ roles: store.userRoles || [] });
+  });
+
+  app.get('/api/admin/roles/audit', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden: Superadmin access required.', code: 'FORBIDDEN' });
+    }
+
+    const byUid = new Map<string, any>();
+    for (const r of store.userRoles || []) {
+      const uid = String(r?.uid || '').trim();
+      if (!uid) continue;
+      const resolvedRole = SUPERADMIN_UIDS.has(uid) ? 'superadmin' : (r.role || 'student');
+      byUid.set(uid, {
+        uid,
+        email: r.email || '',
+        username: '',
+        displayName: '',
+        role: resolvedRole,
+        customRole: r.custom_role || null,
+        inSuperadminAllowlist: SUPERADMIN_UIDS.has(uid),
+        updatedAt: r.updated_at || null,
+      });
+    }
+    try {
+      const localD1 = getSharedLocalD1Database();
+      for (const u of localD1.tables.user_usernames.values()) {
+        const uid = String(u?.uid || '').trim();
+        if (!uid) continue;
+        const existing = byUid.get(uid);
+        const resolvedRole = SUPERADMIN_UIDS.has(uid)
+          ? 'superadmin'
+          : existing?.role && existing.role !== 'student'
+            ? existing.role
+            : (u.role || 'student');
+        byUid.set(uid, {
+          uid,
+          email: u.email || existing?.email || '',
+          username: u.username_display || u.username_lower || existing?.username || '',
+          displayName: u.display_name || existing?.displayName || '',
+          role: resolvedRole,
+          customRole: u.custom_role ?? existing?.customRole ?? null,
+          inSuperadminAllowlist: SUPERADMIN_UIDS.has(uid),
+          updatedAt: u.updated_at || existing?.updatedAt || null,
+        });
+      }
+    } catch {
+      // Ignore if local D1 not initialized
+    }
+
+    const nonStudentUsers = Array.from(byUid.values()).filter(
+      (entry) => String(entry.role || 'student').toLowerCase() !== 'student'
+    );
+
+    return res.status(200).json({
+      ok: true,
+      totalNonStudentCount: nonStudentUsers.length,
+      nonStudentUsers,
+    });
   });
 
   app.put('/api/admin/roles', async (req: Request, res: Response) => {

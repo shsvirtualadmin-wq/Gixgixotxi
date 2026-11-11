@@ -1,20 +1,18 @@
 import { deriveFallbackShortId } from './shortId';
 
-const ADMIN_IDENTIFIERS = [
-  'shsvirtualadmin@gmail.com',
-  'support@boardly.cfd',
-  'support@scholario.me',
-  'a5ymrimdhrcmedwutxtugt2e4hf2',
-  'shsvirtualadmin',
-];
+const SUPER_ADMIN_UID_SET = new Set<string>([
+  'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+  'uid_superadmin_1',
+  'uid_superadmin_2',
+]);
 
 /**
- * Checks whether an identifier (email, UID, or role) belongs to the Boardly admin account.
+ * Checks whether an immutable UID belongs to the Boardly superadmin allowlist.
+ * Never checks usernames, display names, email addresses, or substrings.
  */
-export function isAdminAccount(identifier?: string | null): boolean {
-  if (!identifier || typeof identifier !== 'string') return false;
-  const clean = identifier.toLowerCase().trim();
-  return ADMIN_IDENTIFIERS.some((adminId) => clean === adminId || clean.includes('shsvirtualadmin'));
+export function isAdminAccount(uid?: string | null): boolean {
+  if (!uid || typeof uid !== 'string') return false;
+  return SUPER_ADMIN_UID_SET.has(uid.trim());
 }
 
 /**
@@ -29,31 +27,17 @@ export function isEmailLike(str?: string | null): boolean {
 /**
  * Sanitizes student display name across all public surfaces, leaderboards, profile, and Commons.
  * Rules:
- * 1. Admin account ALWAYS shows "SHS Virtual Academy".
- * 2. Uses real displayName first.
- * 3. Only falls back to "Student" if empty or whitespace (no "Student #43724").
+ * 1. Uses real displayName first (never rewrites normal users to "SHS Virtual Academy").
+ * 2. Only falls back to "SHS Virtual Academy" if uid is the real superadmin UID and displayName is empty.
+ * 3. Only falls back to "Student" if empty or whitespace.
  * 4. Never exposes raw email addresses.
  */
 export function sanitizeStudentDisplayName(
   displayName?: string | null,
   uidOrShortId?: string | null
 ): string {
-  // Admin account check: Must show "SHS Virtual Academy"
-  if (isAdminAccount(uidOrShortId) || isAdminAccount(displayName)) {
-    return 'SHS Virtual Academy';
-  }
-
   if (displayName && typeof displayName === 'string') {
     const trimmed = displayName.trim();
-
-    // Check if displayName itself represents the admin
-    if (
-      trimmed.toLowerCase() === 'shs virtual academy' ||
-      trimmed.toLowerCase() === 'shsvirtualadmin' ||
-      trimmed.toLowerCase() === 'shs virtual academy (admin)'
-    ) {
-      return 'SHS Virtual Academy';
-    }
 
     // Never expose email as display name: if email, extract friendly prefix or fall back to "Student"
     if (isEmailLike(trimmed) || trimmed.includes('@')) {
@@ -61,7 +45,7 @@ export function sanitizeStudentDisplayName(
       if (prefix && prefix.length >= 2 && !prefix.includes('.')) {
         return prefix.charAt(0).toUpperCase() + prefix.slice(1);
       }
-      return 'Student';
+      return isAdminAccount(uidOrShortId) ? 'SHS Virtual Academy' : 'Student';
     }
 
     if (trimmed.length > 0) {
@@ -71,6 +55,10 @@ export function sanitizeStudentDisplayName(
       }
       return trimmed;
     }
+  }
+
+  if (isAdminAccount(uidOrShortId)) {
+    return 'SHS Virtual Academy';
   }
 
   // Fall back to "Student" if empty

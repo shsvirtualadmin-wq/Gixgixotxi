@@ -815,19 +815,14 @@ export async function verifyFirebaseIdToken(
       env.SUPERADMIN_UIDS || BOARDLY_CLOUDFLARE_CONFIG.superadminUids.join(',')
     )
       .split(',')
-      .map((s) => s.trim());
-    const superEmails = (
-      env.SUPERADMIN_EMAILS || BOARDLY_CLOUDFLARE_CONFIG.superadminEmails.join(',')
-    )
-      .split(',')
-      .map((s) => s.trim().toLowerCase());
+      .map((s) => s.trim())
+      .filter(Boolean);
 
     let role: 'student' | 'captain' | 'superadmin' = 'student';
     let customRole: string | null = payload.customRole || null;
 
     if (
       superUids.includes(uid) ||
-      superEmails.includes(email) ||
       payload.role === 'superadmin' ||
       payload.role === 'admin' ||
       payload.admin === true
@@ -842,22 +837,31 @@ export async function verifyFirebaseIdToken(
       customRole = customRole || 'Nakama Captain';
     } else if (env.DB) {
       try {
-        const d1Role = await env.DB.prepare(
-          'SELECT role, custom_role, is_posting_banned FROM user_roles WHERE uid = ? LIMIT 1'
-        )
-          .bind(uid)
-          .first<{ role: string; custom_role: string | null; is_posting_banned: number }>();
+        const [d1Role, unameRole] = await Promise.all([
+          env.DB.prepare(
+            'SELECT role, custom_role, is_posting_banned FROM user_roles WHERE uid = ? LIMIT 1'
+          )
+            .bind(uid)
+            .first<{ role: string; custom_role: string | null; is_posting_banned: number }>()
+            .catch(() => null),
+          env.DB.prepare(
+            'SELECT role, custom_role FROM user_usernames WHERE uid = ? LIMIT 1'
+          )
+            .bind(uid)
+            .first<{ role: string; custom_role: string | null }>()
+            .catch(() => null),
+        ]);
 
-        if (d1Role) {
-          if (d1Role.is_posting_banned) {
-            throw new Error('POSTING_BANNED');
-          }
-          if (d1Role.role === 'superadmin' || d1Role.role === 'admin') {
-            role = 'superadmin';
-          } else if (d1Role.role === 'captain' || d1Role.custom_role === 'Nakama Captain') {
-            role = 'captain';
-            customRole = d1Role.custom_role || 'Nakama Captain';
-          }
+        if (d1Role?.is_posting_banned) {
+          throw new Error('POSTING_BANNED');
+        }
+        const resolvedRole = d1Role?.role || unameRole?.role || 'student';
+        const resolvedCustomRole = d1Role?.custom_role || unameRole?.custom_role || null;
+        if (resolvedRole === 'superadmin' || resolvedRole === 'admin') {
+          role = 'superadmin';
+        } else if (resolvedRole === 'captain' || resolvedCustomRole === 'Nakama Captain') {
+          role = 'captain';
+          customRole = resolvedCustomRole || 'Nakama Captain';
         }
       } catch (e: any) {
         if (e?.message === 'POSTING_BANNED') throw e;
@@ -1049,7 +1053,9 @@ export async function resolveWorkerLiveAuthorsBatch(
       const displayName = uRow?.display_name || gRow?.display_name || username || null;
       const avatar = sanitizeStoreAvatarId(uRow?.avatar, gRow?.avatar);
       const frame = uRow?.frame || null;
-      const role = rRow?.role || uRow?.role || (gRow ? 'guest' : null);
+      const role = BOARDLY_CLOUDFLARE_CONFIG.superadminUids.includes(uid)
+        ? 'superadmin'
+        : rRow?.role || uRow?.role || (gRow ? 'guest' : 'student');
       const customRole = rRow?.custom_role || uRow?.custom_role || null;
       if (username || displayName || avatar || frame || role || customRole) {
         result.set(uid, {
@@ -5122,44 +5128,22 @@ ${urls
       let isAuthorizedAdmin = adminUser.role === 'superadmin';
       if (!isAuthorizedAdmin && env.DB) {
         try {
-          const roleRow = await env.DB.prepare(
-            'SELECT role FROM user_roles WHERE uid = ? OR LOWER(email) = LOWER(?) LIMIT 1'
-          )
-            .bind(adminUser.uid, adminUser.email || '')
-            .first<{ role: string }>();
-          if (roleRow && (roleRow.role === 'admin' || roleRow.role === 'superadmin')) {
+          const [roleRow, unameRow] = await Promise.all([
+            env.DB.prepare('SELECT role FROM user_roles WHERE uid = ? LIMIT 1')
+              .bind(adminUser.uid)
+              .first<{ role: string }>()
+              .catch(() => null),
+            env.DB.prepare('SELECT role FROM user_usernames WHERE uid = ? LIMIT 1')
+              .bind(adminUser.uid)
+              .first<{ role: string }>()
+              .catch(() => null),
+          ]);
+          const rVal = roleRow?.role || unameRow?.role || '';
+          if (rVal === 'admin' || rVal === 'superadmin') {
             isAuthorizedAdmin = true;
           }
         } catch {
           // Ignore D1 lookup error
-        }
-      }
-
-      if (!isAuthorizedAdmin) {
-        for (const dbId of [defaultFsDbId, '(default)']) {
-          try {
-            const selfUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${encodeURIComponent(
-              dbId
-            )}/documents/users/${encodeURIComponent(adminUser.uid)}`;
-            const resp = await fetch(selfUrl, {
-              method: 'GET',
-              headers: {
-                Authorization: authHeader,
-                Accept: 'application/json',
-              },
-            });
-            if (resp.ok) {
-              const docJson = await resp.json().catch(() => null);
-              const parsed = parseFsDoc(docJson);
-              const fsRole = String(parsed?.data?.role || '').toLowerCase().trim();
-              if (fsRole === 'admin' || fsRole === 'superadmin') {
-                isAuthorizedAdmin = true;
-                break;
-              }
-            }
-          } catch {
-            // Ignore REST check error
-          }
         }
       }
 

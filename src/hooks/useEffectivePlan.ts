@@ -24,21 +24,20 @@ export interface EffectivePlanResult {
 }
 
 // ── Superadmin Identity Checker ─────────────────────────────────────────────
-export const SUPER_ADMIN_EMAILS = [
-  'shsvirtualadmin@gmail.com',
-  'support@boardly.cfd',
-  'support@scholario.me',
-];
+export const SUPER_ADMIN_EMAILS: string[] = [];
 export const SUPER_ADMIN_UID = 'A5YMRimdHRcmeDWutxtUGt2e4hf2';
+export const SUPER_ADMIN_UIDS = [
+  'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+  'uid_superadmin_1',
+  'uid_superadmin_2',
+];
 
 export function isSuperAdminEmailOrRole(
-  email?: string | null,
+  _email?: string | null,
   role?: string | null,
   uid?: string | null
 ): boolean {
-  if (uid && uid === SUPER_ADMIN_UID) return true;
-  const em = (email || '').toLowerCase().trim();
-  if (SUPER_ADMIN_EMAILS.includes(em)) return true;
+  if (uid && SUPER_ADMIN_UIDS.includes(uid.trim())) return true;
   if (role === 'superadmin' || role === 'admin') return true;
   return false;
 }

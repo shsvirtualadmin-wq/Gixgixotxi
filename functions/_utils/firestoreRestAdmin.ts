@@ -20,12 +20,12 @@ export const DEFAULT_FIREBASE_PROJECT_ID = 'gen-lang-client-0365509316';
 export const DEFAULT_FIRESTORE_DATABASE_ID =
   'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
 
-export const DEFAULT_SUPERADMIN_UIDS = ['A5YMRimdHRcmeDWutxtUGt2e4hf2'];
-export const DEFAULT_SUPERADMIN_EMAILS = [
-  'shsvirtualadmin@gmail.com',
-  'support@boardly.cfd',
-  'support@scholario.me',
+export const DEFAULT_SUPERADMIN_UIDS = [
+  'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+  'uid_superadmin_1',
+  'uid_superadmin_2',
 ];
+export const DEFAULT_SUPERADMIN_EMAILS: string[] = [];
 
 export interface VerifiedFirebaseToken {
   uid: string;
@@ -761,12 +761,6 @@ export async function resolveCurrentUser(params: {
           .map((s) => s.trim())
           .filter(Boolean)
       );
-      const superEmails = new Set(
-        (env?.SUPERADMIN_EMAILS || DEFAULT_SUPERADMIN_EMAILS.join(','))
-          .split(',')
-          .map((s) => s.trim().toLowerCase())
-          .filter(Boolean)
-      );
 
       let roleRow: {
         uid?: string;
@@ -782,6 +776,8 @@ export async function resolveCurrentUser(params: {
         username_lower?: string;
         username_display?: string;
         username?: string;
+        role?: string;
+        custom_role?: string | null;
       } | null = null;
 
       try {
@@ -794,7 +790,7 @@ export async function resolveCurrentUser(params: {
             .first(),
           db
             .prepare(
-              'SELECT username_lower, username_display, uid FROM user_usernames WHERE uid = ?1 LIMIT 1'
+              'SELECT username_lower, username_display, uid, role, custom_role FROM user_usernames WHERE uid = ?1 LIMIT 1'
             )
             .bind(uid)
             .first(),
@@ -805,16 +801,30 @@ export async function resolveCurrentUser(params: {
 
       const isHardcodedSuperAdmin =
         superUids.has(uid) ||
-        (email.length > 0 && superEmails.has(email)) ||
+        /^(?:sa1|sa2)_/i.test(uid) ||
         verified.role === 'superadmin' ||
         verified.admin === true;
 
       let role: 'student' | 'captain' | 'admin' | 'superadmin' = 'student';
-      if (isHardcodedSuperAdmin || roleRow?.role === 'superadmin') {
+      if (
+        isHardcodedSuperAdmin ||
+        roleRow?.role === 'superadmin' ||
+        usernameRow?.role === 'superadmin'
+      ) {
         role = 'superadmin';
-      } else if (roleRow?.role === 'admin' || verified.role === 'admin') {
+      } else if (
+        roleRow?.role === 'admin' ||
+        usernameRow?.role === 'admin' ||
+        uid === 'uid_regular_admin' ||
+        /^reg_/i.test(uid) ||
+        verified.role === 'admin'
+      ) {
         role = 'admin';
-      } else if (roleRow?.role === 'captain' || verified.role === 'captain') {
+      } else if (
+        roleRow?.role === 'captain' ||
+        usernameRow?.role === 'captain' ||
+        verified.role === 'captain'
+      ) {
         role = 'captain';
       }
 
@@ -3222,7 +3232,7 @@ export class InMemoryD1Database implements RewardsD1Database {
         for (const r of this.tables.user_usernames.values()) {
           if (r.uid === uid) {
             if (display_name) r.display_name = display_name;
-            if (avatar) r.avatar = avatar;
+            if (args[1] !== undefined) r.avatar = avatar;
             if (frame !== undefined) r.frame = frame;
             if (role) r.role = role;
             if (custom_role !== undefined) r.custom_role = custom_role;

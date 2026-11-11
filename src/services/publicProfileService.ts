@@ -225,8 +225,6 @@ export async function syncProfileToD1Backend(
         displayName: data.displayName || data.nickname || data.name || undefined,
         avatar: equippedAvatar !== undefined ? equippedAvatar : undefined,
         frame: equippedFrame !== undefined ? equippedFrame : undefined,
-        role: data.role || undefined,
-        customRole: data.customRole !== undefined ? data.customRole : undefined,
         bio: data.bio !== undefined ? data.bio : undefined,
         status: data.status !== undefined ? data.status : undefined,
         accent: data.accent !== undefined ? data.accent : undefined,
@@ -276,7 +274,9 @@ export function normalizePublicProfileDoc(
   const w = walletData || {};
   const wEquipped = w.equipped || {};
   const botMatch = BOARDLY_BOT_ACCOUNTS.find((b) => b.uid === uid);
-  const isSuperAdmin = isAdminAccount(uid, u.email || p.email);
+  const trustedD1Role = typeof p.d1Role === 'string' ? p.d1Role.trim().toLowerCase() : '';
+  const isSuperAdmin =
+    isAdminAccount(uid) || trustedD1Role === 'superadmin' || trustedD1Role === 'admin';
 
   const shortId =
     u.studentId ||
@@ -285,7 +285,7 @@ export function normalizePublicProfileDoc(
     p.shortId ||
     botMatch?.shortId ||
     uid.slice(0, 6).toUpperCase();
-  const rawName =
+  const candidateName =
     u.displayName ||
     p.displayName ||
     u.name ||
@@ -294,9 +294,13 @@ export function normalizePublicProfileDoc(
     p.username ||
     botMatch?.displayName ||
     (isSuperAdmin ? SUPER_ADMIN_NAME : 'Student');
+  const safeRawName =
+    !isSuperAdmin && String(candidateName).trim().toLowerCase() === 'shs virtual academy'
+      ? u.username || p.username || 'Student'
+      : candidateName;
   const displayName = isSuperAdmin
     ? u.displayName || p.displayName || SUPER_ADMIN_NAME
-    : sanitizeStudentDisplayName(rawName, shortId);
+    : sanitizeStudentDisplayName(safeRawName, shortId);
 
   const avatarCandidates = [
     u.equipped?.avatar,
@@ -408,6 +412,11 @@ export function normalizePublicProfileDoc(
     totalQuestionsSolved: Number(u.totalQuestionsSolved ?? p.stats?.mcqs ?? 0),
   };
 
+  const resolvedRole = isSuperAdmin
+    ? 'admin'
+    : trustedD1Role ||
+      (botMatch ? 'bot' : 'student');
+
   return {
     uid,
     displayName,
@@ -420,8 +429,8 @@ export function normalizePublicProfileDoc(
       (u.username || p.username || botMatch?.username
         ? String(u.username || p.username || botMatch?.username).toLowerCase()
         : undefined),
-    role: isSuperAdmin ? 'admin' : u.role || p.role || (botMatch ? 'bot' : 'student'),
-    customRole: u.customRole || p.customRole || undefined,
+    role: resolvedRole,
+    customRole: p.d1CustomRole || undefined,
     isVerified: Boolean(
       isSuperAdmin || u.isVerified || p.isVerified || u.verified || p.verified
     ),
@@ -487,7 +496,7 @@ export function normalizePublicProfileDoc(
       const unified = resolveUnifiedPlanStatus({
         uid,
         email: u.email || p.email || null,
-        role: isSuperAdmin ? 'admin' : u.role || p.role || 'student',
+        role: resolvedRole,
         isGuest: Boolean(u.isGuest || uid.startsWith('guest_')),
         plan: u.plan ?? p.plan ?? null,
         isPremium: u.isPremium ?? p.isPremium ?? null,
@@ -554,7 +563,7 @@ async function fetchPublicProfileFromNetwork(uid: string): Promise<PublicProfile
     const d1Data = d1Map[uid] || null;
 
     const botMatch = BOARDLY_BOT_ACCOUNTS.find((b) => b.uid === uid);
-    const isSuperAdmin = uid === SUPER_ADMIN_UID;
+    const isSuperAdmin = isAdminAccount(uid);
 
     if (!pubData && !uData && !walletData && !d1Data && !botMatch && !isSuperAdmin) {
       return null;
@@ -568,8 +577,8 @@ async function fetchPublicProfileFromNetwork(uid: string): Promise<PublicProfile
             ...(d1Data.displayName ? { displayName: d1Data.displayName } : {}),
             ...(d1Data.avatar ? { avatar: d1Data.avatar, equippedAvatar: d1Data.avatar } : {}),
             ...(d1Data.frame ? { frame: d1Data.frame, equippedFrame: d1Data.frame } : {}),
-            ...(d1Data.role ? { role: d1Data.role } : {}),
-            ...(d1Data.customRole ? { customRole: d1Data.customRole } : {}),
+            ...(d1Data.role ? { role: d1Data.role, d1Role: d1Data.role } : {}),
+            ...(d1Data.customRole ? { customRole: d1Data.customRole, d1CustomRole: d1Data.customRole } : {}),
             ...(d1Data.bio !== null && d1Data.bio !== undefined ? { bio: d1Data.bio } : {}),
             ...(d1Data.status !== null && d1Data.status !== undefined ? { status: d1Data.status } : {}),
             ...(d1Data.accent ? { accent: d1Data.accent } : {}),
@@ -583,6 +592,8 @@ async function fetchPublicProfileFromNetwork(uid: string): Promise<PublicProfile
         ? {
             ...(d1Data.username ? { username: d1Data.username } : {}),
             ...(d1Data.displayName ? { displayName: d1Data.displayName } : {}),
+            ...(d1Data.avatar ? { avatar: d1Data.avatar, equippedAvatar: d1Data.avatar } : {}),
+            ...(d1Data.frame ? { frame: d1Data.frame, equippedFrame: d1Data.frame } : {}),
           }
         : {}),
     };
@@ -654,7 +665,12 @@ export async function resolveProfileByUsernameOrUid(rawParam: string): Promise<{
               data.currentUsername || fullProfile.username || data.profile.username || null,
           };
         }
-        const fallbackProfile = normalizePublicProfileDoc(resolvedUid, data.profile, data.profile, null);
+        const d1Payload = {
+          ...data.profile,
+          d1Role: data.profile.role,
+          d1CustomRole: data.profile.customRole,
+        };
+        const fallbackProfile = normalizePublicProfileDoc(resolvedUid, d1Payload, d1Payload, null);
         saveToCaches(resolvedUid, fallbackProfile);
         return {
           profile: fallbackProfile,
@@ -728,7 +744,7 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
         const uData = userDocsByUid.get(uid) || null;
         const d1Data = d1ProfilesByUid[uid] || null;
         const botMatch = BOARDLY_BOT_ACCOUNTS.find((b) => b.uid === uid);
-        const isSuperAdmin = uid === SUPER_ADMIN_UID;
+        const isSuperAdmin = isAdminAccount(uid);
 
         if (pubData || uData || d1Data || botMatch || isSuperAdmin) {
           const mergedPub = {
@@ -741,8 +757,8 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
                     ? { avatar: d1Data.avatar, equippedAvatar: d1Data.avatar }
                     : {}),
                   ...(d1Data.frame ? { frame: d1Data.frame, equippedFrame: d1Data.frame } : {}),
-                  ...(d1Data.role ? { role: d1Data.role } : {}),
-                  ...(d1Data.customRole ? { customRole: d1Data.customRole } : {}),
+                  ...(d1Data.role ? { role: d1Data.role, d1Role: d1Data.role } : {}),
+                  ...(d1Data.customRole ? { customRole: d1Data.customRole, d1CustomRole: d1Data.customRole } : {}),
                   ...(d1Data.proBadge !== undefined ? { proBadge: d1Data.proBadge } : {}),
                 }
               : {}),
@@ -753,6 +769,10 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
               ? {
                   ...(d1Data.username ? { username: d1Data.username } : {}),
                   ...(d1Data.displayName ? { displayName: d1Data.displayName } : {}),
+                  ...(d1Data.avatar
+                    ? { avatar: d1Data.avatar, equippedAvatar: d1Data.avatar }
+                    : {}),
+                  ...(d1Data.frame ? { frame: d1Data.frame, equippedFrame: d1Data.frame } : {}),
                 }
               : {}),
           };
@@ -770,7 +790,6 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
 }
 
 const nameToUidCache = new Map<string, string | null>();
-const inFlightNameLookups = new Map<string, Promise<PublicProfile | null>>();
 
 export function getCachedUidByName(name?: string | null): string | null {
   if (!name) return null;
@@ -780,8 +799,8 @@ export function getCachedUidByName(name?: string | null): string | null {
 }
 
 /**
- * Resolves a public profile by display name or username (used as a fallback when a legacy
- * notification row did not store `authorId`) and caches the resolved UID -> PublicProfile.
+ * Resolves a public profile strictly for known system bot accounts if needed.
+ * Never resolves user identity or role from display_name or username_lower.
  */
 export async function resolvePublicProfileByName(
   rawName?: string | null
@@ -793,11 +812,6 @@ export async function resolvePublicProfileByName(
     return null;
   }
 
-  if (key === SUPER_ADMIN_NAME.toLowerCase() || key === 'shs virtual academy') {
-    nameToUidCache.set(key, SUPER_ADMIN_UID);
-    return getPublicProfile(SUPER_ADMIN_UID);
-  }
-
   const bot = BOARDLY_BOT_ACCOUNTS.find(
     (b) => b.displayName.toLowerCase() === key || (b.username && b.username.toLowerCase() === key)
   );
@@ -806,49 +820,7 @@ export async function resolvePublicProfileByName(
     return getPublicProfile(bot.uid);
   }
 
-  if (nameToUidCache.has(key)) {
-    const cachedUid = nameToUidCache.get(key);
-    return cachedUid ? getPublicProfile(cachedUid) : null;
-  }
-
-  const existingPromise = inFlightNameLookups.get(key);
-  if (existingPromise) {
-    return existingPromise;
-  }
-
-  const lookupPromise = (async (): Promise<PublicProfile | null> => {
-    try {
-      const [pubByName, pubByUser, userByName] = await Promise.all([
-        getDocs(
-          query(collection(db, 'publicProfiles'), where('displayName', '==', trimmed), limit(1))
-        ).catch(() => null),
-        getDocs(
-          query(collection(db, 'publicProfiles'), where('usernameLower', '==', key), limit(1))
-        ).catch(() => null),
-        getDocs(
-          query(collection(db, 'users'), where('displayName', '==', trimmed), limit(1))
-        ).catch(() => null),
-      ]);
-
-      const matchedDoc =
-        pubByName?.docs?.[0] || pubByUser?.docs?.[0] || userByName?.docs?.[0] || null;
-      if (!matchedDoc) {
-        nameToUidCache.set(key, null);
-        return null;
-      }
-
-      const resolvedUid = matchedDoc.id;
-      nameToUidCache.set(key, resolvedUid);
-      return await getPublicProfile(resolvedUid);
-    } catch {
-      return null;
-    }
-  })().finally(() => {
-    inFlightNameLookups.delete(key);
-  });
-
-  inFlightNameLookups.set(key, lookupPromise);
-  return lookupPromise;
+  return null;
 }
 
 /**

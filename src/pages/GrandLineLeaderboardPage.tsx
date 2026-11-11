@@ -189,7 +189,10 @@ export const GrandLineLeaderboardPage: React.FC = () => {
                   'Student';
                 const isCurrentUser = Boolean(user?.uid && uid && uid === user.uid);
                 const isSuperAdminActor =
-                  Boolean(liveProfile?.isSuperAdmin) || isAdminAccount(uid, displayName);
+                  Boolean(liveProfile?.isSuperAdmin) ||
+                  liveProfile?.role === 'superadmin' ||
+                  liveProfile?.role === 'admin' ||
+                  isAdminAccount(uid);
                 const proBadgeDesign = liveProfile?.proBadge || (entry as any).proBadge || null;
 
                 return (

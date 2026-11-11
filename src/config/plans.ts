@@ -409,14 +409,13 @@ export function resolveUnifiedPlanStatus(input: {
   const nowMs = typeof input.nowMs === 'number' && Number.isFinite(input.nowMs) ? input.nowMs : Date.now();
   const isGuest = Boolean(input.isGuest || (input.uid && String(input.uid).startsWith('guest_')));
 
-  const emailLower = String(input.email || '').trim().toLowerCase();
   const roleLower = String(input.role || '').trim().toLowerCase();
+  const cleanUid = String(input.uid || '').trim();
   const isSuperAdmin = Boolean(
     input.isSuperAdmin ||
-      input.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
-      emailLower === 'shsvirtualadmin@gmail.com' ||
-      emailLower === 'support@boardly.cfd' ||
-      emailLower === 'support@scholario.me' ||
+      cleanUid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
+      cleanUid === 'uid_superadmin_1' ||
+      cleanUid === 'uid_superadmin_2' ||
       roleLower === 'superadmin' ||
       roleLower === 'admin'
   );

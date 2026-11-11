@@ -545,8 +545,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           followersCount: followCounts.followersCount,
           followingCount: followCounts.followingCount,
           lastActiveAt: uData?.lastActiveDate || pubData?.lastActiveAt || null,
-          role: isAdminAccountUser ? 'admin' : (uData?.role || pubData?.role || 'student'),
-          customRole: uData?.customRole || pubData?.customRole || undefined,
+          role: trustedServerRole,
+          customRole: d1Live?.customRole || (trustedServerRole !== 'student' ? uData?.customRole || pubData?.customRole : undefined) || undefined,
           equipped,
           avatarUrl,
           photoURL,
@@ -562,8 +562,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             }
             const unified = resolveUnifiedPlanStatus({
               uid,
-              email: uData?.email || pubData?.email || null,
-              role: isAdminAccountUser ? 'admin' : uData?.role || pubData?.role || 'student',
+              email: null,
+              role: trustedServerRole,
               isGuest: Boolean(uData?.isGuest || uid.startsWith('guest_')),
               plan: uData?.plan ?? pubData?.plan ?? null,
               isPremium: uData?.isPremium ?? pubData?.isPremium ?? null,
@@ -658,14 +658,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   useEffect(() => {
     if (isViewingSelf && (ownProfile || authProfile) && !previewAsPublic && (!walletLoading || isGuest)) {
       const op = (ownProfile || authProfile) as any;
-      const isAdminAccountUser = !isGuest && (isAdmin || isAdminAccount(currentUid) || op.role === 'admin' || isAdminAccount(authUser?.email));
+      const isAdminAccountUser = !isGuest && (isAdmin || isAdminAccount(currentUid));
       const shortCode = op.studentId || op.shortId || (isGuest ? 'GUEST' : deriveFallbackShortId(currentUid || '0'));
       const rawDisplayName = op.displayName || op.username || authProfile?.displayName || authProfile?.username || authUser?.displayName;
-      const cleanName = isAdminAccountUser
-        ? 'SHS Virtual Academy'
+      const safeSelfName =
+        !isAdminAccount(currentUid) &&
+        typeof rawDisplayName === 'string' &&
+        rawDisplayName.trim().toLowerCase() === 'shs virtual academy'
+          ? op.username || authProfile?.username || 'Student'
+          : rawDisplayName;
+      const cleanName = isAdminAccount(currentUid)
+        ? safeSelfName || 'SHS Virtual Academy'
         : isGuest
-        ? (rawDisplayName || 'Guest')
-        : sanitizeStudentDisplayName(rawDisplayName, shortCode);
+        ? (safeSelfName || 'Guest')
+        : sanitizeStudentDisplayName(safeSelfName, shortCode);
       const resolvedUsername = op.username || authProfile?.username || (isGuest ? cleanName : undefined);
 
       setProfile((prev) => {
@@ -710,6 +716,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           cachedSelf?.followingCount ??
           (typeof op.followingCount === 'number' ? op.followingCount : 0);
 
+        const selfTrustedRole = isAdminAccount(currentUid)
+          ? 'superadmin'
+          : isAdminAccountUser
+          ? authProfile?.role || 'admin'
+          : authProfile?.role && authProfile.role !== 'admin' && authProfile.role !== 'superadmin'
+          ? authProfile.role
+          : op.role && op.role !== 'admin' && op.role !== 'superadmin'
+          ? op.role
+          : 'student';
+
         const nextProfile: PublicProfile & { username?: string; isGuest?: boolean; accountType?: string } = {
           uid: currentUid || 'guest',
           displayName: cleanName,
@@ -736,8 +752,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           followersCount: resolvedFollowersCount,
           followingCount: resolvedFollowingCount,
           lastActiveAt: op.lastActiveDate || prev?.lastActiveAt || null,
-          role: isAdminAccountUser ? 'admin' : (op.role || prev?.role || 'student'),
-          customRole: isGuest ? 'Guest' : (op.customRole || prev?.customRole || undefined),
+          role: selfTrustedRole,
+          customRole: isGuest ? 'Guest' : (selfTrustedRole !== 'student' ? op.customRole || prev?.customRole : undefined),
           ...(isGuest ? { isGuest: true, accountType: 'guest' } : {}),
           equipped: {
             effect: resolvedEffectId,

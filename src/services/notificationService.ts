@@ -304,20 +304,13 @@ export function extractNotificationActorMeta(
 
   if (!resolvedUid && rawName) {
     const lowerName = String(rawName).trim().toLowerCase();
-    if (
-      lowerName === SUPER_ADMIN_NAME.toLowerCase() ||
-      lowerName === 'shs virtual academy'
-    ) {
-      resolvedUid = SUPER_ADMIN_UID;
-    } else {
-      const bot = BOARDLY_BOT_ACCOUNTS.find(
-        (b) =>
-          b.displayName.toLowerCase() === lowerName ||
-          (b.username && b.username.toLowerCase() === lowerName)
-      );
-      if (bot) {
-        resolvedUid = bot.uid;
-      }
+    const bot = BOARDLY_BOT_ACCOUNTS.find(
+      (b) =>
+        b.displayName.toLowerCase() === lowerName ||
+        (b.username && b.username.toLowerCase() === lowerName)
+    );
+    if (bot) {
+      resolvedUid = bot.uid;
     }
   }
 

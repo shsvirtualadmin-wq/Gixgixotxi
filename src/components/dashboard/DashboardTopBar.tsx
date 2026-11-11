@@ -132,21 +132,21 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   return (
     <>
       <header
-        className="sticky z-[70] w-full max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 pb-1 shrink-0 pointer-events-none box-border select-none"
+        className="sticky z-[70] w-full max-w-full box-border px-3 sm:px-6 lg:px-8 pb-1 shrink-0 pointer-events-none select-none overflow-x-clip"
         style={{
           top: 'calc(12px + env(safe-area-inset-top, 0px))',
           marginTop: 'calc(12px + env(safe-area-inset-top, 0px))',
         }}
       >
         <div
-          className="w-full min-w-0 box-border h-14 sm:h-[60px] px-3 sm:px-5 rounded-full dashboard-glass-bar allow-backdrop-blur flex items-center justify-between gap-2 max-[380px]:gap-1.5 pointer-events-auto transition-all duration-200"
+          className="w-full max-w-5xl mx-auto min-w-0 box-border h-14 sm:h-[60px] px-3 sm:px-5 rounded-full dashboard-glass-bar allow-backdrop-blur flex items-center justify-between gap-2 pointer-events-auto transition-all duration-200"
         >
-          {/* Left side: Boardly Doto logo with top-right PRO badge and stacked Admin Portal label */}
-          <div className="flex flex-col justify-center min-w-0 shrink-0">
-            <div className="inline-flex items-start gap-1 min-w-0 shrink-0">
+          {/* Left side: Boardly Doto logo with top-right PRO badge and stacked Admin Portal label (min-w-0 and allowed to shrink) */}
+          <div className="flex flex-col justify-center min-w-0 shrink overflow-hidden">
+            <div className="inline-flex items-center gap-1 min-w-0 shrink">
               <Link
                 to="/dashboard"
-                className="inline-flex items-center shrink-0 select-none leading-none tracking-tight hover:opacity-90 transition-opacity text-[20px] min-[380px]:text-[22px]"
+                className="inline-flex items-center min-w-0 shrink truncate select-none leading-none tracking-tight hover:opacity-90 transition-opacity text-[18px] min-[390px]:text-[20px] sm:text-[22px]"
                 style={{
                   fontFamily: "'Doto', var(--font-dot), sans-serif",
                   fontWeight: 800,
@@ -158,13 +158,15 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
               </Link>
 
               {isPro && effectiveProBadge && (
-                <ProBadge
-                  design={effectiveProBadge}
-                  size="md"
-                  animated
-                  priority
-                  className="-mt-0.5 ml-0.5"
-                />
+                <span className="shrink-0 inline-flex items-center">
+                  <ProBadge
+                    design={effectiveProBadge}
+                    size="sm"
+                    animated
+                    priority
+                    className="ml-0.5 shrink-0"
+                  />
+                </span>
               )}
             </div>
 
@@ -183,8 +185,8 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
             )}
           </div>
 
-          {/* Right side: Gold Kobans balance chip, Notification bell (>=400px), Theme toggle (40px), Profile avatar (36px) */}
-          <div className="flex items-center gap-2 max-[380px]:gap-1.5 shrink-0 ml-auto">
+          {/* Right side: Gold Kobans balance chip, Notification bell, Theme toggle, Profile avatar (all flex-shrink: 0) */}
+          <div className="flex items-center gap-2 shrink-0 ml-auto">
             {/* Kobans Wallet Chip */}
             <Link
               to="/store"
@@ -194,12 +196,12 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
               <KobanChip balance={kobanBalance} loading={walletLoading} />
             </Link>
 
-            {/* Notification Bell (40px round glass icon button — hidden on screens narrower than 400px ONLY) */}
+            {/* Notification Bell (40px round glass icon button) */}
             <Link
               to="/dashboard/notifications"
               aria-label="Notifications"
               title="Notifications"
-              className="relative hidden min-[400px]:flex w-10 h-10 min-w-[40px] min-h-[40px] rounded-full dashboard-topbar-icon-btn items-center justify-center hover:opacity-90 transition-opacity cursor-pointer shrink-0"
+              className="relative flex w-10 h-10 min-w-[40px] min-h-[40px] rounded-full dashboard-topbar-icon-btn items-center justify-center hover:opacity-90 transition-opacity cursor-pointer shrink-0"
             >
               <Bell size={17} strokeWidth={1.85} />
               {unreadCount > 0 && (
@@ -224,14 +226,14 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
               )}
             </button>
 
-            {/* Profile Avatar (36px circle with red ring; store avatar or deterministic matrix default) */}
+            {/* Profile Avatar (36px circle, vertically centered and fully visible on 360px/390px/430px) */}
             <button
               ref={avatarBtnRef}
               type="button"
               onClick={() => setMenuOpen((prev) => !prev)}
               aria-label="User profile menu"
               aria-expanded={menuOpen}
-              className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-full overflow-hidden shrink-0 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
+              className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-full overflow-hidden shrink-0 flex items-center justify-center self-center cursor-pointer hover:opacity-90 transition-opacity"
               style={{
                 width: 36,
                 height: 36,

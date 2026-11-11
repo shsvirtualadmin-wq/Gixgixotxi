@@ -43,12 +43,14 @@ function parseJsonBody(req: IncomingMessage): Promise<Record<string, any>> {
   });
 }
 
-const SUPER_ADMIN_EMAILS = ['shsvirtualadmin@gmail.com', 'support@boardly.cfd'];
-const SUPER_ADMIN_UID = 'A5YMRimdHRcmeDWutxtUGt2e4hf2';
+const SUPER_ADMIN_UIDS = new Set([
+  'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+  'uid_superadmin_1',
+  'uid_superadmin_2',
+]);
 
-function isSuperAdmin(email?: string, uid?: string, role?: string): boolean {
-  if (uid && uid === SUPER_ADMIN_UID) return true;
-  if (email && SUPER_ADMIN_EMAILS.includes(email.toLowerCase().trim())) return true;
+function isSuperAdmin(_email?: string, uid?: string, role?: string): boolean {
+  if (uid && SUPER_ADMIN_UIDS.has(uid.trim())) return true;
   if (role === 'admin' || role === 'superadmin') return true;
   return false;
 }

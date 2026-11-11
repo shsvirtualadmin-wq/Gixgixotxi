@@ -2,11 +2,10 @@ import { useEffect, useState, useMemo } from 'react';
 import {
   getCachedPublicProfile,
   getPublicProfiles,
-  resolvePublicProfileByName,
   type PublicProfile,
 } from '@/services/publicProfileService';
 import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
-import { SUPER_ADMIN_NAME, isAdminAccount } from '@/constants/superAdmin';
+import { isAdminAccount } from '@/constants/superAdmin';
 
 export interface ResolvedChatUser {
   uid: string;
@@ -101,27 +100,13 @@ export function useChatUserProfiles(seeds: ChatUserSeed[]): Record<string, Resol
     let cancelled = false;
 
     void getPublicProfiles(missingUids)
-      .then(async (map) => {
+      .then((map) => {
         if (cancelled) return;
         const nextProfiles: Record<string, PublicProfile> = {};
         map.forEach((prof, id) => {
           nextProfiles[id] = prof;
         });
 
-        // For any UID still missing a profile photo, also try name lookup if seed has a displayName
-        for (const uid of missingUids) {
-          if (!nextProfiles[uid]) {
-            const seed = seeds.find((s) => s.uid === uid);
-            if (seed?.displayName) {
-              const byName = await resolvePublicProfileByName(seed.displayName).catch(() => null);
-              if (byName) {
-                nextProfiles[uid] = byName;
-              }
-            }
-          }
-        }
-
-        if (cancelled) return;
         setProfilesByUid((prev) => ({ ...prev, ...nextProfiles }));
         setFetchedUids((prev) => {
           const next = new Set(prev);
@@ -158,16 +143,12 @@ export function useChatUserProfiles(seeds: ChatUserSeed[]): Record<string, Resol
         seed.displayName ||
         'Student';
 
-      const role =
-        prof?.role ||
-        seed.role ||
-        'student';
+      const role = prof?.role || 'student';
 
       const isSuperAdmin = Boolean(
         isAdminAccount(uid) ||
-          role === 'admin' ||
-          role === 'superadmin' ||
-          displayName.trim().toLowerCase() === SUPER_ADMIN_NAME.toLowerCase()
+          prof?.role === 'admin' ||
+          prof?.role === 'superadmin'
       );
 
       const equippedAvatar =

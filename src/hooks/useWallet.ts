@@ -380,9 +380,10 @@ export function useWallet() {
         ...topLevelSlotField,
       });
 
-      syncProfileToD1Backend(user.uid, {
-        avatar: updatedEquipped.avatar ?? undefined,
-        frame: updatedEquipped.frame ?? undefined,
+      await syncProfileToD1Backend(user.uid, {
+        displayName: user.displayName || undefined,
+        avatar: updatedEquipped.avatar ?? '',
+        frame: updatedEquipped.frame ?? null,
       }).catch(() => {});
 
       broadcastPublicProfileUpdate(user.uid, {
@@ -407,7 +408,7 @@ export function useWallet() {
       setWallet(updated);
       notifyWalletSubscribers(user.uid, updated);
     },
-    [user?.uid, isSuperAdminUser]
+    [user?.uid, user?.displayName, isSuperAdminUser]
   );
 
   /**
@@ -569,9 +570,10 @@ export function useWallet() {
         ...topLevelFields,
       });
 
-      syncProfileToD1Backend(user.uid, {
-        avatar: updatedEquipped.avatar ?? undefined,
-        frame: updatedEquipped.frame ?? undefined,
+      await syncProfileToD1Backend(user.uid, {
+        displayName: user.displayName || undefined,
+        avatar: updatedEquipped.avatar ?? '',
+        frame: updatedEquipped.frame ?? null,
       }).catch(() => {});
 
       broadcastPublicProfileUpdate(user.uid, {
@@ -596,7 +598,7 @@ export function useWallet() {
       setWallet(updated);
       notifyWalletSubscribers(user.uid, updated);
     },
-    [user?.uid]
+    [user?.uid, user?.displayName]
   );
 
   const refreshWallet = useCallback(async () => {
