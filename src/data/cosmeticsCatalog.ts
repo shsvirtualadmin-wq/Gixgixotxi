@@ -15,6 +15,7 @@ export interface CosmeticItem {
   name: string;
   type: CosmeticType;
   priceKobans: number;
+  price?: number;
   salePriceKobans?: number | null;
   saleEndsAt?: string | null;
   rarity: CosmeticRarity;

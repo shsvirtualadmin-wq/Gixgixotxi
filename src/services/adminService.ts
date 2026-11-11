@@ -1012,7 +1012,21 @@ export async function fetchUsersPaginated(options?: {
                 });
               }
             }
-            allMatchingUsers = Array.from(byUid.values());
+            allMatchingUsers = Array.from(byUid.values()).map((u) => {
+              const resolved2fa = user2faMap[u.uid] || u.twoFactorStatus || { ...DEFAULT_OFF_2FA_SUMMARY };
+              user2faMap[u.uid] = resolved2fa;
+              const pbEntry = proBadgesByUid[u.uid];
+              const isProUser = !u.isGuest && u.accountType !== 'guest' && (u.plan === 'pro' || u.isPremium);
+              const pbDesign = pbEntry?.design || (u as any).proBadgeDesign || 'ember';
+              const pbVisible = pbEntry ? pbEntry.visible : ((u as any).proBadgeVisible ?? true);
+              return {
+                ...u,
+                twoFactorStatus: resolved2fa,
+                proBadgeDesign: pbDesign,
+                proBadgeVisible: pbVisible,
+                proBadge: isProUser && pbVisible ? pbDesign : null,
+              };
+            });
           } catch (sharedErr) {
             console.warn('[AdminService] Shared user search fallback in fetchUsersPaginated:', sharedErr);
           }

@@ -41,6 +41,8 @@ export interface PublicProfile extends BasePublicProfile {
   proBadge?: string | null;
 }
 
+export type PublicUserProfile = PublicProfile;
+
 const SESSION_CACHE_PREFIX = 'boardly_pub_prof_v4_';
 const CACHE_TTL_MS = 20 * 1000; // Short 20s TTL so live profile updates propagate quickly
 

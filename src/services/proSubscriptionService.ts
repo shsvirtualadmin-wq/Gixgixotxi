@@ -222,6 +222,7 @@ export interface ValidatedCouponInfo {
   label: string;
   discountType: '1_year_free_pro' | 'percent' | 'fixed_pkr' | 'fixed_kobans' | 'free_pro';
   percentOff: number;
+  discountPercent?: number;
   amountOffPkr: number;
   amountOffKobans: number;
   durationMonths: number;
@@ -237,8 +238,11 @@ export interface ValidatedCouponInfo {
   discountKobans: number;
   finalKobans: number;
   isFreeGrant: boolean;
+  isFreeActivation?: boolean;
   effectiveDurationDays: number;
 }
+
+export type ValidatedProCoupon = ValidatedCouponInfo;
 
 export async function validateProCoupon(params: {
   code: string;
@@ -267,7 +271,7 @@ export async function validateProCoupon(params: {
 }
 
 export async function redeemProCoupon(params: {
-  uid: string;
+  uid?: string;
   code: string;
   planId: ProPlanId;
 }): Promise<{

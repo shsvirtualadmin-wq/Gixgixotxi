@@ -105,7 +105,7 @@ export const ProfileShareCardModal: React.FC<ProfileShareCardModalProps> = ({
               <div className="flex items-center gap-2 flex-wrap">
                 <Nameplate
                   itemId={profile.nameplate || 'none'}
-                  name={profile.displayName}
+                  name={profile.displayName || undefined}
                   forceStatic
                 />
               </div>

@@ -75,7 +75,7 @@ function DashboardBottomNavComponent() {
   const { isOpen: isProfileModalOpen } = useProfileModal();
   const unreadCount = useUnreadNotificationsCount();
   const unreadMessagesCount = useUnreadMessagesCount();
-  const { isSmooth: isSmoothMode } = useSmoothMode();
+  const { smoothMode: isSmoothMode } = useSmoothMode();
   const location = useLocation();
   const navigate = useNavigate();
 

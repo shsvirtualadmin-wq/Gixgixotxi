@@ -21,6 +21,7 @@ export interface EffectivePlanResult {
   error?: string | null;
   planStatus: UnifiedPlanStatusResult;
   refreshPlanStatus: () => Promise<void>;
+  paymentRequests?: any[];
 }
 
 // ── Superadmin Identity Checker ─────────────────────────────────────────────
@@ -492,6 +493,7 @@ export function useEffectivePlan(): EffectivePlanResult {
 
   const withRefresh: EffectivePlanResult = {
     ...resolved,
+    paymentRequests: paymentEntry?.requests || [],
     refreshPlanStatus,
   };
 

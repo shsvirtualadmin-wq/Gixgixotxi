@@ -331,7 +331,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         const walletData = walletSnap && walletSnap.exists() ? walletSnap.data() : null;
         const d1Live = d1LiveRes?.ok && d1LiveRes?.profiles?.[uid] ? d1LiveRes.profiles[uid] : null;
 
-        const uData = rawUData || d1Live
+        const uData: Record<string, any> | null = rawUData || d1Live
           ? {
               ...(rawUData || {}),
               ...(d1Live?.username ? { username: d1Live.username } : {}),
@@ -341,7 +341,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               ...(d1Live?.accent ? { accent: d1Live.accent } : {}),
             }
           : null;
-        const pubData = rawPubData || d1Live
+        const pubData: Record<string, any> | null = rawPubData || d1Live
           ? {
               ...(rawPubData || {}),
               ...(d1Live?.username ? { username: d1Live.username } : {}),
@@ -418,6 +418,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             candidateName.toLowerCase().includes('virtual academy')
           )) ||
           (uid === currentUid && isAdmin);
+
+        const trustedServerRole =
+          d1Live?.role ||
+          (isAdminAccountUser ? 'admin' : (uData?.role || pubData?.role || 'student'));
 
         const shortCode =
           uData?.studentId ||
@@ -2570,7 +2574,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             !isViewingSelf && currentUid !== profile.uid
               ? {
                   uid: profile.uid,
-                  displayName: profile.displayName,
+                  displayName: profile.displayName || 'Student',
                   avatar: profile.avatar,
                   frame: profile.frame,
                   role: profile.role,

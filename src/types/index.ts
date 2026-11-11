@@ -72,6 +72,9 @@ export interface UserProfile {
   accountType?: 'guest' | 'registered';
   lastActiveAt?: Timestamp | number | string | null;
   twoFactorStatus?: UserTwoFactorSummary;
+  proBadge?: string | null;
+  proBadgeDesign?: string | null;
+  proBadgeVisible?: boolean;
 }
 
 export type UserTwoFactorBadgeLabel = 'Off' | 'Authenticator' | 'Email code' | 'Both' | 'Recovery pending';
@@ -121,7 +124,7 @@ export interface PublicProfileStats {
  */
 export interface PublicProfile {
   uid: string;
-  displayName: string;
+  displayName: string | null;
   nickname?: string | null;
   username?: string | null;
   customRole?: string | null;
@@ -140,7 +143,7 @@ export interface PublicProfile {
   stats: PublicProfileStats;
   followersCount: number;
   followingCount: number;
-  lastActiveAt: Timestamp | { seconds: number; nanoseconds?: number } | string | null;
+  lastActiveAt: Timestamp | { seconds: number; nanoseconds?: number } | string | number | null;
   rankTitle?: string;
   pinnedBadges?: string[];
   pinnedStamps?: string[];

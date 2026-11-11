@@ -501,8 +501,8 @@ export function subscribeIncomingChatRequests(
     getPublicProfiles(uids)
       .then((liveMap) => {
         const enriched = reqs.map((r) => {
-          const fromLive = liveMap[r.fromUid];
-          const toLive = liveMap[r.toUid];
+          const fromLive = liveMap.get(r.fromUid);
+          const toLive = liveMap.get(r.toUid);
           return {
             ...r,
             fromName: fromLive?.displayName || r.fromName,
@@ -606,7 +606,7 @@ export function subscribeUserConversations(
             ...(c.participantDetails || {}),
           };
           for (const pUid of c.participants || []) {
-            const live = liveMap[pUid];
+            const live = liveMap.get(pUid);
             if (live) {
               const prev = nextDetails[pUid] || { displayName: 'Student' };
               nextDetails[pUid] = {
@@ -910,7 +910,7 @@ export function subscribeMessages(
     getPublicProfiles(senderUids)
       .then((liveMap) => {
         const enriched = msgs.map((m) => {
-          const live = liveMap[m.senderId];
+          const live = liveMap.get(m.senderId);
           if (!live) return m;
           return {
             ...m,

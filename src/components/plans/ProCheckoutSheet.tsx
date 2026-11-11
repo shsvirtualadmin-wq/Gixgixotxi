@@ -694,7 +694,7 @@ export function ProCheckoutSheet({
                       <span>Coupon Applied ({appliedCoupon.code})</span>
                     </span>
                     <span className="font-mono text-xs font-bold text-emerald-500">
-                      -{appliedCoupon.discountPercent}% OFF ({appliedCoupon.label})
+                      -{(appliedCoupon.percentOff ?? appliedCoupon.discountPercent ?? 0)}% OFF ({appliedCoupon.label})
                     </span>
                   </div>
                 )}

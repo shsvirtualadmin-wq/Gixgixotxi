@@ -39,8 +39,8 @@ const DEFAULT_WALLET: WalletDoc = {
 };
 
 // Module-level in-memory session cache & in-flight deduplication: Read the wallet once per session per user
-const sessionWalletCache: { [uid: string]: WalletDoc } = {};
-const inFlightWalletPromises: { [uid: string]: Promise<WalletDoc> } = {};
+const sessionWalletCache: { [uid: string]: WalletDoc | undefined } = {};
+const inFlightWalletPromises: { [uid: string]: Promise<WalletDoc> | undefined } = {};
 const walletSubscribers = new Set<(uid: string, doc: WalletDoc) => void>();
 
 function notifyWalletSubscribers(uid: string, doc: WalletDoc) {
@@ -55,10 +55,8 @@ function notifyWalletSubscribers(uid: string, doc: WalletDoc) {
 
 export function useWallet() {
   const { user } = useAuth();
-  const initialWallet =
-    user?.uid && sessionWalletCache[user.uid]
-      ? sessionWalletCache[user.uid]
-      : DEFAULT_WALLET;
+  const initialWallet: WalletDoc =
+    (user?.uid && sessionWalletCache[user.uid]) || DEFAULT_WALLET;
 
   const [wallet, setWallet] = useState<WalletDoc>(initialWallet);
   const [loading, setLoading] = useState<boolean>(

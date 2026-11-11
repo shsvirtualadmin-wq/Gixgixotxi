@@ -552,7 +552,7 @@ export const PublicPostDetailPage: React.FC = () => {
                 </div>
               ) : post.authorUid ? (
                 <Link
-                  to={`/u/${encodeURIComponent(authorProfileIdentifier)}`}
+                  to={`/u/${encodeURIComponent(authorProfileIdentifier || '')}`}
                   className="shrink-0 hover:opacity-90 transition-opacity"
                   title="View profile"
                 >
@@ -584,7 +584,7 @@ export const PublicPostDetailPage: React.FC = () => {
                     </span>
                   ) : (
                     <Link
-                      to={`/u/${encodeURIComponent(authorProfileIdentifier)}`}
+                      to={`/u/${encodeURIComponent(authorProfileIdentifier || '')}`}
                       className="font-bold text-white hover:text-[#D71921] transition-colors text-sm sm:text-base truncate max-w-full"
                     >
                       {authorDisplay}
@@ -903,7 +903,7 @@ export const PublicPostDetailPage: React.FC = () => {
                       <div className="flex items-center gap-2 min-w-0">
                         {!c.isAnonymous && c.authorUid ? (
                           <Link
-                            to={`/u/${encodeURIComponent(cProfileId)}`}
+                            to={`/u/${encodeURIComponent(cProfileId || '')}`}
                             className="inline-flex items-center gap-2 text-xs font-bold text-white hover:text-[#D71921] transition-colors min-w-0"
                           >
                             <BoardlyAvatar
