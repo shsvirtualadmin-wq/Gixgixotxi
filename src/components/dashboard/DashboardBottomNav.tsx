@@ -39,13 +39,13 @@ interface DockTabItem {
   hidden?: boolean;
 }
 
-interface BubbleEdges {
+interface BubblePosition {
   left: number;
-  right: number;
   width: number;
   dockWidth: number;
-  pad: number;
 }
+
+const BUBBLE_LENS_WIDTH = 76;
 
 function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false;
@@ -68,15 +68,6 @@ function isTabElementVisible(el: HTMLButtonElement | null): el is HTMLButtonElem
   return style.display !== 'none' && style.visibility !== 'hidden';
 }
 
-function getDockPadPx(dockEl: HTMLElement | null): number {
-  if (!dockEl || typeof window === 'undefined') return 9;
-  const raw = window.getComputedStyle(dockEl).getPropertyValue('--pad').trim();
-  const parsed = parseFloat(raw);
-  if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  const padLeft = parseFloat(window.getComputedStyle(dockEl).paddingLeft);
-  return Number.isFinite(padLeft) && padLeft > 0 ? padLeft : 9;
-}
-
 function DashboardBottomNavComponent() {
   const { user, profile } = useUserProfile();
   const { profileLoading } = useAuth();
@@ -95,7 +86,7 @@ function DashboardBottomNavComponent() {
   const isAuthenticated = isUserAuthenticated(user, profileLoading);
   const homeUrl = getHomeUrl(user, profileLoading);
 
-  // Auto-close drawer on any route change so state never gets stuck or re-triggered
+  // Auto-close menu page on any route change
   useEffect(() => {
     setIsMenuOpen(false);
   }, [location.pathname]);
@@ -164,7 +155,7 @@ function DashboardBottomNavComponent() {
     };
   }, [location.pathname]);
 
-  const shouldHideBottomNav = isProfileModalOpen || isExternalModalOpen;
+  const shouldHideBottomNav = isProfileModalOpen || isExternalModalOpen || isMenuOpen;
 
   const role = profile?.role || 'student';
   const isApprovedCaptain =
@@ -179,7 +170,6 @@ function DashboardBottomNavComponent() {
       : '/dashboard/commons';
 
   // Unified 7-Tab Student Nav: Commons, Home, Notifications, Messages, Streaks, Squad, Menu
-  // Icons are sized via CSS var(--ic) (25px mobile, 29px tablet, 33px laptop)
   const navItems: DockTabItem[] = useMemo(
     () => [
       {
@@ -292,28 +282,24 @@ function DashboardBottomNavComponent() {
   const bubbleRef = useRef<HTMLDivElement | null>(null);
   const btnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
-  const [edges, setEdges] = useState<BubbleEdges>({
-    left: 9,
-    right: 9,
-    width: 0,
+  const [pos, setPos] = useState<BubblePosition>({
+    left: 6,
+    width: BUBBLE_LENS_WIDTH,
     dockWidth: 0,
-    pad: 9,
   });
-  const edgesRef = useRef<BubbleEdges>(edges);
-  edgesRef.current = edges;
+  const posRef = useRef<BubblePosition>(pos);
+  posRef.current = pos;
 
-  const [direction, setDirection] = useState<'right' | 'left'>('right');
   const [isInstant, setIsInstant] = useState(true);
-  const [isOut, setIsOut] = useState(false);
+  const [isMoving, setIsMoving] = useState(false);
+  const [isPressed, setIsPressed] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [isDragRelaxing, setIsDragRelaxing] = useState(false);
   const [dragHighlightId, setDragHighlightId] = useState<string | null>(null);
 
   const prevVisibleCountRef = useRef<number>(0);
   const prevActiveTabIdRef = useRef<string>(activeTabId);
   const hasMountedRef = useRef<boolean>(false);
-  const relaxTimerRef = useRef<number | null>(null);
-  const outTimerRef = useRef<number | null>(null);
+  const moveTimerRef = useRef<number | null>(null);
   const justHandledTabRef = useRef<string | null>(null);
   const lastPointerNavTimeRef = useRef<number>(0);
 
@@ -325,42 +311,29 @@ function DashboardBottomNavComponent() {
     initialLeft: number;
     bubbleWidth: number;
     dockWidth: number;
-    pad: number;
     minLeft: number;
     maxLeft: number;
-    clampedLeft: number;
-    baseRight: number;
     moved: boolean;
-    lastClientX: number;
-    lastTime: number;
-    velocityX: number;
   }>({
     active: false,
     pointerId: null,
     captured: false,
     startClientX: 0,
-    initialLeft: 9,
-    bubbleWidth: 0,
+    initialLeft: 6,
+    bubbleWidth: BUBBLE_LENS_WIDTH,
     dockWidth: 0,
-    pad: 9,
-    minLeft: 9,
-    maxLeft: 9,
-    clampedLeft: 9,
-    baseRight: 9,
+    minLeft: 0,
+    maxLeft: 0,
     moved: false,
-    lastClientX: 0,
-    lastTime: 0,
-    velocityX: 0,
   });
 
-  // Measure only visible tabs against the dock
   const getVisibleTabs = useCallback((): DockTabItem[] => {
     return navItems.filter(
       (item) => !item.hidden && isTabElementVisible(btnRefs.current[item.id] ?? null)
     );
   }, [navItems]);
 
-  const measureTab = useCallback((tabId: string): BubbleEdges | null => {
+  const measureTab = useCallback((tabId: string): BubblePosition | null => {
     const dockEl = dockRef.current;
     const btnEl = btnRefs.current[tabId] ?? null;
     if (!dockEl || !isTabElementVisible(btnEl)) return null;
@@ -368,77 +341,62 @@ function DashboardBottomNavComponent() {
     const btnRect = btnEl.getBoundingClientRect();
     if (btnRect.width <= 0 || dockRect.width <= 0) return null;
 
-    const pad = Math.round(getDockPadPx(dockEl));
     const dockWidth = Math.round(dockRect.width);
-    const left = Math.max(pad, Math.round(btnRect.left - dockRect.left));
-    const width = Math.round(btnRect.width);
-    const right = Math.max(pad, dockWidth - (left + width));
+    const lensWidth = BUBBLE_LENS_WIDTH;
+    const tabCenter = btnRect.left - dockRect.left + btnRect.width / 2;
+    const rawLeft = Math.round(tabCenter - lensWidth / 2);
+    const clampedLeft = Math.max(-2, Math.min(dockWidth - lensWidth + 2, rawLeft));
 
     return {
-      left,
-      right,
-      width,
+      left: clampedLeft,
+      width: lensWidth,
       dockWidth,
-      pad,
     };
   }, []);
 
-  const triggerPopOut = useCallback((durationMs: number) => {
+  const triggerLiquidMove = useCallback(() => {
     if (prefersReducedMotion()) {
-      setIsOut(false);
+      setIsMoving(false);
       return;
     }
-    if (outTimerRef.current !== null) {
-      window.clearTimeout(outTimerRef.current);
+    if (moveTimerRef.current !== null) {
+      window.clearTimeout(moveTimerRef.current);
     }
-    setIsOut(true);
-    outTimerRef.current = window.setTimeout(() => {
-      setIsOut(false);
-      outTimerRef.current = null;
-    }, durationMs);
+    setIsMoving(true);
+    moveTimerRef.current = window.setTimeout(() => {
+      setIsMoving(false);
+      moveTimerRef.current = null;
+    }, 240);
   }, []);
 
   const animateBubbleToTab = useCallback(
-    (targetTabId: string, forceInstant = false, popOutDurationMs = 520) => {
+    (targetTabId: string, forceInstant = false) => {
       const m = measureTab(targetTabId);
       if (!m) return;
 
       const reduced = prefersReducedMotion() || forceInstant;
-      const prev = edgesRef.current;
+      const prev = posRef.current;
 
-      if (reduced || prev.width <= 0) {
-        if (outTimerRef.current !== null) {
-          window.clearTimeout(outTimerRef.current);
-          outTimerRef.current = null;
+      if (reduced || prev.dockWidth <= 0) {
+        if (moveTimerRef.current !== null) {
+          window.clearTimeout(moveTimerRef.current);
+          moveTimerRef.current = null;
         }
         setIsInstant(true);
-        setIsOut(false);
-        setEdges(m);
-        edgesRef.current = m;
+        setIsMoving(false);
+        setPos(m);
+        posRef.current = m;
         return;
       }
 
-      const prevCenter = prev.left + (m.dockWidth - prev.right - prev.left) / 2;
-      const nextCenter = m.left + m.width / 2;
-      const delta = nextCenter - prevCenter;
-
-      if (Math.abs(delta) > 1) {
-        setDirection(delta >= 0 ? 'right' : 'left');
-      } else {
-        const visible = getVisibleTabs();
-        const prevIdx = visible.findIndex((t) => t.id === prevActiveTabIdRef.current);
-        const nextIdx = visible.findIndex((t) => t.id === targetTabId);
-        if (prevIdx !== -1 && nextIdx !== -1 && prevIdx !== nextIdx) {
-          setDirection(nextIdx > prevIdx ? 'right' : 'left');
-        }
-      }
-
       setIsInstant(false);
-      triggerPopOut(popOutDurationMs);
-      setEdges(m);
-      edgesRef.current = m;
+      if (Math.abs(m.left - prev.left) > 2) {
+        triggerLiquidMove();
+      }
+      setPos(m);
+      posRef.current = m;
     },
-    [measureTab, getVisibleTabs, triggerPopOut]
+    [measureTab, triggerLiquidMove]
   );
 
   // Place bubble on initial load, route changes, or visible tab count changes
@@ -455,9 +413,9 @@ function DashboardBottomNavComponent() {
       const m = measureTab(activeTabId);
       if (m) {
         setIsInstant(true);
-        setIsOut(false);
-        setEdges(m);
-        edgesRef.current = m;
+        setIsMoving(false);
+        setPos(m);
+        posRef.current = m;
         hasMountedRef.current = true;
       }
       prevActiveTabIdRef.current = activeTabId;
@@ -465,14 +423,13 @@ function DashboardBottomNavComponent() {
       return;
     }
 
-    // If pointer release or tap already triggered the transition to this tab, avoid duplicate trigger
     if (justHandledTabRef.current === activeTabId) {
       justHandledTabRef.current = null;
       prevActiveTabIdRef.current = activeTabId;
       return;
     }
 
-    animateBubbleToTab(activeTabId, false, 520);
+    animateBubbleToTab(activeTabId, false);
     prevActiveTabIdRef.current = activeTabId;
   }, [activeTabId, navItems.length, measureTab, getVisibleTabs, animateBubbleToTab]);
 
@@ -482,14 +439,14 @@ function DashboardBottomNavComponent() {
       if (dragRef.current.active) return;
       const m = measureTab(activeTabId);
       if (m) {
-        if (outTimerRef.current !== null) {
-          window.clearTimeout(outTimerRef.current);
-          outTimerRef.current = null;
+        if (moveTimerRef.current !== null) {
+          window.clearTimeout(moveTimerRef.current);
+          moveTimerRef.current = null;
         }
         setIsInstant(true);
-        setIsOut(false);
-        setEdges(m);
-        edgesRef.current = m;
+        setIsMoving(false);
+        setPos(m);
+        posRef.current = m;
       }
     };
 
@@ -507,11 +464,8 @@ function DashboardBottomNavComponent() {
 
   useEffect(() => {
     return () => {
-      if (relaxTimerRef.current !== null) {
-        window.clearTimeout(relaxTimerRef.current);
-      }
-      if (outTimerRef.current !== null) {
-        window.clearTimeout(outTimerRef.current);
+      if (moveTimerRef.current !== null) {
+        window.clearTimeout(moveTimerRef.current);
       }
     };
   }, []);
@@ -568,9 +522,9 @@ function DashboardBottomNavComponent() {
   );
 
   const navigateToTab = useCallback(
-    (item: DockTabItem, popOutDurationMs = 520) => {
+    (item: DockTabItem) => {
       justHandledTabRef.current = item.id;
-      animateBubbleToTab(item.id, false, popOutDurationMs);
+      animateBubbleToTab(item.id, false);
       prevActiveTabIdRef.current = item.id;
 
       if (item.onClick) {
@@ -584,26 +538,19 @@ function DashboardBottomNavComponent() {
     [animateBubbleToTab, location.pathname, navigate]
   );
 
-  // Rule 5: Do NOT call setPointerCapture on pointerdown — only capture once drag exceeds 6px
   const handlePointerDown = (e: React.PointerEvent<HTMLElement>) => {
     e.stopPropagation();
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     const dockEl = dockRef.current;
     if (!dockEl) return;
 
-    const pad = Math.round(getDockPadPx(dockEl));
-    const currentM = measureTab(activeTabId) || edgesRef.current;
+    const currentM = measureTab(activeTabId) || posRef.current;
     const dockRect = dockEl.getBoundingClientRect();
     const dockWidth = Math.round(dockRect.width);
-    const bubbleWidth =
-      currentM.width > 0
-        ? currentM.width
-        : Math.max(44, Math.round((dockWidth - pad * 2) / Math.max(1, getVisibleTabs().length)));
-    const minLeft = pad;
-    const maxLeft = Math.max(minLeft, dockWidth - bubbleWidth - pad);
+    const bubbleWidth = BUBBLE_LENS_WIDTH;
+    const minLeft = -2;
+    const maxLeft = Math.max(minLeft, dockWidth - bubbleWidth + 2);
     const clampedLeft = Math.min(maxLeft, Math.max(minLeft, currentM.left));
-    const baseRight = Math.max(pad, dockWidth - (clampedLeft + bubbleWidth));
-    const now = performance.now();
 
     dragRef.current = {
       active: true,
@@ -613,25 +560,31 @@ function DashboardBottomNavComponent() {
       initialLeft: clampedLeft,
       bubbleWidth,
       dockWidth,
-      pad,
       minLeft,
       maxLeft,
-      clampedLeft,
-      baseRight,
       moved: false,
-      lastClientX: e.clientX,
-      lastTime: now,
-      velocityX: 0,
     };
 
-    if (relaxTimerRef.current !== null) {
-      window.clearTimeout(relaxTimerRef.current);
-      relaxTimerRef.current = null;
+    // Pressing and holding scales the bubble to ~1.1
+    if (pressTimerRef.current !== null) {
+      window.clearTimeout(pressTimerRef.current);
     }
-
+    setIsPressed(true);
     setIsInstant(false);
-    setIsDragRelaxing(false);
     setDragHighlightId(activeTabId);
+
+    // If user presses directly on another tab, preview bubble sliding toward that tab while held
+    const pressedTab = findTabAtPoint(e.clientX, e.clientY);
+    if (pressedTab && pressedTab.id !== activeTabId) {
+      setDragHighlightId(pressedTab.id);
+      const targetPos = measureTab(pressedTab.id);
+      if (targetPos) {
+        triggerLiquidMove();
+        setPos(targetPos);
+        posRef.current = targetPos;
+        dragRef.current.initialLeft = targetPos.left;
+      }
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLElement>) => {
@@ -640,17 +593,9 @@ function DashboardBottomNavComponent() {
 
     const dx = e.clientX - ds.startClientX;
 
-    // After the finger has moved more than 6px horizontally, start drag & add "out"
     if (!ds.moved && Math.abs(dx) > 6) {
       ds.moved = true;
       setIsDragging(true);
-      if (outTimerRef.current !== null) {
-        window.clearTimeout(outTimerRef.current);
-        outTimerRef.current = null;
-      }
-      if (!prefersReducedMotion()) {
-        setIsOut(true);
-      }
       if (!ds.captured) {
         try {
           e.currentTarget.setPointerCapture(e.pointerId);
@@ -662,68 +607,14 @@ function DashboardBottomNavComponent() {
     }
 
     if (ds.moved) {
-      const now = performance.now();
-      const dt = Math.max(6, now - ds.lastTime);
-      const stepDx = e.clientX - ds.lastClientX;
-      const instantVx = stepDx / dt; // px per ms
-      ds.velocityX = ds.velocityX * 0.35 + instantVx * 0.65;
-      ds.lastClientX = e.clientX;
-      ds.lastTime = now;
-
       const clampedLeft = Math.min(ds.maxLeft, Math.max(ds.minLeft, Math.round(ds.initialLeft + dx)));
-      const baseRight = Math.max(ds.pad, ds.dockWidth - (clampedLeft + ds.bubbleWidth));
-      ds.clampedLeft = clampedLeft;
-      ds.baseRight = baseRight;
-
-      let nextLeft = clampedLeft;
-      let nextRight = baseRight;
-
-      if (!prefersReducedMotion()) {
-        // Stretch in the direction of travel, up to 34px extra, from finger speed
-        const stretchPx = Math.min(34, Math.round(Math.abs(ds.velocityX) * 24));
-        if (stretchPx > 0) {
-          if (ds.velocityX > 0) {
-            // Moving right: RIGHT edge is leading -> reduce right inset (clamped to pad)
-            nextRight = Math.max(ds.pad, baseRight - stretchPx);
-          } else if (ds.velocityX < 0) {
-            // Moving left: LEFT edge is leading -> reduce left inset (clamped to pad)
-            nextLeft = Math.max(ds.pad, clampedLeft - stretchPx);
-          }
-        }
-
-        if (isDragRelaxing) {
-          setIsDragRelaxing(false);
-        }
-
-        if (relaxTimerRef.current !== null) {
-          window.clearTimeout(relaxTimerRef.current);
-        }
-        // When finger slows down / pauses for ~90ms during drag, ease bubble back to its normal width
-        relaxTimerRef.current = window.setTimeout(() => {
-          if (!dragRef.current.active) return;
-          dragRef.current.velocityX = 0;
-          setIsDragRelaxing(true);
-          const relaxedEdges: BubbleEdges = {
-            left: dragRef.current.clampedLeft,
-            right: dragRef.current.baseRight,
-            width: dragRef.current.bubbleWidth,
-            dockWidth: dragRef.current.dockWidth,
-            pad: dragRef.current.pad,
-          };
-          setEdges(relaxedEdges);
-          edgesRef.current = relaxedEdges;
-        }, 90);
-      }
-
-      const nextEdges: BubbleEdges = {
-        left: nextLeft,
-        right: nextRight,
-        width: ds.dockWidth - nextLeft - nextRight,
+      const nextPos: BubblePosition = {
+        left: clampedLeft,
+        width: ds.bubbleWidth,
         dockWidth: ds.dockWidth,
-        pad: ds.pad,
       };
-      setEdges(nextEdges);
-      edgesRef.current = nextEdges;
+      setPos(nextPos);
+      posRef.current = nextPos;
 
       const underBubble = findNearestVisibleTab(clampedLeft + ds.bubbleWidth / 2);
       setDragHighlightId(underBubble.id);
@@ -742,13 +633,8 @@ function DashboardBottomNavComponent() {
     ds.captured = false;
     ds.moved = false;
 
-    if (relaxTimerRef.current !== null) {
-      window.clearTimeout(relaxTimerRef.current);
-      relaxTimerRef.current = null;
-    }
-
+    setIsPressed(false);
     setIsDragging(false);
-    setIsDragRelaxing(false);
     setDragHighlightId(null);
 
     if (wasCaptured) {
@@ -762,30 +648,32 @@ function DashboardBottomNavComponent() {
     }
 
     if (wasMoved) {
-      // Drag release: snap to nearest tab with liquid stretch, remove "out" after ~260ms, navigate ONCE
       const dx = e.clientX - ds.startClientX;
       const finalLeft = Math.min(ds.maxLeft, Math.max(ds.minLeft, ds.initialLeft + dx));
       const targetItem = findNearestVisibleTab(finalLeft + ds.bubbleWidth / 2);
       lastPointerNavTimeRef.current = performance.now();
-      navigateToTab(targetItem, 260);
+      navigateToTab(targetItem);
       return;
     }
 
-    // Tap release (!wasMoved on pointerup): resolve the tab whose bounding box contains the pointer
     if (e.type === 'pointerup') {
       const tappedTab = findTabAtPoint(e.clientX, e.clientY);
       if (tappedTab) {
         lastPointerNavTimeRef.current = performance.now();
-        navigateToTab(tappedTab, 520);
+        navigateToTab(tappedTab);
       }
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, index: number, item: DockTabItem) => {
+  const handleKeyDown = (
+    e: React.KeyboardEvent<HTMLButtonElement>,
+    index: number,
+    item: DockTabItem
+  ) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       e.stopPropagation();
-      navigateToTab(item, 520);
+      navigateToTab(item);
       return;
     }
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
@@ -797,12 +685,11 @@ function DashboardBottomNavComponent() {
     }
   };
 
-  const highlightedId = isDragging && dragHighlightId ? dragHighlightId : activeTabId;
+  const highlightedId =
+    (isDragging || isPressed) && dragHighlightId ? dragHighlightId : activeTabId;
 
-  // Fallback CSS percentages only before first layout measurement completes
   const activeIdx = Math.max(0, navItems.findIndex((i) => i.id === activeTabId));
-  const fallbackLeft = `calc(var(--pad) + ((100% - (var(--pad) * 2)) * ${activeIdx} / ${navItems.length}))`;
-  const fallbackRight = `calc(var(--pad) + ((100% - (var(--pad) * 2)) * ${navItems.length - 1 - activeIdx} / ${navItems.length}))`;
+  const fallbackLeft = `calc(((100% / ${navItems.length}) * ${activeIdx + 0.5}) - ${BUBBLE_LENS_WIDTH / 2}px)`;
 
   const stopNavPropagation = (e: React.SyntheticEvent) => {
     e.stopPropagation();
@@ -829,27 +716,25 @@ function DashboardBottomNavComponent() {
         shouldHideBottomNav ? 'pointer-events-none invisible hidden' : 'pointer-events-auto'
       }`}
     >
-      {/* (a) .plate: absolute, inset 0, fully rounded, the dock's glass */}
+      {/* (a) .plate: absolute, inset 0, fully rounded, the dock's liquid glass */}
       <div className="plate dark-surface-preserve" aria-hidden="true" />
 
-      {/* (b) .g: the bubble, absolute, z-index above .plate and below .tabs, pointer-events: none, with inner .gi */}
+      {/* (b) .g: 80px tall x ~76px wide glass lens bubble extending 8px above and below the 64px pill */}
       <div
         ref={bubbleRef}
         aria-hidden="true"
-        className={`g ${direction === 'left' ? 'dir-left' : 'dir-right'} ${
-          isInstant ? 'is-instant' : ''
-        } ${isDragging ? 'is-dragging' : ''} ${
-          isDragRelaxing ? 'is-drag-relaxing' : ''
-        } ${isOut ? 'out' : ''}`}
+        className={`g ${isInstant ? 'is-instant' : ''} ${
+          isDragging ? 'is-dragging' : ''
+        } ${isMoving ? 'is-moving' : ''} ${isPressed ? 'is-pressed out' : ''}`}
         style={{
-          left: edges.dockWidth > 0 ? `${edges.left}px` : fallbackLeft,
-          right: edges.dockWidth > 0 ? `${edges.right}px` : fallbackRight,
+          left: pos.dockWidth > 0 ? `${pos.left}px` : fallbackLeft,
+          width: `${pos.width || BUBBLE_LENS_WIDTH}px`,
         }}
       >
-        <div className={`gi dark-surface-preserve ${isOut ? 'out' : ''}`} />
+        <div className={`gi dark-surface-preserve ${isPressed ? 'out' : ''}`} />
       </div>
 
-      {/* (c) .tabs: the buttons, position relative, z-index above .g, flex with gap: var(--gap) */}
+      {/* (c) .tabs: the buttons, position relative, z-index above .g */}
       <div className="tabs">
         {navItems.map((item, index) => {
           const isHighlighted = item.id === highlightedId;
@@ -875,11 +760,10 @@ function DashboardBottomNavComponent() {
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                // Guard against double navigation when pointerup already handled the tap/drag
                 if (performance.now() - lastPointerNavTimeRef.current < 450) {
                   return;
                 }
-                navigateToTab(item, 520);
+                navigateToTab(item);
               }}
               className={`sdn-tab-btn pointer-events-auto ${isHighlighted ? 'is-active' : ''} ${
                 item.hidden ? 'is-hidden' : ''
@@ -888,13 +772,7 @@ function DashboardBottomNavComponent() {
               <span className="shrink-0 flex items-center justify-center relative pointer-events-none">
                 {item.icon}
                 {Boolean(item.badge) && (
-                  <span
-                    className={`absolute -top-1.5 -right-2 min-w-[16px] h-[16px] px-1 text-[10px] font-bold rounded-full flex items-center justify-center leading-none shadow-sm ${
-                      isHighlighted
-                        ? 'bg-white text-[#e11d2e] border border-black/20'
-                        : 'bg-[#e11d2e] text-white border border-black'
-                    }`}
-                  >
+                  <span className="sdn-tab-badge absolute -top-1.5 -right-2 min-w-[16px] h-[16px] px-1 text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
                     {Number(item.badge) > 9 ? '9+' : item.badge}
                   </span>
                 )}
@@ -913,7 +791,7 @@ function DashboardBottomNavComponent() {
         ? createPortal(navBarElement, document.body)
         : navBarElement}
 
-      {/* ─── REDESIGNED BOARDLY HAMBURGER MENU BOTTOM SHEET ───────────────── */}
+      {/* ─── FULL-SCREEN MENU PAGE (SLIDES IN FROM RIGHT) ───────────────── */}
       <HamburgerMenuSheet
         isOpen={isMenuOpen}
         onClose={() => setIsMenuOpen(false)}

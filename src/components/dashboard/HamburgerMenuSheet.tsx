@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -11,11 +11,13 @@ import {
   Shield,
   Sun,
   Moon,
-  Monitor,
   LogOut,
   ChevronRight,
-  Coins,
-  User,
+  ChevronDown,
+  ArrowLeft,
+  Pencil,
+  Search,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -76,19 +78,28 @@ export interface DashboardMenuContentProps {
   onNavigate: (target: string) => void;
   onOpenProfile: () => void;
   onSignOut: () => void;
-  /** Show coin balance next to Boardly Store ONLY when the top navbar is hidden */
   showCoinBalanceInStore?: boolean;
+  searchQuery?: string;
+  hideProfileHeader?: boolean;
 }
 
-/**
- * Shared Nothing OS + Glassmorphism Menu Content
- * Used identically inside both the Desktop Avatar Dropdown and the Mobile Hamburger Bottom Sheet.
- */
+interface MenuRowDefinition {
+  id: string;
+  label: string;
+  subtitle?: string;
+  keywords: string;
+  icon: React.ReactNode;
+  active?: boolean;
+  onClick?: () => void;
+  rightBadge?: React.ReactNode;
+}
+
 export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   onNavigate,
   onOpenProfile,
   onSignOut,
-  showCoinBalanceInStore = false,
+  searchQuery = '',
+  hideProfileHeader = false,
 }) => {
   const location = useLocation();
   const { user, profileLoading, isAdmin, isGuest } = useAuth();
@@ -96,8 +107,8 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   const effectivePlan = useEffectivePlan();
   const { balance: kobanBalance, equipped } = useWallet();
   const { themeSetting, resolvedTheme, setTheme } = useTheme();
+  const { effectiveProBadge } = useProBadge();
 
-  // Strict role confirmation (default role = null until confirmed)
   const confirmedRole: string | null =
     !profileLoading && user && profile?.role ? profile.role : null;
 
@@ -128,9 +139,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   );
 
   const isPro = Boolean((effectivePlan.isUnlimited || isConfirmedAdmin) && !isGuest);
-  const { effectiveProBadge } = useProBadge();
 
-  // Single Role/Plan badge (shown ONCE in the profile card)
   const singleBadgeLabel = !user || isGuest
     ? 'Guest'
     : isConfirmedSuperAdmin
@@ -143,9 +152,6 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
     ? 'Pro'
     : 'Free';
 
-  const isBadgeAccent = Boolean(isConfirmedAdmin || isPro);
-
-  // Full display name & @handle
   const rawName =
     profile?.nickname || profile?.displayName || user?.displayName || 'Student';
   const displayName = user
@@ -155,7 +161,6 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
     ? `@${profile?.username || profile?.shortId || user.uid.slice(0, 6)}`
     : '@guest';
 
-  // Active route checks for consistent subtle red tint + red label
   const pathname = location.pathname;
   const commonsTarget = user ? '/dashboard/commons' : '/commons';
   const isCommonsActive =
@@ -174,379 +179,341 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
     pathname.startsWith('/dashboard/ambassador');
   const isAdminActive = pathname.startsWith('/admin');
 
+  const q = searchQuery.trim().toLowerCase();
+
+  // Group 1: Boardly Commons, Grand Line Mock Tests, Boardly Store (with coin count badge), Leaderboard, Rewards (subtitle "Daily Check-in & Referrals")
+  const group1Rows = useMemo<MenuRowDefinition[]>(() => {
+    const rows: MenuRowDefinition[] = [
+      {
+        id: 'commons',
+        label: 'Boardly Commons',
+        keywords: 'boardly commons community feed posts discussions',
+        icon: <Compass size={18} strokeWidth={1.9} />,
+        active: isCommonsActive,
+        onClick: () => onNavigate(commonsTarget),
+      },
+      {
+        id: 'grand-line',
+        label: 'Grand Line Mock Tests',
+        keywords: 'grand line mock tests exams practice drills',
+        icon: <Award size={18} strokeWidth={1.9} />,
+        active: isGrandLineActive,
+        onClick: () => onNavigate('/grand-line'),
+      },
+      {
+        id: 'store',
+        label: 'Boardly Store',
+        keywords: 'boardly store shop kobans coins cosmetics frames avatars',
+        icon: <ShoppingBag size={18} strokeWidth={1.9} />,
+        active: isStoreActive,
+        onClick: () => onNavigate('/store'),
+        rightBadge: (
+          <span className="fsm-coin-badge" title="Kobans balance">
+            <KobanIcon size={14} decorative />
+            <span>{(kobanBalance ?? 0).toLocaleString()}</span>
+          </span>
+        ),
+      },
+      {
+        id: 'leaderboard',
+        label: 'Leaderboard',
+        keywords: 'leaderboard rankings top scorers standings',
+        icon: <Trophy size={18} strokeWidth={1.9} />,
+        active: isLeaderboardActive,
+        onClick: () => onNavigate('/leaderboard'),
+      },
+      {
+        id: 'rewards',
+        label: 'Rewards',
+        subtitle: 'Daily Check-in & Referrals',
+        keywords: 'rewards daily check-in referrals kobans streaks bonus',
+        icon: <Sparkles size={18} strokeWidth={1.9} />,
+        active: isRewardsActive,
+        onClick: () => onNavigate('/rewards'),
+      },
+    ];
+    if (!q) return rows;
+    return rows.filter(
+      (r) =>
+        r.label.toLowerCase().includes(q) ||
+        (r.subtitle && r.subtitle.toLowerCase().includes(q)) ||
+        r.keywords.includes(q)
+    );
+  }, [
+    isCommonsActive,
+    commonsTarget,
+    isGrandLineActive,
+    isStoreActive,
+    kobanBalance,
+    isLeaderboardActive,
+    isRewardsActive,
+    onNavigate,
+    q,
+  ]);
+
+  // Group 2: Settings, Superadmin Portal (super admins / admins only) + Captain Deck (for captains)
+  const group2Rows = useMemo<MenuRowDefinition[]>(() => {
+    const rows: MenuRowDefinition[] = [
+      {
+        id: 'settings',
+        label: 'Settings',
+        keywords: 'settings account preferences security password profile pro badge',
+        icon: <Settings size={18} strokeWidth={1.9} />,
+        active: isSettingsActive,
+        onClick: () => onNavigate('/settings'),
+      },
+    ];
+
+    if (isApprovedCaptain) {
+      rows.push({
+        id: 'captain-deck',
+        label: 'Captain Deck',
+        keywords: 'captain deck ambassador referrals tests',
+        icon: <Award size={18} strokeWidth={1.9} />,
+        active: isCaptainActive,
+        onClick: () => onNavigate('/dashboard/captain'),
+      });
+    }
+
+    if (isConfirmedAdmin) {
+      rows.push({
+        id: 'superadmin-portal',
+        label: isConfirmedSuperAdmin ? 'Superadmin Portal' : 'Admin Portal',
+        keywords: 'superadmin admin portal dashboard moderation users',
+        icon: <Shield size={18} strokeWidth={1.9} />,
+        active: isAdminActive,
+        onClick: () => onNavigate('/admin'),
+      });
+    }
+
+    if (!q) return rows;
+    return rows.filter(
+      (r) =>
+        r.label.toLowerCase().includes(q) ||
+        (r.subtitle && r.subtitle.toLowerCase().includes(q)) ||
+        r.keywords.includes(q)
+    );
+  }, [
+    isSettingsActive,
+    isApprovedCaptain,
+    isCaptainActive,
+    isConfirmedAdmin,
+    isConfirmedSuperAdmin,
+    isAdminActive,
+    onNavigate,
+    q,
+  ]);
+
+  // Group 3: Appearance with Light / Dark / System dropdown
+  const showAppearanceGroup = useMemo(() => {
+    if (!q) return true;
+    return 'appearance theme light dark system mode color'.includes(q);
+  }, [q]);
+
+  // Group 4: Sign out + v1.0.0
+  const showSignOutGroup = useMemo(() => {
+    if (!q) return true;
+    return 'sign out logout log out exit version v1.0.0'.includes(q);
+  }, [q]);
+
+  const noResults =
+    q.length > 0 &&
+    group1Rows.length === 0 &&
+    group2Rows.length === 0 &&
+    !showAppearanceGroup &&
+    !showSignOutGroup;
+
   return (
-    <div className="space-y-2.5">
-      {/* 1. Top: Profile Card (avatar with frame, dot-matrix name, @username, role badge) */}
-      <button
-        type="button"
-        onClick={onOpenProfile}
-        className="w-full min-h-[64px] p-3 text-left flex items-center justify-between gap-3 more-glass-card more-glass-card--interactive group"
-      >
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div className="shrink-0">
+    <div className="space-y-4">
+      {/* Centered 88px Avatar + Edit Pencil Badge, Name, @username, Role Pill */}
+      {!hideProfileHeader && (
+        <div className="flex flex-col items-center text-center pt-1 pb-2">
+          <button
+            type="button"
+            onClick={onOpenProfile}
+            className="relative inline-flex items-center justify-center rounded-full cursor-pointer group focus:outline-none"
+            aria-label="Edit profile"
+          >
             <BoardlyAvatar
               uid={user?.uid}
               name={displayName}
               avatar={(profile as Record<string, unknown> | null)?.avatar as string | null}
               equippedAvatar={equipped?.avatar}
               frame={equipped?.frame}
-              size={48}
+              size={88}
             />
-          </div>
+            <span className="fsm-edit-badge transition-transform duration-150 group-hover:scale-105 group-active:scale-95">
+              <Pencil size={13} strokeWidth={2.2} />
+            </span>
+          </button>
 
-          <div className="min-w-0 flex-1">
-            <div
-              className="font-dot text-[15px] leading-snug line-clamp-2 break-words whitespace-normal"
-              style={{ color: 'var(--text)' }}
+          <button
+            type="button"
+            onClick={onOpenProfile}
+            className="mt-3 flex flex-col items-center text-center cursor-pointer focus:outline-none"
+          >
+            <span
+              className="font-dot text-xl font-bold leading-tight tracking-tight"
+              style={{ color: 'var(--menu-text)' }}
             >
               {displayName}
-            </div>
-
-            <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-              <span
-                className="text-xs font-medium"
-                style={{ color: 'var(--text-muted)' }}
-              >
-                {handleText}
-              </span>
-
-              {singleBadgeLabel === 'Pro' ? (
-                effectiveProBadge ? (
-                  <ProBadge design={effectiveProBadge} size="sm" animated priority />
-                ) : null
-              ) : (
-                <>
-                  <span
-                    className={`more-glass-pill ${
-                      isBadgeAccent ? 'more-glass-pill--accent' : ''
-                    }`}
-                  >
-                    {singleBadgeLabel}
-                  </span>
-                  {isPro && effectiveProBadge && (
-                    <ProBadge design={effectiveProBadge} size="sm" animated priority />
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <ChevronRight
-          size={17}
-          strokeWidth={1.75}
-          style={{ color: 'var(--text-muted)' }}
-          className="shrink-0 transition-transform duration-150 group-hover:translate-x-0.5"
-        />
-      </button>
-
-      {/* 2. Clean 2-Column Grid of Main Destinations */}
-      <div className="grid grid-cols-2 gap-2">
-        {/* Tile 1: Boardly Commons */}
-        <button
-          type="button"
-          onClick={() => onNavigate(commonsTarget)}
-          className={`more-glass-tile ${
-            isCommonsActive ? 'more-glass-tile--active' : ''
-          }`}
-        >
-          <span
-            className={`more-icon-circle ${
-              isCommonsActive ? 'more-icon-circle--accent' : ''
-            }`}
-          >
-            <Compass size={17} strokeWidth={1.75} />
-          </span>
-          <span className="text-[13px] font-medium leading-tight truncate">
-            Boardly Commons
-          </span>
-        </button>
-
-        {/* Tile 2: Grand Line (small muted secondary label: Mock Tests) */}
-        <button
-          type="button"
-          onClick={() => onNavigate('/grand-line')}
-          className={`more-glass-tile ${
-            isGrandLineActive ? 'more-glass-tile--active' : ''
-          }`}
-        >
-          <span
-            className={`more-icon-circle ${
-              isGrandLineActive ? 'more-icon-circle--accent' : ''
-            }`}
-          >
-            <Award size={17} strokeWidth={1.75} />
-          </span>
-          <div className="min-w-0 flex flex-col items-start">
-            <span className="text-[13px] font-medium leading-tight truncate max-w-full">
-              Grand Line
             </span>
             <span
-              className="text-[11px] font-normal leading-tight mt-0.5 truncate max-w-full"
-              style={{ color: 'var(--text-muted)' }}
+              className="mt-0.5 text-sm font-medium"
+              style={{ color: 'var(--menu-subtext)' }}
             >
-              Mock Tests
+              {handleText}
             </span>
-          </div>
-        </button>
+          </button>
 
-        {/* Tile 3: Boardly Store (coin balance shown here ONLY if top navbar is hidden) */}
-        <button
-          type="button"
-          onClick={() => onNavigate('/store')}
-          className={`more-glass-tile ${
-            isStoreActive ? 'more-glass-tile--active' : ''
-          }`}
-        >
-          <span
-            className={`more-icon-circle ${
-              isStoreActive ? 'more-icon-circle--accent' : ''
-            }`}
-          >
-            <ShoppingBag size={17} strokeWidth={1.75} />
-          </span>
-          <div className="min-w-0 flex-1 flex items-center justify-between gap-1.5">
-            <span className="text-[13px] font-medium leading-tight truncate">
-              Boardly Store
-            </span>
-            {showCoinBalanceInStore && (
-              <span
-                className="more-glass-pill tabular-nums shrink-0"
-                title="Kobans balance"
-              >
-                <KobanIcon size={13} decorative />
-                <span>{(kobanBalance ?? 0).toLocaleString()}</span>
-              </span>
+          <div className="mt-2.5 flex items-center justify-center gap-2 flex-wrap">
+            <span className="fsm-role-pill">{singleBadgeLabel}</span>
+            {isPro && effectiveProBadge && (
+              <ProBadge design={effectiveProBadge} size="sm" animated priority />
             )}
           </div>
-        </button>
-
-        {/* Tile 4: Leaderboard */}
-        <button
-          type="button"
-          onClick={() => onNavigate('/leaderboard')}
-          className={`more-glass-tile ${
-            isLeaderboardActive ? 'more-glass-tile--active' : ''
-          }`}
-        >
-          <span
-            className={`more-icon-circle ${
-              isLeaderboardActive ? 'more-icon-circle--accent' : ''
-            }`}
-          >
-            <Trophy size={17} strokeWidth={1.75} />
-          </span>
-          <span className="text-[13px] font-medium leading-tight truncate">
-            Leaderboard
-          </span>
-        </button>
-
-        {/* Tile 5: Rewards (full-width tile, small muted secondary label: Daily Check-in & Referrals) */}
-        <button
-          type="button"
-          onClick={() => onNavigate('/rewards')}
-          className={`more-glass-tile col-span-2 ${
-            isRewardsActive ? 'more-glass-tile--active' : ''
-          }`}
-        >
-          <span
-            className={`more-icon-circle ${
-              isRewardsActive ? 'more-icon-circle--accent' : ''
-            }`}
-          >
-            <Sparkles size={17} strokeWidth={1.75} />
-          </span>
-          <div className="min-w-0 flex flex-1 items-center justify-between gap-2">
-            <span className="text-[13px] font-medium leading-tight truncate">
-              Rewards
-            </span>
-            <span
-              className="text-[11px] font-normal leading-tight truncate"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              Daily Check-in &amp; Referrals
-            </span>
-          </div>
-        </button>
-      </div>
-
-      {/* 3. Settings, Captain Deck & Admin/Superadmin Portal (Full-width rows with chevrons, uniform height & padding) */}
-      <div
-        className="more-glass-card overflow-hidden divide-y"
-        style={{ borderColor: 'var(--glass-menu-item-border)' }}
-      >
-        {/* Captain Deck Row (for approved Nakama Captains) */}
-        {isApprovedCaptain && (
-          <button
-            type="button"
-            onClick={() => onNavigate('/dashboard/captain')}
-            className={`more-glass-row ${
-              isCaptainActive ? 'more-glass-row--active' : ''
-            }`}
-          >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <span
-                className={`more-icon-circle ${
-                  isCaptainActive ? 'more-icon-circle--accent' : ''
-                }`}
-              >
-                <Award size={17} strokeWidth={1.75} />
-              </span>
-              <span className="text-[13px] font-medium leading-tight truncate">
-                Captain Deck
-              </span>
-            </div>
-            <ChevronRight
-              size={16}
-              strokeWidth={1.75}
-              style={{ color: 'var(--text-muted)' }}
-              className="shrink-0"
-            />
-          </button>
-        )}
-
-        {/* Settings Row */}
-        <button
-          type="button"
-          onClick={() => onNavigate('/settings')}
-          className={`more-glass-row ${
-            isSettingsActive ? 'more-glass-row--active' : ''
-          }`}
-          style={isApprovedCaptain ? { borderTopColor: 'var(--glass-menu-divider)' } : undefined}
-        >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span
-              className={`more-icon-circle ${
-                isSettingsActive ? 'more-icon-circle--accent' : ''
-              }`}
-            >
-              <Settings size={17} strokeWidth={1.75} />
-            </span>
-            <span className="text-[13px] font-medium leading-tight truncate">
-              Settings
-            </span>
-          </div>
-          <ChevronRight
-            size={16}
-            strokeWidth={1.75}
-            style={{ color: 'var(--text-muted)' }}
-            className="shrink-0"
-          />
-        </button>
-
-        {/* Admin Portal / Superadmin Portal Row (for admins only) */}
-        {isConfirmedAdmin && (
-          <button
-            type="button"
-            onClick={() => onNavigate('/admin')}
-            className={`more-glass-row ${
-              isAdminActive ? 'more-glass-row--active' : ''
-            }`}
-            style={{ borderTopColor: 'var(--glass-menu-divider)' }}
-          >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <span
-                className={`more-icon-circle ${
-                  isAdminActive ? 'more-icon-circle--accent' : ''
-                }`}
-              >
-                <Shield size={17} strokeWidth={1.75} />
-              </span>
-              <span className="text-[13px] font-medium leading-tight truncate">
-                {isConfirmedSuperAdmin ? 'Superadmin Portal' : 'Admin Portal'}
-              </span>
-            </div>
-            <ChevronRight
-              size={16}
-              strokeWidth={1.75}
-              style={{ color: 'var(--text-muted)' }}
-              className="shrink-0"
-            />
-          </button>
-        )}
-      </div>
-
-      {/* 4. Theme Switch (Light, Dark, System) as a Segmented Control */}
-      <div className="more-glass-card min-h-[48px] px-3 py-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <span className="more-icon-circle">
-            {resolvedTheme === 'dark' ? (
-              <Moon size={17} strokeWidth={1.75} />
-            ) : (
-              <Sun size={17} strokeWidth={1.75} />
-            )}
-          </span>
-          <span className="text-[13px] font-medium leading-tight">
-            Theme
-          </span>
         </div>
+      )}
 
+      {noResults && (
         <div
-          className="more-theme-segmented shrink-0 select-none"
-          role="radiogroup"
-          aria-label="Theme preference"
+          className="fsm-card p-6 text-center text-sm"
+          style={{ color: 'var(--menu-subtext)' }}
         >
-          {(
-            [
-              { id: 'light', label: 'Light', Icon: Sun },
-              { id: 'dark', label: 'Dark', Icon: Moon },
-              { id: 'system', label: 'System', Icon: Monitor },
-            ] as { id: ThemeSetting; label: string; Icon: typeof Sun }[]
-          ).map(({ id, label, Icon }) => {
-            const isActive = themeSetting === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                role="radio"
-                aria-checked={isActive}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setTheme(id);
-                }}
-                className={`more-theme-segment ${
-                  isActive ? 'more-theme-segment--active' : ''
-                }`}
-              >
-                <Icon size={13} strokeWidth={1.75} />
-                <span>{label}</span>
-              </button>
-            );
-          })}
+          No menu items matching &ldquo;{searchQuery.trim()}&rdquo;
         </div>
-      </div>
+      )}
 
-      {/* 5. Footer: Divider + Sign out on the left and Version number on the right */}
-      <div
-        className="pt-2 mt-1 border-t flex items-center justify-between px-1"
-        style={{ borderTopColor: 'var(--glass-menu-divider)' }}
-      >
-        <button
-          type="button"
-          data-menu-item="sign-out"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (user) {
-              onSignOut();
-            } else {
-              onNavigate('/login');
-            }
-          }}
-          className="min-h-[44px] px-2.5 py-2 -ml-1.5 rounded-xl inline-flex items-center gap-2 text-[13px] font-medium transition-colors duration-150 hover:bg-[var(--accent-soft)] active:scale-[0.98] cursor-pointer"
-          style={{ color: 'var(--accent)' }}
-        >
-          <LogOut size={16} strokeWidth={1.75} />
-          <span>Sign out</span>
-        </button>
+      {/* Group 1: Boardly Commons, Grand Line Mock Tests, Boardly Store (with coin badge), Leaderboard, Rewards */}
+      {group1Rows.length > 0 && (
+        <div className="fsm-card">
+          {group1Rows.map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              onClick={row.onClick}
+              className={`fsm-row ${row.active ? 'fsm-row--active' : ''}`}
+            >
+              <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                <span className="fsm-row-icon">{row.icon}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="fsm-row-label truncate">{row.label}</div>
+                  {row.subtitle && (
+                    <div className="fsm-row-subtitle truncate">{row.subtitle}</div>
+                  )}
+                </div>
+              </div>
 
-        <span
-          className="text-[11px] font-mono tabular-nums font-medium select-none pr-1"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          {APP_VERSION}
-        </span>
-      </div>
+              <div className="flex items-center gap-2.5 shrink-0">
+                {row.rightBadge}
+                <ChevronRight size={18} strokeWidth={2} className="fsm-row-chevron" />
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Group 2: Settings, Superadmin Portal (super admins / admins only) */}
+      {group2Rows.length > 0 && (
+        <div className="fsm-card">
+          {group2Rows.map((row) => (
+            <button
+              key={row.id}
+              type="button"
+              onClick={row.onClick}
+              className={`fsm-row ${row.active ? 'fsm-row--active' : ''}`}
+            >
+              <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                <span className="fsm-row-icon">{row.icon}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="fsm-row-label truncate">{row.label}</div>
+                  {row.subtitle && (
+                    <div className="fsm-row-subtitle truncate">{row.subtitle}</div>
+                  )}
+                </div>
+              </div>
+
+              <ChevronRight size={18} strokeWidth={2} className="fsm-row-chevron" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Group 3: Appearance with Light / Dark / System dropdown */}
+      {showAppearanceGroup && (
+        <div className="fsm-card">
+          <div className="fsm-row" style={{ cursor: 'default' }}>
+            <div className="flex items-center gap-3.5 min-w-0 flex-1">
+              <span className="fsm-row-icon">
+                {resolvedTheme === 'dark' ? (
+                  <Moon size={18} strokeWidth={1.9} />
+                ) : (
+                  <Sun size={18} strokeWidth={1.9} />
+                )}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="fsm-row-label truncate">Appearance</div>
+              </div>
+            </div>
+
+            <div className="fsm-appearance-select-wrap shrink-0">
+              <select
+                aria-label="Appearance"
+                value={themeSetting}
+                onChange={(e) => setTheme(e.target.value as ThemeSetting)}
+                className="fsm-appearance-select"
+              >
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="system">System</option>
+              </select>
+              <ChevronDown
+                size={15}
+                strokeWidth={2}
+                className="pointer-events-none absolute right-2.5"
+                style={{ color: 'var(--menu-subtext)' }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Last: Separate card with red "Sign out" row and "v1.0.0" label */}
+      {showSignOutGroup && (
+        <div className="fsm-card">
+          <button
+            type="button"
+            data-menu-item="sign-out"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (user) {
+                onSignOut();
+              } else {
+                onNavigate('/login');
+              }
+            }}
+            className="fsm-row fsm-row--danger"
+          >
+            <div className="flex items-center gap-3.5 min-w-0 flex-1">
+              <span className="fsm-row-icon">
+                <LogOut size={18} strokeWidth={1.9} />
+              </span>
+              <span className="fsm-row-label truncate">Sign out</span>
+            </div>
+
+            <div className="flex items-center gap-2.5 shrink-0">
+              <span
+                className="text-xs font-mono tabular-nums font-medium"
+                style={{ color: 'var(--menu-subtext)' }}
+              >
+                {APP_VERSION}
+              </span>
+              <ChevronRight size={18} strokeWidth={2} className="fsm-row-chevron" />
+            </div>
+          </button>
+        </div>
+      )}
     </div>
   );
 };
@@ -560,19 +527,21 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
   const { user, signOutUser } = useAuth();
   const { openProfile } = useProfileModal();
 
-  // Animation & sign-out states
   const [isRendered, setIsRendered] = useState(isOpen);
   const [isVisible, setIsVisible] = useState(isOpen);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Swipe-to-dismiss & focus trap refs
+  // Swipe-back (left-to-right horizontal swipe) & focus trap refs
+  const touchStartX = useRef<number>(0);
   const touchStartY = useRef<number>(0);
-  const touchDeltaY = useRef<number>(0);
-  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const touchDeltaX = useRef<number>(0);
+  const isSwipingBack = useRef<boolean>(false);
+  const pageRef = useRef<HTMLDivElement | null>(null);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
   const pushedHistoryRef = useRef<boolean>(false);
 
-  // Lock body scroll while sheet is open
+  // Lock body scroll while full-screen menu is open
   useEffect(() => {
     if (typeof document === 'undefined') return;
     if (isOpen) {
@@ -588,30 +557,29 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
     }
   }, [isOpen]);
 
-  // Open (240ms ease-out) & close (200ms) lifecycle
+  // Smooth slide-in from right on open & slide-out to right on close
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     if (isOpen) {
       previousActiveElementRef.current = document.activeElement as HTMLElement | null;
+      setSearchQuery('');
       setIsRendered(true);
-      setIsVisible(true);
       requestAnimationFrame(() => {
-        const firstFocusable = sheetRef.current?.querySelector<HTMLElement>(
-          'button, [href], [tabindex]:not([tabindex="-1"])'
-        );
-        firstFocusable?.focus({ preventScroll: true });
+        requestAnimationFrame(() => {
+          setIsVisible(true);
+        });
       });
     } else if (!isSigningOut) {
       setIsVisible(false);
       timer = setTimeout(() => {
         setIsRendered(false);
         previousActiveElementRef.current?.focus?.({ preventScroll: true });
-      }, 200);
+      }, 320);
     }
     return () => clearTimeout(timer);
   }, [isOpen, isSigningOut]);
 
-  // Android back button support via history popstate
+  // Phone's back button support via history popstate
   useEffect(() => {
     if (!isOpen) return;
 
@@ -638,7 +606,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
     };
   }, [isOpen, onClose]);
 
-  const dismissSheet = useCallback(() => {
+  const dismissMenu = useCallback(() => {
     if (pushedHistoryRef.current) {
       pushedHistoryRef.current = false;
       try {
@@ -650,21 +618,21 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
     onClose();
   }, [onClose]);
 
-  // Escape key & Tab focus trap inside the sheet
+  // Escape key & Tab focus trap inside the page
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        dismissSheet();
+        dismissMenu();
         return;
       }
 
-      if (e.key === 'Tab' && sheetRef.current) {
+      if (e.key === 'Tab' && pageRef.current) {
         const focusables = Array.from(
-          sheetRef.current.querySelectorAll<HTMLElement>(
-            'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+          pageRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), select:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
           )
         );
         if (focusables.length === 0) return;
@@ -683,36 +651,50 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, dismissSheet]);
+  }, [isOpen, dismissMenu]);
 
-  // Touch handlers for swipe-down to close
+  // Horizontal swipe-back (left-to-right) to close
   const handleTouchStart = (e: React.TouchEvent) => {
     e.stopPropagation();
+    touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
-    touchDeltaY.current = 0;
+    touchDeltaX.current = 0;
+    isSwipingBack.current = false;
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
     e.stopPropagation();
-    const currentY = e.touches[0].clientY;
-    const delta = currentY - touchStartY.current;
-    if (delta > 0) {
-      touchDeltaY.current = delta;
-      if (sheetRef.current) {
-        sheetRef.current.style.transform = `translateY(${Math.min(delta * 0.75, 200)}px)`;
+    const dx = e.touches[0].clientX - touchStartX.current;
+    const dy = e.touches[0].clientY - touchStartY.current;
+
+    if (!isSwipingBack.current) {
+      if (dx > 14 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+        isSwipingBack.current = true;
+      } else {
+        return;
+      }
+    }
+
+    if (isSwipingBack.current && dx > 0) {
+      touchDeltaX.current = dx;
+      if (pageRef.current) {
+        pageRef.current.style.transition = 'none';
+        pageRef.current.style.transform = `translate3d(${dx}px, 0, 0)`;
       }
     }
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
     e.stopPropagation();
-    if (sheetRef.current) {
-      sheetRef.current.style.transform = '';
+    if (pageRef.current) {
+      pageRef.current.style.transition = '';
+      pageRef.current.style.transform = '';
     }
-    if (touchDeltaY.current > 60) {
-      dismissSheet();
+    if (isSwipingBack.current && touchDeltaX.current > 72) {
+      dismissMenu();
     }
-    touchDeltaY.current = 0;
+    touchDeltaX.current = 0;
+    isSwipingBack.current = false;
   };
 
   // Navigate & close
@@ -748,10 +730,8 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
     return <LineLoader context="login" variant="page" immediate />;
   }
 
-  // Render synchronously on the same frame when isOpen becomes true so backdrop blocks any click-through
   if (!isOpen && !isRendered) return null;
 
-  // Coin balance is shown next to Boardly Store ONLY when DashboardTopBar is hidden on the current route
   const isHeaderVisible =
     !location.pathname.startsWith('/dashboard/profile') &&
     !location.pathname.startsWith('/dashboard/commons') &&
@@ -770,100 +750,90 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
     }
   };
 
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dismissSheet();
-  };
-
   const stopAllPropagation = (e: React.SyntheticEvent) => {
     e.stopPropagation();
   };
 
-  const sheetContent = (
+  const pageContent = (
     <div
+      ref={pageRef}
       data-hamburger-sheet="true"
-      style={{ zIndex: 9999, pointerEvents: 'auto' }}
-      className="fixed inset-0 z-[9999] pointer-events-auto flex items-end sm:items-center justify-center p-0 sm:p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="More menu"
+      aria-label="Menu"
       onClick={stopAllPropagation}
       onMouseDown={stopAllPropagation}
       onPointerDown={stopAllPropagation}
       onPointerUp={stopAllPropagation}
-      onTouchStart={stopAllPropagation}
-      onTouchEnd={stopAllPropagation}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      className={`fsm-page ${isVisible ? 'fsm-page--open' : 'fsm-page--closed'}`}
     >
-      {/* Dimmed, blurred backdrop overlay */}
-      <div
-        data-hamburger-backdrop="true"
-        style={{ pointerEvents: 'auto' }}
-        onClick={handleBackdropClick}
-        onMouseDown={stopAllPropagation}
-        onPointerDown={stopAllPropagation}
-        onPointerUp={stopAllPropagation}
-        onTouchStart={stopAllPropagation}
-        onTouchEnd={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          dismissSheet();
-        }}
-        className={`fixed inset-0 z-0 pointer-events-auto cursor-pointer bg-black/45 backdrop-blur-sm more-sheet-backdrop ${
-          isOpen || isVisible ? 'opacity-100' : 'opacity-0'
-        }`}
-        aria-hidden="true"
-      />
+      {/* Scrollable full-screen content area */}
+      <div className="fsm-scroll-area">
+        <div className="fsm-container">
+          {/* Top-left 44px circular liquid-glass back-arrow button */}
+          <div className="flex items-center justify-between mb-1">
+            <button
+              type="button"
+              onClick={dismissMenu}
+              className="fsm-back-btn"
+              aria-label="Back"
+            >
+              <ArrowLeft size={20} strokeWidth={2.1} />
+            </button>
+          </div>
 
-      {/* Glassmorphic Bottom Sheet (max 85% screen height) */}
-      <div
-        ref={sheetRef}
-        style={{ pointerEvents: 'auto' }}
-        onClick={stopAllPropagation}
-        onMouseDown={stopAllPropagation}
-        onPointerDown={stopAllPropagation}
-        onPointerUp={stopAllPropagation}
-        onTouchStart={stopAllPropagation}
-        onTouchEnd={stopAllPropagation}
-        className={`relative z-10 pointer-events-auto glass more-sheet-panel allow-backdrop-blur ${
-          isOpen || isVisible ? 'more-sheet-panel--open' : 'more-sheet-panel--closed'
-        }`}
-      >
-        {/* Drag Handle */}
-        <div
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            dismissSheet();
-          }}
-          className="pt-3 pb-2 flex justify-center cursor-grab active:cursor-grabbing select-none shrink-0"
-          aria-label="Drag down or tap to close menu"
-        >
-          <div
-            className="w-10 h-1 rounded-full"
-            style={{ backgroundColor: 'var(--border-strong)' }}
-          />
-        </div>
-
-        {/* Scrollable Sheet Content with safe-area bottom inset */}
-        <div className="flex-1 overflow-y-auto overscroll-contain px-4 pt-1 pb-[calc(20px+env(safe-area-inset-bottom,0px))]">
           <DashboardMenuContent
             onNavigate={handleNav}
             onOpenProfile={handleOpenProfile}
             onSignOut={handleSignOut}
             showCoinBalanceInStore={showCoinBalanceInStore}
+            searchQuery={searchQuery}
           />
+        </div>
+      </div>
+
+      {/* Floating pill-shaped liquid-glass "Search menu" bar at the bottom */}
+      <div className="fsm-search-wrap">
+        <div className="fsm-search-pill">
+          <Search
+            size={18}
+            strokeWidth={2}
+            className="shrink-0"
+            style={{ color: 'var(--menu-subtext)' }}
+          />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search menu"
+            aria-label="Search menu"
+            className="fsm-search-input"
+          />
+          {searchQuery.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+              className="w-6 h-6 rounded-full flex items-center justify-center cursor-pointer"
+              style={{
+                backgroundColor: 'var(--menu-icon-bg)',
+                color: 'var(--menu-subtext)',
+              }}
+            >
+              <X size={13} strokeWidth={2.2} />
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
 
   return typeof document !== 'undefined'
-    ? createPortal(sheetContent, document.body)
-    : sheetContent;
+    ? createPortal(pageContent, document.body)
+    : pageContent;
 };
 
 export default HamburgerMenuSheet;
