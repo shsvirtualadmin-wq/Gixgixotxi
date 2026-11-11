@@ -1,1350 +1,2155 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo, useRef, type FormEvent, type TouchEvent } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import {
-  LEGAL_LAST_UPDATED_LABEL,
-  LEGAL_VERSION_DISPLAY,
-} from '@/constants/legalConsent';
-import {
-  doc,
-  setDoc,
-  runTransaction,
-  serverTimestamp,
-} from 'firebase/firestore';
-import {
-  EmailAuthProvider,
-  linkWithCredential,
-  reauthenticateWithCredential,
-  updatePassword,
-  updateProfile as firebaseUpdateProfile,
-} from 'firebase/auth';
-import { db, auth } from '@/lib/firebase';
-import { useAuth } from '@/contexts/AuthContext';
-import { useUserProfile, seedSharedUserProfileCache } from '@/hooks/useUserProfile';
-import {
-  syncProfileToD1Backend,
-  broadcastPublicProfileUpdate,
-  invalidatePublicProfileCache,
-} from '@/services/publicProfileService';
-import { invalidateProfileMemoryCache } from '@/components/profile/ProfileView';
-import { invalidateCommonsPostsCache } from '@/services/commonsService';
-import { useEffectivePlan } from '@/hooks/useEffectivePlan';
-import { PLANS } from '@/config/plans';
-import { PageMeta } from '@/components/ui/PageMeta';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
-import {
-  Sparkles,
-  LogOut,
-  Check,
-  AlertCircle,
-  ArrowRight,
-  User as UserIcon,
-  Mail,
-  Shield,
+  User,
   Lock,
-  Send,
-  CheckCircle2,
-  AtSign,
+  Trash2,
   Sun,
   Moon,
-  Trash2,
+  Monitor,
+  Bell,
+  Crown,
+  Check,
+  AlertCircle,
+  Send,
+  ShieldAlert,
+  Sparkles,
+  FileText,
+  ExternalLink,
+  Mail,
+  LogOut,
+  AtSign,
+  Loader2,
+  UserPlus,
+  Zap,
+  ArrowLeft,
+  ChevronRight,
+  Search,
+  X,
+  Pencil,
+  Shield,
+  Coins,
+  Palette,
 } from 'lucide-react';
-import { sanitizeStudentDisplayName } from '@/utils/privacy';
-import { validateNickname, validateUsernameFormat, isForbiddenAdminRole } from '@/utils/usernameValidation';
-import { submitNameRequest } from '@/services/nameRequestService';
-import { useSmoothMode } from '@/utils/smoothMode';
+import {
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  updatePassword,
+  deleteUser,
+} from 'firebase/auth';
+import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { useAuth } from '@/contexts/AuthContext';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { useWallet } from '@/hooks/useWallet';
 import { useTheme, type ThemeSetting } from '@/hooks/useTheme';
-import { wipeStudentAccount } from '@/services/userAccountService';
-import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
-import {
-  useDragonHiddenPreference,
-  DRAGON_COMPANION_NAME,
-} from '@/components/dashboard/DragonCompanion';
-import {
-  getEmailNotificationPreferences,
-  saveEmailNotificationPreferences,
-  type EmailNotificationPreferences,
-} from '@/services/emailNotificationService';
+import { useSmoothMode } from '@/utils/smoothMode';
+import { useDragonHiddenPreference } from '@/components/dashboard/DragonCompanion';
+import { useProfileModal } from '@/contexts/ProfileModalContext';
+import { PageMeta } from '@/components/ui/PageMeta';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { GuestUpgradeModal } from '@/components/auth/GuestUpgradeModal';
 import { SecuritySettingsSection } from '@/components/profile/SecuritySettingsSection';
-import { KobanStyleCustomizer } from '@/components/koban/KobanStyleCustomizer';
-import { KobanIcon } from '@/components/koban/KobanIcon';
 import { ProBadgeCustomizer } from '@/components/plans/ProBadgeCustomizer';
+import { KobanStyleCustomizer } from '@/components/koban/KobanStyleCustomizer';
 import { ProBadge } from '@/components/ui/ProBadge';
+import { useProBadge } from '@/contexts/ProBadgeContext';
+import { useKobanStyle } from '@/contexts/KobanStyleContext';
+import { PRO_BADGE_DESIGNS } from '@/lib/proBadgeDesigns';
+import { KOBAN_DESIGNS } from '@/lib/kobanStyle';
+import { clearCachedAuthAndAdminStorage } from '@/components/dashboard/HamburgerMenuSheet';
+import { LineLoader } from '@/components/ui/LineLoader';
+import {
+  LEGAL_VERSION_DISPLAY,
+  LEGAL_LAST_UPDATED_LABEL,
+} from '@/constants/legalConsent';
+import { validateUsernameFormat } from '@/utils/usernameValidation';
 
-const SELECTABLE_USER_ROLES = [
-  'Student',
-  'FSc Student',
-  'Matric Student',
-  'Post-FSc / Entry Test',
+// Strictly cosmetic academic badge options (cannot grant admin/moderator privileges)
+const COSMETIC_ROLE_OPTIONS = [
+  'Matric Student (9th)',
+  'Matric Student (10th)',
+  'FSc Pre-Medical (11th)',
+  'FSc Pre-Medical (12th)',
+  'FSc Pre-Engineering (11th)',
+  'FSc Pre-Engineering (12th)',
+  'ICS / Computer Science',
   'MDCAT Aspirant',
   'ECAT / NET Aspirant',
-  'ICS / CS Student',
-  'Educator',
+  'O / A Levels Student',
+  'Self-Learner',
 ] as const;
 
+const ALLOWED_COSMETIC_ROLES = new Set<string>(COSMETIC_ROLE_OPTIONS);
+
+// Reserved keywords that require Admin Approval before a non-admin can use them
+const RESERVED_NAME_KEYWORDS = [
+  'admin',
+  'administrator',
+  'superadmin',
+  'boardly',
+  'official',
+  'moderator',
+  'mod',
+  'support',
+  'staff',
+  'system',
+  'founder',
+  'ceo',
+  'team',
+];
+
+function containsReservedKeyword(name: string): string | null {
+  const lower = name.toLowerCase();
+  for (const kw of RESERVED_NAME_KEYWORDS) {
+    if (lower.includes(kw)) return kw;
+  }
+  return null;
+}
+
+export type SettingsSubPageId =
+  | 'plan'
+  | 'email'
+  | 'username'
+  | 'display-name'
+  | 'appearance'
+  | 'pro-badge'
+  | 'koban-icon'
+  | 'notifications'
+  | 'security'
+  | 'legal';
+
+interface SettingsSubPageSearchItem {
+  id: string;
+  label: string;
+  subtitle: string;
+  subPage: SettingsSubPageId | null;
+  targetId?: string;
+  keywords: string[];
+}
+
+const SUBPAGE_TITLES: Record<SettingsSubPageId, string> = {
+  plan: 'Workspace & Plan',
+  email: 'Account Email',
+  username: 'Username & Study Role',
+  'display-name': 'Display Name',
+  appearance: 'Appearance',
+  'pro-badge': 'Pro Badge',
+  'koban-icon': 'Koban Icon',
+  notifications: 'Notifications',
+  security: 'Security',
+  legal: 'Legal & Privacy',
+};
+
+function mapHashToSubPage(rawHash: string): {
+  subPage: SettingsSubPageId | null;
+  targetId: string | null;
+} {
+  const clean = rawHash.replace(/^#/, '').trim().toLowerCase();
+  if (!clean) return { subPage: null, targetId: null };
+
+  switch (clean) {
+    case 'settings-plan':
+    case 'plan':
+      return { subPage: 'plan', targetId: null };
+    case 'settings-email':
+    case 'email':
+      return { subPage: 'email', targetId: null };
+    case 'settings-username':
+    case 'username':
+    case 'study-role':
+      return { subPage: 'username', targetId: null };
+    case 'settings-display-name':
+    case 'display-name':
+      return { subPage: 'display-name', targetId: null };
+    case 'settings-appearance':
+    case 'appearance':
+      return { subPage: 'appearance', targetId: null };
+    case 'settings-theme':
+      return { subPage: 'appearance', targetId: 'settings-theme' };
+    case 'appearance-reduce-effects':
+      return { subPage: 'appearance', targetId: 'appearance-reduce-effects' };
+    case 'settings-dragon':
+      return { subPage: 'appearance', targetId: 'settings-dragon' };
+    case 'appearance-pro-badge':
+    case 'pro-badge':
+      return { subPage: 'pro-badge', targetId: null };
+    case 'appearance-koban-icon':
+    case 'koban-icon':
+      return { subPage: 'koban-icon', targetId: null };
+    case 'settings-notifications':
+    case 'notifications':
+      return { subPage: 'notifications', targetId: null };
+    case 'settings-security':
+    case 'security':
+      return { subPage: 'security', targetId: null };
+    case 'settings-password':
+      return { subPage: 'security', targetId: 'settings-password' };
+    case 'security-totp':
+      return { subPage: 'security', targetId: 'security-totp' };
+    case 'security-email-2fa':
+      return { subPage: 'security', targetId: 'security-email-2fa' };
+    case 'security-devices':
+      return { subPage: 'security', targetId: 'security-devices' };
+    case 'settings-delete-account':
+      return { subPage: 'security', targetId: 'settings-delete-account' };
+    case 'settings-legal':
+    case 'legal':
+      return { subPage: 'legal', targetId: null };
+    case 'settings-sign-out':
+      return { subPage: null, targetId: 'settings-sign-out' };
+    default:
+      return { subPage: null, targetId: clean };
+  }
+}
+
 export function SettingsPage() {
-  const { user, signOutUser, updateLocalProfile, isAdmin, refreshVerificationStatus } = useAuth();
-  const { profile, loading } = useUserProfile();
+  const {
+    user,
+    profile,
+    isAdmin,
+    isGuest,
+    checkUsernameAvailability,
+    updateProfile,
+    updateLocalProfile,
+    signOutUser,
+  } = useAuth();
   const effectivePlan = useEffectivePlan();
-  const { smoothMode, setSmoothMode } = useSmoothMode();
-  const { themeSetting, resolvedTheme, setTheme } = useTheme();
+  const { equipped } = useWallet();
+  const { themeSetting: themePreference, setTheme: setThemePreference } = useTheme();
+  const { smoothMode, toggleSmoothMode } = useSmoothMode();
   const { hideDragon, setHideDragon } = useDragonHiddenPreference();
+  const { openProfile } = useProfileModal();
+  const { settings: proBadgeSettings, isActivePro, effectiveProBadge } = useProBadge();
+  const { style: kobanStyle } = useKobanStyle();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [highlightedSection, setHighlightedSection] = useState<string | null>(null);
-  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
-  const [confirmingDeleteAccount, setConfirmingDeleteAccount] = useState(false);
-  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
-  const [deletingAccount, setDeletingAccount] = useState(false);
-  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
+  // Sub-page navigation state
+  const [activeSubPage, setActiveSubPage] = useState<SettingsSubPageId | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return mapHashToSubPage(window.location.hash).subPage;
+  });
 
-  // Display Name state
-  const [displayName, setDisplayName] = useState('');
-  const [savingName, setSavingName] = useState(false);
-  const [nameSaved, setNameSaved] = useState(false);
-  const [nameError, setNameError] = useState<string | null>(null);
-  const [sendingNameRequest, setSendingNameRequest] = useState(false);
-  const [nameRequestSentMsg, setNameRequestSentMsg] = useState<string | null>(null);
+  // Search settings state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Username & Role state
-  const [usernameInput, setUsernameInput] = useState('');
-  const [selectedRole, setSelectedRole] = useState('Student');
-  const [savingIdentity, setSavingIdentity] = useState(false);
-  const [identitySaved, setIdentitySaved] = useState(false);
-  const [identityError, setIdentityError] = useState<string | null>(null);
+  // Touch swipe-back tracking for sub-pages
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Password state (Set Password for Google-only users / Change Password for email users)
+  // Guest Upgrade Modal
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+
+  // Username editor state
+  const [usernameInput, setUsernameInput] = useState<string>(profile?.username || '');
+  const [usernameStatus, setUsernameStatus] = useState<
+    'idle' | 'unchanged' | 'checking' | 'available' | 'taken' | 'invalid'
+  >('unchanged');
+  const [usernameStatusMsg, setUsernameStatusMsg] = useState<string>('');
+  const [usernameSaving, setUsernameSaving] = useState(false);
+  const [usernameSavedMsg, setUsernameSavedMsg] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+
+  // Display Name & Role state
+  const [displayName, setDisplayName] = useState(
+    profile?.displayName || user?.displayName || ''
+  );
+  const [customRole, setCustomRole] = useState<string>(() => {
+    const existing = profile?.customRole || '';
+    return ALLOWED_COSMETIC_ROLES.has(existing) ? existing : COSMETIC_ROLE_OPTIONS[0];
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState<{
+    type: 'success' | 'error' | 'warning';
+    text: string;
+  } | null>(null);
+  const [pendingRestrictedName, setPendingRestrictedName] = useState<string | null>(null);
+  const [requestingApproval, setRequestingApproval] = useState(false);
+
+  // Password Change State
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [savingPassword, setSavingPassword] = useState(false);
-  const [passwordSavedMsg, setPasswordSavedMsg] = useState<string | null>(null);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
-  // Email Notification Preferences state (for optional emails)
-  const [emailPrefs, setEmailPrefs] = useState<EmailNotificationPreferences>({
-    testStarted: false,
-    smallKobanReceipts: true,
-  });
-  const [savingEmailPrefs, setSavingEmailPrefs] = useState(false);
-  const [emailPrefsSaved, setEmailPrefsSaved] = useState(false);
-
-  const isPro = effectivePlan.isUnlimited;
-
-  // Detect whether current Firebase Auth user already has a 'password' provider linked
-  const hasPasswordProvider = Boolean(
-    auth.currentUser?.providerData?.some((p) => p.providerId === 'password')
+  // Notification Preferences State
+  const [emailKobanReceipts, setEmailKobanReceipts] = useState<boolean>(
+    profile?.notificationPrefs?.emailKobanReceipts !== false
   );
+  const [emailArenaStarts, setEmailArenaStarts] = useState<boolean>(
+    profile?.notificationPrefs?.emailArenaStarts !== false
+  );
+  const [notifSaving, setNotifSaving] = useState(false);
+  const [notifMessage, setNotifMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
-  // Populate fields from profile
+  // Sign Out & Account Deletion State
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   useEffect(() => {
-    const raw =
-      profile?.displayName ||
-      profile?.nickname ||
-      profile?.name ||
-      user?.displayName ||
-      (user?.email ? user.email.split('@')[0] : 'Student');
-    const clean = sanitizeStudentDisplayName(raw, profile?.shortId || user?.uid);
-    setDisplayName(clean);
+    if (profile?.displayName) {
+      setDisplayName(profile.displayName);
+    } else if (user?.displayName) {
+      setDisplayName(user.displayName);
+    }
     if (profile?.username) {
       setUsernameInput(profile.username);
     }
-    const rawRole = (profile?.customRole || profile?.role || 'Student').trim();
-    const matchedSelectable = SELECTABLE_USER_ROLES.find(
-      (r) => r.toLowerCase() === rawRole.toLowerCase()
-    );
-    setSelectedRole(matchedSelectable || (rawRole.toLowerCase() === 'student' ? 'Student' : rawRole));
-    setEmailPrefs(
-      getEmailNotificationPreferences(
-        user?.uid,
-        (profile as { emailPreferences?: Partial<EmailNotificationPreferences> } | null)?.emailPreferences
-      )
-    );
+    if (profile?.customRole && ALLOWED_COSMETIC_ROLES.has(profile.customRole)) {
+      setCustomRole(profile.customRole);
+    }
+    if (profile?.notificationPrefs) {
+      setEmailKobanReceipts(profile.notificationPrefs.emailKobanReceipts !== false);
+      setEmailArenaStarts(profile.notificationPrefs.emailArenaStarts !== false);
+    }
   }, [
     profile?.displayName,
-    profile?.nickname,
-    profile?.name,
-    profile?.shortId,
     profile?.username,
     profile?.customRole,
-    profile?.role,
+    profile?.notificationPrefs,
     user?.displayName,
-    user?.email,
-    user?.uid,
-    profile,
   ]);
 
-  const handleToggleEmailPref = async (key: keyof EmailNotificationPreferences) => {
-    if (!user) return;
-    const nextPrefs: EmailNotificationPreferences = {
-      ...emailPrefs,
-      [key]: !emailPrefs[key],
+  // Debounced live username availability check
+  const normalizedUsername = useMemo(
+    () => usernameInput.trim().replace(/^@+/, '').toLowerCase(),
+    [usernameInput]
+  );
+  const formatValidation = useMemo(
+    () => validateUsernameFormat(normalizedUsername, user?.uid, isAdmin),
+    [normalizedUsername, user?.uid, isAdmin]
+  );
+
+  useEffect(() => {
+    setUsernameSavedMsg(null);
+    if (!normalizedUsername) {
+      setUsernameStatus('idle');
+      setUsernameStatusMsg('');
+      return;
+    }
+    if (profile?.username && normalizedUsername === profile.username.toLowerCase()) {
+      setUsernameStatus('unchanged');
+      setUsernameStatusMsg('This is your current username.');
+      return;
+    }
+    if (!formatValidation.valid) {
+      setUsernameStatus('invalid');
+      setUsernameStatusMsg(formatValidation.error || formatValidation.reason || 'Invalid username');
+      return;
+    }
+
+    let cancelled = false;
+    setUsernameStatus('checking');
+    setUsernameStatusMsg('Checking availability…');
+
+    const timer = setTimeout(async () => {
+      const res = await checkUsernameAvailability(normalizedUsername);
+      if (cancelled) return;
+      if (res.available) {
+        setUsernameStatus('available');
+        setUsernameStatusMsg(`@${normalizedUsername} is available`);
+      } else {
+        setUsernameStatus('taken');
+        setUsernameStatusMsg(res.reason || 'That username is already taken.');
+      }
+    }, 280);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
     };
-    setEmailPrefs(nextPrefs);
-    setSavingEmailPrefs(true);
-    setEmailPrefsSaved(false);
-    try {
-      await saveEmailNotificationPreferences(user.uid, nextPrefs);
-      setEmailPrefsSaved(true);
-      setTimeout(() => setEmailPrefsSaved(false), 2500);
-    } catch (err) {
-      console.warn('[SettingsPage] Could not save email preferences:', err);
-    } finally {
-      setSavingEmailPrefs(false);
-    }
-  };
+  }, [normalizedUsername, formatValidation.valid, formatValidation.error, formatValidation.reason, profile?.username, checkUsernameAvailability]);
 
-  const handleSaveName = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-
-    const trimmed = displayName.trim();
-    if (!trimmed) {
-      setNameError('Display name cannot be empty.');
-      return;
-    }
-
-    setNameError(null);
-    setNameRequestSentMsg(null);
-
-    // Enforce reserved names (SHS Virtual Academy, Boardly, Scholario) & format rules
-    const validation = validateNickname(trimmed, user.uid, isAdmin);
-    if (!validation.valid) {
-      setNameError(validation.error || 'This name is reserved. Send a request to the admin.');
-      return;
-    }
-
-    const cleanName = sanitizeStudentDisplayName(trimmed, profile?.shortId || user.uid);
-
-    setSavingName(true);
-    setNameSaved(false);
-
-    try {
-      const userRef = doc(db, 'users', user.uid);
-      const pubRef = doc(db, 'publicProfiles', user.uid);
-
-      await Promise.all([
-        setDoc(
-          userRef,
-          {
-            displayName: cleanName,
-            nickname: cleanName,
-            name: cleanName,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        ),
-        setDoc(
-          pubRef,
-          {
-            uid: user.uid,
-            displayName: cleanName,
-            nickname: cleanName,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        ).catch(() => {}),
-        syncProfileToD1Backend(user.uid, {
-          ...(profile || {}),
-          displayName: cleanName,
-        }),
-        auth.currentUser && auth.currentUser.uid === user.uid
-          ? firebaseUpdateProfile(auth.currentUser, { displayName: cleanName }).catch(() => {})
-          : Promise.resolve(),
-      ]);
-
-      const nextProfilePatch = {
-        displayName: cleanName,
-        nickname: cleanName,
-        name: cleanName,
-      };
-      updateLocalProfile(nextProfilePatch);
-      seedSharedUserProfileCache(user.uid, {
-        ...(profile || ({ uid: user.uid } as any)),
-        ...nextProfilePatch,
-      });
-      invalidatePublicProfileCache(user.uid);
-      invalidateProfileMemoryCache(user.uid);
-      broadcastPublicProfileUpdate(user.uid, nextProfilePatch);
-      invalidateCommonsPostsCache();
-
-      setDisplayName(cleanName);
-      setSavingName(false);
-      setNameSaved(true);
-      setTimeout(() => setNameSaved(false), 3000);
-    } catch (err: unknown) {
-      setSavingName(false);
-      setNameError((err as { message?: string })?.message || 'Failed to update display name.');
-    }
-  };
-
-  const handleSendReservedNameRequest = async () => {
-    if (!user || !displayName.trim()) return;
-    setSendingNameRequest(true);
-    setNameError(null);
-    try {
-      await submitNameRequest({
-        uid: user.uid,
-        userEmail: user.email || '',
-        requestedName: displayName.trim(),
-        currentDisplayName: profile?.displayName || user.displayName || 'Student',
-      });
-      setNameRequestSentMsg(
-        `Your request for "${displayName.trim()}" has been sent to the Superadmin for approval.`
-      );
-    } catch (err: unknown) {
-      setNameError((err as { message?: string })?.message || 'Failed to send name request.');
-    } finally {
-      setSendingNameRequest(false);
-    }
-  };
-
-  const handleSaveIdentity = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    setIdentityError(null);
-    setIdentitySaved(false);
-
-    const cleanUsername = usernameInput.trim().toLowerCase().replace(/^@/, '');
-    if (cleanUsername) {
-      const uVal = validateUsernameFormat(cleanUsername, user.uid, isAdmin);
-      if (!uVal.valid) {
-        setIdentityError(uVal.error || 'Invalid username format.');
-        return;
+  // Open a sub-page and push a history state so phone back button closes the sub-page
+  const openSubPage = useCallback(
+    (subPage: SettingsSubPageId, targetId?: string) => {
+      setActiveSubPage(subPage);
+      setSearchQuery('');
+      setSearchFocused(false);
+      const nextHash = targetId ? `#${targetId}` : `#${subPage}`;
+      if (window.location.hash !== nextHash) {
+        window.history.pushState({ settingsSubPage: subPage }, '', `${location.pathname}${nextHash}`);
       }
-    }
-    if (!isAdmin && isForbiddenAdminRole(selectedRole)) {
-      setIdentityError('Cannot assign administrator role.');
-      return;
-    }
+      window.scrollTo({ top: 0, behavior: smoothMode ? 'auto' : 'smooth' });
 
-    setSavingIdentity(true);
-    try {
-      const oldUsername = (profile?.username || '').trim().toLowerCase();
-      if (cleanUsername) {
-        const idToken = auth.currentUser ? await auth.currentUser.getIdToken().catch(() => '') : '';
-        const regRes = await fetch('/api/auth/username-register', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
-          },
-          credentials: 'include',
-          body: JSON.stringify({
-            uid: user.uid,
-            username: cleanUsername,
-            email: (user.email || profile?.email || '').trim().toLowerCase(),
-            accountType: 'registered',
-          }),
-        });
-        const regData = await regRes.json().catch(() => ({}));
-        if (!regRes.ok || !regData.ok) {
-          throw new Error(regData.error || `@${cleanUsername} is already taken.`);
+      if (targetId) {
+        if (targetId === 'settings-delete-account') {
+          setDeleteConfirmOpen(true);
         }
-      }
-      if (cleanUsername && cleanUsername !== oldUsername) {
-        await runTransaction(db, async (tx) => {
-          const newUsernameRef = doc(db, 'usernames', cleanUsername);
-          const existingSnap = await tx.get(newUsernameRef);
-          if (existingSnap.exists() && existingSnap.data()?.uid !== user.uid) {
-            throw new Error(`@${cleanUsername} is already taken by another student.`);
+        window.setTimeout(() => {
+          const el = document.getElementById(targetId);
+          if (el) {
+            el.scrollIntoView({ behavior: smoothMode ? 'auto' : 'smooth', block: 'center' });
+            el.classList.add('stg-highlight-target');
+            window.setTimeout(() => el.classList.remove('stg-highlight-target'), 1600);
           }
-          if (oldUsername && oldUsername !== cleanUsername) {
-            const oldRef = doc(db, 'usernames', oldUsername);
-            const oldSnap = await tx.get(oldRef);
-            if (oldSnap.exists() && oldSnap.data()?.uid === user.uid) {
-              tx.delete(oldRef);
-            }
-          }
-          tx.set(newUsernameRef, {
-            uid: user.uid,
-            username: cleanUsername,
-            updatedAt: serverTimestamp(),
-          });
-          tx.set(
-            doc(db, 'users', user.uid),
-            {
-              username: cleanUsername,
-              customRole: selectedRole,
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
-          tx.set(
-            doc(db, 'publicProfiles', user.uid),
-            {
-              uid: user.uid,
-              username: cleanUsername,
-              customRole: selectedRole,
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
-        });
-      } else {
-        await Promise.all([
-          setDoc(
-            doc(db, 'users', user.uid),
-            { customRole: selectedRole, updatedAt: serverTimestamp() },
-            { merge: true }
-          ),
-          setDoc(
-            doc(db, 'publicProfiles', user.uid),
-            { uid: user.uid, customRole: selectedRole, updatedAt: serverTimestamp() },
-            { merge: true }
-          ).catch(() => {}),
-        ]);
+        }, 120);
       }
+    },
+    [location.pathname, smoothMode]
+  );
 
-      await syncProfileToD1Backend(user.uid, {
-        ...(profile || {}),
-        ...(cleanUsername ? { username: cleanUsername } : {}),
-        customRole: selectedRole,
-      });
+  // Close the active sub-page
+  const closeSubPage = useCallback(() => {
+    setActiveSubPage(null);
+    if (window.location.hash) {
+      window.history.pushState({}, '', location.pathname);
+    }
+    window.scrollTo({ top: 0, behavior: smoothMode ? 'auto' : 'smooth' });
+  }, [location.pathname, smoothMode]);
 
-      const identityPatch = {
-        ...(cleanUsername ? { username: cleanUsername } : {}),
-        customRole: selectedRole,
-      };
-      updateLocalProfile(identityPatch);
-      seedSharedUserProfileCache(user.uid, {
-        ...(profile || ({ uid: user.uid } as any)),
-        ...identityPatch,
-      });
-      invalidatePublicProfileCache(user.uid);
-      invalidateProfileMemoryCache(user.uid);
-      broadcastPublicProfileUpdate(user.uid, identityPatch);
-      invalidateCommonsPostsCache();
+  // Sync sub-page with URL hash & browser/phone back button (popstate)
+  useEffect(() => {
+    const syncFromLocation = () => {
+      const { subPage, targetId } = mapHashToSubPage(window.location.hash);
+      setActiveSubPage(subPage);
+      if (targetId === 'settings-delete-account') {
+        setDeleteConfirmOpen(true);
+      }
+      if (targetId) {
+        window.setTimeout(() => {
+          const el = document.getElementById(targetId);
+          if (el) {
+            el.scrollIntoView({ behavior: smoothMode ? 'auto' : 'smooth', block: 'center' });
+            el.classList.add('stg-highlight-target');
+            window.setTimeout(() => el.classList.remove('stg-highlight-target'), 1600);
+          }
+        }, 100);
+      }
+    };
 
-      setIdentitySaved(true);
-      setTimeout(() => setIdentitySaved(false), 3000);
-    } catch (err: unknown) {
-      setIdentityError((err as { message?: string })?.message || 'Failed to update username or role.');
-    } finally {
-      setSavingIdentity(false);
+    syncFromLocation();
+    window.addEventListener('popstate', syncFromLocation);
+    return () => window.removeEventListener('popstate', syncFromLocation);
+  }, [location.hash, smoothMode]);
+
+  // Swipe-back gesture handler on sub-pages
+  const handleTouchStart = (e: TouchEvent<HTMLDivElement>) => {
+    if (!activeSubPage || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    touchStartRef.current = { x: t.clientX, y: t.clientY };
+  };
+
+  const handleTouchEnd = (e: TouchEvent<HTMLDivElement>) => {
+    if (!activeSubPage || !touchStartRef.current || e.changedTouches.length !== 1) return;
+    const t = e.changedTouches[0];
+    const deltaX = t.clientX - touchStartRef.current.x;
+    const deltaY = t.clientY - touchStartRef.current.y;
+    touchStartRef.current = null;
+
+    if (deltaX > 68 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
+      closeSubPage();
     }
   };
 
-  const handleSavePassword = async (e: React.FormEvent) => {
+  const hasPasswordProvider = user?.providerData.some(
+    (p) => p.providerId === 'password'
+  );
+
+  // Handlers for Display Name
+  const handleSaveDisplayName = async (e: FormEvent) => {
     e.preventDefault();
-    setPasswordError(null);
-    setPasswordSavedMsg(null);
+    if (!user) return;
 
-    const currentUser = auth.currentUser;
-    if (!currentUser || !currentUser.email) {
-      setPasswordError('You must be signed in with a valid email account.');
+    const trimmedName = displayName.trim();
+    if (!trimmedName) {
+      setProfileMessage({ type: 'error', text: 'Display name cannot be empty.' });
+      return;
+    }
+    if (trimmedName.length > 50) {
+      setProfileMessage({ type: 'error', text: 'Display name must be 50 characters or fewer.' });
       return;
     }
 
-    if (newPassword.length < 6) {
-      setPasswordError('Password must be at least 6 characters long.');
+    const reservedWord = containsReservedKeyword(trimmedName);
+    if (reservedWord && !isAdmin) {
+      setPendingRestrictedName(trimmedName);
+      setProfileMessage({
+        type: 'warning',
+        text: `The name "${trimmedName}" contains an official or restricted keyword ("${reservedWord}"). Official names require administrator approval.`,
+      });
       return;
     }
 
-    if (newPassword !== confirmPassword) {
-      setPasswordError('Passwords do not match.');
-      return;
-    }
-
-    setSavingPassword(true);
+    setPendingRestrictedName(null);
+    setProfileSaving(true);
+    setProfileMessage(null);
     try {
-      if (!hasPasswordProvider) {
-        // Google-only user setting a password for the first time
-        const credential = EmailAuthProvider.credential(currentUser.email, newPassword);
-        await linkWithCredential(currentUser, credential);
-        // Refresh token and sync session so Google-verified status carries over without resetting verification
-        await currentUser.getIdToken(true).catch(() => {});
-        await refreshVerificationStatus({ syncPasswordLink: true }).catch(() => {});
-        setPasswordSavedMsg(
-          'Password set! You can now sign in using either Google or your email and password.'
-        );
-      } else {
-        // Existing email/password user changing their password
-        if (!currentPassword) {
-          setPasswordError('Please enter your current password to verify your identity.');
-          setSavingPassword(false);
+      await updateProfile({ displayName: trimmedName });
+      setProfileMessage({ type: 'success', text: 'Display name saved.' });
+    } catch (err) {
+      setProfileMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to update display name.',
+      });
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleRequestAdminApproval = async () => {
+    if (!user || !pendingRestrictedName) return;
+    setRequestingApproval(true);
+    try {
+      const reqRef = doc(db, 'nameApprovalRequests', user.uid);
+      await setDoc(reqRef, {
+        uid: user.uid,
+        email: user.email || '',
+        currentName: profile?.displayName || user.displayName || 'Student',
+        requestedName: pendingRestrictedName,
+        requestedRole: customRole,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+      });
+      setProfileMessage({
+        type: 'success',
+        text: `Approval request for "${pendingRestrictedName}" sent to Boardly Administrators.`,
+      });
+      setPendingRestrictedName(null);
+    } catch (err) {
+      setProfileMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Could not submit approval request.',
+      });
+    } finally {
+      setRequestingApproval(false);
+    }
+  };
+
+  // Handler for Username & Study Role (combined Save button)
+  const handleSaveUsernameAndRole = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    setUsernameSaving(true);
+    setUsernameSavedMsg(null);
+    try {
+      // 1. If username changed, claim/update it
+      const usernameChanged =
+        normalizedUsername &&
+        (!profile?.username || normalizedUsername !== profile.username.toLowerCase());
+
+      if (usernameChanged) {
+        if (usernameStatus !== 'available') {
+          setUsernameSavedMsg({
+            type: 'error',
+            text: usernameStatusMsg || 'Please choose an available username.',
+          });
+          setUsernameSaving(false);
           return;
         }
-        const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
-        await reauthenticateWithCredential(currentUser, credential);
-        await updatePassword(currentUser, newPassword);
-        await currentUser.getIdToken(true).catch(() => {});
-        await refreshVerificationStatus({ syncPasswordLink: true }).catch(() => {});
-        setPasswordSavedMsg('Your password has been updated.');
+        if (!isGuest) {
+          const idToken = await user.getIdToken();
+          const res = await fetch('/api/auth/username-register', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+              uid: user.uid,
+              username: normalizedUsername,
+              email: (user.email || profile?.email || '').toLowerCase(),
+              accountType: 'registered',
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data?.ok) {
+            setUsernameSavedMsg({
+              type: 'error',
+              text: data?.error || 'Could not update username.',
+            });
+            setUsernameSaving(false);
+            return;
+          }
+        }
       }
+
+      // 2. Save strictly cosmetic customRole (client role value can never alter real permissions)
+      const safeCosmeticRole = ALLOWED_COSMETIC_ROLES.has(customRole)
+        ? customRole
+        : COSMETIC_ROLE_OPTIONS[0];
+
+      await updateProfile({
+        ...(usernameChanged ? { username: normalizedUsername } : {}),
+        customRole: safeCosmeticRole,
+      });
+
+      setUsernameStatus('unchanged');
+      setUsernameSavedMsg({
+        type: 'success',
+        text: 'Username and study role saved.',
+      });
+    } catch (err) {
+      setUsernameSavedMsg({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Could not save changes.',
+      });
+    } finally {
+      setUsernameSaving(false);
+    }
+  };
+
+  // Handler for Notification Toggles
+  const handleToggleNotification = async (
+    key: 'emailKobanReceipts' | 'emailArenaStarts',
+    nextVal: boolean
+  ) => {
+    if (!user) return;
+    const nextReceipts = key === 'emailKobanReceipts' ? nextVal : emailKobanReceipts;
+    const nextArena = key === 'emailArenaStarts' ? nextVal : emailArenaStarts;
+
+    if (key === 'emailKobanReceipts') setEmailKobanReceipts(nextVal);
+    if (key === 'emailArenaStarts') setEmailArenaStarts(nextVal);
+
+    setNotifSaving(true);
+    setNotifMessage(null);
+    try {
+      await setDoc(
+        doc(db, 'users', user.uid),
+        {
+          notificationPrefs: {
+            emailKobanReceipts: nextReceipts,
+            emailArenaStarts: nextArena,
+          },
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      updateLocalProfile({
+        notificationPrefs: {
+          emailKobanReceipts: nextReceipts,
+          emailArenaStarts: nextArena,
+        },
+      });
+      setNotifMessage({ type: 'success', text: 'Notification preferences saved.' });
+    } catch (err) {
+      setNotifMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to save notification settings.',
+      });
+    } finally {
+      setNotifSaving(false);
+    }
+  };
+
+  // Handler for Password Change
+  const handleChangePassword = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    if (newPassword.length < 6) {
+      setPasswordMessage({
+        type: 'error',
+        text: 'New password must be at least 6 characters.',
+      });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage({ type: 'error', text: 'New passwords do not match.' });
+      return;
+    }
+
+    setPasswordSaving(true);
+    setPasswordMessage(null);
+    try {
+      if (hasPasswordProvider && user.email) {
+        const credential = EmailAuthProvider.credential(user.email, currentPassword);
+        await reauthenticateWithCredential(user, credential);
+      }
+      await updatePassword(user, newPassword);
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      setPasswordMessage({ type: 'success', text: 'Password updated.' });
     } catch (err: unknown) {
-      const code = (err as { code?: string })?.code || '';
+      const code = (err as { code?: string })?.code;
       if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-        setPasswordError('Current password is incorrect.');
+        setPasswordMessage({ type: 'error', text: 'Current password is incorrect.' });
       } else if (code === 'auth/requires-recent-login') {
-        setPasswordError('For security, please sign out and sign back in before changing your password.');
-      } else if (code === 'auth/provider-already-linked') {
-        setPasswordError('A password is already linked to this account.');
+        setPasswordMessage({
+          type: 'error',
+          text: 'Please sign out and sign back in before changing your password.',
+        });
       } else {
-        setPasswordError((err as { message?: string })?.message || 'Could not update password.');
+        setPasswordMessage({
+          type: 'error',
+          text: err instanceof Error ? err.message : 'Failed to update password.',
+        });
       }
     } finally {
-      setSavingPassword(false);
+      setPasswordSaving(false);
     }
   };
 
+  // Handler for Sign Out
   const handleSignOut = async () => {
-    await signOutUser();
-    navigate('/login');
-  };
-
-  const handleConfirmDeleteAccount = async () => {
-    if (!user) return;
-    if (deleteConfirmInput.trim().toUpperCase() !== 'DELETE') {
-      setDeleteAccountError('Please type DELETE to confirm account deletion.');
-      return;
-    }
-    setDeletingAccount(true);
-    setDeleteAccountError(null);
+    setIsSigningOut(true);
+    clearCachedAuthAndAdminStorage();
     try {
-      await wipeStudentAccount(user.uid);
+      await Promise.all([
+        signOutUser(),
+        new Promise((resolve) => setTimeout(resolve, 400)),
+      ]);
+    } finally {
+      setIsSigningOut(false);
       navigate('/login', { replace: true });
-    } catch (err: unknown) {
-      setDeletingAccount(false);
-      setDeleteAccountError(
-        (err as { message?: string })?.message || 'Could not delete account. Please sign in again and retry.'
-      );
     }
   };
 
-  // Scroll to and highlight any targeted Settings section when navigated via #hash
-  useEffect(() => {
-    if (typeof window === 'undefined' || loading) return;
-    const rawHash = (location.hash || window.location.hash || '').replace(/^#/, '').trim();
-    if (!rawHash) return;
+  // Handler for Delete Account
+  const handleDeleteAccount = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!user || deleteConfirmText !== 'DELETE') return;
 
-    const targetId =
-      rawHash === 'koban-icon'
-        ? 'appearance-koban-icon'
-        : rawHash;
-
-    if (targetId === 'settings-delete-account') {
-      setConfirmingDeleteAccount(true);
-    } else if (targetId === 'settings-sign-out') {
-      setConfirmingSignOut(true);
-    }
-
-    setHighlightedSection(targetId);
-
-    const scrollTimer = setTimeout(() => {
-      const el = document.getElementById(targetId);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      if (hasPasswordProvider && user.email && deletePassword) {
+        const credential = EmailAuthProvider.credential(user.email, deletePassword);
+        await reauthenticateWithCredential(user, credential);
       }
-    }, 90);
+      await deleteDoc(doc(db, 'users', user.uid));
+      await deleteUser(user);
+      navigate('/');
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      if (code === 'auth/requires-recent-login') {
+        setDeleteError(
+          'For security, please sign out and sign back in before deleting your account.'
+        );
+      } else if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+        setDeleteError('Incorrect password. Please try again.');
+      } else {
+        setDeleteError(
+          err instanceof Error ? err.message : 'Failed to delete account.'
+        );
+      }
+      setDeleting(false);
+    }
+  };
 
-    const clearHighlightTimer = setTimeout(() => {
-      setHighlightedSection((prev) => (prev === targetId ? null : prev));
-    }, 2600);
+  // Computed display values for Main Settings rows
+  const effectiveDisplayName =
+    profile?.displayName ||
+    user?.displayName ||
+    user?.email?.split('@')[0] ||
+    'Student';
+  const effectiveUsername =
+    profile?.username ||
+    user?.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') ||
+    'student';
 
-    return () => {
-      clearTimeout(scrollTimer);
-      clearTimeout(clearHighlightTimer);
-    };
-  }, [loading, location.hash]);
+  const roleBadgeLabel = useMemo(() => {
+    if (isGuest) return 'Guest';
+    if (effectivePlan.source === 'superadmin') return 'Superadmin · Unlimited';
+    if (isAdmin) return 'Admin';
+    if (effectivePlan.isUnlimited) return 'Pro · Unlimited';
+    return customRole || 'Student';
+  }, [isGuest, effectivePlan.source, effectivePlan.isUnlimited, isAdmin, customRole]);
 
-  const sectionHighlightClass = (id: string) =>
-    highlightedSection === id
-      ? 'ring-2 ring-[var(--nav-icon-active)] border-[var(--nav-icon-active)] transition-all duration-300'
-      : 'transition-all duration-300';
+  const planRowValue = useMemo(() => {
+    if (isGuest) return 'Guest Mode';
+    if (effectivePlan.source === 'superadmin') return 'Superadmin · Unlimited';
+    if (effectivePlan.isUnlimited) return 'Pro · Unlimited';
+    return 'Free Plan';
+  }, [isGuest, effectivePlan.source, effectivePlan.isUnlimited]);
 
-  if (loading && !profile) {
+  const appearanceValueLabel = useMemo(() => {
+    if (themePreference === 'light') return 'Light';
+    if (themePreference === 'dark') return 'Dark';
+    return 'System';
+  }, [themePreference]);
+
+  const proBadgeRowValue = useMemo(() => {
+    if (!isActivePro) return 'Pro Only';
+    if (!proBadgeSettings.visible) return 'Hidden';
+    const found = PRO_BADGE_DESIGNS.find((d) => d.id === proBadgeSettings.design);
+    return found?.name || 'Ember';
+  }, [isActivePro, proBadgeSettings.visible, proBadgeSettings.design]);
+
+  const kobanRowValue = useMemo(() => {
+    const found = KOBAN_DESIGNS.find((d) => d.id === kobanStyle.design);
+    return found?.name || 'Neon K Chip';
+  }, [kobanStyle.design]);
+
+  const notificationsRowValue = useMemo(() => {
+    if (emailKobanReceipts && emailArenaStarts) return 'Enabled';
+    if (!emailKobanReceipts && !emailArenaStarts) return 'Critical Only';
+    return 'Custom';
+  }, [emailKobanReceipts, emailArenaStarts]);
+
+  const equippedAvatarId =
+    equipped?.avatar ||
+    ((profile as Record<string, unknown> | null)?.avatar as string | undefined);
+  const equippedFrameId = equipped?.frame;
+
+  // Main settings rows organized by group
+  const mainGroups = useMemo(
+    () => [
+      {
+        id: 'account',
+        label: 'Account',
+        rows: [
+          {
+            id: 'plan' as SettingsSubPageId,
+            label: 'Workspace / Plan',
+            value: planRowValue,
+            icon: Zap,
+            keywords: ['workspace', 'plan', 'pro', 'subscription', 'billing', 'unlimited', 'upgrade'],
+          },
+          {
+            id: 'email' as SettingsSubPageId,
+            label: 'Account Email',
+            value: isGuest ? 'Guest' : 'Verified',
+            icon: Mail,
+            keywords: ['email', 'address', 'verified', 'contact', 'account email'],
+          },
+          {
+            id: 'username' as SettingsSubPageId,
+            label: 'Username & Study Role',
+            value: `@${effectiveUsername}`,
+            icon: AtSign,
+            keywords: ['username', 'handle', 'study role', 'matric', 'fsc', 'mdcat', 'ecat', 'badge'],
+          },
+          {
+            id: 'display-name' as SettingsSubPageId,
+            label: 'Display Name',
+            value: effectiveDisplayName,
+            icon: User,
+            keywords: ['display name', 'full name', 'name', 'real name', 'approval'],
+          },
+        ],
+      },
+      {
+        id: 'personalize',
+        label: 'Personalize',
+        rows: [
+          {
+            id: 'appearance' as SettingsSubPageId,
+            label: 'Appearance',
+            value: appearanceValueLabel,
+            icon: themePreference === 'light' ? Sun : themePreference === 'dark' ? Moon : Monitor,
+            keywords: ['appearance', 'theme', 'light', 'dark', 'system', 'reduce effects', 'smooth mode', 'dragon', 'hide dragon'],
+          },
+          {
+            id: 'pro-badge' as SettingsSubPageId,
+            label: 'Pro Badge',
+            value: proBadgeRowValue,
+            icon: Crown,
+            keywords: ['pro badge', 'badge', '31 designs', 'ember', 'neon', 'holo', 'show my badge'],
+          },
+          {
+            id: 'koban-icon' as SettingsSubPageId,
+            label: 'Koban Icon',
+            value: kobanRowValue,
+            icon: Coins,
+            keywords: ['koban', 'coin', 'icon', 'palette', 'glow', 'motion', 'shine', 'sparkle'],
+          },
+        ],
+      },
+      {
+        id: 'general',
+        label: 'Preferences & Security',
+        rows: [
+          {
+            id: 'notifications' as SettingsSubPageId,
+            label: 'Notifications',
+            value: notificationsRowValue,
+            icon: Bell,
+            keywords: ['notifications', 'email alerts', 'koban receipts', 'test start', 'arena'],
+          },
+          {
+            id: 'security' as SettingsSubPageId,
+            label: 'Security & Two-Step Verification',
+            value: 'Manage',
+            icon: Shield,
+            keywords: ['security', 'password', '2fa', 'two-step', 'totp', 'authenticator', 'backup codes', 'devices', 'delete account'],
+          },
+          {
+            id: 'legal' as SettingsSubPageId,
+            label: 'Legal & Privacy',
+            value: LEGAL_VERSION_DISPLAY,
+            icon: FileText,
+            keywords: ['legal', 'privacy policy', 'terms of service', 'version'],
+          },
+        ],
+      },
+    ],
+    [
+      planRowValue,
+      isGuest,
+      effectiveUsername,
+      effectiveDisplayName,
+      appearanceValueLabel,
+      themePreference,
+      proBadgeRowValue,
+      kobanRowValue,
+      notificationsRowValue,
+    ]
+  );
+
+  // Deep sub-page search items so searching "dragon", "totp", "password", "reduce effects", "delete", etc. jumps straight into the sub-page
+  const deepSearchItems: SettingsSubPageSearchItem[] = useMemo(
+    () => [
+      {
+        id: 'deep-plan',
+        label: 'View Plan Details',
+        subtitle: `Account · ${planRowValue}`,
+        subPage: 'plan',
+        keywords: ['plan', 'workspace', 'upgrade', 'pro', 'unlimited', 'subscription', 'billing'],
+      },
+      {
+        id: 'deep-email',
+        label: 'Account Email & Verification',
+        subtitle: `Account · ${user?.email || 'Guest'}`,
+        subPage: 'email',
+        keywords: ['email', 'verified', 'address', 'privacy'],
+      },
+      {
+        id: 'deep-username',
+        label: 'Change @username',
+        subtitle: `Username & Study Role · @${effectiveUsername}`,
+        subPage: 'username',
+        keywords: ['username', 'handle', '@', 'unique'],
+      },
+      {
+        id: 'deep-role',
+        label: 'Academic Study Role Badge',
+        subtitle: `Username & Study Role · ${customRole}`,
+        subPage: 'username',
+        keywords: ['study role', 'academic', 'matric', 'fsc', 'mdcat', 'ecat', 'ics', 'o levels', 'a levels'],
+      },
+      {
+        id: 'deep-display-name',
+        label: 'Display Name',
+        subtitle: `Account · ${effectiveDisplayName}`,
+        subPage: 'display-name',
+        keywords: ['display name', 'name', 'official name', 'admin approval'],
+      },
+      {
+        id: 'deep-theme',
+        label: 'Theme (Light / Dark / System)',
+        subtitle: `Appearance · Currently ${appearanceValueLabel}`,
+        subPage: 'appearance',
+        targetId: 'settings-theme',
+        keywords: ['theme', 'light mode', 'dark mode', 'system', 'color scheme'],
+      },
+      {
+        id: 'deep-reduce-effects',
+        label: 'Reduce effects',
+        subtitle: `Appearance · ${smoothMode ? 'On' : 'Off'}`,
+        subPage: 'appearance',
+        targetId: 'appearance-reduce-effects',
+        keywords: ['reduce effects', 'smooth mode', 'blur', 'animations', 'battery', 'performance', 'low end'],
+      },
+      {
+        id: 'deep-dragon',
+        label: 'Hide dragon',
+        subtitle: `Appearance · ${hideDragon ? 'Hidden' : 'Visible'}`,
+        subPage: 'appearance',
+        targetId: 'settings-dragon',
+        keywords: ['hide dragon', 'dragon', 'mascot', 'companion', 'pet'],
+      },
+      {
+        id: 'deep-pro-badge',
+        label: 'Pro Badge (31 Designs & Visibility)',
+        subtitle: `Personalize · ${proBadgeRowValue}`,
+        subPage: 'pro-badge',
+        keywords: ['pro badge', 'show my badge', 'ember', 'neon', 'holo', 'aurora', 'diamond', 'cosmic'],
+      },
+      {
+        id: 'deep-koban',
+        label: 'Koban Icon (Design, Color Palette, Glow & Motion)',
+        subtitle: `Personalize · ${kobanRowValue}`,
+        subPage: 'koban-icon',
+        keywords: ['koban icon', 'coin', 'color palette', 'glow strength', 'motion', 'shine', 'sparkles'],
+      },
+      {
+        id: 'deep-notif-koban',
+        label: 'Daily & milestone Koban receipts',
+        subtitle: `Notifications · ${emailKobanReceipts ? 'On' : 'Off'}`,
+        subPage: 'notifications',
+        keywords: ['koban receipts', 'daily', 'milestone', 'notifications', 'email'],
+      },
+      {
+        id: 'deep-notif-arena',
+        label: 'Test start notifications',
+        subtitle: `Notifications · ${emailArenaStarts ? 'On' : 'Off'}`,
+        subPage: 'notifications',
+        keywords: ['test start', 'arena', 'notifications', 'live test', 'competition'],
+      },
+      {
+        id: 'deep-password',
+        label: 'Change Password',
+        subtitle: 'Security · Update your login password',
+        subPage: 'security',
+        targetId: 'settings-password',
+        keywords: ['change password', 'password', 'update password', 'current password', 'new password'],
+      },
+      {
+        id: 'deep-totp',
+        label: 'Authenticator app (TOTP) & Backup Codes',
+        subtitle: 'Security · Two-step verification',
+        subPage: 'security',
+        targetId: 'security-totp',
+        keywords: ['authenticator', 'totp', 'qr code', 'backup codes', 'regenerate', '2fa', 'two-step'],
+      },
+      {
+        id: 'deep-email-2fa',
+        label: 'Email code at login',
+        subtitle: 'Security · 6-digit email login code',
+        subPage: 'security',
+        targetId: 'security-email-2fa',
+        keywords: ['email code', 'login code', 'email 2fa', 'turn off', 'verification'],
+      },
+      {
+        id: 'deep-devices',
+        label: 'Remembered devices & Sign out of all devices',
+        subtitle: 'Security · Revoke active sessions',
+        subPage: 'security',
+        targetId: 'security-devices',
+        keywords: ['remembered devices', 'trusted devices', 'sign out of all devices', 'sessions', 'revoke'],
+      },
+      {
+        id: 'deep-delete-account',
+        label: 'Delete Account',
+        subtitle: 'Security · Permanently erase account data',
+        subPage: 'security',
+        targetId: 'settings-delete-account',
+        keywords: ['delete account', 'remove account', 'erase', 'danger'],
+      },
+      {
+        id: 'deep-terms',
+        label: 'Terms of Service & Privacy Policy',
+        subtitle: `Legal & Privacy · ${LEGAL_VERSION_DISPLAY}`,
+        subPage: 'legal',
+        keywords: ['terms of service', 'privacy policy', 'legal', 'version 2.0', 'consent'],
+      },
+      {
+        id: 'deep-signout',
+        label: 'Sign out',
+        subtitle: 'Account · End current session',
+        subPage: null,
+        targetId: 'settings-sign-out',
+        keywords: ['sign out', 'log out', 'logout', 'exit'],
+      },
+    ],
+    [
+      planRowValue,
+      user?.email,
+      effectiveUsername,
+      customRole,
+      effectiveDisplayName,
+      appearanceValueLabel,
+      smoothMode,
+      hideDragon,
+      proBadgeRowValue,
+      kobanRowValue,
+      emailKobanReceipts,
+      emailArenaStarts,
+    ]
+  );
+
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  const filteredGroups = useMemo(() => {
+    if (!normalizedQuery) return mainGroups;
+    return mainGroups
+      .map((group) => ({
+        ...group,
+        rows: group.rows.filter(
+          (row) =>
+            row.label.toLowerCase().includes(normalizedQuery) ||
+            row.value.toLowerCase().includes(normalizedQuery) ||
+            row.keywords.some((kw) => kw.toLowerCase().includes(normalizedQuery))
+        ),
+      }))
+      .filter((group) => group.rows.length > 0);
+  }, [mainGroups, normalizedQuery]);
+
+  const matchingDeepItems = useMemo(() => {
+    if (!normalizedQuery) return [];
+    return deepSearchItems.filter(
+      (item) =>
+        item.label.toLowerCase().includes(normalizedQuery) ||
+        item.subtitle.toLowerCase().includes(normalizedQuery) ||
+        item.keywords.some((kw) => kw.toLowerCase().includes(normalizedQuery))
+    );
+  }, [deepSearchItems, normalizedQuery]);
+
+  if (isSigningOut) {
+    return <LineLoader context="login" variant="page" immediate />;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER SUB-PAGE (SLIDES IN FROM THE RIGHT)
+  // ─────────────────────────────────────────────────────────────────────────
+  if (activeSubPage) {
     return (
-      <div className="max-w-2xl mx-auto p-4 sm:p-6">
-        <LineLoader context="dashboard" variant="section" />
+      <div
+        className="stg-subpage"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        <PageMeta
+          title={`${SUBPAGE_TITLES[activeSubPage]} — Settings | Boardly`}
+          description="Manage your Boardly account, personalization, and security settings."
+        />
+
+        {/* Fixed-spec top header: 100% width, box-sizing: border-box, 12px side padding, one flex row with gap 8px */}
+        <header className="stg-top-header">
+          <div className="stg-top-header-inner">
+            <button
+              type="button"
+              onClick={closeSubPage}
+              className="fsm-back-btn shrink-0"
+              aria-label="Back to Settings"
+            >
+              <ArrowLeft size={20} strokeWidth={2.2} />
+            </button>
+
+            <h1 className="stg-top-header-title">
+              {SUBPAGE_TITLES[activeSubPage]}
+            </h1>
+
+            <div className="stg-top-header-slot">
+              <BoardlyAvatar
+                uid={user?.uid}
+                equippedAvatar={equippedAvatarId}
+                equippedFrameId={equippedFrameId}
+                size={34}
+              />
+            </div>
+          </div>
+        </header>
+
+        <div className="stg-container pt-2">
+          {/* 1. PLAN SUB-PAGE */}
+          {activeSubPage === 'plan' && (
+            <div className="space-y-4">
+              <div className="stg-group !mt-2">
+                <div className="stg-group-label">Current Plan</div>
+                <div className="stg-card">
+                  <div className="stg-row stg-row--static">
+                    <div className="stg-row-left">
+                      <span className="stg-row-icon">
+                        <Zap size={17} className="text-[#D71921]" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="stg-row-label font-semibold">
+                          {planRowValue}
+                        </div>
+                        <div className="text-xs text-[var(--menu-subtext)]">
+                          {effectivePlan.source === 'superadmin'
+                            ? 'Superadmin permanent unlimited access'
+                            : effectivePlan.isUnlimited
+                              ? 'Unlimited tests, Pro badges & full analytics'
+                              : 'Standard practice access'}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="stg-row-value font-semibold text-emerald-600 dark:text-emerald-400">
+                      Active
+                    </span>
+                  </div>
+
+                  <Link to="/dashboard/plans" className="stg-row">
+                    <div className="stg-row-left">
+                      <span className="stg-row-icon">
+                        <Crown size={17} />
+                      </span>
+                      <span className="stg-row-label">
+                        {effectivePlan.isUnlimited ? 'View Plan Details' : 'Upgrade to Pro'}
+                      </span>
+                    </div>
+                    <div className="stg-row-right">
+                      <ChevronRight size={17} />
+                    </div>
+                  </Link>
+                </div>
+                <p className="stg-footnote">
+                  {effectivePlan.source === 'superadmin'
+                    ? 'Superadmin accounts include permanent unlimited access to all practice papers, AI tools, and Pro cosmetics.'
+                    : effectivePlan.isUnlimited
+                      ? 'Your Boardly Pro membership unlocks unlimited mock tests, custom Pro badges, and priority features.'
+                      : 'Upgrade to Boardly Pro to unlock unlimited mock tests, custom Pro badges, and full analytics.'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* 2. ACCOUNT EMAIL SUB-PAGE */}
+          {activeSubPage === 'email' && (
+            <div className="space-y-4">
+              <div className="stg-group !mt-2">
+                <div className="stg-group-label">Email Address</div>
+                <div className="stg-card">
+                  <div className="stg-row stg-row--static">
+                    <div className="stg-row-left">
+                      <span className="stg-row-icon">
+                        <Mail size={17} />
+                      </span>
+                      <span className="stg-row-label font-mono text-sm">
+                        {isGuest ? 'Guest session (no email linked)' : user?.email || 'No email'}
+                      </span>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
+                      {isGuest ? 'Guest' : 'Verified'}
+                    </span>
+                  </div>
+
+                  {isGuest && (
+                    <button
+                      type="button"
+                      onClick={() => setUpgradeModalOpen(true)}
+                      className="stg-row text-[#D71921] font-semibold"
+                    >
+                      <div className="stg-row-left">
+                        <span className="stg-row-icon !text-[#D71921]">
+                          <UserPlus size={17} />
+                        </span>
+                        <span className="stg-row-label font-semibold text-[#D71921]">
+                          Link Email &amp; Upgrade Account
+                        </span>
+                      </div>
+                      <ChevronRight size={17} />
+                    </button>
+                  )}
+                </div>
+                <p className="stg-footnote">
+                  Your email address is private and never shown on your public profile. It is only used for sign-in, security alerts, and official receipts.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* 3. DISPLAY NAME SUB-PAGE */}
+          {activeSubPage === 'display-name' && (
+            <form onSubmit={handleSaveDisplayName} className="space-y-4">
+              <div className="stg-group !mt-2">
+                <div className="stg-group-label">Display Name</div>
+                <div className="stg-card">
+                  <div className="stg-row stg-row--static">
+                    <input
+                      type="text"
+                      value={displayName}
+                      onChange={(e) => {
+                        setDisplayName(e.target.value);
+                        setPendingRestrictedName(null);
+                      }}
+                      maxLength={50}
+                      placeholder="Enter your display name"
+                      className="stg-input"
+                      aria-label="Display Name"
+                    />
+                    <span className="text-xs font-mono text-[var(--menu-subtext)] shrink-0">
+                      {displayName.length}/50
+                    </span>
+                  </div>
+                </div>
+                <p className="stg-footnote">
+                  Shown on your profile, leaderboards, and Commons posts. Official names (Admin, Boardly, Support, Moderator, Staff, Founder, CEO) require administrator approval.
+                </p>
+              </div>
+
+              {profileMessage && (
+                <div
+                  className={`rounded-2xl p-3.5 text-xs font-semibold border space-y-2.5 ${
+                    profileMessage.type === 'success'
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-300'
+                      : profileMessage.type === 'warning'
+                        ? 'bg-amber-500/10 border-amber-500/35 text-amber-700 dark:text-amber-200'
+                        : 'bg-red-500/10 border-red-500/30 text-[#D71921] dark:text-red-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-2">
+                    {profileMessage.type === 'warning' ? (
+                      <ShieldAlert size={15} className="shrink-0 mt-0.5 text-amber-500" />
+                    ) : profileMessage.type === 'error' ? (
+                      <AlertCircle size={15} className="shrink-0 mt-0.5" />
+                    ) : (
+                      <Check size={15} className="shrink-0 mt-0.5" />
+                    )}
+                    <span>{profileMessage.text}</span>
+                  </div>
+
+                  {pendingRestrictedName && !isAdmin && (
+                    <button
+                      type="button"
+                      disabled={requestingApproval}
+                      onClick={handleRequestAdminApproval}
+                      className="stg-btn-secondary !min-h-[44px]"
+                    >
+                      <Send size={14} />
+                      <span>
+                        {requestingApproval
+                          ? 'Sending Request...'
+                          : 'Request Approval from Admin'}
+                      </span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={profileSaving}
+                className="stg-btn-primary"
+              >
+                {profileSaving ? 'Saving…' : 'Save Name'}
+              </button>
+            </form>
+          )}
+
+          {/* 4. USERNAME & STUDY ROLE SUB-PAGE */}
+          {activeSubPage === 'username' && (
+            <form onSubmit={handleSaveUsernameAndRole} className="space-y-5">
+              {/* Username Input Group */}
+              <div className="stg-group !mt-2">
+                <div className="stg-group-label">Unique Username</div>
+                <div className="stg-card">
+                  <div className="stg-row stg-row--static">
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                      <span className="text-base font-mono font-bold text-[var(--menu-subtext)]">
+                        @
+                      </span>
+                      <input
+                        type="text"
+                        value={usernameInput}
+                        onChange={(e) => setUsernameInput(e.target.value)}
+                        maxLength={20}
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        placeholder="your_username"
+                        className="stg-input font-mono"
+                        aria-label="Username"
+                      />
+                    </div>
+                    <div className="shrink-0 flex items-center">
+                      {usernameStatus === 'checking' && (
+                        <Loader2 size={16} className="animate-spin text-[var(--menu-subtext)]" />
+                      )}
+                      {usernameStatus === 'available' && (
+                        <Check size={16} className="text-emerald-500" />
+                      )}
+                      {(usernameStatus === 'taken' || usernameStatus === 'invalid') && (
+                        <AlertCircle size={16} className="text-[#D71921]" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <p
+                  className={`stg-footnote ${
+                    usernameStatus === 'available'
+                      ? '!text-emerald-600 dark:!text-emerald-400 font-medium'
+                      : usernameStatus === 'taken' || usernameStatus === 'invalid'
+                        ? '!text-[#D71921] dark:!text-red-400 font-medium'
+                        : ''
+                  }`}
+                >
+                  {usernameStatusMsg ||
+                    '3–20 characters: lowercase letters, numbers, and underscores only.'}
+                </p>
+              </div>
+
+              {/* Academic Role Badge List (selectable rows with check on chosen one, not wrapping pills) */}
+              <div className="stg-group">
+                <div className="stg-group-label">Academic Study Role</div>
+                <div className="stg-card">
+                  {COSMETIC_ROLE_OPTIONS.map((roleOption) => {
+                    const selected = customRole === roleOption;
+                    return (
+                      <button
+                        key={roleOption}
+                        type="button"
+                        onClick={() => setCustomRole(roleOption)}
+                        className="stg-row"
+                      >
+                        <div className="stg-row-left">
+                          <span className="stg-row-label">{roleOption}</span>
+                        </div>
+                        <div className="stg-row-right">
+                          {selected && (
+                            <Check size={18} className="text-[#D71921] shrink-0" strokeWidth={2.5} />
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="stg-footnote">
+                  Your study role badge is cosmetic only and appears on your profile and Commons posts. It never changes account permissions.
+                </p>
+              </div>
+
+              {usernameSavedMsg && (
+                <div
+                  className={`rounded-2xl p-3.5 text-xs font-semibold border flex items-center gap-2 ${
+                    usernameSavedMsg.type === 'success'
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-300'
+                      : 'bg-red-500/10 border-red-500/30 text-[#D71921] dark:text-red-300'
+                  }`}
+                >
+                  {usernameSavedMsg.type === 'success' ? (
+                    <Check size={15} className="shrink-0" />
+                  ) : (
+                    <AlertCircle size={15} className="shrink-0" />
+                  )}
+                  <span>{usernameSavedMsg.text}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={usernameSaving}
+                className="stg-btn-primary"
+              >
+                {usernameSaving ? 'Saving…' : 'Save'}
+              </button>
+            </form>
+          )}
+
+          {/* 5. APPEARANCE SUB-PAGE */}
+          {activeSubPage === 'appearance' && (
+            <div className="space-y-5">
+              {/* Theme Dropdown Group */}
+              <div id="settings-theme" className="stg-group !mt-2">
+                <div className="stg-group-label">Theme</div>
+                <div className="stg-card">
+                  <div className="stg-row stg-row--static">
+                    <div className="stg-row-left">
+                      <span className="stg-row-icon">
+                        {themePreference === 'light' ? (
+                          <Sun size={17} />
+                        ) : themePreference === 'dark' ? (
+                          <Moon size={17} />
+                        ) : (
+                          <Monitor size={17} />
+                        )}
+                      </span>
+                      <span className="stg-row-label">Theme</span>
+                    </div>
+                    <select
+                      aria-label="Theme"
+                      value={themePreference}
+                      onChange={(e) =>
+                        setThemePreference(e.target.value as ThemeSetting)
+                      }
+                      className="fsm-appearance-select"
+                    >
+                      <option value="light">Light</option>
+                      <option value="dark">Dark</option>
+                      <option value="system">System</option>
+                    </select>
+                  </div>
+                </div>
+                <p className="stg-footnote">
+                  Choose Light, Dark, or follow your device&apos;s System appearance setting.
+                </p>
+              </div>
+
+              {/* Reduce Effects Group */}
+              <div id="appearance-reduce-effects" className="stg-group">
+                <div className="stg-group-label">Performance</div>
+                <div className="stg-card">
+                  <div className="stg-row" onClick={toggleSmoothMode}>
+                    <div className="stg-row-left">
+                      <span className="stg-row-icon">
+                        <Sparkles size={17} />
+                      </span>
+                      <span className="stg-row-label">Reduce effects</span>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={smoothMode}
+                      aria-label="Reduce effects"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSmoothMode();
+                      }}
+                      className="stg-switch"
+                    >
+                      <span className="stg-switch-thumb" />
+                    </button>
+                  </div>
+                </div>
+                <p className="stg-footnote">
+                  Disables slide animations, heavy glass blurs, and ambient background motion for a faster, battery-friendly experience.
+                </p>
+              </div>
+
+              {/* Hide Dragon Group */}
+              <div id="settings-dragon" className="stg-group">
+                <div className="stg-group-label">Companion</div>
+                <div className="stg-card">
+                  <div
+                    className="stg-row"
+                    onClick={() => setHideDragon(!hideDragon)}
+                  >
+                    <div className="stg-row-left">
+                      <span className="stg-row-icon">
+                        <Palette size={17} />
+                      </span>
+                      <span className="stg-row-label">Hide dragon</span>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={hideDragon}
+                      aria-label="Hide dragon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setHideDragon(!hideDragon);
+                      }}
+                      className="stg-switch"
+                    >
+                      <span className="stg-switch-thumb" />
+                    </button>
+                  </div>
+                </div>
+                <p className="stg-footnote">
+                  Hides the interactive companion dragon across your dashboard while keeping all your XP and evolution progress intact.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* 6. PRO BADGE SUB-PAGE */}
+          {activeSubPage === 'pro-badge' && (
+            <div className="pt-1">
+              <ProBadgeCustomizer userDisplayName={effectiveDisplayName} />
+            </div>
+          )}
+
+          {/* 7. KOBAN ICON SUB-PAGE */}
+          {activeSubPage === 'koban-icon' && (
+            <div className="pt-1">
+              <KobanStyleCustomizer />
+            </div>
+          )}
+
+          {/* 8. NOTIFICATIONS SUB-PAGE */}
+          {activeSubPage === 'notifications' && (
+            <div className="space-y-4">
+              <div className="stg-group !mt-2">
+                <div className="stg-group-label">Email Preferences</div>
+                <div className="stg-card">
+                  {/* Daily & milestone Koban receipts */}
+                  <div
+                    className="stg-row"
+                    onClick={() =>
+                      !notifSaving &&
+                      void handleToggleNotification(
+                        'emailKobanReceipts',
+                        !emailKobanReceipts
+                      )
+                    }
+                  >
+                    <div className="stg-row-left">
+                      <span className="stg-row-icon">
+                        <Coins size={17} />
+                      </span>
+                      <span className="stg-row-label">
+                        Daily &amp; milestone Koban receipts
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={emailKobanReceipts}
+                      aria-label="Daily and milestone Koban receipts"
+                      disabled={notifSaving}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleToggleNotification(
+                          'emailKobanReceipts',
+                          !emailKobanReceipts
+                        );
+                      }}
+                      className="stg-switch"
+                    >
+                      <span className="stg-switch-thumb" />
+                    </button>
+                  </div>
+
+                  {/* Test start notifications */}
+                  <div
+                    className="stg-row"
+                    onClick={() =>
+                      !notifSaving &&
+                      void handleToggleNotification(
+                        'emailArenaStarts',
+                        !emailArenaStarts
+                      )
+                    }
+                  >
+                    <div className="stg-row-left">
+                      <span className="stg-row-icon">
+                        <Bell size={17} />
+                      </span>
+                      <span className="stg-row-label">Test start notifications</span>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={emailArenaStarts}
+                      aria-label="Test start notifications"
+                      disabled={notifSaving}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleToggleNotification(
+                          'emailArenaStarts',
+                          !emailArenaStarts
+                        );
+                      }}
+                      className="stg-switch"
+                    >
+                      <span className="stg-switch-thumb" />
+                    </button>
+                  </div>
+                </div>
+                <p className="stg-footnote">
+                  Critical transactional emails — including 6-digit verification codes, password resets, and security alerts — are always sent.
+                </p>
+              </div>
+
+              {notifMessage && (
+                <div
+                  className={`rounded-2xl p-3.5 text-xs font-semibold border flex items-center gap-2 ${
+                    notifMessage.type === 'success'
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-300'
+                      : 'bg-red-500/10 border-red-500/30 text-[#D71921] dark:text-red-300'
+                  }`}
+                >
+                  <Check size={15} className="shrink-0" />
+                  <span>{notifMessage.text}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 9. SECURITY SUB-PAGE */}
+          {activeSubPage === 'security' && (
+            <div className="space-y-5">
+              {/* Change Password Group */}
+              <div id="settings-password" className="stg-group !mt-2">
+                <div className="stg-group-label">Change Password</div>
+                {isGuest ? (
+                  <>
+                    <div className="stg-card">
+                      <button
+                        type="button"
+                        onClick={() => setUpgradeModalOpen(true)}
+                        className="stg-row text-[#D71921] font-semibold"
+                      >
+                        <div className="stg-row-left">
+                          <span className="stg-row-icon !text-[#D71921]">
+                            <UserPlus size={17} />
+                          </span>
+                          <span className="stg-row-label font-semibold text-[#D71921]">
+                            Upgrade guest account to set a password
+                          </span>
+                        </div>
+                        <ChevronRight size={17} />
+                      </button>
+                    </div>
+                    <p className="stg-footnote">
+                      Guest accounts do not have a password until upgraded with an email address.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <form onSubmit={handleChangePassword} className="space-y-3">
+                      <div className="stg-card">
+                        {hasPasswordProvider && (
+                          <div className="stg-row stg-row--static">
+                            <input
+                              type="password"
+                              value={currentPassword}
+                              onChange={(e) => setCurrentPassword(e.target.value)}
+                              placeholder="Current password"
+                              required
+                              className="stg-input"
+                              aria-label="Current password"
+                            />
+                          </div>
+                        )}
+                        <div className="stg-row stg-row--static">
+                          <input
+                            type="password"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder="New password (min. 6 characters)"
+                            required
+                            minLength={6}
+                            className="stg-input"
+                            aria-label="New password"
+                          />
+                        </div>
+                        <div className="stg-row stg-row--static">
+                          <input
+                            type="password"
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            placeholder="Confirm new password"
+                            required
+                            minLength={6}
+                            className="stg-input"
+                            aria-label="Confirm new password"
+                          />
+                        </div>
+                      </div>
+
+                      {passwordMessage && (
+                        <div
+                          className={`rounded-2xl p-3.5 text-xs font-semibold border flex items-center gap-2 ${
+                            passwordMessage.type === 'success'
+                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-300'
+                              : 'bg-red-500/10 border-red-500/30 text-[#D71921] dark:text-red-300'
+                          }`}
+                        >
+                          {passwordMessage.type === 'success' ? (
+                            <Check size={15} className="shrink-0" />
+                          ) : (
+                            <AlertCircle size={15} className="shrink-0" />
+                          )}
+                          <span>{passwordMessage.text}</span>
+                        </div>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={passwordSaving}
+                        className="stg-btn-primary"
+                      >
+                        <Lock size={15} />
+                        <span>
+                          {passwordSaving ? 'Updating Password…' : 'Update Password'}
+                        </span>
+                      </button>
+                    </form>
+                    <p className="stg-footnote">
+                      Use a strong password with at least 6 characters that you don&apos;t use elsewhere.
+                    </p>
+                  </>
+                )}
+              </div>
+
+              {/* Two-Step Verification, Email Code at Login & Remembered Devices */}
+              <SecuritySettingsSection />
+
+              {/* Delete Account Group (preserved for account lifecycle & #settings-delete-account) */}
+              <div id="settings-delete-account" className="stg-group">
+                <div className="stg-group-label">Account Deletion</div>
+                <div className="stg-card">
+                  {!deleteConfirmOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => setDeleteConfirmOpen(true)}
+                      className="stg-row stg-row--danger"
+                    >
+                      <div className="stg-row-left">
+                        <span className="stg-row-icon">
+                          <Trash2 size={17} />
+                        </span>
+                        <span className="stg-row-label">Delete Account</span>
+                      </div>
+                    </button>
+                  ) : (
+                    <form
+                      onSubmit={handleDeleteAccount}
+                      className="divide-y divide-[var(--menu-divider)]"
+                    >
+                      {hasPasswordProvider && (
+                        <div className="stg-row stg-row--static">
+                          <input
+                            type="password"
+                            value={deletePassword}
+                            onChange={(e) => setDeletePassword(e.target.value)}
+                            placeholder="Enter your current password"
+                            required
+                            className="stg-input"
+                          />
+                        </div>
+                      )}
+                      <div className="stg-row stg-row--static">
+                        <input
+                          type="text"
+                          value={deleteConfirmText}
+                          onChange={(e) => setDeleteConfirmText(e.target.value)}
+                          placeholder="Type DELETE in all caps to confirm"
+                          required
+                          className="stg-input font-mono"
+                        />
+                      </div>
+
+                      {deleteError && (
+                        <div className="p-3.5 text-xs font-semibold text-[#D71921] dark:text-red-300 flex items-center gap-2">
+                          <AlertCircle size={15} className="shrink-0" />
+                          <span>{deleteError}</span>
+                        </div>
+                      )}
+
+                      <div className="p-3.5 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeleteConfirmOpen(false);
+                            setDeletePassword('');
+                            setDeleteConfirmText('');
+                            setDeleteError(null);
+                          }}
+                          className="stg-btn-secondary flex-1"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={deleting || deleteConfirmText !== 'DELETE'}
+                          className="stg-btn-primary flex-1"
+                        >
+                          {deleting ? 'Deleting…' : 'Confirm Delete'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+                <p className="stg-footnote">
+                  Permanently deletes your Boardly profile, test history, streaks, and saved items. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* 10. LEGAL & PRIVACY SUB-PAGE */}
+          {activeSubPage === 'legal' && (
+            <div className="space-y-4">
+              <div className="stg-group !mt-2">
+                <div className="stg-group-label">Documents</div>
+                <div className="stg-card">
+                  <Link to="/terms" className="stg-row">
+                    <div className="stg-row-left">
+                      <span className="stg-row-icon">
+                        <FileText size={17} />
+                      </span>
+                      <span className="stg-row-label">Terms of Service</span>
+                    </div>
+                    <div className="stg-row-right">
+                      <ExternalLink size={15} />
+                      <ChevronRight size={17} />
+                    </div>
+                  </Link>
+
+                  <Link to="/privacy" className="stg-row">
+                    <div className="stg-row-left">
+                      <span className="stg-row-icon">
+                        <Shield size={17} />
+                      </span>
+                      <span className="stg-row-label">Privacy Policy</span>
+                    </div>
+                    <div className="stg-row-right">
+                      <ExternalLink size={15} />
+                      <ChevronRight size={17} />
+                    </div>
+                  </Link>
+
+                  <div className="stg-row stg-row--static">
+                    <div className="stg-row-left">
+                      <span className="stg-row-label">Version</span>
+                    </div>
+                    <span className="stg-row-value font-mono">
+                      {LEGAL_VERSION_DISPLAY}
+                    </span>
+                  </div>
+
+                  <div className="stg-row stg-row--static">
+                    <div className="stg-row-left">
+                      <span className="stg-row-label">Last Updated</span>
+                    </div>
+                    <span className="stg-row-value">{LEGAL_LAST_UPDATED_LABEL}</span>
+                  </div>
+                </div>
+                <p className="stg-footnote">
+                  Your continued use of Boardly is governed by our Terms of Service and Privacy Policy ({LEGAL_VERSION_DISPLAY}, updated {LEGAL_LAST_UPDATED_LABEL}).
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <GuestUpgradeModal
+          isOpen={upgradeModalOpen}
+          onClose={() => setUpgradeModalOpen(false)}
+        />
       </div>
     );
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER MAIN SETTINGS PAGE (/settings)
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <>
+    <div className="stg-shell">
       <PageMeta
         title="Settings — Boardly"
-        description="Manage your plan, account email, display name, username, role, password, and session settings on Boardly."
+        description="Manage your Boardly profile, appearance, notifications, and account security."
       />
 
-      <div className="max-w-2xl mx-auto p-4 sm:p-6 pb-28 space-y-6">
-        {/* Page Header */}
-        <div className="pb-3 border-b border-[var(--border)]">
-          <span className="text-[11px] uppercase tracking-wider text-[var(--text-faint)] font-heading font-semibold">
-            ACCOUNT
-          </span>
-          <h1
-            className="text-2xl sm:text-3xl font-extrabold text-[var(--text)] mt-1"
-            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+      {/* Top Header: 44px circular glass back button at top-left, centered title "Settings" */}
+      <header className="stg-top-header">
+        <div className="stg-top-header-inner">
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard')}
+            className="fsm-back-btn shrink-0"
+            aria-label="Back"
           >
-            Settings
-          </h1>
-          <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
-            Manage your plan, display name, username, role, password, and account session.
+            <ArrowLeft size={20} strokeWidth={2.2} />
+          </button>
+
+          <h1 className="stg-top-header-title">Settings</h1>
+
+          {/* Right slot keeps title perfectly centered */}
+          <div className="stg-top-header-slot" aria-hidden="true" />
+        </div>
+      </header>
+
+      <div className="stg-container">
+        {/* Centered 88px Avatar + Edit Pencil Badge, Name, @username, Role Pill */}
+        <div className="flex flex-col items-center text-center pt-3 pb-2">
+          <div className="relative inline-flex items-center justify-center overflow-visible">
+            <BoardlyAvatar
+              uid={user?.uid}
+              equippedAvatar={equippedAvatarId}
+              equippedFrameId={equippedFrameId}
+              size={88}
+            />
+            <button
+              type="button"
+              onClick={() => openProfile()}
+              className="fsm-edit-badge cursor-pointer"
+              aria-label="Edit avatar and profile"
+              title="Edit profile"
+            >
+              <Pencil size={13} strokeWidth={2.4} />
+            </button>
+          </div>
+
+          <div className="mt-3 flex items-center justify-center gap-1.5 flex-wrap max-w-full px-2">
+            <h2 className="text-[20px] font-bold tracking-tight text-[var(--menu-text)] leading-tight truncate max-w-[260px]">
+              {effectiveDisplayName}
+            </h2>
+            {!isGuest && effectivePlan.isUnlimited && effectiveProBadge && (
+              <ProBadge design={effectiveProBadge} size="sm" animated priority />
+            )}
+          </div>
+
+          <p className="mt-0.5 text-[14px] font-medium text-[var(--menu-subtext)]">
+            @{effectiveUsername}
           </p>
+
+          <div className="mt-2 flex items-center justify-center gap-1.5 flex-wrap">
+            <span className="fsm-role-pill">{roleBadgeLabel}</span>
+          </div>
         </div>
 
-        {/* ── 1. Current Plan & Upgrade Section ──────────────────────────── */}
-        <section
-          id="settings-plan"
-          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 scroll-mt-24 ${sectionHighlightClass('settings-plan')}`}
-        >
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <Sparkles size={16} className="text-[var(--red)]" />
-                <h2 className="text-base font-bold text-[var(--text)] font-heading">
-                  Current Plan
-                </h2>
-                <Badge color={isPro ? 'green' : 'default'}>
-                  {effectivePlan.isSuperAdmin
-                    ? 'Superadmin · Unlimited'
-                    : isPro
-                    ? effectivePlan.source === 'crew'
-                      ? `Unlimited (${effectivePlan.crewName || 'Crew'})`
-                      : 'Pro Unlimited'
-                    : 'Free Plan'}
-                </Badge>
-              </div>
-              <p className="text-xs text-[var(--muted)] leading-relaxed">
-                {effectivePlan.isSuperAdmin
-                  ? 'Full superadmin authority and unlimited access across Boardly.'
-                  : isPro
-                  ? 'You have unlimited practice tests, past papers, and AI tutor derivations.'
-                  : `You are on the Free plan. Upgrade to Pro (PKR ${PLANS.pro_monthly.price_pkr}/month) for unlimited tests and AI derivations.`}
-              </p>
-            </div>
-
-            {!isPro && !effectivePlan.isSuperAdmin ? (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => navigate('/dashboard/plans')}
-                className="shrink-0"
-              >
-                <span>Upgrade to Pro</span>
-                <ArrowRight size={14} />
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => navigate('/dashboard/plans')}
-                className="shrink-0"
-              >
-                <span>View Plan Details</span>
-              </Button>
-            )}
-          </div>
-        </section>
-
-        {/* ── 2. Account Email (Read-Only) ───────────────────────────────── */}
-        <section
-          id="settings-email"
-          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-3 scroll-mt-24 ${sectionHighlightClass('settings-email')}`}
-        >
-          <div className="flex items-center gap-2">
-            <Mail size={16} className="text-[var(--muted)]" />
-            <h2 className="text-base font-bold text-[var(--text)] font-heading">
-              Account Email
-            </h2>
-          </div>
-
-          <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-            <span className="text-sm font-mono text-[var(--text)] truncate">
-              {user?.email || 'No email linked'}
-            </span>
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-500 shrink-0">
-              <Shield size={12} />
-              <span>Verified</span>
-            </span>
-          </div>
-          <p className="text-[11px] text-[var(--muted)]">
-            Your email is kept strictly private and is never shown on your public profile or in Commons.
-          </p>
-        </section>
-
-        {/* ── 2b. Email Notification Preferences (Optional vs Transactional) ── */}
-        <section
-          id="settings-notifications"
-          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 scroll-mt-24 ${sectionHighlightClass('settings-notifications')}`}
-        >
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Mail size={16} className="text-[var(--red)]" />
-              <h2 className="text-base font-bold text-[var(--text)] font-heading">
-                Email Notifications
-              </h2>
-            </div>
-            {emailPrefsSaved && (
-              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400">
-                <Check size={13} />
-                <span>Preferences saved</span>
-              </span>
-            )}
-          </div>
-
-          <p className="text-xs text-[var(--muted)] leading-relaxed">
-            Critical transactional emails — including <strong>Koban purchase confirmations</strong>,{' '}
-            <strong>official test result reports</strong>, and <strong>application status updates</strong> — are always sent to your verified account email. You can customize optional activity emails below:
-          </p>
-
-          <div className="divide-y divide-[var(--border)] rounded-xl bg-[var(--surface-2)] border border-[var(--border)] px-4">
-            {/* Optional Toggle 1: Small Koban Receipts */}
-            <div className="py-3.5 flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <div className="text-xs sm:text-sm font-heading font-semibold text-[var(--text)]">
-                  Daily &amp; milestone Koban receipts
-                </div>
-                <p className="text-[11px] text-[var(--muted)]">
-                  Receive a short email receipt when you claim daily check-in or MCQ milestone Kobans.
-                </p>
-              </div>
+        {/* Guest Upgrade Prompt Card (if guest) */}
+        {isGuest && !normalizedQuery && (
+          <div className="stg-group">
+            <div className="stg-card">
               <button
                 type="button"
-                role="switch"
-                disabled={savingEmailPrefs}
-                aria-checked={emailPrefs.smallKobanReceipts}
-                onClick={() => handleToggleEmailPref('smallKobanReceipts')}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  emailPrefs.smallKobanReceipts
-                    ? 'bg-[var(--red)]'
-                    : 'bg-[var(--card)] border-[var(--border)]'
-                }`}
+                onClick={() => setUpgradeModalOpen(true)}
+                className="stg-row text-[#D71921] font-semibold"
               >
-                <span className="sr-only">Toggle small Koban receipts</span>
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    emailPrefs.smallKobanReceipts ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
-
-            {/* Optional Toggle 2: Test Started Email */}
-            <div className="py-3.5 flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <div className="text-xs sm:text-sm font-heading font-semibold text-[var(--text)]">
-                  Test start notifications
+                <div className="stg-row-left">
+                  <span className="stg-row-icon !text-[#D71921]">
+                    <UserPlus size={17} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="stg-row-label font-semibold text-[#D71921]">
+                      Upgrade Guest Account
+                    </div>
+                    <div className="text-xs text-[var(--menu-subtext)] font-normal">
+                      Link your email &amp; password so you never lose progress
+                    </div>
+                  </div>
                 </div>
-                <p className="text-[11px] text-[var(--muted)]">
-                  Send a quick email when a new timed test session starts (test completion results are always sent).
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                disabled={savingEmailPrefs}
-                aria-checked={emailPrefs.testStarted}
-                onClick={() => handleToggleEmailPref('testStarted')}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  emailPrefs.testStarted
-                    ? 'bg-[var(--red)]'
-                    : 'bg-[var(--card)] border-[var(--border)]'
-                }`}
-              >
-                <span className="sr-only">Toggle test start notifications</span>
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    emailPrefs.testStarted ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
+                <ChevronRight size={17} />
               </button>
             </div>
           </div>
-        </section>
+        )}
 
-        {/* ── 3. Display Name Section (with Reserved Name Admin Request) ─── */}
-        <section
-          id="settings-display-name"
-          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 scroll-mt-24 ${sectionHighlightClass('settings-display-name')}`}
-        >
-          <div className="flex items-center gap-2">
-            <UserIcon size={16} className="text-[var(--muted)]" />
-            <h2 className="text-base font-bold text-[var(--text)] font-heading">
-              Display Name
-            </h2>
-          </div>
-
-          <form onSubmit={handleSaveName} className="space-y-3">
-            <div>
-              <input
-                type="text"
-                value={displayName}
-                onChange={(e) => {
-                  setDisplayName(e.target.value);
-                  if (nameError) setNameError(null);
-                }}
-                maxLength={40}
-                placeholder="Enter your display name"
-                className="w-full h-11 px-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors"
-              />
-              <p className="text-[11px] text-[var(--muted)] mt-1.5">
-                Shown on your profile card, leaderboards, and public Commons posts. Official names (SHS Virtual Academy, Boardly, Scholario) require admin approval.
-              </p>
-            </div>
-
-            {nameError && (
-              <div className="p-3 rounded-xl bg-red-950/30 border border-red-500/40 text-red-300 text-xs flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <AlertCircle size={14} className="shrink-0 text-red-400" />
-                  <span>{nameError}</span>
-                </div>
-                {(nameError.includes('reserved') || nameError.includes('Send a request')) && (
+        {/* Grouped Rounded Cards */}
+        {filteredGroups.map((group) => (
+          <div key={group.id} className="stg-group">
+            <div className="stg-group-label">{group.label}</div>
+            <div className="stg-card">
+              {group.rows.map((row) => {
+                const IconComp = row.icon;
+                return (
                   <button
+                    key={row.id}
                     type="button"
-                    disabled={sendingNameRequest}
-                    onClick={handleSendReservedNameRequest}
-                    className="relative overflow-hidden self-start px-3 py-1.5 rounded-lg bg-[var(--red)] hover:opacity-90 text-white font-heading font-semibold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    onClick={() => openSubPage(row.id)}
+                    className="stg-row"
                   >
-                    <Send size={13} />
-                    <span>{sendingNameRequest ? 'Sending...' : 'Send Request to Admin'}</span>
-                    {sendingNameRequest && <ButtonLineLoader />}
+                    <div className="stg-row-left">
+                      <span className="stg-row-icon">
+                        <IconComp size={17} strokeWidth={2} />
+                      </span>
+                      <span className="stg-row-label">{row.label}</span>
+                    </div>
+                    <div className="stg-row-right">
+                      {row.value && (
+                        <span className="stg-row-value">{row.value}</span>
+                      )}
+                      <ChevronRight size={17} className="shrink-0 opacity-75" />
+                    </div>
                   </button>
-                )}
-              </div>
-            )}
-
-            {nameRequestSentMsg && (
-              <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
-                <CheckCircle2 size={14} className="shrink-0 text-emerald-400" />
-                <span>{nameRequestSentMsg}</span>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                {nameSaved && (
-                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
-                    <Check size={14} />
-                    <span>Display name updated</span>
-                  </span>
-                )}
-              </div>
-              <Button type="submit" variant="primary" size="sm" disabled={savingName}>
-                {savingName ? 'Saving...' : 'Save Name'}
-              </Button>
+                );
+              })}
             </div>
-          </form>
-        </section>
-
-        {/* ── 4. Username (@handle) & Study Role Selection ───────────────── */}
-        <section
-          id="settings-username"
-          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 scroll-mt-24 ${sectionHighlightClass('settings-username')}`}
-        >
-          <div className="flex items-center gap-2">
-            <AtSign size={16} className="text-[var(--muted)]" />
-            <h2 className="text-base font-bold text-[var(--text)] font-heading">
-              Username &amp; Study Role
-            </h2>
           </div>
+        ))}
 
-          <form onSubmit={handleSaveIdentity} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-heading font-semibold text-[var(--text)] block">
-                Unique Username (@handle)
-              </label>
-              <input
-                type="text"
-                value={usernameInput}
-                onChange={(e) => {
-                  setUsernameInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''));
-                  if (identityError) setIdentityError(null);
-                }}
-                maxLength={20}
-                placeholder="e.g. hashir_fsc"
-                className="w-full h-11 px-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors"
-              />
-              <p className="text-[11px] text-[var(--muted)]">
-                3–20 characters, lowercase letters, numbers, and underscores only.
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-heading font-semibold text-[var(--text)] block">
-                Academic Role Badge
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {SELECTABLE_USER_ROLES.map((roleOpt) => {
-                  const active = selectedRole === roleOpt;
-                  return (
-                    <button
-                      key={roleOpt}
-                      type="button"
-                      onClick={() => setSelectedRole(roleOpt)}
-                      className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer border ${
-                        active
-                          ? 'bg-[var(--red)] text-white border-[var(--red)]'
-                          : 'bg-[var(--surface-2)] text-[var(--muted)] border-[var(--border)] hover:text-[var(--text)]'
-                      }`}
-                    >
-                      {roleOpt}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {identityError && (
-              <div className="p-3 rounded-xl bg-red-950/30 border border-red-500/40 text-red-300 text-xs flex items-center gap-2">
-                <AlertCircle size={14} className="shrink-0 text-red-400" />
-                <span>{identityError}</span>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                {identitySaved && (
-                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
-                    <Check size={14} />
-                    <span>Username &amp; role saved</span>
-                  </span>
-                )}
-              </div>
-              <Button type="submit" variant="primary" size="sm" disabled={savingIdentity}>
-                {savingIdentity ? 'Saving...' : 'Save Username & Role'}
-              </Button>
-            </div>
-          </form>
-        </section>
-
-        {/* ── 5. Set Password (for Google-only users) / Change Password ──── */}
-        <section
-          id="settings-password"
-          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 scroll-mt-24 ${sectionHighlightClass('settings-password')}`}
-        >
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Lock size={16} className="text-[var(--muted)]" />
-              <h2 className="text-base font-bold text-[var(--text)] font-heading">
-                {hasPasswordProvider ? 'Change Password' : 'Set Account Password'}
-              </h2>
-            </div>
-            {!hasPasswordProvider && (
-              <Badge color="default">Signed in with Google</Badge>
-            )}
-          </div>
-
-          <p className="text-xs text-[var(--muted)] leading-relaxed">
-            {hasPasswordProvider
-              ? 'Update your account password. Make sure to choose a strong password with at least 6 characters.'
-              : 'You signed in with Google. Set a password below so you can also sign in directly with your email and password anytime.'}
-          </p>
-
-          <form onSubmit={handleSavePassword} className="space-y-3">
-            {hasPasswordProvider && (
-              <div>
-                <label className="text-xs font-heading font-semibold text-[var(--text)] block mb-1">
-                  Current Password
-                </label>
-                <input
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  placeholder="Enter current password"
-                  className="w-full h-11 px-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors"
-                />
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-heading font-semibold text-[var(--text)] block mb-1">
-                  New Password
-                </label>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  minLength={6}
-                  placeholder="At least 6 characters"
-                  className="w-full h-11 px-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-heading font-semibold text-[var(--text)] block mb-1">
-                  Confirm New Password
-                </label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  minLength={6}
-                  placeholder="Re-enter new password"
-                  className="w-full h-11 px-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors"
-                />
-              </div>
-            </div>
-
-            {passwordError && (
-              <div className="p-3 rounded-xl bg-red-950/30 border border-red-500/40 text-red-300 text-xs flex items-center gap-2">
-                <AlertCircle size={14} className="shrink-0 text-red-400" />
-                <span>{passwordError}</span>
-              </div>
-            )}
-
-            {passwordSavedMsg && (
-              <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
-                <CheckCircle2 size={14} className="shrink-0 text-emerald-400" />
-                <span>{passwordSavedMsg}</span>
-              </div>
-            )}
-
-            <div className="flex justify-end">
-              <Button type="submit" variant="primary" size="sm" disabled={savingPassword}>
-                {savingPassword
-                  ? 'Saving...'
-                  : hasPasswordProvider
-                  ? 'Update Password'
-                  : 'Set Password'}
-              </Button>
-            </div>
-          </form>
-        </section>
-
-        {/* ── 5b. Security & Optional Two-Step Verification ──────────────── */}
-        <div
-          id="settings-security"
-          className={`rounded-2xl scroll-mt-24 ${sectionHighlightClass('settings-security')}`}
-        >
-          <SecuritySettingsSection />
-        </div>
-
-        {/* ── 5b-2. Appearance > Theme (Light / Dark / System) ───────────── */}
-        <section
-          id="settings-theme"
-          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap scroll-mt-24 ${sectionHighlightClass('settings-theme')}`}
-        >
-          <div className="space-y-1 max-w-lg">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--muted)]">
-              Appearance
-            </div>
-            <div className="flex items-center gap-2">
-              {resolvedTheme === 'dark' ? (
-                <Moon size={16} className="text-[var(--muted)]" />
-              ) : (
-                <Sun size={16} className="text-[var(--muted)]" />
-              )}
-              <h2 className="text-base font-bold text-[var(--text)] font-heading">
-                Theme
-              </h2>
-            </div>
-            <p className="text-xs text-[var(--muted)] leading-relaxed">
-              Choose between Light, Dark, or automatic System theme across Boardly.
-            </p>
-          </div>
-
-          <div className="inline-flex items-center gap-1.5 p-1 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-            {(['light', 'dark', 'system'] as ThemeSetting[]).map((mode) => {
-              const active = themeSetting === mode;
-              return (
+        {/* Deep Sub-Page Search Matches */}
+        {normalizedQuery && matchingDeepItems.length > 0 && (
+          <div className="stg-group">
+            <div className="stg-group-label">Matching Settings Inside Sub-Pages</div>
+            <div className="stg-card">
+              {matchingDeepItems.map((item) => (
                 <button
-                  key={mode}
+                  key={item.id}
                   type="button"
-                  onClick={() => setTheme(mode)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors cursor-pointer ${
-                    active
-                      ? 'bg-[var(--red)] text-white'
-                      : 'text-[var(--muted)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  {mode}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* ── 5c. Appearance > Koban icon ────────────────────────────────── */}
-        <section
-          id="appearance-koban-icon"
-          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 scroll-mt-24 ${sectionHighlightClass('appearance-koban-icon')}`}
-        >
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2.5">
-              <KobanIcon size={20} decorative />
-              <div>
-                <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                  Appearance
-                </div>
-                <h2 className="text-base font-bold text-[var(--text)] font-heading">
-                  Koban icon
-                </h2>
-              </div>
-            </div>
-            <Badge color="default">Cosmetic Only</Badge>
-          </div>
-          <KobanStyleCustomizer />
-        </section>
-
-        {/* ── 5d. Appearance > Pro badge ─────────────────────────────────── */}
-        <section
-          id="appearance-pro-badge"
-          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 scroll-mt-24 ${sectionHighlightClass('appearance-pro-badge')}`}
-        >
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2.5">
-              <ProBadge design="ember" size="sm" animated priority />
-              <div>
-                <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                  Appearance
-                </div>
-                <h2 className="text-base font-bold text-[var(--text)] font-heading">
-                  Pro badge
-                </h2>
-              </div>
-            </div>
-            <Badge color="default">Cosmetic Only</Badge>
-          </div>
-          <ProBadgeCustomizer userDisplayName={displayName || profile?.displayName || user?.displayName || 'Student'} />
-        </section>
-
-        {/* ── 6. Appearance > Reduce effects (Smooth Mode) ───────────────── */}
-        <section
-          id="appearance-reduce-effects"
-          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap scroll-mt-24 ${sectionHighlightClass('appearance-reduce-effects')}`}
-        >
-          <div className="space-y-1 max-w-lg">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--muted)]">
-              Appearance
-            </div>
-            <div className="flex items-center gap-2">
-              <Sparkles size={16} className="text-[var(--muted)]" />
-              <h2 className="text-base font-bold text-[var(--text)] font-heading">
-                Reduce effects (Smooth Mode)
-              </h2>
-              {smoothMode && <Badge color="green">Active</Badge>}
-            </div>
-            <p className="text-xs text-[var(--muted)] leading-relaxed">
-              Optimizes scrolling and battery life on phones by turning off backdrop blur, idle floating animations, and animated cosmetic effects. Automatically enabled on low-memory or Data Saver devices.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            role="switch"
-            aria-checked={smoothMode}
-            aria-label="Reduce effects"
-            onClick={() => setSmoothMode(!smoothMode)}
-            className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-              smoothMode ? 'bg-[var(--red)]' : 'bg-[var(--surface-2)] border-[var(--border)]'
-            }`}
-          >
-            <span className="sr-only">Reduce effects (Smooth Mode)</span>
-            <span
-              className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                smoothMode ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
-        </section>
-
-        {/* ── 6b. Hide Dragon Companion (Cockpit) ────────────────────────── */}
-        <section
-          id="settings-dragon"
-          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap scroll-mt-24 ${sectionHighlightClass('settings-dragon')}`}
-        >
-          <div className="space-y-1 max-w-lg">
-            <div className="flex items-center gap-2">
-              <Sparkles size={16} className="text-[var(--muted)]" />
-              <h2 className="text-base font-bold text-[var(--text)] font-heading">
-                Hide dragon
-              </h2>
-              {hideDragon && <Badge color="gray">Hidden</Badge>}
-            </div>
-            <p className="text-xs text-[var(--muted)] leading-relaxed">
-              Hide {DRAGON_COMPANION_NAME}, the animated Cockpit dragon companion and Dragon Egg progress card (shown by default).
-            </p>
-          </div>
-
-          <button
-            type="button"
-            role="switch"
-            aria-checked={hideDragon}
-            aria-label="Hide dragon"
-            onClick={() => setHideDragon(!hideDragon)}
-            className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-              hideDragon ? 'bg-[var(--red)]' : 'bg-[var(--surface-2)] border-[var(--border)]'
-            }`}
-          >
-            <span className="sr-only">Hide dragon</span>
-            <span
-              className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                hideDragon ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
-        </section>
-
-        {/* ── 6c. Legal & Privacy Links ──────────────────────────────────── */}
-        <section
-          id="settings-legal"
-          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap scroll-mt-24 ${sectionHighlightClass('settings-legal')}`}
-        >
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Shield size={16} className="text-[var(--muted)]" />
-              <h2 className="text-base font-bold text-[var(--text)] font-heading">
-                Legal &amp; Privacy
-              </h2>
-              <Badge color="gray">{LEGAL_VERSION_DISPLAY}</Badge>
-            </div>
-            <p className="text-xs text-[var(--muted)]">
-              Review Boardly&apos;s Terms of Service and Privacy Policy (Last updated: {LEGAL_LAST_UPDATED_LABEL}).
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <Link
-              to="/terms"
-              className="px-3.5 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:border-[var(--red)] transition-colors"
-            >
-              Terms of Service
-            </Link>
-            <Link
-              to="/privacy"
-              className="px-3.5 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] hover:border-[var(--red)] transition-colors"
-            >
-              Privacy Policy
-            </Link>
-          </div>
-        </section>
-
-        {/* ── 7. Sign Out Section ────────────────────────────────────────── */}
-        <section
-          id="settings-sign-out"
-          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-3 scroll-mt-24 ${sectionHighlightClass('settings-sign-out')}`}
-        >
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <h2 className="text-base font-bold text-[var(--text)] font-heading">
-                Sign Out
-              </h2>
-              <p className="text-xs text-[var(--muted)] mt-0.5">
-                End your current session on this device.
-              </p>
-            </div>
-
-            {!confirmingSignOut ? (
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => setConfirmingSignOut(true)}
-              >
-                <LogOut size={14} />
-                <span>Sign Out</span>
-              </Button>
-            ) : (
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setConfirmingSignOut(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={handleSignOut}
-                >
-                  <LogOut size={14} />
-                  <span>Confirm Sign Out</span>
-                </Button>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* ── 8. Delete Account Section (with confirmation step) ─────────── */}
-        <section
-          id="settings-delete-account"
-          className={`rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 scroll-mt-24 ${sectionHighlightClass('settings-delete-account')}`}
-        >
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="space-y-1 max-w-lg">
-              <div className="flex items-center gap-2">
-                <Trash2 size={16} className="text-[var(--red)]" />
-                <h2 className="text-base font-bold text-[var(--text)] font-heading">
-                  Delete Account
-                </h2>
-              </div>
-              <p className="text-xs text-[var(--muted)] leading-relaxed">
-                Permanently remove your Boardly account, practice test history, and personal profile data. This action cannot be undone.
-              </p>
-            </div>
-
-            {!confirmingDeleteAccount && (
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => {
-                  setConfirmingDeleteAccount(true);
-                  setDeleteAccountError(null);
-                }}
-              >
-                <Trash2 size={14} />
-                <span>Delete Account</span>
-              </Button>
-            )}
-          </div>
-
-          {confirmingDeleteAccount && (
-            <div className="p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] space-y-3">
-              <p className="text-xs text-[var(--text)] leading-relaxed">
-                To confirm permanent deletion of your account, type <strong>DELETE</strong> below and press Confirm Delete:
-              </p>
-              <input
-                type="text"
-                value={deleteConfirmInput}
-                onChange={(e) => {
-                  setDeleteConfirmInput(e.target.value);
-                  if (deleteAccountError) setDeleteAccountError(null);
-                }}
-                placeholder="Type DELETE to confirm"
-                className="w-full h-10 px-3.5 rounded-xl bg-[var(--card)] border border-[var(--border)] text-sm font-mono text-[var(--text)] focus:border-[var(--red)] focus:outline-none"
-              />
-              {deleteAccountError && (
-                <div className="text-xs text-[var(--red)] flex items-center gap-1.5">
-                  <AlertCircle size={13} className="shrink-0" />
-                  <span>{deleteAccountError}</span>
-                </div>
-              )}
-              <div className="flex items-center justify-end gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={deletingAccount}
                   onClick={() => {
-                    setConfirmingDeleteAccount(false);
-                    setDeleteConfirmInput('');
-                    setDeleteAccountError(null);
+                    if (item.subPage) {
+                      openSubPage(item.subPage, item.targetId);
+                    } else if (item.targetId === 'settings-sign-out') {
+                      setSearchQuery('');
+                      const el = document.getElementById('settings-sign-out');
+                      el?.scrollIntoView({ behavior: smoothMode ? 'auto' : 'smooth', block: 'center' });
+                    }
                   }}
+                  className="stg-row"
                 >
-                  Cancel
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  disabled={deletingAccount || deleteConfirmInput.trim().toUpperCase() !== 'DELETE'}
-                  onClick={handleConfirmDeleteAccount}
-                >
-                  <Trash2 size={14} />
-                  <span>{deletingAccount ? 'Deleting...' : 'Confirm Delete'}</span>
-                </Button>
+                  <div className="stg-row-left">
+                    <span className="stg-row-icon">
+                      <Search size={16} />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="stg-row-label font-medium">{item.label}</div>
+                      <div className="text-xs text-[var(--menu-subtext)] truncate">
+                        {item.subtitle}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="stg-row-right">
+                    <ChevronRight size={17} className="shrink-0 opacity-75" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty Search State */}
+        {normalizedQuery &&
+          filteredGroups.length === 0 &&
+          matchingDeepItems.length === 0 && (
+            <div className="stg-group">
+              <div className="stg-card p-6 text-center">
+                <p className="text-sm font-semibold text-[var(--menu-text)]">
+                  No settings found for &ldquo;{searchQuery}&rdquo;
+                </p>
+                <p className="text-xs text-[var(--menu-subtext)] mt-1">
+                  Try searching for theme, password, authenticator, dragon, koban, or badge.
+                </p>
               </div>
             </div>
           )}
-        </section>
+
+        {/* Separate Card at the End: Red "Sign out" Row */}
+        {(!normalizedQuery ||
+          'sign out log out logout'.includes(normalizedQuery)) && (
+          <div id="settings-sign-out" className="stg-group">
+            <div className="stg-card">
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="stg-row stg-row--danger"
+              >
+                <div className="stg-row-left">
+                  <span className="stg-row-icon">
+                    <LogOut size={17} strokeWidth={2.1} />
+                  </span>
+                  <span className="stg-row-label">Sign out</span>
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
-    </>
+
+      {/* Floating Liquid-Glass "Search settings" Pill at the Bottom */}
+      <div className="stg-search-wrap">
+        <div className={`fsm-search-pill ${searchFocused ? 'is-focused' : ''}`}>
+          <Search
+            size={18}
+            className="text-[var(--menu-subtext)] shrink-0 pointer-events-none"
+          />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search settings"
+            aria-label="Search settings"
+            className="fsm-search-input"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                searchInputRef.current?.focus();
+              }}
+              aria-label="Clear search"
+              className="w-6 h-6 rounded-full bg-[var(--menu-icon-bg)] text-[var(--menu-subtext)] hover:text-[var(--menu-text)] inline-flex items-center justify-center cursor-pointer shrink-0"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <GuestUpgradeModal
+        isOpen={upgradeModalOpen}
+        onClose={() => setUpgradeModalOpen(false)}
+      />
+    </div>
   );
 }
 

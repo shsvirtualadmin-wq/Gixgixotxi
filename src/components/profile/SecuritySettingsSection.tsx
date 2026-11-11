@@ -482,60 +482,39 @@ export function SecuritySettingsSection() {
     <section
       id="security"
       data-testid="security-settings-section"
-      className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4"
+      className="space-y-5"
     >
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Shield size={16} className="text-[var(--red)]" />
-          <h2 className="text-base font-bold text-[var(--text)] font-heading">
-            Security &amp; Two-Step Verification
-          </h2>
-          <Badge color={status.twoFactorEnabled ? 'green' : 'default'}>
-            {loadingStatus ? 'Checking...' : `2FA: ${status.badgeLabel}`}
-          </Badge>
-        </div>
-        {status.lastChangedAt && (
-          <span className="text-[11px] font-mono text-[var(--muted)]">
-            Last changed: {new Date(status.lastChangedAt).toLocaleDateString('en-GB')}
-          </span>
-        )}
-      </div>
-
       {/* Gentle, dismissible recommendation banner for Admins & Super Admins ONLY */}
       {isAdmin && !status.twoFactorEnabled && !adminBannerDismissed && (
         <div
           data-testid="admin-2fa-recommendation-banner"
-          className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-xs text-amber-200"
+          className="stg-card p-3.5 bg-amber-500/10 !border-amber-500/30 flex items-center justify-between gap-3 text-xs text-amber-700 dark:text-amber-200"
         >
           <div className="flex items-center gap-2.5">
-            <Shield size={15} className="text-amber-400 shrink-0" />
+            <Shield size={15} className="text-amber-500 shrink-0" />
             <span>Recommended: turn on two-step verification to protect admin access.</span>
           </div>
           <button
             type="button"
             onClick={handleDismissAdminBanner}
             aria-label="Dismiss recommendation"
-            className="text-amber-300/80 hover:text-white p-1 cursor-pointer"
+            className="text-amber-600 dark:text-amber-300 hover:opacity-80 p-1 cursor-pointer"
           >
             <X size={14} />
           </button>
         </div>
       )}
 
-      <p className="text-xs text-[var(--muted)] leading-relaxed">
-        Add an optional second step when signing in. You can enable an authenticator app (TOTP), an email login code, or both.
-      </p>
-
       {errorMsg && (
-        <div className="p-3 rounded-xl bg-red-950/30 border border-red-500/40 text-red-300 text-xs flex items-center gap-2">
-          <AlertCircle size={14} className="shrink-0 text-red-400" />
+        <div className="rounded-2xl p-3.5 bg-red-500/10 border border-red-500/35 text-[#D71921] dark:text-red-300 text-xs font-semibold flex items-center gap-2">
+          <AlertCircle size={15} className="shrink-0" />
           <span>{errorMsg}</span>
         </div>
       )}
 
       {successMsg && (
-        <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
-          <CheckCircle2 size={14} className="shrink-0 text-emerald-400" />
+        <div className="rounded-2xl p-3.5 bg-emerald-500/10 border border-emerald-500/35 text-emerald-600 dark:text-emerald-300 text-xs font-semibold flex items-center gap-2">
+          <CheckCircle2 size={15} className="shrink-0" />
           <span>{successMsg}</span>
         </div>
       )}
@@ -544,95 +523,92 @@ export function SecuritySettingsSection() {
       {totpStep === 'backup_codes' && oneTimeBackupCodes && oneTimeBackupCodes.length > 0 && (
         <div
           data-testid="backup-codes-panel"
-          className="p-4 rounded-xl bg-[var(--surface-2)] border border-amber-500/40 space-y-3"
+          className="stg-group"
         >
-          <div className="flex items-start justify-between gap-2">
+          <div className="stg-group-label">One-Time Backup Codes</div>
+          <div className="stg-card p-4 space-y-3.5 !border-amber-500/40">
             <div>
-              <h3 className="text-sm font-bold text-[var(--text)] font-heading flex items-center gap-1.5">
-                <KeyRound size={15} className="text-amber-400" />
+              <h3 className="text-sm font-bold text-[var(--menu-text)] flex items-center gap-1.5">
+                <KeyRound size={15} className="text-amber-500" />
                 <span>Save your 10 one-time backup codes</span>
               </h3>
-              <p className="text-[11px] text-amber-300/90 mt-1 leading-relaxed">
+              <p className="text-xs text-[var(--menu-subtext)] mt-1 leading-relaxed">
                 Warning: These backup codes are shown <strong>only once</strong>. Save them in a password manager or download them now. Each code can be used once if you lose your phone.
               </p>
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 p-3 rounded-xl bg-[var(--card)] border border-[var(--border)]">
-            {oneTimeBackupCodes.map((code) => (
-              <div
-                key={code}
-                className="text-xs font-mono font-bold text-center py-1.5 px-2 rounded bg-[var(--surface-2)] text-[var(--text)] tracking-wider"
-              >
-                {code}
-              </div>
-            ))}
-          </div>
-
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={handleCopyBackupCodes}
-              >
-                {backupCodesCopied ? <Check size={14} /> : <Copy size={14} />}
-                <span>{backupCodesCopied ? 'Copied' : 'Copy codes'}</span>
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={handleDownloadBackupCodes}
-              >
-                <Download size={14} />
-                <span>Download .txt</span>
-              </Button>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 p-3 rounded-2xl bg-[var(--menu-bg)] border border-[var(--menu-divider)]">
+              {oneTimeBackupCodes.map((code) => (
+                <div
+                  key={code}
+                  className="text-xs font-mono font-bold text-center py-1.5 px-2 rounded-lg bg-[var(--menu-card)] text-[var(--menu-text)] tracking-wider border border-[var(--menu-divider)]"
+                >
+                  {code}
+                </div>
+              ))}
             </div>
-            <Button
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={handleCopyBackupCodes}
+                className="stg-btn-secondary flex-1"
+              >
+                {backupCodesCopied ? <Check size={15} /> : <Copy size={15} />}
+                <span>{backupCodesCopied ? 'Copied' : 'Copy codes'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadBackupCodes}
+                className="stg-btn-secondary flex-1"
+              >
+                <Download size={15} />
+                <span>Download .txt</span>
+              </button>
+            </div>
+
+            <button
               type="button"
-              variant="primary"
-              size="sm"
               onClick={() => {
                 setOneTimeBackupCodes(null);
                 setTotpStep('idle');
               }}
+              className="stg-btn-primary"
             >
               I have saved these codes
-            </Button>
+            </button>
           </div>
         </div>
       )}
 
-      {/* Option A: Authenticator App (TOTP, RFC 6238) */}
-      <div className="rounded-xl bg-[var(--surface-2)] border border-[var(--border)] p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Smartphone size={15} className="text-[var(--text)]" />
-              <span className="text-xs sm:text-sm font-heading font-semibold text-[var(--text)]">
-                Authenticator app (TOTP)
+      {/* Group: Authenticator App (TOTP, RFC 6238) */}
+      <div id="security-totp" className="stg-group">
+        <div className="stg-group-label">Two-Step Verification · Authenticator App</div>
+        <div className="stg-card">
+          <div className="stg-row stg-row--static">
+            <div className="stg-row-left">
+              <span className="stg-row-icon">
+                <Smartphone size={17} />
               </span>
-              <Badge color={status.totpEnabled ? 'green' : 'default'}>
-                {status.totpEnabled ? 'Enabled' : 'Off'}
-              </Badge>
+              <div className="min-w-0">
+                <div className="stg-row-label">Authenticator app (TOTP)</div>
+                {status.totpEnabled && (
+                  <div className="text-xs text-[var(--menu-subtext)]">
+                    {status.remainingBackupCodes} / 10 backup codes remaining
+                  </div>
+                )}
+              </div>
             </div>
-            <p className="text-[11px] text-[var(--muted)] leading-relaxed">
-              Use Google Authenticator, Microsoft Authenticator, or Authy to generate a 6-digit verification code every 30 seconds.
-            </p>
-            {status.totpEnabled && (
-              <p className="text-[11px] font-mono text-[var(--muted)]">
-                Remaining one-time backup codes: <strong>{status.remainingBackupCodes}</strong> / 10
-              </p>
-            )}
+            <div className="stg-row-right">
+              <span className="stg-row-value">
+                {loadingStatus ? 'Checking…' : status.totpEnabled ? 'Enabled' : 'Off'}
+              </span>
+            </div>
           </div>
 
           {!status.totpEnabled && totpStep === 'idle' && (
-            <Button
+            <button
               type="button"
-              variant="primary"
-              size="sm"
               disabled={busy}
               onClick={() => {
                 setErrorMsg(null);
@@ -643,17 +619,23 @@ export function SecuritySettingsSection() {
                   void handleStartTotpSetup();
                 }
               }}
+              className="stg-row text-[#D71921] font-semibold"
             >
-              Set up authenticator
-            </Button>
+              <div className="stg-row-left">
+                <span className="stg-row-icon !text-[#D71921]">
+                  <KeyRound size={17} />
+                </span>
+                <span className="stg-row-label font-semibold text-[#D71921]">
+                  Set up authenticator app
+                </span>
+              </div>
+            </button>
           )}
 
           {status.totpEnabled && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <Button
+            <>
+              <button
                 type="button"
-                variant="secondary"
-                size="sm"
                 disabled={busy}
                 onClick={() => {
                   setErrorMsg(null);
@@ -662,14 +644,18 @@ export function SecuritySettingsSection() {
                   setActionCode('');
                   setActionModal('regenerate_backup');
                 }}
+                className="stg-row"
               >
-                <RefreshCw size={13} />
-                <span>Regenerate backup codes</span>
-              </Button>
-              <Button
+                <div className="stg-row-left">
+                  <span className="stg-row-icon">
+                    <RefreshCw size={16} />
+                  </span>
+                  <span className="stg-row-label">Regenerate backup codes</span>
+                </div>
+              </button>
+
+              <button
                 type="button"
-                variant="danger"
-                size="sm"
                 disabled={busy}
                 onClick={() => {
                   setErrorMsg(null);
@@ -678,341 +664,372 @@ export function SecuritySettingsSection() {
                   setActionCode('');
                   setActionModal('disable_totp');
                 }}
+                className="stg-row stg-row--danger"
               >
-                Disable
-              </Button>
-            </div>
+                <div className="stg-row-left">
+                  <span className="stg-row-icon">
+                    <X size={16} />
+                  </span>
+                  <span className="stg-row-label">Disable</span>
+                </div>
+              </button>
+            </>
           )}
-        </div>
 
-        {/* Step 1: Enter Current Password before generating TOTP secret */}
-        {totpStep === 'password' && (
-          <form onSubmit={handleStartTotpSetup} className="pt-3 border-t border-[var(--border)] space-y-3">
-            <div>
-              <label className="text-xs font-heading font-semibold text-[var(--text)] block mb-1">
-                Confirm your current password
-              </label>
-              <input
-                type="password"
-                value={totpPassword}
-                onChange={(e) => setTotpPassword(e.target.value)}
-                placeholder="Enter current password"
-                required
-                className="w-full h-10 px-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--text)]"
-              />
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setTotpStep('idle');
-                  setTotpPassword('');
-                }}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" variant="primary" size="sm" disabled={busy || !totpPassword}>
-                {busy ? 'Generating key...' : 'Continue'}
-              </Button>
-            </div>
-          </form>
-        )}
-
-        {/* Step 2: Scan QR Code + Copy Base32 Key + Enter 6-Digit Code */}
-        {totpStep === 'qr' && (
-          <form onSubmit={handleEnableTotp} className="pt-3 border-t border-[var(--border)] space-y-4">
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              {totpQrDataUrl && (
-                <div className="p-2.5 rounded-xl bg-white border border-[var(--border)] shrink-0">
-                  <img
-                    src={totpQrDataUrl}
-                    alt="Boardly TOTP QR Code"
-                    className="w-40 h-40 object-contain"
-                  />
-                </div>
-              )}
-              <div className="space-y-2.5 flex-1 min-w-0">
-                <p className="text-xs text-[var(--text)] font-medium">
-                  1. Scan this QR code in your authenticator app, or copy the setup key below:
-                </p>
-                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-[var(--card)] border border-[var(--border)]">
-                  <code
-                    data-testid="totp-secret-key"
-                    className="text-xs font-mono font-bold text-[var(--text)] break-all flex-1"
-                  >
-                    {totpSecret}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={handleCopySecret}
-                    className="px-2.5 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[11px] font-semibold text-[var(--text)] inline-flex items-center gap-1 cursor-pointer shrink-0"
-                  >
-                    {secretCopied ? <Check size={12} /> : <Copy size={12} />}
-                    <span>{secretCopied ? 'Copied' : 'Copy'}</span>
-                  </button>
-                </div>
-                <p className="text-[11px] font-mono text-[var(--muted)] break-all">
-                  URI: {totpUri}
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-heading font-semibold text-[var(--text)] block mb-1">
-                2. Enter the 6-digit code from your authenticator app to verify &amp; activate
-              </label>
-              <div className="flex items-center gap-2">
+          {/* Step 1: Enter Current Password before generating TOTP secret */}
+          {totpStep === 'password' && (
+            <form onSubmit={handleStartTotpSetup} className="divide-y divide-[var(--menu-divider)] border-t border-[var(--menu-divider)]">
+              <div className="stg-row stg-row--static">
                 <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={totpVerifyCode}
-                  onChange={(e) => setTotpVerifyCode(e.target.value.replace(/\D/g, ''))}
-                  placeholder="000000"
+                  type="password"
+                  value={totpPassword}
+                  onChange={(e) => setTotpPassword(e.target.value)}
+                  placeholder="Confirm your current password"
                   required
-                  className="w-40 h-10 px-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-sm font-mono font-bold tracking-widest text-center text-[var(--text)]"
+                  className="stg-input"
                 />
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="sm"
-                  disabled={busy || totpVerifyCode.length !== 6}
-                >
-                  {busy ? 'Verifying...' : 'Verify & Turn On'}
-                </Button>
-                <Button
+              </div>
+              <div className="p-3.5 flex items-center gap-2">
+                <button
                   type="button"
-                  variant="secondary"
-                  size="sm"
                   onClick={() => {
                     setTotpStep('idle');
-                    setTotpSecret('');
-                    setTotpUri('');
+                    setTotpPassword('');
                   }}
+                  className="stg-btn-secondary flex-1"
                 >
                   Cancel
-                </Button>
+                </button>
+                <button
+                  type="submit"
+                  disabled={busy || !totpPassword}
+                  className="stg-btn-primary flex-1"
+                >
+                  {busy ? 'Generating key...' : 'Continue'}
+                </button>
               </div>
-            </div>
-          </form>
-        )}
+            </form>
+          )}
+
+          {/* Step 2: Scan QR Code + Copy Base32 Key + Enter 6-Digit Code */}
+          {totpStep === 'qr' && (
+            <form onSubmit={handleEnableTotp} className="p-4 border-t border-[var(--menu-divider)] space-y-4">
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                {totpQrDataUrl && (
+                  <div className="p-2.5 rounded-2xl bg-white border border-[var(--menu-divider)] shrink-0">
+                    <img
+                      src={totpQrDataUrl}
+                      alt="Boardly TOTP QR Code"
+                      className="w-36 h-36 object-contain"
+                    />
+                  </div>
+                )}
+                <div className="space-y-2.5 flex-1 min-w-0 w-full">
+                  <p className="text-xs text-[var(--menu-text)] font-medium">
+                    1. Scan this QR code in your authenticator app, or copy the setup key below:
+                  </p>
+                  <div className="flex items-center gap-2 p-2.5 rounded-2xl bg-[var(--menu-bg)] border border-[var(--menu-divider)]">
+                    <code
+                      data-testid="totp-secret-key"
+                      className="text-xs font-mono font-bold text-[var(--menu-text)] break-all flex-1"
+                    >
+                      {totpSecret}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={handleCopySecret}
+                      className="px-3 py-1.5 rounded-full bg-[var(--menu-card)] border border-[var(--menu-divider)] text-xs font-semibold text-[var(--menu-text)] inline-flex items-center gap-1 cursor-pointer shrink-0"
+                    >
+                      {secretCopied ? <Check size={12} /> : <Copy size={12} />}
+                      <span>{secretCopied ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                  <p className="text-[11px] font-mono text-[var(--menu-subtext)] break-all">
+                    URI: {totpUri}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-[var(--menu-subtext)] block">
+                  2. Enter the 6-digit code from your authenticator app to verify &amp; activate
+                </label>
+                <div className="rounded-2xl bg-[var(--menu-bg)] border border-[var(--menu-divider)] px-4 py-2.5">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={totpVerifyCode}
+                    onChange={(e) => setTotpVerifyCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="000000"
+                    required
+                    className="stg-input font-mono font-bold tracking-widest text-center"
+                  />
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTotpStep('idle');
+                      setTotpSecret('');
+                      setTotpUri('');
+                    }}
+                    className="stg-btn-secondary flex-1"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={busy || totpVerifyCode.length !== 6}
+                    className="stg-btn-primary flex-1"
+                  >
+                    {busy ? 'Verifying...' : 'Verify & Turn On'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
+        </div>
+        <p className="stg-footnote">
+          Use Google Authenticator, Microsoft Authenticator, or Authy to generate a 6-digit verification code every 30 seconds.
+        </p>
       </div>
 
-      {/* Option B: Email Code at Login */}
-      <div className="rounded-xl bg-[var(--surface-2)] border border-[var(--border)] p-4 space-y-3">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Mail size={15} className="text-[var(--text)]" />
-              <span className="text-xs sm:text-sm font-heading font-semibold text-[var(--text)]">
-                Email code at login
-              </span>
-              <Badge color={status.email2faEnabled ? 'green' : 'default'}>
-                {status.email2faEnabled ? 'Enabled' : 'Off'}
-              </Badge>
-            </div>
-            <p className="text-[11px] text-[var(--muted)] leading-relaxed">
-              When on, after entering your password we will email a 6-digit login code to{' '}
-              <strong>{user.email}</strong> that must be entered before sign-in completes.
-            </p>
+      {/* Inline Verification Form for Disabling TOTP or Regenerating Backup Codes */}
+      {actionModal && (
+        <div className="stg-group">
+          <div className="stg-group-label">
+            {actionModal === 'regenerate_backup'
+              ? 'Confirm Backup Code Regeneration'
+              : 'Confirm Authenticator Disable'}
           </div>
+          <form onSubmit={handleConfirmProtectedAction} className="stg-card divide-y divide-[var(--menu-divider)]">
+            {hasPasswordProvider && (
+              <div className="stg-row stg-row--static">
+                <input
+                  type="password"
+                  value={actionPassword}
+                  onChange={(e) => setActionPassword(e.target.value)}
+                  placeholder="Current password"
+                  required
+                  className="stg-input"
+                />
+              </div>
+            )}
 
-          {!emailModalMode && (
-            <Button
+            <div className="stg-row stg-row--static">
+              <input
+                type="text"
+                value={actionCode}
+                onChange={(e) => setActionCode(e.target.value)}
+                placeholder="6-digit authenticator code or backup code"
+                required
+                className="stg-input font-mono"
+              />
+            </div>
+
+            <div className="p-3.5 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setActionModal(null);
+                  setActionPassword('');
+                  setActionCode('');
+                }}
+                className="stg-btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={busy || !actionCode.trim()}
+                className="stg-btn-primary flex-1"
+              >
+                {busy
+                  ? 'Processing...'
+                  : actionModal === 'regenerate_backup'
+                  ? 'Generate new codes'
+                  : 'Disable authenticator'}
+              </button>
+            </div>
+          </form>
+          <p className="stg-footnote">
+            For security, enter your current password and a valid 6-digit verification code (or backup code).
+          </p>
+        </div>
+      )}
+
+      {/* Group: Email Code at Login */}
+      <div id="security-email-2fa" className="stg-group">
+        <div className="stg-group-label">Email Verification at Login</div>
+        <div className="stg-card">
+          <div
+            className="stg-row"
+            onClick={() => {
+              if (busy) return;
+              setErrorMsg(null);
+              setSuccessMsg(null);
+              setEmailPassword('');
+              setEmailVerifyCode('');
+              if (emailModalMode) {
+                setEmailModalMode(null);
+                return;
+              }
+              const nextMode = status.email2faEnabled ? 'disable' : 'enable';
+              setEmailModalMode(nextMode);
+              if (nextMode === 'disable' && !status.totpEnabled) {
+                void handleSendDisableVerificationEmailCode();
+              }
+            }}
+          >
+            <div className="stg-row-left">
+              <span className="stg-row-icon">
+                <Mail size={17} />
+              </span>
+              <div className="min-w-0">
+                <div className="stg-row-label">Email code at login</div>
+                <div className="text-xs text-[var(--menu-subtext)]">
+                  {status.email2faEnabled ? 'Turn off' : 'Turn on'}
+                </div>
+              </div>
+            </div>
+
+            <button
               type="button"
-              variant={status.email2faEnabled ? 'danger' : 'primary'}
-              size="sm"
+              role="switch"
+              aria-checked={status.email2faEnabled}
+              aria-label={status.email2faEnabled ? 'Turn off email 2FA' : 'Turn on email 2FA'}
               disabled={busy}
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 setErrorMsg(null);
                 setSuccessMsg(null);
                 setEmailPassword('');
                 setEmailVerifyCode('');
+                if (emailModalMode) {
+                  setEmailModalMode(null);
+                  return;
+                }
                 const nextMode = status.email2faEnabled ? 'disable' : 'enable';
                 setEmailModalMode(nextMode);
                 if (nextMode === 'disable' && !status.totpEnabled) {
                   void handleSendDisableVerificationEmailCode();
                 }
               }}
+              className="stg-switch"
             >
-              {status.email2faEnabled ? 'Turn off email 2FA' : 'Turn on email 2FA'}
-            </Button>
-          )}
-        </div>
+              <span className="stg-switch-thumb" />
+            </button>
+          </div>
 
-        {emailModalMode && (
-          <form
-            onSubmit={handleConfirmEmail2faToggle}
-            className="pt-3 border-t border-[var(--border)] space-y-3"
-          >
-            {hasPasswordProvider && (
-              <div>
-                <label className="text-xs font-heading font-semibold text-[var(--text)] block mb-1">
-                  Current password
-                </label>
-                <input
-                  type="password"
-                  value={emailPassword}
-                  onChange={(e) => setEmailPassword(e.target.value)}
-                  placeholder="Enter your current password"
-                  required
-                  className="w-full h-10 px-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--text)]"
-                />
-              </div>
-            )}
+          {emailModalMode && (
+            <form
+              onSubmit={handleConfirmEmail2faToggle}
+              className="divide-y divide-[var(--menu-divider)] border-t border-[var(--menu-divider)]"
+            >
+              {hasPasswordProvider && (
+                <div className="stg-row stg-row--static">
+                  <input
+                    type="password"
+                    value={emailPassword}
+                    onChange={(e) => setEmailPassword(e.target.value)}
+                    placeholder="Enter your current password"
+                    required
+                    className="stg-input"
+                  />
+                </div>
+              )}
 
-            {emailModalMode === 'disable' && (
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-heading font-semibold text-[var(--text)]">
-                    6-digit verification code (email, authenticator, or backup code)
-                  </label>
+              {emailModalMode === 'disable' && (
+                <div className="stg-row stg-row--static">
+                  <input
+                    type="text"
+                    value={emailVerifyCode}
+                    onChange={(e) => setEmailVerifyCode(e.target.value)}
+                    placeholder="Enter 6-digit verification code"
+                    required
+                    className="stg-input font-mono"
+                  />
                   <button
                     type="button"
                     onClick={handleSendDisableVerificationEmailCode}
-                    className="text-[11px] font-semibold text-[var(--red)] hover:underline cursor-pointer"
+                    className="text-xs font-semibold text-[#D71921] hover:underline cursor-pointer shrink-0"
                   >
-                    Send email code
+                    Resend code
                   </button>
                 </div>
-                <input
-                  type="text"
-                  value={emailVerifyCode}
-                  onChange={(e) => setEmailVerifyCode(e.target.value)}
-                  placeholder="Enter 6-digit code"
-                  required
-                  className="w-full h-10 px-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-xs font-mono text-[var(--text)]"
-                />
-              </div>
-            )}
+              )}
 
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setEmailModalMode(null);
-                  setEmailPassword('');
-                  setEmailVerifyCode('');
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant={emailModalMode === 'disable' ? 'danger' : 'primary'}
-                size="sm"
-                disabled={busy}
-              >
-                {busy
-                  ? 'Saving...'
-                  : emailModalMode === 'enable'
-                  ? 'Confirm & Turn On'
-                  : 'Confirm & Turn Off'}
-              </Button>
-            </div>
-          </form>
-        )}
+              <div className="p-3.5 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailModalMode(null);
+                    setEmailPassword('');
+                    setEmailVerifyCode('');
+                  }}
+                  className="stg-btn-secondary flex-1"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="stg-btn-primary flex-1"
+                >
+                  {busy
+                    ? 'Saving...'
+                    : emailModalMode === 'enable'
+                    ? 'Confirm & Turn On'
+                    : 'Confirm & Turn Off'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+        <p className="stg-footnote">
+          When enabled, we email a 6-digit login code to {user.email} that must be entered before sign-in completes.
+        </p>
       </div>
 
-      {/* Modal / Inline Form for Disabling TOTP or Regenerating Backup Codes */}
-      {actionModal && (
-        <form
-          onSubmit={handleConfirmProtectedAction}
-          className="rounded-xl bg-[var(--surface-2)] border border-[var(--red)]/40 p-4 space-y-3"
-        >
-          <h3 className="text-xs sm:text-sm font-bold text-[var(--text)] font-heading">
-            {actionModal === 'regenerate_backup'
-              ? 'Regenerate 10 one-time backup codes'
-              : 'Disable authenticator app'}
-          </h3>
-          <p className="text-[11px] text-[var(--muted)]">
-            For security, enter your current password and a valid 6-digit verification code (or backup code).
-          </p>
-
-          {hasPasswordProvider && (
-            <div>
-              <label className="text-xs font-heading font-semibold text-[var(--text)] block mb-1">
-                Current password
-              </label>
-              <input
-                type="password"
-                value={actionPassword}
-                onChange={(e) => setActionPassword(e.target.value)}
-                placeholder="Enter current password"
-                required
-                className="w-full h-10 px-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--text)]"
-              />
+      {/* Group: Remembered Devices */}
+      <div id="security-devices" className="stg-group">
+        <div className="stg-group-label">Remembered Devices</div>
+        <div className="stg-card">
+          <div className="stg-row stg-row--static">
+            <div className="stg-row-left">
+              <span className="stg-row-icon">
+                <Shield size={17} />
+              </span>
+              <span className="stg-row-label">Remembered devices</span>
             </div>
-          )}
-
-          <div>
-            <label className="text-xs font-heading font-semibold text-[var(--text)] block mb-1">
-              6-digit authenticator code or backup code
-            </label>
-            <input
-              type="text"
-              value={actionCode}
-              onChange={(e) => setActionCode(e.target.value)}
-              placeholder="000000 or ABCD-1234"
-              required
-              className="w-full h-10 px-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-xs font-mono text-[var(--text)]"
-            />
+            <div className="stg-row-right">
+              <span className="stg-row-value">{status.trustedDevicesCount} active</span>
+            </div>
           </div>
 
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setActionModal(null);
-                setActionPassword('');
-                setActionCode('');
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant={actionModal === 'regenerate_backup' ? 'primary' : 'danger'}
-              size="sm"
-              disabled={busy || !actionCode.trim()}
-            >
-              {busy
-                ? 'Processing...'
-                : actionModal === 'regenerate_backup'
-                ? 'Generate new codes'
-                : 'Disable authenticator'}
-            </Button>
-          </div>
-        </form>
-      )}
-
-      {/* Trusted Devices & Sign Out of All Devices */}
-      <div className="pt-2 border-t border-[var(--border)] flex items-center justify-between gap-3 flex-wrap">
-        <div className="space-y-0.5">
-          <div className="text-xs sm:text-sm font-heading font-semibold text-[var(--text)]">
-            Remembered devices ({status.trustedDevicesCount})
-          </div>
-          <p className="text-[11px] text-[var(--muted)]">
-            Revoke all 30-day remembered devices and require verification on next sign-in everywhere.
-          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={handleRevokeAllDevices}
+            className="stg-row stg-row--danger"
+          >
+            <div className="stg-row-left">
+              <span className="stg-row-icon">
+                <LogOut size={17} />
+              </span>
+              <span className="stg-row-label">Sign out of all devices</span>
+            </div>
+          </button>
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          disabled={busy}
-          onClick={handleRevokeAllDevices}
-        >
-          <LogOut size={13} />
-          <span>Sign out of all devices</span>
-        </Button>
+        <p className="stg-footnote">
+          Revoke all 30-day remembered devices and require verification on next sign-in everywhere.
+          {status.lastChangedAt
+            ? ` Last updated ${new Date(status.lastChangedAt).toLocaleDateString('en-GB')}.`
+            : ''}
+        </p>
       </div>
     </section>
   );
 }
+

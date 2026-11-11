@@ -75,6 +75,10 @@ export interface UserProfile {
   proBadge?: string | null;
   proBadgeDesign?: string | null;
   proBadgeVisible?: boolean;
+  notificationPrefs?: {
+    emailKobanReceipts?: boolean;
+    emailArenaStarts?: boolean;
+  };
 }
 
 export type UserTwoFactorBadgeLabel = 'Off' | 'Authenticator' | 'Email code' | 'Both' | 'Recovery pending';

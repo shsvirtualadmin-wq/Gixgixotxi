@@ -132,21 +132,21 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   return (
     <>
       <header
-        className="sticky z-[70] w-full max-w-full box-border px-3 sm:px-6 lg:px-8 pb-1 shrink-0 pointer-events-none select-none overflow-x-clip"
+        className="sticky z-[70] w-full max-w-full box-border px-3 sm:px-6 lg:px-8 pb-1 shrink-0 pointer-events-none select-none overflow-visible"
         style={{
           top: 'calc(12px + env(safe-area-inset-top, 0px))',
           marginTop: 'calc(12px + env(safe-area-inset-top, 0px))',
         }}
       >
         <div
-          className="w-full max-w-5xl mx-auto min-w-0 box-border h-14 sm:h-[60px] px-3 sm:px-5 rounded-full dashboard-glass-bar allow-backdrop-blur flex items-center justify-between gap-2 pointer-events-auto transition-all duration-200"
+          className="w-full max-w-5xl mx-auto min-w-0 box-border h-14 sm:h-[60px] px-3 sm:px-5 rounded-full dashboard-glass-bar allow-backdrop-blur flex flex-row items-center justify-between gap-2 pointer-events-auto transition-all duration-200 overflow-visible"
         >
           {/* Left side: Boardly Doto logo with top-right PRO badge and stacked Admin Portal label (min-w-0 and allowed to shrink) */}
           <div className="flex flex-col justify-center min-w-0 shrink overflow-hidden">
             <div className="inline-flex items-center gap-1 min-w-0 shrink">
               <Link
                 to="/dashboard"
-                className="inline-flex items-center min-w-0 shrink truncate select-none leading-none tracking-tight hover:opacity-90 transition-opacity text-[18px] min-[390px]:text-[20px] sm:text-[22px]"
+                className="inline-flex items-center min-w-0 shrink truncate select-none leading-none tracking-tight hover:opacity-90 transition-opacity text-[17px] min-[390px]:text-[20px] sm:text-[22px]"
                 style={{
                   fontFamily: "'Doto', var(--font-dot), sans-serif",
                   fontWeight: 800,
@@ -186,7 +186,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
           </div>
 
           {/* Right side: Gold Kobans balance chip, Notification bell, Theme toggle, Profile avatar (all flex-shrink: 0) */}
-          <div className="flex items-center gap-2 shrink-0 ml-auto">
+          <div className="flex items-center gap-2 shrink-0 ml-auto overflow-visible">
             {/* Kobans Wallet Chip */}
             <Link
               to="/store"
@@ -233,13 +233,10 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
               onClick={() => setMenuOpen((prev) => !prev)}
               aria-label="User profile menu"
               aria-expanded={menuOpen}
-              className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-full overflow-hidden shrink-0 flex items-center justify-center self-center cursor-pointer hover:opacity-90 transition-opacity"
+              className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-full overflow-visible shrink-0 flex items-center justify-center self-center cursor-pointer hover:opacity-90 transition-opacity"
               style={{
                 width: 36,
                 height: 36,
-                boxShadow:
-                  'inset 0 0 0 1.5px color-mix(in srgb, var(--cw-red, #D71921) 68%, rgba(255,255,255,0.28))',
-                backgroundColor: 'color-mix(in srgb, var(--cw-red, #D71921) 14%, rgba(22,22,26,0.65))',
               }}
             >
               <BoardlyAvatar
@@ -248,6 +245,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
                   equipped?.avatar ||
                   (profile as Record<string, unknown> | null)?.avatar as string | undefined
                 }
+                equippedFrameId={equipped?.frame}
                 size={36}
               />
             </button>
