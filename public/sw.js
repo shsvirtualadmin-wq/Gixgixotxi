@@ -1,160 +1,97 @@
-const CACHE_NAME = 'shs-boardly-mcq-v9';
+/**
+ * Boardly App Shell Service Worker
+ * - Cache-first for hashed static bundles (`/assets/*`), fonts, and icons
+ * - Network-first with fast fallback for HTML shell navigations
+ * - Never caches authenticated mutations, admin routes, or personal endpoints
+ */
+const CACHE_NAME = 'boardly-shell-v2';
 
-const ASSETS_TO_CACHE = [
-  '/logo.png',
-  '/favicon.svg',
-  '/manifest.json'
-];
-
-// Install Event
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log('[ServiceWorker] Pre-caching offline static assets');
-      return cache.addAll(ASSETS_TO_CACHE);
-    }).then(() => self.skipWaiting())
-  );
+self.addEventListener('install', () => {
+  self.skipWaiting();
 });
 
-// Activate Event: Clear older caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('[ServiceWorker] Purging old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys.map((key) => {
+            if (key !== CACHE_NAME) {
+              return caches.delete(key);
+            }
+            return Promise.resolve(false);
+          })
+        )
+      )
+      .then(() => self.clients.claim())
   );
 });
 
-// Fetch Event
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
 
-  // Never intercept Vite dev modules or source files
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (req.method !== 'GET') return;
+
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+
+  // Never intercept Vite dev sources, API endpoints, or admin calls in SW
   if (
+    url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/src/') ||
-    url.pathname.startsWith('/node_modules/') ||
-    url.pathname.startsWith('/@')
+    url.pathname.startsWith('/@') ||
+    url.pathname.startsWith('/node_modules/')
   ) {
     return;
   }
 
-  // Handle API Requests (Network First, Cache Fallback)
-  if (url.pathname.startsWith('/api/')) {
+  // Hashed build assets (`/assets/*`) & static icons: Cache-First
+  if (
+    url.pathname.startsWith('/assets/') ||
+    /\.(woff2?|ttf|otf|png|svg|ico|webp)$/i.test(url.pathname)
+  ) {
     event.respondWith(
-      fetch(event.request)
-        .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cached = await cache.match(req);
+        if (cached) return cached;
+        try {
+          const netRes = await fetch(req);
+          if (netRes && netRes.status === 200) {
+            cache.put(req, netRes.clone());
           }
-          return networkResponse;
+          return netRes;
+        } catch (err) {
+          if (cached) return cached;
+          throw err;
+        }
+      })
+    );
+    return;
+  }
+
+  // HTML Navigation requests: Network-first with cached App Shell fallback
+  if (req.mode === 'navigate') {
+    event.respondWith(
+      fetch(req)
+        .then((netRes) => {
+          if (netRes && netRes.status === 200) {
+            const copy = netRes.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put('/', copy)).catch(() => {});
+          }
+          return netRes;
         })
         .catch(async () => {
-          console.log('[ServiceWorker] Offline detected, fetching API response from cache');
-          const cachedResponse = await caches.match(event.request);
-          if (cachedResponse) {
-            return cachedResponse;
-          }
-          return new Response(
-            JSON.stringify({
-              success: false,
-              offline: true,
-              message: 'Offline mode active. Using local question bank.'
-            }),
-            {
-              headers: { 'Content-Type': 'application/json' }
-            }
-          );
+          const cache = await caches.open(CACHE_NAME);
+          const cachedRoot = await cache.match('/');
+          if (cachedRoot) return cachedRoot;
+          throw new Error('Offline');
         })
     );
-    return;
-  }
-
-  // Handle Navigation Requests (Network First - ensures fresh index.html with current chunk hashes)
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request)
-        .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            if (url.pathname === '/' || url.pathname === '/index.html') {
-              const responseToCache = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', responseToCache));
-            }
-          }
-          return networkResponse;
-        })
-        .catch(async () => {
-          // Navigation requests for other paths must never return the cached page
-          if (url.pathname !== '/' && url.pathname !== '/index.html') {
-            return new Response('Network offline', { status: 503, statusText: 'Offline' });
-          }
-          console.log('[ServiceWorker] Offline detected during navigation, serving cached index.html');
-          return caches.match('/index.html');
-        })
-    );
-    return;
-  }
-
-  // Let browser handle video/audio range & streaming requests directly
-  if (/\.(webm|mp4|ogg|mp3|wav)$/i.test(url.pathname)) {
-    return;
-  }
-
-  // Handle JavaScript, CSS & Store Assets (Network First so updates are always immediate)
-  if (url.pathname.startsWith('/assets/')) {
-    event.respondWith(
-      fetch(event.request)
-        .then((networkResponse) => {
-          const contentType = (networkResponse && networkResponse.headers && networkResponse.headers.get('content-type')) || '';
-          if (networkResponse && networkResponse.status === 200 && !contentType.includes('text/html')) {
-            const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
-          }
-          return networkResponse;
-        })
-        .catch(() => caches.match(event.request))
-    );
-    return;
-  }
-
-  // Only use Cache-First for actual static media/font/icon assets
-  if (!/\.(png|jpe?g|svg|webp|gif|ico|woff2?|ttf|eot)$/i.test(url.pathname)) {
-    return;
-  }
-
-  // Static Assets (Images, Icons, Fonts: Cache First, never cache HTML fallbacks)
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        const cachedType = (cachedResponse.headers && cachedResponse.headers.get('content-type')) || '';
-        if (!cachedType.includes('text/html')) {
-          return cachedResponse;
-        }
-      }
-      return fetch(event.request).then((networkResponse) => {
-        const contentType = (networkResponse && networkResponse.headers && networkResponse.headers.get('content-type')) || '';
-        if (networkResponse && networkResponse.status === 200 && !contentType.includes('text/html')) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
-        }
-        return networkResponse;
-      });
-    })
-  );
-});
-
-// Allow clients to trigger skipWaiting
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
   }
 });

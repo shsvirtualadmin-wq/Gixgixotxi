@@ -4077,7 +4077,7 @@ ${urls
           return jsonResponse(
             { success: true, universities: results || [] },
             200,
-            { ...cors, 'Cache-Control': 'no-store' }
+            { ...cors, 'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600' }
           );
         }
 
@@ -6526,6 +6526,11 @@ ${urls
         );
 
         const bothBindingsPresent = Boolean(env.DB && env.R2_BUCKET);
+        const hasAuthHeader = Boolean(
+          req.headers.get('Authorization') || req.headers.get('X-Guest-Session')
+        );
+        const isPublicFeedQuery =
+          !hasAuthHeader && !flaggedOnly && !savedBy && !likedBy && !includeOwnAnonymous;
         return jsonResponse(
           {
             success: true,
@@ -6537,7 +6542,9 @@ ${urls
           200,
           {
             ...cors,
-            'Cache-Control': 'no-store, no-cache, must-revalidate',
+            'Cache-Control': isPublicFeedQuery
+              ? 'public, max-age=30, stale-while-revalidate=90'
+              : 'private, max-age=10, stale-while-revalidate=30',
           }
         );
       }

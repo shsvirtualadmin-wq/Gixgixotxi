@@ -8,7 +8,7 @@ import { DashboardBottomNav } from './DashboardBottomNav';
 import { DashboardErrorBoundary } from './DashboardErrorBoundary';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
-import { LineLoader } from '@/components/ui/LineLoader';
+import { scheduleIdleTabPrefetch } from '@/lib/swrCache';
 import React, { Suspense, useEffect, useState } from 'react';
 import { ensureWelcomeNotificationForUser } from '@/services/notificationService';
 import { UserPlus, X } from 'lucide-react';
@@ -40,6 +40,11 @@ export function DashboardShell() {
     }
   }, [user?.uid, isSessionVerified, isGuest]);
 
+  // Schedule idle prefetching of core bottom-dock tabs after first paint
+  useEffect(() => {
+    scheduleIdleTabPrefetch(user?.uid);
+  }, [user?.uid]);
+
   useEffect(() => {
     if (!isAuthenticated && !profileLoading && !user) {
       const target = `${location.pathname}${location.search}${location.hash}`;
@@ -51,10 +56,6 @@ export function DashboardShell() {
       navigate(`/login?redirect=${encodeURIComponent(target)}`, { replace: true });
     }
   }, [isAuthenticated, user, profileLoading, navigate, location.pathname, location.search, location.hash]);
-
-  if (profileLoading && !user && !isAuthenticated) {
-    return <LineLoader context="dashboard" variant="page" />;
-  }
 
   // Route guard: Logged-out users visiting protected routes are redirected to login with exact return URL
   if (!isAuthenticated && !profileLoading && !user) {
@@ -77,7 +78,7 @@ export function DashboardShell() {
     return <Navigate to={verifyDest} replace />;
   }
 
-  // NEVER return null or blank screen — always render shell and bottom nav immediately
+  // NEVER return null or block with a full-screen startup gate — always render shell, route skeleton/cache, and bottom nav immediately
   return (
     <div
       className={`min-h-screen flex flex-col antialiased overflow-x-clip ${

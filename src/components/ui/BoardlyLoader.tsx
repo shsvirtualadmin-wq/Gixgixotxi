@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   LineLoader,
-  inferLoaderContextFromPath,
   inferLoaderContextFromMessages,
   LINE_LOADER_POOLS,
   type LineLoaderContext,
 } from './LineLoader';
+import { RoutePageSkeleton } from './Skeleton';
 
 export const APP_LOADER_MESSAGES = [...LINE_LOADER_POOLS.generic];
 
@@ -25,7 +25,7 @@ export const BoardlyLoader: React.FC<BoardlyLoaderProps> = ({
   messages,
   message,
   context,
-  variant = 'page',
+  variant = 'section',
   onRetry,
   className = '',
 }) => {
@@ -38,24 +38,11 @@ export const BoardlyLoader: React.FC<BoardlyLoaderProps> = ({
       context={resolvedContext}
       message={message}
       messages={messages}
-      variant={variant === 'inline' ? 'section' : variant}
+      variant={variant}
       onRetry={onRetry}
       className={className}
     />
   );
-};
-
-const SuspenseFallbackSignal: React.FC<{
-  onSuspendChange: (suspended: boolean) => void;
-}> = ({ onSuspendChange }) => {
-  useEffect(() => {
-    onSuspendChange(true);
-    return () => {
-      onSuspendChange(false);
-    };
-  }, [onSuspendChange]);
-
-  return null;
 };
 
 export interface BoardlySuspenseBoundaryProps {
@@ -66,36 +53,23 @@ export interface BoardlySuspenseBoundaryProps {
   messages?: string[];
 }
 
+/**
+ * Lightweight Suspense Boundary that renders an inline route-matched gray skeleton
+ * while a code chunk downloads — never a full-screen overlay or text loader.
+ */
 export const BoardlySuspenseBoundary: React.FC<BoardlySuspenseBoundaryProps> = ({
   children,
-  variant = 'overlay',
-  context,
-  message,
-  messages,
 }) => {
-  const [isSuspended, setIsSuspended] = useState(false);
-
-  const activeContext =
-    context ||
-    (message || (messages && messages.length > 0)
-      ? inferLoaderContextFromMessages(message, messages)
-      : inferLoaderContextFromPath());
-
   return (
-    <>
-      <LineLoader
-        loading={isSuspended}
-        context={activeContext}
-        message={message}
-        messages={messages}
-        variant={variant === 'inline' ? 'section' : variant}
-      />
-      <React.Suspense
-        fallback={<SuspenseFallbackSignal onSuspendChange={setIsSuspended} />}
-      >
-        {children}
-      </React.Suspense>
-    </>
+    <React.Suspense
+      fallback={
+        <div className="w-full max-w-5xl mx-auto px-3.5 sm:px-6 pt-3">
+          <RoutePageSkeleton />
+        </div>
+      }
+    >
+      {children}
+    </React.Suspense>
   );
 };
 

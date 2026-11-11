@@ -12,6 +12,7 @@ import {
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
+import { CrewDashboardSkeleton } from '@/components/ui/Skeleton';
 import {
   EmailVerificationRequiredCard,
   isEmailVerificationRequiredError,
@@ -471,8 +472,8 @@ export function CrewDashboardPage() {
       {/* ─── MAIN SCREEN CONTENT ────────────────────────────────────────── */}
       <div className="w-full pt-2 sm:pt-3 flex-1 space-y-5">
         {loading ? (
-          <div className="py-12">
-            <LineLoader context="dashboard" variant="section" />
+          <div className="py-4">
+            <CrewDashboardSkeleton />
           </div>
         ) : hookError && !crew ? (
           isEmailVerificationRequiredError(hookError) ? (

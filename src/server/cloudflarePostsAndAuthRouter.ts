@@ -1018,6 +1018,9 @@ export function rowToCommonsPost(
     votedByMe: currentUid
       ? Boolean(d1Cache?.likes?.some((l) => l.post_id === row.id && l.user_uid === currentUid))
       : undefined,
+    savedByMe: currentUid
+      ? Boolean(d1Cache?.saves?.some((s) => s.post_id === row.id && s.user_uid === currentUid))
+      : undefined,
     upvotedBy:
       currentUid && d1Cache?.likes?.some((l) => l.post_id === row.id && l.user_uid === currentUid)
         ? [currentUid]
@@ -1889,7 +1892,14 @@ ${entries
         nextOffset: hasMore ? offset + pageSize : null,
       };
 
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      const isPublicFeedQuery =
+        !currentUid && !flaggedOnly && !savedBy && !likedBy && !includeOwnAnonymous;
+      res.setHeader(
+        'Cache-Control',
+        isPublicFeedQuery
+          ? 'public, max-age=30, stale-while-revalidate=90'
+          : 'private, max-age=10, stale-while-revalidate=30'
+      );
       return res.status(200).json(payload);
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || 'Failed to list posts' });

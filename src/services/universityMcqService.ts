@@ -195,6 +195,7 @@ async function apiRequest<T>(url: string, init?: RequestInit): Promise<T> {
 // ============================================================================
 
 const UNIVERSITIES_CACHE_TTL_MS = 60_000;
+const UNIVERSITIES_SWR_KEY = 'universities:list:v2';
 let universitiesMemoryCache: { data: D1UniversityRow[]; expiresAt: number } | null = null;
 let universitiesInFlightPromise: Promise<D1UniversityRow[]> | null = null;
 
@@ -208,6 +209,26 @@ type UniversityTopicsResult = {
 };
 const universityTopicsCache = new Map<string, { data: UniversityTopicsResult; expiresAt: number }>();
 const universityTopicsInFlight = new Map<string, Promise<UniversityTopicsResult>>();
+
+export function getInitialCachedUniversities(): D1UniversityRow[] | null {
+  if (universitiesMemoryCache && universitiesMemoryCache.data.length > 0) {
+    return universitiesMemoryCache.data;
+  }
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const raw = window.localStorage.getItem(LOCAL_D1_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed?.universities) && parsed.universities.length > 0) {
+          return parsed.universities;
+        }
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }
+  return null;
+}
 
 export function invalidateUniversitiesCache(): void {
   universitiesMemoryCache = null;
@@ -224,9 +245,24 @@ export async function fetchUniversities(forceRefresh = false): Promise<D1Univers
 
   const p = (async () => {
     try {
-      const res = await apiRequest<{ ok?: boolean; success?: boolean; universities?: D1UniversityRow[] }>(
-        '/api/universities'
-      );
+      let res: { ok?: boolean; success?: boolean; universities?: D1UniversityRow[] } | null = null;
+      if (!forceRefresh && typeof window !== 'undefined' && (window as any).__BOARDLY_EARLY_UNIVERSITIES__) {
+        const earlyPromise = (window as any).__BOARDLY_EARLY_UNIVERSITIES__;
+        delete (window as any).__BOARDLY_EARLY_UNIVERSITIES__;
+        try {
+          const earlyData = await earlyPromise;
+          if (earlyData && Array.isArray(earlyData.universities)) {
+            res = earlyData;
+          }
+        } catch {
+          res = null;
+        }
+      }
+      if (!res) {
+        res = await apiRequest<{ ok?: boolean; success?: boolean; universities?: D1UniversityRow[] }>(
+          '/api/universities'
+        );
+      }
       if (Array.isArray(res.universities) && res.universities.length > 0) {
         const mirror = loadLocalD1Mirror();
         mirror.universities = res.universities;

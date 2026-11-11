@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from './useUserProfile';
 import { MAX_CREW_MEMBERS } from '@/constants/limits';
+import { readSwrCache, writeSwrCache } from '@/lib/swrCache';
 import {
   getMyCrewD1,
   createCrewD1,
@@ -125,8 +126,13 @@ export function useStudyCrew() {
   const { user } = useAuth();
   const { profile } = useUserProfile();
 
-  const [crew, setCrew] = useState<CrewDoc | null>(null);
-  const [loading, setLoading] = useState(true);
+  const crewCacheKey = user?.uid ? `crew:my:${user.uid}` : '';
+  const initialCached = crewCacheKey
+    ? readSwrCache<{ hasCrew: boolean; crew: CrewDoc | null }>(crewCacheKey)?.data ?? null
+    : null;
+
+  const [crew, setCrew] = useState<CrewDoc | null>(() => initialCached?.crew ?? null);
+  const [loading, setLoading] = useState(() => !initialCached);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
 
@@ -145,7 +151,15 @@ export function useStudyCrew() {
     }
 
     let isMounted = true;
-    setLoading(true);
+    const cachedNow = crewCacheKey
+      ? readSwrCache<{ hasCrew: boolean; crew: CrewDoc | null }>(crewCacheKey)?.data ?? null
+      : null;
+    if (cachedNow && retryCount === 0) {
+      setCrew(cachedNow.crew);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setError(null);
 
     getMyCrewD1()
@@ -153,13 +167,30 @@ export function useStudyCrew() {
         if (!isMounted) return;
         if (!d1Crew) {
           setCrew(null);
+          if (crewCacheKey) {
+            writeSwrCache(
+              crewCacheKey,
+              { hasCrew: false, crew: null },
+              { freshTtlMs: 30_000, maxStaleMs: 10 * 60_000, persist: true }
+            );
+          }
         } else {
-          setCrew(mapD1ToCrewDoc(d1Crew, members));
+          const mapped = mapD1ToCrewDoc(d1Crew, members);
+          setCrew(mapped);
+          if (crewCacheKey) {
+            writeSwrCache(
+              crewCacheKey,
+              { hasCrew: true, crew: mapped },
+              { freshTtlMs: 30_000, maxStaleMs: 10 * 60_000, persist: true }
+            );
+          }
         }
       })
       .catch((err: any) => {
         if (!isMounted) return;
-        setError(err?.message || 'Could not load study crew.');
+        if (!cachedNow) {
+          setError(err?.message || 'Could not load study crew.');
+        }
       })
       .finally(() => {
         if (isMounted) setLoading(false);
@@ -168,7 +199,7 @@ export function useStudyCrew() {
     return () => {
       isMounted = false;
     };
-  }, [user, retryCount]);
+  }, [user, retryCount, crewCacheKey]);
 
   const createCrew = useCallback(
     async (name: string): Promise<CrewDoc> => {

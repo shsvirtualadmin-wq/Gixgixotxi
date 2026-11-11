@@ -72,9 +72,7 @@ const AdminGuard = lazyWithRetry(() =>
 const AdminLayout = lazyWithRetry(() =>
   import('./components/admin/AdminLayout').then((m) => ({ default: m.AdminLayout }))
 );
-const DashboardShell = lazyWithRetry(() =>
-  import('./components/dashboard/DashboardShell').then((m) => ({ default: m.DashboardShell }))
-);
+import { DashboardShell } from './components/dashboard/DashboardShell';
 
 // Public Marketing, Knowledge & Community routes
 const LandingPage = lazyWithRetry(() => import('./pages/LandingPage'));

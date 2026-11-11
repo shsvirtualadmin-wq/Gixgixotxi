@@ -26,6 +26,7 @@ import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount
 import { useUnreadMessagesCount } from '@/hooks/useUnreadMessagesCount';
 import { getHomeUrl, isUserAuthenticated } from '@/utils/homeUrl';
 import { useSmoothMode } from '@/utils/smoothMode';
+import { prefetchTabRouteAndData } from '@/lib/swrCache';
 import { HamburgerMenuSheet } from './HamburgerMenuSheet';
 
 interface DockTabItem {
@@ -768,6 +769,12 @@ function DashboardBottomNavComponent() {
               aria-label={item.label}
               title={item.label}
               onKeyDown={(e) => handleKeyDown(e, index, item)}
+              onPointerDown={() => {
+                prefetchTabRouteAndData(item.id, user?.uid);
+              }}
+              onMouseEnter={() => {
+                prefetchTabRouteAndData(item.id, user?.uid);
+              }}
               onTouchStart={stopNavPropagation}
               onTouchEnd={stopNavPropagation}
               onClick={(e) => {

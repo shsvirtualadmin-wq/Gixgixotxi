@@ -16,9 +16,9 @@ import {
   clearCachedAuthAndAdminStorage,
 } from './HamburgerMenuSheet';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
-import { LineLoader } from '@/components/ui/LineLoader';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { useProBadge } from '@/contexts/ProBadgeContext';
+import { clearOptimisticUserSnapshot } from '@/lib/swrCache';
 
 interface Props {
   sidebarCollapsed?: boolean;
@@ -107,14 +107,13 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   }, [user, openProfile, navigate]);
 
   const handleSignOut = async () => {
+    if (isSigningOut) return;
     setMenuOpen(false);
     setIsSigningOut(true);
     clearCachedAuthAndAdminStorage();
+    clearOptimisticUserSnapshot();
     try {
-      await Promise.all([
-        signOutUser(),
-        new Promise((resolve) => setTimeout(resolve, 450)),
-      ]);
+      await signOutUser();
     } finally {
       setIsSigningOut(false);
       navigate('/login', { replace: true });
@@ -124,10 +123,6 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   const effectivePlan = useEffectivePlan();
   const { balance: kobanBalance, loading: walletLoading, equipped } = useWallet();
   const isPro = !isGuest && effectivePlan.isUnlimited;
-
-  if (isSigningOut) {
-    return <LineLoader context="login" variant="page" immediate />;
-  }
 
   return (
     <>
@@ -141,12 +136,12 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
         <div
           className="w-full max-w-5xl mx-auto min-w-0 box-border h-14 sm:h-[60px] px-3 sm:px-5 rounded-full dashboard-glass-bar allow-backdrop-blur flex flex-row items-center justify-between gap-2 pointer-events-auto transition-all duration-200 overflow-visible"
         >
-          {/* Left side: Boardly Doto logo with top-right PRO badge and stacked Admin Portal label (min-w-0 and allowed to shrink) */}
-          <div className="flex flex-col justify-center min-w-0 shrink overflow-hidden">
-            <div className="inline-flex items-center gap-1 min-w-0 shrink">
+          {/* Left side: Boardly Doto logo with fixed reserved width so it NEVER truncates to "Board" */}
+          <div className="flex flex-col justify-center shrink-0 min-w-[78px] sm:min-w-[92px]">
+            <div className="inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
               <Link
                 to="/dashboard"
-                className="inline-flex items-center min-w-0 shrink truncate select-none leading-none tracking-tight hover:opacity-90 transition-opacity text-[17px] min-[390px]:text-[20px] sm:text-[22px]"
+                className="inline-flex items-center shrink-0 whitespace-nowrap select-none leading-none tracking-tight hover:opacity-90 transition-opacity text-[17px] min-[390px]:text-[20px] sm:text-[22px]"
                 style={{
                   fontFamily: "'Doto', var(--font-dot), sans-serif",
                   fontWeight: 800,
@@ -185,13 +180,13 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
             )}
           </div>
 
-          {/* Right side: Gold Kobans balance chip, Notification bell, Theme toggle, Profile avatar (all flex-shrink: 0) */}
-          <div className="flex items-center gap-2 shrink-0 ml-auto overflow-visible">
-            {/* Kobans Wallet Chip */}
+          {/* Right side: Reserved-width Kobans balance chip, Notification bell, Theme toggle, Profile avatar (all flex-shrink: 0) */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto overflow-visible">
+            {/* Kobans Wallet Chip (reserved min-width prevents layout shift) */}
             <Link
               to="/store"
               title="Boardly Store & Kobans Wallet"
-              className="flex items-center shrink-0 whitespace-nowrap transition-transform hover:scale-105"
+              className="flex items-center justify-end shrink-0 min-w-[68px] sm:min-w-[76px] whitespace-nowrap transition-transform hover:scale-105"
             >
               <KobanChip balance={kobanBalance} loading={walletLoading} />
             </Link>

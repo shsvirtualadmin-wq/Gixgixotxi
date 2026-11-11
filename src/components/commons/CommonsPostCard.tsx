@@ -113,10 +113,22 @@ export const CommonsPostCard = memo(function CommonsPostCard({
     });
   }, [post.id, post.upvotes, currentUserId]);
 
+  const serverVotedByMe = (post as Record<string, any>).votedByMe as boolean | undefined;
+  const serverSavedByMe = (post as Record<string, any>).savedByMe as boolean | undefined;
+
   // Sync vote & save state when card approaches viewport (with in-memory cache)
   useEffect(() => {
     if (!currentUserId || !post.id) return;
     const cacheKey = `${currentUserId}:${post.id}`;
+    if (typeof serverVotedByMe === 'boolean' && typeof serverSavedByMe === 'boolean') {
+      voteSaveCache.set(cacheKey, {
+        voted: serverVotedByMe,
+        saved: serverSavedByMe,
+      });
+      setHasVoted(serverVotedByMe);
+      setIsSaved(serverSavedByMe);
+      return;
+    }
     const cached = voteSaveCache.get(cacheKey);
     if (cached) {
       setHasVoted(cached.voted);
@@ -163,7 +175,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
       isMounted = false;
       observer.disconnect();
     };
-  }, [post.id, currentUserId]);
+  }, [post.id, currentUserId, serverVotedByMe, serverSavedByMe]);
 
   if (isHidden) {
     return (

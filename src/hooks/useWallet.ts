@@ -17,6 +17,10 @@ import {
 } from '@/services/publicProfileService';
 import { getSharedUserProfileSnapshot } from '@/hooks/useUserProfile';
 import { invalidateCommonsPostsCache } from '@/services/commonsService';
+import {
+  readOptimisticWalletSnapshot,
+  writeOptimisticWalletSnapshot,
+} from '@/lib/swrCache';
 import type { EquippedCosmetics } from '@/types';
 
 export interface WalletDoc {
@@ -44,6 +48,11 @@ const inFlightWalletPromises: { [uid: string]: Promise<WalletDoc> | undefined } 
 const walletSubscribers = new Set<(uid: string, doc: WalletDoc) => void>();
 
 function notifyWalletSubscribers(uid: string, doc: WalletDoc) {
+  writeOptimisticWalletSnapshot({
+    uid,
+    balance: doc.balance,
+    equipped: doc.equipped,
+  });
   walletSubscribers.forEach((cb) => {
     try {
       cb(uid, doc);
@@ -55,12 +64,28 @@ function notifyWalletSubscribers(uid: string, doc: WalletDoc) {
 
 export function useWallet() {
   const { user } = useAuth();
-  const initialWallet: WalletDoc =
-    (user?.uid && sessionWalletCache[user.uid]) || DEFAULT_WALLET;
+  const initialWallet: WalletDoc = (() => {
+    if (user?.uid && sessionWalletCache[user.uid]) {
+      return sessionWalletCache[user.uid]!;
+    }
+    const optimistic = readOptimisticWalletSnapshot(user?.uid);
+    if (optimistic) {
+      return {
+        balance: optimistic.balance,
+        owned: [],
+        equipped: optimistic.equipped || DEFAULT_WALLET.equipped,
+      };
+    }
+    return DEFAULT_WALLET;
+  })();
 
   const [wallet, setWallet] = useState<WalletDoc>(initialWallet);
   const [loading, setLoading] = useState<boolean>(
-    Boolean(user?.uid && !sessionWalletCache[user.uid])
+    Boolean(
+      user?.uid &&
+        !sessionWalletCache[user.uid] &&
+        !readOptimisticWalletSnapshot(user.uid)
+    )
   );
   const walletRef = useRef(wallet);
   walletRef.current = wallet;

@@ -22,6 +22,7 @@ import { FREE_DAILY_TESTS } from '@/constants/limits';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import {
   fetchUniversities,
+  getInitialCachedUniversities,
   fetchUniversityTopics,
   fetchMcqs,
   verifyMcqAnswers,
@@ -37,6 +38,7 @@ import {
 } from '@/constants/d1Universities';
 import { MathText } from '@/components/ui/MathText';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
+import { UniversityGridSkeleton } from '@/components/ui/Skeleton';
 
 const LazyDragonCompanion = lazy(() =>
   import('@/components/dashboard/DragonCompanion').then((m) => ({ default: m.DragonCompanion }))
@@ -99,31 +101,45 @@ export function OverviewPage() {
   const isPro = effectivePlan.isUnlimited;
 
   // ── Cloudflare D1 Universities State (GET /api/universities ONLY — Zero Firebase) ──
-  const [universities, setUniversities] = useState<D1UniversityRow[]>([]);
-  const [loadingUniversities, setLoadingUniversities] = useState<boolean>(true);
+  const initialCachedUnis = useMemo(() => {
+    const cached = getInitialCachedUniversities();
+    return cached
+      ? [...cached].sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999))
+      : null;
+  }, []);
+  const [universities, setUniversities] = useState<D1UniversityRow[]>(
+    () => initialCachedUnis ?? []
+  );
+  const [loadingUniversities, setLoadingUniversities] = useState<boolean>(
+    () => !initialCachedUnis || initialCachedUnis.length === 0
+  );
   const [universitiesError, setUniversitiesError] = useState<string | null>(null);
 
-  const loadUniversitiesFromD1 = useCallback(async () => {
-    setLoadingUniversities(true);
+  const loadUniversitiesFromD1 = useCallback(async (background = false) => {
+    if (!background) {
+      setLoadingUniversities(true);
+    }
     setUniversitiesError(null);
     try {
       const rows = await fetchUniversities();
       if (Array.isArray(rows)) {
         const sorted = [...rows].sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999));
         setUniversities(sorted);
-      } else {
+      } else if (!background) {
         setUniversities([]);
       }
     } catch (err: any) {
-      setUniversitiesError(err?.message || 'Unable to load universities from Cloudflare D1.');
+      if (!background) {
+        setUniversitiesError(err?.message || 'Unable to load universities from Cloudflare D1.');
+      }
     } finally {
       setLoadingUniversities(false);
     }
   }, []);
 
   useEffect(() => {
-    void loadUniversitiesFromD1();
-  }, [loadUniversitiesFromD1]);
+    void loadUniversitiesFromD1(Boolean(initialCachedUnis && initialCachedUnis.length > 0));
+  }, [loadUniversitiesFromD1, initialCachedUnis]);
 
   // ── D1 Cockpit Stats (Questions Solved, Weak Chapters, Recent Attempts) ──
   const [statsVersion, setStatsVersion] = useState(0);
@@ -453,13 +469,9 @@ export function OverviewPage() {
           )}
         </div>
 
-        {/* Section-level LineLoader for university grid */}
-        {loadingUniversities ? (
-          <LineLoader
-            context="universities"
-            variant="section"
-            onRetry={() => void loadUniversitiesFromD1()}
-          />
+        {/* Section-level skeleton for university grid */}
+        {loadingUniversities && universities.length === 0 ? (
+          <UniversityGridSkeleton count={6} />
         ) : universitiesError ? (
           /* Error State */
           <div className="cockpit-surface-card p-6 text-center space-y-3">

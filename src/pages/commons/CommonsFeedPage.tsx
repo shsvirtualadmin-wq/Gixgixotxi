@@ -23,9 +23,10 @@ import { CommonsCommentsDrawer } from '@/components/commons/CommonsCommentsDrawe
 import { CommonsReportModal } from '@/components/commons/CommonsReportModal';
 import { CommonsSearchModal } from '@/components/commons/CommonsSearchModal';
 import { PageMeta } from '@/components/ui/PageMeta';
-import { LineLoader } from '@/components/ui/LineLoader';
+import { FeedPostSkeletonList, FeedPostSkeletonCard } from '@/components/ui/Skeleton';
 import {
   fetchCommonsPosts,
+  getInitialCachedCommonsFeed,
   deleteCommonsPost,
   sortCommonsPosts,
   fetchCommonsPostById,
@@ -121,14 +122,23 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
     [searchParams, setSearchParams]
   );
 
-  // Posts State (strictly real Firestore posts, 10 per page)
-  const [posts, setPosts] = useState<CommonsPost[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Posts State — initialize synchronously from memory/SWR cache so tab revisits & warm starts render in 0ms
+  const initialCached = useMemo(
+    () => getInitialCachedCommonsFeed(feedTab === 'following' ? 'following' : 'all', user?.uid),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+  const [posts, setPosts] = useState<CommonsPost[]>(() =>
+    initialCached?.posts ? sortCommonsPosts(initialCached.posts) : []
+  );
+  const [loading, setLoading] = useState<boolean>(() => !initialCached || initialCached.posts.length === 0);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [lastDoc, setLastDoc] = useState<any>(null);
+  const [hasMore, setHasMore] = useState<boolean>(() => Boolean(initialCached?.hasMore));
+  const [lastDoc, setLastDoc] = useState<any>(() => initialCached?.lastDoc ?? null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [backendMode, setBackendMode] = useState<'cloudflare-d1-r2' | 'preview-demo' | null>(null);
+  const [backendMode, setBackendMode] = useState<'cloudflare-d1-r2' | 'preview-demo' | null>(
+    () => initialCached?.backendMode || null
+  );
   const unreadNotifCount = useUnreadNotificationsCount();
   const recentCreatedPostRef = useRef<CommonsPost | null>(null);
 
@@ -168,8 +178,19 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
 
   const targetPostId = searchParams.get('post') || searchParams.get('id');
 
-  const loadPosts = useCallback(async () => {
-    setLoading(true);
+  const loadPosts = useCallback(async (forceLoadingState = false) => {
+    const cachedNow = getInitialCachedCommonsFeed(
+      feedTab === 'following' ? 'following' : 'all',
+      user?.uid
+    );
+    if (cachedNow && cachedNow.posts.length > 0 && !forceLoadingState) {
+      setPosts((prev) => (prev.length > 0 ? prev : sortCommonsPosts(cachedNow.posts)));
+      setLastDoc((prev: any) => (prev !== null ? prev : cachedNow.lastDoc));
+      setHasMore((prev) => (prev ? prev : cachedNow.hasMore));
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setLoadError(null);
     try {
       const [targetPost, res] = await Promise.all([
@@ -201,10 +222,15 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       console.warn('[CommonsFeedPage] fetch error:', err);
       const msg =
         err instanceof Error ? err.message : 'Could not load community posts';
-      setLoadError(msg);
-      setPosts([]);
-      setLastDoc(null);
-      setHasMore(false);
+      // Only show error state if we have no cached posts on screen
+      setPosts((prev) => {
+        if (prev.length === 0) {
+          setLoadError(msg);
+          setLastDoc(null);
+          setHasMore(false);
+        }
+        return prev;
+      });
     } finally {
       setLoading(false);
     }
@@ -272,7 +298,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           handleLoadMore();
         }
       },
-      { rootMargin: '300px' }
+      { rootMargin: '1200px 0px' }
     );
 
     observer.observe(el);
@@ -455,11 +481,9 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           className="flex justify-center items-center overflow-hidden transition-all text-xs text-muted px-4"
           style={{ height: `${pullDistance}px` }}
         >
-          <LineLoader
-            variant="inline"
-            context="generic"
-            message={pullDistance > 55 ? 'Release to refresh...' : 'Pull down to refresh...'}
-            immediate
+          <RefreshCw
+            size={18}
+            className={`text-accent transition-transform ${pullDistance > 55 ? 'rotate-180 scale-110' : ''}`}
           />
         </div>
       )}
@@ -660,10 +684,10 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
         </Link>
       </div>
 
-      {/* ── Posts Stream (10 at a time, skeleton loaders, Facebook style) ── */}
+      {/* ── Posts Stream (15 at a time, Facebook-style post skeletons, zero text loaders) ── */}
       <div className="boardly-feed-container w-full max-w-full min-w-0 box-border overflow-x-hidden space-y-3 pt-1 pb-[var(--sdn-page-pb)]">
         {loading && displayedPosts.length === 0 ? (
-          <LineLoader context="dashboard" variant="section" />
+          <FeedPostSkeletonList count={3} />
         ) : loadError ? (
           /* Error state with retry */
           <div className="p-8 text-center rounded-2xl border border-tag-danger-text/30 bg-tag-danger-bg space-y-3 shadow-xs">
@@ -739,12 +763,8 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
         {hasMore && <div ref={sentinelRef} className="h-6 w-full" />}
 
         {loadingMore && (
-          <div className="py-4">
-            <LineLoader
-              variant="inline"
-              context="generic"
-              message="Loading more posts..."
-            />
+          <div className="py-2">
+            <FeedPostSkeletonCard withAttachment={false} />
           </div>
         )}
       </div>

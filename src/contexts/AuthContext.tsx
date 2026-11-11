@@ -52,6 +52,11 @@ import {
   recordLegalConsentOnServer,
 } from '@/constants/legalConsent';
 import { seedSharedUserProfileCache } from '@/hooks/useUserProfile';
+import {
+  readOptimisticUserSnapshot,
+  writeOptimisticUserSnapshot,
+  clearOptimisticUserSnapshot,
+} from '@/lib/swrCache';
 
 const GuestLogoutConfirmModal = lazy(() =>
   import('@/components/auth/GuestLogoutConfirmModal').then((m) => ({
@@ -257,7 +262,39 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 // ─── Provider ────────────────────────────────────────────────────────────────
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(() => {
+    const opt = readOptimisticUserSnapshot();
+    if (!opt) return null;
+    const restored: UserProfile = {
+      uid: opt.uid,
+      email: opt.email || '',
+      displayName: opt.displayName || 'Student',
+      name: opt.displayName || 'Student',
+      username: opt.username || undefined,
+      shortId: opt.shortId,
+      role: opt.role === 'superadmin' ? 'admin' : (opt.role as UserProfile['role']) || 'student',
+      customRole: opt.customRole || undefined,
+      plan: opt.plan || 'free',
+      status: 'active',
+      isGuest: Boolean(opt.isGuest),
+      accountType: opt.isGuest ? 'guest' : 'registered',
+      profileCompleted: true,
+      onboardingCompleted: true,
+      streak: Number(opt.streak || 0),
+      targetUniversity: opt.targetUniversity,
+      avatar: opt.avatar || undefined,
+      frame: opt.frame || undefined,
+      equipped: {
+        effect: null,
+        frame: opt.frame || null,
+        nameplate: null,
+        avatar: opt.avatar || null,
+        banner: null,
+      },
+    };
+    seedSharedUserProfileCache(opt.uid, restored);
+    return restored;
+  });
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<{ code?: string; message: string; path?: string } | null>(null);
   const [authError, setAuthError] = useState<{ code?: string; message: string } | null>(null);
@@ -486,6 +523,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setProfile(loadedProfile);
         seedSharedUserProfileCache(firebaseUser.uid, loadedProfile);
+        writeOptimisticUserSnapshot({
+          uid: firebaseUser.uid,
+          email: loadedProfile.email || emailLower,
+          displayName: loadedProfile.displayName || fallbackName,
+          username: loadedProfile.username || null,
+          shortId: loadedProfile.shortId,
+          role: loadedProfile.role || 'student',
+          customRole: loadedProfile.customRole || null,
+          plan: loadedProfile.plan || 'free',
+          isGuest: false,
+          avatar:
+            loadedProfile.equipped?.avatar ||
+            (loadedProfile as any).equippedAvatar ||
+            loadedProfile.avatar ||
+            null,
+          frame:
+            loadedProfile.equipped?.frame ||
+            (loadedProfile as any).equippedFrame ||
+            loadedProfile.frame ||
+            null,
+          streak: Number(loadedProfile.streak || 0),
+          targetUniversity: loadedProfile.targetUniversity,
+        });
       } else {
         // Doc read timed out or failed — use fallback profile in-memory ONLY.
         // NEVER write this fallback profile to Firestore, as that would overwrite the user's real plan!
@@ -852,6 +912,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setGuestSessionToken(effectiveToken);
         setUser(synthUser);
         setProfile(guestProfile);
+        writeOptimisticUserSnapshot({
+          uid: g.uid,
+          email: '',
+          displayName: guestDisplayName,
+          username: guestUsername,
+          shortId: guestProfile.shortId,
+          role: 'student',
+          customRole: 'Guest',
+          plan: 'free',
+          isGuest: true,
+          streak: Number(g.streak || 0),
+          targetUniversity: guestProfile.targetUniversity,
+        });
         setOtpVerificationState({
           status: 'verified',
           purpose: null,
@@ -1179,6 +1252,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         // Confirmed: neither a Firebase user nor an active guest session
+        clearOptimisticUserSnapshot();
         try {
           localStorage.removeItem('boardly_user_authenticated');
           localStorage.removeItem(GUEST_TOKEN_LS_KEY);

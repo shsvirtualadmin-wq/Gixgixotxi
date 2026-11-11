@@ -1,132 +1,205 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="icon" type="image/png" href="/favicon-48x48.png" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#07070a" />
-    <title>Boardly — MCQ Practice for FSC &amp; Matric</title>
-    <meta name="description" content="Boardly: making education accessible to everyone. Free to start, affordable to grow. A project of SHS Virtual Academy." />
-    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
-    <link rel="canonical" href="https://boardly.cfd/" />
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Boardly" />
-    <meta property="og:url" content="https://boardly.cfd/" />
-    <meta property="og:title" content="Boardly — MCQ Practice for FSC &amp; Matric" />
-    <meta property="og:description" content="Boardly: making education accessible to everyone. Free to start, affordable to grow. A project of SHS Virtual Academy." />
-    <meta property="og:image" content="https://boardly.cfd/assets/og-image.png" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Boardly — MCQ Practice for FSC &amp; Matric" />
-    <meta name="twitter:description" content="Boardly: making education accessible to everyone. Free to start, affordable to grow. A project of SHS Virtual Academy." />
-    <meta name="twitter:image" content="https://boardly.cfd/assets/og-image.png" />
-    <script id="boardly-page-jsonld" type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@graph": [
-          {
-            "@type": "EducationalOrganization",
-            "@id": "https://boardly.cfd/#organization",
-            "name": "Boardly",
-            "url": "https://boardly.cfd",
-            "logo": "https://boardly.cfd/favicon.svg",
-            "founder": {
-              "@type": "Person",
-              "name": "Muhammad Hashir",
-              "jobTitle": "Founder"
-            },
-            "parentOrganization": {
-              "@type": "EducationalOrganization",
-              "name": "SHS Virtual Academy",
-              "url": "https://shsvirtualacademy.pro"
-            }
-          },
-          {
-            "@type": "WebSite",
-            "@id": "https://boardly.cfd/#website",
-            "name": "Boardly",
-            "url": "https://boardly.cfd",
-            "potentialAction": {
-              "@type": "SearchAction",
-              "target": "https://boardly.cfd/search?q={search_term_string}",
-              "query-input": "required name=search_term_string"
-            }
-          }
-        ]
-      }
-    </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="preload"
-      as="style"
-      href="https://fonts.googleapis.com/css2?family=Doto:wght@600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap"
-    />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Doto:wght@600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap"
-      rel="stylesheet"
-      media="print"
-      onload="this.media='all'"
-    />
-    <noscript>
-      <link
-        href="https://fonts.googleapis.com/css2?family=Doto:wght@600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap"
-        rel="stylesheet"
-      />
-    </noscript>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <script>
-      (function() {
+      (function () {
         try {
-          var saved = localStorage.getItem('boardly-theme');
-          var systemDark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : true;
-          var effective = systemDark ? 'dark' : 'light';
-          if (saved === 'light') effective = 'light';
-          else if (saved === 'dark') effective = 'dark';
-          else if (saved === 'system') effective = systemDark ? 'dark' : 'light';
-
-          document.documentElement.setAttribute('data-theme', effective);
-          document.documentElement.setAttribute('data-theme-setting', saved || 'system');
-          document.documentElement.style.colorScheme = effective;
-          if (effective === 'dark') {
-            document.documentElement.classList.add('dark');
-            document.documentElement.classList.remove('light');
+          var saved = localStorage.getItem('boardly_theme') || localStorage.getItem('theme');
+          var theme = saved === 'light' || saved === 'dark' ? saved : 'dark';
+          var root = document.documentElement;
+          root.setAttribute('data-theme', theme);
+          if (theme === 'dark') {
+            root.classList.add('dark');
+            root.classList.remove('light');
           } else {
-            document.documentElement.classList.remove('dark');
-            document.documentElement.classList.add('light');
+            root.classList.add('light');
+            root.classList.remove('dark');
           }
-          var metaThemeColor = document.querySelector('meta[name="theme-color"]');
-          if (metaThemeColor) {
-            metaThemeColor.setAttribute('content', effective === 'dark' ? '#07070a' : '#f6f6f8');
+          // Kick off first-screen public API fetches in parallel with JS download
+          var p = window.location.pathname.toLowerCase();
+          if (
+            p === '/' ||
+            p.startsWith('/commons') ||
+            p.startsWith('/dashboard/commons') ||
+            p === '/dashboard'
+          ) {
+            window.__BOARDLY_EARLY_POSTS__ = fetch('/api/posts?limit=15&offset=0&sort=newest', {
+              credentials: 'same-origin',
+            })
+              .then(function (r) {
+                return r.ok ? r.json() : null;
+              })
+              .catch(function () {
+                return null;
+              });
           }
-
-          // Automatic Smooth Mode (Lite Mode) detection for low-end phones & slow connections
-          var smoothPref = localStorage.getItem('boardly-smooth-mode');
-          var smoothActive = false;
-          if (smoothPref === 'true' || smoothPref === '1' || smoothPref === 'on') {
-            smoothActive = true;
-          } else if (smoothPref === 'false' || smoothPref === '0' || smoothPref === 'off') {
-            smoothActive = false;
-          } else {
-            var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-            var lowMem = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4;
-            var lowCpu = typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4;
-            var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-            var slowNet = conn && (conn.saveData || conn.effectiveType === 'slow-2g' || conn.effectiveType === '2g' || conn.effectiveType === '3g');
-            smoothActive = Boolean(reducedMotion || lowMem || lowCpu || slowNet);
-          }
-          if (smoothActive) {
-            document.documentElement.classList.add('smooth-mode');
-            document.documentElement.setAttribute('data-smooth-mode', 'true');
-          } else {
-            document.documentElement.setAttribute('data-smooth-mode', 'false');
+          if (p.startsWith('/dashboard') || p.startsWith('/universities') || p.startsWith('/test')) {
+            window.__BOARDLY_EARLY_UNIVERSITIES__ = fetch('/api/universities', {
+              credentials: 'same-origin',
+            })
+              .then(function (r) {
+                return r.ok ? r.json() : null;
+              })
+              .catch(function () {
+                return null;
+              });
           }
         } catch (e) {}
       })();
     </script>
+    <title>Boardly — Pakistan's Smart Exam Prep &amp; Student Community</title>
+    <meta name="description" content="Practice university entry test MCQs for MDCAT, NUST NET, FAST, GIKI &amp; ECAT, track weak chapters, and share solved past papers and study notes on Boardly Commons." />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#0A0A0C" />
+    <link rel="canonical" href="https://boardly.cfd/" />
+
+    <!-- Open Graph -->
+    <meta property="og:site_name" content="Boardly" />
+    <meta property="og:title" content="Boardly — Pakistan's Smart Exam Prep &amp; Student Community" />
+    <meta property="og:description" content="Practice university entry test MCQs for MDCAT, NUST NET, FAST, GIKI &amp; ECAT, track weak chapters, and share solved past papers and study notes on Boardly Commons." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://boardly.cfd/" />
+    <meta property="og:image" content="https://boardly.cfd/og-boardly.png" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Boardly — Pakistan's Smart Exam Prep &amp; Student Community" />
+    <meta name="twitter:description" content="Practice university entry test MCQs for MDCAT, NUST NET, FAST, GIKI &amp; ECAT, track weak chapters, and share solved past papers and study notes on Boardly Commons." />
+    <meta name="twitter:image" content="https://boardly.cfd/og-boardly.png" />
+
+    <!-- Favicons & App Icons -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Preconnect to critical origins to save TLS handshakes on mobile data -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin />
+
+    <!-- Non-blocking Google Fonts & KaTeX CSS -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Doto:wght@600..900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
+      crossorigin="anonymous"
+      media="print"
+      onload="this.media='all'"
+    />
+
+    <!-- Critical First-Paint App Shell & Skeleton CSS (0ms before JS loads) -->
+    <style>
+      html[data-theme="dark"] body { background-color: #0a0a0c; color: #f5f5f7; }
+      html[data-theme="light"] body { background-color: #f5f5f7; color: #141416; }
+      body { margin: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; -webkit-font-smoothing: antialiased; }
+      @keyframes b-shimmer { 0%, 100% { opacity: 0.55; } 50% { opacity: 0.95; } }
+      .b-boot-shell { max-width: 672px; margin: 0 auto; padding: 14px 14px 104px; box-sizing: border-box; }
+      .b-boot-card {
+        border-radius: 26px;
+        padding: 16px;
+        margin-bottom: 12px;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255,255,255,0.03);
+      }
+      html[data-theme="light"] .b-boot-card {
+        border: 1px solid rgba(0,0,0,0.08);
+        background: #ffffff;
+      }
+      .b-boot-bar {
+        border-radius: 8px;
+        background: rgba(255,255,255,0.09);
+        animation: b-shimmer 1.5s ease-in-out infinite;
+      }
+      html[data-theme="light"] .b-boot-bar {
+        background: rgba(0,0,0,0.07);
+      }
+      .b-boot-row { display: flex; align-items: center; gap: 12px; }
+      .b-boot-circle { width: 40px; height: 40px; border-radius: 9999px; flex-shrink: 0; }
+      .b-boot-dock {
+        position: fixed;
+        left: 50%;
+        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        transform: translateX(-50%);
+        width: min(92vw, 420px);
+        height: 60px;
+        border-radius: 9999px;
+        border: 1px solid rgba(255,255,255,0.1);
+        background: rgba(18,18,22,0.88);
+      }
+      html[data-theme="light"] .b-boot-dock {
+        border: 1px solid rgba(0,0,0,0.08);
+        background: rgba(255,255,255,0.9);
+      }
+    </style>
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "EducationalOrganization",
+        "name": "Boardly",
+        "url": "https://boardly.cfd",
+        "logo": "https://boardly.cfd/favicon-32x32.png",
+        "description": "Pakistan's smart entrance exam preparation platform and student study community."
+      }
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Inline App Shell Skeleton painted on frame 1 before JS parses -->
+      <div class="b-boot-shell" aria-hidden="true">
+        <div class="b-boot-card" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:9999px;">
+          <div class="b-boot-bar" style="width:110px;height:20px;"></div>
+          <div class="b-boot-row" style="gap:8px;">
+            <div class="b-boot-bar" style="width:68px;height:34px;border-radius:9999px;"></div>
+            <div class="b-boot-bar b-boot-circle" style="width:36px;height:36px;"></div>
+          </div>
+        </div>
+        <div class="b-boot-card">
+          <div class="b-boot-row">
+            <div class="b-boot-bar b-boot-circle"></div>
+            <div class="b-boot-bar" style="flex:1;height:38px;border-radius:9999px;"></div>
+          </div>
+        </div>
+        <div class="b-boot-card">
+          <div class="b-boot-row" style="margin-bottom:14px;">
+            <div class="b-boot-bar b-boot-circle"></div>
+            <div style="flex:1;">
+              <div class="b-boot-bar" style="width:45%;height:13px;margin-bottom:7px;"></div>
+              <div class="b-boot-bar" style="width:28%;height:10px;"></div>
+            </div>
+          </div>
+          <div class="b-boot-bar" style="width:82%;height:15px;margin-bottom:9px;"></div>
+          <div class="b-boot-bar" style="width:100%;height:12px;margin-bottom:7px;"></div>
+          <div class="b-boot-bar" style="width:66%;height:12px;margin-bottom:14px;"></div>
+          <div class="b-boot-bar" style="width:100%;height:132px;border-radius:16px;"></div>
+        </div>
+        <div class="b-boot-card">
+          <div class="b-boot-row" style="margin-bottom:14px;">
+            <div class="b-boot-bar b-boot-circle"></div>
+            <div style="flex:1;">
+              <div class="b-boot-bar" style="width:52%;height:13px;margin-bottom:7px;"></div>
+              <div class="b-boot-bar" style="width:32%;height:10px;"></div>
+            </div>
+          </div>
+          <div class="b-boot-bar" style="width:76%;height:15px;margin-bottom:9px;"></div>
+          <div class="b-boot-bar" style="width:94%;height:12px;margin-bottom:7px;"></div>
+          <div class="b-boot-bar" style="width:58%;height:12px;"></div>
+        </div>
+        <div class="b-boot-dock"></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

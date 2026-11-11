@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Award, RefreshCw, ArrowRight, ShieldCheck } from 'lucide-react';
 import {
@@ -6,10 +6,14 @@ import {
   type StudentCertificateRecord,
 } from '../../services/certificateService';
 import { CertificateCard } from '../../components/certificates/CertificateCard';
+import { CertificatesSectionSkeleton } from '../../components/ui/Skeleton';
+import { readSwrCache, writeSwrCache } from '../../lib/swrCache';
 
 export interface MyCertificatesSectionProps {
   compact?: boolean;
 }
+
+const CERTIFICATES_CACHE_KEY = 'certificates:my:v1';
 
 /**
  * Reusable "My Certificates" section for the Student Dashboard (Overview, Profile, and /dashboard/certificates).
@@ -17,26 +21,41 @@ export interface MyCertificatesSectionProps {
 export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
   compact = false,
 }) => {
-  const [certificates, setCertificates] = useState<StudentCertificateRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialCached = useMemo(
+    () => readSwrCache<StudentCertificateRecord[]>(CERTIFICATES_CACHE_KEY),
+    []
+  );
+  const [certificates, setCertificates] = useState<StudentCertificateRecord[]>(
+    () => initialCached?.data ?? []
+  );
+  const [loading, setLoading] = useState(() => !initialCached);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const loadCertificates = useCallback(async () => {
-    setLoading(true);
+  const loadCertificates = useCallback(async (background = false) => {
+    if (!background) {
+      setLoading(true);
+    }
     setErrorMsg(null);
     try {
       const rows = await fetchMyCertificates();
       setCertificates(rows);
+      writeSwrCache(CERTIFICATES_CACHE_KEY, rows, {
+        freshTtlMs: 60_000,
+        maxStaleMs: 15 * 60_000,
+        persist: true,
+      });
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Unable to load your certificates right now.');
+      if (!background) {
+        setErrorMsg(err?.message || 'Unable to load your certificates right now.');
+      }
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void loadCertificates();
-  }, [loadCertificates]);
+    void loadCertificates(Boolean(initialCached));
+  }, [loadCertificates, initialCached]);
 
   return (
     <section className="space-y-3.5" aria-label="My Certificates">
@@ -59,7 +78,7 @@ export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => void loadCertificates()}
+            onClick={() => void loadCertificates(false)}
             disabled={loading}
             className="min-h-[38px] px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] inline-flex items-center gap-1.5 cursor-pointer"
           >
@@ -84,10 +103,8 @@ export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
         </div>
       )}
 
-      {loading ? (
-        <div className="cockpit-surface-card p-6 text-center font-mono text-xs uppercase tracking-wider text-[var(--text-muted)]">
-          Loading your official Grand Line certificates...
-        </div>
+      {loading && certificates.length === 0 ? (
+        <CertificatesSectionSkeleton />
       ) : certificates.length === 0 ? (
         <div className="cockpit-surface-card p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="space-y-1">

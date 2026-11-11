@@ -2,7 +2,8 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
-import { LineLoader } from '@/components/ui/LineLoader';
+import { StreaksPageSkeleton } from '@/components/ui/Skeleton';
+import { readSwrCache, writeSwrCache } from '@/lib/swrCache';
 import {
   computeStreakData,
   fetchUserCompletedSessionDates,
@@ -38,14 +39,26 @@ export function StreaksPage() {
   const navigate = useNavigate();
   const handleBack = useSmartBack();
 
+  const streakCacheKey = user?.uid ? `streaks:user:${user.uid}` : '';
+  const initialCachedStreak = useMemo(() => {
+    if (!streakCacheKey) return null;
+    return readSwrCache<{
+      streakFreezes: number;
+      freezeActive: boolean;
+      redeemedBadges: string[];
+      equippedBadges: string[];
+      streakData: StreakComputationResult;
+    }>(streakCacheKey)?.data ?? null;
+  }, [streakCacheKey]);
+
   // Streak & User State
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialCachedStreak);
   const [hasError, setHasError] = useState(false);
-  const [streakFreezes, setStreakFreezes] = useState(1);
-  const [freezeActive, setFreezeActive] = useState(false);
-  const [redeemedBadges, setRedeemedBadges] = useState<string[]>([]);
-  const [equippedBadges, setEquippedBadges] = useState<string[]>([]);
-  const [streakData, setStreakData] = useState<StreakComputationResult | null>(null);
+  const [streakFreezes, setStreakFreezes] = useState(() => initialCachedStreak?.streakFreezes ?? 1);
+  const [freezeActive, setFreezeActive] = useState(() => initialCachedStreak?.freezeActive ?? false);
+  const [redeemedBadges, setRedeemedBadges] = useState<string[]>(() => initialCachedStreak?.redeemedBadges ?? []);
+  const [equippedBadges, setEquippedBadges] = useState<string[]>(() => initialCachedStreak?.equippedBadges ?? []);
+  const [streakData, setStreakData] = useState<StreakComputationResult | null>(() => initialCachedStreak?.streakData ?? null);
 
   // Modals & Bottom Sheets
   const [selectedDay, setSelectedDay] = useState<StreakCalendarDay | null>(null);
@@ -59,32 +72,50 @@ export function StreaksPage() {
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Authoritative data loading function
-  const loadStreakData = useCallback(async () => {
+  const loadStreakData = useCallback(async (background = false) => {
     if (!user) return;
     try {
-      setLoading(true);
+      if (!background) {
+        setLoading(true);
+      }
       setHasError(false);
 
-      // 1. Fetch user profile for freeze, badges, and cached counters
+      // 1. Fetch user profile for freeze, badges, and cached counters + session dates in parallel
       const userRef = doc(db, 'users', user.uid);
-      const userSnap = await getDoc(userRef);
+      const [userSnap, sessionDates] = await Promise.all([
+        getDoc(userRef),
+        fetchUserCompletedSessionDates(user.uid),
+      ]);
       const uData = userSnap.exists() ? userSnap.data() : {};
 
       const isFreezeActive = Boolean(uData.streakFreezeActive);
       const currentFreezes = Number(uData.streakFreezes ?? 1);
+      const nextRedeemed = Array.isArray(uData.redeemedBadges) ? uData.redeemedBadges : [];
+      const nextEquipped = Array.isArray(uData.equippedBadges) ? uData.equippedBadges : [];
       setStreakFreezes(currentFreezes);
       setFreezeActive(isFreezeActive);
-      setRedeemedBadges(Array.isArray(uData.redeemedBadges) ? uData.redeemedBadges : []);
-      setEquippedBadges(Array.isArray(uData.equippedBadges) ? uData.equippedBadges : []);
-
-      // 2. Fetch all completed session PKT dates across attempts & usage
-      const sessionDates = await fetchUserCompletedSessionDates(user.uid);
+      setRedeemedBadges(nextRedeemed);
+      setEquippedBadges(nextEquipped);
 
       // 3. Compute authoritative streak data with ONE shared function
       const computed = computeStreakData(sessionDates, {
         freezeActive: isFreezeActive,
       });
       setStreakData(computed);
+
+      if (streakCacheKey) {
+        writeSwrCache(
+          streakCacheKey,
+          {
+            streakFreezes: currentFreezes,
+            freezeActive: isFreezeActive,
+            redeemedBadges: nextRedeemed,
+            equippedBadges: nextEquipped,
+            streakData: computed,
+          },
+          { freshTtlMs: 45_000, maxStaleMs: 15 * 60_000, persist: true }
+        );
+      }
 
       // 4. Mirror accurate streak to user doc if it diverged
       if (uData.streak !== computed.currentStreak || uData.longestStreak !== computed.longestStreak) {
@@ -98,15 +129,17 @@ export function StreaksPage() {
       }
     } catch (err) {
       console.error('[StreaksPage] Error loading streak data:', err);
-      setHasError(true);
+      if (!background) {
+        setHasError(true);
+      }
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, streakCacheKey]);
 
   useEffect(() => {
-    loadStreakData();
-  }, [loadStreakData]);
+    void loadStreakData(Boolean(initialCachedStreak));
+  }, [loadStreakData, initialCachedStreak]);
 
   // Current streak values
   const currentStreak = streakData?.currentStreak ?? 0;
@@ -235,10 +268,10 @@ export function StreaksPage() {
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };
 
-  if (loading) {
+  if (loading && !streakData) {
     return (
-      <div className="w-full max-w-xl mx-auto px-4 py-12 flex flex-col items-center justify-center antialiased pb-36 rs-body text-[var(--rs-text)]">
-        <LineLoader context="dashboard" variant="section" />
+      <div className="w-full max-w-xl mx-auto px-4 py-6 antialiased pb-36 rs-body text-[var(--rs-text)]">
+        <StreaksPageSkeleton />
       </div>
     );
   }
@@ -256,7 +289,7 @@ export function StreaksPage() {
         </p>
         <button
           type="button"
-          onClick={loadStreakData}
+          onClick={() => void loadStreakData(false)}
           className="rs-glass-btn rs-glass-btn--red inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-bold min-h-[44px]"
         >
           <RotateCcw size={16} />

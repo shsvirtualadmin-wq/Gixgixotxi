@@ -881,8 +881,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
             <div className="py-3">
               <LineLoader
                 variant="inline"
-                context="generic"
-                message="Loading more posts..."
+                context="feed"
               />
             </div>
           )}

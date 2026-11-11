@@ -21,6 +21,12 @@ import {
   getCachedPublicProfile,
   type PublicProfile,
 } from '@/services/publicProfileService';
+import {
+  readSwrCache,
+  writeSwrCache,
+  invalidateSwrCache,
+  consumeEarlyPostsFetch,
+} from '@/lib/swrCache';
 
 /**
  * ============================================================================
@@ -577,7 +583,9 @@ export function sortCommonsPosts(
   });
 }
 
-const COMMONS_POSTS_CACHE_TTL_MS = 20_000;
+const COMMONS_POSTS_CACHE_TTL_MS = 60_000;
+const COMMONS_SWR_KEY = 'commons:feed:default:v2';
+
 const commonsListCache = new Map<
   string,
   {
@@ -605,6 +613,47 @@ const commonsPostDetailInFlight = new Map<string, Promise<CommonsPost | null>>()
 export function invalidateCommonsPostsCache(): void {
   commonsListCache.clear();
   commonsPostDetailCache.clear();
+  invalidateSwrCache('commons:feed:');
+}
+
+/**
+ * Synchronously returns the cached Commons feed (from memory or localStorage SWR)
+ * so returning to the Commons tab or cold-starting with a warm cache renders in 0ms
+ * with zero skeleton flash.
+ */
+export function getInitialCachedCommonsFeed(
+  feedTab: 'all' | 'following' = 'all',
+  currentUid?: string | null
+): {
+  posts: CommonsPost[];
+  lastDoc: any;
+  hasMore: boolean;
+  backendMode?: 'cloudflare-d1-r2' | 'preview-demo';
+} | null {
+  if (feedTab === 'following') {
+    return null;
+  }
+  const exactKey = `${currentUid || 'anon'}:limit=15&offset=0`;
+  const mem = commonsListCache.get(exactKey) || commonsListCache.get('anon:limit=15&offset=0');
+  if (mem && mem.data.posts.length > 0) {
+    return mem.data;
+  }
+  const swr = readSwrCache<{
+    rawPosts: Record<string, any>[];
+    lastDoc: any;
+    hasMore: boolean;
+    backendMode?: 'cloudflare-d1-r2' | 'preview-demo';
+  }>(COMMONS_SWR_KEY, 6 * 60 * 60 * 1000);
+  if (swr && Array.isArray(swr.data?.rawPosts) && swr.data.rawPosts.length > 0) {
+    const normalized = swr.data.rawPosts.map((p) => normalizeCloudflarePost(p));
+    return {
+      posts: normalized,
+      lastDoc: swr.data.lastDoc,
+      hasMore: Boolean(swr.data.hasMore),
+      backendMode: swr.data.backendMode || 'cloudflare-d1-r2',
+    };
+  }
+  return null;
 }
 
 export async function fetchCommonsPosts(options: {
@@ -668,6 +717,16 @@ export async function fetchCommonsPosts(options: {
     params.set('followingUids', effectiveFollowingUids.join(','));
   }
 
+  const isDefaultFirstPage =
+    offset === 0 &&
+    pageSize === 15 &&
+    (!options.feedTab || options.feedTab === 'all') &&
+    (!options.subject || options.subject === 'all') &&
+    (!options.target || options.target === 'all') &&
+    (!options.type || options.type === 'all') &&
+    (!options.sortBy || options.sortBy === 'newest') &&
+    !options.searchQuery?.trim();
+
   const cacheKey = `${options.currentUid || 'anon'}:${params.toString()}`;
   const cached = commonsListCache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) {
@@ -679,14 +738,26 @@ export async function fetchCommonsPosts(options: {
   }
 
   const promise = (async () => {
-    const headers = await getOptionalAuthHeader();
-    const resp = await fetch(`/api/posts?${params.toString()}`, {
-      headers,
-    });
-    const data = await resp.json().catch(() => ({}));
+    let data: Record<string, any> | null = null;
 
-    if (!resp.ok || !Array.isArray(data?.posts)) {
-      throw new Error(data?.error || `Failed to load posts (HTTP ${resp.status}).`);
+    // 1. Reuse early parallel fetch started in index.html if available
+    if (isDefaultFirstPage) {
+      const earlyPromise = consumeEarlyPostsFetch();
+      if (earlyPromise) {
+        data = await earlyPromise.catch(() => null);
+      }
+    }
+
+    // 2. Otherwise fetch from /api/posts
+    if (!data || !Array.isArray(data.posts)) {
+      const headers = await getOptionalAuthHeader();
+      const resp = await fetch(`/api/posts?${params.toString()}`, {
+        headers,
+      });
+      data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !Array.isArray(data?.posts)) {
+        throw new Error(data?.error || `Failed to load posts (HTTP ${resp.status}).`);
+      }
     }
 
     const rawPosts: CommonsPost[] = data.posts.map((p: any) => normalizeCloudflarePost(p));
@@ -697,14 +768,16 @@ export async function fetchCommonsPosts(options: {
           .map((p) => String(p.authorUid))
       )
     );
-    const liveProfiles =
-      authorUids.length > 0
-        ? await getPublicProfiles(authorUids).catch(() => new Map<string, PublicProfile>())
-        : new Map<string, PublicProfile>();
 
+    // Apply any already-cached profiles synchronously and trigger background profile enrichment
+    // without blocking the first post paint on Firestore WebChannel handshakes!
     const posts: CommonsPost[] = rawPosts.map((p) =>
-      applyLiveAuthorToPost(p, p.authorUid ? liveProfiles.get(p.authorUid) : null)
+      applyLiveAuthorToPost(p, p.authorUid ? getCachedPublicProfile(p.authorUid) : null)
     );
+    if (authorUids.length > 0) {
+      void getPublicProfiles(authorUids).catch(() => {});
+    }
+
     for (const p of posts) {
       if (p.id) {
         commonsPostDetailCache.set(p.id, {
@@ -729,6 +802,18 @@ export async function fetchCommonsPosts(options: {
       data: result,
       expiresAt: Date.now() + COMMONS_POSTS_CACHE_TTL_MS,
     });
+    if (isDefaultFirstPage) {
+      commonsListCache.set('anon:limit=15&offset=0', {
+        data: result,
+        expiresAt: Date.now() + COMMONS_POSTS_CACHE_TTL_MS,
+      });
+      writeSwrCache(COMMONS_SWR_KEY, {
+        rawPosts: data.posts.slice(0, 15),
+        lastDoc: result.lastDoc,
+        hasMore: result.hasMore,
+        backendMode: result.backendMode,
+      });
+    }
     return result;
   })();
 
