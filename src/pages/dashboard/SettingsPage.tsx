@@ -866,7 +866,7 @@ export function SettingsPage() {
       },
       {
         id: 'general',
-        label: 'Preferences & Security',
+        label: '',
         rows: [
           {
             id: 'notifications' as SettingsSubPageId,
@@ -878,7 +878,7 @@ export function SettingsPage() {
           {
             id: 'security' as SettingsSubPageId,
             label: 'Security & Two-Step Verification',
-            value: 'Manage',
+            value: profile?.twoFactorStatus?.twoFactorEnabled ? 'Enabled' : 'Off',
             icon: Shield,
             keywords: ['security', 'password', '2fa', 'two-step', 'totp', 'authenticator', 'backup codes', 'devices', 'delete account'],
           },
@@ -902,6 +902,7 @@ export function SettingsPage() {
       proBadgeRowValue,
       kobanRowValue,
       notificationsRowValue,
+      profile?.twoFactorStatus?.twoFactorEnabled,
     ]
   );
 
@@ -1115,28 +1116,26 @@ export function SettingsPage() {
 
         {/* Fixed-spec top header: 100% width, box-sizing: border-box, 12px side padding, one flex row with gap 8px */}
         <header className="stg-top-header">
-          <div className="stg-top-header-inner">
-            <button
-              type="button"
-              onClick={closeSubPage}
-              className="fsm-back-btn shrink-0"
-              aria-label="Back to Settings"
-            >
-              <ArrowLeft size={20} strokeWidth={2.2} />
-            </button>
+          <button
+            type="button"
+            onClick={closeSubPage}
+            className="fsm-back-btn shrink-0"
+            aria-label="Back to Settings"
+          >
+            <ArrowLeft size={20} strokeWidth={2.2} />
+          </button>
 
-            <h1 className="stg-top-header-title">
-              {SUBPAGE_TITLES[activeSubPage]}
-            </h1>
+          <h1 className="stg-top-header-title">
+            {SUBPAGE_TITLES[activeSubPage]}
+          </h1>
 
-            <div className="stg-top-header-slot">
-              <BoardlyAvatar
-                uid={user?.uid}
-                equippedAvatar={equippedAvatarId}
-                equippedFrameId={equippedFrameId}
-                size={34}
-              />
-            </div>
+          <div className="stg-top-header-slot">
+            <BoardlyAvatar
+              uid={user?.uid}
+              equippedAvatar={equippedAvatarId}
+              equippedFrameId={equippedFrameId}
+              size={36}
+            />
           </div>
         </header>
 
@@ -1916,21 +1915,25 @@ export function SettingsPage() {
 
       {/* Top Header: 44px circular glass back button at top-left, centered title "Settings" */}
       <header className="stg-top-header">
-        <div className="stg-top-header-inner">
-          <button
-            type="button"
-            onClick={() => navigate('/dashboard')}
-            className="fsm-back-btn shrink-0"
-            aria-label="Back"
-          >
-            <ArrowLeft size={20} strokeWidth={2.2} />
-          </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (window.history.length > 2) {
+              navigate(-1);
+            } else {
+              navigate('/dashboard');
+            }
+          }}
+          className="fsm-back-btn shrink-0"
+          aria-label="Back"
+        >
+          <ArrowLeft size={20} strokeWidth={2.2} />
+        </button>
 
-          <h1 className="stg-top-header-title">Settings</h1>
+        <h1 className="stg-top-header-title">Settings</h1>
 
-          {/* Right slot keeps title perfectly centered */}
-          <div className="stg-top-header-slot" aria-hidden="true" />
-        </div>
+        {/* Right slot keeps title perfectly centered */}
+        <div className="stg-top-header-slot" aria-hidden="true" />
       </header>
 
       <div className="stg-container">
@@ -2003,7 +2006,9 @@ export function SettingsPage() {
         {/* Grouped Rounded Cards */}
         {filteredGroups.map((group) => (
           <div key={group.id} className="stg-group">
-            <div className="stg-group-label">{group.label}</div>
+            {group.label && (
+              <div className="stg-group-label">{group.label}</div>
+            )}
             <div className="stg-card">
               {group.rows.map((row) => {
                 const IconComp = row.icon;
