@@ -16,6 +16,11 @@ import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { getFollowerIds, getFollowingIds } from '@/services/followService';
 import { notifyFollowersOfPost } from '@/services/notificationService';
 import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
+import {
+  getPublicProfiles,
+  getCachedPublicProfile,
+  type PublicProfile,
+} from '@/services/publicProfileService';
 
 /**
  * ============================================================================
@@ -260,6 +265,44 @@ export function subscribeAnyPostLike(listener: PostLikeListener): () => void {
   };
 }
 
+export function applyLiveAuthorToPost(
+  post: CommonsPost,
+  liveProfile?: PublicProfile | null
+): CommonsPost {
+  if (post.isAnonymous || !post.authorUid) {
+    return {
+      ...post,
+      authorUid: null,
+      authorName: post.anonymousAlias || 'Anonymous Student',
+      authorAvatar: null,
+      authorEquippedAvatar: null,
+      authorFrame: null,
+      authorPhotoURL: null,
+    };
+  }
+  const prof = liveProfile || getCachedPublicProfile(post.authorUid);
+  if (!prof) return post;
+  const resolvedAvatar =
+    resolveCosmeticItemId(prof.equippedAvatar || prof.avatar, 'avatar') ||
+    post.authorEquippedAvatar ||
+    post.authorAvatar ||
+    null;
+  const resolvedFrame =
+    resolveCosmeticItemId(prof.equippedFrame || prof.frame, 'frame') ||
+    post.authorFrame ||
+    null;
+  return {
+    ...post,
+    authorName: prof.displayName || prof.username || post.authorName || 'Student',
+    ...(prof.username ? { authorUsername: prof.username } : {}),
+    authorAvatar: resolvedAvatar,
+    authorEquippedAvatar: resolvedAvatar,
+    authorFrame: resolvedFrame,
+    authorRole: (prof.role as any) || post.authorRole || 'student',
+    authorCustomRole: prof.customRole || post.authorCustomRole || null,
+  };
+}
+
 /**
  * Normalizes a post object returned from `/api/posts` so `createdAt` supports
  * both `.toDate()` (for legacy UI components) and ISO string / Date parsing.
@@ -288,7 +331,9 @@ export function normalizeCloudflarePost(raw: Record<string, any>): CommonsPost {
     ? recordPostLikeSnapshot(id, rawLikes, currentUid, votedByMe, false)
     : { count: rawLikes };
 
-  return {
+  const authorUid = raw.isAnonymous ? null : raw.authorUid || null;
+  const cachedAuthor = authorUid ? getCachedPublicProfile(authorUid) : null;
+  const basePost: CommonsPost = {
     ...(raw as any),
     id,
     slug: String(raw.slug || raw.id || ''),
@@ -304,7 +349,7 @@ export function normalizeCloudflarePost(raw: Record<string, any>): CommonsPost {
     files: Array.isArray(raw.files) ? raw.files : [],
     isAnonymous: Boolean(raw.isAnonymous),
     anonymousAlias: String(raw.anonymousAlias || 'Anonymous Student'),
-    authorUid: raw.isAnonymous ? null : raw.authorUid || null,
+    authorUid,
     authorName: raw.isAnonymous
       ? 'Anonymous Student'
       : String(raw.authorName || 'Student'),
@@ -336,6 +381,7 @@ export function normalizeCloudflarePost(raw: Record<string, any>): CommonsPost {
     isFeatured: Boolean(raw.isFeatured),
     createdAt: timestampCompat as any,
   };
+  return applyLiveAuthorToPost(basePost, cachedAuthor);
 }
 
 export async function checkPostingRateLimit(_uid: string): Promise<{
@@ -637,7 +683,22 @@ export async function fetchCommonsPosts(options: {
       throw new Error(data?.error || `Failed to load posts (HTTP ${resp.status}).`);
     }
 
-    const posts: CommonsPost[] = data.posts.map((p: any) => normalizeCloudflarePost(p));
+    const rawPosts: CommonsPost[] = data.posts.map((p: any) => normalizeCloudflarePost(p));
+    const authorUids = Array.from(
+      new Set(
+        rawPosts
+          .filter((p) => !p.isAnonymous && p.authorUid)
+          .map((p) => String(p.authorUid))
+      )
+    );
+    const liveProfiles =
+      authorUids.length > 0
+        ? await getPublicProfiles(authorUids).catch(() => new Map<string, PublicProfile>())
+        : new Map<string, PublicProfile>();
+
+    const posts: CommonsPost[] = rawPosts.map((p) =>
+      applyLiveAuthorToPost(p, p.authorUid ? liveProfiles.get(p.authorUid) : null)
+    );
     for (const p of posts) {
       if (p.id) {
         commonsPostDetailCache.set(p.id, {
@@ -677,7 +738,7 @@ export async function fetchCommonsPostById(postIdOrSlug: string): Promise<Common
   if (!postIdOrSlug) return null;
   const cached = commonsPostDetailCache.get(postIdOrSlug);
   if (cached && Date.now() < cached.expiresAt) {
-    return cached.post;
+    return applyLiveAuthorToPost(cached.post);
   }
   const pending = commonsPostDetailInFlight.get(postIdOrSlug);
   if (pending) {
@@ -693,7 +754,13 @@ export async function fetchCommonsPostById(postIdOrSlug: string): Promise<Common
       if (!resp.ok) return null;
       const data = await resp.json();
       if (!data?.post) return null;
-      const normalized = normalizeCloudflarePost(data.post);
+      const rawNormalized = normalizeCloudflarePost(data.post);
+      let liveAuthor: PublicProfile | null = null;
+      if (!rawNormalized.isAnonymous && rawNormalized.authorUid) {
+        const map = await getPublicProfiles([rawNormalized.authorUid]).catch(() => null);
+        liveAuthor = map?.get(rawNormalized.authorUid) || null;
+      }
+      const normalized = applyLiveAuthorToPost(rawNormalized, liveAuthor);
       commonsPostDetailCache.set(postIdOrSlug, {
         post: normalized,
         expiresAt: Date.now() + COMMONS_POSTS_CACHE_TTL_MS,
@@ -893,16 +960,47 @@ export async function fetchPostComments(postId: string): Promise<CommonsComment[
     if (!resp.ok) return [];
     const data = await resp.json();
     const list: CommonsComment[] = Array.isArray(data?.comments) ? data.comments : [];
-    return list.map((c) => ({
-      ...c,
-      authorAvatar: c.isAnonymous
-        ? null
-        : resolveCosmeticItemId(c.authorEquippedAvatar || c.authorAvatar, 'avatar'),
-      authorEquippedAvatar: c.isAnonymous
-        ? null
-        : resolveCosmeticItemId(c.authorEquippedAvatar || c.authorAvatar, 'avatar'),
-      authorPhotoURL: null,
-    }));
+    const authorUids = Array.from(
+      new Set(
+        list
+          .filter((c) => !c.isAnonymous && c.authorUid)
+          .map((c) => String(c.authorUid))
+      )
+    );
+    const liveProfiles =
+      authorUids.length > 0
+        ? await getPublicProfiles(authorUids).catch(() => new Map<string, PublicProfile>())
+        : new Map<string, PublicProfile>();
+
+    return list.map((c) => {
+      if (c.isAnonymous || !c.authorUid) {
+        return {
+          ...c,
+          authorUid: null,
+          authorName: c.anonymousAlias || 'Anonymous Student',
+          authorAvatar: null,
+          authorEquippedAvatar: null,
+          authorPhotoURL: null,
+        };
+      }
+      const live = liveProfiles.get(c.authorUid) || getCachedPublicProfile(c.authorUid);
+      const resolvedAvatar =
+        resolveCosmeticItemId(
+          live?.equippedAvatar || live?.avatar || c.authorEquippedAvatar || c.authorAvatar,
+          'avatar'
+        ) || null;
+      const resolvedFrame =
+        resolveCosmeticItemId(live?.equippedFrame || live?.frame || c.authorFrame, 'frame') || null;
+      return {
+        ...c,
+        authorName: live?.displayName || live?.username || c.authorName || 'Student',
+        ...(live?.username ? { authorUsername: live.username } : {}),
+        authorAvatar: resolvedAvatar,
+        authorEquippedAvatar: resolvedAvatar,
+        authorFrame: resolvedFrame,
+        authorPhotoURL: null,
+      };
+    });
   } catch {
     return [];
   }
@@ -930,7 +1028,7 @@ export async function reportCommonsPost(params: {
 }
 
 export async function searchPeople(searchTerm: string): Promise<CommonsUserPreview[]> {
-  const cleaned = searchTerm.trim().toLowerCase();
+  const cleaned = searchTerm.trim().toLowerCase().replace(/^@/, '');
   if (!cleaned) return [];
 
   try {
@@ -942,11 +1040,13 @@ export async function searchPeople(searchTerm: string): Promise<CommonsUserPrevi
       const data = d.data();
       const rawName = data.displayName || data.name || data.username || '';
       const displayName = sanitizeStudentDisplayName(rawName, d.id);
+      const username = data.username ? String(data.username) : '';
       const shortId = data.shortId ? String(data.shortId) : '';
       const bio = data.bio || data.tagline || '';
 
       if (
         displayName.toLowerCase().includes(cleaned) ||
+        username.toLowerCase().includes(cleaned) ||
         shortId.toLowerCase().includes(cleaned)
       ) {
         const resolvedStoreAvatar = resolveCosmeticItemId(

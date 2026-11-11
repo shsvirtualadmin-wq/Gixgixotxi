@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { PageMeta } from '@/components/ui/PageMeta';
@@ -7,12 +7,14 @@ import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { ContentUnavailableScreen } from '@/components/ui/ContentUnavailableScreen';
 import { LineLoader } from '@/components/ui/LineLoader';
 import { ProfileView } from '@/components/profile/ProfileView';
+import { resolveProfileByUsernameOrUid } from '@/services/publicProfileService';
 
 export const PublicUserProfilePage: React.FC = () => {
   const { username: rawUsername, userId: rawUserId } = useParams<{
     username?: string;
     userId?: string;
   }>();
+  const navigate = useNavigate();
   const rawParam = (rawUsername || rawUserId || '').trim();
 
   const [targetUid, setTargetUid] = useState<string | null>(null);
@@ -35,7 +37,24 @@ export const PublicUserProfilePage: React.FC = () => {
       setNotFound(false);
 
       try {
-        let uid = rawParam;
+        const uid = rawParam.replace(/^@/, '');
+
+        // 0. Check D1 username & 14-day username_history table first
+        const d1Resolved = await resolveProfileByUsernameOrUid(uid).catch(() => null);
+        if (d1Resolved?.profile?.uid) {
+          if (
+            d1Resolved.redirectedFromOldUsername &&
+            d1Resolved.currentUsername &&
+            d1Resolved.currentUsername.toLowerCase() !== uid.toLowerCase()
+          ) {
+            navigate(`/u/${encodeURIComponent(d1Resolved.currentUsername)}`, { replace: true });
+          }
+          if (mounted) {
+            setTargetUid(d1Resolved.profile.uid);
+            setLoading(false);
+          }
+          return;
+        }
 
         // 1. Check if rawParam exists directly in users/{uid}
         const directUserSnap = await getDoc(doc(db, 'users', uid)).catch(() => null);
@@ -67,10 +86,10 @@ export const PublicUserProfilePage: React.FC = () => {
           return;
         }
 
-        // 4. Query publicProfiles where username == rawParam (case-insensitive fallback)
+        // 4. Query publicProfiles where usernameLower == rawParam (case-insensitive fallback)
         const q = query(
           collection(db, 'publicProfiles'),
-          where('username', '==', uid.toLowerCase()),
+          where('usernameLower', '==', uid.toLowerCase()),
           limit(1)
         );
         const querySnap = await getDocs(q).catch(() => null);
@@ -101,7 +120,7 @@ export const PublicUserProfilePage: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [rawParam]);
+  }, [rawParam, navigate]);
 
   if (loading) {
     return (

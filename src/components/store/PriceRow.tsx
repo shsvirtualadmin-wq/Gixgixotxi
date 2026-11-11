@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, Plus } from 'lucide-react';
+import { Check, Loader2, Plus } from 'lucide-react';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 
 export interface PriceRowProps {
@@ -9,6 +9,8 @@ export interface PriceRowProps {
   isOwned: boolean;
   isEquipped: boolean;
   isInCart: boolean;
+  disabled?: boolean;
+  isPurchasing?: boolean;
   onToggleCart: (e: React.MouseEvent) => void;
   onPrimaryAction: (e: React.MouseEvent) => void;
 }
@@ -20,6 +22,8 @@ export const PriceRow: React.FC<PriceRowProps> = ({
   isOwned,
   isEquipped,
   isInCart,
+  disabled = false,
+  isPurchasing = false,
   onToggleCart,
   onPrimaryAction,
 }) => {
@@ -27,7 +31,7 @@ export const PriceRow: React.FC<PriceRowProps> = ({
 
   const handleCartClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isOwned) return;
+    if (isOwned || disabled || isPurchasing) return;
     if (!isInCart) {
       setJustAdded(true);
       window.setTimeout(() => setJustAdded(false), 550);
@@ -37,6 +41,7 @@ export const PriceRow: React.FC<PriceRowProps> = ({
 
   const handlePrimaryClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (disabled || isPurchasing) return;
     onPrimaryAction(e);
   };
 
@@ -71,10 +76,11 @@ export const PriceRow: React.FC<PriceRowProps> = ({
         {!isOwned && (
           <button
             type="button"
+            disabled={disabled || isPurchasing}
             onClick={handleCartClick}
             aria-label={isInCart ? 'Remove from cart' : 'Add to cart'}
             title={isInCart ? 'In cart (tap to remove)' : 'Add to cart'}
-            className={`relative -m-1 p-1 inline-flex items-center justify-center rounded-xl transition-all active:scale-90 ${
+            className={`relative -m-1 p-1 inline-flex items-center justify-center rounded-xl transition-all active:scale-90 disabled:opacity-50 ${
               justAdded ? 'scale-110' : ''
             }`}
           >
@@ -98,21 +104,27 @@ export const PriceRow: React.FC<PriceRowProps> = ({
         {isOwned ? (
           <button
             type="button"
+            disabled={disabled || isPurchasing}
             onClick={handlePrimaryClick}
-            className={`min-w-[78px] sm:min-w-[84px] h-8 px-2.5 rounded-lg text-[11px] font-extrabold inline-flex items-center justify-center gap-1 transition-all ${
+            className={`min-w-[78px] sm:min-w-[84px] h-8 px-2.5 rounded-lg text-[11px] font-extrabold inline-flex items-center justify-center gap-1 transition-all disabled:opacity-50 ${
               isEquipped
                 ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
                 : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border border-[var(--border)] hover:text-[var(--text-primary)]'
             }`}
           >
-            <Check className="w-3 h-3 shrink-0 stroke-[2.5]" />
+            {isPurchasing ? (
+              <Loader2 className="w-3 h-3 shrink-0 animate-spin" />
+            ) : (
+              <Check className="w-3 h-3 shrink-0 stroke-[2.5]" />
+            )}
             <span>{isEquipped ? 'Active' : 'Owned'}</span>
           </button>
         ) : isInCart ? (
           <button
             type="button"
+            disabled={disabled || isPurchasing}
             onClick={handlePrimaryClick}
-            className="min-w-[78px] sm:min-w-[84px] h-8 px-2.5 rounded-lg text-[11px] font-extrabold inline-flex items-center justify-center gap-1 bg-transparent text-[#E11D2A] border border-[#E11D2A]/60 hover:bg-[#E11D2A]/10 transition-all active:scale-95"
+            className="min-w-[78px] sm:min-w-[84px] h-8 px-2.5 rounded-lg text-[11px] font-extrabold inline-flex items-center justify-center gap-1 bg-transparent text-[#E11D2A] border border-[#E11D2A]/60 hover:bg-[#E11D2A]/10 transition-all active:scale-95 disabled:opacity-50"
           >
             <Check className="w-3 h-3 shrink-0 stroke-[2.5]" />
             <span>In cart</span>
@@ -120,10 +132,18 @@ export const PriceRow: React.FC<PriceRowProps> = ({
         ) : (
           <button
             type="button"
+            disabled={disabled || isPurchasing}
             onClick={handlePrimaryClick}
-            className="min-w-[78px] sm:min-w-[84px] h-8 px-2.5 rounded-lg text-[11px] font-extrabold inline-flex items-center justify-center gap-1 bg-[#E11D2A] hover:bg-[#c81824] text-white shadow-sm transition-all active:scale-95"
+            className="min-w-[78px] sm:min-w-[84px] h-8 px-2.5 rounded-lg text-[11px] font-extrabold inline-flex items-center justify-center gap-1 bg-[#E11D2A] hover:bg-[#c81824] text-white shadow-sm transition-all active:scale-95 disabled:opacity-60"
           >
-            <span>Buy</span>
+            {isPurchasing ? (
+              <>
+                <Loader2 className="w-3 h-3 shrink-0 animate-spin" />
+                <span>Buying…</span>
+              </>
+            ) : (
+              <span>Buy</span>
+            )}
           </button>
         )}
       </div>

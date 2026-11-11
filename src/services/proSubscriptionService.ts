@@ -468,6 +468,11 @@ export async function purchaseProWithKobans(params: {
           window.localStorage.setItem(lsKey, JSON.stringify(parsed));
         }
         window.dispatchEvent(new Event('boardly:plan-refresh'));
+        window.dispatchEvent(
+          new CustomEvent('boardly:wallet-refresh', {
+            detail: { balanceAfter: result.balanceAfter },
+          })
+        );
       }
     } catch {
       // Ignore storage errors

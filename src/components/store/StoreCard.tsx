@@ -79,6 +79,8 @@ export interface StoreCardProps {
   isInCart: boolean;
   selectionMode: boolean;
   isSelected: boolean;
+  disabled?: boolean;
+  isPurchasing?: boolean;
   onOpenDetail: (item: CosmeticItem) => void;
   onToggleCart: (item: CosmeticItem) => void;
   onBuyNow: (item: CosmeticItem) => void;
@@ -96,6 +98,8 @@ export const StoreCard: React.FC<StoreCardProps> = ({
   isInCart,
   selectionMode,
   isSelected,
+  disabled = false,
+  isPurchasing = false,
   onOpenDetail,
   onToggleCart,
   onBuyNow,
@@ -371,6 +375,8 @@ export const StoreCard: React.FC<StoreCardProps> = ({
           isOwned={isOwned}
           isEquipped={isEquipped}
           isInCart={isInCart}
+          disabled={disabled}
+          isPurchasing={isPurchasing}
           onToggleCart={() => onToggleCart(item)}
           onPrimaryAction={() => {
             if (isOwned) {

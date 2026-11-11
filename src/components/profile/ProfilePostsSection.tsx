@@ -26,6 +26,11 @@ import {
 } from '@/services/userPostService';
 import { getPostLikeSnapshot, subscribeAnyPostLike } from '@/services/commonsService';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import {
+  getCachedPublicProfile,
+  subscribePublicProfile,
+  type PublicProfile,
+} from '@/services/publicProfileService';
 
 interface ProfilePostsSectionProps {
   targetUid: string;
@@ -87,6 +92,20 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
 
   // Lightbox preview for images
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
+  const [liveTargetProfile, setLiveTargetProfile] = useState<PublicProfile | null>(() =>
+    targetUid ? getCachedPublicProfile(targetUid) : null
+  );
+
+  useEffect(() => {
+    if (!targetUid) {
+      setLiveTargetProfile(null);
+      return;
+    }
+    setLiveTargetProfile(getCachedPublicProfile(targetUid));
+    return subscribePublicProfile(targetUid, (prof) => {
+      setLiveTargetProfile(prof);
+    });
+  }, [targetUid]);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const editFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -619,15 +638,29 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                       <BoardlyAvatar
                         uid={post.user_id || targetUid}
                         equippedAvatar={
-                          post.author_avatar || (isOwnProfile ? equippedAvatar : undefined)
+                          (isOwnProfile ? equippedAvatar : undefined) ||
+                          liveTargetProfile?.equippedAvatar ||
+                          liveTargetProfile?.avatar ||
+                          post.author_avatar ||
+                          undefined
                         }
-                        name={post.author_name || 'Student'}
+                        name={
+                          (isOwnProfile ? currentUserDisplayName : undefined) ||
+                          liveTargetProfile?.displayName ||
+                          liveTargetProfile?.username ||
+                          post.author_name ||
+                          'Student'
+                        }
                         size={32}
                       />
                     </div>
                     <div className="flex flex-col min-w-0 flex-1">
                       <span className="font-heading font-semibold text-xs text-[var(--text)] truncate">
-                        {post.author_name || 'Student'}
+                        {(isOwnProfile ? currentUserDisplayName : undefined) ||
+                          liveTargetProfile?.displayName ||
+                          liveTargetProfile?.username ||
+                          post.author_name ||
+                          'Student'}
                       </span>
                       <span className="text-[10px] font-mono text-[var(--muted)] flex items-center gap-1">
                         <Clock size={10} />

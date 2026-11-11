@@ -1,6 +1,7 @@
 import worker, {
   Env,
   rowToCommonsPost,
+  resolveWorkerLiveAuthorsBatch,
   sanitizeStoreAvatarId,
   verifyFirebaseIdToken,
   extractIdFromSlugOrId,
@@ -363,6 +364,10 @@ export async function onRequest(context: {
     const total = rows.length;
     const paged = rows.slice(offset, offset + pageSize);
     const hasMore = offset + pageSize < total;
+    const liveAuthorsMap = await resolveWorkerLiveAuthorsBatch(
+      env?.DB,
+      paged.map((r) => (r.is_anonymous ? null : r.author_uid))
+    );
 
     return new Response(
       JSON.stringify({
@@ -373,7 +378,7 @@ export async function onRequest(context: {
         limit: pageSize,
         hasMore,
         nextOffset: hasMore ? offset + pageSize : null,
-        posts: paged.map((r) => rowToCommonsPost(r)),
+        posts: paged.map((r) => rowToCommonsPost(r, liveAuthorsMap)),
       }),
       { status: 200, headers: jsonHeaders }
     );
@@ -488,11 +493,15 @@ export async function onRequest(context: {
         { status: 404, headers: jsonHeaders }
       );
     }
+    const liveAuthorsMap = await resolveWorkerLiveAuthorsBatch(
+      env?.DB,
+      row.is_anonymous ? [] : [row.author_uid]
+    );
     return new Response(
       JSON.stringify({
         success: true,
         backendMode: 'preview-demo',
-        post: rowToCommonsPost(row),
+        post: rowToCommonsPost(row, liveAuthorsMap),
       }),
       { status: 200, headers: jsonHeaders }
     );
@@ -565,21 +574,32 @@ export async function onRequest(context: {
   }
 
   if (action === 'comments' && request.method === 'GET') {
-    const comments = memoryStore.comments
-      .filter((c) => c.post_id === postId)
-      .map((c) => ({
+    const postComments = memoryStore.comments.filter((c) => c.post_id === postId);
+    const liveAuthorsMap = await resolveWorkerLiveAuthorsBatch(
+      env?.DB,
+      postComments.map((c) => (c.is_anonymous ? null : c.author_uid))
+    );
+    const comments = postComments.map((c) => {
+      const isAnon = Boolean(c.is_anonymous);
+      const authorUid = isAnon ? null : c.author_uid;
+      const live = !isAnon && authorUid ? liveAuthorsMap.get(authorUid) : undefined;
+      return {
         id: c.id,
         postId: c.post_id,
         text: c.text,
-        isAnonymous: Boolean(c.is_anonymous),
-        authorUid: c.is_anonymous ? null : c.author_uid,
-        authorName: c.is_anonymous ? 'Anonymous Student' : c.author_name,
-        authorAvatar: c.is_anonymous
+        isAnonymous: isAnon,
+        authorUid,
+        authorName: isAnon
+          ? c.anonymous_alias || 'Anonymous Student'
+          : live?.displayName || live?.username || c.author_name,
+        authorUsername: isAnon ? null : live?.username || null,
+        authorAvatar: isAnon
           ? null
-          : sanitizeStoreAvatarId(c.author_equipped_avatar, c.author_avatar),
+          : live?.avatar || sanitizeStoreAvatarId(c.author_equipped_avatar, c.author_avatar),
         authorPhotoURL: null,
         createdAt: new Date(Number(c.created_at || Date.now())).toISOString(),
-      }));
+      };
+    });
     return new Response(
       JSON.stringify({ success: true, comments }),
       { status: 200, headers: jsonHeaders }

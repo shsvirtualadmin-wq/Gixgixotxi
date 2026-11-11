@@ -983,11 +983,100 @@ export function sanitizeStoreAvatarId(...candidates: unknown[]): string | null {
   return null;
 }
 
+export interface WorkerLiveAuthor {
+  uid: string;
+  username: string | null;
+  displayName: string | null;
+  avatar: string | null;
+  frame: string | null;
+  role: string | null;
+  customRole: string | null;
+}
+
+export async function resolveWorkerLiveAuthorsBatch(
+  db: D1Database | undefined,
+  uids: (string | null | undefined)[]
+): Promise<Map<string, WorkerLiveAuthor>> {
+  const result = new Map<string, WorkerLiveAuthor>();
+  if (!db) return result;
+  const uniqueUids = Array.from(
+    new Set(
+      uids
+        .map((u) => String(u || '').trim())
+        .filter((u) => u.length > 0 && u !== 'anonymous')
+    )
+  ).slice(0, 100);
+  if (uniqueUids.length === 0) return result;
+
+  try {
+    const placeholders = uniqueUids.map((_, i) => `?${i + 1}`).join(', ');
+    const [uRes, gRes, rRes] = await Promise.all([
+      db
+        .prepare(`SELECT * FROM user_usernames WHERE uid IN (${placeholders})`)
+        .bind(...uniqueUids)
+        .all<Record<string, any>>()
+        .catch(() => ({ results: [] as Record<string, any>[] })),
+      db
+        .prepare(`SELECT * FROM guest_accounts WHERE uid IN (${placeholders})`)
+        .bind(...uniqueUids)
+        .all<Record<string, any>>()
+        .catch(() => ({ results: [] as Record<string, any>[] })),
+      db
+        .prepare(`SELECT * FROM user_roles WHERE uid IN (${placeholders})`)
+        .bind(...uniqueUids)
+        .all<Record<string, any>>()
+        .catch(() => ({ results: [] as Record<string, any>[] })),
+    ]);
+
+    const uMap = new Map<string, Record<string, any>>();
+    for (const r of uRes.results || []) {
+      if (r?.uid) uMap.set(String(r.uid), r);
+    }
+    const gMap = new Map<string, Record<string, any>>();
+    for (const r of gRes.results || []) {
+      if (r?.uid) gMap.set(String(r.uid), r);
+    }
+    const rMap = new Map<string, Record<string, any>>();
+    for (const r of rRes.results || []) {
+      if (r?.uid) rMap.set(String(r.uid), r);
+    }
+
+    for (const uid of uniqueUids) {
+      const uRow = uMap.get(uid);
+      const gRow = gMap.get(uid);
+      const rRow = rMap.get(uid);
+      const username = uRow?.username_display || uRow?.username_lower || gRow?.username || null;
+      const displayName = uRow?.display_name || gRow?.display_name || username || null;
+      const avatar = sanitizeStoreAvatarId(uRow?.avatar, gRow?.avatar);
+      const frame = uRow?.frame || null;
+      const role = rRow?.role || uRow?.role || (gRow ? 'guest' : null);
+      const customRole = rRow?.custom_role || uRow?.custom_role || null;
+      if (username || displayName || avatar || frame || role || customRole) {
+        result.set(uid, {
+          uid,
+          username,
+          displayName,
+          avatar,
+          frame,
+          role,
+          customRole,
+        });
+      }
+    }
+  } catch {
+    // Non-fatal fallback to stored columns
+  }
+  return result;
+}
+
 /**
  * Canonical serializer from a D1 `posts` row to the frontend `CommonsPost` JSON contract.
  * Never exposes `real_author_uid` or `author_uid` on anonymous posts in public responses.
  */
-export function rowToCommonsPost(row: Record<string, any>): Record<string, any> {
+export function rowToCommonsPost(
+  row: Record<string, any>,
+  liveAuthorsMap?: Map<string, WorkerLiveAuthor>
+): Record<string, any> {
   let tags: string[] = [];
   let rawFiles: any[] = [];
   try {
@@ -1012,6 +1101,26 @@ export function rowToCommonsPost(row: Record<string, any>): Record<string, any> 
   const updatedMs = Number(row.updated_at || createdMs);
   const isAnon = Boolean(row.is_anonymous);
   const description = String(row.description ?? row.body ?? '');
+
+  const authorUid = isAnon ? null : row.author_uid || null;
+  const liveAuthor = !isAnon && authorUid && liveAuthorsMap ? liveAuthorsMap.get(authorUid) : undefined;
+
+  const resolvedAuthorName = isAnon
+    ? row.anonymous_alias || 'Anonymous Student'
+    : liveAuthor?.displayName || liveAuthor?.username || row.author_name || 'Student';
+  const resolvedAuthorUsername = isAnon ? null : liveAuthor?.username || null;
+  const resolvedAuthorAvatar = isAnon
+    ? null
+    : liveAuthor?.avatar || sanitizeStoreAvatarId(row.author_equipped_avatar, row.author_avatar);
+  const resolvedAuthorFrame = isAnon
+    ? null
+    : liveAuthor?.frame || row.author_frame || null;
+  const resolvedAuthorRole = isAnon
+    ? 'student'
+    : liveAuthor?.role || row.author_role || 'student';
+  const resolvedAuthorCustomRole = isAnon
+    ? null
+    : liveAuthor?.customRole || row.author_custom_role || null;
 
   return {
     id: row.id,
@@ -1039,18 +1148,15 @@ export function rowToCommonsPost(row: Record<string, any>): Record<string, any> 
     anonymous: isAnon,
     anonymousAlias: row.anonymous_alias || 'Anonymous Student',
     // Strictly hide author UID on anonymous posts in all public responses
-    authorUid: isAnon ? null : row.author_uid || null,
-    authorName: isAnon ? 'Anonymous Student' : row.author_name || 'Student',
-    authorAvatar: isAnon
-      ? null
-      : sanitizeStoreAvatarId(row.author_equipped_avatar, row.author_avatar),
-    authorFrame: isAnon ? null : row.author_frame || null,
-    authorEquippedAvatar: isAnon
-      ? null
-      : sanitizeStoreAvatarId(row.author_equipped_avatar, row.author_avatar),
+    authorUid,
+    authorName: resolvedAuthorName,
+    authorUsername: resolvedAuthorUsername,
+    authorAvatar: resolvedAuthorAvatar,
+    authorFrame: resolvedAuthorFrame,
+    authorEquippedAvatar: resolvedAuthorAvatar,
     authorPhotoURL: null,
-    authorRole: isAnon ? 'student' : row.author_role || 'student',
-    authorCustomRole: isAnon ? null : row.author_custom_role || null,
+    authorRole: resolvedAuthorRole,
+    authorCustomRole: resolvedAuthorCustomRole,
     status: row.status || 'published',
     visibility: row.visibility || 'public',
     isHidden: Boolean(row.is_hidden),
@@ -2471,23 +2577,44 @@ ${urls
             .first<{ welcomed: number; read: number }>(),
         ]);
 
-        const notifications = (notifRows || []).map((r: any) => ({
-          id: String(r.id),
-          userId: String(r.user_id),
-          type: String(r.type || 'following_post'),
-          title: String(r.title || ''),
-          message: String(r.message || ''),
-          link: r.link ? String(r.link) : undefined,
-          read: Boolean(r.read),
-          isPinned: Boolean(r.is_pinned),
-          authorId: r.author_id ? String(r.author_id) : undefined,
-          authorName: r.author_name ? String(r.author_name) : undefined,
-          authorAvatar: sanitizeStoreAvatarId(r.author_avatar),
-          authorFrame: r.author_frame || null,
-          postId: r.post_id ? String(r.post_id) : undefined,
-          postType: r.post_type ? String(r.post_type) : undefined,
-          createdAtMs: Number(r.created_at || Date.now()),
-        }));
+        const liveAuthorsMap = await resolveWorkerLiveAuthorsBatch(
+          env.DB,
+          (notifRows || []).map((r: any) => (r.author_id ? String(r.author_id) : null))
+        );
+
+        const notifications = (notifRows || []).map((r: any) => {
+          const authorId = r.author_id ? String(r.author_id) : undefined;
+          const live = authorId ? liveAuthorsMap.get(authorId) : undefined;
+          const resolvedAuthorName =
+            live?.displayName || live?.username || (r.author_name ? String(r.author_name) : undefined);
+          let title = String(r.title || '');
+          if (
+            resolvedAuthorName &&
+            r.author_name &&
+            String(r.author_name) !== resolvedAuthorName &&
+            title.startsWith(String(r.author_name))
+          ) {
+            title = resolvedAuthorName + title.slice(String(r.author_name).length);
+          }
+          return {
+            id: String(r.id),
+            userId: String(r.user_id),
+            type: String(r.type || 'following_post'),
+            title,
+            message: String(r.message || ''),
+            link: r.link ? String(r.link) : undefined,
+            read: Boolean(r.read),
+            isPinned: Boolean(r.is_pinned),
+            authorId,
+            authorName: resolvedAuthorName,
+            authorUsername: live?.username || undefined,
+            authorAvatar: live?.avatar || sanitizeStoreAvatarId(r.author_avatar),
+            authorFrame: live?.frame || r.author_frame || null,
+            postId: r.post_id ? String(r.post_id) : undefined,
+            postType: r.post_type ? String(r.post_type) : undefined,
+            createdAtMs: Number(r.created_at || Date.now()),
+          };
+        });
 
         const readSet = new Set<string>(
           (readAnnRows || []).map((r: any) => String(r.announcement_id))
@@ -6406,7 +6533,13 @@ ${urls
         const rows = results || [];
         const hasMore = rows.length > pageSize;
         const pageRows = rows.slice(0, pageSize);
-        const posts = pageRows.map((r) => rowToCommonsPost(r as Record<string, any>));
+        const liveAuthorsMap = await resolveWorkerLiveAuthorsBatch(
+          env.DB,
+          pageRows.map((r: any) => (r.is_anonymous ? null : r.author_uid))
+        );
+        const posts = pageRows.map((r) =>
+          rowToCommonsPost(r as Record<string, any>, liveAuthorsMap)
+        );
 
         const bothBindingsPresent = Boolean(env.DB && env.R2_BUCKET);
         return jsonResponse(
@@ -6646,8 +6779,12 @@ ${urls
         if (!row) {
           return jsonResponse({ error: 'Post not found.' }, 404, cors);
         }
+        const liveAuthorsMap = await resolveWorkerLiveAuthorsBatch(
+          env.DB,
+          row.is_anonymous ? [] : [row.author_uid]
+        );
         return jsonResponse(
-          { success: true, post: rowToCommonsPost(row) },
+          { success: true, post: rowToCommonsPost(row, liveAuthorsMap) },
           200,
           {
             ...cors,
@@ -6905,27 +7042,44 @@ ${urls
           .bind(postId)
           .all();
 
-        const comments = (results || []).map((c: any) => ({
-          id: c.id,
-          postId: c.post_id,
-          text: c.text,
-          isAnonymous: Boolean(c.is_anonymous),
-          authorUid: c.is_anonymous ? null : c.author_uid,
-          authorName: c.is_anonymous ? 'Anonymous Student' : c.author_name,
-          authorAvatar: c.is_anonymous
-            ? null
-            : sanitizeStoreAvatarId(c.author_equipped_avatar, c.author_avatar),
-          authorFrame: c.is_anonymous ? null : c.author_frame,
-          authorEquippedAvatar: c.is_anonymous
-            ? null
-            : sanitizeStoreAvatarId(c.author_equipped_avatar, c.author_avatar),
-          authorPhotoURL: null,
-          authorRole: c.is_anonymous ? 'student' : c.author_role,
-          authorCustomRole: c.is_anonymous ? null : c.author_custom_role,
-          createdAt: new Date(Number(c.created_at || Date.now())).toISOString(),
-        }));
+        const rawComments = results || [];
+        const liveAuthorsMap = await resolveWorkerLiveAuthorsBatch(
+          env.DB,
+          rawComments.map((c: any) => (c.is_anonymous ? null : c.author_uid))
+        );
 
-        return jsonResponse({ success: true, comments }, 200, cors);
+        const comments = rawComments.map((c: any) => {
+          const isAnon = Boolean(c.is_anonymous);
+          const authorUid = isAnon ? null : c.author_uid;
+          const live = !isAnon && authorUid ? liveAuthorsMap.get(authorUid) : undefined;
+          const resolvedAvatar = isAnon
+            ? null
+            : live?.avatar || sanitizeStoreAvatarId(c.author_equipped_avatar, c.author_avatar);
+          return {
+            id: c.id,
+            postId: c.post_id,
+            text: c.text,
+            isAnonymous: isAnon,
+            authorUid,
+            authorName: isAnon
+              ? c.anonymous_alias || 'Anonymous Student'
+              : live?.displayName || live?.username || c.author_name || 'Student',
+            authorUsername: isAnon ? null : live?.username || null,
+            authorAvatar: resolvedAvatar,
+            authorFrame: isAnon ? null : live?.frame || c.author_frame,
+            authorEquippedAvatar: resolvedAvatar,
+            authorPhotoURL: null,
+            authorRole: isAnon ? 'student' : live?.role || c.author_role || 'student',
+            authorCustomRole: isAnon ? null : live?.customRole || c.author_custom_role,
+            createdAt: new Date(Number(c.created_at || Date.now())).toISOString(),
+          };
+        });
+
+        return jsonResponse(
+          { success: true, comments },
+          200,
+          { ...cors, 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+        );
       }
 
       // POST /api/posts/:slugOrId/comments

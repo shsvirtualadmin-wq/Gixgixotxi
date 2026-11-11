@@ -1716,8 +1716,26 @@ export interface InMemoryD1Tables {
         uid: string;
         account_type: string;
         email?: string;
+        display_name?: string;
+        avatar?: string;
+        frame?: string | null;
+        role?: string;
+        custom_role?: string | null;
+        bio?: string;
+        status?: string;
+        accent?: string;
         created_at: number;
         updated_at: number;
+      }
+    >;
+    username_history: Map<
+      string,
+      {
+        username_lower: string;
+        username_display: string;
+        uid: string;
+        changed_at: number;
+        expires_at: number;
       }
     >;
     guest_accounts: Map<
@@ -1891,6 +1909,7 @@ export class InMemoryD1Database implements RewardsD1Database {
     email_verification_sessions: new Map(),
     email_verification_send_logs: new Map(),
     user_usernames: new Map(),
+    username_history: new Map(),
     guest_accounts: new Map(),
     guest_sessions: new Map(),
     guest_creation_rate_limits: [],
@@ -1940,6 +1959,19 @@ export class InMemoryD1Database implements RewardsD1Database {
               username_display: r.username_display || r.username || r.username_lower,
               account_type: isSwapped ? 'registered' : rawAccType,
               email: isSwapped ? rawAccType.toLowerCase() : rawEmail,
+            });
+          }
+        }
+      }
+      if (Array.isArray(raw.username_history)) {
+        for (const r of raw.username_history) {
+          if (r && r.username_lower) {
+            this.tables.username_history.set(String(r.username_lower).toLowerCase(), {
+              username_lower: String(r.username_lower).toLowerCase(),
+              username_display: String(r.username_display || r.username_lower),
+              uid: String(r.uid || ''),
+              changed_at: Number(r.changed_at || Date.now()),
+              expires_at: Number(r.expires_at || Date.now() + 14 * 86400 * 1000),
             });
           }
         }
@@ -2063,6 +2095,7 @@ export class InMemoryD1Database implements RewardsD1Database {
       fsMod.mkdirSync(pathMod.dirname(diskPath), { recursive: true });
       const payload = {
         user_usernames: Array.from(this.tables.user_usernames.values()),
+        username_history: Array.from(this.tables.username_history.values()),
         guest_accounts: Array.from(this.tables.guest_accounts.values()),
         guest_sessions: Array.from(this.tables.guest_sessions.values()),
         email_verification_sessions: Array.from(this.tables.email_verification_sessions.values()),
@@ -2139,6 +2172,12 @@ export class InMemoryD1Database implements RewardsD1Database {
 
     // 3. user_roles
     if (upper.includes('FROM USER_ROLES')) {
+      if (upper.includes('WHERE UID IN')) {
+        const uidSet = new Set(args.map((a) => String(a ?? '')));
+        return Array.from(this.tables.user_roles.values())
+          .filter((r) => uidSet.has(String(r.uid)))
+          .map((r) => ({ ...r }));
+      }
       if (upper.includes('WHERE UID =')) {
         const uid = String(args[0] ?? '');
         const row = this.tables.user_roles.get(uid);
@@ -2350,6 +2389,10 @@ export class InMemoryD1Database implements RewardsD1Database {
     // 12. user_usernames
     if (upper.includes('FROM USER_USERNAMES')) {
       const all = Array.from(this.tables.user_usernames.values());
+      if (upper.includes('WHERE UID IN')) {
+        const uidSet = new Set(args.map((a) => String(a ?? '')));
+        return all.filter((r) => uidSet.has(String(r.uid))).map((r) => ({ ...r }));
+      }
       if (upper.includes('WHERE USERNAME_LOWER =')) {
         const uLower = String(args[0] ?? '').toLowerCase();
         const row = this.tables.user_usernames.get(uLower);
@@ -2372,9 +2415,33 @@ export class InMemoryD1Database implements RewardsD1Database {
       return all.map((r) => ({ ...r }));
     }
 
+    // 12b. username_history
+    if (upper.includes('FROM USERNAME_HISTORY')) {
+      const all = Array.from(this.tables.username_history.values());
+      if (upper.includes('WHERE USERNAME_LOWER =')) {
+        const uLower = String(args[0] ?? '').toLowerCase();
+        const nowMs = args.length > 1 ? Number(args[1] ?? 0) : 0;
+        const row = this.tables.username_history.get(uLower);
+        if (!row) return [];
+        if (upper.includes('EXPIRES_AT >') && nowMs > 0 && row.expires_at <= nowMs) {
+          return [];
+        }
+        return [{ ...row }];
+      }
+      if (upper.includes('WHERE UID =')) {
+        const uid = String(args[0] ?? '');
+        return all.filter((r) => r.uid === uid).map((r) => ({ ...r }));
+      }
+      return all.map((r) => ({ ...r }));
+    }
+
     // 13. guest_accounts
     if (upper.includes('FROM GUEST_ACCOUNTS')) {
       const all = Array.from(this.tables.guest_accounts.values());
+      if (upper.includes('WHERE UID IN')) {
+        const uidSet = new Set(args.map((a) => String(a ?? '')));
+        return all.filter((r) => uidSet.has(String(r.uid))).map((r) => ({ ...r }));
+      }
       if (upper.includes('WHERE UID =')) {
         const uid = String(args[0] ?? '');
         const row = this.tables.guest_accounts.get(uid);
@@ -3059,6 +3126,8 @@ export class InMemoryD1Database implements RewardsD1Database {
       }
 
       this.tables.user_usernames.set(username_lower, {
+        ...(existingByUid || {}),
+        ...(existingByLower || {}),
         username_lower,
         username: usernameDisplay,
         username_display: usernameDisplay,
@@ -3066,13 +3135,67 @@ export class InMemoryD1Database implements RewardsD1Database {
         uid,
         account_type,
         email: email || existingByLower?.email || existingByUid?.email || '',
-        created_at,
+        created_at: existingByUid?.created_at || existingByLower?.created_at || created_at,
         updated_at,
       });
       return 1;
     }
 
+    if (upper.includes('INTO USERNAME_HISTORY')) {
+      const username_lower = String(args[0] ?? '').toLowerCase();
+      const username_display = String(args[1] ?? username_lower);
+      const uid = String(args[2] ?? '');
+      const changed_at = Number(args[3] ?? Date.now());
+      const expires_at = Number(args[4] ?? changed_at + 14 * 86400 * 1000);
+      if (!username_lower || !uid) return 0;
+      this.tables.username_history.set(username_lower, {
+        username_lower,
+        username_display,
+        uid,
+        changed_at,
+        expires_at,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('DELETE FROM USERNAME_HISTORY')) {
+      const uLower = String(args[0] ?? '').toLowerCase();
+      if (uLower && this.tables.username_history.has(uLower)) {
+        this.tables.username_history.delete(uLower);
+        return 1;
+      }
+      return 0;
+    }
+
     if (upper.startsWith('UPDATE USER_USERNAMES')) {
+      if (upper.includes('SET DISPLAY_NAME =')) {
+        const display_name = String(args[0] ?? '').trim();
+        const avatar = String(args[1] ?? '').trim();
+        const frame = args[2] != null && String(args[2]).trim() ? String(args[2]).trim() : null;
+        const role = String(args[3] ?? '').trim();
+        const custom_role = args[4] != null && String(args[4]).trim() ? String(args[4]).trim() : null;
+        const bio = String(args[5] ?? '');
+        const status = String(args[6] ?? '');
+        const accent = String(args[7] ?? '');
+        const updatedAt = Number(args[8] ?? Date.now());
+        const uid = String(args[9] ?? '');
+        let changes = 0;
+        for (const r of this.tables.user_usernames.values()) {
+          if (r.uid === uid) {
+            if (display_name) r.display_name = display_name;
+            if (avatar) r.avatar = avatar;
+            if (frame !== undefined) r.frame = frame;
+            if (role) r.role = role;
+            if (custom_role !== undefined) r.custom_role = custom_role;
+            if (bio !== undefined) r.bio = bio;
+            if (status !== undefined) r.status = status;
+            if (accent !== undefined) r.accent = accent;
+            r.updated_at = updatedAt;
+            changes++;
+          }
+        }
+        return changes;
+      }
       if (upper.includes('SET UID =') && upper.includes('ACCOUNT_TYPE =') && upper.includes('EMAIL =')) {
         const newUid = String(args[0]);
         const accType = String(args[1]);

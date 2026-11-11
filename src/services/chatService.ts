@@ -15,6 +15,10 @@ import {
 import { db, auth } from '@/lib/firebase';
 import { isFollowing } from '@/services/followService';
 import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
+import {
+  getPublicProfiles,
+  subscribeAllPublicProfiles,
+} from '@/services/publicProfileService';
 
 export const CHAT_REQUEST_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -480,7 +484,59 @@ export function subscribeIncomingChatRequests(
     limit(50)
   );
 
-  return onSnapshot(
+  let latestRequests: ChatRequest[] = [];
+
+  const emitWithLiveProfiles = (reqs: ChatRequest[]) => {
+    const uids = Array.from(
+      new Set(
+        reqs
+          .flatMap((r) => [r.fromUid, r.toUid])
+          .filter((id): id is string => Boolean(id && !id.startsWith('anon_')))
+      )
+    );
+    if (uids.length === 0) {
+      onUpdate(reqs);
+      return;
+    }
+    getPublicProfiles(uids)
+      .then((liveMap) => {
+        const enriched = reqs.map((r) => {
+          const fromLive = liveMap[r.fromUid];
+          const toLive = liveMap[r.toUid];
+          return {
+            ...r,
+            fromName: fromLive?.displayName || r.fromName,
+            fromAvatar:
+              resolveCosmeticItemId(
+                fromLive?.equippedAvatar || fromLive?.equipped?.avatar || fromLive?.avatar,
+                'avatar'
+              ) || r.fromAvatar,
+            fromFrame:
+              resolveCosmeticItemId(
+                fromLive?.equippedFrame || fromLive?.equipped?.frame || fromLive?.frame,
+                'frame'
+              ) || r.fromFrame,
+            toName: toLive?.displayName || r.toName,
+            toAvatar:
+              resolveCosmeticItemId(
+                toLive?.equippedAvatar || toLive?.equipped?.avatar || toLive?.avatar,
+                'avatar'
+              ) || r.toAvatar,
+            toFrame:
+              resolveCosmeticItemId(
+                toLive?.equippedFrame || toLive?.equipped?.frame || toLive?.frame,
+                'frame'
+              ) || r.toFrame,
+          };
+        });
+        onUpdate(enriched);
+      })
+      .catch(() => {
+        onUpdate(reqs);
+      });
+  };
+
+  const unsubSnap = onSnapshot(
     q,
     (snap) => {
       const items: ChatRequest[] = [];
@@ -490,12 +546,24 @@ export function subscribeIncomingChatRequests(
       items.sort(
         (a, b) => toTimestampMs(b.createdAt, b.createdAtMs) - toTimestampMs(a.createdAt, a.createdAtMs)
       );
-      onUpdate(items);
+      latestRequests = items;
+      emitWithLiveProfiles(items);
     },
     (err) => {
       if (onError) onError(err);
     }
   );
+
+  const unsubProfiles = subscribeAllPublicProfiles(() => {
+    if (latestRequests.length > 0) {
+      emitWithLiveProfiles(latestRequests);
+    }
+  });
+
+  return () => {
+    unsubSnap();
+    unsubProfiles();
+  };
 }
 
 /**
@@ -517,7 +585,59 @@ export function subscribeUserConversations(
     limit(50)
   );
 
-  return onSnapshot(
+  let latestConvs: Conversation[] = [];
+
+  const emitConvsWithLiveProfiles = (convs: Conversation[]) => {
+    const allUids = Array.from(
+      new Set(
+        convs
+          .flatMap((c) => c.participants || [])
+          .filter((id): id is string => Boolean(id && !id.startsWith('anon_')))
+      )
+    );
+    if (allUids.length === 0) {
+      onUpdate(convs);
+      return;
+    }
+    getPublicProfiles(allUids)
+      .then((liveMap) => {
+        const enriched = convs.map((c) => {
+          const nextDetails: Record<string, ConversationParticipant> = {
+            ...(c.participantDetails || {}),
+          };
+          for (const pUid of c.participants || []) {
+            const live = liveMap[pUid];
+            if (live) {
+              const prev = nextDetails[pUid] || { displayName: 'Student' };
+              nextDetails[pUid] = {
+                ...prev,
+                displayName: live.displayName || prev.displayName || 'Student',
+                avatar:
+                  resolveCosmeticItemId(
+                    live.equippedAvatar || live.equipped?.avatar || live.avatar,
+                    'avatar'
+                  ) || prev.avatar || null,
+                frame:
+                  resolveCosmeticItemId(
+                    live.equippedFrame || live.equipped?.frame || live.frame,
+                    'frame'
+                  ) || prev.frame || null,
+              };
+            }
+          }
+          return {
+            ...c,
+            participantDetails: nextDetails,
+          };
+        });
+        onUpdate(enriched);
+      })
+      .catch(() => {
+        onUpdate(convs);
+      });
+  };
+
+  const unsubSnap = onSnapshot(
     q,
     (snap) => {
       const convs: Conversation[] = [];
@@ -544,12 +664,24 @@ export function subscribeUserConversations(
       convs.sort(
         (a, b) => toTimestampMs(b.lastMessageAt || b.updatedAt) - toTimestampMs(a.lastMessageAt || a.updatedAt)
       );
-      onUpdate(convs);
+      latestConvs = convs;
+      emitConvsWithLiveProfiles(convs);
     },
     (err) => {
       if (onError) onError(err);
     }
   );
+
+  const unsubProfiles = subscribeAllPublicProfiles(() => {
+    if (latestConvs.length > 0) {
+      emitConvsWithLiveProfiles(latestConvs);
+    }
+  });
+
+  return () => {
+    unsubSnap();
+    unsubProfiles();
+  };
 }
 
 /**
@@ -761,6 +893,47 @@ export function subscribeMessages(
   const messagesCol = collection(db, 'conversations', conversationId, 'messages');
   const qPrimary = query(messagesCol, orderBy('createdAt', 'asc'), limit(150));
 
+  let latestMsgs: ChatMessage[] = [];
+
+  const emitMsgsWithLiveProfiles = (msgs: ChatMessage[]) => {
+    const senderUids = Array.from(
+      new Set(
+        msgs
+          .map((m) => m.senderId)
+          .filter((id): id is string => Boolean(id && !id.startsWith('anon_')))
+      )
+    );
+    if (senderUids.length === 0) {
+      onUpdate(msgs);
+      return;
+    }
+    getPublicProfiles(senderUids)
+      .then((liveMap) => {
+        const enriched = msgs.map((m) => {
+          const live = liveMap[m.senderId];
+          if (!live) return m;
+          return {
+            ...m,
+            senderName: live.displayName || m.senderName || 'Student',
+            senderAvatar:
+              resolveCosmeticItemId(
+                live.equippedAvatar || live.equipped?.avatar || live.avatar,
+                'avatar'
+              ) || m.senderAvatar || null,
+            senderFrame:
+              resolveCosmeticItemId(
+                live.equippedFrame || live.equipped?.frame || live.frame,
+                'frame'
+              ) || m.senderFrame || null,
+          };
+        });
+        onUpdate(enriched);
+      })
+      .catch(() => {
+        onUpdate(msgs);
+      });
+  };
+
   const unsubPrimary = onSnapshot(
     qPrimary,
     (snap) => {
@@ -785,7 +958,8 @@ export function subscribeMessages(
           toTimestampMs(a.createdAt, a.createdAtMs) -
           toTimestampMs(b.createdAt, b.createdAtMs)
       );
-      onUpdate(msgs);
+      latestMsgs = msgs;
+      emitMsgsWithLiveProfiles(msgs);
     },
     (err) => {
       if (onError) {
@@ -794,7 +968,14 @@ export function subscribeMessages(
     }
   );
 
+  const unsubProfiles = subscribeAllPublicProfiles(() => {
+    if (latestMsgs.length > 0) {
+      emitMsgsWithLiveProfiles(latestMsgs);
+    }
+  });
+
   return () => {
     unsubPrimary();
+    unsubProfiles();
   };
 }

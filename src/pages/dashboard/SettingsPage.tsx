@@ -15,10 +15,18 @@ import {
   linkWithCredential,
   reauthenticateWithCredential,
   updatePassword,
+  updateProfile as firebaseUpdateProfile,
 } from 'firebase/auth';
 import { db, auth } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
-import { useUserProfile } from '@/hooks/useUserProfile';
+import { useUserProfile, seedSharedUserProfileCache } from '@/hooks/useUserProfile';
+import {
+  syncProfileToD1Backend,
+  broadcastPublicProfileUpdate,
+  invalidatePublicProfileCache,
+} from '@/services/publicProfileService';
+import { invalidateProfileMemoryCache } from '@/components/profile/ProfileView';
+import { invalidateCommonsPostsCache } from '@/services/commonsService';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { PLANS } from '@/config/plans';
 import { PageMeta } from '@/components/ui/PageMeta';
@@ -221,13 +229,29 @@ export function SettingsPage() {
           },
           { merge: true }
         ).catch(() => {}),
+        syncProfileToD1Backend(user.uid, {
+          ...(profile || {}),
+          displayName: cleanName,
+        }),
+        auth.currentUser && auth.currentUser.uid === user.uid
+          ? firebaseUpdateProfile(auth.currentUser, { displayName: cleanName }).catch(() => {})
+          : Promise.resolve(),
       ]);
 
-      updateLocalProfile({
+      const nextProfilePatch = {
         displayName: cleanName,
         nickname: cleanName,
         name: cleanName,
+      };
+      updateLocalProfile(nextProfilePatch);
+      seedSharedUserProfileCache(user.uid, {
+        ...(profile || ({ uid: user.uid } as any)),
+        ...nextProfilePatch,
       });
+      invalidatePublicProfileCache(user.uid);
+      invalidateProfileMemoryCache(user.uid);
+      broadcastPublicProfileUpdate(user.uid, nextProfilePatch);
+      invalidateCommonsPostsCache();
 
       setDisplayName(cleanName);
       setSavingName(false);
@@ -357,10 +381,26 @@ export function SettingsPage() {
         ]);
       }
 
-      updateLocalProfile({
+      await syncProfileToD1Backend(user.uid, {
+        ...(profile || {}),
         ...(cleanUsername ? { username: cleanUsername } : {}),
         customRole: selectedRole,
       });
+
+      const identityPatch = {
+        ...(cleanUsername ? { username: cleanUsername } : {}),
+        customRole: selectedRole,
+      };
+      updateLocalProfile(identityPatch);
+      seedSharedUserProfileCache(user.uid, {
+        ...(profile || ({ uid: user.uid } as any)),
+        ...identityPatch,
+      });
+      invalidatePublicProfileCache(user.uid);
+      invalidateProfileMemoryCache(user.uid);
+      broadcastPublicProfileUpdate(user.uid, identityPatch);
+      invalidateCommonsPostsCache();
+
       setIdentitySaved(true);
       setTimeout(() => setIdentitySaved(false), 3000);
     } catch (err: unknown) {

@@ -34,14 +34,78 @@ export interface PublicProfile extends BasePublicProfile {
   equippedStreakBadges?: string[];
 }
 
-const SESSION_CACHE_PREFIX = 'boardly_pub_prof_v3_';
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const SESSION_CACHE_PREFIX = 'boardly_pub_prof_v4_';
+const CACHE_TTL_MS = 20 * 1000; // Short 20s TTL so live profile updates propagate quickly
 
 // Layer 1: In-memory cache
 const memoryCache = new Map<string, { profile: PublicProfile; timestamp: number }>();
 
 // Layer 2: In-flight promise deduplication
 const inFlightRequests = new Map<string, Promise<PublicProfile | null>>();
+
+// Layer 3: Real-time client pub/sub for instant UI updates across all components
+const profileListeners = new Map<string, Set<(profile: PublicProfile) => void>>();
+const globalProfileListeners = new Set<(uid: string, profile: PublicProfile) => void>();
+
+export function subscribePublicProfile(
+  uid: string | null | undefined,
+  listener: (profile: PublicProfile) => void
+): () => void {
+  const cleanUid = String(uid || '').trim();
+  if (!cleanUid) return () => {};
+  let set = profileListeners.get(cleanUid);
+  if (!set) {
+    set = new Set();
+    profileListeners.set(cleanUid, set);
+  }
+  set.add(listener);
+  const cached = memoryCache.get(cleanUid)?.profile;
+  if (cached) {
+    try {
+      listener(cached);
+    } catch {
+      // Ignore listener error
+    }
+  }
+  return () => {
+    const currentSet = profileListeners.get(cleanUid);
+    if (currentSet) {
+      currentSet.delete(listener);
+      if (currentSet.size === 0) {
+        profileListeners.delete(cleanUid);
+      }
+    }
+  };
+}
+
+export function subscribeAllPublicProfiles(
+  listener: (uid: string, profile: PublicProfile) => void
+): () => void {
+  globalProfileListeners.add(listener);
+  return () => {
+    globalProfileListeners.delete(listener);
+  };
+}
+
+function notifyProfileListeners(uid: string, profile: PublicProfile): void {
+  const set = profileListeners.get(uid);
+  if (set) {
+    set.forEach((fn) => {
+      try {
+        fn(profile);
+      } catch {
+        // Ignore
+      }
+    });
+  }
+  globalProfileListeners.forEach((fn) => {
+    try {
+      fn(uid, profile);
+    } catch {
+      // Ignore
+    }
+  });
+}
 
 function isLikelyHttpOrPathUrl(val?: unknown): val is string {
   if (!val || typeof val !== 'string') return false;
@@ -74,13 +138,90 @@ function getFromSessionCache(uid: string): PublicProfile | null {
   }
 }
 
-function saveToCaches(uid: string, profile: PublicProfile): void {
+function saveToCaches(uid: string, profile: PublicProfile, notify = true): void {
   const entry = { profile, timestamp: Date.now() };
   memoryCache.set(uid, entry);
   try {
     sessionStorage.setItem(`${SESSION_CACHE_PREFIX}${uid}`, JSON.stringify(entry));
   } catch {
     // Ignore storage quota errors
+  }
+  if (notify) {
+    notifyProfileListeners(uid, profile);
+  }
+}
+
+export function broadcastPublicProfileUpdate(
+  uid: string,
+  partial: Partial<PublicProfile> & Record<string, any>
+): PublicProfile | null {
+  if (!uid) return null;
+  const existing = memoryCache.get(uid)?.profile || getFromSessionCache(uid) || null;
+  const merged = normalizePublicProfileDoc(
+    uid,
+    { ...(existing || {}), ...partial },
+    { ...(existing || {}), ...partial },
+    partial.equipped ? { equipped: partial.equipped } : null
+  );
+  if (partial.displayName) {
+    merged.displayName = String(partial.displayName).trim();
+  }
+  if (partial.username) {
+    merged.username = String(partial.username).trim();
+    merged.usernameLower = merged.username.toLowerCase();
+  }
+  if (partial.bio !== undefined) merged.bio = String(partial.bio ?? '');
+  if (partial.status !== undefined) merged.status = String(partial.status ?? '');
+  if (partial.accent !== undefined) merged.accent = String(partial.accent || '#D71921');
+  saveToCaches(uid, merged, true);
+  return merged;
+}
+
+export async function syncProfileToD1Backend(
+  uid: string,
+  data: Record<string, any>
+): Promise<void> {
+  if (!uid) return;
+  try {
+    const { auth } = await import('@/lib/firebase');
+    const token = await auth.currentUser?.getIdToken().catch(() => null);
+    const guestSession = (() => {
+      try {
+        return localStorage.getItem('boardly_guest_session_token') || '';
+      } catch {
+        return '';
+      }
+    })();
+    const equippedAvatar = resolveCosmeticItemId(
+      data.equipped?.avatar ?? data.equippedAvatar ?? data.avatar,
+      'avatar'
+    );
+    const equippedFrame = resolveCosmeticItemId(
+      data.equipped?.frame ?? data.equippedFrame ?? data.frame,
+      'frame'
+    );
+    await fetch('/api/auth/profile-sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(guestSession ? { 'X-Guest-Session': guestSession } : {}),
+      },
+      body: JSON.stringify({
+        uid,
+        username: data.username || undefined,
+        displayName: data.displayName || data.nickname || data.name || undefined,
+        avatar: equippedAvatar !== undefined ? equippedAvatar : undefined,
+        frame: equippedFrame !== undefined ? equippedFrame : undefined,
+        role: data.role || undefined,
+        customRole: data.customRole !== undefined ? data.customRole : undefined,
+        bio: data.bio !== undefined ? data.bio : undefined,
+        status: data.status !== undefined ? data.status : undefined,
+        accent: data.accent !== undefined ? data.accent : undefined,
+      }),
+    });
+  } catch {
+    // Non-fatal network error
   }
 }
 
@@ -104,6 +245,7 @@ export function invalidatePublicProfileCache(uid?: string): void {
     return;
   }
   memoryCache.delete(uid);
+  inFlightRequests.delete(uid);
   try {
     sessionStorage.removeItem(`${SESSION_CACHE_PREFIX}${uid}`);
   } catch {
@@ -323,26 +465,77 @@ export function normalizePublicProfileDoc(
   };
 }
 
+async function fetchD1ProfilesBatch(uids: string[]): Promise<Record<string, Record<string, any>>> {
+  if (!uids || uids.length === 0) return {};
+  try {
+    const clean = Array.from(new Set(uids.map((u) => String(u || '').trim()).filter(Boolean))).slice(
+      0,
+      100
+    );
+    if (clean.length === 0) return {};
+    const res = await fetch(
+      `/api/auth/resolve-profiles?uids=${encodeURIComponent(clean.join(','))}`,
+      { headers: { Accept: 'application/json' } }
+    );
+    if (!res.ok) return {};
+    const data = await res.json();
+    if (data && data.ok && data.profiles && typeof data.profiles === 'object') {
+      return data.profiles as Record<string, Record<string, any>>;
+    }
+  } catch {
+    // Non-fatal
+  }
+  return {};
+}
+
 async function fetchPublicProfileFromNetwork(uid: string): Promise<PublicProfile | null> {
   try {
-    const [pubSnap, userSnap, walletSnap] = await Promise.all([
+    const [pubSnap, userSnap, walletSnap, d1Map] = await Promise.all([
       getDoc(doc(db, 'publicProfiles', uid)).catch(() => null),
       getDoc(doc(db, 'users', uid)).catch(() => null),
       getDoc(doc(db, 'wallets', uid)).catch(() => null),
+      fetchD1ProfilesBatch([uid]),
     ]);
 
     const pubData = pubSnap?.exists() ? pubSnap.data() : null;
     const uData = userSnap?.exists() ? userSnap.data() : null;
     const walletData = walletSnap?.exists() ? walletSnap.data() : null;
+    const d1Data = d1Map[uid] || null;
 
     const botMatch = BOARDLY_BOT_ACCOUNTS.find((b) => b.uid === uid);
     const isSuperAdmin = uid === SUPER_ADMIN_UID;
 
-    if (!pubData && !uData && ! walletData && !botMatch && !isSuperAdmin) {
+    if (!pubData && !uData && !walletData && !d1Data && !botMatch && !isSuperAdmin) {
       return null;
     }
 
-    const profile = normalizePublicProfileDoc(uid, pubData, uData, walletData);
+    const mergedPub = {
+      ...(pubData || {}),
+      ...(d1Data
+        ? {
+            ...(d1Data.username ? { username: d1Data.username } : {}),
+            ...(d1Data.displayName ? { displayName: d1Data.displayName } : {}),
+            ...(d1Data.avatar ? { avatar: d1Data.avatar, equippedAvatar: d1Data.avatar } : {}),
+            ...(d1Data.frame ? { frame: d1Data.frame, equippedFrame: d1Data.frame } : {}),
+            ...(d1Data.role ? { role: d1Data.role } : {}),
+            ...(d1Data.customRole ? { customRole: d1Data.customRole } : {}),
+            ...(d1Data.bio !== null && d1Data.bio !== undefined ? { bio: d1Data.bio } : {}),
+            ...(d1Data.status !== null && d1Data.status !== undefined ? { status: d1Data.status } : {}),
+            ...(d1Data.accent ? { accent: d1Data.accent } : {}),
+          }
+        : {}),
+    };
+    const mergedUser = {
+      ...(uData || {}),
+      ...(d1Data
+        ? {
+            ...(d1Data.username ? { username: d1Data.username } : {}),
+            ...(d1Data.displayName ? { displayName: d1Data.displayName } : {}),
+          }
+        : {}),
+    };
+
+    const profile = normalizePublicProfileDoc(uid, mergedPub, mergedUser, walletData);
     saveToCaches(uid, profile);
     return profile;
   } catch (err) {
@@ -351,17 +544,24 @@ async function fetchPublicProfileFromNetwork(uid: string): Promise<PublicProfile
   }
 }
 
-export async function getPublicProfile(uid: string): Promise<PublicProfile | null> {
+export async function getPublicProfile(
+  uid: string,
+  options?: { forceRefresh?: boolean }
+): Promise<PublicProfile | null> {
   if (!uid) return null;
 
-  const cached = getCachedPublicProfile(uid);
-  if (cached) {
-    return cached;
-  }
+  if (!options?.forceRefresh) {
+    const cached = getCachedPublicProfile(uid);
+    if (cached) {
+      return cached;
+    }
 
-  const existingPromise = inFlightRequests.get(uid);
-  if (existingPromise) {
-    return existingPromise;
+    const existingPromise = inFlightRequests.get(uid);
+    if (existingPromise) {
+      return existingPromise;
+    }
+  } else {
+    invalidatePublicProfileCache(uid);
   }
 
   const promise = fetchPublicProfileFromNetwork(uid).finally(() => {
@@ -373,7 +573,58 @@ export async function getPublicProfile(uid: string): Promise<PublicProfile | nul
 }
 
 /**
- * Batch fetches multiple public profiles with caching and chunked queries.
+ * Resolves a profile by username or UID, including 14-day held old usernames from D1 `username_history`.
+ */
+export async function resolveProfileByUsernameOrUid(rawParam: string): Promise<{
+  profile: PublicProfile | null;
+  redirectedFromOldUsername?: boolean;
+  currentUsername?: string | null;
+}> {
+  const clean = String(rawParam || '').trim().replace(/^@/, '');
+  if (!clean) return { profile: null };
+
+  // Check D1 username/history endpoint first (single hop)
+  try {
+    const res = await fetch(
+      `/api/auth/resolve-profiles?username=${encodeURIComponent(clean)}`,
+      { headers: { Accept: 'application/json' } }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.ok && data?.profile?.uid) {
+        const resolvedUid = String(data.profile.uid);
+        const fullProfile = await getPublicProfile(resolvedUid, { forceRefresh: true });
+        if (fullProfile) {
+          return {
+            profile: fullProfile,
+            redirectedFromOldUsername: Boolean(data.redirectedFromOldUsername),
+            currentUsername:
+              data.currentUsername || fullProfile.username || data.profile.username || null,
+          };
+        }
+        const fallbackProfile = normalizePublicProfileDoc(resolvedUid, data.profile, data.profile, null);
+        saveToCaches(resolvedUid, fallbackProfile);
+        return {
+          profile: fallbackProfile,
+          redirectedFromOldUsername: Boolean(data.redirectedFromOldUsername),
+          currentUsername: data.currentUsername || fallbackProfile.username || null,
+        };
+      }
+    }
+  } catch {
+    // Fall through to Firestore resolution
+  }
+
+  const directByUid = await getPublicProfile(clean, { forceRefresh: true });
+  if (directByUid) {
+    return { profile: directByUid };
+  }
+
+  return { profile: null };
+}
+
+/**
+ * Batch fetches multiple public profiles in ONE batched lookup per page of results.
  */
 export async function getPublicProfiles(uids: string[]): Promise<Map<string, PublicProfile>> {
   const result = new Map<string, PublicProfile>();
@@ -395,36 +646,68 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
     return result;
   }
 
+  // 1. Single batched D1 call for all missing UIDs
+  const d1ProfilesByUid = await fetchD1ProfilesBatch(missingUids);
+
+  // 2. Chunked Firestore `in` query on publicProfiles (no N+1 per-item getDoc waterfall)
   const CHUNK_SIZE = 10;
   for (let i = 0; i < missingUids.length; i += CHUNK_SIZE) {
     const chunk = missingUids.slice(i, i + CHUNK_SIZE);
     try {
-      const q = query(collection(db, 'publicProfiles'), where(documentId(), 'in', chunk));
-      const snap = await getDocs(q).catch(() => null);
+      const [pubSnap, userSnap] = await Promise.all([
+        getDocs(query(collection(db, 'publicProfiles'), where(documentId(), 'in', chunk))).catch(
+          () => null
+        ),
+        getDocs(query(collection(db, 'users'), where(documentId(), 'in', chunk))).catch(
+          () => null
+        ),
+      ]);
       const pubDocsByUid = new Map<string, Record<string, any>>();
-      snap?.docs.forEach((docSnap) => {
+      pubSnap?.docs.forEach((docSnap) => {
         pubDocsByUid.set(docSnap.id, docSnap.data());
       });
+      const userDocsByUid = new Map<string, Record<string, any>>();
+      userSnap?.docs.forEach((docSnap) => {
+        userDocsByUid.set(docSnap.id, docSnap.data());
+      });
 
-      await Promise.all(
-        chunk.map(async (uid) => {
-          const pubData = pubDocsByUid.get(uid) || null;
-          const [uSnap, wSnap] = await Promise.all([
-            getDoc(doc(db, 'users', uid)).catch(() => null),
-            getDoc(doc(db, 'wallets', uid)).catch(() => null),
-          ]);
-          const uData = uSnap?.exists() ? uSnap.data() : null;
-          const wData = wSnap?.exists() ? wSnap.data() : null;
-          const botMatch = BOARDLY_BOT_ACCOUNTS.find((b) => b.uid === uid);
-          const isSuperAdmin = uid === SUPER_ADMIN_UID;
+      for (const uid of chunk) {
+        const pubData = pubDocsByUid.get(uid) || null;
+        const uData = userDocsByUid.get(uid) || null;
+        const d1Data = d1ProfilesByUid[uid] || null;
+        const botMatch = BOARDLY_BOT_ACCOUNTS.find((b) => b.uid === uid);
+        const isSuperAdmin = uid === SUPER_ADMIN_UID;
 
-          if (pubData || uData || wData || botMatch || isSuperAdmin) {
-            const prof = normalizePublicProfileDoc(uid, pubData, uData, wData);
-            saveToCaches(uid, prof);
-            result.set(uid, prof);
-          }
-        })
-      );
+        if (pubData || uData || d1Data || botMatch || isSuperAdmin) {
+          const mergedPub = {
+            ...(pubData || {}),
+            ...(d1Data
+              ? {
+                  ...(d1Data.username ? { username: d1Data.username } : {}),
+                  ...(d1Data.displayName ? { displayName: d1Data.displayName } : {}),
+                  ...(d1Data.avatar
+                    ? { avatar: d1Data.avatar, equippedAvatar: d1Data.avatar }
+                    : {}),
+                  ...(d1Data.frame ? { frame: d1Data.frame, equippedFrame: d1Data.frame } : {}),
+                  ...(d1Data.role ? { role: d1Data.role } : {}),
+                  ...(d1Data.customRole ? { customRole: d1Data.customRole } : {}),
+                }
+              : {}),
+          };
+          const mergedUser = {
+            ...(uData || {}),
+            ...(d1Data
+              ? {
+                  ...(d1Data.username ? { username: d1Data.username } : {}),
+                  ...(d1Data.displayName ? { displayName: d1Data.displayName } : {}),
+                }
+              : {}),
+          };
+          const prof = normalizePublicProfileDoc(uid, mergedPub, mergedUser, null);
+          saveToCaches(uid, prof);
+          result.set(uid, prof);
+        }
+      }
     } catch (err) {
       console.warn('[publicProfileService] Batch fetch chunk error:', err);
     }
@@ -654,6 +937,20 @@ export async function syncUserPublicProfile(
     }
 
     invalidatePublicProfileCache(uid);
+    broadcastPublicProfileUpdate(uid, {
+      ...payload,
+      updatedAt: new Date().toISOString(),
+    });
+    await syncProfileToD1Backend(uid, {
+      ...input,
+      displayName: payload.displayName,
+      username: cleanUsername,
+      avatar: equippedAvatar,
+      frame: equippedFrame,
+      bio: payload.bio,
+      status: payload.status,
+      accent: payload.accent,
+    });
   } catch (err) {
     console.warn('[publicProfileService] syncUserPublicProfile notice:', err);
   }

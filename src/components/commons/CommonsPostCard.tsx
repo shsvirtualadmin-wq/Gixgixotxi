@@ -35,6 +35,11 @@ import { MathText } from '@/components/ui/MathText';
 import { sanitizeStudentDisplayName, maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { useTheme } from '@/hooks/useTheme';
+import {
+  getCachedPublicProfile,
+  subscribePublicProfile,
+  type PublicProfile,
+} from '@/services/publicProfileService';
 import { CommonsImageAttachment } from './CommonsImageAttachment';
 import { CommonsImageViewerModal } from './CommonsImageViewerModal';
 
@@ -73,7 +78,21 @@ export const CommonsPostCard = memo(function CommonsPostCard({
   const [isHidden, setIsHidden] = useState(false);
   const [localShares, setLocalShares] = useState(post.sharesCount || 0);
   const [viewerImage, setViewerImage] = useState<{ url: string; name?: string } | null>(null);
+  const [liveAuthor, setLiveAuthor] = useState<PublicProfile | null>(() =>
+    !post.isAnonymous && post.authorUid ? getCachedPublicProfile(post.authorUid) : null
+  );
   const cardRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (post.isAnonymous || !post.authorUid) {
+      setLiveAuthor(null);
+      return;
+    }
+    setLiveAuthor(getCachedPublicProfile(post.authorUid));
+    return subscribePublicProfile(post.authorUid, (prof) => {
+      setLiveAuthor(prof);
+    });
+  }, [post.isAnonymous, post.authorUid]);
 
   // Sync with shared post like store and prop updates
   useEffect(() => {
@@ -354,10 +373,17 @@ export const CommonsPostCard = memo(function CommonsPostCard({
               <BoardlyAvatar
                 uid={post.authorUid}
                 equippedAvatar={
-                  (post as any).authorEquippedAvatar || post.authorAvatar || undefined
+                  liveAuthor?.equippedAvatar ||
+                  liveAuthor?.avatar ||
+                  (post as any).authorEquippedAvatar ||
+                  post.authorAvatar ||
+                  undefined
                 }
-                frame={(post as any).authorFrame}
-                name={sanitizeStudentDisplayName(post.authorName, post.authorUid)}
+                frame={liveAuthor?.equippedFrame || liveAuthor?.frame || (post as any).authorFrame}
+                name={sanitizeStudentDisplayName(
+                  liveAuthor?.displayName || liveAuthor?.username || post.authorName,
+                  post.authorUid
+                )}
                 isSuperAdmin={isSuperAdminAuthor}
                 size={40}
               />
@@ -398,15 +424,18 @@ export const CommonsPostCard = memo(function CommonsPostCard({
                     onClick={handleAuthorClick}
                     className="text-[15px] font-bold text-primary hover:text-accent transition-colors truncate max-w-full cursor-pointer"
                   >
-                    {sanitizeStudentDisplayName(post.authorName, post.authorUid)}
+                    {sanitizeStudentDisplayName(
+                      liveAuthor?.displayName || liveAuthor?.username || post.authorName,
+                      post.authorUid
+                    )}
                   </span>
                   <RoleBadge
                     role={
                       String(post.authorUid || '').startsWith('bot_')
                         ? 'bot'
-                        : (post as any).authorRole || 'Student'
+                        : liveAuthor?.role || (post as any).authorRole || 'Student'
                     }
-                    customRole={(post as any).authorCustomRole}
+                    customRole={liveAuthor?.customRole || (post as any).authorCustomRole}
                     isSuperAdmin={isSuperAdminAuthor}
                     size="sm"
                   />

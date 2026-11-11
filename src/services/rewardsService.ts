@@ -329,6 +329,11 @@ export async function claimDailyReward(): Promise<{
           subType: 'daily_claim',
         });
       }
+      if (typeof window !== 'undefined' && Number.isFinite(newBalance)) {
+        window.dispatchEvent(
+          new CustomEvent('boardly:wallet-refresh', { detail: { balanceAfter: newBalance } })
+        );
+      }
     }
     return {
       ...data,
@@ -425,6 +430,11 @@ export async function claimMilestoneReward(milestoneId: string): Promise<{
           reason: `MCQ Milestone Reward (${milestoneId})`,
           subType: 'milestone_claim',
         });
+      }
+      if (typeof window !== 'undefined' && Number.isFinite(newBalance)) {
+        window.dispatchEvent(
+          new CustomEvent('boardly:wallet-refresh', { detail: { balanceAfter: newBalance } })
+        );
       }
     }
     return {
@@ -621,6 +631,13 @@ export async function acceptPendingReferral(
           referralCode: normalizedCode,
           transactionId: String(data.referralId || referralId),
         });
+        if (typeof window !== 'undefined' && typeof data.inviterBalanceAfter === 'number') {
+          window.dispatchEvent(
+            new CustomEvent('boardly:wallet-refresh', {
+              detail: { balanceAfter: data.inviterBalanceAfter },
+            })
+          );
+        }
       } else {
         notifyReferralConfirmed({
           referralId: String(data.referralId || referralId),

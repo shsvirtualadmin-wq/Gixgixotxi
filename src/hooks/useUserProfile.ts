@@ -1,9 +1,16 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { doc, getDoc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { updateProfile as firebaseUpdateProfile } from 'firebase/auth';
+import { auth, db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { isQuotaExhaustedError } from '@/utils/quota';
-import { syncPublicProfile } from '@/services/publicProfileService';
+import {
+  syncPublicProfile,
+  broadcastPublicProfileUpdate,
+  syncProfileToD1Backend,
+  invalidatePublicProfileCache,
+} from '@/services/publicProfileService';
+import { invalidateCommonsPostsCache } from '@/services/commonsService';
 import { ensureUserShortId } from '@/utils/shortId';
 import type { UserProfile } from '@/types/index';
 
@@ -48,6 +55,12 @@ export interface UserProfileHookResult {
   profileCompleted: boolean;
   updateProfileData: (updates: {
     displayName?: string;
+    nickname?: string;
+    name?: string;
+    username?: string;
+    bio?: string;
+    status?: string;
+    accent?: string;
     photoURL?: string | null;
     academicTrack?: string;
     subjects?: string[];
@@ -55,6 +68,10 @@ export interface UserProfileHookResult {
     onboardingCompleted?: boolean;
     avatarKey?: string | null;
     avatarVariant?: string | null;
+    avatar?: string | null;
+    equippedAvatar?: string | null;
+    frame?: string | null;
+    equippedFrame?: string | null;
   }) => Promise<void>;
   retryFetch: () => void;
 }
@@ -400,7 +417,7 @@ export function useUserProfile(): UserProfileHookResult {
     };
   }, [user?.uid]);
 
-  // Keep AuthContext profile synchronized whenever Firestore user doc updates plan/expiry/role
+  // Keep AuthContext profile synchronized whenever Firestore user doc updates plan/expiry/role/name/username
   useEffect(() => {
     if (!user?.uid || isGuest) return;
     const live = sharedState.profile;
@@ -411,7 +428,11 @@ export function useUserProfile(): UserProfileHookResult {
         authProfile.isPremium !== live.isPremium ||
         authProfile.planExpiresAt !== live.planExpiresAt ||
         authProfile.premiumExpiresAt !== live.premiumExpiresAt ||
-        authProfile.proPlanId !== live.proPlanId)
+        authProfile.proPlanId !== live.proPlanId ||
+        (live.displayName && authProfile.displayName !== live.displayName) ||
+        (live.username && authProfile.username !== live.username) ||
+        (live.bio !== undefined && authProfile.bio !== live.bio) ||
+        (live.accent !== undefined && authProfile.accent !== live.accent))
     ) {
       updateLocalProfileRef.current({
         plan: live.plan,
@@ -419,6 +440,10 @@ export function useUserProfile(): UserProfileHookResult {
         planExpiresAt: live.planExpiresAt,
         premiumExpiresAt: live.premiumExpiresAt,
         proPlanId: live.proPlanId,
+        ...(live.displayName ? { displayName: live.displayName, name: live.displayName } : {}),
+        ...(live.username ? { username: live.username } : {}),
+        ...(live.bio !== undefined ? { bio: live.bio } : {}),
+        ...(live.accent !== undefined ? { accent: live.accent } : {}),
       });
     }
   }, [user?.uid, isGuest, authProfile, tick]);
@@ -428,8 +453,9 @@ export function useUserProfile(): UserProfileHookResult {
     if (sharedState.profile && sharedState.profile.uid === user.uid) {
       const nextCustomRole = authProfile.customRole ?? sharedState.profile.customRole;
       const nextRole = authProfile.role || sharedState.profile.role || 'student';
-      const nextUsername = authProfile.username ?? sharedState.profile.username;
-      const nextDisplayName = authProfile.displayName ?? sharedState.profile.displayName;
+      // Only fill missing username/displayName from authProfile; never overwrite a live sharedState value with a stale authProfile value
+      const nextUsername = sharedState.profile.username || authProfile.username;
+      const nextDisplayName = sharedState.profile.displayName || authProfile.displayName;
       if (
         nextCustomRole !== sharedState.profile.customRole ||
         nextRole !== sharedState.profile.role ||
@@ -483,55 +509,109 @@ export function useUserProfile(): UserProfileHookResult {
   const updateProfileData = useCallback(
     async (updates: {
       displayName?: string;
+      nickname?: string;
+      name?: string;
+      username?: string;
+      bio?: string;
+      status?: string;
+      accent?: string;
       photoURL?: string | null;
       avatarKey?: string | null;
       avatarVariant?: string | null;
+      avatar?: string | null;
+      equippedAvatar?: string | null;
+      frame?: string | null;
+      equippedFrame?: string | null;
       subjects?: string[];
       profileCompleted?: boolean;
       onboardingCompleted?: boolean;
     }) => {
       if (!user?.uid) throw new Error('Cannot update profile: Unauthenticated user');
       const path = `users/${user.uid}`;
+      const nowIso = new Date().toISOString();
 
-      // Strictly allow safe student preference updates
+      // Serializable client payload (no Firestore FieldValue objects in state/localStorage)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const safePayload: Record<string, any> = {
+      const localPayload: Record<string, any> = {
+        updatedAt: nowIso,
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const firestorePayload: Record<string, any> = {
         updatedAt: serverTimestamp(),
       };
 
-      if (updates.displayName !== undefined) {
-        safePayload.displayName = updates.displayName.trim();
-        safePayload.name = updates.displayName.trim();
+      const nextNameRaw = updates.displayName ?? updates.nickname ?? updates.name;
+      if (nextNameRaw !== undefined) {
+        const cleanName = String(nextNameRaw).trim();
+        localPayload.displayName = cleanName;
+        localPayload.nickname = cleanName;
+        localPayload.name = cleanName;
+        firestorePayload.displayName = cleanName;
+        firestorePayload.nickname = cleanName;
+        firestorePayload.name = cleanName;
+      }
+      if (updates.username !== undefined) {
+        const cleanUsername = String(updates.username).trim();
+        localPayload.username = cleanUsername;
+        localPayload.usernameLower = cleanUsername.toLowerCase();
+        firestorePayload.username = cleanUsername;
+        firestorePayload.usernameLower = cleanUsername.toLowerCase();
+      }
+      if (updates.bio !== undefined) {
+        localPayload.bio = String(updates.bio);
+        firestorePayload.bio = String(updates.bio);
+      }
+      if (updates.status !== undefined) {
+        localPayload.status = String(updates.status);
+        firestorePayload.status = String(updates.status);
+      }
+      if (updates.accent !== undefined) {
+        localPayload.accent = String(updates.accent);
+        firestorePayload.accent = String(updates.accent);
       }
       if (updates.photoURL !== undefined) {
-        safePayload.photoURL = updates.photoURL;
+        localPayload.photoURL = updates.photoURL;
+        firestorePayload.photoURL = updates.photoURL;
       }
       if (updates.avatarKey !== undefined) {
-        safePayload.avatarKey = updates.avatarKey;
+        localPayload.avatarKey = updates.avatarKey;
+        firestorePayload.avatarKey = updates.avatarKey;
       }
       if (updates.avatarVariant !== undefined) {
-        safePayload.avatarVariant = updates.avatarVariant;
+        localPayload.avatarVariant = updates.avatarVariant;
+        firestorePayload.avatarVariant = updates.avatarVariant;
+      }
+      if (updates.avatar !== undefined || updates.equippedAvatar !== undefined) {
+        const av = updates.equippedAvatar ?? updates.avatar ?? null;
+        localPayload.avatar = av;
+        localPayload.equippedAvatar = av;
+        firestorePayload.avatar = av;
+        firestorePayload.equippedAvatar = av;
+      }
+      if (updates.frame !== undefined || updates.equippedFrame !== undefined) {
+        const fr = updates.equippedFrame ?? updates.frame ?? null;
+        localPayload.frame = fr;
+        localPayload.equippedFrame = fr;
+        firestorePayload.frame = fr;
+        firestorePayload.equippedFrame = fr;
       }
       if (updates.subjects !== undefined) {
-        safePayload.subjects = updates.subjects;
+        localPayload.subjects = updates.subjects;
+        firestorePayload.subjects = updates.subjects;
       }
       if (updates.profileCompleted !== undefined || updates.onboardingCompleted !== undefined) {
         const completed = Boolean(updates.profileCompleted ?? updates.onboardingCompleted);
-        safePayload.profileCompleted = completed;
-        safePayload.onboardingCompleted = completed;
+        localPayload.profileCompleted = completed;
+        localPayload.onboardingCompleted = completed;
+        firestorePayload.profileCompleted = completed;
+        firestorePayload.onboardingCompleted = completed;
         if (completed) {
-          safePayload.onboardingCompletedAt = serverTimestamp();
-          safePayload.profileCompletedAt = serverTimestamp();
+          localPayload.onboardingCompletedAt = nowIso;
+          localPayload.profileCompletedAt = nowIso;
+          firestorePayload.onboardingCompletedAt = serverTimestamp();
+          firestorePayload.profileCompletedAt = serverTimestamp();
         }
       }
-
-      // 1. Immediately update in-memory state so UI updates without needing a refresh
-      updateLocalProfileRef.current(safePayload);
-      if (sharedState.profile) {
-        sharedState.profile = { ...sharedState.profile, ...safePayload };
-        setLocalCachedProfile(user.uid, sharedState.profile);
-      }
-      broadcastState();
 
       if (isGuest || user.uid.startsWith('guest_')) {
         await syncGuestProgress({
@@ -541,21 +621,58 @@ export function useUserProfile(): UserProfileHookResult {
             ...(updates.avatarVariant ? { avatarVariant: updates.avatarVariant } : {}),
           },
         });
+        await syncProfileToD1Backend(user.uid, {
+          ...(profile || {}),
+          ...localPayload,
+        });
+        updateLocalProfileRef.current(localPayload);
+        if (sharedState.profile) {
+          sharedState.profile = { ...sharedState.profile, ...localPayload };
+          setLocalCachedProfile(user.uid, sharedState.profile);
+        }
+        broadcastState();
+        broadcastPublicProfileUpdate(user.uid, localPayload);
+        invalidateCommonsPostsCache();
         return;
       }
 
-      // 2. Perform merge write to Firestore
-      await setDoc(doc(db, 'users', user.uid), safePayload, { merge: true });
+      // 1. Perform confirmed server writes FIRST (Firestore users/{uid}, publicProfiles/{uid}, D1 user_usernames, Firebase Auth)
+      await setDoc(doc(db, 'users', user.uid), firestorePayload, { merge: true });
 
-      // 3. Sync public-safe fields to publicProfiles/{uid}
-      syncPublicProfile(user.uid, {
+      const mergedForPublic = {
         ...(profile || {}),
-        ...safePayload,
-      }).catch((err) => {
-        console.warn('[useUserProfile] syncPublicProfile failed:', err);
-      });
+        ...localPayload,
+      };
 
-      console.log(`[useUserProfile] Wrote profile update to ${path}:`, safePayload);
+      await Promise.all([
+        syncPublicProfile(user.uid, mergedForPublic),
+        syncProfileToD1Backend(user.uid, mergedForPublic),
+        localPayload.displayName && auth.currentUser && auth.currentUser.uid === user.uid
+          ? firebaseUpdateProfile(auth.currentUser, {
+              displayName: localPayload.displayName,
+            }).catch(() => {})
+          : Promise.resolve(),
+      ]);
+
+      // 2. Server confirmed — update all shared client stores immediately so header, dashboard, cockpit, profile, Commons, and settings reflect the change without refresh
+      updateLocalProfileRef.current(localPayload);
+      const nextSharedProfile: UserProfile = {
+        ...(sharedState.profile || profile || ({ uid: user.uid } as UserProfile)),
+        ...localPayload,
+        uid: user.uid,
+      };
+      sharedState.profile = nextSharedProfile;
+      sharedState.docExists = true;
+      sharedState.fetchStatus = 'success';
+      sharedState.hasReceivedSnapshot = true;
+      setLocalCachedProfile(user.uid, nextSharedProfile);
+      broadcastState();
+
+      invalidatePublicProfileCache(user.uid);
+      broadcastPublicProfileUpdate(user.uid, nextSharedProfile);
+      invalidateCommonsPostsCache();
+
+      console.log(`[useUserProfile] Confirmed profile update to ${path}:`, localPayload);
     },
     [user?.uid, profile, isGuest, syncGuestProgress]
   );

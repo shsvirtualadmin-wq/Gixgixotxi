@@ -1993,11 +1993,8 @@ html[data-tab-hidden="true"] *::after {
     .bg-zinc-800,
     .bg-black\/20,
     .bg-black\/30,
-    .bg-black\/40,
-    .bg-black\/50,
-    .bg-black\/60,
-    .bg-black\/70
-  ):not(.dark-surface-preserve):not(.fixed):not(.glass):not(.overlay-blur):not(.floating-blur):not(.floating-blur-dark):not(.glass-backdrop):not(.more-sheet-backdrop):not(.avatar-dropdown-backdrop):not(.backdrop-blur-md):not(.backdrop-blur-lg):not(.backdrop-blur-sm):not(.backdrop-blur-xs) {
+    .bg-black\/40
+  ):not(.dark-surface-preserve):not([data-fullscreen-modal="true"]):not([role="dialog"]):not(.fixed):not(.glass):not(.overlay-blur):not(.floating-blur):not(.floating-blur-dark):not(.glass-backdrop):not(.more-sheet-backdrop):not(.avatar-dropdown-backdrop):not(.backdrop-blur-md):not(.backdrop-blur-lg):not(.backdrop-blur-sm):not(.backdrop-blur-xs) {
     background-color: var(--glass-row-bg) !important;
     border-color: var(--glass-border);
     box-shadow: var(--shadow-row) !important;

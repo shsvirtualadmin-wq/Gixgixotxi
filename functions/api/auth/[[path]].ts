@@ -433,6 +433,14 @@ export async function ensureEmailVerificationD1Schema(db: RewardsD1Database): Pr
         accepted_at INTEGER NOT NULL
       )`),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_legal_consent_user_version ON legal_consent_records (user_id, document_version, accepted_at DESC)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS username_history (
+        username_lower TEXT PRIMARY KEY,
+        username_display TEXT NOT NULL,
+        uid TEXT NOT NULL,
+        changed_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_username_history_uid ON username_history (uid, expires_at DESC)`),
     ]);
   } catch {
     // Tables already initialized
@@ -440,6 +448,14 @@ export async function ensureEmailVerificationD1Schema(db: RewardsD1Database): Pr
   // Safe column migrations for existing D1 tables
   const migrations = [
     `ALTER TABLE user_usernames ADD COLUMN email TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE user_usernames ADD COLUMN display_name TEXT DEFAULT ''`,
+    `ALTER TABLE user_usernames ADD COLUMN avatar TEXT DEFAULT ''`,
+    `ALTER TABLE user_usernames ADD COLUMN frame TEXT DEFAULT NULL`,
+    `ALTER TABLE user_usernames ADD COLUMN role TEXT DEFAULT 'student'`,
+    `ALTER TABLE user_usernames ADD COLUMN custom_role TEXT DEFAULT NULL`,
+    `ALTER TABLE user_usernames ADD COLUMN bio TEXT DEFAULT ''`,
+    `ALTER TABLE user_usernames ADD COLUMN status TEXT DEFAULT ''`,
+    `ALTER TABLE user_usernames ADD COLUMN accent TEXT DEFAULT ''`,
     `ALTER TABLE guest_accounts ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
     `ALTER TABLE guest_accounts ADD COLUMN abandoned_at INTEGER DEFAULT NULL`,
     `ALTER TABLE guest_accounts ADD COLUMN purge_after INTEGER DEFAULT NULL`,
@@ -734,6 +750,27 @@ async function checkD1UsernameAvailability(params: {
       reason: 'This username is already taken.',
       code: 'USERNAME_TAKEN',
     };
+  }
+
+  // 2b. Check 14-day hold in `username_history`
+  try {
+    const heldRow = await db
+      .prepare(
+        'SELECT username_lower, uid, expires_at FROM username_history WHERE username_lower = ?1 AND expires_at > ?2 LIMIT 1'
+      )
+      .bind(normalized, Date.now())
+      .first<{ username_lower: string; uid: string; expires_at: number }>();
+    if (heldRow && (!excludeUid || heldRow.uid !== excludeUid)) {
+      return {
+        available: false,
+        clean,
+        normalized,
+        reason: 'This username was recently changed and is reserved during its 14-day hold period.',
+        code: 'USERNAME_TAKEN',
+      };
+    }
+  } catch {
+    // Non-fatal if table does not exist yet
   }
 
   // 3. Check lookalike / confusable similarity against existing usernames in `user_usernames`
@@ -2572,11 +2609,27 @@ export async function handleAuthApiRequest(
 
     // Check previous username row for this uid if they are renaming
     const prevRow = await db
-      .prepare('SELECT username_lower, uid, email FROM user_usernames WHERE uid = ?1 LIMIT 1')
+      .prepare(
+        'SELECT username_lower, username_display, uid, email, display_name, avatar, frame, role, custom_role, bio, status, accent FROM user_usernames WHERE uid = ?1 LIMIT 1'
+      )
       .bind(targetUid)
-      .first<{ username_lower: string; uid: string; email?: string }>();
+      .first<{
+        username_lower: string;
+        username_display?: string;
+        uid: string;
+        email?: string;
+        display_name?: string;
+        avatar?: string;
+        frame?: string | null;
+        role?: string;
+        custom_role?: string | null;
+        bio?: string;
+        status?: string;
+        accent?: string;
+      }>();
 
     const emailToStore = resolvedEmail || String(prevRow?.email || '').trim().toLowerCase();
+    const holdDurationMs = 14 * 24 * 60 * 60 * 1000; // 14-day hold for old username redirect
 
     try {
       if (prevRow && prevRow.username_lower === availability.normalized) {
@@ -2587,9 +2640,45 @@ export async function handleAuthApiRequest(
           .bind(targetUid, accountType, emailToStore, nowMs, availability.normalized)
           .run();
       } else {
+        if (prevRow && prevRow.username_lower && prevRow.username_lower !== availability.normalized) {
+          // Record old username in 14-day hold history so /u/:oldUsername redirects to the user's current profile
+          try {
+            await db
+              .prepare(
+                `INSERT OR REPLACE INTO username_history (username_lower, username_display, uid, changed_at, expires_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)`
+              )
+              .bind(
+                prevRow.username_lower,
+                prevRow.username_display || prevRow.username_lower,
+                targetUid,
+                nowMs,
+                nowMs + holdDurationMs
+              )
+              .run();
+          } catch {
+            // Non-fatal
+          }
+          // Delete old username row for this uid before inserting new primary key
+          await db
+            .prepare('DELETE FROM user_usernames WHERE username_lower = ?1 AND uid = ?2')
+            .bind(prevRow.username_lower, targetUid)
+            .run();
+        }
+
+        // If the user is reclaiming their own held username, remove it from username_history
+        try {
+          await db
+            .prepare('DELETE FROM username_history WHERE username_lower = ?1')
+            .bind(availability.normalized)
+            .run();
+        } catch {
+          // Non-fatal
+        }
+
         await db
           .prepare(
-            `INSERT INTO user_usernames (username_lower, username_display, uid, account_type, email, created_at, updated_at)
+            `INSERT OR REPLACE INTO user_usernames (username_lower, username_display, uid, account_type, email, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
           )
           .bind(
@@ -2602,6 +2691,33 @@ export async function handleAuthApiRequest(
             nowMs
           )
           .run();
+
+        // Preserve live profile fields if the user already had them on their previous username row
+        if (prevRow && (prevRow.display_name || prevRow.avatar || prevRow.frame || prevRow.role)) {
+          try {
+            await db
+              .prepare(
+                `UPDATE user_usernames
+                 SET display_name = ?1, avatar = ?2, frame = ?3, role = ?4, custom_role = ?5, bio = ?6, status = ?7, accent = ?8, updated_at = ?9
+                 WHERE uid = ?10`
+              )
+              .bind(
+                prevRow.display_name || '',
+                prevRow.avatar || '',
+                prevRow.frame ?? null,
+                prevRow.role || 'student',
+                prevRow.custom_role ?? null,
+                prevRow.bio || '',
+                prevRow.status || '',
+                prevRow.accent || '',
+                nowMs,
+                targetUid
+              )
+              .run();
+          } catch {
+            // Non-fatal
+          }
+        }
       }
     } catch (err: any) {
       const msg = String(err?.message || '');
@@ -2619,7 +2735,7 @@ export async function handleAuthApiRequest(
       throw err;
     }
 
-    // Sync username to Firestore `users/{targetUid}` if service account is available
+    // Sync username to Firestore `users/{targetUid}` and `publicProfiles/{targetUid}` if service account is available
     try {
       const sa = parseServiceAccountFromEnv(env);
       if (sa && accountType === 'registered') {
@@ -2631,14 +2747,24 @@ export async function handleAuthApiRequest(
             DEFAULT_FIRESTORE_DATABASE_ID
         );
         const store = new FirestoreRestAdapter(sa, fsProjectId, fsDbId);
-        await store.setDoc(
-          `users/${targetUid}`,
-          {
-            username: availability.clean,
-            usernameLower: availability.normalized,
-          },
-          true
-        );
+        await Promise.all([
+          store.setDoc(
+            `users/${targetUid}`,
+            {
+              username: availability.clean,
+              usernameLower: availability.normalized,
+            },
+            true
+          ),
+          store.setDoc(
+            `publicProfiles/${targetUid}`,
+            {
+              username: availability.clean,
+              usernameLower: availability.normalized,
+            },
+            true
+          ),
+        ]);
       }
     } catch {
       // Non-fatal
@@ -2650,7 +2776,336 @@ export async function handleAuthApiRequest(
       username: availability.clean,
       normalized: availability.normalized,
       uid: targetUid,
+      previousUsername: prevRow?.username_lower && prevRow.username_lower !== availability.normalized ? prevRow.username_lower : null,
     });
+  }
+
+  // ─── G1b. POST /api/auth/profile-sync (Sync Live Display Name, Avatar, Bio, Role to D1) ───
+  if (subPath === 'profile-sync' && request.method === 'POST') {
+    let body: {
+      uid?: string;
+      displayName?: string;
+      nickname?: string;
+      name?: string;
+      username?: string;
+      avatar?: string;
+      equippedAvatar?: string;
+      photoURL?: string;
+      frame?: string | null;
+      role?: string;
+      customRole?: string | null;
+      bio?: string;
+      status?: string;
+      accent?: string;
+      email?: string;
+    } = {};
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return jsonResponse({ ok: false, error: 'Invalid JSON body.' }, 400);
+    }
+
+    let targetUid = String(body.uid || '').trim();
+    let resolvedEmail = String(body.email || '').trim().toLowerCase();
+    const bearer = extractBearerToken(request);
+    if (bearer) {
+      const verified = await verifyFirebaseIdToken(bearer, projectId, tokenVerifier);
+      if (verified) {
+        targetUid = verified.uid;
+        if (verified.email) resolvedEmail = verified.email.toLowerCase();
+      }
+    }
+    if (!targetUid) {
+      return jsonResponse({ ok: false, error: 'Missing user uid.' }, 400);
+    }
+
+    const displayName = String(body.displayName ?? body.nickname ?? body.name ?? '').trim();
+    const avatar = String(body.avatar ?? body.equippedAvatar ?? body.photoURL ?? '').trim();
+    const frame = body.frame !== undefined ? (body.frame ? String(body.frame).trim() : null) : undefined;
+    const role = String(body.role || '').trim();
+    const customRole = body.customRole !== undefined ? (body.customRole ? String(body.customRole).trim() : null) : undefined;
+    const bio = body.bio !== undefined ? String(body.bio) : undefined;
+    const statusText = body.status !== undefined ? String(body.status) : undefined;
+    const accent = body.accent !== undefined ? String(body.accent) : undefined;
+    const rawUsername = String(body.username || '').trim();
+
+    const existingRow = await db
+      .prepare(
+        'SELECT username_lower, username_display, uid, account_type, email, display_name, avatar, frame, role, custom_role, bio, status, accent FROM user_usernames WHERE uid = ?1 LIMIT 1'
+      )
+      .bind(targetUid)
+      .first<{
+        username_lower: string;
+        username_display: string;
+        uid: string;
+        account_type: string;
+        email?: string;
+        display_name?: string;
+        avatar?: string;
+        frame?: string | null;
+        role?: string;
+        custom_role?: string | null;
+        bio?: string;
+        status?: string;
+        accent?: string;
+      }>();
+
+    if (!existingRow && rawUsername) {
+      const cleanU = rawUsername.replace(/^@+/, '');
+      const lowerU = cleanU.toLowerCase();
+      try {
+        await db
+          .prepare(
+            `INSERT OR REPLACE INTO user_usernames (username_lower, username_display, uid, account_type, email, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
+          )
+          .bind(
+            lowerU,
+            cleanU,
+            targetUid,
+            targetUid.startsWith('guest_') ? 'guest' : 'registered',
+            resolvedEmail,
+            nowMs,
+            nowMs
+          )
+          .run();
+      } catch {
+        // Ignore if username taken
+      }
+    }
+
+    const nextDisplayName = displayName || existingRow?.display_name || '';
+    const nextAvatar = avatar || existingRow?.avatar || '';
+    const nextFrame = frame !== undefined ? frame : (existingRow?.frame ?? null);
+    const nextRole = role || existingRow?.role || 'student';
+    const nextCustomRole = customRole !== undefined ? customRole : (existingRow?.custom_role ?? null);
+    const nextBio = bio !== undefined ? bio : (existingRow?.bio ?? '');
+    const nextStatus = statusText !== undefined ? statusText : (existingRow?.status ?? '');
+    const nextAccent = accent !== undefined ? accent : (existingRow?.accent ?? '');
+
+    await db
+      .prepare(
+        `UPDATE user_usernames
+         SET display_name = ?1, avatar = ?2, frame = ?3, role = ?4, custom_role = ?5, bio = ?6, status = ?7, accent = ?8, updated_at = ?9
+         WHERE uid = ?10`
+      )
+      .bind(
+        nextDisplayName,
+        nextAvatar,
+        nextFrame,
+        nextRole,
+        nextCustomRole,
+        nextBio,
+        nextStatus,
+        nextAccent,
+        nowMs,
+        targetUid
+      )
+      .run();
+
+    return jsonResponse({
+      ok: true,
+      profile: {
+        uid: targetUid,
+        username: existingRow?.username_display || rawUsername.replace(/^@+/, '') || '',
+        usernameLower: existingRow?.username_lower || rawUsername.replace(/^@+/, '').toLowerCase() || '',
+        displayName: nextDisplayName,
+        avatar: nextAvatar,
+        frame: nextFrame,
+        role: nextRole,
+        customRole: nextCustomRole,
+        bio: nextBio,
+        status: nextStatus,
+        accent: nextAccent,
+        updatedAt: nowMs,
+      },
+    });
+  }
+
+  // ─── G1c. GET /api/auth/resolve-profiles (Batched Live Author & 14-Day Hold Username Lookup) ───
+  if (subPath === 'resolve-profiles' && request.method === 'GET') {
+    const queryUsername = (url.searchParams.get('username') || '').trim().replace(/^@+/, '').toLowerCase();
+    const rawUids = (url.searchParams.get('uids') || '').trim();
+
+    if (queryUsername) {
+      // 1. Check active user_usernames
+      const activeRow = await db
+        .prepare(
+          'SELECT username_lower, username_display, uid, account_type, display_name, avatar, frame, role, custom_role, bio, status, accent, updated_at FROM user_usernames WHERE username_lower = ?1 LIMIT 1'
+        )
+        .bind(queryUsername)
+        .first<any>();
+
+      if (activeRow && activeRow.uid) {
+        return jsonResponse({
+          ok: true,
+          found: true,
+          redirectedFromOldUsername: false,
+          uid: activeRow.uid,
+          currentUsername: activeRow.username_display || activeRow.username_lower,
+          profile: {
+            uid: activeRow.uid,
+            username: activeRow.username_display || activeRow.username_lower,
+            displayName: activeRow.display_name || activeRow.username_display || activeRow.username_lower,
+            avatar: activeRow.avatar || '',
+            frame: activeRow.frame || null,
+            role: activeRow.role || 'student',
+            customRole: activeRow.custom_role || null,
+            bio: activeRow.bio || '',
+            status: activeRow.status || '',
+            accent: activeRow.accent || '',
+          },
+        });
+      }
+
+      // 2. Check guest_accounts
+      const guestRow = await db
+        .prepare('SELECT uid, username, username_lower, display_name, role FROM guest_accounts WHERE username_lower = ?1 LIMIT 1')
+        .bind(queryUsername)
+        .first<any>();
+      if (guestRow && guestRow.uid) {
+        return jsonResponse({
+          ok: true,
+          found: true,
+          redirectedFromOldUsername: false,
+          uid: guestRow.uid,
+          currentUsername: guestRow.username || guestRow.username_lower,
+          profile: {
+            uid: guestRow.uid,
+            username: guestRow.username || guestRow.username_lower,
+            displayName: guestRow.display_name || guestRow.username || 'Guest Student',
+            avatar: 'avatar-1',
+            frame: null,
+            role: guestRow.role || 'student',
+            customRole: null,
+          },
+        });
+      }
+
+      // 3. Check 14-day username_history for old username redirect
+      const historyRow = await db
+        .prepare(
+          'SELECT username_lower, username_display, uid, changed_at, expires_at FROM username_history WHERE username_lower = ?1 AND expires_at > ?2 LIMIT 1'
+        )
+        .bind(queryUsername, nowMs)
+        .first<{ username_lower: string; username_display: string; uid: string; changed_at: number; expires_at: number }>();
+
+      if (historyRow && historyRow.uid) {
+        const currentRow = await db
+          .prepare(
+            'SELECT username_lower, username_display, uid, display_name, avatar, frame, role, custom_role, bio, status, accent FROM user_usernames WHERE uid = ?1 LIMIT 1'
+          )
+          .bind(historyRow.uid)
+          .first<any>();
+
+        const currentUsername = currentRow?.username_display || currentRow?.username_lower || historyRow.uid;
+        return jsonResponse({
+          ok: true,
+          found: true,
+          redirectedFromOldUsername: true,
+          oldUsername: queryUsername,
+          uid: historyRow.uid,
+          currentUsername,
+          profile: currentRow
+            ? {
+                uid: historyRow.uid,
+                username: currentUsername,
+                displayName: currentRow.display_name || currentUsername,
+                avatar: currentRow.avatar || '',
+                frame: currentRow.frame || null,
+                role: currentRow.role || 'student',
+                customRole: currentRow.custom_role || null,
+                bio: currentRow.bio || '',
+                status: currentRow.status || '',
+                accent: currentRow.accent || '',
+              }
+            : null,
+        });
+      }
+
+      return jsonResponse({ ok: true, found: false }, 404);
+    }
+
+    const uids = Array.from(
+      new Set(
+        rawUids
+          .split(',')
+          .map((u) => u.trim())
+          .filter(Boolean)
+      )
+    ).slice(0, 100);
+
+    if (uids.length === 0) {
+      return jsonResponse({ ok: true, profiles: {} });
+    }
+
+    const placeholders = uids.map((_, i) => `?${i + 1}`).join(', ');
+    const [unameRes, guestRes, roleRes] = await Promise.all([
+      db
+        .prepare(
+          `SELECT username_lower, username_display, uid, display_name, avatar, frame, role, custom_role, bio, status, accent, updated_at
+           FROM user_usernames WHERE uid IN (${placeholders})`
+        )
+        .bind(...uids)
+        .all<any>()
+        .catch(() => ({ results: [] })),
+      db
+        .prepare(
+          `SELECT uid, username, username_lower, display_name, role
+           FROM guest_accounts WHERE uid IN (${placeholders})`
+        )
+        .bind(...uids)
+        .all<any>()
+        .catch(() => ({ results: [] })),
+      db
+        .prepare(
+          `SELECT uid, role, custom_role
+           FROM user_roles WHERE uid IN (${placeholders})`
+        )
+        .bind(...uids)
+        .all<any>()
+        .catch(() => ({ results: [] })),
+    ]);
+
+    const roleByUid = new Map<string, { role?: string; custom_role?: string | null }>();
+    for (const r of roleRes.results || []) {
+      if (r?.uid) roleByUid.set(String(r.uid), r);
+    }
+
+    const profiles: Record<string, any> = {};
+    for (const g of guestRes.results || []) {
+      if (!g?.uid) continue;
+      const rInfo = roleByUid.get(String(g.uid));
+      profiles[String(g.uid)] = {
+        uid: String(g.uid),
+        username: g.username || g.username_lower || '',
+        displayName: g.display_name || g.username || 'Guest Student',
+        avatar: 'avatar-1',
+        frame: null,
+        role: rInfo?.role || g.role || 'student',
+        customRole: rInfo?.custom_role ?? null,
+      };
+    }
+
+    for (const u of unameRes.results || []) {
+      if (!u?.uid) continue;
+      const rInfo = roleByUid.get(String(u.uid));
+      const uname = u.username_display || u.username || u.username_lower || '';
+      profiles[String(u.uid)] = {
+        uid: String(u.uid),
+        username: uname,
+        displayName: u.display_name || uname || 'Student',
+        avatar: u.avatar || '',
+        frame: u.frame || null,
+        role: rInfo?.role || u.role || 'student',
+        customRole: rInfo?.custom_role ?? u.custom_role ?? null,
+        bio: u.bio || '',
+        status: u.status || '',
+        accent: u.accent || '',
+      };
+    }
+
+    return jsonResponse({ ok: true, profiles });
   }
 
   // ─── G2. POST /api/auth/username-release (Rollback Username Reservation on Failed Signup) ───

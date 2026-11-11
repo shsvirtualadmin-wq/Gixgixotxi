@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Sparkles, ShoppingBag, Check, Send, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useNavigate } from 'react-router-dom';
@@ -35,9 +35,21 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
   const [accent, setAccent] = useState(profile.accent || '#D71921');
 
   const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSendingRequest, setIsSendingRequest] = useState(false);
   const [requestSentMessage, setRequestSentMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setDisplayName(profile.displayName || '');
+      setBio(profile.bio || '');
+      setStatus(profile.status || '');
+      setAccent(profile.accent || '#D71921');
+      setError(null);
+      setSaveSuccess(false);
+    }
+  }, [isOpen, profile.displayName, profile.bio, profile.status, profile.accent]);
 
   if (!isOpen) return null;
 
@@ -74,6 +86,7 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
     }
 
     setIsSaving(true);
+    setSaveSuccess(false);
     setError(null);
 
     try {
@@ -90,7 +103,10 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
         status: cleanStatus,
         accent,
       });
-      onClose();
+      setSaveSuccess(true);
+      setTimeout(() => {
+        onClose();
+      }, 350);
     } catch (err: any) {
       console.warn('[EditProfileSheet] failed to save profile:', err);
       setError(err?.message || 'Failed to save changes. Please try again.');
@@ -334,6 +350,13 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
             </div>
           </div>
 
+          {saveSuccess && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
+              <CheckCircle2 size={15} className="shrink-0 text-emerald-500" />
+              <span>Saved! Your profile has been updated everywhere.</span>
+            </div>
+          )}
+
           {/* Actions */}
           <div className="pt-2 flex items-center justify-end gap-3 shrink-0">
             <button
@@ -346,13 +369,18 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isSaving}
+              disabled={isSaving || saveSuccess}
               className="relative overflow-hidden h-11 px-6 rounded-xl bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold transition-colors cursor-pointer flex items-center justify-center gap-2 min-w-[140px] disabled:opacity-60"
             >
               {isSaving ? (
                 <>
                   <span>Saving...</span>
                   <ButtonLineLoader />
+                </>
+              ) : saveSuccess ? (
+                <>
+                  <Check size={15} />
+                  <span>Saved</span>
                 </>
               ) : (
                 'Save Profile'

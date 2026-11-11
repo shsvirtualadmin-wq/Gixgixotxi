@@ -10,8 +10,13 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
-import { syncPublicProfile } from '@/services/publicProfileService';
+import {
+  syncPublicProfile,
+  broadcastPublicProfileUpdate,
+  syncProfileToD1Backend,
+} from '@/services/publicProfileService';
 import { getSharedUserProfileSnapshot } from '@/hooks/useUserProfile';
+import { invalidateCommonsPostsCache } from '@/services/commonsService';
 import type { EquippedCosmetics } from '@/types';
 
 export interface WalletDoc {
@@ -375,12 +380,32 @@ export function useWallet() {
         ...topLevelSlotField,
       });
 
+      syncProfileToD1Backend(user.uid, {
+        avatar: updatedEquipped.avatar ?? undefined,
+        frame: updatedEquipped.frame ?? undefined,
+      }).catch(() => {});
+
+      broadcastPublicProfileUpdate(user.uid, {
+        equipped: updatedEquipped,
+        avatar: updatedEquipped.avatar ?? null,
+        equippedAvatar: updatedEquipped.avatar ?? null,
+        frame: updatedEquipped.frame ?? null,
+        equippedFrame: updatedEquipped.frame ?? null,
+        banner: updatedEquipped.banner ?? null,
+        equippedBanner: updatedEquipped.banner ?? null,
+        nameplate: updatedEquipped.nameplate ?? null,
+        equippedNameplate: updatedEquipped.nameplate ?? null,
+        effectId: updatedEquipped.effect ?? null,
+      });
+      invalidateCommonsPostsCache();
+
       const updated: WalletDoc = {
         ...current,
         equipped: updatedEquipped,
       };
       sessionWalletCache[user.uid] = updated;
       setWallet(updated);
+      notifyWalletSubscribers(user.uid, updated);
     },
     [user?.uid, isSuperAdminUser]
   );
@@ -390,10 +415,18 @@ export function useWallet() {
    * Super Admin can unlock any item for 0 Kobans.
    */
   const purchaseCosmetic = useCallback(
-    async (item: import('@/data/cosmeticsCatalog').CosmeticItem) => {
+    async (
+      item: import('@/data/cosmeticsCatalog').CosmeticItem,
+      idempotencyKey?: string
+    ) => {
       if (!user?.uid) throw new Error('Must be logged in to purchase cosmetics');
       const { purchaseCosmeticItem } = await import('@/services/kobanService');
-      const result = await purchaseCosmeticItem(user.uid, item, isSuperAdminUser);
+      const result = await purchaseCosmeticItem(
+        user.uid,
+        item,
+        isSuperAdminUser,
+        idempotencyKey
+      );
       const updatedOwned = result.owned
         ? result.owned
         : walletRef.current.owned.includes(item.id)
@@ -406,6 +439,7 @@ export function useWallet() {
       };
       sessionWalletCache[user.uid] = updated;
       setWallet(updated);
+      notifyWalletSubscribers(user.uid, updated);
       return result;
     },
     [user?.uid, isSuperAdminUser]
@@ -435,6 +469,7 @@ export function useWallet() {
         };
         sessionWalletCache[user.uid] = updated;
         setWallet(updated);
+        notifyWalletSubscribers(user.uid, updated);
       } else if (result.flaggedItems.length > 0) {
         const updated: WalletDoc = {
           ...walletRef.current,
@@ -443,6 +478,7 @@ export function useWallet() {
         };
         sessionWalletCache[user.uid] = updated;
         setWallet(updated);
+        notifyWalletSubscribers(user.uid, updated);
       }
       return result;
     },
@@ -533,12 +569,32 @@ export function useWallet() {
         ...topLevelFields,
       });
 
+      syncProfileToD1Backend(user.uid, {
+        avatar: updatedEquipped.avatar ?? undefined,
+        frame: updatedEquipped.frame ?? undefined,
+      }).catch(() => {});
+
+      broadcastPublicProfileUpdate(user.uid, {
+        equipped: updatedEquipped,
+        avatar: updatedEquipped.avatar ?? null,
+        equippedAvatar: updatedEquipped.avatar ?? null,
+        frame: updatedEquipped.frame ?? null,
+        equippedFrame: updatedEquipped.frame ?? null,
+        banner: updatedEquipped.banner ?? null,
+        equippedBanner: updatedEquipped.banner ?? null,
+        nameplate: updatedEquipped.nameplate ?? null,
+        equippedNameplate: updatedEquipped.nameplate ?? null,
+        effectId: updatedEquipped.effect ?? null,
+      });
+      invalidateCommonsPostsCache();
+
       const updated: WalletDoc = {
         ...walletRef.current,
         equipped: updatedEquipped,
       };
       sessionWalletCache[user.uid] = updated;
       setWallet(updated);
+      notifyWalletSubscribers(user.uid, updated);
     },
     [user?.uid]
   );

@@ -25,6 +25,9 @@ import {
   BarChart3,
   BookOpen,
   HelpCircle,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWallet } from '@/hooks/useWallet';
@@ -132,6 +135,7 @@ export const StorePage: React.FC<StorePageProps> = ({
     equipMultipleCosmetics,
     purchaseCosmetic,
     purchaseCosmeticBatch,
+    refreshWallet,
   } = useWallet();
 
   const {
@@ -183,6 +187,15 @@ export const StorePage: React.FC<StorePageProps> = ({
   const [confirmBuyItem, setConfirmBuyItem] =
     useState<EnrichedCosmeticItem | null>(null);
   const [purchasingSingle, setPurchasingSingle] = useState(false);
+  const purchasingSingleLockRef = useRef<boolean>(false);
+  const singlePurchaseKeyRef = useRef<string>('');
+  const [singlePurchaseError, setSinglePurchaseError] = useState<string | null>(
+    null
+  );
+  const [singlePurchaseSuccess, setSinglePurchaseSuccess] = useState<{
+    item: EnrichedCosmeticItem;
+    newBalance: number;
+  } | null>(null);
 
   // Multi-select mode state
   const [selectionMode, setSelectionMode] = useState(false);
@@ -549,17 +562,87 @@ export const StorePage: React.FC<StorePageProps> = ({
     [filteredItems, detailIndex]
   );
 
-  // Keyboard left/right navigation when detail sheet is open
+  // Close any active sheet on Escape key or browser back navigation, and clean up body attributes
+  const closeConfirmBuySheet = useCallback(() => {
+    if (purchasingSingleLockRef.current) return;
+    setConfirmBuyItem(null);
+    setSinglePurchaseError(null);
+    setSinglePurchaseSuccess(null);
+  }, []);
+
+  const openSinglePurchaseConfirm = useCallback(
+    (item: EnrichedCosmeticItem) => {
+      if (purchasingSingleLockRef.current || cartProcessing) return;
+      // Enforce only ONE modal/sheet open at a time
+      setDetailItemId(null);
+      setCartOpen(false);
+      setFilterSheetOpen(false);
+      setProCheckoutOpen(false);
+      setGetKobansOpen(false);
+      setSinglePurchaseError(null);
+      setSinglePurchaseSuccess(null);
+      if (confirmBuyItem?.id !== item.id || !singlePurchaseKeyRef.current) {
+        singlePurchaseKeyRef.current = `single_${item.id}_${Date.now()}_${Math.random()
+          .toString(36)
+          .slice(2, 8)}`;
+      }
+      setConfirmBuyItem(item);
+    },
+    [cartProcessing, confirmBuyItem?.id]
+  );
+
+  // Keyboard navigation & Escape / browser Back button support for sheets
   useEffect(() => {
-    if (!detailItemId) return;
+    if (!detailItemId && !confirmBuyItem) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') handleNavigateDetail('prev');
-      if (e.key === 'ArrowRight') handleNavigateDetail('next');
-      if (e.key === 'Escape') setDetailItemId(null);
+      if (confirmBuyItem) {
+        if (e.key === 'Escape' && !purchasingSingleLockRef.current) {
+          closeConfirmBuySheet();
+        }
+        return;
+      }
+      if (detailItemId) {
+        if (e.key === 'ArrowLeft') handleNavigateDetail('prev');
+        if (e.key === 'ArrowRight') handleNavigateDetail('next');
+        if (e.key === 'Escape') setDetailItemId(null);
+      }
+    };
+    const onPopState = () => {
+      if (!purchasingSingleLockRef.current) {
+        setConfirmBuyItem(null);
+        setSinglePurchaseError(null);
+        setSinglePurchaseSuccess(null);
+        setDetailItemId(null);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [detailItemId, handleNavigateDetail]);
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('popstate', onPopState);
+    };
+  }, [detailItemId, confirmBuyItem, handleNavigateDetail, closeConfirmBuySheet]);
+
+  // Ensure body scroll lock & modal attributes are always cleaned up when sheets close or unmount
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const anyModalOpen = Boolean(
+      detailItemId || confirmBuyItem || cartOpen || proCheckoutOpen || getKobansOpen || filterSheetOpen
+    );
+    if (anyModalOpen) {
+      document.body.setAttribute('data-fullscreen-modal-open', 'true');
+      window.dispatchEvent(new Event('boardly:modal-change'));
+    } else {
+      document.body.removeAttribute('data-fullscreen-modal-open');
+      document.body.style.overflow = '';
+      window.dispatchEvent(new Event('boardly:modal-change'));
+    }
+    return () => {
+      document.body.removeAttribute('data-fullscreen-modal-open');
+      document.body.style.overflow = '';
+      window.dispatchEvent(new Event('boardly:modal-change'));
+    };
+  }, [detailItemId, confirmBuyItem, cartOpen, proCheckoutOpen, getKobansOpen, filterSheetOpen]);
 
   const activeEffect =
     previewSlot.effect !== undefined ? previewSlot.effect : equipped.effect;
@@ -611,36 +694,54 @@ export const StorePage: React.FC<StorePageProps> = ({
     }
   };
 
-  // Single-item instant purchase handler
+  // Single-item instant purchase handler (single-flight + idempotent)
   const handleConfirmSinglePurchase = async () => {
-    if (!confirmBuyItem) return;
+    if (!confirmBuyItem || purchasingSingleLockRef.current || purchasingSingle) {
+      return;
+    }
     if (!user) {
+      setConfirmBuyItem(null);
       navigate('/login');
       return;
     }
     if (isGuest || user.uid.startsWith('guest_')) {
-      showToast(
-        'error',
+      setSinglePurchaseError(
         'Guest accounts cannot purchase items with Kobans. Please create a registered account to use the Boardly Store.'
       );
-      setConfirmBuyItem(null);
       return;
     }
+    if (!singlePurchaseKeyRef.current) {
+      singlePurchaseKeyRef.current = `single_${confirmBuyItem.id}_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+    }
+
+    purchasingSingleLockRef.current = true;
     setPurchasingSingle(true);
+    setSinglePurchaseError(null);
     try {
-      await purchaseCosmetic(confirmBuyItem);
+      const res = await purchaseCosmetic(
+        confirmBuyItem,
+        singlePurchaseKeyRef.current
+      );
       removeFromCart(confirmBuyItem.id);
       triggerCoinBurst();
       await equipCosmetic(confirmBuyItem.type, confirmBuyItem.id);
+      setSinglePurchaseSuccess({
+        item: confirmBuyItem,
+        newBalance: res.newBalance,
+      });
+      refreshWallet().catch(() => {});
       showToast(
         'success',
         `Unlocked & equipped ${confirmBuyItem.name}!`
       );
-      setConfirmBuyItem(null);
-      setDetailItemId(null);
     } catch (err: any) {
-      showToast('error', err?.message || 'Purchase could not be completed.');
+      const msg = err?.message || 'Purchase could not be completed.';
+      setSinglePurchaseError(msg);
+      showToast('error', msg);
     } finally {
+      purchasingSingleLockRef.current = false;
       setPurchasingSingle(false);
     }
   };
@@ -682,6 +783,14 @@ export const StorePage: React.FC<StorePageProps> = ({
 
   // Cart drawer & atomic batch checkout handlers
   const handleOpenCart = () => {
+    if (purchasingSingleLockRef.current) return;
+    setConfirmBuyItem(null);
+    setSinglePurchaseError(null);
+    setSinglePurchaseSuccess(null);
+    setDetailItemId(null);
+    setFilterSheetOpen(false);
+    setProCheckoutOpen(false);
+    setGetKobansOpen(false);
     setCartError(null);
     setFlaggedItemsNotice([]);
     setCompletedOrder(null);
@@ -1492,6 +1601,9 @@ export const StorePage: React.FC<StorePageProps> = ({
                   const itemInCart = isInCart(item.id);
                   const itemSelected = selectedIds.includes(item.id);
 
+                  const itemPurchasing =
+                    purchasingSingle && confirmBuyItem?.id === item.id;
+
                   return (
                     <StoreCard
                       key={item.id}
@@ -1503,18 +1615,29 @@ export const StorePage: React.FC<StorePageProps> = ({
                       isInCart={itemInCart}
                       selectionMode={selectionMode}
                       isSelected={itemSelected}
-                      onOpenDetail={(clicked) => setDetailItemId(clicked.id)}
+                      disabled={purchasingSingle || cartProcessing}
+                      isPurchasing={itemPurchasing}
+                      onOpenDetail={(clicked) => {
+                        if (purchasingSingleLockRef.current) return;
+                        setConfirmBuyItem(null);
+                        setCartOpen(false);
+                        setDetailItemId(clicked.id);
+                      }}
                       onToggleCart={(clicked) => {
+                        if (purchasingSingleLockRef.current) return;
                         const res = toggleCartItem(clicked.id);
                         if (res === 'added') {
                           showToast('success', `Added ${clicked.name} to cart`);
                         }
                       }}
                       onBuyNow={() => {
+                        if (purchasingSingleLockRef.current || cartProcessing) {
+                          return;
+                        }
                         if (isInCart(item.id)) {
                           handleOpenCart();
                         } else {
-                          setConfirmBuyItem(item);
+                          openSinglePurchaseConfirm(item);
                         }
                       }}
                       onEquipToggle={(clicked) => handleEquipToggle(clicked)}
@@ -1589,419 +1712,524 @@ export const StorePage: React.FC<StorePageProps> = ({
         </button>
       )}
 
-      {/* Item Detail Bottom Sheet / Modal (with full name, rarity & category, Add to cart + Buy, Preview on my profile, and left/right swipe & arrow navigation) */}
+      {/* Item Detail Bottom Sheet / Modal (only rendered when confirmBuyItem is not open so only ONE modal exists at a time) */}
       {detailItem &&
+        !confirmBuyItem &&
         typeof document !== 'undefined' &&
         createPortal(
-          <div
-            data-fullscreen-modal="true"
-            className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-md"
-            onClick={() => setDetailItemId(null)}
-          >
+          <>
             <div
-              onClick={(e) => e.stopPropagation()}
-              onTouchStart={(e) => {
-                touchStartXRef.current = e.touches[0]?.clientX ?? null;
-                touchStartYRef.current = e.touches[0]?.clientY ?? null;
-              }}
-              onTouchEnd={(e) => {
-                if (
-                  touchStartXRef.current === null ||
-                  touchStartYRef.current === null
-                ) {
-                  return;
-                }
-                const dx =
-                  (e.changedTouches[0]?.clientX ?? 0) - touchStartXRef.current;
-                const dy =
-                  (e.changedTouches[0]?.clientY ?? 0) - touchStartYRef.current;
-                touchStartXRef.current = null;
-                touchStartYRef.current = null;
-                if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.3) {
-                  if (dx < 0) {
-                    handleNavigateDetail('next');
-                  } else {
-                    handleNavigateDetail('prev');
-                  }
-                }
-              }}
-              className="w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-[var(--bg-card)] border-t sm:border border-[var(--border)] shadow-2xl overflow-hidden max-h-[90dvh] flex flex-col"
+              data-fullscreen-modal="true"
+              aria-hidden="true"
+              className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm"
+              onClick={() => setDetailItemId(null)}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={detailItem.name}
+              className="fixed inset-0 z-[205] flex items-end sm:items-center justify-center p-0 sm:p-4 pointer-events-none"
             >
-              {/* Mobile drag handle */}
-              <div className="pt-2.5 pb-1 flex justify-center sm:hidden">
-                <div className="w-10 h-1 rounded-full bg-[var(--border)]" />
-              </div>
-
-              {/* Detail Sheet Top Bar with Prev/Next Arrows & Close */}
-              <div className="px-4 py-2.5 border-b border-[var(--border)] flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    disabled={filteredItems.length <= 1}
-                    onClick={() => handleNavigateDetail('prev')}
-                    aria-label="Previous item"
-                    className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center text-[var(--text-primary)] disabled:opacity-40"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    disabled={filteredItems.length <= 1}
-                    onClick={() => handleNavigateDetail('next')}
-                    aria-label="Next item"
-                    className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center text-[var(--text-primary)] disabled:opacity-40"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                  {detailIndex >= 0 && (
-                    <span className="text-[11px] font-bold text-[var(--text-muted)] ml-1 tabular-nums">
-                      {detailIndex + 1} / {filteredItems.length}
-                    </span>
-                  )}
+              <div
+                onClick={(e) => e.stopPropagation()}
+                onTouchStart={(e) => {
+                  touchStartXRef.current = e.touches[0]?.clientX ?? null;
+                  touchStartYRef.current = e.touches[0]?.clientY ?? null;
+                }}
+                onTouchEnd={(e) => {
+                  if (
+                    touchStartXRef.current === null ||
+                    touchStartYRef.current === null
+                  ) {
+                    return;
+                  }
+                  const dx =
+                    (e.changedTouches[0]?.clientX ?? 0) - touchStartXRef.current;
+                  const dy =
+                    (e.changedTouches[0]?.clientY ?? 0) - touchStartYRef.current;
+                  touchStartXRef.current = null;
+                  touchStartYRef.current = null;
+                  if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+                    if (dx < 0) {
+                      handleNavigateDetail('next');
+                    } else {
+                      handleNavigateDetail('prev');
+                    }
+                  }
+                }}
+                style={{
+                  backgroundColor: isDark ? '#0F0F14' : '#FFFFFF',
+                  color: isDark ? '#FFFFFF' : '#111114',
+                  backdropFilter: 'none',
+                  WebkitBackdropFilter: 'none',
+                }}
+                className="pointer-events-auto w-full max-w-lg rounded-t-3xl sm:rounded-3xl bg-[var(--bg-card)] border-t sm:border border-[var(--border)] shadow-2xl overflow-hidden max-h-[90dvh] flex flex-col"
+              >
+                {/* Mobile drag handle */}
+                <div className="pt-2.5 pb-1 flex justify-center sm:hidden">
+                  <div className="w-10 h-1 rounded-full bg-[var(--border)]" />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setDetailItemId(null)}
-                  aria-label="Close item details"
-                  className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center text-[var(--text-secondary)]"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="overflow-y-auto flex-1">
-                {/* Dark Preview Stage */}
-                <div className="relative h-52 sm:h-56 bg-[#090A0F] dark-surface-preserve flex items-center justify-center p-5 border-b border-white/10">
-                  {detailItem.type === 'banner' ? (
-                    <div className="w-full max-w-sm aspect-[16/9] rounded-2xl overflow-hidden relative border border-white/15 shadow-lg">
-                      <BannerRenderer
-                        bannerId={detailItem.id}
-                        animated={detailItem.animated !== false}
-                        className="w-full h-full"
-                      />
-                      <div className="absolute inset-x-3 bottom-3 flex items-center gap-2 pointer-events-none">
-                        <div className="px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-sm border border-white/20 flex items-center gap-2">
-                          <div className="w-5 h-5 rounded-full bg-[#E11D2A] text-[10px] font-black text-white flex items-center justify-center">
-                            {(displayName || 'S')[0]?.toUpperCase()}
-                          </div>
-                          <span
-                            className="text-xs font-extrabold text-white"
-                            style={{
-                              color: '#FFFFFF',
-                              textShadow: '0 1px 3px rgba(0,0,0,0.95)',
-                            }}
-                          >
-                            {displayName}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : detailItem.type === 'avatar' ? (
-                    <AvatarPicture
-                      avatarId={detailItem.id}
-                      size={118}
-                      animated={detailItem.animated !== false}
-                    />
-                  ) : detailItem.type === 'frame' ? (
-                    <AvatarFrame
-                      frameId={detailItem.id}
-                      size={104}
-                      animated={detailItem.animated !== false}
-                    >
-                      <AvatarPicture
-                        uid={user?.uid}
-                        seed={user?.uid}
-                        avatarId={activeAvatar || undefined}
-                        size={82}
-                        animated={false}
-                      />
-                    </AvatarFrame>
-                  ) : detailItem.type === 'effect' ? (
-                    <div className="w-full max-w-xs aspect-[4/3] rounded-2xl overflow-hidden">
-                      <ProfileEffectCardPreview
-                        effectId={detailItem.id}
-                        displayName={displayName}
-                        animated={detailItem.animated !== false}
-                        className="w-full h-full !h-full"
-                      />
-                    </div>
-                  ) : (
-                    <div className="w-full max-w-xs flex flex-col items-center gap-2">
-                      <span
-                        className="px-3 py-1 rounded-full bg-white/10 border border-white/20 text-xs font-bold text-white"
-                        style={{
-                          color: '#FFFFFF',
-                          textShadow: '0 1px 3px rgba(0,0,0,0.9)',
-                        }}
-                      >
-                        {displayName}
-                      </span>
-                      <Nameplate
-                        nameplateId={detailItem.id}
-                        displayName={displayName}
-                        animated={detailItem.animated !== false}
-                        allowWrap="full"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Full Item Info */}
-                <div className="p-5 space-y-4">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      {(() => {
-                        const r =
-                          RARITY_ACCENT[detailItem.rarity] ||
-                          RARITY_ACCENT.common;
-                        return (
-                          <span
-                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${r.badgeBg} ${r.badgeText} ${r.badgeBorder}`}
-                          >
-                            {r.label} Rarity
-                          </span>
-                        );
-                      })()}
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-secondary)]">
-                        {CATEGORY_SHORT_LABEL[detailItem.type]}
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 border border-amber-500/30 text-amber-500 inline-flex items-center gap-1">
-                        <Sparkles className="w-3 h-3" />
-                        <span>Animated</span>
-                      </span>
-                    </div>
-
-                    {/* Full untruncated item name */}
-                    <h2 className="text-lg sm:text-xl font-black text-[var(--text-primary)] leading-snug">
-                      {detailItem.name}
-                    </h2>
-                    <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-1 leading-relaxed">
-                      {detailItem.description}
-                    </p>
-                  </div>
-
-                  {/* Price & PKR breakdown */}
-                  <div className="p-3.5 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] flex items-center justify-between">
-                    <span className="text-xs font-bold text-[var(--text-secondary)]">
-                      Unlock Price
-                    </span>
-                    <div className="text-right">
-                      <div className="inline-flex items-center gap-1.5 font-black text-base tabular-nums text-[var(--text-primary)]">
-                        <KobanIcon size={17} />
-                        <span>{detailItem.price.toLocaleString()} Kobans</span>
-                      </div>
-                      <p className="text-[10px] font-semibold text-[var(--text-muted)]">
-                        PKR {(detailItem.price / 10).toLocaleString()} · 10 Kobans = PKR 1
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons: Preview on my profile + (Add to cart & Buy for X Kobans) */}
-                  <div className="space-y-2.5 pt-1 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))]">
+                {/* Detail Sheet Top Bar with Prev/Next Arrows & Close */}
+                <div className="px-4 py-2.5 border-b border-[var(--border)] flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={() => handleTryOnFromSheet(detailItem)}
-                      className="w-full h-10 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] text-xs font-extrabold text-[var(--text-primary)] inline-flex items-center justify-center gap-2 transition-colors"
+                      disabled={filteredItems.length <= 1}
+                      onClick={() => handleNavigateDetail('prev')}
+                      aria-label="Previous item"
+                      className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center text-[var(--text-primary)] disabled:opacity-40"
                     >
-                      <Eye className="w-4 h-4 text-[#E11D2A]" />
-                      <span>Preview on my profile</span>
+                      <ChevronLeft className="w-4 h-4" />
                     </button>
+                    <button
+                      type="button"
+                      disabled={filteredItems.length <= 1}
+                      onClick={() => handleNavigateDetail('next')}
+                      aria-label="Next item"
+                      className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center text-[var(--text-primary)] disabled:opacity-40"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                    {detailIndex >= 0 && (
+                      <span className="text-[11px] font-bold text-[var(--text-muted)] ml-1 tabular-nums">
+                        {detailIndex + 1} / {filteredItems.length}
+                      </span>
+                    )}
+                  </div>
 
-                    {isItemOwned(detailItem.id) ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleEquipToggle(detailItem);
-                          setDetailItemId(null);
-                        }}
-                        className="w-full h-11 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-2 transition-colors"
+                  <button
+                    type="button"
+                    onClick={() => setDetailItemId(null)}
+                    aria-label="Close item details"
+                    className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center text-[var(--text-secondary)]"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="overflow-y-auto flex-1">
+                  {/* Dark Preview Stage */}
+                  <div className="relative h-52 sm:h-56 bg-[#090A0F] dark-surface-preserve flex items-center justify-center p-5 border-b border-white/10">
+                    {detailItem.type === 'banner' ? (
+                      <div className="w-full max-w-sm aspect-[16/9] rounded-2xl overflow-hidden relative border border-white/15 shadow-lg">
+                        <BannerRenderer
+                          bannerId={detailItem.id}
+                          animated={detailItem.animated !== false}
+                          className="w-full h-full"
+                        />
+                        <div className="absolute inset-x-3 bottom-3 flex items-center gap-2 pointer-events-none">
+                          <div className="px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-sm border border-white/20 flex items-center gap-2">
+                            <div className="w-5 h-5 rounded-full bg-[#E11D2A] text-[10px] font-black text-white flex items-center justify-center">
+                              {(displayName || 'S')[0]?.toUpperCase()}
+                            </div>
+                            <span
+                              className="text-xs font-extrabold text-white"
+                              style={{
+                                color: '#FFFFFF',
+                                textShadow: '0 1px 3px rgba(0,0,0,0.95)',
+                              }}
+                            >
+                              {displayName}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : detailItem.type === 'avatar' ? (
+                      <AvatarPicture
+                        avatarId={detailItem.id}
+                        size={118}
+                        animated={detailItem.animated !== false}
+                      />
+                    ) : detailItem.type === 'frame' ? (
+                      <AvatarFrame
+                        frameId={detailItem.id}
+                        size={104}
+                        animated={detailItem.animated !== false}
                       >
-                        <Check className="w-4 h-4" />
-                        <span>
-                          {isItemEquipped(detailItem)
-                            ? 'Unequip Item'
-                            : 'Equip Now'}
-                        </span>
-                      </button>
+                        <AvatarPicture
+                          uid={user?.uid}
+                          seed={user?.uid}
+                          avatarId={activeAvatar || undefined}
+                          size={82}
+                          animated={false}
+                        />
+                      </AvatarFrame>
+                    ) : detailItem.type === 'effect' ? (
+                      <div className="w-full max-w-xs aspect-[4/3] rounded-2xl overflow-hidden">
+                        <ProfileEffectCardPreview
+                          effectId={detailItem.id}
+                          displayName={displayName}
+                          animated={detailItem.animated !== false}
+                          className="w-full h-full !h-full"
+                        />
+                      </div>
                     ) : (
-                      <div className="grid grid-cols-2 gap-2.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const action = toggleCartItem(detailItem.id);
-                            showToast(
-                              'success',
-                              action === 'added'
-                                ? `Added ${detailItem.name} to cart`
-                                : `Removed ${detailItem.name} from cart`
-                            );
+                      <div className="w-full max-w-xs flex flex-col items-center gap-2">
+                        <span
+                          className="px-3 py-1 rounded-full bg-white/10 border border-white/20 text-xs font-bold text-white"
+                          style={{
+                            color: '#FFFFFF',
+                            textShadow: '0 1px 3px rgba(0,0,0,0.9)',
                           }}
-                          className={`h-11 px-3 rounded-xl text-xs sm:text-sm font-extrabold border inline-flex items-center justify-center gap-1.5 transition-all ${
-                            isInCart(detailItem.id)
-                              ? 'bg-[#E11D2A]/15 border-[#E11D2A]/50 text-[#E11D2A]'
-                              : 'bg-[var(--bg-elevated)] hover:bg-[var(--border)] border-[var(--border)] text-[var(--text-primary)]'
-                          }`}
                         >
-                          {isInCart(detailItem.id) ? (
-                            <>
-                              <Check className="w-4 h-4" />
-                              <span>In cart</span>
-                            </>
-                          ) : (
-                            <>
-                              <Plus className="w-4 h-4" />
-                              <span>Add to cart</span>
-                            </>
-                          )}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setConfirmBuyItem(detailItem);
-                          }}
-                          className="h-11 px-3 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-1.5 shadow-sm transition-all"
-                        >
-                          <KobanIcon size={15} />
-                          <span>
-                            Buy for {detailItem.price.toLocaleString()} Kobans
-                          </span>
-                        </button>
+                          {displayName}
+                        </span>
+                        <Nameplate
+                          nameplateId={detailItem.id}
+                          displayName={displayName}
+                          animated={detailItem.animated !== false}
+                          allowWrap="full"
+                        />
                       </div>
                     )}
                   </div>
+
+                  {/* Full Item Info */}
+                  <div className="p-5 space-y-4">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        {(() => {
+                          const r =
+                            RARITY_ACCENT[detailItem.rarity] ||
+                            RARITY_ACCENT.common;
+                          return (
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${r.badgeBg} ${r.badgeText} ${r.badgeBorder}`}
+                            >
+                              {r.label} Rarity
+                            </span>
+                          );
+                        })()}
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-secondary)]">
+                          {CATEGORY_SHORT_LABEL[detailItem.type]}
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 border border-amber-500/30 text-amber-500 inline-flex items-center gap-1">
+                          <Sparkles className="w-3 h-3" />
+                          <span>Animated</span>
+                        </span>
+                      </div>
+
+                      {/* Full untruncated item name */}
+                      <h2 className="text-lg sm:text-xl font-black text-[var(--text-primary)] leading-snug">
+                        {detailItem.name}
+                      </h2>
+                      <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-1 leading-relaxed">
+                        {detailItem.description}
+                      </p>
+                    </div>
+
+                    {/* Price & PKR breakdown */}
+                    <div className="p-3.5 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] flex items-center justify-between">
+                      <span className="text-xs font-bold text-[var(--text-secondary)]">
+                        Unlock Price
+                      </span>
+                      <div className="text-right">
+                        <div className="inline-flex items-center gap-1.5 font-black text-base tabular-nums text-[var(--text-primary)]">
+                          <KobanIcon size={17} />
+                          <span>{detailItem.price.toLocaleString()} Kobans</span>
+                        </div>
+                        <p className="text-[10px] font-semibold text-[var(--text-muted)]">
+                          PKR {(detailItem.price / 10).toLocaleString()} · 10 Kobans = PKR 1
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons: Preview on my profile + (Add to cart & Buy for X Kobans) */}
+                    <div className="space-y-2.5 pt-1 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))]">
+                      <button
+                        type="button"
+                        onClick={() => handleTryOnFromSheet(detailItem)}
+                        className="w-full h-10 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] text-xs font-extrabold text-[var(--text-primary)] inline-flex items-center justify-center gap-2 transition-colors"
+                      >
+                        <Eye className="w-4 h-4 text-[#E11D2A]" />
+                        <span>Preview on my profile</span>
+                      </button>
+
+                      {isItemOwned(detailItem.id) ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleEquipToggle(detailItem);
+                            setDetailItemId(null);
+                          }}
+                          className="w-full h-11 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-2 transition-colors"
+                        >
+                          <Check className="w-4 h-4" />
+                          <span>
+                            {isItemEquipped(detailItem)
+                              ? 'Unequip Item'
+                              : 'Equip Now'}
+                          </span>
+                        </button>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <button
+                            type="button"
+                            disabled={purchasingSingle}
+                            onClick={() => {
+                              const action = toggleCartItem(detailItem.id);
+                              showToast(
+                                'success',
+                                action === 'added'
+                                  ? `Added ${detailItem.name} to cart`
+                                  : `Removed ${detailItem.name} from cart`
+                              );
+                            }}
+                            className={`h-11 px-3 rounded-xl text-xs sm:text-sm font-extrabold border inline-flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 ${
+                              isInCart(detailItem.id)
+                                ? 'bg-[#E11D2A]/15 border-[#E11D2A]/50 text-[#E11D2A]'
+                                : 'bg-[var(--bg-elevated)] hover:bg-[var(--border)] border-[var(--border)] text-[var(--text-primary)]'
+                            }`}
+                          >
+                            {isInCart(detailItem.id) ? (
+                              <>
+                                <Check className="w-4 h-4" />
+                                <span>In cart</span>
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="w-4 h-4" />
+                                <span>Add to cart</span>
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={purchasingSingle}
+                            onClick={() => {
+                              openSinglePurchaseConfirm(detailItem);
+                            }}
+                            className="h-11 px-3 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-1.5 shadow-sm transition-all disabled:opacity-60"
+                          >
+                            <KobanIcon size={15} />
+                            <span>
+                              Buy for {detailItem.price.toLocaleString()} Kobans
+                            </span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>,
+          </>,
           document.body
         )}
 
-      {/* Single-Item Instant Purchase Confirmation Modal */}
+      {/* Single-Item Instant Purchase Confirmation Modal (Separate Backdrop + Solid Surface) */}
       {confirmBuyItem &&
         typeof document !== 'undefined' &&
         createPortal(
-          <div
-            data-fullscreen-modal="true"
-            className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
-            onClick={() => {
-              if (!purchasingSingle) setConfirmBuyItem(null);
-            }}
-          >
+          <>
             <div
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-md rounded-3xl bg-[var(--bg-card)] border border-[var(--border)] shadow-2xl overflow-hidden p-5 space-y-4"
+              data-fullscreen-modal="true"
+              aria-hidden="true"
+              className="fixed inset-0 z-[210] bg-black/50 backdrop-blur-sm"
+              onClick={() => {
+                if (!purchasingSingle) closeConfirmBuySheet();
+              }}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={
+                singlePurchaseSuccess
+                  ? 'Purchase Complete'
+                  : 'Confirm Instant Unlock'
+              }
+              className="fixed inset-0 z-[215] flex items-end sm:items-center justify-center p-0 sm:p-4 pointer-events-none"
             >
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-black text-[var(--text-primary)]">
-                  Confirm Instant Unlock
-                </h3>
-                <button
-                  type="button"
-                  disabled={purchasingSingle}
-                  onClick={() => setConfirmBuyItem(null)}
-                  className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-secondary)]"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="p-3.5 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] space-y-2 text-xs">
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  backgroundColor: isDark ? '#0F0F14' : '#FFFFFF',
+                  color: isDark ? '#FFFFFF' : '#111114',
+                  backdropFilter: 'none',
+                  WebkitBackdropFilter: 'none',
+                }}
+                className="pointer-events-auto w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-[var(--bg-card)] border-t sm:border border-[var(--border)] shadow-2xl overflow-hidden p-5 space-y-4"
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-[var(--text-secondary)] font-semibold">
-                    Item
-                  </span>
-                  <span className="font-extrabold text-[var(--text-primary)]">
-                    {confirmBuyItem.name}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[var(--text-secondary)] font-semibold">
-                    Price
-                  </span>
-                  <span className="inline-flex items-center gap-1 font-black tabular-nums text-[var(--text-primary)]">
-                    <KobanIcon size={14} />
-                    {isSuperAdmin ? 0 : confirmBuyItem.price.toLocaleString()} Kobans
-                  </span>
-                </div>
-                <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
-                  <span className="text-[var(--text-secondary)] font-semibold">
-                    Your Balance
-                  </span>
-                  <span className="inline-flex items-center gap-1 font-bold tabular-nums text-[var(--text-primary)]">
-                    <KobanIcon size={13} />
-                    {balance.toLocaleString()} Kobans
-                  </span>
-                </div>
-              </div>
-
-              {isGuest || user?.uid.startsWith('guest_') ? (
-                <div className="space-y-3">
-                  <p className="text-xs font-bold text-[#E11D2A]">
-                    Guest accounts cannot purchase items with Kobans. Please create a registered account to unlock cosmetics and keep them forever.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setConfirmBuyItem(null);
-                      setDetailItemId(null);
-                      navigate('/signup');
-                    }}
-                    className="w-full h-11 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-2"
-                  >
-                    <span>Create an Account</span>
-                  </button>
-                </div>
-              ) : !isSuperAdmin && balance < confirmBuyItem.price ? (
-                <div className="space-y-3">
-                  <p className="text-xs font-bold text-[#E11D2A]">
-                    You need {(confirmBuyItem.price - balance).toLocaleString()} more Kobans to unlock this item.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const deficit = Math.max(
-                        500,
-                        confirmBuyItem.price - balance
-                      );
-                      setConfirmBuyItem(null);
-                      setGetKobansInitialAmount(deficit);
-                      setGetKobansOpen(true);
-                    }}
-                    className="w-full h-11 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-2"
-                  >
-                    <KobanIcon size={15} />
-                    <span>Get more Kobans</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="flex gap-2.5">
+                  <h3 className="text-base font-black text-[var(--text-primary)]">
+                    {singlePurchaseSuccess
+                      ? 'Unlocked & Equipped!'
+                      : purchasingSingle
+                      ? 'Unlocking Item…'
+                      : 'Confirm Instant Unlock'}
+                  </h3>
                   <button
                     type="button"
                     disabled={purchasingSingle}
-                    onClick={() => setConfirmBuyItem(null)}
-                    className="flex-1 h-11 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] text-xs font-bold text-[var(--text-secondary)]"
+                    onClick={closeConfirmBuySheet}
+                    aria-label="Close confirmation"
+                    className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-secondary)] disabled:opacity-50"
                   >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={purchasingSingle}
-                    onClick={handleConfirmSinglePurchase}
-                    className="flex-1 h-11 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
-                  >
-                    <KobanIcon size={15} />
-                    <span>
-                      {purchasingSingle
-                        ? 'Unlocking…'
-                        : `Buy for ${(isSuperAdmin ? 0 : confirmBuyItem.price).toLocaleString()}`}
-                    </span>
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
-              )}
+
+                {singlePurchaseSuccess ? (
+                  <div className="space-y-4">
+                    <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-3">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                      <div className="text-xs space-y-0.5">
+                        <p className="font-extrabold text-[var(--text-primary)]">
+                          {singlePurchaseSuccess.item.name} is now in your collection!
+                        </p>
+                        <p className="text-[var(--text-secondary)]">
+                          We automatically equipped it to your profile.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[var(--text-secondary)] font-semibold">
+                          Unlocked Item
+                        </span>
+                        <span className="font-extrabold text-[var(--text-primary)]">
+                          {singlePurchaseSuccess.item.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
+                        <span className="text-[var(--text-secondary)] font-semibold">
+                          New Wallet Balance
+                        </span>
+                        <span className="inline-flex items-center gap-1 font-black tabular-nums text-emerald-500">
+                          <KobanIcon size={14} />
+                          {singlePurchaseSuccess.newBalance.toLocaleString()} Kobans
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={closeConfirmBuySheet}
+                      className="w-full h-11 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-2 shadow-sm transition-all"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Done</span>
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="p-3.5 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[var(--text-secondary)] font-semibold">
+                          Item
+                        </span>
+                        <span className="font-extrabold text-[var(--text-primary)]">
+                          {confirmBuyItem.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[var(--text-secondary)] font-semibold">
+                          Price
+                        </span>
+                        <span className="inline-flex items-center gap-1 font-black tabular-nums text-[var(--text-primary)]">
+                          <KobanIcon size={14} />
+                          {isSuperAdmin ? 0 : confirmBuyItem.price.toLocaleString()} Kobans
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
+                        <span className="text-[var(--text-secondary)] font-semibold">
+                          Your Balance
+                        </span>
+                        <span className="inline-flex items-center gap-1 font-bold tabular-nums text-[var(--text-primary)]">
+                          <KobanIcon size={13} />
+                          {balance.toLocaleString()} Kobans
+                        </span>
+                      </div>
+                    </div>
+
+                    {singlePurchaseError && (
+                      <div className="p-3 rounded-xl bg-[#E11D2A]/10 border border-[#E11D2A]/35 flex items-start gap-2.5 text-xs text-[#E11D2A]">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span className="font-bold leading-snug">
+                          {singlePurchaseError}
+                        </span>
+                      </div>
+                    )}
+
+                    {isGuest || user?.uid.startsWith('guest_') ? (
+                      <div className="space-y-3">
+                        <p className="text-xs font-bold text-[#E11D2A]">
+                          Guest accounts cannot purchase items with Kobans. Please create a registered account to unlock cosmetics and keep them forever.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            closeConfirmBuySheet();
+                            setDetailItemId(null);
+                            navigate('/signup');
+                          }}
+                          className="w-full h-11 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-2"
+                        >
+                          <span>Create an Account</span>
+                        </button>
+                      </div>
+                    ) : !isSuperAdmin && balance < confirmBuyItem.price ? (
+                      <div className="space-y-3">
+                        <p className="text-xs font-bold text-[#E11D2A]">
+                          You need {(confirmBuyItem.price - balance).toLocaleString()} more Kobans to unlock this item.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const deficit = Math.max(
+                              500,
+                              confirmBuyItem.price - balance
+                            );
+                            closeConfirmBuySheet();
+                            setGetKobansInitialAmount(deficit);
+                            setGetKobansOpen(true);
+                          }}
+                          className="w-full h-11 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-2"
+                        >
+                          <KobanIcon size={15} />
+                          <span>Get more Kobans</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2.5">
+                        <button
+                          type="button"
+                          disabled={purchasingSingle}
+                          onClick={closeConfirmBuySheet}
+                          className="flex-1 h-11 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] text-xs font-bold text-[var(--text-secondary)] disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={purchasingSingle}
+                          onClick={handleConfirmSinglePurchase}
+                          className="flex-1 h-11 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-1.5 disabled:opacity-60"
+                        >
+                          {purchasingSingle ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Unlocking…</span>
+                            </>
+                          ) : (
+                            <>
+                              <KobanIcon size={15} />
+                              <span>
+                                Buy for {(isSuperAdmin ? 0 : confirmBuyItem.price).toLocaleString()}
+                              </span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-          </div>,
+          </>,
           document.body
         )}
 

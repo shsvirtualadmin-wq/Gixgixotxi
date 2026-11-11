@@ -45,6 +45,7 @@ import {
   MAX_SIGNATURE_BYTES,
 } from './certificateServerEngine';
 import { buildCertificateIssuedStudentEmail } from '../lib/emailTemplates';
+import { getSharedLocalD1Database } from '../../functions/_utils/firestoreRestAdmin';
 
 const R2_PUBLIC_BASE_URL = (
   process.env.R2_PUBLIC_BASE_URL ||
@@ -732,9 +733,106 @@ export function sanitizeStoreAvatarId(...candidates: unknown[]): string | null {
   return null;
 }
 
+export interface LiveAuthorResolved {
+  uid: string;
+  username: string | null;
+  displayName: string | null;
+  avatar: string | null;
+  frame: string | null;
+  role: string | null;
+  customRole: string | null;
+  isDeleted?: boolean;
+}
+
+/**
+ * Resolves the live username, displayName, avatar, frame, and role for a batch of UIDs
+ * in ONE single lookup against the shared D1 tables (user_usernames, guest_accounts, user_roles)
+ * and the D1 posts store's userRoles table.
+ * Never makes per-item network calls.
+ */
+export function resolveLiveAuthorsBatchSync(
+  uids: (string | null | undefined)[],
+  store?: D1PostsStore
+): Map<string, LiveAuthorResolved> {
+  const result = new Map<string, LiveAuthorResolved>();
+  const uniqueUids = Array.from(
+    new Set(
+      uids
+        .map((u) => String(u || '').trim())
+        .filter((u) => u.length > 0 && u !== 'anonymous')
+    )
+  );
+  if (uniqueUids.length === 0) return result;
+
+  const d1 = getSharedLocalD1Database();
+  const tables = d1.tables;
+  const activeStore = store || d1Cache;
+
+  // Build O(1) lookup map of uid -> user_usernames row once per batch
+  const usernameByUid = new Map<string, any>();
+  for (const row of tables.user_usernames.values()) {
+    if (row && row.uid) {
+      usernameByUid.set(row.uid, row);
+    }
+  }
+
+  const deletedUids = new Set<string>(
+    Array.isArray((activeStore as any)?.deletedUsers) ? (activeStore as any).deletedUsers : []
+  );
+
+  for (const uid of uniqueUids) {
+    if (deletedUids.has(uid)) {
+      result.set(uid, {
+        uid,
+        username: null,
+        displayName: null,
+        avatar: null,
+        frame: null,
+        role: null,
+        customRole: null,
+        isDeleted: true,
+      });
+      continue;
+    }
+
+    const uRow = usernameByUid.get(uid);
+    const gRow = tables.guest_accounts.get(uid);
+    const rRow =
+      tables.user_roles.get(uid) ||
+      activeStore?.userRoles?.find((r) => r.uid === uid) ||
+      null;
+
+    const liveUsername = uRow?.username_display || uRow?.username_lower || gRow?.username || null;
+    const liveDisplayName =
+      uRow?.display_name ||
+      gRow?.display_name ||
+      liveUsername ||
+      null;
+    const liveAvatar = sanitizeStoreAvatarId(uRow?.avatar, gRow?.avatar);
+    const liveFrame = uRow?.frame || null;
+    const liveRole = rRow?.role || uRow?.role || (gRow ? 'guest' : null);
+    const liveCustomRole = rRow?.custom_role || uRow?.custom_role || null;
+
+    if (liveUsername || liveDisplayName || liveAvatar || liveFrame || liveRole || liveCustomRole) {
+      result.set(uid, {
+        uid,
+        username: liveUsername,
+        displayName: liveDisplayName,
+        avatar: liveAvatar,
+        frame: liveFrame,
+        role: liveRole,
+        customRole: liveCustomRole,
+      });
+    }
+  }
+
+  return result;
+}
+
 export function rowToCommonsPost(
   row: D1PostRow,
-  currentUid?: string | null
+  currentUid?: string | null,
+  liveAuthorsMap?: Map<string, LiveAuthorResolved>
 ): Record<string, any> {
   let tags: string[] = [];
   let files: any[] = [];
@@ -787,6 +885,37 @@ export function rowToCommonsPost(
   const isAnon = Boolean(row.is_anonymous);
   const isOwner = Boolean(currentUid && row.real_author_uid === currentUid);
 
+  // Resolve live author fields when not anonymous; if account was deleted or not in live map, fall back to stored name
+  const authorUid = isAnon ? null : row.author_uid;
+  const resolvedMap =
+    !isAnon && authorUid
+      ? liveAuthorsMap || resolveLiveAuthorsBatchSync([authorUid])
+      : null;
+  const liveAuthor = !isAnon && authorUid && resolvedMap ? resolvedMap.get(authorUid) : undefined;
+  const useLive = Boolean(liveAuthor && !liveAuthor.isDeleted);
+
+  const resolvedAuthorName = isAnon
+    ? row.anonymous_alias || 'Anonymous Student'
+    : (useLive && (liveAuthor?.displayName || liveAuthor?.username)) ||
+      row.author_name ||
+      'Student';
+  const resolvedAuthorUsername = isAnon
+    ? null
+    : (useLive && liveAuthor?.username) || null;
+  const resolvedAuthorAvatar = isAnon
+    ? null
+    : (useLive && liveAuthor?.avatar) ||
+      sanitizeStoreAvatarId(row.author_equipped_avatar, row.author_avatar);
+  const resolvedAuthorFrame = isAnon
+    ? null
+    : (useLive && liveAuthor?.frame) || row.author_frame || null;
+  const resolvedAuthorRole = isAnon
+    ? 'student'
+    : (useLive && liveAuthor?.role) || row.author_role || 'student';
+  const resolvedAuthorCustomRole = isAnon
+    ? null
+    : (useLive && liveAuthor?.customRole) || row.author_custom_role || null;
+
   return {
     id: row.id,
     slug: row.slug || buildSlug(row.id, row.title),
@@ -813,18 +942,16 @@ export function rowToCommonsPost(
     isAnonymous: isAnon,
     anonymous: isAnon,
     anonymousAlias: row.anonymous_alias || 'Anonymous Student',
-    authorUid: isAnon ? null : row.author_uid,
-    authorName: isAnon ? 'Anonymous Student' : row.author_name || 'Student',
-    authorAvatar: isAnon
-      ? null
-      : sanitizeStoreAvatarId(row.author_equipped_avatar, row.author_avatar),
-    authorFrame: isAnon ? null : row.author_frame || null,
-    authorEquippedAvatar: isAnon
-      ? null
-      : sanitizeStoreAvatarId(row.author_equipped_avatar, row.author_avatar),
+    authorUid,
+    authorName: resolvedAuthorName,
+    authorUsername: resolvedAuthorUsername,
+    authorAvatar: resolvedAuthorAvatar,
+    authorFrame: resolvedAuthorFrame,
+    authorEquippedAvatar: resolvedAuthorAvatar,
     authorPhotoURL: null,
-    authorRole: isAnon ? 'student' : row.author_role || 'student',
-    authorCustomRole: isAnon ? null : row.author_custom_role || null,
+    authorRole: resolvedAuthorRole,
+    authorCustomRole: resolvedAuthorCustomRole,
+    isOwner,
     status: row.status || 'published',
     visibility: row.visibility || 'public',
     isHidden: Boolean(row.is_hidden),
@@ -1649,11 +1776,17 @@ ${entries
         );
       }
       if (search) {
+        const searchAuthorsMap = resolveLiveAuthorsBatchSync(
+          rows.map((p) => (p.is_anonymous ? null : p.author_uid)),
+          store
+        );
         const tokens = search.split(/\s+/).filter(Boolean);
         rows = rows.filter((p) => {
-          const hay = `${p.title} ${p.description} ${p.subject} ${p.chapter} ${p.target} ${p.tags_json} ${
-            p.is_anonymous ? '' : p.author_name
-          }`.toLowerCase();
+          const liveAuth = !p.is_anonymous && p.author_uid ? searchAuthorsMap.get(p.author_uid) : undefined;
+          const liveAuthorStr = p.is_anonymous
+            ? ''
+            : `${liveAuth?.displayName || ''} ${liveAuth?.username || ''} ${p.author_name || ''}`;
+          const hay = `${p.title} ${p.description} ${p.subject} ${p.chapter} ${p.target} ${p.tags_json} ${liveAuthorStr}`.toLowerCase();
           return tokens.every((t) => hay.includes(t));
         });
       }
@@ -1668,7 +1801,12 @@ ${entries
 
       const hasMore = offset + pageSize < rows.length;
       const pageRows = rows.slice(offset, offset + pageSize);
-      const posts = pageRows.map((r) => rowToCommonsPost(r, currentUid));
+      // Batch-resolve live author profiles ONCE for this page of posts
+      const pageLiveAuthors = resolveLiveAuthorsBatchSync(
+        pageRows.map((r) => (r.is_anonymous ? null : r.author_uid)),
+        store
+      );
+      const posts = pageRows.map((r) => rowToCommonsPost(r, currentUid, pageLiveAuthors));
 
       const d1Connected = Array.isArray(store?.posts);
       const r2Connected = fs.existsSync(R2_LOCAL_DIR);
@@ -2109,10 +2247,14 @@ ${entries
       saveD1Store(store);
     }
 
+    const liveAuthorsMap = resolveLiveAuthorsBatchSync(
+      row.is_anonymous ? [] : [row.author_uid],
+      store
+    );
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     return res.status(200).json({
       success: true,
-      post: rowToCommonsPost(row, user?.uid),
+      post: rowToCommonsPost(row, user?.uid, liveAuthorsMap),
     });
   });
 
@@ -2401,29 +2543,71 @@ ${entries
     const postId = extractIdFromSlugOrId(slugOrId);
     const store = loadD1Store();
 
-    const comments = store.comments
+    const matchingComments = store.comments
       .filter((c) => c.post_id === postId || c.post_id === slugOrId)
-      .sort((a, b) => a.created_at - b.created_at)
-      .map((c) => ({
+      .sort((a, b) => a.created_at - b.created_at);
+
+    // ONE batched lookup for all non-anonymous comment authors on this post
+    const liveAuthors = resolveLiveAuthorsBatchSync(
+      matchingComments.map((c) => (c.is_anonymous ? null : c.author_uid)),
+      store
+    );
+
+    const comments = matchingComments.map((c) => {
+      const isAnon = Boolean(c.is_anonymous);
+      const authorUid = isAnon ? null : c.author_uid;
+      const liveAuthor = !isAnon && authorUid ? liveAuthors.get(authorUid) : undefined;
+      const isDeleted = Boolean(liveAuthor?.isDeleted);
+
+      const resolvedName = isAnon
+        ? 'Anonymous Student'
+        : isDeleted
+        ? c.author_name || 'Student'
+        : liveAuthor?.displayName || liveAuthor?.username || c.author_name || 'Student';
+
+      const resolvedAvatar = isAnon
+        ? null
+        : isDeleted
+        ? sanitizeStoreAvatarId(c.author_equipped_avatar, c.author_avatar)
+        : sanitizeStoreAvatarId(liveAuthor?.avatar, c.author_equipped_avatar, c.author_avatar);
+
+      const resolvedFrame = isAnon
+        ? null
+        : !isDeleted && liveAuthor?.frame !== undefined && liveAuthor.frame !== null
+        ? liveAuthor.frame
+        : c.author_frame;
+
+      const resolvedRole = isAnon
+        ? 'student'
+        : !isDeleted && liveAuthor?.role
+        ? liveAuthor.role
+        : c.author_role;
+
+      const resolvedCustomRole = isAnon
+        ? null
+        : !isDeleted && liveAuthor?.customRole !== undefined && liveAuthor.customRole !== null
+        ? liveAuthor.customRole
+        : c.author_custom_role;
+
+      return {
         id: c.id,
         postId: c.post_id,
         text: c.text,
-        isAnonymous: Boolean(c.is_anonymous),
-        authorUid: c.is_anonymous ? null : c.author_uid,
-        authorName: c.is_anonymous ? 'Anonymous Student' : c.author_name,
-        authorAvatar: c.is_anonymous
-          ? null
-          : sanitizeStoreAvatarId(c.author_equipped_avatar, c.author_avatar),
-        authorFrame: c.is_anonymous ? null : c.author_frame,
-        authorEquippedAvatar: c.is_anonymous
-          ? null
-          : sanitizeStoreAvatarId(c.author_equipped_avatar, c.author_avatar),
+        isAnonymous: isAnon,
+        authorUid,
+        authorName: resolvedName,
+        authorUsername: isAnon || isDeleted ? null : liveAuthor?.username || null,
+        authorAvatar: resolvedAvatar,
+        authorFrame: resolvedFrame,
+        authorEquippedAvatar: resolvedAvatar,
         authorPhotoURL: null,
-        authorRole: c.is_anonymous ? 'student' : c.author_role,
-        authorCustomRole: c.is_anonymous ? null : c.author_custom_role,
+        authorRole: resolvedRole,
+        authorCustomRole: resolvedCustomRole,
         createdAt: new Date(c.created_at).toISOString(),
-      }));
+      };
+    });
 
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     return res.status(200).json({ success: true, comments });
   });
 
@@ -3612,9 +3796,23 @@ ${entries
       const followerIds = store.follows
         .filter((f) => f.following_uid === followingUid)
         .map((f) => f.follower_uid);
+      const liveMap = resolveLiveAuthorsBatchSync(followerIds, store);
+      const followers = followerIds.map((uid) => {
+        const live = liveMap.get(uid);
+        return {
+          uid,
+          username: live?.username || null,
+          displayName: live?.displayName || live?.username || 'Student',
+          avatar: live?.avatar || null,
+          frame: live?.frame || null,
+          role: live?.role || 'student',
+          customRole: live?.customRole || null,
+        };
+      });
       return res.status(200).json({
         success: true,
         followerIds,
+        followers,
         followersCount: followerIds.length,
       });
     }
@@ -3622,9 +3820,23 @@ ${entries
       const followingIds = store.follows
         .filter((f) => f.follower_uid === followerUid)
         .map((f) => f.following_uid);
+      const liveMap = resolveLiveAuthorsBatchSync(followingIds, store);
+      const following = followingIds.map((uid) => {
+        const live = liveMap.get(uid);
+        return {
+          uid,
+          username: live?.username || null,
+          displayName: live?.displayName || live?.username || 'Student',
+          avatar: live?.avatar || null,
+          frame: live?.frame || null,
+          role: live?.role || 'student',
+          customRole: live?.customRole || null,
+        };
+      });
       return res.status(200).json({
         success: true,
         followingIds,
+        following,
         followingCount: followingIds.length,
       });
     }
@@ -3711,7 +3923,7 @@ ${entries
     if (!Array.isArray(store.userWelcomeStatus)) store.userWelcomeStatus = [];
 
     const seenKeys = new Set<string>();
-    const userNotifs = store.notifications
+    const filteredNotifs = store.notifications
       .filter((n) => n.user_id === userId)
       .sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0))
       .filter((n) => {
@@ -3731,15 +3943,45 @@ ${entries
         seenKeys.add(dedupKey);
         return true;
       })
-      .slice(0, 100)
-      .map((n) => ({
+      .slice(0, 100);
+
+    // Batch-resolve all notification author profiles in ONE lookup
+    const liveAuthorsMap = resolveLiveAuthorsBatchSync(
+      filteredNotifs.map((n) => n.author_id),
+      store
+    );
+
+    const userNotifs = filteredNotifs.map((n) => {
+      const liveAuthor = n.author_id ? liveAuthorsMap.get(n.author_id) : undefined;
+      const useLive = Boolean(liveAuthor && !liveAuthor.isDeleted);
+      const resolvedAuthorName =
+        (useLive && (liveAuthor?.displayName || liveAuthor?.username)) ||
+        n.author_name ||
+        undefined;
+      const resolvedAuthorAvatar =
+        (useLive && liveAuthor?.avatar) || sanitizeStoreAvatarId(n.author_avatar);
+      const resolvedAuthorFrame =
+        (useLive && liveAuthor?.frame) || n.author_frame || null;
+
+      let rawTitle = String(n.title || '').replace(
+        /Congratulations\s+(?:undefined|null|\[object Object\])\s*!/gi,
+        'Congratulations!'
+      );
+      if (
+        useLive &&
+        resolvedAuthorName &&
+        n.author_name &&
+        n.author_name !== resolvedAuthorName &&
+        rawTitle.startsWith(n.author_name)
+      ) {
+        rawTitle = resolvedAuthorName + rawTitle.slice(n.author_name.length);
+      }
+
+      return {
         id: n.id,
         userId: n.user_id,
         type: n.type || 'following_post',
-        title: String(n.title || '').replace(
-          /Congratulations\s+(?:undefined|null|\[object Object\])\s*!/gi,
-          'Congratulations!'
-        ),
+        title: rawTitle,
         message: String(n.message || '').replace(
           /Congratulations\s+(?:undefined|null|\[object Object\])\s*!/gi,
           'Congratulations!'
@@ -3748,13 +3990,15 @@ ${entries
         read: Boolean(n.read),
         isPinned: Boolean(n.is_pinned),
         authorId: n.author_id || undefined,
-        authorName: n.author_name || undefined,
-        authorAvatar: sanitizeStoreAvatarId(n.author_avatar),
-        authorFrame: n.author_frame || null,
+        authorName: resolvedAuthorName,
+        authorUsername: (useLive && liveAuthor?.username) || undefined,
+        authorAvatar: resolvedAuthorAvatar,
+        authorFrame: resolvedAuthorFrame,
         postId: n.post_id || undefined,
         postType: n.post_type || undefined,
         createdAtMs: Number(n.created_at || Date.now()),
-      }));
+      };
+    });
 
     const readAnnouncementIds = new Set<string>(
       store.userReadAnnouncements
@@ -6877,10 +7121,18 @@ ${entries
     return 'Student';
   }
 
-  function resolveLeaderboardDisplayName(attemptRow: any, store: any): string {
+  function resolveLeaderboardDisplayName(
+    attemptRow: any,
+    store: any,
+    liveAuthorsMap?: Map<string, LiveAuthorResolved>
+  ): string {
+    const uid = String(attemptRow?.userUid ?? attemptRow?.user_uid ?? attemptRow?.studentUid ?? '').trim();
+    const live = uid && liveAuthorsMap ? liveAuthorsMap.get(uid) : undefined;
+    if (live && !live.isDeleted && (live.displayName || live.username)) {
+      return String(live.displayName || live.username);
+    }
     const rawStored = String(attemptRow?.userName ?? attemptRow?.user_name ?? attemptRow?.studentName ?? '').trim();
     if (rawStored) return rawStored;
-    const uid = String(attemptRow?.userUid ?? attemptRow?.user_uid ?? attemptRow?.studentUid ?? '').trim();
     if (uid && Array.isArray(store?.userRoles)) {
       const roleEntry = store.userRoles.find((r: any) => r.uid === uid);
       const email = String(roleEntry?.email || '').trim();
@@ -7640,28 +7892,37 @@ ${entries
   const handleTestResultsOrLeaderboard = async (req: Request, res: Response) => {
     const store = loadD1Store() as any;
     const testId = decodeURIComponent(String(req.params.id || ''));
-    const list = (store.testAttempts || [])
+    const filtered = (store.testAttempts || [])
       .filter((a: any) => String(a.testId || a.test_id || '') === testId)
       .sort(
         (a: any, b: any) =>
           Number(b.percentage || 0) - Number(a.percentage || 0) ||
           Number(b.score || 0) - Number(a.score || 0) ||
           Number(a.timeTakenSeconds || 0) - Number(b.timeTakenSeconds || 0)
-      )
-      .map((a: any, idx: number) => {
-        const resolvedName = resolveLeaderboardDisplayName(a, store);
-        const { gradedQuestions: _omitGraded, ...publicFields } = a;
-        return {
-          ...publicFields,
-          testId: a.testId || a.test_id,
-          userUid: a.userUid || a.user_uid,
-          userName: resolvedName,
-          studentName: resolvedName,
-          name: resolvedName,
-          userAvatar: sanitizeStoreAvatarId(a.userAvatar, a.user_avatar),
-          rank: idx + 1,
-        };
-      });
+      );
+    const liveAuthorsMap = resolveLiveAuthorsBatchSync(
+      filtered.map((a: any) => a.userUid || a.user_uid),
+      store
+    );
+    const list = filtered.map((a: any, idx: number) => {
+      const uid = String(a.userUid || a.user_uid || '');
+      const live = uid ? liveAuthorsMap.get(uid) : undefined;
+      const resolvedName = resolveLeaderboardDisplayName(a, store, liveAuthorsMap);
+      const { gradedQuestions: _omitGraded, ...publicFields } = a;
+      return {
+        ...publicFields,
+        testId: a.testId || a.test_id,
+        userUid: uid,
+        username: (live && !live.isDeleted && live.username) || undefined,
+        userName: resolvedName,
+        studentName: resolvedName,
+        name: resolvedName,
+        userAvatar:
+          (live && !live.isDeleted && live.avatar) ||
+          sanitizeStoreAvatarId(a.userAvatar, a.user_avatar),
+        rank: idx + 1,
+      };
+    });
     return res.status(200).json({ results: list });
   };
 
@@ -7671,18 +7932,26 @@ ${entries
   app.get('/api/leaderboard/grand-line', (_req: Request, res: Response) => {
     const store = loadD1Store() as any;
     const attempts = store.testAttempts || [];
+    const liveAuthorsMap = resolveLiveAuthorsBatchSync(
+      attempts.map((a: any) => a.userUid || a.user_uid),
+      store
+    );
     const byUser = new Map<string, any>();
     for (const a of attempts) {
       const uid = String(a.userUid || a.user_uid || '');
       if (!uid) continue;
-      const resolvedName = resolveLeaderboardDisplayName(a, store);
-      const avatar = sanitizeStoreAvatarId(a.userAvatar, a.user_avatar);
+      const live = liveAuthorsMap.get(uid);
+      const resolvedName = resolveLeaderboardDisplayName(a, store, liveAuthorsMap);
+      const avatar =
+        (live && !live.isDeleted && live.avatar) ||
+        sanitizeStoreAvatarId(a.userAvatar, a.user_avatar);
       const timeSec = Number(a.timeTakenSeconds ?? a.time_taken_seconds ?? 0);
       const existing = byUser.get(uid);
       if (!existing) {
         byUser.set(uid, {
           uid,
           userUid: uid,
+          username: (live && !live.isDeleted && live.username) || undefined,
           displayName: resolvedName,
           userName: resolvedName,
           studentName: resolvedName,
@@ -7733,7 +8002,24 @@ ${entries
   app.get('/api/crews', (_req: Request, res: Response) => {
     const store = loadD1Store() as any;
     if (!Array.isArray(store.crews)) store.crews = [];
-    return res.status(200).json({ crews: store.crews });
+    const liveMap = resolveLiveAuthorsBatchSync(
+      store.crews.map((c: any) => c.captainUid),
+      store
+    );
+    const crews = store.crews.map((c: any) => {
+      const live = c.captainUid ? liveMap.get(c.captainUid) : undefined;
+      const useLive = Boolean(live && !live.isDeleted);
+      return {
+        ...c,
+        captainName:
+          (useLive && (live?.displayName || live?.username)) ||
+          c.captainName ||
+          'Captain',
+        captainUsername: (useLive && live?.username) || c.captainUsername || undefined,
+        captainAvatar: (useLive && live?.avatar) || c.captainAvatar || null,
+      };
+    });
+    return res.status(200).json({ crews });
   });
 
   app.get('/api/crews/mine', async (req: Request, res: Response) => {
@@ -7749,8 +8035,35 @@ ${entries
       if (m) crew = store.crews.find((c: any) => c.id === m.crewId);
     }
     if (!crew) return res.status(200).json({ crew: null, members: [] });
-    const members = store.crewMembers.filter((cm: any) => cm.crewId === crew.id);
-    return res.status(200).json({ crew, members });
+    const rawMembers = store.crewMembers.filter((cm: any) => cm.crewId === crew.id);
+    const liveMap = resolveLiveAuthorsBatchSync(
+      [crew.captainUid, ...rawMembers.map((m: any) => m.userUid)],
+      store
+    );
+    const capLive = crew.captainUid ? liveMap.get(crew.captainUid) : undefined;
+    const hydratedCrew = {
+      ...crew,
+      captainName:
+        (capLive && !capLive.isDeleted && (capLive.displayName || capLive.username)) ||
+        crew.captainName ||
+        'Captain',
+      captainUsername: (capLive && !capLive.isDeleted && capLive.username) || undefined,
+      captainAvatar: (capLive && !capLive.isDeleted && capLive.avatar) || crew.captainAvatar || null,
+    };
+    const members = rawMembers.map((m: any) => {
+      const live = m.userUid ? liveMap.get(m.userUid) : undefined;
+      const useLive = Boolean(live && !live.isDeleted);
+      return {
+        ...m,
+        userName:
+          (useLive && (live?.displayName || live?.username)) ||
+          m.userName ||
+          'Student',
+        username: (useLive && live?.username) || m.username || undefined,
+        userAvatar: (useLive && live?.avatar) || m.userAvatar || null,
+      };
+    });
+    return res.status(200).json({ crew: hydratedCrew, members });
   });
 
   app.post('/api/crews', async (req: Request, res: Response) => {
@@ -7837,7 +8150,24 @@ ${entries
   app.get('/api/crews/:id/members', async (req: Request, res: Response) => {
     const store = loadD1Store() as any;
     const crewId = decodeURIComponent(String(req.params.id || ''));
-    const members = (store.crewMembers || []).filter((m: any) => m.crewId === crewId);
+    const rawMembers = (store.crewMembers || []).filter((m: any) => m.crewId === crewId);
+    const liveMap = resolveLiveAuthorsBatchSync(
+      rawMembers.map((m: any) => m.userUid),
+      store
+    );
+    const members = rawMembers.map((m: any) => {
+      const live = m.userUid ? liveMap.get(m.userUid) : undefined;
+      const useLive = Boolean(live && !live.isDeleted);
+      return {
+        ...m,
+        userName:
+          (useLive && (live?.displayName || live?.username)) ||
+          m.userName ||
+          'Student',
+        username: (useLive && live?.username) || m.username || undefined,
+        userAvatar: (useLive && live?.avatar) || m.userAvatar || null,
+      };
+    });
     return res.status(200).json({ members });
   });
 
@@ -9978,6 +10308,59 @@ ${entries
   app.post('/api/admin/coupons', delegateToEconomyWorker);
   app.patch('/api/admin/coupons', delegateToEconomyWorker);
   app.put('/api/admin/coupons', delegateToEconomyWorker);
+
+  const delegateToAuthWorker = async (req: Request, res: Response) => {
+    try {
+      const { handleAuthApiRequest } = await import('../../functions/api/auth/[[path]]');
+      const authHeader = String(req.headers.authorization || '').trim();
+      const targetPath = req.originalUrl || req.url || req.path || '/api/auth/resolve-profiles';
+      const fullUrl = targetPath.startsWith('http')
+        ? targetPath
+        : `http://localhost:3000${targetPath.startsWith('/') ? '' : '/'}${targetPath}`;
+      const method = String(req.method || 'GET').toUpperCase();
+      const webReq = new Request(fullUrl, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authHeader ? { Authorization: authHeader } : {}),
+          ...(req.headers['x-guest-session']
+            ? { 'X-Guest-Session': String(req.headers['x-guest-session']) }
+            : {}),
+          ...(req.headers['x-device-id']
+            ? { 'X-Device-Id': String(req.headers['x-device-id']) }
+            : {}),
+          ...(req.headers.cookie ? { Cookie: String(req.headers.cookie) } : {}),
+        },
+        body:
+          method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS'
+            ? JSON.stringify(req.body || {})
+            : undefined,
+      });
+      const webRes = await handleAuthApiRequest({
+        request: webReq,
+        env: {
+          DB: getSharedLocalD1Database(),
+          FIREBASE_SERVICE_ACCOUNT: process.env.FIREBASE_SERVICE_ACCOUNT,
+          GOOGLE_SERVICE_ACCOUNT_KEY: process.env.GOOGLE_SERVICE_ACCOUNT_KEY,
+          FIREBASE_PROJECT_ID,
+          FIREBASE_DATABASE_ID: FIRESTORE_DATABASE_ID,
+        },
+      });
+      const payload = (await webRes.json().catch(() => ({}))) as Record<string, any>;
+      return res.status(webRes.status).json(payload);
+    } catch (err: any) {
+      return res.status(500).json({
+        ok: false,
+        error: err?.message || 'Auth worker error',
+      });
+    }
+  };
+
+  app.post('/api/auth/profile-sync', delegateToAuthWorker);
+  app.get('/api/auth/resolve-profiles', delegateToAuthWorker);
+  app.post('/api/auth/username-register', delegateToAuthWorker);
+  app.get('/api/auth/username-check', delegateToAuthWorker);
+  app.get('/api/auth/username-suggest', delegateToAuthWorker);
 }
 
 const AUTHENTICATED_APP_ROUTE_PREFIXES = [

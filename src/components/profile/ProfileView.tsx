@@ -37,8 +37,16 @@ import {
   type ChatPermissionState,
 } from '@/services/chatService';
 
-// Fast in-memory cache for instant profile reopening
+// Fast in-memory cache for instant profile reopening (kept in sync via subscribePublicProfile)
 const profileMemoryCache = new Map<string, { profile: PublicProfile; timestamp: number }>();
+
+export function invalidateProfileMemoryCache(uid?: string): void {
+  if (!uid) {
+    profileMemoryCache.clear();
+    return;
+  }
+  profileMemoryCache.delete(uid);
+}
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
@@ -48,7 +56,12 @@ import { WalletModal } from './WalletModal';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
-import { getPublicProfile, syncPublicProfile } from '@/services/publicProfileService';
+import {
+  getPublicProfile,
+  syncPublicProfile,
+  subscribePublicProfile,
+  broadcastPublicProfileUpdate,
+} from '@/services/publicProfileService';
 import { followUser, unfollowUser, isFollowing, getFollowCounts } from '@/services/followService';
 import { getRankTitle } from '@/config/rankLadder';
 import {
@@ -291,17 +304,48 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       if (!uid) return;
 
       try {
-        // Read users/{uid}, publicProfiles/{uid}, and wallets/{uid} in parallel.
+        // Read users/{uid}, publicProfiles/{uid}, wallets/{uid}, and D1 live profile in parallel.
         const userDocRef = doc(db, 'users', uid);
-        const [userSnap, publicSnap, walletSnap] = await Promise.all([
+        const [userSnap, publicSnap, walletSnap, d1LiveRes] = await Promise.all([
           getDoc(userDocRef).catch(() => null),
           getDoc(doc(db, 'publicProfiles', uid)).catch(() => null),
           getDoc(doc(db, 'wallets', uid)).catch(() => null),
+          fetch(`/api/auth/resolve-profiles?uids=${encodeURIComponent(uid)}`, {
+            headers: { Accept: 'application/json' },
+          })
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null),
         ]);
 
-        const uData = userSnap && userSnap.exists() ? userSnap.data() : null;
-        const pubData = publicSnap && publicSnap.exists() ? publicSnap.data() : null;
+        const rawUData = userSnap && userSnap.exists() ? userSnap.data() : null;
+        const rawPubData = publicSnap && publicSnap.exists() ? publicSnap.data() : null;
         const walletData = walletSnap && walletSnap.exists() ? walletSnap.data() : null;
+        const d1Live = d1LiveRes?.ok && d1LiveRes?.profiles?.[uid] ? d1LiveRes.profiles[uid] : null;
+
+        const uData = rawUData || d1Live
+          ? {
+              ...(rawUData || {}),
+              ...(d1Live?.username ? { username: d1Live.username } : {}),
+              ...(d1Live?.displayName ? { displayName: d1Live.displayName } : {}),
+              ...(d1Live?.bio !== null && d1Live?.bio !== undefined ? { bio: d1Live.bio } : {}),
+              ...(d1Live?.status !== null && d1Live?.status !== undefined ? { status: d1Live.status } : {}),
+              ...(d1Live?.accent ? { accent: d1Live.accent } : {}),
+            }
+          : null;
+        const pubData = rawPubData || d1Live
+          ? {
+              ...(rawPubData || {}),
+              ...(d1Live?.username ? { username: d1Live.username } : {}),
+              ...(d1Live?.displayName ? { displayName: d1Live.displayName } : {}),
+              ...(d1Live?.avatar ? { avatar: d1Live.avatar, equippedAvatar: d1Live.avatar } : {}),
+              ...(d1Live?.frame ? { frame: d1Live.frame, equippedFrame: d1Live.frame } : {}),
+              ...(d1Live?.role ? { role: d1Live.role } : {}),
+              ...(d1Live?.customRole ? { customRole: d1Live.customRole } : {}),
+              ...(d1Live?.bio !== null && d1Live?.bio !== undefined ? { bio: d1Live.bio } : {}),
+              ...(d1Live?.status !== null && d1Live?.status !== undefined ? { status: d1Live.status } : {}),
+              ...(d1Live?.accent ? { accent: d1Live.accent } : {}),
+            }
+          : null;
 
         // 2. Fallback check: Read author details from recent post if user doc lacks displayName / photo
         let postAuthorName: string | null = null;
@@ -329,18 +373,26 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         }
 
         const candidateName =
-          uData?.displayName ||
-          uData?.username ||
-          uData?.name ||
-          pubData?.displayName ||
-          pubData?.username ||
-          (uid === currentUid ? ownProfile?.displayName || ownProfile?.username || authProfile?.displayName || authProfile?.username || authUser?.displayName : null) ||
+          (uid === currentUid
+            ? ownProfile?.displayName ||
+              uData?.displayName ||
+              pubData?.displayName ||
+              ownProfile?.username ||
+              uData?.username ||
+              pubData?.username ||
+              authProfile?.displayName ||
+              authProfile?.username ||
+              authUser?.displayName
+            : uData?.displayName ||
+              pubData?.displayName ||
+              uData?.username ||
+              pubData?.username ||
+              uData?.name) ||
           postAuthorName;
         const candidateUsername =
-          uData?.username ||
-          pubData?.username ||
-          (uid === currentUid ? ownProfile?.username || authProfile?.username : null) ||
-          null;
+          (uid === currentUid
+            ? ownProfile?.username || uData?.username || pubData?.username || authProfile?.username
+            : uData?.username || pubData?.username) || null;
         const candidateEmail = uData?.email || pubData?.email || (uid === currentUid ? authUser?.email : null);
 
         const isAdminAccountUser =
@@ -529,8 +581,33 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
     fetchProfileData();
 
+    // Subscribe to live public profile broadcasts so any profile edit immediately updates this view
+    const unsubLiveProfile = subscribePublicProfile(resolvedUid, (updatedProf) => {
+      if (!isMounted || !updatedProf) return;
+      setProfile((prev) => {
+        if (!prev) return prev;
+        const merged: PublicProfile = {
+          ...prev,
+          displayName: updatedProf.displayName || prev.displayName,
+          ...(updatedProf.username ? { username: updatedProf.username } : {}),
+          bio: updatedProf.bio ?? prev.bio,
+          status: updatedProf.status ?? prev.status,
+          accent: updatedProf.accent || prev.accent,
+          avatar: updatedProf.avatar ?? prev.avatar,
+          frame: updatedProf.frame ?? prev.frame,
+          equipped: {
+            ...(prev.equipped || { effect: null, frame: null, nameplate: null, avatar: null, banner: null }),
+            ...(updatedProf.equipped || {}),
+          },
+        };
+        profileMemoryCache.set(resolvedUid, { profile: merged, timestamp: Date.now() });
+        return merged;
+      });
+    });
+
     return () => {
       isMounted = false;
+      unsubLiveProfile();
     };
   }, [targetUid, currentUid, isAdmin, isGuest, isViewingSelf, ownProfile, authProfile, authUser?.displayName, authUser?.email]);
 
@@ -855,7 +932,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     }
   };
 
-  // Edit Profile submission
+  // Edit Profile submission (server-confirmed via updateProfileData)
   const handleSaveProfileUpdates = async (updates: {
     displayName: string;
     bio: string;
@@ -864,13 +941,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   }) => {
     if (!currentUid) return;
     await updateProfileData(updates);
-    if (!isGuest && !currentUid.startsWith('guest_')) {
-      await syncPublicProfile(currentUid, {
-        ...ownProfile,
-        ...updates,
-      });
-    }
-    setProfile((prev) => (prev ? { ...prev, ...updates } : null));
+    setProfile((prev) => {
+      if (!prev) return null;
+      const next = { ...prev, ...updates };
+      profileMemoryCache.set(currentUid, { profile: next, timestamp: Date.now() });
+      return next;
+    });
+    broadcastPublicProfileUpdate(currentUid, updates);
   };
 
   // Unequip cosmetic item
