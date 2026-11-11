@@ -143,7 +143,7 @@ export function CrewPage() {
         className="mx-auto w-full max-w-5xl px-3.5 sm:px-6 lg:px-8 pt-6 space-y-6 flex-1"
         style={{
           paddingBottom: isLoggedIn
-            ? 'calc(110px + env(safe-area-inset-bottom, 0px))'
+            ? 'var(--sdn-page-pb)'
             : '48px',
         }}
       >

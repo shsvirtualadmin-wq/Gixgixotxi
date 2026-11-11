@@ -7551,158 +7551,243 @@ html:not(.dark) .zenryu-stage--active {
 
 /* ==========================================================================
    STUDENT DASHBOARD BOTTOM NAVIGATION DOCK (.sdn-*)
+   iOS Liquid Glass Pop-Out Bubble + Responsive Sizing
    ========================================================================== */
+
+:root {
+  /* Mobile (< 768px): --th 62px + --pad 9px * 2 = 80px dock height + 16px bottom offset + 24px clearance = 120px */
+  --sdn-page-pb: calc(120px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 768px) {
+  :root {
+    /* Tablet (>= 768px): --th 72px + --pad 11px * 2 = 94px dock height + 24px bottom offset + 24px clearance = 142px */
+    --sdn-page-pb: calc(142px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (min-width: 1100px) {
+  :root {
+    /* Laptop (>= 1100px): --th 80px + --pad 13px * 2 = 106px dock height + 24px bottom offset + 24px clearance = 154px */
+    --sdn-page-pb: calc(154px + env(safe-area-inset-bottom, 0px));
+  }
+}
 
 :root,
 .dark,
 [data-theme="dark"] {
-  --sdn-dock-bg: rgba(22, 22, 26, 0.5);
+  --sdn-plate-bg: rgba(24, 24, 29, 0.42);
+  --sdn-gi-bg: rgba(225, 29, 46, 0.34);
   --sdn-icon-muted: #9a9aa3;
 }
 
 .light,
 [data-theme="light"] {
-  --sdn-dock-bg: rgba(255, 255, 255, 0.55);
+  --sdn-plate-bg: rgba(255, 255, 255, 0.5);
+  --sdn-gi-bg: rgba(212, 20, 42, 0.3);
   --sdn-icon-muted: #5d5d66;
 }
 
 @media (prefers-color-scheme: light) {
   :root:not(.dark):not([data-theme="dark"]) {
-    --sdn-dock-bg: rgba(255, 255, 255, 0.55);
+    --sdn-plate-bg: rgba(255, 255, 255, 0.5);
+    --sdn-gi-bg: rgba(212, 20, 42, 0.3);
     --sdn-icon-muted: #5d5d66;
   }
 }
 
-/* Dock container: fully rounded pill, padding 7px, blur(24px) saturate(1.8), glass edge + shadow */
+/* Dock wrapper: position: fixed, NO filter, NO backdrop-filter, NO opacity < 1, NO overflow: hidden.
+   Contains THREE SIBLINGS (.plate, .g, .tabs), never nested. */
 .sdn-dock {
-  position: relative;
-  width: 100%;
-  height: 56px;
-  padding: 7px;
+  --pad: 9px;
+  --gap: 6px;
+  --th: 62px;
+  --ic: 25px;
+
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  margin-inline: auto;
+  z-index: 90;
+
+  width: calc(100vw - 20px);
+  max-width: 560px;
+  height: calc(var(--th) + var(--pad) * 2);
+  padding: var(--pad);
   border-radius: 9999px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background-color: var(--sdn-dock-bg);
-  -webkit-backdrop-filter: blur(24px) saturate(1.8);
-  backdrop-filter: blur(24px) saturate(1.8);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
-    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.6),
-    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.3),
-    0 14px 34px -12px rgba(0, 0, 0, 0.55);
+  box-sizing: border-box;
+
+  /* Strictly no filter or clipping on the wrapper so .plate and .gi both sample the page behind */
+  filter: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  overflow: visible;
+
   user-select: none;
   -webkit-user-select: none;
   touch-action: pan-y;
-  overflow: visible;
 }
 
-/* Red sliding glass bubble behind icons — positioned via left & right edges */
-.sdn-bubble {
+/* Tablet (768px and up): --pad 11px, --gap 12px, --th 72px, --ic 29px, each tab ~76px wide */
+@media (min-width: 768px) {
+  .sdn-dock {
+    --pad: 11px;
+    --gap: 12px;
+    --th: 72px;
+    --ic: 29px;
+
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    width: max-content;
+    max-width: calc(100vw - 32px);
+  }
+}
+
+/* Laptop (1100px and up): --pad 13px, --gap 18px, --th 80px, --ic 33px, each tab ~84px wide */
+@media (min-width: 1100px) {
+  .sdn-dock {
+    --pad: 13px;
+    --gap: 18px;
+    --th: 80px;
+    --ic: 33px;
+
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    width: max-content;
+    max-width: calc(100vw - 48px);
+  }
+}
+
+/* Sibling (a): .plate — the dock's glass background & edge */
+.sdn-dock > .plate {
   position: absolute;
-  top: 7px;
-  bottom: 7px;
-  left: 7px;
-  right: 7px;
+  inset: 0;
   border-radius: 9999px;
   z-index: 1;
   pointer-events: none;
-  background-color: rgba(225, 29, 46, 0.58);
-  background-color: color-mix(in srgb, #e11d2e 58%, transparent);
-  -webkit-backdrop-filter: blur(3px) saturate(1.8);
-  backdrop-filter: blur(3px) saturate(1.8);
+  background: var(--sdn-plate-bg);
+  -webkit-backdrop-filter: blur(26px) saturate(1.9);
+  backdrop-filter: blur(26px) saturate(1.9);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.4),
-    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.6),
-    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.3),
-    0 3px 10px -3px rgba(0, 0, 0, 0.3);
-  scale: 1 1;
-  transition:
-    left 0.52s cubic-bezier(0.34, 1.3, 0.5, 1) 0.07s,
-    right 0.26s cubic-bezier(0.3, 1.5, 0.5, 1),
-    scale 0.36s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow 0.25s ease;
-  will-change: left, right, scale;
+    inset 0 0 0 1px rgba(255, 255, 255, 0.24),
+    inset 1.5px 1.5px 2px -1px rgba(255, 255, 255, 0.55),
+    inset -1.5px -1.5px 2px -1px rgba(255, 255, 255, 0.25),
+    0 18px 40px -12px rgba(0, 0, 0, 0.5);
 }
 
-/* Moving right: RIGHT edge leads fast (.26s), LEFT edge trails (.52s + .07s delay) */
-.sdn-bubble.dir-right {
+/* Sibling (b): .g — the bubble outer positioning track (above .plate, below .tabs) */
+.sdn-dock > .g {
+  position: absolute;
+  top: var(--pad);
+  height: var(--th);
+  left: var(--pad);
+  right: var(--pad);
+  z-index: 2;
+  pointer-events: none;
+  overflow: visible;
+  will-change: left, right;
+  /* Default liquid stretch (moving right) */
   transition:
-    right 0.26s cubic-bezier(0.3, 1.5, 0.5, 1),
-    left 0.52s cubic-bezier(0.34, 1.3, 0.5, 1) 0.07s,
-    scale 0.36s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow 0.25s ease;
+    right 0.3s cubic-bezier(0.3, 1.5, 0.5, 1),
+    left 0.55s cubic-bezier(0.34, 1.3, 0.5, 1) 0.07s;
 }
 
-/* Moving left: LEFT edge leads fast (.26s), RIGHT edge trails (.52s + .07s delay) */
-.sdn-bubble.dir-left {
+/* Moving right: RIGHT edge (leading) .3s cubic-bezier(.3,1.5,.5,1) and LEFT edge (trailing) .55s cubic-bezier(.34,1.3,.5,1) .07s */
+.sdn-dock > .g.dir-right {
   transition:
-    left 0.26s cubic-bezier(0.3, 1.5, 0.5, 1),
-    right 0.52s cubic-bezier(0.34, 1.3, 0.5, 1) 0.07s,
-    scale 0.36s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow 0.25s ease;
+    right 0.3s cubic-bezier(0.3, 1.5, 0.5, 1),
+    left 0.55s cubic-bezier(0.34, 1.3, 0.5, 1) 0.07s;
 }
 
-/* Vertical squash while travelling ( ~230ms before springing back to 1 with cubic-bezier(.34,1.56,.64,1) ) */
-.sdn-bubble.is-squashed {
-  scale: 1 0.9;
+/* Moving left: LEFT edge (leading) .3s cubic-bezier(.3,1.5,.5,1) and RIGHT edge (trailing) .55s cubic-bezier(.34,1.3,.5,1) .07s */
+.sdn-dock > .g.dir-left {
   transition:
-    right 0.26s cubic-bezier(0.3, 1.5, 0.5, 1),
-    left 0.52s cubic-bezier(0.34, 1.3, 0.5, 1) 0.07s,
-    scale 0.14s ease-out,
-    box-shadow 0.25s ease;
-}
-
-.sdn-bubble.dir-left.is-squashed {
-  transition:
-    left 0.26s cubic-bezier(0.3, 1.5, 0.5, 1),
-    right 0.52s cubic-bezier(0.34, 1.3, 0.5, 1) 0.07s,
-    scale 0.14s ease-out,
-    box-shadow 0.25s ease;
+    left 0.3s cubic-bezier(0.3, 1.5, 0.5, 1),
+    right 0.55s cubic-bezier(0.34, 1.3, 0.5, 1) 0.07s;
 }
 
 /* Instant placement on initial load / window resize */
-.sdn-bubble.is-instant {
+.sdn-dock > .g.is-instant {
   transition: none !important;
   animation: none !important;
 }
 
-/* Follow finger horizontally while dragging with zero transition delay */
-.sdn-bubble.is-dragging {
+/* Follow finger horizontally while dragging */
+.sdn-dock > .g.is-dragging {
   transition:
     left 0s linear,
-    right 0s linear,
-    scale 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow 0.2s ease !important;
+    right 0s linear !important;
 }
 
-/* When finger slows down for ~90ms during drag, ease back to normal width */
-.sdn-bubble.is-dragging.is-drag-relaxing {
+/* When finger pauses briefly during drag, ease stretch back smoothly */
+.sdn-dock > .g.is-dragging.is-drag-relaxing {
   transition:
-    left 0.18s cubic-bezier(0.25, 1, 0.5, 1),
-    right 0.18s cubic-bezier(0.25, 1, 0.5, 1),
-    scale 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow 0.2s ease !important;
+    left 0.16s cubic-bezier(0.25, 1, 0.5, 1),
+    right 0.16s cubic-bezier(0.25, 1, 0.5, 1) !important;
 }
 
-/* Press & hold: grows to 1.14x taller + deeper shadow */
-.sdn-bubble.is-pressed {
-  scale: 1 1.14;
+/* Inner bubble glass layer (.gi) */
+.sdn-dock > .g > .gi {
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: var(--sdn-gi-bg);
+  -webkit-backdrop-filter: blur(34px) saturate(2.6) brightness(1.15) contrast(1.05);
+  backdrop-filter: blur(34px) saturate(2.6) brightness(1.15) contrast(1.05);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.4),
-    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.6),
-    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.3),
-    0 22px 36px -10px rgba(0, 0, 0, 0.5);
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.5),
+    inset 3px 3px 5px -2px rgba(255, 255, 255, 0.8),
+    inset -3px -3px 6px -2px rgba(255, 255, 255, 0.35),
+    0 10px 24px -6px rgba(225, 29, 46, 0.38);
+  transform-origin: center center;
+  scale: 1 1;
+  will-change: scale;
+  /* Settling back: springy .55s cubic-bezier(.34,1.56,.64,1) */
+  transition:
+    scale 0.55s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.35s ease;
+}
+
+/* Pop-out state (class "out"): grows 1.2x wide and 1.62x tall past the dock's top, bottom, and rounded corners */
+.sdn-dock > .g.out > .gi,
+.sdn-dock > .g > .gi.out {
+  scale: 1.2 1.62;
+  box-shadow:
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.5),
+    inset 3px 3px 5px -2px rgba(255, 255, 255, 0.8),
+    inset -3px -3px 6px -2px rgba(255, 255, 255, 0.35),
+    0 26px 50px -12px rgba(225, 29, 46, 0.55);
+  /* Popping out: .22s ease-out */
+  transition:
+    scale 0.22s ease-out,
+    box-shadow 0.22s ease-out;
+}
+
+.sdn-dock > .g.is-instant > .gi {
+  transition: none !important;
+  animation: none !important;
+}
+
+/* Sibling (c): .tabs — the buttons container (position: relative, z-index above .g) */
+.sdn-dock > .tabs {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  width: 100%;
+  height: var(--th);
 }
 
 /* Tab button */
 .sdn-tab-btn {
   position: relative;
-  z-index: 2;
+  z-index: 3;
   flex: 1 1 0%;
   min-width: 0;
-  height: 100%;
-  padding: 0 4px;
+  height: var(--th);
+  padding: 0;
   border-radius: 9999px;
   display: flex;
   align-items: center;
@@ -7719,10 +7804,32 @@ html:not(.dark) .zenryu-stage--active {
   transition: color 0.16s ease;
 }
 
+.sdn-tab-btn[hidden],
+.sdn-tab-btn.is-hidden {
+  display: none !important;
+}
+
+@media (min-width: 768px) {
+  .sdn-tab-btn {
+    flex: 0 0 76px;
+    width: 76px;
+  }
+}
+
+@media (min-width: 1100px) {
+  .sdn-tab-btn {
+    flex: 0 0 84px;
+    width: 84px;
+  }
+}
+
 .sdn-tab-btn svg {
+  width: var(--ic);
+  height: var(--ic);
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+  flex-shrink: 0;
 }
 
 .sdn-tab-btn.is-active {
@@ -7733,19 +7840,37 @@ html:not(.dark) .zenryu-stage--active {
   box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px rgba(225, 29, 46, 0.75);
 }
 
+/* Low-end devices (deviceMemory <= 4 or hardwareConcurrency <= 4) or Smooth Mode ("Reduce effects"):
+   Lower both plate and bubble blur to blur(14px) */
+.sdn-dock.low-fx > .plate,
+:is(html.smooth-mode, html[data-smooth-mode="true"]) .sdn-dock > .plate {
+  -webkit-backdrop-filter: blur(14px) saturate(1.6);
+  backdrop-filter: blur(14px) saturate(1.6);
+}
+
+.sdn-dock.low-fx > .g > .gi,
+:is(html.smooth-mode, html[data-smooth-mode="true"]) .sdn-dock > .g > .gi {
+  -webkit-backdrop-filter: blur(14px) saturate(1.9) brightness(1.1);
+  backdrop-filter: blur(14px) saturate(1.9) brightness(1.1);
+}
+
+/* Reduced motion: move instantly with no pop-out, stretch, or wobble */
 @media (prefers-reduced-motion: reduce) {
-  .sdn-bubble,
-  .sdn-bubble.dir-right,
-  .sdn-bubble.dir-left,
-  .sdn-bubble.is-squashed,
-  .sdn-bubble.is-dragging,
-  .sdn-bubble.is-drag-relaxing,
+  .sdn-dock > .g,
+  .sdn-dock > .g.dir-right,
+  .sdn-dock > .g.dir-left,
+  .sdn-dock > .g.is-dragging,
+  .sdn-dock > .g.is-dragging.is-drag-relaxing,
+  .sdn-dock > .g > .gi,
+  .sdn-dock > .g.out > .gi,
+  .sdn-dock > .g > .gi.out,
   .sdn-tab-btn {
     transition: none !important;
     animation: none !important;
   }
-  .sdn-bubble.is-pressed,
-  .sdn-bubble.is-squashed {
+  .sdn-dock > .g > .gi,
+  .sdn-dock > .g.out > .gi,
+  .sdn-dock > .g > .gi.out {
     scale: 1 1 !important;
   }
 }
