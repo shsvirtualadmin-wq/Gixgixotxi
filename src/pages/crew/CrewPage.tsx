@@ -9,7 +9,6 @@ import {
   CrewBottomDock,
   getCrewBtnHandlers,
 } from '@/components/crew/CrewGlassPrimitives';
-import { DashboardTopBar } from '@/components/dashboard/DashboardTopBar';
 import {
   Users,
   Trophy,
@@ -21,7 +20,6 @@ import {
 } from 'lucide-react';
 import { MAX_CREW_MEMBERS } from '@/constants/limits';
 import { GRAND_LINE_NAME, NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
-import { Footer } from '@/components/layout/Footer';
 
 const CREW_FEATURES = [
   {
@@ -136,11 +134,8 @@ export function CrewPage() {
         description={`Study together in squads of up to ${MAX_CREW_MEMBERS} students. Take practice tests, track leaderboards, and build consistent daily preparation habits.`}
       />
 
-      {/* Shared Dashboard Sticky Glass Header Pill */}
-      <DashboardTopBar />
-
       <div
-        className="mx-auto w-full max-w-5xl px-3.5 sm:px-6 lg:px-8 pt-6 space-y-6 flex-1"
+        className="mx-auto w-full max-w-5xl px-3.5 sm:px-6 lg:px-8 pt-2 space-y-6 flex-1"
         style={{
           paddingBottom: isLoggedIn
             ? 'var(--sdn-page-pb)'
@@ -451,7 +446,7 @@ export function CrewPage() {
         </section>
       </div>
 
-      {isLoggedIn ? <CrewBottomDock /> : <Footer />}
+      {isLoggedIn && <CrewBottomDock />}
     </div>
   );
 }

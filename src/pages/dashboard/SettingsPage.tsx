@@ -2524,6 +2524,15 @@ export function SettingsPage() {
                 <p className="stg-footnote">
                   Your continued use of Boardly is governed by our Terms of Service and Privacy Policy ({LEGAL_VERSION_DISPLAY}, updated {LEGAL_LAST_UPDATED_LABEL}).
                 </p>
+                <div className="pt-3 text-center text-[11px] font-medium text-[var(--menu-subtext)]">
+                  <Link to="/terms" className="hover:text-[var(--menu-text)] hover:underline">
+                    Terms
+                  </Link>
+                  <span className="mx-1.5" aria-hidden="true">·</span>
+                  <Link to="/privacy" className="hover:text-[var(--menu-text)] hover:underline">
+                    Privacy
+                  </Link>
+                </div>
               </div>
             </div>
           )}

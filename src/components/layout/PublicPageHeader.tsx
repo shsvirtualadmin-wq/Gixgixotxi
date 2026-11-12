@@ -22,6 +22,7 @@ const ROUTE_TITLE_MAP: Record<string, string> = {
   '/commons/guidelines': 'Community Guidelines',
   '/material': 'Study Material Library',
   '/crew': 'Study Crew',
+  '/rewards': 'Rewards',
   '/store': 'Boardly Store',
   '/store/get-kobans': 'Get Kobans',
   '/captains': NAKAMA_CAPTAINS_NAME,

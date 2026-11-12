@@ -359,9 +359,6 @@ function AppInner() {
         <Route path="/practice" element={<DashboardShell />}>
           <Route index element={<PracticePage />} />
         </Route>
-        <Route path="/practice/:subject" element={<McqSubjectPage />} />
-        <Route path="/practice/:subject/:chapter" element={<McqChapterPage />} />
-        <Route path="/practice/:university/:subject/:chapter" element={<McqChapterPage />} />
         <Route path="/results" element={<DashboardShell />}>
           <Route index element={<ResultsListPage />} />
         </Route>
@@ -411,8 +408,7 @@ function AppInner() {
         {/* Onboarding — uses OnboardingShell */}
         <Route path="/onboarding" element={<OnboardingPage />} />
 
-        {/* Crew Standalone Portal */}
-        <Route path="/crew" element={<CrewPage />} />
+        {/* Crew Login-Only Routes */}
         <Route path="/crew/my" element={<DashboardShell />}>
           <Route index element={<CrewDashboardPage />} />
         </Route>
@@ -420,20 +416,16 @@ function AppInner() {
           <Route index element={<CrewDashboardPage />} />
         </Route>
         <Route path="/crews" element={<Navigate to="/crew" replace />} />
-        <Route path="/crew/apply" element={<CrewApplyPage />} />
-        <Route path="/join/:code" element={<JoinCrewPage />} />
         <Route path="/join" element={<Navigate to="/crew" replace />} />
 
-        {/* Nakama Captain Portals */}
+        {/* Nakama Captain Shortcuts */}
         <Route path="/captain" element={<Navigate to="/dashboard/captain" replace />} />
         <Route path="/captain/dashboard" element={<Navigate to="/dashboard/captain" replace />} />
-        <Route path="/captain/apply" element={<CaptainApplyPage />} />
-        <Route path="/captains/apply" element={<CaptainApplyPage />} />
         <Route path="/nakama-captain" element={<Navigate to="/captains" replace />} />
         <Route path="/crew-ambassador" element={<Navigate to="/captains" replace />} />
         <Route path="/ambassador" element={<Navigate to="/captains" replace />} />
 
-        {/* Public Multi-Page Website Routes (wrapped by PublicLayout with Navbar + Footer) */}
+        {/* Public & Session-Aware Routes (PublicLayout when signed-out, AppLayout without Footer when signed-in) */}
         <Route element={<PublicLayout />}>
           {/* Home, About, Features, How It Works, FAQ, Pricing, Legal, Contact */}
           <Route path="/" element={<LandingPage />} />
@@ -442,6 +434,14 @@ function AppInner() {
           <Route path="/how-it-works" element={<HowItWorksPage />} />
           <Route path="/faq" element={<FaqPage />} />
           <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/practice/:subject" element={<McqSubjectPage />} />
+          <Route path="/practice/:subject/:chapter" element={<McqChapterPage />} />
+          <Route path="/practice/:university/:subject/:chapter" element={<McqChapterPage />} />
+          <Route path="/crew" element={<CrewPage />} />
+          <Route path="/crew/apply" element={<CrewApplyPage />} />
+          <Route path="/join/:code" element={<JoinCrewPage />} />
+          <Route path="/captain/apply" element={<CaptainApplyPage />} />
+          <Route path="/captains/apply" element={<CaptainApplyPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/contact" element={<ContactPage />} />

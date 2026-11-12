@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Logo } from '@/components/ui/Logo';
 import { GRAND_LINE_NAME } from '@/constants/branding';
-import { useHomeUrl } from '@/utils/homeUrl';
+import { useHomeUrl, useSessionStatus } from '@/utils/homeUrl';
 
 export function Footer() {
+  const sessionStatus = useSessionStatus();
   const homeUrl = useHomeUrl();
   const wordmarkContainerRef = useRef<HTMLDivElement>(null);
   const wordmarkTextRef = useRef<HTMLSpanElement>(null);
@@ -12,6 +13,7 @@ export function Footer() {
 
   // Measure and fit "Boardly" wordmark to fit footer width at 360px, 390px, 430px and desktop
   useEffect(() => {
+    if (sessionStatus !== 'unauthenticated') return;
     const adjustWordmark = () => {
       const container = wordmarkContainerRef.current;
       const text = wordmarkTextRef.current;
@@ -46,7 +48,11 @@ export function Footer() {
       ro.disconnect();
       window.removeEventListener('resize', adjustWordmark);
     };
-  }, []);
+  }, [sessionStatus]);
+
+  if (sessionStatus !== 'unauthenticated') {
+    return null;
+  }
 
   return (
     <footer

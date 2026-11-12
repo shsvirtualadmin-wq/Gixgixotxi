@@ -1,82 +1,70 @@
 import { Outlet, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { isUserAuthenticated } from '@/utils/homeUrl';
+import { getSessionStatus } from '@/utils/homeUrl';
 import { BackgroundCanvas } from '../BackgroundCanvas';
 import { Navbar } from './Navbar';
 import { PublicPageHeader } from './PublicPageHeader';
 import { Footer } from './Footer';
-import { DashboardBottomNav } from '../dashboard/DashboardBottomNav';
+import { AppLayout } from './AppLayout';
 import { BoardlySuspenseBoundary } from '../ui/BoardlyLoader';
 
 /**
  * PublicLayout:
- * - Home page ('/'): Redirects authenticated users to '/dashboard/commons'. For public visitors, displays the floating pill top Navbar + Footer.
- * - Non-home public pages (Features, Store, Pricing, Nakama Captains, Grand Line, Contact, Kobans, Policies, Material):
- *   Display full-page content with compact PublicPageHeader (Back arrow + page title) instead of the floating top Navbar.
- * - Logged-in students visiting /store or /kobans keep the dashboard layout with DashboardBottomNav.
+ * - Resolves session state first: while session is still loading, renders neither layout
+ *   so the red marketing footer never flashes for signed-in users.
+ * - Signed-in users: delegates to AppLayout (app header, bottom nav where applicable, NO footer),
+ *   and redirects '/' to '/dashboard/commons'.
+ * - Signed-out visitors: renders the public header (Navbar on '/', PublicPageHeader on subpages)
+ *   and the red Boardly Footer.
  */
 export function PublicLayout() {
   const { user, profileLoading } = useAuth();
   const location = useLocation();
-  const isAuthenticated = isUserAuthenticated(user, profileLoading);
+  const sessionStatus = getSessionStatus(user, profileLoading);
 
-  const isHomePage = location.pathname === '/';
+  const pathname = location.pathname;
+  const isHomePage = pathname === '/';
 
-  // Route guard: if a logged-in user manually visits "/", redirect them to /dashboard/commons
-  if (isHomePage && isAuthenticated) {
-    return <Navigate to="/dashboard/commons" replace />;
+  // Do not show the footer for a moment while the session is still loading (render neither until known)
+  if (sessionStatus === 'loading') {
+    return (
+      <div
+        className="min-h-screen w-full"
+        style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
+      />
+    );
   }
 
+  // Signed-in session -> AppLayout without the footer
+  if (sessionStatus === 'authenticated') {
+    if (isHomePage) {
+      return <Navigate to="/dashboard/commons" replace />;
+    }
+    return <AppLayout />;
+  }
+
+  // Signed-out session -> PublicLayout with the red Footer
   const isStoreMainPage =
-    location.pathname === '/store' || location.pathname === '/store/get-kobans';
+    pathname === '/store' || pathname === '/store/get-kobans';
+  const isCommonsFeed =
+    pathname === '/commons' ||
+    pathname === '/commons/trending' ||
+    pathname === '/commons/following' ||
+    pathname.startsWith('/commons/subject/');
 
-  const isStoreOrKobans =
-    location.pathname.startsWith('/store') ||
-    location.pathname === '/kobans' ||
-    location.pathname === '/about-kobans';
-
-  const isContact = location.pathname === '/contact';
-  const isCommonsFeed = location.pathname === '/commons';
-  const isRewardsPage = location.pathname === '/rewards';
-
-  if (isRewardsPage) {
+  if (isStoreMainPage || isCommonsFeed) {
     return (
-      <BoardlySuspenseBoundary variant="page">
-        <Outlet />
-      </BoardlySuspenseBoundary>
-    );
-  }
-
-  const isCommonsPostDetail = location.pathname.startsWith('/commons/post/');
-
-  if (isStoreMainPage) {
-    return (
-      <div className="relative min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)] antialiased overflow-x-hidden">
+      <div
+        className="relative min-h-screen flex flex-col antialiased overflow-x-hidden"
+        style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
+      >
         <BackgroundCanvas />
-        <main className="flex-1 w-full flex flex-col pb-[var(--sdn-page-pb)]">
+        <main className="flex-1 w-full flex flex-col">
           <BoardlySuspenseBoundary variant="page">
             <Outlet />
           </BoardlySuspenseBoundary>
         </main>
-        {isAuthenticated && <DashboardBottomNav />}
-      </div>
-    );
-  }
-
-  const isDashboardAppRoute =
-    isCommonsFeed || Boolean(user && (isStoreOrKobans || isContact));
-
-  if (isDashboardAppRoute) {
-    return (
-      <div className="relative min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)] antialiased overflow-x-hidden">
-        <BackgroundCanvas />
-        <main className="flex-1 w-full max-w-6xl mx-auto px-3 sm:px-6 pt-3 sm:pt-4 pb-[var(--sdn-page-pb)] flex flex-col">
-          <BoardlySuspenseBoundary variant="page">
-            <Outlet />
-          </BoardlySuspenseBoundary>
-        </main>
-        {/* Floating bottom nav at the bottom (no top navbar hiding Commons search) */}
-        <DashboardBottomNav />
+        <Footer />
       </div>
     );
   }
@@ -96,7 +84,7 @@ export function PublicLayout() {
         </div>
       ) : (
         <main
-          className="flex-1 flex flex-col pb-[var(--sdn-page-pb)]"
+          className="flex-1 flex flex-col pb-12"
           style={{
             paddingTop: 'calc(64px + 24px + env(safe-area-inset-top, 0px))',
           }}
@@ -107,7 +95,6 @@ export function PublicLayout() {
         </main>
       )}
       <Footer />
-      {!isHomePage && (isAuthenticated || isCommonsPostDetail) && <DashboardBottomNav />}
     </div>
   );
 }

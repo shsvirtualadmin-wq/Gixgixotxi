@@ -13,8 +13,6 @@ import {
   AlertCircle,
   ExternalLink,
   ChevronDown,
-  Sun,
-  Moon,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -22,8 +20,6 @@ import {
   isEmailVerificationRequiredError,
 } from '@/components/auth/EmailVerificationRequiredCard';
 import { useWallet } from '@/hooks/useWallet';
-import { useTheme } from '@/hooks/useTheme';
-import { useHomeUrl } from '@/utils/homeUrl';
 import { PageMeta } from '@/components/ui/PageMeta';
 import {
   GlassCard,
@@ -69,15 +65,6 @@ const REWARDS_TABS: TabPillItem<RewardsTabId>[] = [
   { id: 'milestones', label: 'Milestones' },
   { id: 'invite', label: 'Invite' },
   { id: 'faq', label: 'FAQ' },
-];
-
-const TOP_NAV_LINKS = [
-  { to: '/mcqs', label: 'MCQs' },
-  { to: '/commons', label: 'Commons' },
-  { to: '/material', label: 'Material' },
-  { to: '/crew', label: 'Crew' },
-  { to: '/store', label: 'Store' },
-  { to: '/pricing', label: 'Pricing' },
 ];
 
 const FAQ_ITEMS = [
@@ -143,10 +130,8 @@ function getDiscPressHandlers() {
 export function RewardsPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const homeUrl = useHomeUrl();
   const { user, isAdmin, isGuest } = useAuth();
   const { balance: walletBalance, refreshWallet } = useWallet();
-  const { isDark, toggle: toggleTheme } = useTheme();
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
 
   // Tab state synced with URL hash (#checkin, #milestones, #invite, #faq)
@@ -647,7 +632,7 @@ export function RewardsPage() {
 
   return (
     <div
-      className="rewards-page-root min-h-screen w-full flex flex-col justify-between overflow-x-hidden transition-colors duration-150"
+      className="rewards-page-root min-h-screen w-full flex flex-col overflow-x-hidden transition-colors duration-150"
       style={{
         backgroundColor: 'var(--rw-bg)',
         color: 'var(--rw-text)',
@@ -659,78 +644,11 @@ export function RewardsPage() {
         canonicalPath="/rewards"
       />
 
-      {/* ─── SINGLE FLOATING PILL TOP NAVIGATION BAR ────────────────────── */}
-      <header
-        className="fixed top-0 inset-x-0 z-50 pointer-events-none select-none"
-        style={{
-          paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
-        }}
-      >
-        <div className="mx-auto w-full max-w-5xl px-4">
-          <nav
-            aria-label="Rewards Top Navigation"
-            className="pointer-events-auto w-full h-14 sm:h-16 px-4 sm:px-6 rounded-full border flex items-center justify-between gap-3 transition-colors duration-150"
-            style={{
-              backgroundColor: 'var(--rw-card)',
-              borderColor: 'var(--rw-border)',
-            }}
-          >
-            {/* Left: Boardly Wordmark in Doto */}
-            <Link
-              to={homeUrl}
-              {...getJellyHandlers()}
-              className="rw-jelly-btn font-dot text-xl sm:text-2xl font-extrabold tracking-tight shrink-0 rounded-full px-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--rw-red)]"
-              style={{ color: 'var(--rw-red)' }}
-              aria-label="Boardly"
-            >
-              Boardly
-            </Link>
-
-            {/* Center: Nav Links (hidden on mobile) */}
-            <div className="hidden md:flex items-center gap-1 lg:gap-2">
-              {TOP_NAV_LINKS.map((link) => (
-                <Link
-                  key={link.to}
-                  to={link.to}
-                  {...getJellyHandlers()}
-                  className="rw-jelly-btn px-3 py-1.5 rounded-full text-xs lg:text-sm font-heading font-semibold whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
-                  style={{ color: 'var(--rw-muted)' }}
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </div>
-
-            {/* Right: Clear Glass Theme Toggle + Clear Glass Home Button */}
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                data-testid="rewards-theme-toggle"
-                aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-                title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-                {...getJellyHandlers(false, toggleTheme)}
-                className="rw-jelly-btn rw-btn-clear-glass w-10 h-10 min-w-[40px] min-h-[40px] rounded-full flex items-center justify-center cursor-pointer shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
-              >
-                {isDark ? <Sun size={17} /> : <Moon size={17} />}
-              </button>
-
-              <Link
-                to={homeUrl}
-                {...getJellyHandlers()}
-                className="rw-jelly-btn rw-btn-clear-glass h-10 min-h-[40px] px-4 sm:px-5 rounded-full inline-flex items-center justify-center text-xs sm:text-sm font-heading font-bold whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
-              >
-                Home
-              </Link>
-            </div>
-          </nav>
-        </div>
-      </header>
-
       {/* ─── MAIN CONTENT ───────────────────────────────────────────────── */}
-      <main
-        className="mx-auto w-full max-w-2xl px-4 pb-16 space-y-6 flex-1"
+      <div
+        className="mx-auto w-full max-w-2xl px-4 pt-4 sm:pt-6 space-y-6 flex-1"
         style={{
-          paddingTop: 'calc(92px + env(safe-area-inset-top, 0px))',
+          paddingBottom: 'calc(96px + env(safe-area-inset-bottom, 0px))',
         }}
       >
         {/* ─── SUPER ADMIN BANNER WHEN MODE IS NOT "EVERYONE" ─────────────── */}
@@ -1985,71 +1903,7 @@ export function RewardsPage() {
             })}
           </section>
         )}
-      </main>
-
-      {/* ─── FLAT RED ROUNDED-TOP FOOTER (NO EXTRA NAV PADDING) ─────────── */}
-      <footer
-        className="w-full rounded-t-[28px] sm:rounded-t-[40px] border-t pt-12 sm:pt-16 px-4 select-none"
-        style={{
-          backgroundColor: 'var(--rw-red)',
-          borderColor: 'var(--rw-border)',
-          color: 'var(--rw-on-red)',
-          paddingBottom: 'calc(24px + env(safe-area-inset-bottom, 0px))',
-        }}
-      >
-        <div className="mx-auto w-full max-w-5xl space-y-8">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-            <div>
-              <Link
-                to={homeUrl}
-                {...getJellyHandlers()}
-                className="rw-jelly-btn font-dot text-2xl sm:text-3xl font-extrabold tracking-tight inline-block"
-                style={{ color: 'var(--rw-on-red)' }}
-              >
-                Boardly
-              </Link>
-              <p className="text-xs sm:text-sm mt-1 opacity-90">
-                Making education accessible to everyone. A project of SHS Virtual Academy.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {TOP_NAV_LINKS.map((link) => (
-                <Link
-                  key={link.to}
-                  to={link.to}
-                  {...getJellyHandlers()}
-                  className="rw-jelly-btn px-3 py-1.5 rounded-full text-xs font-heading font-semibold"
-                  style={{ color: 'var(--rw-on-red)' }}
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </div>
-          </div>
-
-          <div
-            className="border-t pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs opacity-90"
-            style={{ borderColor: 'rgba(255, 255, 255, 0.2)' }}
-          >
-            <span>&copy; {new Date().getFullYear()} Boardly Technologies. All rights reserved.</span>
-            <span>Asia/Karachi (PKT)</span>
-          </div>
-
-          <div className="w-full text-center overflow-hidden pt-2">
-            <span
-              className="font-dot font-extrabold block leading-none select-none pointer-events-none"
-              style={{
-                fontSize: 'clamp(48px, 18vw, 180px)',
-                color: 'var(--rw-on-red)',
-              }}
-              aria-hidden="true"
-            >
-              Boardly
-            </span>
-          </div>
-        </div>
-      </footer>
+      </div>
 
       {isUpgradeModalOpen && (
         <React.Suspense fallback={null}>

@@ -4,11 +4,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { auth } from '@/lib/firebase';
 
 const AUTH_CACHE_KEY = 'boardly_user_authenticated';
+const GUEST_TOKEN_CACHE_KEY = 'boardly_guest_session_token';
+
+export type SessionLayoutStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
 /**
  * Checks whether the current user is authenticated using the exact same auth state
  * as the rest of Boardly (`useAuth()` + Firebase `auth.currentUser` + the existing
- * `boardly_user_authenticated` flag in localStorage while auth state is still loading),
+ * `boardly_user_authenticated` or guest token flag in localStorage while auth state is still loading),
  * preventing any flash to "/" before login state is resolved.
  */
 export function isUserAuthenticated(
@@ -26,7 +29,10 @@ export function isUserAuthenticated(
 
   if (typeof window !== 'undefined') {
     try {
-      if (window.localStorage.getItem(AUTH_CACHE_KEY) === 'true') {
+      if (
+        window.localStorage.getItem(AUTH_CACHE_KEY) === 'true' ||
+        Boolean(window.localStorage.getItem(GUEST_TOKEN_CACHE_KEY))
+      ) {
         return true;
       }
     } catch {
@@ -40,6 +46,28 @@ export function isUserAuthenticated(
   }
 
   return false;
+}
+
+/**
+ * Resolves the tri-state session status so shared routes can avoid flashing
+ * the public footer while session state is still being determined.
+ */
+export function getSessionStatus(
+  user?: { uid?: string } | null,
+  profileLoading?: boolean
+): SessionLayoutStatus {
+  if (isUserAuthenticated(user, profileLoading)) {
+    return 'authenticated';
+  }
+  if (profileLoading) {
+    return 'loading';
+  }
+  return 'unauthenticated';
+}
+
+export function useSessionStatus(): SessionLayoutStatus {
+  const { user, profileLoading } = useAuth();
+  return getSessionStatus(user, profileLoading);
 }
 
 /**

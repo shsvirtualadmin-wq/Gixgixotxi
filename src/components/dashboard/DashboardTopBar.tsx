@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate, Link } from 'react-router-dom';
-import { Sun, Moon } from 'lucide-react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { Sun, Moon, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
@@ -18,16 +18,96 @@ import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { useProBadge } from '@/contexts/ProBadgeContext';
 import { clearOptimisticUserSnapshot } from '@/lib/swrCache';
+import { useSmartBack } from '@/utils/homeUrl';
 
 interface Props {
   sidebarCollapsed?: boolean;
+  showBackArrow?: boolean;
+  title?: string;
 }
 
-export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) {
+const SUBPAGE_TITLE_MAP: Record<string, string> = {
+  '/rewards': 'Rewards',
+  '/leaderboard': 'Leaderboard',
+  '/grand-line': 'Grand Line',
+  '/grand-line/about': 'Grand Line',
+  '/grand-line/leaderboard': 'Leaderboard',
+  '/arena': 'Live Arena',
+  '/pricing': 'Pricing',
+  '/captains': 'Captains',
+  '/nakama-captains': 'Captains',
+  '/captain/leaderboard': 'Standings',
+  '/captains/leaderboard': 'Standings',
+  '/captain/apply': 'Captain Apply',
+  '/captains/apply': 'Captain Apply',
+  '/crew/apply': 'Crew Apply',
+  '/material': 'Material',
+  '/study-material': 'Material',
+  '/mcqs': 'MCQs',
+  '/subjects': 'Subjects',
+  '/kobans': 'Kobans',
+  '/about-kobans': 'Kobans',
+  '/contact': 'Contact',
+  '/terms': 'Terms',
+  '/privacy': 'Privacy',
+  '/guidelines': 'Guidelines',
+  '/commons/guidelines': 'Guidelines',
+  '/commons/about': 'Commons',
+  '/about': 'About',
+  '/features': 'Features',
+  '/how-it-works': 'How It Works',
+  '/faq': 'FAQ',
+  '/verify': 'Verify',
+  '/search': 'Search',
+};
+
+export function DashboardTopBar({
+  sidebarCollapsed: _sidebarCollapsed,
+  showBackArrow,
+  title,
+}: Props) {
   const { signOutUser, isAdmin, isGuest } = useAuth();
   const { user, profile } = useUserProfile();
   const { openProfile } = useProfileModal();
   const navigate = useNavigate();
+  const location = useLocation();
+  const handleBack = useSmartBack();
+
+  const autoSubPageTitle =
+    title ||
+    SUBPAGE_TITLE_MAP[location.pathname] ||
+    (location.pathname.startsWith('/grand-line/')
+      ? 'Grand Line'
+      : location.pathname.startsWith('/tests/')
+      ? 'Grand Line'
+      : location.pathname.startsWith('/material/') ||
+        location.pathname.startsWith('/study-material/')
+      ? 'Material'
+      : location.pathname.startsWith('/mcqs/') ||
+        location.pathname.startsWith('/subjects/') ||
+        location.pathname.startsWith('/practice/')
+      ? 'Practice'
+      : location.pathname.startsWith('/captains/')
+      ? 'Captain'
+      : location.pathname.startsWith('/crew/') &&
+        location.pathname !== '/crew/my' &&
+        location.pathname !== '/crew/dashboard'
+      ? 'Crew'
+      : location.pathname.startsWith('/join/')
+      ? 'Join Crew'
+      : location.pathname.startsWith('/verify/')
+      ? 'Verify'
+      : location.pathname.startsWith('/u/') ||
+        location.pathname.startsWith('/profile/') ||
+        location.pathname.startsWith('/user/') ||
+        location.pathname.startsWith('/users/')
+      ? 'Profile'
+      : location.pathname.startsWith('/store/')
+      ? 'Store'
+      : undefined);
+
+  const shouldShowBackArrow =
+    showBackArrow !== undefined ? showBackArrow : Boolean(autoSubPageTitle);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
@@ -134,48 +214,70 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
         <div
           className="w-full max-w-5xl mx-auto min-w-0 box-border h-14 sm:h-[60px] px-3 rounded-full dashboard-glass-bar allow-backdrop-blur flex flex-row items-center justify-between gap-2 pointer-events-auto transition-all duration-200 overflow-hidden"
         >
-          {/* Left side: Boardly Doto logo and PRO pill */}
-          <div className="flex flex-col justify-center shrink-0 min-w-0">
-            <div className="inline-flex items-center gap-2 shrink-0 whitespace-nowrap">
-              <Link
-                to="/dashboard"
-                className="inline-flex items-center shrink-0 whitespace-nowrap select-none leading-none tracking-tight hover:opacity-90 transition-opacity text-[18px] min-[390px]:text-[20px] sm:text-[22px]"
-                style={{
-                  fontFamily: "'Doto', var(--font-dot), sans-serif",
-                  fontWeight: 800,
-                  color: 'var(--cw-red-text)',
-                }}
-                aria-label="Boardly Dashboard"
-              >
-                Boardly
-              </Link>
-
-              {isPro && effectiveProBadge && (
-                <span className="shrink-0 inline-flex items-center">
-                  <ProBadge
-                    design={effectiveProBadge}
-                    size="sm"
-                    animated
-                    priority
-                    className="ml-0.5 shrink-0"
-                  />
-                </span>
-              )}
-            </div>
-
-            {isAdmin && (
+          {/* Left side: Back arrow + Title (on sub-pages like /rewards) or Boardly Doto logo + PRO pill */}
+          <div className="flex items-center gap-2 shrink-0 min-w-0">
+            {shouldShowBackArrow && (
               <button
                 type="button"
-                onClick={() => navigate('/admin')}
-                className="inline-flex items-center text-[9px] leading-none font-bold hover:underline tracking-tight mt-0.5 text-left cursor-pointer w-fit whitespace-nowrap"
-                style={{
-                  fontFamily: 'var(--font-heading)',
-                  color: 'var(--cw-red-text)',
-                }}
+                onClick={handleBack}
+                aria-label="Go back"
+                title="Go back"
+                className="w-9 h-9 min-w-[36px] min-h-[36px] sm:w-10 sm:h-10 rounded-full dashboard-topbar-icon-btn flex items-center justify-center hover:opacity-90 transition-opacity cursor-pointer shrink-0"
               >
-                Admin Portal
+                <ArrowLeft size={18} strokeWidth={2} />
               </button>
             )}
+
+            <div className="flex flex-col justify-center shrink-0 min-w-0">
+              <div className="inline-flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap">
+                {autoSubPageTitle ? (
+                  <span
+                    className="inline-flex items-center shrink-0 whitespace-nowrap select-none leading-none tracking-tight text-[16px] min-[390px]:text-[18px] sm:text-[20px] font-heading font-extrabold text-[var(--text)] truncate max-w-[125px] sm:max-w-none"
+                  >
+                    {autoSubPageTitle}
+                  </span>
+                ) : (
+                  <Link
+                    to="/dashboard"
+                    className="inline-flex items-center shrink-0 whitespace-nowrap select-none leading-none tracking-tight hover:opacity-90 transition-opacity text-[18px] min-[390px]:text-[20px] sm:text-[22px]"
+                    style={{
+                      fontFamily: "'Doto', var(--font-dot), sans-serif",
+                      fontWeight: 800,
+                      color: 'var(--cw-red-text)',
+                    }}
+                    aria-label="Boardly Dashboard"
+                  >
+                    Boardly
+                  </Link>
+                )}
+
+                {isPro && effectiveProBadge && (
+                  <span className="shrink-0 inline-flex items-center">
+                    <ProBadge
+                      design={effectiveProBadge}
+                      size="sm"
+                      animated
+                      priority
+                      className="ml-0.5 shrink-0"
+                    />
+                  </span>
+                )}
+              </div>
+
+              {isAdmin && !autoSubPageTitle && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/admin')}
+                  className="inline-flex items-center text-[9px] leading-none font-bold hover:underline tracking-tight mt-0.5 text-left cursor-pointer w-fit whitespace-nowrap"
+                  style={{
+                    fontFamily: 'var(--font-heading)',
+                    color: 'var(--cw-red-text)',
+                  }}
+                >
+                  Admin Portal
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Right side: Coin chip, Theme toggle, and Profile avatar */}
@@ -192,6 +294,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
             {/* Theme Toggle (40px round glass icon button) */}
             <button
               type="button"
+              data-testid="rewards-theme-toggle"
               onClick={toggleTheme}
               aria-label="Toggle theme"
               title="Toggle theme"
