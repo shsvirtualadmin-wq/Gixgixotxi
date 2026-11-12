@@ -2182,7 +2182,41 @@ export function SettingsPage() {
         <div className="stg-top-header-slot" aria-hidden="true" />
       </header>
 
-      <div className="stg-container">
+      <div className="stg-container pb-10">
+        {/* Top In-Page "Search settings" Bar */}
+        <div className="stg-search-wrap">
+          <div className={`fsm-search-pill ${searchFocused ? 'is-focused' : ''}`}>
+            <Search
+              size={18}
+              className="text-[var(--menu-subtext)] shrink-0 pointer-events-none"
+            />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search settings"
+              aria-label="Search settings"
+              className="fsm-search-input"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  searchInputRef.current?.focus();
+                }}
+                aria-label="Clear search"
+                className="w-6 h-6 rounded-full bg-[var(--menu-icon-bg)] text-[var(--menu-subtext)] hover:text-[var(--menu-text)] inline-flex items-center justify-center cursor-pointer shrink-0"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Centered 88px Avatar + Edit Pencil Badge, Name, @username, Role Pill */}
         <div className="flex flex-col items-center text-center pt-3 pb-2">
           <div className="relative inline-flex items-center justify-center overflow-visible">
@@ -2360,40 +2394,6 @@ export function SettingsPage() {
             </div>
           </div>
         )}
-      </div>
-
-      {/* Floating Liquid-Glass "Search settings" Pill at the Bottom */}
-      <div className="stg-search-wrap">
-        <div className={`fsm-search-pill ${searchFocused ? 'is-focused' : ''}`}>
-          <Search
-            size={18}
-            className="text-[var(--menu-subtext)] shrink-0 pointer-events-none"
-          />
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={searchQuery}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search settings"
-            aria-label="Search settings"
-            className="fsm-search-input"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchQuery('');
-                searchInputRef.current?.focus();
-              }}
-              aria-label="Clear search"
-              className="w-6 h-6 rounded-full bg-[var(--menu-icon-bg)] text-[var(--menu-subtext)] hover:text-[var(--menu-text)] inline-flex items-center justify-center cursor-pointer shrink-0"
-            >
-              <X size={13} />
-            </button>
-          )}
-        </div>
       </div>
 
       <GuestUpgradeModal

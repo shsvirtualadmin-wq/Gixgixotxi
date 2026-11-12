@@ -585,7 +585,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       {backendMode === 'preview-demo' && (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-200 flex items-center justify-between gap-2 w-full max-w-full min-w-0 box-border">
           <span className="font-semibold min-w-0 [overflow-wrap:anywhere] [word-break:break-word]">
-            Demo Mode (Preview Store) — Bind Cloudflare D1 (<code className="font-mono">DB</code>) &amp; R2 (<code className="font-mono">R2_BUCKET</code>) in Cloudflare Pages to use live cloud storage.
+            Preview Mode — Showing sample community posts while live cloud storage is offline.
           </span>
           <a
             href="/api/health"

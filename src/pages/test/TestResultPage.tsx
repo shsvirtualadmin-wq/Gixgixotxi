@@ -6,6 +6,7 @@ import { MathText } from '@/components/ui/MathText';
 import { Button } from '@/components/ui/Button';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
 import {
   CheckCircle,
   XCircle,
@@ -270,6 +271,50 @@ export function TestResultPage() {
 
         {/* Action CTAs: stacked full-width on mobile */}
         <div className="flex flex-col sm:flex-row flex-wrap justify-center w-full sm:w-auto gap-3 mt-3">
+          <PdfDownloadButton
+            label="Download Results & Answer Key (PDF)"
+            variant="primary"
+            className="w-full sm:w-auto"
+            onDownload={async (onProgress, signal) => {
+              const { exportDrillResultToPdf } = await import('@/utils/testPdfExporter');
+              const letters = ['A', 'B', 'C', 'D'] as const;
+              const gradedQuestions = questions.map((q, idx) => {
+                const chosenIdx = userAnswers[String(idx)];
+                const chosenLetter =
+                  chosenIdx !== undefined && chosenIdx >= 0 && chosenIdx <= 3
+                    ? letters[chosenIdx]
+                    : null;
+                const correctLetter = letters[q.correct ?? 0] || 'A';
+                return {
+                  id: q.id || `q-${idx + 1}`,
+                  question: q.q,
+                  optionA: q.options[0] || '',
+                  optionB: q.options[1] || '',
+                  optionC: q.options[2] || '',
+                  optionD: q.options[3] || '',
+                  correctOption: correctLetter,
+                  selectedOption: chosenLetter,
+                  isCorrect: chosenIdx !== undefined && chosenIdx === q.correct,
+                  explanation: q.explain || '',
+                  topic: q.chapter || q.subject || 'General',
+                  difficulty: q.difficulty || 'medium',
+                };
+              });
+              await exportDrillResultToPdf({
+                testTitle: attempt.title || `${attempt.subject || 'Practice'} Test Result`,
+                subject: attempt.subject || attempt.university || 'General',
+                studentName: user?.displayName || 'Student',
+                score: correctCount,
+                totalQuestions: total,
+                percentage,
+                timeTakenSeconds: attempt.timeTakenSeconds || 0,
+                gradedQuestions,
+                signal,
+                onProgress,
+              });
+            }}
+          />
+
           <Button
             variant="primary"
             size="md"

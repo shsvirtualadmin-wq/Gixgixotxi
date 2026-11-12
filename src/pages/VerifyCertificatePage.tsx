@@ -129,7 +129,7 @@ export const VerifyCertificatePage: React.FC = () => {
       {loading && (
         <div className="p-8 rounded-3xl border border-[var(--border)] bg-[var(--surface)] text-center space-y-2">
           <div className="font-mono text-xs uppercase tracking-widest text-[var(--text-muted)] animate-pulse">
-            VERIFYING SERIAL IN CLOUDFLARE D1 REGISTRY...
+            VERIFYING SERIAL IN BOARDLY CREDENTIAL REGISTRY...
           </div>
         </div>
       )}

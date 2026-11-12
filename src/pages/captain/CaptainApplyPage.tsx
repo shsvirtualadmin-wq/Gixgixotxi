@@ -195,7 +195,7 @@ export function CaptainApplyPage() {
       console.error('[CaptainApply] Database write error full details:', err);
       // Requirement: Show the actual error message on screen (not just "failed")
       const detailedMessage = e.code
-        ? `[${e.code}] ${e.message || 'Database rejected the application submission.'}`
+        ? `[${e.code}] ${e.message || 'Could not submit your application right now. Please try again.'}`
         : e.message || String(err);
       setError(detailedMessage);
     } finally {

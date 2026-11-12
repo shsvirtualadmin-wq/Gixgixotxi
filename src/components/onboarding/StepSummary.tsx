@@ -58,7 +58,7 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
 
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => {
-          const tErr = new Error('Database write timed out after 15 seconds. Please verify your connection.');
+          const tErr = new Error('Saving your setup timed out after 15 seconds. Please verify your connection.');
           (tErr as { code?: string }).code = 'TIMEOUT_15S';
           reject(tErr);
         }, 15000);

@@ -1,14 +1,35 @@
-import { useState, useEffect, useCallback, type FormEvent } from 'react';
+import { useState, useEffect, useCallback, useMemo, type FormEvent, type FocusEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle2, ArrowLeft, UserCheck } from 'lucide-react';
+import {
+  Mail,
+  Lock,
+  User,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  CheckCircle2,
+  ArrowLeft,
+  UserCheck,
+  Loader2,
+  Check,
+} from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { logRedirect } from '@/utils/debugTracker';
-import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { OtpVerificationCard } from './OtpVerificationCard';
 import { validateUsernameFormat } from '@/utils/usernameValidation';
 
 interface AuthCardProps {
   initialMode?: 'signin' | 'signup' | 'guest';
+}
+
+function sanitizeFriendlyAuthMessage(raw?: string | null): string {
+  if (!raw) return '';
+  return raw
+    .replace(/\[auth\/[^\]]+\]\s*/gi, '')
+    .replace(/^Firebase:\s*/i, '')
+    .replace(/in Firebase Authentication/gi, '')
+    .replace(/Cloudflare D1|Cloudflare|Firestore|Firebase/gi, 'Boardly')
+    .trim();
 }
 
 export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
@@ -72,6 +93,33 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [generalError, setGeneralError] = useState('');
   const [emailAlreadyInUse, setEmailAlreadyInUse] = useState(false);
+
+  // Visual-only password strength indicator for Signup
+  const passwordStrength = useMemo(() => {
+    if (!password) return { level: 0, label: '' };
+    let score = 0;
+    if (password.length >= 6) score += 1;
+    if (password.length >= 10) score += 1;
+    if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score += 1;
+    if (/[0-9]/.test(password) || /[^A-Za-z0-9]/.test(password)) score += 1;
+    const clamped = Math.max(1, Math.min(4, score));
+    const labels = ['', 'Weak', 'Fair', 'Good', 'Strong'];
+    return { level: clamped, label: labels[clamped] };
+  }, [password]);
+
+  // Smooth scroll-into-view on mobile keyboard focus so primary button isn't hidden
+  const handleInputFocus = useCallback((e: FocusEvent<HTMLInputElement>) => {
+    const target = e.currentTarget;
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      window.setTimeout(() => {
+        try {
+          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch {
+          // ignore
+        }
+      }, 180);
+    }
+  }, []);
 
   // Sync mode with props if prop changes
   useEffect(() => {
@@ -253,10 +301,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     setGoogleLoading(true);
 
     try {
-      // ONLY signInWithPopup on user click
       await signInWithGoogle();
-      // Navigation is handled by the useEffect above once isSessionVerified is true
-      // (immediate for Google users without 2FA; after 2FA code for Google users with 2FA enabled).
     } catch (err: unknown) {
       const fe = err as { code?: string; message?: string };
       if (
@@ -265,10 +310,10 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
       ) {
         return;
       }
-      const codeStr = fe.code ? `[${fe.code}] ` : '';
-      setGeneralError(`${codeStr}${fe.message || 'Google sign-in could not be completed.'}`);
+      setGeneralError(
+        sanitizeFriendlyAuthMessage(fe.message) || 'Google sign-in could not be completed. Please try again.'
+      );
     } finally {
-      // ALWAYS reset google loading state so button never gets stuck in infinite spinner
       setGoogleLoading(false);
     }
   };
@@ -368,13 +413,13 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
         code === 'INVALID_USERNAME_FORMAT'
       ) {
         setEmailAlreadyInUse(false);
-        const msg = fe.message || 'That username is already taken.';
+        const msg = sanitizeFriendlyAuthMessage(fe.message) || 'That username is already taken.';
         setFieldErrors({ username: msg });
         setGeneralError(msg);
       } else if (code === 'auth/email-already-in-use') {
         setEmailAlreadyInUse(true);
         const msg =
-          'An account with this email already exists in Firebase Authentication. You can sign in with your password or reset your password below.';
+          'An account with this email already exists. You can sign in with your password or reset your password below.';
         setFieldErrors({ email: msg });
         setGeneralError(msg);
       } else if (code === 'auth/weak-password') {
@@ -383,7 +428,8 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
       } else if (code === 'auth/too-many-requests') {
         setEmailAlreadyInUse(false);
         setGeneralError(
-          fe.message || 'Too many failed attempts. Please wait a few moments before trying again.'
+          sanitizeFriendlyAuthMessage(fe.message) ||
+            'Too many failed attempts. Please wait a few moments before trying again.'
         );
       } else if (code === 'auth/user-disabled') {
         setEmailAlreadyInUse(false);
@@ -396,7 +442,8 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
         setGeneralError(
           mode === 'signin'
             ? 'Invalid username/email or password'
-            : fe.message || 'Authentication failed. Please check your details and try again.'
+            : sanitizeFriendlyAuthMessage(fe.message) ||
+              'Could not complete registration right now. Please check your details and try again.'
         );
       }
     } finally {
@@ -444,11 +491,8 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
 
     return (
       <div
-        className="w-full rounded-[28px] border border-[var(--border)] p-6 sm:p-7 flex flex-col gap-5"
-        style={{
-          backgroundColor: 'var(--card)',
-          boxShadow: 'none',
-        }}
+        className="w-full rounded-[24px] border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-7 flex flex-col gap-5"
+        style={{ boxShadow: 'none', backdropFilter: 'none', WebkitBackdropFilter: 'none' }}
       >
         <div className="flex items-center justify-between">
           <button
@@ -457,51 +501,66 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
               setMode('signin');
               setGeneralError('');
             }}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 min-h-[40px] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
           >
             <ArrowLeft size={15} />
             <span>Back to Sign In</span>
           </button>
-          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold uppercase bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)]">
+          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold uppercase bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-muted)]">
             Guest Mode
           </span>
         </div>
 
         <div className="text-left">
+          <span
+            className="block mb-2"
+            style={{
+              fontFamily: "'Doto', var(--font-dot), sans-serif",
+              fontWeight: 800,
+              fontSize: '20px',
+              lineHeight: 1,
+              letterSpacing: '0.02em',
+              color: 'var(--cw-red-text, #D71921)',
+            }}
+          >
+            Boardly
+          </span>
           <h1
             className="text-2xl font-bold text-[var(--text)] tracking-tight"
             style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
           >
             Pick a guest username
           </h1>
-          <p className="text-xs sm:text-sm text-[var(--muted)] mt-1.5 leading-relaxed">
+          <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1.5 leading-relaxed">
             Choose a unique username to practice tests, save your progress, and participate in Boardly Commons.
           </p>
         </div>
 
-        {generalError && (
-          <div
-            role="alert"
-            className="p-3.5 rounded-2xl bg-[#260B0B] border border-[#EF4444] flex items-start gap-2.5 text-xs text-[#FEE2E2]"
-          >
-            <AlertCircle size={16} className="text-[#EF4444] shrink-0 mt-0.5" />
-            <span>{generalError}</span>
-          </div>
-        )}
+        <div aria-live="polite">
+          {generalError && (
+            <div
+              role="alert"
+              className="p-3.5 rounded-2xl bg-[#D71921]/10 border border-[#D71921]/40 flex items-start gap-2.5 text-xs text-[var(--text)]"
+            >
+              <AlertCircle size={16} className="text-[#D71921] shrink-0 mt-0.5" />
+              <span>{sanitizeFriendlyAuthMessage(generalError)}</span>
+            </div>
+          )}
+        </div>
 
         <form onSubmit={handleGuestSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2 text-left">
+          <div className="flex flex-col gap-1.5 text-left">
             <div className="flex items-center justify-between gap-2">
               <label
                 htmlFor="guest-username-input"
-                className="text-sm font-medium text-[var(--text)]"
+                className="text-xs sm:text-sm font-semibold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
                 Username
               </label>
 
               {guestCheckState.status === 'checking' && (
-                <span className="text-[11px] font-mono text-[var(--muted)]">
+                <span className="text-[11px] font-mono text-[var(--text-muted)]">
                   Checking availability...
                 </span>
               )}
@@ -512,7 +571,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
                 </span>
               )}
               {(guestCheckState.status === 'taken' || guestCheckState.status === 'invalid') && (
-                <span className="text-[11px] font-mono font-bold text-[#EF4444] inline-flex items-center gap-1">
+                <span className="text-[11px] font-mono font-bold text-[#D71921] inline-flex items-center gap-1">
                   <AlertCircle size={13} />
                   <span>{guestCheckState.status === 'taken' ? 'Taken' : 'Invalid'}</span>
                 </span>
@@ -520,25 +579,27 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
             </div>
 
             <div className="relative">
-              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] font-mono font-bold text-sm pointer-events-none">
+              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] font-mono font-bold text-sm pointer-events-none">
                 @
               </div>
               <input
                 id="guest-username-input"
                 type="text"
+                inputMode="text"
                 value={guestUsername}
+                onFocus={handleInputFocus}
                 onChange={(e) => setGuestUsername(e.target.value.replace(/^@+/, ''))}
                 placeholder="ahmed_khan99"
                 maxLength={20}
                 autoFocus
-                autoComplete="off"
+                autoComplete="username"
                 className={`auth-form-input font-mono ${
                   guestCheckState.status === 'taken' || guestCheckState.status === 'invalid'
                     ? 'input-error'
                     : ''
                 }`}
                 style={{
-                  height: '52px',
+                  height: '50px',
                   paddingLeft: '36px',
                   paddingRight: '16px',
                 }}
@@ -547,46 +608,33 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
 
             {(guestCheckState.status === 'taken' || guestCheckState.status === 'invalid') &&
               guestCheckState.reason && (
-                <span className="text-xs text-[#EF4444] font-medium">
+                <span className="text-xs text-[#D71921] font-medium">
                   {guestCheckState.reason}
                 </span>
               )}
 
-            <span className="text-[11px] text-[var(--muted)] leading-relaxed">
-              3 to 20 characters. Letters, numbers, dots (<code className="font-mono">.</code>) and underscores (<code className="font-mono">_</code>) only. Case-insensitive across all accounts.
+            <span className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+              3 to 20 characters: letters, numbers, dots and underscores only.
             </span>
           </div>
 
-          {/* Non-blocking note required by Part B Rule 3 */}
-          <div className="p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[11px] text-[var(--muted)] leading-relaxed text-left">
+          <div className="p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[11px] text-[var(--text-muted)] leading-relaxed text-left">
             You&apos;ll stay signed in on this device.
           </div>
-
-          <p className="text-[11px] text-[var(--muted)] leading-relaxed text-left">
-            By continuing you agree to our{' '}
-            <Link to="/terms" className="underline text-[var(--text)] hover:text-[#D71921]">
-              Terms of Service
-            </Link>{' '}
-            and{' '}
-            <Link to="/privacy" className="underline text-[var(--text)] hover:text-[#D71921]">
-              Privacy Policy
-            </Link>
-            .
-          </p>
 
           <button
             type="submit"
             disabled={!canSubmitGuest}
-            className="btn-red relative overflow-hidden w-full cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-            style={{ height: '52px' }}
+            className="btn-red relative overflow-hidden w-full inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{ height: '50px' }}
           >
-            <span>{guestSubmitting ? 'Starting guest session...' : 'Continue as guest'}</span>
-            {guestSubmitting && <ButtonLineLoader />}
+            {guestSubmitting && <Loader2 size={16} className="animate-spin shrink-0" />}
+            <span>Continue as guest</span>
           </button>
 
           <p
             data-testid="guest-temporary-notice"
-            className="text-[11px] text-[var(--muted)] leading-relaxed text-left"
+            className="text-[11px] text-[var(--text-muted)] leading-relaxed text-left"
           >
             Guest accounts are temporary. If you log out or clear your browser data, you can&apos;t get back into this account. Create a free account to keep your progress and use rewards and Pro.
           </p>
@@ -595,249 +643,239 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     );
   }
 
-  // ── Main Sign In / Sign Up Card ───────────────────────────────────────────
+  const displayedError = sanitizeFriendlyAuthMessage(
+    generalError || authError?.message || profileError?.message
+  );
+
+  // ── Main Sign In / Sign Up Card (Task 7 Visual Redesign) ──────────────────
+  // Exact order required:
+  // 1. Wordmark ("Boardly" dot-matrix)
+  // 2. Sign in / Create account tabs
+  // 3. Heading and subtext
+  // 4. Email form + Primary button
+  // 5. Divider "or"
+  // 6. Continue with Google
+  // 7. Continue as guest (ONE button only, secondary below main action)
   return (
     <div
-      className="w-full rounded-[28px] border border-[var(--border)] p-6 sm:p-7 flex flex-col gap-5"
+      className="w-full rounded-[24px] border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-7 flex flex-col gap-5"
       style={{
-        backgroundColor: 'var(--card)',
         boxShadow: 'none',
+        backdropFilter: 'none',
+        WebkitBackdropFilter: 'none',
       }}
     >
-      {/* Segmented Tabs: "Sign in" & "Create account" */}
-      <div className="w-full h-11 p-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] grid grid-cols-2 gap-1 items-center">
+      {/* 1. Dot-matrix "Boardly" Wordmark (same as dashboard header) */}
+      <div className="flex items-center justify-between">
+        <span
+          style={{
+            fontFamily: "'Doto', var(--font-dot), sans-serif",
+            fontWeight: 800,
+            fontSize: '22px',
+            lineHeight: 1,
+            letterSpacing: '0.02em',
+            color: 'var(--cw-red-text, #D71921)',
+          }}
+        >
+          Boardly
+        </span>
+        <span className="text-[11px] font-mono font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+          Student Cockpit
+        </span>
+      </div>
+
+      {/* 2. Segmented Tabs: "Sign in" & "Create account" */}
+      <div
+        role="tablist"
+        aria-label="Authentication mode"
+        className="w-full h-11 p-1 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] grid grid-cols-2 gap-1 items-center"
+      >
         <button
           type="button"
+          role="tab"
+          aria-selected={mode === 'signin'}
           onClick={() => {
             setMode('signin');
             if (typeof window !== 'undefined') {
               window.history.replaceState(null, '', `/login${window.location.search}`);
             }
           }}
-          className={`h-full rounded-full text-xs sm:text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
+          className={`h-full rounded-lg text-xs sm:text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
             mode === 'signin'
-              ? 'bg-[#D71921] text-white shadow-sm'
-              : 'bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+              ? 'bg-[#D71921] text-white'
+              : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
           }`}
-          style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+          style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.01em' }}
         >
           Sign in
         </button>
         <button
           type="button"
+          role="tab"
+          aria-selected={mode === 'signup'}
           onClick={() => {
             setMode('signup');
             if (typeof window !== 'undefined') {
               window.history.replaceState(null, '', `/signup${window.location.search}`);
             }
           }}
-          className={`h-full rounded-full text-xs sm:text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
+          className={`h-full rounded-lg text-xs sm:text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
             mode === 'signup'
-              ? 'bg-[#D71921] text-white shadow-sm'
-              : 'bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+              ? 'bg-[#D71921] text-white'
+              : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
           }`}
-          style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+          style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.01em' }}
         >
           Create account
         </button>
       </div>
 
-      {/* Header & Subtext */}
-      <div>
+      {/* 3. Heading & Subtext */}
+      <div className="text-left">
         <h1
-          className="text-2xl font-bold text-[var(--text)] tracking-tight"
-          style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+          className="text-xl sm:text-2xl font-bold text-[var(--text)] tracking-tight"
+          style={{ fontFamily: 'var(--font-dot)' }}
         >
           {mode === 'signin' ? 'Welcome back' : 'Create your account'}
         </h1>
-        <p className="text-xs sm:text-sm text-[var(--muted)] mt-1.5 leading-relaxed">
-          Practice MCQs. Learn together. Education for everyone.
+        <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1 leading-relaxed">
+          {mode === 'signin'
+            ? 'Sign in to continue your university mock tests and track your progress.'
+            : 'Join Boardly to practice official university entry test papers and track your rank.'}
         </p>
       </div>
 
-      {/* Visible Red Error Alert Box */}
-      {(generalError || authError || profileError) && (
-        <div
-          role="alert"
-          className="p-4 rounded-2xl bg-[#260B0B] border-2 border-[#EF4444] flex flex-col gap-2.5 text-xs text-[#FFFFFF] shadow-lg animate-in fade-in duration-200"
-        >
-          <div className="flex items-start gap-3">
-            <AlertCircle size={18} className="text-[#EF4444] shrink-0 mt-0.5" />
-            <div className="flex-1 space-y-1.5 text-left">
-              <span className="font-semibold text-[#FCA5A5] uppercase tracking-wider text-[11px] block">
-                {mode === 'signin' ? 'Sign-In Issue' : 'Sign-Up Issue'}
-              </span>
-              <p className="text-[#FEE2E2] leading-relaxed font-medium">
-                {generalError || authError?.message || profileError?.message}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setGeneralError('');
-                clearAuthError();
-                clearProfileError();
-              }}
-              className="text-[#FCA5A5] hover:text-[#FFFFFF] text-xs font-bold px-1.5 py-0.5 cursor-pointer"
-              aria-label="Dismiss error"
-            >
-              &times;
-            </button>
-          </div>
-
-          {emailAlreadyInUse && (
-            <div className="pt-2 border-t border-[#EF4444]/30 flex flex-wrap items-center gap-3">
-              <Link
-                to={`/forgot-password${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ''}`}
-                className="py-1.5 px-3 rounded-xl bg-[#EF4444] text-[#FFFFFF] font-semibold text-xs hover:bg-[#DC2626] transition-colors"
-              >
-                Forgot password? Reset it here →
-              </Link>
+      {/* Local Error Area with aria-live */}
+      <div aria-live="polite" className={displayedError ? 'block' : 'hidden'}>
+        {displayedError && (
+          <div
+            role="alert"
+            className="p-3.5 rounded-2xl bg-[#D71921]/10 border border-[#D71921]/40 flex flex-col gap-2.5 text-xs text-[var(--text)]"
+          >
+            <div className="flex items-start gap-2.5">
+              <AlertCircle size={16} className="text-[#D71921] shrink-0 mt-0.5" />
+              <div className="flex-1 space-y-1 text-left">
+                <span className="font-bold text-[#D71921] uppercase tracking-wider text-[10px] block">
+                  {mode === 'signin' ? 'Sign-In Notice' : 'Sign-Up Notice'}
+                </span>
+                <p className="text-[var(--text)] leading-relaxed font-medium">
+                  {displayedError}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => {
-                  setMode('signin');
                   setGeneralError('');
-                  setFieldErrors({});
-                  setEmailAlreadyInUse(false);
+                  clearAuthError();
+                  clearProfileError();
                 }}
-                className="py-1.5 px-3 rounded-xl border border-[#FCA5A5]/40 text-[#FCA5A5] hover:text-white text-xs font-semibold cursor-pointer"
+                className="text-[var(--text-muted)] hover:text-[var(--text)] text-sm font-bold px-1.5 py-0.5 cursor-pointer"
+                aria-label="Dismiss error"
               >
-                Switch to Sign In
+                &times;
               </button>
             </div>
-          )}
 
-          {authError?.code === 'auth/popup-blocked' && (
-            <div className="pt-2 border-t border-[#EF4444]/30 flex flex-col gap-1.5">
-              <p className="text-[11px] text-[#FCA5A5]">
-                Your browser blocked the Google sign-in popup. Allow popups for boardly.cfd and try again:
-              </p>
-              <button
-                type="button"
-                onClick={handleGoogleSignIn}
-                className="w-full py-2 px-3 rounded-xl bg-[#EF4444] text-[#FFFFFF] font-semibold text-xs hover:bg-[#DC2626] transition-colors cursor-pointer text-center"
-              >
-                Retry Google Sign-In
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+            {emailAlreadyInUse && (
+              <div className="pt-2 border-t border-[#D71921]/25 flex flex-wrap items-center gap-2.5">
+                <Link
+                  to={`/forgot-password${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ''}`}
+                  className="py-1.5 px-3 rounded-xl bg-[#D71921] text-white font-semibold text-xs hover:opacity-90 transition-opacity"
+                >
+                  Forgot password? Reset it here →
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('signin');
+                    setGeneralError('');
+                    setFieldErrors({});
+                    setEmailAlreadyInUse(false);
+                  }}
+                  className="py-1.5 px-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] text-xs font-semibold cursor-pointer"
+                >
+                  Switch to Sign In
+                </button>
+              </div>
+            )}
 
-      {/* Continue with Google + Continue as guest */}
-      <div className="flex flex-col gap-2.5">
-        <button
-          type="button"
-          onClick={handleGoogleSignIn}
-          disabled={googleLoading || loading}
-          className="auth-google-btn relative overflow-hidden"
-          aria-label="Continue with Google"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              fill="#4285F4"
-              d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
-            />
-            <path
-              fill="#34A853"
-              d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24Z"
-            />
-            <path
-              fill="#FBBC05"
-              d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15Z"
-            />
-            <path
-              fill="#EA4335"
-              d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98Z"
-            />
-          </svg>
-          <span>
-            {googleLoading
-              ? mode === 'signin'
-                ? 'Logging in...'
-                : 'Creating your account...'
-              : 'Continue with Google'}
-          </span>
-          {googleLoading && <ButtonLineLoader />}
-        </button>
-
-        <button
-          type="button"
-          onClick={handleStartGuestMode}
-          disabled={googleLoading || loading}
-          className="w-full py-3 px-4 rounded-full border border-[var(--border)] bg-[var(--surface-2)] hover:border-[#D71921]/60 text-xs sm:text-sm font-semibold text-[var(--text)] transition-all cursor-pointer inline-flex items-center justify-center gap-2"
-          style={{ fontFamily: 'var(--font-heading)', height: '48px' }}
-        >
-          <UserCheck size={16} className="text-[#D71921]" />
-          <span>Continue as guest</span>
-        </button>
+            {authError?.code === 'auth/popup-blocked' && (
+              <div className="pt-2 border-t border-[#D71921]/25 flex flex-col gap-1.5">
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Your browser blocked the Google sign-in window. Allow popups and try again:
+                </p>
+                <button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  className="w-full py-2 px-3 rounded-xl bg-[#D71921] text-white font-semibold text-xs hover:opacity-90 transition-opacity cursor-pointer text-center"
+                >
+                  Retry Google Sign-In
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Divider: "or use email" */}
-      <div className="flex items-center gap-3 my-1">
-        <div className="flex-1 border-t border-[var(--border)]" />
-        <span
-          className="text-xs text-[var(--muted)] lowercase"
-          style={{ fontFamily: 'var(--font-heading)' }}
-        >
-          or use email
-        </span>
-        <div className="flex-1 border-t border-[var(--border)]" />
-      </div>
-
-      {/* Form Fields: 16px gap between fields */}
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {/* 4. Email Form + Primary Action Button */}
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
         {/* Full Name (Sign Up only) */}
         {mode === 'signup' && (
-          <div className="flex flex-col gap-2 text-left">
+          <div className="flex flex-col gap-1.5 text-left">
             <label
               htmlFor="auth-fullname"
-              className="text-sm font-medium text-[var(--text)]"
+              className="text-xs sm:text-sm font-semibold text-[var(--text)]"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
               Full name
             </label>
             <div className="relative">
-              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] pointer-events-none">
+              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none">
                 <User size={18} />
               </div>
               <input
                 id="auth-fullname"
                 type="text"
+                inputMode="text"
                 value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
+                onFocus={handleInputFocus}
+                onChange={(e) => {
+                  setDisplayName(e.target.value);
+                  if (fieldErrors.name) {
+                    setFieldErrors((prev) => ({ ...prev, name: '' }));
+                  }
+                }}
                 placeholder="Ahmed Khan"
                 autoComplete="name"
                 className={`auth-form-input ${fieldErrors.name ? 'input-error' : ''}`}
                 style={{
-                  height: '52px',
-                  paddingLeft: '44px',
+                  height: '50px',
+                  paddingLeft: '42px',
                   paddingRight: '16px',
                 }}
               />
             </div>
             {fieldErrors.name && (
-              <span className="text-xs text-[#DC2626] font-medium mt-0.5">{fieldErrors.name}</span>
+              <span className="text-xs text-[#D71921] font-medium">{fieldErrors.name}</span>
             )}
           </div>
         )}
 
         {/* Username (Sign Up only) */}
         {mode === 'signup' && (
-          <div className="flex flex-col gap-2 text-left">
+          <div className="flex flex-col gap-1.5 text-left">
             <div className="flex items-center justify-between gap-2">
               <label
                 htmlFor="auth-signup-username"
-                className="text-sm font-medium text-[var(--text)]"
+                className="text-xs sm:text-sm font-semibold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
                 Username
               </label>
 
               {signupUsernameCheck.status === 'checking' && (
-                <span className="text-[11px] font-mono text-[var(--muted)]">
-                  Checking availability...
+                <span className="text-[11px] font-mono text-[var(--text-muted)]">
+                  Checking...
                 </span>
               )}
               {signupUsernameCheck.status === 'available' && (
@@ -853,7 +891,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
                 signupUsernameCheck.status === 'invalid') && (
                 <span
                   data-testid="signup-username-taken"
-                  className="text-[11px] font-mono font-bold text-[#EF4444] inline-flex items-center gap-1"
+                  className="text-[11px] font-mono font-bold text-[#D71921] inline-flex items-center gap-1"
                 >
                   <AlertCircle size={13} />
                   <span>{signupUsernameCheck.status === 'taken' ? 'Taken' : 'Invalid'}</span>
@@ -862,14 +900,16 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
             </div>
 
             <div className="relative">
-              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] font-mono font-bold text-sm pointer-events-none">
+              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] font-mono font-bold text-sm pointer-events-none">
                 @
               </div>
               <input
                 id="auth-signup-username"
                 data-testid="auth-signup-username"
                 type="text"
+                inputMode="text"
                 value={signupUsername}
+                onFocus={handleInputFocus}
                 onChange={(e) => {
                   setSignupUsername(e.target.value.replace(/^@+/, '').replace(/\s+/g, ''));
                   if (fieldErrors.username) {
@@ -887,7 +927,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
                     : ''
                 }`}
                 style={{
-                  height: '52px',
+                  height: '50px',
                   paddingLeft: '36px',
                   paddingRight: '16px',
                 }}
@@ -895,66 +935,73 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
             </div>
 
             {fieldErrors.username ? (
-              <span className="text-xs text-[#DC2626] font-medium mt-0.5">
+              <span className="text-xs text-[#D71921] font-medium">
                 {fieldErrors.username}
               </span>
             ) : (
               (signupUsernameCheck.status === 'taken' ||
                 signupUsernameCheck.status === 'invalid') &&
               signupUsernameCheck.reason && (
-                <span className="text-xs text-[#DC2626] font-medium mt-0.5">
+                <span className="text-xs text-[#D71921] font-medium">
                   {signupUsernameCheck.reason}
                 </span>
               )
             )}
-            <span className="text-[11px] text-[var(--muted)] leading-relaxed">
-              3 to 20 characters: letters, numbers, dots (<code className="font-mono">.</code>) and underscores (<code className="font-mono">_</code>) only.
+            <span className="text-[11px] text-[var(--text-muted)] leading-snug">
+              3 to 20 characters: letters, numbers, dots and underscores only
             </span>
           </div>
         )}
 
         {/* Email (Sign Up) or Email / Username (Sign In) */}
-        <div className="flex flex-col gap-2 text-left">
+        <div className="flex flex-col gap-1.5 text-left">
           <label
             htmlFor="auth-email"
-            className="text-sm font-medium text-[var(--text)]"
+            className="text-xs sm:text-sm font-semibold text-[var(--text)]"
             style={{ fontFamily: 'var(--font-heading)' }}
           >
             {mode === 'signin' ? 'Email or username' : 'Email'}
           </label>
           <div className="relative">
-            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] pointer-events-none">
+            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none">
               <Mail size={18} />
             </div>
             <input
               id="auth-email"
               data-testid="auth-identifier-input"
               type={mode === 'signin' ? 'text' : 'email'}
+              inputMode={mode === 'signin' ? 'email' : 'email'}
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onFocus={handleInputFocus}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (fieldErrors.email) {
+                  setFieldErrors((prev) => ({ ...prev, email: '' }));
+                }
+              }}
               placeholder={
                 mode === 'signin' ? 'student@example.com or username' : 'student@example.com'
               }
               autoComplete={mode === 'signin' ? 'username' : 'email'}
               className={`auth-form-input ${fieldErrors.email ? 'input-error' : ''}`}
               style={{
-                height: '52px',
-                paddingLeft: '44px',
+                height: '50px',
+                paddingLeft: '42px',
                 paddingRight: '16px',
               }}
             />
           </div>
           {fieldErrors.email && (
-            <span className="text-xs text-[#DC2626] font-medium mt-0.5">{fieldErrors.email}</span>
+            <span className="text-xs text-[#D71921] font-medium">{fieldErrors.email}</span>
           )}
         </div>
 
         {/* Password */}
-        <div className="flex flex-col gap-2 text-left">
+        <div className="flex flex-col gap-1.5 text-left">
           <div className="flex items-center justify-between">
             <label
               htmlFor="auth-password"
-              className="text-sm font-medium text-[var(--text)]"
+              className="text-xs sm:text-sm font-semibold text-[var(--text)]"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
               Password
@@ -962,7 +1009,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
             {mode === 'signin' && (
               <Link
                 to="/forgot-password"
-                className="text-xs text-[var(--muted)] hover:text-[var(--text)] transition-colors"
+                className="text-xs font-medium text-[var(--text-muted)] hover:text-[#D71921] transition-colors"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
                 Forgot password?
@@ -970,105 +1017,147 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
             )}
           </div>
           <div className="relative">
-            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] pointer-events-none">
+            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none">
               <Lock size={18} />
             </div>
             <input
               id="auth-password"
               type={showPassword ? 'text' : 'password'}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onFocus={handleInputFocus}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (fieldErrors.password) {
+                  setFieldErrors((prev) => ({ ...prev, password: '' }));
+                }
+              }}
               placeholder="••••••••"
               autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
               className={`auth-form-input ${fieldErrors.password ? 'input-error' : ''}`}
               style={{
-                height: '52px',
-                paddingLeft: '44px',
-                paddingRight: '44px',
+                height: '50px',
+                paddingLeft: '42px',
+                paddingRight: '48px',
               }}
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
               aria-label={showPassword ? 'Hide password' : 'Show password'}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#374151] hover:text-[#000000] transition-colors cursor-pointer p-1"
+              className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer rounded-lg"
             >
               {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
           {fieldErrors.password && (
-            <span className="text-xs text-[#DC2626] font-medium mt-0.5">{fieldErrors.password}</span>
+            <span className="text-xs text-[#D71921] font-medium">{fieldErrors.password}</span>
+          )}
+
+          {/* Visual-only password strength meter on Sign Up */}
+          {mode === 'signup' && password.length > 0 && (
+            <div className="pt-1 space-y-1" aria-hidden="true">
+              <div className="grid grid-cols-4 gap-1.5">
+                {[1, 2, 3, 4].map((bar) => (
+                  <div
+                    key={bar}
+                    className={`h-1 rounded-full transition-colors ${
+                      bar <= passwordStrength.level
+                        ? passwordStrength.level <= 1
+                          ? 'bg-[#D71921]'
+                          : passwordStrength.level === 2
+                          ? 'bg-amber-500'
+                          : 'bg-emerald-500'
+                        : 'bg-[var(--surface-2)]'
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="text-[10px] text-[var(--text-muted)] block">
+                Password strength: <strong className="text-[var(--text)]">{passwordStrength.label}</strong>
+              </span>
+            </div>
           )}
         </div>
 
         {/* Confirm Password (Sign Up only) */}
         {mode === 'signup' && (
-          <div className="flex flex-col gap-2 text-left">
+          <div className="flex flex-col gap-1.5 text-left">
             <label
               htmlFor="auth-confirm-password"
-              className="text-sm font-medium text-[var(--text)]"
+              className="text-xs sm:text-sm font-semibold text-[var(--text)]"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
               Confirm password
             </label>
             <div className="relative">
-              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] pointer-events-none">
+              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none">
                 <Lock size={18} />
               </div>
               <input
                 id="auth-confirm-password"
                 type={showConfirmPassword ? 'text' : 'password'}
                 value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                onFocus={handleInputFocus}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  if (fieldErrors.confirmPassword) {
+                    setFieldErrors((prev) => ({ ...prev, confirmPassword: '' }));
+                  }
+                }}
                 placeholder="••••••••"
                 autoComplete="new-password"
                 className={`auth-form-input ${fieldErrors.confirmPassword ? 'input-error' : ''}`}
                 style={{
-                  height: '52px',
-                  paddingLeft: '44px',
-                  paddingRight: '44px',
+                  height: '50px',
+                  paddingLeft: '42px',
+                  paddingRight: '48px',
                 }}
               />
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#374151] hover:text-[#000000] transition-colors cursor-pointer p-1"
+                className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer rounded-lg"
               >
                 {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
             {fieldErrors.confirmPassword && (
-              <span className="text-xs text-[#DC2626] font-medium mt-0.5">{fieldErrors.confirmPassword}</span>
+              <span className="text-xs text-[#D71921] font-medium">{fieldErrors.confirmPassword}</span>
             )}
           </div>
         )}
 
-        {/* Required Terms & Privacy Consent Checkbox (Sign Up only) */}
+        {/* ONE Terms & Privacy Consent Checkbox Row on Signup (Styled checkbox, red when checked) */}
         {mode === 'signup' && (
-          <div className="flex flex-col gap-1.5 text-left mt-1">
+          <div className="flex flex-col gap-1.5 text-left pt-0.5">
             <label
               htmlFor="auth-terms-consent"
-              className="flex items-start gap-2.5 text-xs text-[var(--muted)] leading-relaxed cursor-pointer select-none"
+              className="flex items-start gap-2.5 text-xs text-[var(--text-muted)] leading-relaxed cursor-pointer select-none"
             >
-              <input
-                id="auth-terms-consent"
-                type="checkbox"
-                checked={termsAccepted}
-                onChange={(e) => {
-                  setTermsAccepted(e.target.checked);
-                  if (e.target.checked && fieldErrors.terms) {
-                    setFieldErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.terms;
-                      return next;
-                    });
-                  }
-                }}
-                className="mt-0.5 h-4 w-4 shrink-0 rounded border border-[var(--border)] accent-[#D71921] cursor-pointer"
-              />
+              <span className="relative flex items-center justify-center mt-0.5 shrink-0">
+                <input
+                  id="auth-terms-consent"
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(e) => {
+                    setTermsAccepted(e.target.checked);
+                    if (e.target.checked && fieldErrors.terms) {
+                      setFieldErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.terms;
+                        return next;
+                      });
+                    }
+                  }}
+                  className="peer sr-only"
+                />
+                <span className="w-4 h-4 rounded border border-[var(--border)] bg-[var(--surface-2)] peer-checked:bg-[#D71921] peer-checked:border-[#D71921] peer-focus-visible:ring-2 peer-focus-visible:ring-[#D71921]/40 flex items-center justify-center transition-colors">
+                  {termsAccepted && <Check size={12} strokeWidth={3} className="text-white" />}
+                </span>
+              </span>
               <span>
-                By continuing you agree to our{' '}
+                I agree to the{' '}
                 <Link
                   to="/terms"
                   className="underline text-[var(--text)] hover:text-[#D71921] font-medium"
@@ -1088,78 +1177,80 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
               </span>
             </label>
             {fieldErrors.terms && (
-              <span className="text-xs text-[#DC2626] font-medium">{fieldErrors.terms}</span>
+              <span className="text-xs text-[#D71921] font-medium">{fieldErrors.terms}</span>
             )}
           </div>
         )}
 
-        {/* Primary Red Button: 52px tall, full width, bottom 2px line when submitting */}
+        {/* Primary Button (Spinner + disabled when loading, same label, no layout shift) */}
         <button
           type="submit"
           disabled={loading || googleLoading}
-          className="btn-red relative overflow-hidden w-full mt-2 cursor-pointer disabled:opacity-75"
-          style={{ height: '52px' }}
+          className="btn-red relative overflow-hidden w-full mt-1 inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-65 disabled:cursor-not-allowed"
+          style={{ height: '50px' }}
         >
-          <span>
-            {loading
-              ? mode === 'signin'
-                ? 'Logging in...'
-                : 'Creating your account...'
-              : mode === 'signin'
-              ? 'Sign In'
-              : 'Create Account'}
-          </span>
-          {loading && <ButtonLineLoader />}
+          {loading && <Loader2 size={17} className="animate-spin shrink-0" />}
+          <span>{mode === 'signin' ? 'Sign In' : 'Create Account'}</span>
+        </button>
+      </form>
+
+      {/* 5. Divider: "or" */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1 border-t border-[var(--border)]" />
+        <span
+          className="text-xs font-medium text-[var(--text-muted)] lowercase"
+          style={{ fontFamily: 'var(--font-heading)' }}
+        >
+          or
+        </span>
+        <div className="flex-1 border-t border-[var(--border)]" />
+      </div>
+
+      {/* 6. Continue with Google, then 7. Continue as guest (ONE guest button only) */}
+      <div className="flex flex-col gap-2.5">
+        <button
+          type="button"
+          onClick={handleGoogleSignIn}
+          disabled={googleLoading || loading}
+          className="auth-google-btn relative overflow-hidden"
+          aria-label="Continue with Google"
+        >
+          {googleLoading ? (
+            <Loader2 size={18} className="animate-spin shrink-0 text-[#D71921]" />
+          ) : (
+            <svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true" className="shrink-0">
+              <path
+                fill="#4285F4"
+                d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
+              />
+              <path
+                fill="#34A853"
+                d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24Z"
+              />
+              <path
+                fill="#FBBC05"
+                d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15Z"
+              />
+              <path
+                fill="#EA4335"
+                d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98Z"
+              />
+            </svg>
+          )}
+          <span>Continue with Google</span>
         </button>
 
-        {/* Mode switch link + Continue as guest */}
-        <div className="pt-2 border-t border-[var(--border)] flex flex-col items-center gap-3 text-center">
-          <p className="text-xs text-[var(--muted)]">
-            {mode === 'signin' ? (
-              <>
-                New here?{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode('signup');
-                    if (typeof window !== 'undefined') {
-                      window.history.replaceState(null, '', `/signup${window.location.search}`);
-                    }
-                  }}
-                  className="text-[var(--text)] font-semibold hover:text-[#D71921] underline underline-offset-4 transition-colors cursor-pointer"
-                >
-                  Create an account
-                </button>
-              </>
-            ) : (
-              <>
-                Already have an account?{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode('signin');
-                    if (typeof window !== 'undefined') {
-                      window.history.replaceState(null, '', `/login${window.location.search}`);
-                    }
-                  }}
-                  className="text-[var(--text)] font-semibold hover:text-[#D71921] underline underline-offset-4 transition-colors cursor-pointer"
-                >
-                  Sign in
-                </button>
-              </>
-            )}
-          </p>
-
-          <button
-            type="button"
-            onClick={handleStartGuestMode}
-            className="w-full py-2.5 px-4 rounded-full border border-[var(--border)] bg-[var(--surface-2)] hover:border-[var(--text-muted)] text-xs font-medium text-[var(--muted)] hover:text-[var(--text)] transition-all cursor-pointer"
-            style={{ fontFamily: 'var(--font-heading)' }}
-          >
-            Continue as guest
-          </button>
-        </div>
-      </form>
+        <button
+          type="button"
+          onClick={handleStartGuestMode}
+          disabled={googleLoading || loading}
+          className="w-full min-h-[48px] px-4 rounded-full border border-[var(--border)] bg-[var(--surface-2)] hover:border-[#D71921]/55 text-xs sm:text-sm font-semibold text-[var(--text)] transition-colors cursor-pointer inline-flex items-center justify-center gap-2 disabled:opacity-50"
+          style={{ fontFamily: 'var(--font-heading)', height: '48px' }}
+        >
+          <UserCheck size={16} className="text-[#D71921] shrink-0" />
+          <span>Continue as guest</span>
+        </button>
+      </div>
     </div>
   );
 }

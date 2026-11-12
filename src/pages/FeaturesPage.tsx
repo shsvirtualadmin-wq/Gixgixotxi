@@ -73,7 +73,7 @@ const REAL_FEATURES = [
     num: '07',
     icon: <Cpu size={22} />,
     title: 'Boardy 24/7 AI Tutor',
-    badge: 'Edge Intelligence',
+    badge: 'Smart Guidance',
     desc: 'Dedicated conversational entrance exam tutor. Explains tricky physics concept derivations, calculation shortcuts, and trap options with numbered guidance without spoiling the solution immediately.',
     link: '/dashboard/ai-tutor',
     linkText: 'Meet Boardy',

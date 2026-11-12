@@ -7,6 +7,7 @@ import {
   normalizeCorrectLetter,
 } from '../constants/d1Universities';
 import { auth } from '../lib/firebase';
+import { convertAsciiMathToLatex } from '../lib/math';
 
 export interface ParsedImportMcqRow {
   rowIndex: number;
@@ -1124,13 +1125,13 @@ export function parseImportInput(
           rowIndex: rowNum,
           subject: String(item.subject || defaultSubject || 'General').trim(),
           topic: String(item.topic || item.chapter || defaultTopic || 'General').trim(),
-          question,
-          option_a,
-          option_b,
-          option_c,
-          option_d,
+          question: convertAsciiMathToLatex(question),
+          option_a: convertAsciiMathToLatex(option_a),
+          option_b: convertAsciiMathToLatex(option_b),
+          option_c: convertAsciiMathToLatex(option_c),
+          option_d: convertAsciiMathToLatex(option_d),
           correct_answer: correct,
-          explanation: String(item.explanation || item.solution || '').trim(),
+          explanation: convertAsciiMathToLatex(String(item.explanation || item.solution || '').trim()),
           difficulty: normalizeDifficulty(item.difficulty),
         });
       });
@@ -1216,13 +1217,13 @@ export function parseImportInput(
         rowIndex: rowNum,
         subject,
         topic,
-        question,
-        option_a,
-        option_b,
-        option_c,
-        option_d,
+        question: convertAsciiMathToLatex(question),
+        option_a: convertAsciiMathToLatex(option_a),
+        option_b: convertAsciiMathToLatex(option_b),
+        option_c: convertAsciiMathToLatex(option_c),
+        option_d: convertAsciiMathToLatex(option_d),
         correct_answer: correct,
-        explanation,
+        explanation: convertAsciiMathToLatex(explanation),
         difficulty,
       });
     });
@@ -1351,13 +1352,13 @@ export function parseImportInput(
       rowIndex: rowNum,
       subject,
       topic,
-      question,
-      option_a,
-      option_b,
-      option_c,
-      option_d,
+      question: convertAsciiMathToLatex(question),
+      option_a: convertAsciiMathToLatex(option_a),
+      option_b: convertAsciiMathToLatex(option_b),
+      option_c: convertAsciiMathToLatex(option_c),
+      option_d: convertAsciiMathToLatex(option_d),
       correct_answer: correct,
-      explanation,
+      explanation: convertAsciiMathToLatex(explanation),
       difficulty,
     });
   }

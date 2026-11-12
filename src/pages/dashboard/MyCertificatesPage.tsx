@@ -113,7 +113,7 @@ export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
               <span>No 1st Position Certificates Yet</span>
             </div>
             <p className="text-xs text-[var(--text-muted)] max-w-xl">
-              When you take <strong>1st Position</strong> in a finalised Boardly Grand Line mock, your signed A4 Certificate of Excellence is automatically generated on Cloudflare and appears here with PDF &amp; PNG downloads.
+              When you take 1st Position in a finalized Boardly Grand Line mock, your signed A4 Certificate of Excellence is generated automatically and appears here with PDF &amp; PNG downloads.
             </p>
           </div>
           <Link

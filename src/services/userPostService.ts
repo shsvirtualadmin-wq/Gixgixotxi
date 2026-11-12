@@ -260,7 +260,7 @@ async function uploadDataUrlToR2(dataUrl: string, fileName = 'post-image.jpg'): 
   });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok || !data?.url) {
-    throw new Error(data?.error || 'Failed to upload image to Cloudflare R2.');
+    throw new Error(data?.error || 'Failed to upload image. Please try again.');
   }
   return String(data.url);
 }

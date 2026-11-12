@@ -235,7 +235,7 @@ export function FeaturesGrid() {
 
             {/* Pinned Footer */}
             <div className="mt-6 pt-4 border-t border-white/10 min-h-[44px] flex items-center text-xs text-[var(--muted)]">
-              Powered by server-verified edge intelligence.
+              Powered by step-by-step academic guidance.
             </div>
           </div>
 

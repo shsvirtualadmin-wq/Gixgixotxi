@@ -181,7 +181,7 @@ export async function renderCertificateFilesOnServer(
     input.studentName,
     input.grandLineTitle,
   ]);
-  pdfDoc.setProducer('Boardly Certificate Engine (Cloudflare Worker / R2)');
+  pdfDoc.setProducer('Boardly Certificate Engine');
   pdfDoc.setCreator('Boardly (boardly.cfd)');
 
   const page = pdfDoc.addPage([CERTIFICATE_WIDTH, CERTIFICATE_HEIGHT]);

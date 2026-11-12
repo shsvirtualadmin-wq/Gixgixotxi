@@ -1,4 +1,4 @@
-import { Outlet, useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { useOutlet, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { isUserAuthenticated } from '@/utils/homeUrl';
 import { VerificationBanner } from '@/components/auth/VerificationBanner';
@@ -9,13 +9,53 @@ import { DashboardErrorBoundary } from './DashboardErrorBoundary';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
 import { scheduleIdleTabPrefetch } from '@/lib/swrCache';
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { ensureWelcomeNotificationForUser } from '@/services/notificationService';
 import { UserPlus, X } from 'lucide-react';
 
 const GuestUpgradeModal = React.lazy(() =>
   import('@/components/auth/GuestUpgradeModal').then((m) => ({ default: m.GuestUpgradeModal }))
 );
+
+const CACHED_DOCK_PATHS = new Set([
+  '/dashboard',
+  '/dashboard/grand-line',
+  '/commons',
+  '/dashboard/commons',
+  '/dashboard/chat',
+  '/settings',
+  '/dashboard/settings',
+]);
+
+function KeepAliveTabsOutlet() {
+  const location = useLocation();
+  const currentOutlet = useOutlet();
+  const normalizedPath = location.pathname.replace(/\/+$/, '') || '/';
+  const isCacheableTab = CACHED_DOCK_PATHS.has(normalizedPath);
+  const cacheRef = useRef<Map<string, React.ReactNode>>(new Map());
+
+  if (isCacheableTab && currentOutlet) {
+    cacheRef.current.set(normalizedPath, currentOutlet);
+  }
+
+  return (
+    <>
+      {Array.from(cacheRef.current.entries()).map(([tabPath, element]) => {
+        const isActive = isCacheableTab && tabPath === normalizedPath;
+        return (
+          <div
+            key={tabPath}
+            style={{ display: isActive ? 'contents' : 'none' }}
+            aria-hidden={!isActive}
+          >
+            {element}
+          </div>
+        );
+      })}
+      {!isCacheableTab && currentOutlet}
+    </>
+  );
+}
 
 export function DashboardShell() {
   const { user, profile, isGuest, profileLoading, isSessionVerified, otpVerificationState } = useAuth();
@@ -137,7 +177,7 @@ export function DashboardShell() {
       >
         <DashboardErrorBoundary fallbackTitle="Cockpit Section Error">
           <BoardlySuspenseBoundary variant="page">
-            <Outlet />
+            <KeepAliveTabsOutlet />
           </BoardlySuspenseBoundary>
         </DashboardErrorBoundary>
       </main>

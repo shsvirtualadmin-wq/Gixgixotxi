@@ -9,6 +9,7 @@ import {
   type GradedAttemptQuestion,
 } from '@/services/ambassadorTestService';
 import type { AttemptQuestion } from '@/types/index';
+import { convertAsciiMathToLatex } from '@/lib/math';
 import { drawVectorDottedLogoOnPdf } from './logoDottedSvg';
 
 export interface PdfExportProgress {
@@ -46,12 +47,19 @@ export interface ExportDrillResultPdfOptions {
 }
 
 /**
- * Sanitizes and converts LaTeX math, Greek characters, subscripts, and superscripts
- * into clean, universally renderable Unicode strings for direct vector jsPDF output.
+ * Sanitizes and converts both plain-ASCII math and LaTeX math, integrals, Greek characters,
+ * subscripts, and superscripts into clean, universally renderable Unicode strings for vector jsPDF output.
  */
 export function cleanMathForPdf(raw: string): string {
   if (!raw) return '';
-  let str = String(raw).trim();
+  let str = convertAsciiMathToLatex(String(raw).trim());
+
+  // Definite & indefinite integrals: \int_{a}^{b} -> ∫[a→b]
+  str = str
+    .replace(/\\int_\{([^}]+)\}\^\{([^}]+)\}/g, '∫[$1→$2] ')
+    .replace(/\\int_([^\s^]+)\^([^\s]+)/g, '∫[$1→$2] ')
+    .replace(/\\int\b/g, '∫ ')
+    .replace(/\\,/g, ' ');
 
   // Greek alphabet
   const greek: Record<string, string> = {
@@ -60,6 +68,7 @@ export function cleanMathForPdf(raw: string): string {
     '\\gamma': 'γ',
     '\\delta': 'δ',
     '\\epsilon': 'ε',
+    '\\varepsilon': 'ε',
     '\\theta': 'θ',
     '\\lambda': 'λ',
     '\\mu': 'μ',
@@ -67,7 +76,14 @@ export function cleanMathForPdf(raw: string): string {
     '\\sigma': 'σ',
     '\\omega': 'ω',
     '\\Delta': 'Δ',
+    '\\Gamma': 'Γ',
+    '\\Lambda': 'Λ',
     '\\Omega': 'Ω',
+    '\\Phi': 'Φ',
+    '\\Pi': 'Π',
+    '\\Psi': 'Ψ',
+    '\\Sigma': 'Σ',
+    '\\Theta': 'Θ',
     '\\phi': 'φ',
     '\\rho': 'ρ',
     '\\tau': 'τ',
@@ -81,21 +97,31 @@ export function cleanMathForPdf(raw: string): string {
   // Math operators & symbols
   str = str
     .replace(/\\times/g, '×')
+    .replace(/\\cdot/g, '·')
     .replace(/\\div/g, '÷')
     .replace(/\\pm/g, '±')
-    .replace(/\\leq/g, '≤')
-    .replace(/\\geq/g, '≥')
-    .replace(/\\neq/g, '≠')
+    .replace(/\\leq|\\le\b/g, '≤')
+    .replace(/\\geq|\\ge\b/g, '≥')
+    .replace(/\\neq|\\ne\b/g, '≠')
     .replace(/\\approx/g, '≈')
     .replace(/\\infty/g, '∞')
     .replace(/\\degree|\^\\circ/g, '°')
+    .replace(/\\implies|\\Rightarrow/g, '⇒')
     .replace(/\\to|\\rightarrow/g, '→')
     .replace(/\\leftarrow/g, '←');
 
-  // Fractions: \frac{num}{den} -> (num / den)
-  str = str.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1 / $2)');
+  // Fractions: \frac{num}{den} -> (num / den) or num/den
+  str = str.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, (_m, num: string, den: string) => {
+    const n = num.trim();
+    const d = den.trim();
+    if (/^[0-9a-zA-Zα-ωΑ-Ω]+$/.test(n) && /^[0-9a-zA-Zα-ωΑ-Ω]+$/.test(d)) {
+      return `${n}/${d}`;
+    }
+    return `(${n})/(${d})`;
+  });
 
-  // Square roots: \sqrt{val} -> √(val)
+  // Cube & square roots: \sqrt[3]{val} -> ∛(val), \sqrt{val} -> √(val)
+  str = str.replace(/\\sqrt\[3\]\{([^}]+)\}/g, '∛($1)');
   str = str.replace(/\\sqrt\{([^}]+)\}/g, '√($1)');
 
   // Text wrapper: \text{...} -> ...
@@ -108,9 +134,12 @@ export function cleanMathForPdf(raw: string): string {
     '+': '⁺', '-': '⁻', 'n': 'ⁿ', 'x': 'ˣ',
   };
   str = str.replace(/\^([0-9+\-nx])/g, (_, ch) => supers[ch] || '^' + ch);
-  str = str.replace(/\^\{([0-9+\-nx]+)\}/g, (_, seq) =>
-    seq.split('').map((c: string) => supers[c] || c).join('')
-  );
+  str = str.replace(/\^\{([^}]+)\}/g, (_, seq: string) => {
+    if ([...seq].every((c) => supers[c])) {
+      return [...seq].map((c) => supers[c]).join('');
+    }
+    return `^(${seq})`;
+  });
 
   // Subscripts
   const subs: Record<string, string> = {
@@ -119,12 +148,16 @@ export function cleanMathForPdf(raw: string): string {
     '+': '₊', '-': '₋', 'a': 'ₐ', 'e': 'ₑ', 'o': 'ₒ', 'x': 'ₓ',
   };
   str = str.replace(/_([0-9+\-aeox])/g, (_, ch) => subs[ch] || '_' + ch);
-  str = str.replace(/_\{([0-9+\-aeox]+)\}/g, (_, seq) =>
+  str = str.replace(/_\{([0-9+\-aeox]+)\}/g, (_, seq: string) =>
     seq.split('').map((c: string) => subs[c] || c).join('')
   );
 
-  // Remove LaTeX delimiters and dangling macros
-  str = str.replace(/\$/g, '').replace(/\\([a-zA-Z]+)/g, '$1');
+  // Remove LaTeX delimiters and dangling macros (preserving escaped \$)
+  str = str
+    .replace(/\\\$/g, '__LITERAL_DOLLAR__')
+    .replace(/\$/g, '')
+    .replace(/__LITERAL_DOLLAR__/g, '$')
+    .replace(/\\([a-zA-Z]+)/g, '$1');
 
   // Collapse consecutive whitespace
   return str.replace(/\s+/g, ' ').trim();

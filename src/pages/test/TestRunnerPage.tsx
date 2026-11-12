@@ -12,10 +12,8 @@ import { TestHeader } from '@/components/test/TestHeader';
 import { QuestionCard } from '@/components/test/QuestionCard';
 import { QuestionPalette } from '@/components/test/QuestionPalette';
 import { ConfirmSubmitModal } from '@/components/test/ConfirmSubmitModal';
-import { LineLoader } from '@/components/ui/LineLoader';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
-import { exportTestToPdf } from '@/utils/testPdfExporter';
 import { getUniversityRulesSummary } from '@/constants/universityCriteria';
 import { Sparkles, Lock, X, AlertCircle, Check } from 'lucide-react';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
@@ -382,6 +380,7 @@ export function TestRunnerPage() {
     setPdfSuccessMessage('Generating test PDF with KaTeX math rendering...');
 
     try {
+      const { exportTestToPdf } = await import('@/utils/testPdfExporter');
       await exportTestToPdf(
         {
           title: testTitle,
@@ -453,7 +452,37 @@ export function TestRunnerPage() {
   ]);
 
   if (loading) {
-    return <LineLoader context="test" variant="page" />;
+    return (
+      <div
+        className="w-screen h-[100dvh] flex flex-col bg-[var(--bg)] text-[var(--text)] overflow-hidden"
+        aria-busy="true"
+        aria-label="Loading test questions"
+      >
+        <div className="h-16 border-b border-[var(--border)] bg-[var(--surface)] px-5 flex items-center justify-between">
+          <div className="h-7 w-28 rounded-full skeleton-shimmer" />
+          <div className="h-7 w-36 rounded-full skeleton-shimmer" />
+          <div className="h-8 w-24 rounded-xl skeleton-shimmer" />
+        </div>
+        <div className="flex-1 max-w-[760px] w-full mx-auto px-4 py-8 space-y-4">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 space-y-4">
+            <div className="h-5 w-32 rounded-full skeleton-shimmer" />
+            <div className="h-5 w-full rounded-lg skeleton-shimmer" />
+            <div className="h-5 w-4/5 rounded-lg skeleton-shimmer" />
+          </div>
+          <div className="space-y-3">
+            {[0, 1, 2, 3].map((idx) => (
+              <div
+                key={idx}
+                className="w-full min-h-[56px] rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 flex items-center gap-3.5"
+              >
+                <div className="w-7 h-7 rounded-full skeleton-shimmer shrink-0" />
+                <div className="h-4 flex-1 rounded-md skeleton-shimmer" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (error || !attempt || questions.length === 0) {

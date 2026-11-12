@@ -204,7 +204,7 @@ export const TermsPage: React.FC = () => {
             <ul className="list-disc pl-5 space-y-2.5">
               <li>
                 <strong>Registered Accounts:</strong> Created using an email address and password
-                (minimum 6 characters) or via Google Sign-In (Firebase Authentication). Registered
+                (minimum 6 characters) or via Google Sign-In. Registered
                 users can sign in using either their email address or their unique `@username`. You
                 are responsible for keeping your password confidential.
               </li>
@@ -402,10 +402,10 @@ export const TermsPage: React.FC = () => {
               </li>
               <li>
                 <strong>Direct Messages Storage:</strong> Direct chat messages and chat requests are
-                stored in our Google Cloud Firestore database (`conversations` and `chatRequests`
-                collections) so they sync across your devices. While there is no routine admin chat
+                stored securely on our servers (`conversations` and `chatRequests`
+                records) so they sync across your devices. While there is no routine admin chat
                 browsing panel in the standard interface, messages are not end-to-end encrypted and
-                may be accessed in database records if required to investigate severe safety reports
+                may be accessed in server records if required to investigate severe safety reports
                 or legal obligations.
               </li>
             </ul>

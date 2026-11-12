@@ -798,6 +798,7 @@ export async function getGlobalGrandLineTopScorers(
 }
 
 export const SAMPLE_CSV_TEMPLATE = `question,optionA,optionB,optionC,optionD,correctOption,explanation,topic,difficulty
-"What is the SI unit of magnetic flux?","Tesla","Weber","Henry","Gauss","B","Magnetic flux Φ = B·A is measured in Webers (Wb).","Electromagnetism","easy"
-"If f(x) = ln(x² + 1), what is f'(1)?","1","2","1/2","0","A","Using chain rule: f'(x) = 2x/(x² + 1), so f'(1) = 2/2 = 1.","Calculus","medium"
-"Which organelle is responsible for ATP synthesis via oxidative phosphorylation?","Ribosome","Golgi Apparatus","Mitochondria","Lysosome","C","Mitochondria generate ATP across the inner membrane.","Cell Biology","easy"`;
+"Evaluate the definite integral $\\int_{0}^{1} x(1 - x)^{9}\\,dx$.","$\\frac{1}{110}$","$\\frac{1}{90}$","$\\frac{1}{100}$","$\\frac{1}{10}$","A","Using the Beta function or substitution $u = 1 - x$: $\\int_{0}^{1} (1 - u)u^{9}\\,du = \\frac{1}{10} - \\frac{1}{11} = \\frac{1}{110}$.","Calculus","medium"
+"If $\\alpha$ and $\\beta$ are the roots of $x^{2} - 5x + 6 = 0$, what is $\\alpha^{2} + \\beta^{2}$?","$13$","$\\sqrt{5}$","$25$","$12$","A","Since $\\alpha + \\beta = 5$ and $\\alpha\\beta = 6$, we have $\\alpha^{2} + \\beta^{2} = (\\alpha + \\beta)^{2} - 2\\alpha\\beta = 25 - 12 = 13$.","Quadratic Equations","easy"
+"For $x > 0$, the function $f(x) = x^{1/x}$ attains its maximum value at:","$x = e$","$x = \\sqrt{5}$","$x = 1$","$x = 2$","A","Taking $\\ln f(x) = \\frac{\\ln x}{x}$ and differentiating gives $f'(x) = x^{1/x} \\cdot \\frac{1 - \\ln x}{x^{2}} = 0 \\implies x = e$.","Differentiation","medium"`;
+

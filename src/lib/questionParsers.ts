@@ -1,4 +1,5 @@
 import { validateMath } from '@/components/ui/MathText';
+import { convertAsciiMathToLatex } from '@/lib/math';
 import { findSubjectSlug, findChapterSlug, slugify } from '@/constants/taxonomy';
 import type { QuestionDifficulty } from '@/types';
 
@@ -220,8 +221,17 @@ export function parseQuickPaste(
       needsReview.push('No answer detected');
     }
 
+    const normalizedStem = convertAsciiMathToLatex(questionStem);
+    const normalizedOptions: [string, string, string, string] = [
+      convertAsciiMathToLatex(finalOptions[0]),
+      convertAsciiMathToLatex(finalOptions[1]),
+      convertAsciiMathToLatex(finalOptions[2]),
+      convertAsciiMathToLatex(finalOptions[3]),
+    ];
+    const normalizedExplain = convertAsciiMathToLatex(detectedExplanation || 'Standard academic solution.');
+
     // Math validation
-    const mathVal = validateMath(questionStem + ' ' + finalOptions.join(' ') + ' ' + detectedExplanation);
+    const mathVal = validateMath(normalizedStem + ' ' + normalizedOptions.join(' ') + ' ' + normalizedExplain);
     if (!mathVal.ok) {
       errors.push(...mathVal.errors);
       needsReview.push('Broken math formula');
@@ -231,10 +241,10 @@ export function parseQuickPaste(
     const ch = defaults.chapter || 'general';
 
     results.push({
-      q: questionStem,
-      options: finalOptions,
+      q: normalizedStem,
+      options: normalizedOptions,
       correct: detectedAnswer,
-      explain: detectedExplanation || 'Standard academic solution.',
+      explain: normalizedExplain,
       subject: sub,
       chapter: ch,
       difficulty: defaults.difficulty || 'medium',
@@ -369,17 +379,26 @@ export function parseCsvText(
       needsReview.push('No answer detected');
     }
 
-    const mathVal = validateMath(`${stem} ${options.join(' ')} ${explanation}`);
+    const normalizedStem = convertAsciiMathToLatex(stem.trim());
+    const normalizedOptions: [string, string, string, string] = [
+      convertAsciiMathToLatex(options[0]),
+      convertAsciiMathToLatex(options[1]),
+      convertAsciiMathToLatex(options[2]),
+      convertAsciiMathToLatex(options[3]),
+    ];
+    const normalizedExplain = convertAsciiMathToLatex(explanation.trim() || 'Standard academic solution.');
+
+    const mathVal = validateMath(`${normalizedStem} ${normalizedOptions.join(' ')} ${normalizedExplain}`);
     if (!mathVal.ok) {
       errors.push(...mathVal.errors);
       needsReview.push('Broken math formula');
     }
 
     results.push({
-      q: stem.trim(),
-      options,
+      q: normalizedStem,
+      options: normalizedOptions,
       correct: parsedCorrect,
-      explain: explanation.trim() || 'Standard academic solution.',
+      explain: normalizedExplain,
       subject: rowSubject,
       chapter: rowChapter,
       difficulty: rowDiff,
@@ -415,8 +434,8 @@ export function convertGoogleSheetUrlToCsv(url: string): string | null {
  */
 export function generateCsvTemplate(): string {
   return `question,a,b,c,d,answer,explanation,subject,chapter,difficulty,tags,source
-"Evaluate the integral $\\int x e^x dx$ using integration by parts.","$e^x(x - 1) + C$","$e^x(x + 1) + C$","$x e^x + C$","$e^x + C$",A,"Using $\\int u v' = u v - \\int u' v$ with $u=x, v'=e^x$, we obtain $x e^x - e^x + C = e^x(x - 1) + C$.",mathematics,integration-by-parts,medium,"nust;fast",FAST Past Papers 2024
-"What is the IUPAC name for acetone?","Propanal","Propanone","Ethanal","Butanone",B,"Acetone consists of a 3-carbon chain with a carbonyl on C2: propan-2-one (propanone).",chemistry,aldehydes-and-ketones,easy,"mdcat;chemistry",PMDC Entrance Prep
+"Evaluate the integral $\\int_{0}^{1} x(1-x)^{9}\\,dx$.","$\\frac{1}{110}$","$\\frac{1}{90}$","$\\frac{1}{100}$","$\\frac{1}{10}$",A,"Using the Beta integral or substitution $u = 1 - x$, $\\int_{0}^{1} (1-u)u^{9}\\,du = \\frac{1}{10} - \\frac{1}{11} = \\frac{1}{110}$.",mathematics,integration-by-parts,medium,"nust;fast",FAST Past Papers 2024
+"If $\\alpha$ and $\\beta$ are roots of $x^{2} - 5x + 6 = 0$, find $\\alpha^{2} + \\beta^{2}$.","$13$","$\\sqrt{5}$","$x^{1/x}$","$12$",A,"Using Vieta's formulas, $\\alpha + \\beta = 5$ and $\\alpha\\beta = 6$, so $\\alpha^{2}+\\beta^{2} = (\\alpha+\\beta)^{2} - 2\\alpha\\beta = 13$.",mathematics,quadratic-equations,easy,"nust;math",NUST NET Past Papers
 "Which data structure operates on a First-In-First-Out (FIFO) basis?","Stack","Queue","Binary Search Tree","Hash Map",B,"A queue inserts elements at the rear and removes from the front (FIFO).",computer-science,data-structures-and-algorithms,easy,"fast;cs",FAST CS 2023`;
 }
 

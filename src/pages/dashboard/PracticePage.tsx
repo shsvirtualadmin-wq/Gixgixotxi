@@ -278,7 +278,7 @@ export function PracticePage() {
       setD1SelectedAnswers({});
       setD1PracticeOpen(true);
     } catch {
-      setLaunchError('Could not load university practice questions from D1.');
+      setLaunchError('Could not load university practice questions right now. Please try again.');
     } finally {
       setD1LoadingPractice(false);
     }
@@ -1170,10 +1170,10 @@ export function PracticePage() {
           </div>
         )}
 
-        {/* ── INTERACTIVE D1 UNIVERSITY PRACTICE MODAL (KATEX + \ce) ── */}
+        {/* ── FULL-SCREEN UNIVERSITY PRACTICE RUNNER (100dvh, solid surface, no blur) ── */}
         {d1PracticeOpen && d1PracticeMcqs.length > 0 && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md overflow-y-auto">
-            <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl bg-[var(--surface)] border border-[var(--border)] p-6 space-y-5 shadow-2xl text-[var(--text)]">
+          <div className="fixed inset-0 z-[100] w-screen h-[100dvh] flex flex-col bg-[var(--bg)] text-[var(--text)] overflow-y-auto p-4 sm:p-6">
+            <div className="w-full max-w-[760px] mx-auto rounded-3xl bg-[var(--surface)] border border-[var(--border)] p-5 sm:p-6 space-y-5 text-[var(--text)]">
               {(() => {
                 const currentQ = d1PracticeMcqs[d1PracticeIndex] || d1PracticeMcqs[0];
                 const chosen = d1SelectedAnswers[currentQ.id];

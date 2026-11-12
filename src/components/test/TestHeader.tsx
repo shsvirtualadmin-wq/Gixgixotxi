@@ -25,9 +25,11 @@ export function TestHeader({
   onRequestSubmit,
 }: TestHeaderProps) {
   const formatTime = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    const safe = Math.max(0, Math.floor(secs));
+    const h = Math.floor(safe / 3600);
+    const m = Math.floor((safe % 3600) / 60);
+    const s = safe % 60;
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
   const isWarning = secondsRemaining !== null && secondsRemaining < 300 && secondsRemaining >= 60;
@@ -35,7 +37,6 @@ export function TestHeader({
 
   return (
     <header
-      className="glass"
       style={{
         height: 64,
         position: 'sticky',
@@ -45,6 +46,7 @@ export function TestHeader({
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '0 1.25rem',
+        background: 'var(--surface)',
         borderBottom: '1px solid var(--border)',
         borderRadius: 0,
       }}

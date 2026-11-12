@@ -1,7 +1,39 @@
-import React, { useMemo, type CSSProperties } from 'react';
-import katex from 'katex';
+import React, { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import type katexType from 'katex';
 import 'katex/dist/katex.min.css';
-import 'katex/contrib/mhchem';
+import { convertAsciiMathToLatex } from '@/lib/math';
+
+type KatexModule = typeof katexType;
+
+let katexInstance: KatexModule | null = null;
+let katexLoadPromise: Promise<KatexModule> | null = null;
+const katexListeners = new Set<() => void>();
+
+/**
+ * Lazy-loads KaTeX and mhchem only when a math segment is actually rendered or validated.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function ensureKatexLoaded(): Promise<KatexModule> {
+  if (katexInstance) {
+    return Promise.resolve(katexInstance);
+  }
+  if (!katexLoadPromise) {
+    katexLoadPromise = import('katex')
+      .then(async (mod) => {
+        const resolved = (mod.default ?? mod) as KatexModule;
+        try {
+          await import('katex/contrib/mhchem');
+        } catch {
+          // mhchem optional contrib
+        }
+        katexInstance = resolved;
+        katexListeners.forEach((cb) => cb());
+        katexListeners.clear();
+        return resolved;
+      });
+  }
+  return katexLoadPromise;
+}
 
 export interface ValidateMathResult {
   ok: boolean;
@@ -12,7 +44,6 @@ export interface ValidateMathResult {
 
 /**
  * Validates all math segments ($...$ and $$...$$) in the provided text.
- * Uses throwOnError: true so any malformed LaTeX syntax is reported.
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function validateMath(text: string): ValidateMathResult {
@@ -20,14 +51,18 @@ export function validateMath(text: string): ValidateMathResult {
     return { ok: true, valid: true, errors: [] };
   }
 
+  const normalized = convertAsciiMathToLatex(text);
   const errors: string[] = [];
-  // Tokenize looking for escaped \$, $$...$$, \[...\], $...$, and \(...\)
   const regex = /(?:\\\$)|(?:\$\$([\s\S]+?)\$\$)|(?:\\\[([\s\S]+?)\\\])|(?:\$([^$\n]+?)\$)|(?:\\\(([\s\S]+?)\\\))/g;
   let match: RegExpExecArray | null;
 
-  while ((match = regex.exec(text)) !== null) {
+  // Trigger lazy load in background if not yet loaded
+  if (!katexInstance) {
+    void ensureKatexLoaded();
+  }
+
+  while ((match = regex.exec(normalized)) !== null) {
     if (match[0] === '\\$') {
-      // Literal dollar sign - skip validation
       continue;
     }
 
@@ -39,19 +74,21 @@ export function validateMath(text: string): ValidateMathResult {
       continue;
     }
 
-    try {
-      katex.renderToString(formula.trim(), {
-        displayMode: isDisplay,
-        throwOnError: true,
-        strict: 'warn',
-        trust: false,
-        output: 'htmlAndMathml',
-        maxSize: 20,
-        maxExpand: 1000,
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      errors.push(`Math error in "${formula.slice(0, 30)}...": ${msg}`);
+    if (katexInstance) {
+      try {
+        katexInstance.renderToString(formula.trim(), {
+          displayMode: isDisplay,
+          throwOnError: true,
+          strict: false,
+          trust: false,
+          output: 'htmlAndMathml',
+          maxSize: 20,
+          maxExpand: 1000,
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`Math error in "${formula.slice(0, 30)}...": ${msg}`);
+      }
     }
   }
 
@@ -68,48 +105,60 @@ interface ParsedSegment {
   content: string;
 }
 
+const convertedTextCache = new Map<string, string>();
+const MAX_CONVERTED_CACHE = 2000;
+
+function getNormalizedMathString(raw: string): string {
+  const cached = convertedTextCache.get(raw);
+  if (cached !== undefined) return cached;
+
+  const converted = convertAsciiMathToLatex(raw);
+  if (convertedTextCache.size >= MAX_CONVERTED_CACHE) {
+    const firstKey = convertedTextCache.keys().next().value;
+    if (firstKey !== undefined) convertedTextCache.delete(firstKey);
+  }
+  convertedTextCache.set(raw, converted);
+  return converted;
+}
+
 /**
  * Tokenizes string into plain text, inline math ($...$ or \(...\)), and display math ($$...$$ or \[...\]).
- * Handles literal escaped dollar signs (\$ -> $ in plain text).
+ * Automatically runs the safe ASCII-to-LaTeX fallback converter and protects currency dollar signs.
  */
 function parseMathText(raw: string): ParsedSegment[] {
   if (!raw || typeof raw !== 'string') return [];
 
+  const normalized = getNormalizedMathString(raw);
   const segments: ParsedSegment[] = [];
   const regex = /(?:\\\$)|(?:\$\$([\s\S]+?)\$\$)|(?:\\\[([\s\S]+?)\\\])|(?:\$([^$\n]+?)\$)|(?:\\\(([\s\S]+?)\\\))/g;
 
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = regex.exec(raw)) !== null) {
+  while ((match = regex.exec(normalized)) !== null) {
     const matchStart = match.index;
     const matchEnd = regex.lastIndex;
 
-    // Plain text before the match
     if (matchStart > lastIndex) {
-      const textBefore = raw.substring(lastIndex, matchStart).replace(/\\\$/g, '$');
+      const textBefore = normalized.substring(lastIndex, matchStart).replace(/\\\$/g, '$');
       if (textBefore.length > 0) {
         segments.push({ type: 'text', content: textBefore });
       }
     }
 
     if (match[0] === '\\$') {
-      // Escaped literal dollar sign in plain text
       segments.push({ type: 'text', content: '$' });
     } else if (match[1] !== undefined || match[2] !== undefined) {
-      // Display math $$...$$ or \[...\]
       segments.push({ type: 'display-math', content: (match[1] ?? match[2])! });
     } else if (match[3] !== undefined || match[4] !== undefined) {
-      // Inline math $...$ or \(...\)
       segments.push({ type: 'inline-math', content: (match[3] ?? match[4])! });
     }
 
     lastIndex = matchEnd;
   }
 
-  // Any remaining text after the last match
-  if (lastIndex < raw.length) {
-    const remaining = raw.substring(lastIndex).replace(/\\\$/g, '$');
+  if (lastIndex < normalized.length) {
+    const remaining = normalized.substring(lastIndex).replace(/\\\$/g, '$');
     if (remaining.length > 0) {
       segments.push({ type: 'text', content: remaining });
     }
@@ -147,12 +196,10 @@ function renderTextWithLinks(text: string, keyPrefix: string): React.ReactNode[]
 
 /**
  * Renders inline markdown formatting: bold (**text**), italic (*text*), code (`code`).
- * Strips raw markdown syntax characters and outputs React elements.
  */
 function renderInlineMarkdown(text: string, keyPrefix: string): React.ReactNode[] {
   if (!text) return [];
 
-  // Match **bold**, *italic*, `code`
   const tokenRegex = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
   const parts = text.split(tokenRegex);
 
@@ -190,7 +237,42 @@ function renderInlineMarkdown(text: string, keyPrefix: string): React.ReactNode[
 }
 
 const katexHtmlCache = new Map<string, string>();
-const MAX_KATEX_CACHE = 1200;
+const MAX_KATEX_CACHE = 1600;
+
+function renderFormulaWithKatex(formula: string, isDisplay: boolean): string {
+  const trimmed = formula.trim();
+  const cacheKey = `${isDisplay ? 'D' : 'I'}:${trimmed}`;
+  const cached = katexHtmlCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  if (!katexInstance) {
+    void ensureKatexLoaded();
+    return '';
+  }
+
+  try {
+    const html = katexInstance.renderToString(trimmed, {
+      displayMode: isDisplay,
+      throwOnError: false,
+      errorColor: '#D71921',
+      strict: false,
+      trust: false,
+      output: 'htmlAndMathml',
+      maxSize: 20,
+      maxExpand: 1000,
+    });
+
+    if (katexHtmlCache.size >= MAX_KATEX_CACHE) {
+      const first = katexHtmlCache.keys().next().value;
+      if (first) katexHtmlCache.delete(first);
+    }
+    katexHtmlCache.set(cacheKey, html);
+    return html;
+  } catch (err) {
+    console.warn('[MathText] Rendering error fallback:', err, formula);
+    return '';
+  }
+}
 
 function renderMathSegment(seg: ParsedSegment, index: number, prefix: string) {
   if (seg.type === 'text') {
@@ -202,42 +284,15 @@ function renderMathSegment(seg: ParsedSegment, index: number, prefix: string) {
   }
 
   const isDisplay = seg.type === 'display-math';
-  const trimmed = seg.content.trim();
-  const cacheKey = `${isDisplay ? 'D' : 'I'}:${trimmed}`;
-  let html = katexHtmlCache.get(cacheKey) || '';
-  let hasError = false;
+  const html = renderFormulaWithKatex(seg.content, isDisplay);
 
   if (!html) {
-    try {
-      html = katex.renderToString(trimmed, {
-        displayMode: isDisplay,
-        throwOnError: false,
-        errorColor: '#D71921',
-        strict: 'warn',
-        trust: false,
-        output: 'htmlAndMathml',
-        maxSize: 20,
-        maxExpand: 1000,
-      });
-
-      if (katexHtmlCache.size >= MAX_KATEX_CACHE) {
-        const first = katexHtmlCache.keys().next().value;
-        if (first) katexHtmlCache.delete(first);
-      }
-      katexHtmlCache.set(cacheKey, html);
-    } catch (err) {
-      console.warn('[MathText] Rendering error fallback:', err, seg.content);
-      hasError = true;
-    }
-  }
-
-  if (hasError || !html) {
     return (
       <span
-        key={`${prefix}-err-${index}`}
-        className="katex-fallback text-[var(--accent,#D71921)] font-mono text-sm px-1 py-0.5 rounded bg-[var(--surface-2)] [overflow-wrap:anywhere] [word-break:break-word]"
+        key={`${prefix}-fallback-${index}`}
+        className="katex-fallback font-mono text-sm px-1 py-0.5 rounded bg-[var(--surface-2)] [overflow-wrap:anywhere] [word-break:break-word]"
       >
-        {isDisplay ? `$$${seg.content}$$` : `$${seg.content}$`}
+        {seg.content}
       </span>
     );
   }
@@ -277,31 +332,49 @@ export interface MathTextProps {
 }
 
 /**
- * Universal MathText renderer with KaTeX string caching.
- * - Renders markdown headers (###), bold (**text**), italics (*text*), and lists cleanly
- * - Never shows raw asterisks or unformatted hashes
- * - Math segments rendered safely via KaTeX with fallback to raw text on error
- * - Display math scrolls horizontally inside its own overflow-x:auto box
+ * Universal MathText renderer with lazy-loaded KaTeX, string memoization/caching,
+ * currency-dollar protection, and automatic ASCII-to-LaTeX fallback conversion.
  */
-export const MathText = React.memo(function MathText({ children, text, className = '', block = false, style }: MathTextProps) {
+export const MathText = React.memo(function MathText({
+  children,
+  text,
+  className = '',
+  block = false,
+  style,
+}: MathTextProps) {
   const content = text ?? children ?? '';
+  const [katexReady, setKatexReady] = useState<boolean>(() => Boolean(katexInstance));
+
+  useEffect(() => {
+    if (katexInstance || !content) return;
+    let mounted = true;
+    const onLoaded = () => {
+      if (mounted) setKatexReady(true);
+    };
+    katexListeners.add(onLoaded);
+    void ensureKatexLoaded().then(onLoaded);
+    return () => {
+      mounted = false;
+      katexListeners.delete(onLoaded);
+    };
+  }, [content]);
 
   const renderedContent = useMemo(() => {
     if (!content) return null;
+    // Reference katexReady so useMemo recomputes once lazy KaTeX resolves
+    void katexReady;
 
     if (!block) {
       const parsed = parseMathText(content);
       return parsed.map((seg, index) => renderMathSegment(seg, index, 'inline'));
     }
 
-    // Block-level parsing: handle headings, lists, paragraphs, and KaTeX math
     const lines = content.split('\n');
 
     return lines.map((line, lIdx) => {
       const lineKey = `line-${lIdx}`;
       const trimmed = line.trim();
 
-      // Heading 3: ### Heading
       if (line.startsWith('### ')) {
         const title = line.slice(4).trim();
         return (
@@ -314,7 +387,6 @@ export const MathText = React.memo(function MathText({ children, text, className
         );
       }
 
-      // Heading 2: ## Heading
       if (line.startsWith('## ')) {
         const title = line.slice(3).trim();
         return (
@@ -327,7 +399,6 @@ export const MathText = React.memo(function MathText({ children, text, className
         );
       }
 
-      // Heading 1: # Heading
       if (line.startsWith('# ')) {
         const title = line.slice(2).trim();
         return (
@@ -340,7 +411,6 @@ export const MathText = React.memo(function MathText({ children, text, className
         );
       }
 
-      // Ordered list: 1. Item
       const orderedMatch = line.match(/^(\d+)\.\s+(.*)$/);
       if (orderedMatch) {
         const num = orderedMatch[1];
@@ -350,12 +420,13 @@ export const MathText = React.memo(function MathText({ children, text, className
             <span className="font-bold text-xs text-[var(--accent,#D71921)] min-w-[20px] select-none pt-0.5 shrink-0">
               {num}.
             </span>
-            <div className="flex-1 min-w-0 [overflow-wrap:anywhere] [word-break:break-word]">{renderLineSegments(body, lineKey)}</div>
+            <div className="flex-1 min-w-0 [overflow-wrap:anywhere] [word-break:break-word]">
+              {renderLineSegments(body, lineKey)}
+            </div>
           </div>
         );
       }
 
-      // Bullet list: - Item or * Item
       const bulletMatch = line.match(/^[-*]\s+(.*)$/);
       if (bulletMatch) {
         const body = bulletMatch[1];
@@ -364,24 +435,27 @@ export const MathText = React.memo(function MathText({ children, text, className
             <span className="text-[var(--accent,#D71921)] select-none text-base leading-none pt-0.5 shrink-0">
               &bull;
             </span>
-            <div className="flex-1 min-w-0 [overflow-wrap:anywhere] [word-break:break-word]">{renderLineSegments(body, lineKey)}</div>
+            <div className="flex-1 min-w-0 [overflow-wrap:anywhere] [word-break:break-word]">
+              {renderLineSegments(body, lineKey)}
+            </div>
           </div>
         );
       }
 
-      // Blank line
       if (!trimmed) {
         return <div key={lineKey} className="h-1.5" />;
       }
 
-      // Normal paragraph line
       return (
-        <div key={lineKey} className="my-1 text-sm leading-relaxed min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
+        <div
+          key={lineKey}
+          className="my-1 text-sm leading-relaxed min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]"
+        >
           {renderLineSegments(line, lineKey)}
         </div>
       );
     });
-  }, [content, block]);
+  }, [content, block, katexReady]);
 
   const baseStyle: CSSProperties = {
     color: 'inherit',
@@ -392,14 +466,20 @@ export const MathText = React.memo(function MathText({ children, text, className
 
   if (block) {
     return (
-      <div className={`katex-root-block w-full max-w-full min-w-0 overflow-x-hidden [overflow-wrap:anywhere] [word-break:break-word] ${className}`} style={baseStyle}>
+      <div
+        className={`katex-root-block w-full max-w-full min-w-0 overflow-x-hidden [overflow-wrap:anywhere] [word-break:break-word] ${className}`}
+        style={baseStyle}
+      >
         {renderedContent}
       </div>
     );
   }
 
   return (
-    <span className={`katex-root-inline max-w-full min-w-0 [overflow-wrap:anywhere] [word-break:break-word] ${className}`} style={baseStyle}>
+    <span
+      className={`katex-root-inline max-w-full min-w-0 [overflow-wrap:anywhere] [word-break:break-word] ${className}`}
+      style={baseStyle}
+    >
       {renderedContent}
     </span>
   );

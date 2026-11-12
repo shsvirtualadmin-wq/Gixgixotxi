@@ -34,7 +34,7 @@ export const PrivacyPage: React.FC = () => {
     <div className="min-h-screen pt-24 pb-24 px-4 sm:px-6 max-w-6xl mx-auto">
       <PageMeta
         title="Privacy Policy | Boardly"
-        description="Learn what personal data Boardly collects, where it is stored (Firebase & Cloudflare), how guest accounts and 2FA work, and how to exercise your privacy rights."
+        description="Learn what personal data Boardly collects, where it is stored, how guest accounts and 2FA work, and how to exercise your privacy rights."
         canonicalPath="/privacy"
       />
       <div className="text-center max-w-3xl mx-auto mb-12">
@@ -143,7 +143,7 @@ export const PrivacyPage: React.FC = () => {
               </li>
               <li>
                 <strong>Passwords &amp; security secrets are protected:</strong> Passwords are
-                managed by Google Firebase Authentication (we never see or store plaintext
+                managed by our secure authentication service (we never see or store plaintext
                 passwords). Verification codes, backup codes, and IP/device rate-limit identifiers
                 are stored as one-way HMAC-SHA256 hashes, and Authenticator App (TOTP) secrets are
                 encrypted with AES-GCM (256-bit).
@@ -208,7 +208,7 @@ export const PrivacyPage: React.FC = () => {
                       <br />
                       Email address, display name, `@username`, equipped store avatar or
                       deterministic UID-seeded matrix avatar, role, target university, password
-                      (handled by Firebase Auth; never readable by Boardly), Google OAuth account ID
+                      (handled by our authentication service; never readable by Boardly), Google OAuth account ID
                       (if using Google Sign-In; your Google/Gmail profile photo is never saved or
                       displayed).
                     </td>
@@ -217,11 +217,11 @@ export const PrivacyPage: React.FC = () => {
                       public student profile.
                     </td>
                     <td className="p-3 align-top">
-                      Firebase Authentication, Cloud Firestore (`users`, `publicProfiles`,
-                      `usernames`), Cloudflare D1 (`user_usernames`, `user_roles`).
+                      Boardly account &amp; profile records (`users`, `publicProfiles`,
+                      `usernames`, `user_usernames`, `user_roles`).
                     </td>
                     <td className="p-3 align-top">
-                      Google Firebase &amp; Cloudflare. Kept while your account is active until
+                      Boardly cloud storage. Kept while your account is active until
                       deletion.
                     </td>
                   </tr>
@@ -239,13 +239,13 @@ export const PrivacyPage: React.FC = () => {
                       events.
                     </td>
                     <td className="p-3 align-top">
-                      Cloudflare D1 (`email_verification_codes`, `email_verification_sessions`,
+                      Boardly security records (`email_verification_codes`, `email_verification_sessions`,
                       `email_verification_send_logs`, `user_2fa`, `user_2fa_backup_codes`,
                       `trusted_devices`, `pending_2fa_challenges`, `login_rate_limits`,
                       `security_audit_logs`).
                     </td>
                     <td className="p-3 align-top">
-                      Cloudflare &amp; Resend (for sending email codes). OTP codes expire in 10
+                      Boardly security servers &amp; Resend (for sending email codes). OTP codes expire in 10
                       minutes; trusted devices expire in 30 days.
                     </td>
                   </tr>
@@ -261,11 +261,11 @@ export const PrivacyPage: React.FC = () => {
                       guest account spam.
                     </td>
                     <td className="p-3 align-top">
-                      Cloudflare D1 (`guest_accounts`, `guest_sessions`,
+                      Boardly guest session records (`guest_accounts`, `guest_sessions`,
                       `guest_creation_rate_limits`).
                     </td>
                     <td className="p-3 align-top">
-                      Cloudflare. Purged 7 days after confirmed logout or after 30 days of
+                      Boardly cloud servers. Purged 7 days after confirmed logout or after 30 days of
                       inactivity (unless upgraded to a registered account).
                     </td>
                   </tr>
@@ -282,11 +282,11 @@ export const PrivacyPage: React.FC = () => {
                       verifiable achievement certificates.
                     </td>
                     <td className="p-3 align-top">
-                      Cloud Firestore (`attempts`, `users`), Cloudflare D1 (`certificates`,
-                      `test_attempts`), Cloudflare R2 (`boardly-commons-r2` for certificate PDFs/PNGs).
+                      Boardly study &amp; credential records (`attempts`, `users`, `certificates`,
+                      `test_attempts`) and certificate file storage.
                     </td>
                     <td className="p-3 align-top">
-                      Google Firebase &amp; Cloudflare. Leaderboard scores and certificate
+                      Boardly cloud storage. Leaderboard scores and certificate
                       verification pages (`/verify/:certId`) are publicly viewable.
                     </td>
                   </tr>
@@ -303,13 +303,13 @@ export const PrivacyPage: React.FC = () => {
                       and student messaging.
                     </td>
                     <td className="p-3 align-top">
-                      Cloudflare D1 (`commons_posts`, `commons_post_comments`, `commons_post_likes`,
-                      `commons_post_saves`, `commons_post_reports`, `notifications`), Cloudflare R2
-                      (uploaded files), Cloud Firestore (`crews`, `crew_requests`, `applications`,
+                      Boardly community &amp; messaging records (`commons_posts`, `commons_post_comments`, `commons_post_likes`,
+                      `commons_post_saves`, `commons_post_reports`, `notifications`,
+                      uploaded files, `crews`, `crew_requests`, `applications`,
                       `follows`, `chatRequests`, `conversations` &amp; `messages`).
                     </td>
                     <td className="p-3 align-top">
-                      Cloudflare &amp; Google Firebase. Kept until deleted by you or removed by
+                      Boardly cloud storage. Kept until deleted by you or removed by
                       moderation.
                     </td>
                   </tr>
@@ -330,12 +330,12 @@ export const PrivacyPage: React.FC = () => {
                       activated.
                     </td>
                     <td className="p-3 align-top">
-                      Cloud Firestore (`wallets`, `wallets/{'{uid}'}/ledger`, `payments`,
-                      `pro_requests`, `kobanRequests`), Cloudflare D1 (`reward_daily_claims`,
+                      Boardly billing &amp; reward records (`wallets`, `wallets/{'{uid}'}/ledger`, `payments`,
+                      `pro_requests`, `kobanRequests`, `reward_daily_claims`,
                       `reward_milestone_claims`, `referral_codes`, `referrals`).
                     </td>
                     <td className="p-3 align-top">
-                      Google Firebase, Cloudflare, and Resend (for transactional purchase and plan
+                      Boardly cloud servers and Resend (for transactional purchase and plan
                       update emails).
                     </td>
                   </tr>
@@ -351,7 +351,7 @@ export const PrivacyPage: React.FC = () => {
                     </td>
                     <td className="p-3 align-top">
                       Processed via server-side API calls to Google Gemini; usage and prompt logs
-                      stored in server/Firestore records.
+                      stored in Boardly server records.
                     </td>
                     <td className="p-3 align-top">
                       Google Gemini API (`@google/genai` / `generativelanguage.googleapis.com`).
@@ -368,7 +368,7 @@ export const PrivacyPage: React.FC = () => {
             </h2>
             <p>
               When you choose &ldquo;Continue as guest&rdquo;, we create a temporary profile in
-              Cloudflare D1 (`guest_accounts`) with your chosen username and a random guest ID. To
+              our guest session records (`guest_accounts`) with your chosen username and a random guest ID. To
               protect the platform from automated bot abuse without collecting an email address, we
               store a one-way HMAC-SHA256 hash of your IP address and device identifier
               (`guest_creation_rate_limits`, limited to 5 guest creations per hour / 15 per day per
@@ -394,7 +394,7 @@ export const PrivacyPage: React.FC = () => {
             </p>
             <ul className="list-disc pl-5 space-y-2.5">
               <li>
-                <strong>Firebase Auth Session Storage:</strong> Stores your authenticated Firebase
+                <strong>Account Session Storage:</strong> Stores your authenticated account
                 session tokens in browser storage (`indexedDB` / `localStorage`) so you stay logged
                 in across page reloads.
               </li>
@@ -434,13 +434,13 @@ export const PrivacyPage: React.FC = () => {
             </p>
             <ul className="list-disc pl-5 space-y-2.5">
               <li>
-                <strong>Google Firebase (Google LLC):</strong> Provides Authentication (Email/Password
-                and Google OAuth), Cloud Firestore database, and Cloud Storage.
+                <strong>Google Cloud Identity &amp; Storage (Google LLC):</strong> Provides Authentication (Email/Password
+                and Google Sign-In) and cloud data storage.
               </li>
               <li>
-                <strong>Cloudflare, Inc.:</strong> Provides edge hosting (Cloudflare Pages &amp;
-                Workers), D1 serverless SQL database (`boardly-posts-db`), and R2 object storage
-                (`boardly-commons-r2`) for Commons attachments and certificates.
+                <strong>Cloud Hosting &amp; Object Storage Providers:</strong> Provides global web hosting,
+                serverless application storage, and file storage
+                for Commons attachments and certificates.
               </li>
               <li>
                 <strong>Resend (`api.resend.com`):</strong> Sends strictly transactional emails
@@ -462,8 +462,8 @@ export const PrivacyPage: React.FC = () => {
               </li>
             </ul>
             <p>
-              <strong>Where Data Is Processed (International Transfers):</strong> Because Google
-              Firebase, Cloudflare, and Resend operate distributed cloud infrastructure, your data
+              <strong>Where Data Is Processed (International Transfers):</strong> Because our
+              cloud hosting and email delivery providers operate distributed cloud infrastructure, your data
               is processed and stored on secure cloud servers that may be located outside Pakistan
               (including in the United States, Europe, and Asia-Pacific).
             </p>
@@ -485,7 +485,7 @@ export const PrivacyPage: React.FC = () => {
               <li>
                 <strong>How Anonymous Commons Posts Work:</strong> If you publish a post or comment
                 with &ldquo;Anonymous&rdquo; enabled, other students only see &ldquo;Anonymous
-                Student&rdquo; and cannot see your username or profile. However, our database stores
+                Student&rdquo; and cannot see your username or profile. However, our server records store
                 your account UID (`author_uid` / `real_author_uid`) internally so you can manage
                 your comment and so administrators can act against spam, harassment, or policy
                 violations.
@@ -496,7 +496,7 @@ export const PrivacyPage: React.FC = () => {
                 reports, Captain/Crew applications, manual payment verification requests, security
                 audit logs (such as 2FA resets), and AI Study Buddy logs (`study_buddy_logs`) for
                 moderation, support, and payment verification. Direct messages between students are
-                stored in Cloud Firestore and are not end-to-end encrypted.
+                stored on our cloud servers and are not end-to-end encrypted.
               </li>
             </ul>
           </section>
@@ -517,7 +517,7 @@ export const PrivacyPage: React.FC = () => {
               </li>
               <li>
                 AES-GCM (256-bit) authenticated encryption for Authenticator App (TOTP) secrets at
-                rest in Cloudflare D1.
+                rest in our secure cloud storage.
               </li>
               <li>
                 Strict file upload filtering (blocking executable/script extensions and enforcing a

@@ -298,7 +298,7 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
       sharedState.fetchStatus = isQuota ? 'success' : 'error';
       sharedState.error = {
         code: isQuota ? 'RESOURCE_EXHAUSTED' : err.code,
-        message: isQuota ? 'Daily database limit reached, using cached profile' : err.message,
+        message: isQuota ? 'High traffic right now, using your saved profile' : err.message,
         path,
       };
       const cachedProf = getLocalCachedProfile(uid);
