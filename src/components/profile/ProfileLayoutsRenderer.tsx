@@ -11,7 +11,6 @@ import {
   Users,
   Eye,
   X,
-  Coins,
   Trophy,
   QrCode,
   Layers,
@@ -97,6 +96,7 @@ const HeaderProfileEffectOverlay: React.FC<{
     <div
       key={playKey}
       className="absolute inset-0 pointer-events-none z-20 overflow-hidden select-none"
+      data-store-item="profile-effect"
       aria-hidden="true"
     >
       {effectId && effectId !== 'none' && (
@@ -138,9 +138,8 @@ const HeaderProfileEffectOverlay: React.FC<{
 };
 
 /**
- * Always renders the Nameplate item (never hidden).
- * If user has an equipped nameplate ID from the store, renders `<Nameplate />`.
- * If user has default/none, renders `<Nameplate />` inside a sleek metallic nameplate pill so the nameplate is always visible.
+ * Always renders the Nameplate item (never hidden, never clipped).
+ * Scales cleanly to fit its container (`max-width: 100%`, `object-fit: contain`).
  */
 const AlwaysVisibleNameplate: React.FC<{
   nameplateId: string | null;
@@ -153,10 +152,22 @@ const AlwaysVisibleNameplate: React.FC<{
     nameplateId && nameplateId !== 'none' && getCosmeticById(nameplateId)
   );
 
+  const scaleFitClasses =
+    'inline-flex items-center max-w-full min-w-0 overflow-hidden [&_img]:max-w-full [&_img]:object-contain [&_video]:max-w-full [&_video]:object-contain [&_[data-nameplate-id]]:!min-w-0 [&_[data-nameplate-id]]:!max-w-full [&_[data-nameplate-id]]:!w-auto';
+
   if (hasEquippedPlate && nameplateId) {
     return (
-      <div className={`inline-flex items-center max-w-full ${className}`} data-store-item="nameplate">
-        <Nameplate itemId={nameplateId} name={displayName} shortId={shortId} />
+      <div
+        className={`${scaleFitClasses} ${darkSurface ? 'dark-surface-preserve' : ''} ${className}`}
+        style={{ maxWidth: '100%', objectFit: 'contain' }}
+        data-store-item="nameplate"
+      >
+        <Nameplate
+          itemId={nameplateId}
+          name={displayName}
+          shortId={shortId}
+          className="max-w-full min-w-0"
+        />
       </div>
     );
   }
@@ -164,9 +175,20 @@ const AlwaysVisibleNameplate: React.FC<{
   return (
     <div
       data-store-item="nameplate"
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-heading font-semibold shadow-sm max-w-full ${
+      style={
         darkSurface
-          ? 'bg-white/10 border-white/20 text-white'
+          ? {
+              maxWidth: '100%',
+              objectFit: 'contain',
+              backgroundColor: 'rgba(255, 255, 255, 0.14)',
+              borderColor: 'rgba(255, 255, 255, 0.28)',
+              color: '#FFFFFF',
+            }
+          : { maxWidth: '100%', objectFit: 'contain' }
+      }
+      className={`${scaleFitClasses} gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-heading font-semibold shadow-sm ${
+        darkSurface
+          ? 'dark-surface-preserve text-white'
           : 'bg-black/[0.04] dark:bg-white/[0.08] border-black/10 dark:border-white/15 text-[var(--text)]'
       } ${className}`}
     >
@@ -175,14 +197,14 @@ const AlwaysVisibleNameplate: React.FC<{
         itemId={nameplateId || 'default-plate'}
         name={displayName}
         shortId={shortId}
-        className={darkSurface ? '!text-white' : ''}
+        className={darkSurface ? 'dark-surface-preserve !text-white max-w-full min-w-0' : 'max-w-full min-w-0'}
       />
     </div>
   );
 };
 
 /**
- * Always renders Avatar + Avatar Frame/Ring.
+ * Always renders Avatar + Avatar Frame/Ring with guaranteed z-index and overflow visibility.
  */
 const AvatarWithGuaranteedRing: React.FC<{
   data: SharedProfileData;
@@ -194,11 +216,11 @@ const AvatarWithGuaranteedRing: React.FC<{
   const hasEquippedFrame = Boolean(data.frame && data.frame !== 'none');
   return (
     <div
-      className={`relative inline-flex items-center justify-center shrink-0 ${className}`}
+      className={`relative z-30 inline-flex items-center justify-center shrink-0 overflow-visible ${className}`}
       data-store-item="avatar-and-frame"
     >
       <div
-        className={`relative inline-flex items-center justify-center ${
+        className={`relative inline-flex items-center justify-center overflow-visible ${
           squarePixel
             ? 'p-1 bg-[#18181b] border-2 border-emerald-400 shadow-[3px_3px_0px_#10b981]'
             : hasEquippedFrame
@@ -216,13 +238,18 @@ const AvatarWithGuaranteedRing: React.FC<{
       </div>
       {showLevelBadge && (
         <div
-          className={`absolute -bottom-1 -right-1 z-30 px-2 py-0.5 ${
-            squarePixel ? 'rounded-none border border-emerald-300 bg-emerald-700' : 'rounded-full border-2 border-[var(--card)] bg-gradient-to-r from-amber-600 to-amber-500'
+          className={`dark-surface-preserve absolute -bottom-1 -right-1 z-40 px-2 py-0.5 ${
+            squarePixel
+              ? 'rounded-none border border-emerald-300 bg-emerald-700'
+              : 'rounded-full border-2 border-[#121216] bg-gradient-to-r from-amber-600 to-amber-500'
           } text-white font-mono font-black text-[10px] shadow-md flex items-center gap-0.5 select-none`}
+          style={{ color: '#FFFFFF' }}
           title={`Level ${data.level}`}
         >
-          <span className="text-[8px] font-extrabold text-amber-200">LV</span>
-          <span>{data.level}</span>
+          <span className="text-[8px] font-extrabold" style={{ color: '#FDE68A' }}>
+            LV
+          </span>
+          <span style={{ color: '#FFFFFF' }}>{data.level}</span>
         </div>
       )}
     </div>
@@ -230,7 +257,8 @@ const AvatarWithGuaranteedRing: React.FC<{
 };
 
 /**
- * Shared Action Buttons Row — keeps Edit Profile, Store, and Settings in every layout.
+ * Shared Action Buttons Row — keeps Edit Profile, Store, and Settings readable in every layout.
+ * On dark/glass/retro layouts, Store and Settings use light button backgrounds with dark text.
  */
 const ProfileActionButtonsRow: React.FC<{
   props: ProfileLayoutHeaderProps;
@@ -264,14 +292,25 @@ const ProfileActionButtonsRow: React.FC<{
   const isDark = variant === 'dark';
 
   const primaryBtnCls = isRetro
-    ? 'h-9 px-3 rounded-none bg-emerald-500 hover:bg-emerald-400 text-black font-mono font-bold text-xs border-2 border-emerald-200 shadow-[2px_2px_0px_#064e3b] flex items-center gap-1.5 cursor-pointer whitespace-nowrap'
-    : 'h-10 px-3.5 rounded-xl bg-[#D71921] hover:bg-[#b8141b] text-white text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm';
+    ? 'h-9 px-3 rounded-none bg-[#34D399] hover:bg-[#6EE7B7] font-mono font-bold text-xs border-2 border-[#A7F3D0] shadow-[2px_2px_0px_#064e3b] flex items-center gap-1.5 cursor-pointer whitespace-nowrap'
+    : 'h-9 sm:h-10 px-3.5 rounded-xl bg-[#D71921] hover:bg-[#b8141b] text-white text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm';
 
+  const primaryBtnStyle: React.CSSProperties | undefined = isRetro
+    ? { backgroundColor: '#34D399', color: '#06281E', borderColor: '#A7F3D0' }
+    : { backgroundColor: '#D71921', color: '#FFFFFF' };
+
+  // Light button backgrounds with dark text on dark/glass/retro layouts so Store & Settings are always crisp and readable
   const secondaryBtnCls = isRetro
-    ? 'h-9 px-3 rounded-none bg-[#18181b] hover:bg-[#27272a] text-emerald-300 font-mono font-bold text-xs border-2 border-emerald-500/60 shadow-[2px_2px_0px_#064e3b] flex items-center gap-1.5 cursor-pointer whitespace-nowrap'
+    ? 'h-9 px-3 rounded-none font-mono font-bold text-xs border-2 border-[#34D399] shadow-[2px_2px_0px_#064e3b] flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors'
     : isDark
-    ? 'h-10 px-3.5 rounded-xl border border-white/20 bg-white/10 hover:bg-white/15 text-white text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap backdrop-blur-sm'
-    : 'h-10 px-3.5 rounded-xl border border-[var(--border)] bg-[var(--card-2)]/70 hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap';
+    ? 'h-9 sm:h-10 px-3.5 rounded-xl border text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shadow-sm'
+    : 'h-9 sm:h-10 px-3.5 rounded-xl border border-[var(--border)] bg-[var(--card-2)] hover:bg-[var(--surface-hover)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap';
+
+  const secondaryBtnStyle: React.CSSProperties | undefined = isRetro
+    ? { backgroundColor: '#ECFDF5', color: '#064E3B', borderColor: '#34D399' }
+    : isDark
+    ? { backgroundColor: '#F8FAFC', color: '#0F172A', borderColor: 'rgba(255,255,255,0.85)' }
+    : undefined;
 
   if (!isPublicMode) {
     return (
@@ -281,23 +320,39 @@ const ProfileActionButtonsRow: React.FC<{
         }`}
       >
         {isGuest && !previewMode && onUpgradeGuest && (
-          <button type="button" onClick={onUpgradeGuest} className={primaryBtnCls}>
+          <button
+            type="button"
+            onClick={onUpgradeGuest}
+            className={primaryBtnCls}
+            style={primaryBtnStyle}
+          >
             <UserPlus size={14} />
             <span>Upgrade</span>
           </button>
         )}
-        <button type="button" onClick={onEditProfile} className={primaryBtnCls}>
+        <button
+          type="button"
+          onClick={onEditProfile}
+          className={primaryBtnCls}
+          style={primaryBtnStyle}
+        >
           <Edit3 size={13} />
           <span>Edit Profile</span>
         </button>
-        <button type="button" onClick={() => onOpenStore?.()} className={secondaryBtnCls}>
-          <ShoppingBag size={13} className="text-[#E8A317]" />
+        <button
+          type="button"
+          onClick={() => onOpenStore?.()}
+          className={secondaryBtnCls}
+          style={secondaryBtnStyle}
+        >
+          <ShoppingBag size={13} style={{ color: isRetro ? '#047857' : '#D97706' }} />
           <span>Store</span>
         </button>
         <button
           type="button"
           onClick={onOpenSettings}
           className={secondaryBtnCls}
+          style={secondaryBtnStyle}
           title="Settings"
         >
           <Settings size={13} />
@@ -308,12 +363,13 @@ const ProfileActionButtonsRow: React.FC<{
             type="button"
             onClick={onOpenRewards}
             className={
-              isRetro
+              isRetro || isDark
                 ? secondaryBtnCls
-                : 'h-10 px-3 rounded-xl border border-[#D71921]/35 bg-[#D71921]/10 hover:bg-[#D71921]/20 text-[#D71921] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap'
+                : 'h-9 sm:h-10 px-3 rounded-xl border border-[#D71921]/35 bg-[#D71921]/10 hover:bg-[#D71921]/20 text-[#D71921] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap'
             }
+            style={isRetro || isDark ? secondaryBtnStyle : undefined}
           >
-            <Sparkles size={13} />
+            <Sparkles size={13} style={{ color: '#D71921' }} />
             <span>Rewards</span>
           </button>
         )}
@@ -322,12 +378,16 @@ const ProfileActionButtonsRow: React.FC<{
             type="button"
             onClick={onOpenMessages}
             className={`${secondaryBtnCls} relative`}
+            style={secondaryBtnStyle}
             title="Messages & Chat Requests"
           >
             <MessageSquare size={13} />
             <span className="hidden sm:inline">Messages</span>
             {incomingRequestsCount > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full bg-[#D71921] text-white text-[10px] font-mono font-bold leading-none">
+              <span
+                className="px-1.5 py-0.5 rounded-full bg-[#D71921] text-white text-[10px] font-mono font-bold leading-none"
+                style={{ backgroundColor: '#D71921', color: '#FFFFFF' }}
+              >
                 {incomingRequestsCount}
               </span>
             )}
@@ -349,6 +409,7 @@ const ProfileActionButtonsRow: React.FC<{
           onClick={onFollowToggle}
           disabled={followWorking}
           className={isFollowedByMe ? secondaryBtnCls : primaryBtnCls}
+          style={isFollowedByMe ? secondaryBtnStyle : primaryBtnStyle}
         >
           {isFollowedByMe ? (
             <>
@@ -371,19 +432,30 @@ const ProfileActionButtonsRow: React.FC<{
           className={`${secondaryBtnCls} ${
             messageButtonDisabled ? 'opacity-60 cursor-not-allowed' : ''
           } ${messageButtonHighlight ? '!border-[#D71921] !text-[#D71921]' : ''}`}
+          style={secondaryBtnStyle}
         >
           <MessageSquare size={14} />
           <span>{messageButtonLabel}</span>
         </button>
       )}
       {onShareProfile && (
-        <button type="button" onClick={onShareProfile} className={secondaryBtnCls}>
+        <button
+          type="button"
+          onClick={onShareProfile}
+          className={secondaryBtnCls}
+          style={secondaryBtnStyle}
+        >
           <Share2 size={14} />
           <span>Share</span>
         </button>
       )}
       {crewName && onViewCrew && (
-        <button type="button" onClick={onViewCrew} className={secondaryBtnCls}>
+        <button
+          type="button"
+          onClick={onViewCrew}
+          className={secondaryBtnCls}
+          style={secondaryBtnStyle}
+        >
           <Users size={14} />
           <span>Crew</span>
         </button>
@@ -393,7 +465,8 @@ const ProfileActionButtonsRow: React.FC<{
 };
 
 /**
- * Identity meta line: Display Name, @username, PRO Badge, Role Badge
+ * Identity meta block: keeps Display Name, @username, PRO Badge, Nameplate, Super Admin, and Active
+ * on neat rows with 8px gaps (`gap-2`) and proper wrapping.
  */
 const IdentityMetaBlock: React.FC<{
   data: SharedProfileData;
@@ -416,62 +489,102 @@ const IdentityMetaBlock: React.FC<{
   followsMe,
   isPublicMode,
 }) => {
-  const textPrimary = darkSurface ? 'text-white' : 'text-[var(--text)]';
-  const textMuted = darkSurface ? 'text-white/70' : 'text-[var(--muted)]';
+  const primaryColorStyle: React.CSSProperties | undefined = darkSurface
+    ? { color: '#FFFFFF' }
+    : undefined;
+  const mutedColorStyle: React.CSSProperties | undefined = darkSurface
+    ? { color: 'rgba(255, 255, 255, 0.82)' }
+    : undefined;
+  const activeColorStyle: React.CSSProperties = darkSurface
+    ? { color: '#6EE7B7' }
+    : { color: '#10B981' };
 
   return (
-    <div className={`flex flex-col gap-1.5 ${centered ? 'items-center text-center' : 'items-start text-left'}`}>
+    <div
+      className={`flex flex-col gap-2 min-w-0 max-w-full ${
+        darkSurface ? 'dark-surface-preserve' : ''
+      } ${centered ? 'items-center text-center' : 'items-start text-left'}`}
+    >
+      {/* Row 1: Display Name, @username, PRO Badge (8px gaps, neat wrapping) */}
       {!hideDisplayNameHeading && (
-        <div className={`flex items-center gap-2 flex-wrap ${centered ? 'justify-center' : ''}`}>
-          <h1 className={`font-heading font-bold text-lg sm:text-xl leading-tight ${textPrimary}`}>
+        <div
+          className={`flex items-center gap-2 flex-wrap min-w-0 max-w-full ${
+            centered ? 'justify-center' : 'justify-start'
+          }`}
+        >
+          <h1
+            className={`font-heading font-bold text-base sm:text-lg leading-tight truncate max-w-full ${
+              darkSurface ? 'text-white' : 'text-[var(--text)]'
+            }`}
+            style={primaryColorStyle}
+          >
             {data.displayName}
           </h1>
-          <span className={`font-mono text-xs ${textMuted}`}>@{data.username}</span>
+          <span
+            className={`font-mono text-xs shrink-0 ${
+              darkSurface ? 'text-white/85' : 'text-[var(--muted)]'
+            }`}
+            style={mutedColorStyle}
+          >
+            @{data.username}
+          </span>
           {data.proBadge && (
             <ProBadge
               design={data.proBadge}
-              size="lg"
+              size="md"
               animated
               priority
               onClick={onProBadgeClick}
-              className="cursor-pointer"
+              className="cursor-pointer shrink-0"
             />
           )}
           {isPublicMode && followsMe && (
-            <span className="font-mono text-[10px] uppercase font-semibold px-2 py-0.5 rounded bg-black/20 border border-white/15 text-xs">
+            <span
+              className="font-mono text-[10px] uppercase font-semibold px-2 py-0.5 rounded bg-black/25 border border-white/20 shrink-0"
+              style={primaryColorStyle}
+            >
               Follows you
             </span>
           )}
         </div>
       )}
 
-      {showNameplateUnderName && (
-        <div className={`flex items-center gap-2 flex-wrap ${centered ? 'justify-center' : ''}`}>
+      {/* Row 2: Nameplate, Super Admin / Role Badge, Active status (8px gaps, neat wrapping) */}
+      <div
+        className={`flex items-center gap-2 flex-wrap min-w-0 max-w-full ${
+          centered ? 'justify-center' : 'justify-start'
+        }`}
+      >
+        {showNameplateUnderName && (
           <AlwaysVisibleNameplate
             nameplateId={data.nameplate}
             displayName={data.displayName}
             shortId={shortId}
             darkSurface={darkSurface}
           />
-          {hideDisplayNameHeading && (
-            <>
-              <span className={`font-mono text-xs ${textMuted}`}>@{data.username}</span>
-              {data.proBadge && (
-                <ProBadge
-                  design={data.proBadge}
-                  size="lg"
-                  animated
-                  priority
-                  onClick={onProBadgeClick}
-                  className="cursor-pointer"
-                />
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      <div className={`flex items-center gap-2 flex-wrap text-xs ${centered ? 'justify-center' : ''}`}>
+        )}
+        {hideDisplayNameHeading && (
+          <>
+            <span
+              className={`font-mono text-xs shrink-0 ${
+                darkSurface ? 'text-white/85' : 'text-[var(--muted)]'
+              }`}
+              style={mutedColorStyle}
+            >
+              @{data.username}
+            </span>
+            {data.proBadge && (
+              <ProBadge
+                design={data.proBadge}
+                size="md"
+                animated
+                priority
+                onClick={onProBadgeClick}
+                className="cursor-pointer shrink-0"
+              />
+            )}
+          </>
+        )}
         <RoleBadge
           role={data.role}
           customRole={data.customRole || undefined}
@@ -480,16 +593,30 @@ const IdentityMetaBlock: React.FC<{
             data.role === 'superadmin' ||
             data.role === 'admin'
           }
-          size="md"
+          size="sm"
         />
-        <div className="flex items-center gap-1.5 text-xs text-emerald-500 font-sans font-medium select-none">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
-          <span>Active</span>
+        <div
+          className="inline-flex items-center gap-1.5 text-xs font-sans font-semibold select-none shrink-0"
+          style={activeColorStyle}
+        >
+          <span
+            className="w-2 h-2 rounded-full shrink-0 animate-pulse"
+            style={{ backgroundColor: darkSurface ? '#34D399' : '#10B981' }}
+          />
+          <span style={activeColorStyle}>Active</span>
         </div>
-        {data.bio && (
-          <span className={`text-xs line-clamp-1 max-w-md ${textMuted}`}>{data.bio}</span>
-        )}
       </div>
+
+      {data.bio && (
+        <p
+          className={`text-xs line-clamp-1 max-w-md ${
+            darkSurface ? 'text-white/80' : 'text-[var(--muted)]'
+          }`}
+          style={mutedColorStyle}
+        >
+          {data.bio}
+        </p>
+      )}
     </div>
   );
 };
@@ -507,7 +634,8 @@ const TopBannerOverlayControls: React.FC<{
       <button
         type="button"
         onClick={onClose}
-        className="absolute top-3 left-3 z-40 w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer border border-white/20"
+        className="dark-surface-preserve absolute top-3 left-3 z-40 w-8 h-8 rounded-full bg-black/65 hover:bg-black/85 text-white flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer border border-white/25"
+        style={{ color: '#FFFFFF' }}
         aria-label="Close"
       >
         <X size={16} />
@@ -517,7 +645,8 @@ const TopBannerOverlayControls: React.FC<{
       <button
         type="button"
         onClick={onPreviewAsPublic}
-        className="absolute top-3 right-3 z-40 px-2.5 py-1 rounded-full bg-black/60 hover:bg-black/80 text-white text-[11px] font-heading font-semibold flex items-center gap-1.5 backdrop-blur-md border border-white/20 transition-colors cursor-pointer"
+        className="dark-surface-preserve absolute top-3 right-3 z-40 px-2.5 py-1 rounded-full bg-black/65 hover:bg-black/85 text-white text-[11px] font-heading font-semibold flex items-center gap-1.5 backdrop-blur-md border border-white/25 transition-colors cursor-pointer"
+        style={{ color: '#FFFFFF' }}
       >
         <Eye size={13} />
         <span className="hidden sm:inline">View as others</span>
@@ -548,7 +677,10 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
   const layout = normalizeProfileLayout(rawLayout ?? data.profile_layout ?? data.profileLayout);
   const accentColor = data.accent || '#D71921';
   const shortId = propShortId || deriveFallbackShortId(data.uid || '0');
-  const avatarSize = previewMode ? 68 : 88;
+  const avatarSize = previewMode ? 68 : 84;
+
+  // Stat grid classes: 2x2 on narrow widths / preview cards, 4 columns on wider screens so labels never clip
+  const statGridCols = previewMode ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4';
 
   // Helper to render the Banner store item
   const renderBanner = (className = 'w-full h-28 sm:h-36') => (
@@ -581,7 +713,7 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
           accentColor={accentColor}
           playKey={effectPlayKey}
         />
-        <div className="relative">
+        <div className="relative z-10">
           {renderBanner('w-full h-28 sm:h-36')}
           <TopBannerOverlayControls
             onClose={onClose}
@@ -590,18 +722,18 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
           />
         </div>
 
-        <div className="px-4 sm:px-6 pb-5 flex flex-col gap-3.5 relative z-10">
-          <div className="flex items-end justify-between -mt-11 sm:-mt-12">
-            <div className="p-1 rounded-full bg-[var(--card)]">
+        <div className="px-4 sm:px-6 pb-5 flex flex-col gap-3.5 relative z-20">
+          <div className="flex items-end justify-between -mt-10 sm:-mt-12 relative z-30">
+            <div className="p-1 rounded-full bg-[var(--card)] overflow-visible">
               <AvatarWithGuaranteedRing data={data} size={avatarSize} />
             </div>
             {!isPublicMode && (
               <button
                 type="button"
                 onClick={onOpenWallet}
-                className="mb-1 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--card-2)] border border-[#E8A317]/30 hover:border-[#E8A317] text-[#D97706] dark:text-[#FBBF24] font-mono text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                className="mb-1 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--card-2)] border border-[#E8A317]/35 hover:border-[#E8A317] text-[#B45309] dark:text-[#FBBF24] font-mono text-xs font-bold transition-colors shadow-sm cursor-pointer"
               >
-                <KobanIcon size={15} />
+                <KobanIcon size={14} />
                 <span>{data.coins.toLocaleString()}</span>
               </button>
             )}
@@ -616,50 +748,62 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
             isPublicMode={isPublicMode}
           />
 
-          {/* 4 Stat Tiles */}
-          <div className="grid grid-cols-4 gap-2 pt-1">
-            <div className="rounded-xl border border-[var(--border)] bg-[var(--card-2)]/60 p-2.5 flex flex-col items-center justify-center text-center">
-              <span className="font-mono font-bold text-sm sm:text-base text-[var(--text)]">
+          {/* 4 Stat Tiles: 2x2 on narrow/preview widths, never clipping or overlapping labels */}
+          <div className={`grid ${statGridCols} gap-2 pt-0.5`}>
+            <div className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--card-2)]/70 p-2.5 flex flex-col items-center justify-center text-center">
+              <span
+                className="font-mono font-bold text-[var(--text)] leading-tight truncate max-w-full"
+                style={{ fontSize: 'clamp(12px, 3vw, 15px)' }}
+              >
                 LV.{data.level}
               </span>
-              <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--muted)]">
+              <span className="text-[10px] font-mono uppercase tracking-wide text-[var(--muted)] mt-0.5">
                 Level
               </span>
             </div>
             <button
               type="button"
               onClick={onOpenWallet}
-              className="rounded-xl border border-[var(--border)] bg-[var(--card-2)]/60 hover:border-[#E8A317]/50 p-2.5 flex flex-col items-center justify-center text-center cursor-pointer transition-colors"
+              className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--card-2)]/70 hover:border-[#E8A317]/50 p-2.5 flex flex-col items-center justify-center text-center cursor-pointer transition-colors"
             >
-              <span className="font-mono font-bold text-sm sm:text-base text-[#D97706] dark:text-[#FBBF24] flex items-center gap-1">
+              <span
+                className="font-mono font-bold text-[#B45309] dark:text-[#FBBF24] flex items-center justify-center gap-1 leading-tight truncate max-w-full"
+                style={{ fontSize: 'clamp(12px, 3vw, 15px)' }}
+              >
                 <KobanIcon size={13} />
-                {data.coins.toLocaleString()}
+                <span>{data.coins.toLocaleString()}</span>
               </span>
-              <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--muted)]">
+              <span className="text-[10px] font-mono uppercase tracking-wide text-[var(--muted)] mt-0.5">
                 Kobans
               </span>
             </button>
             <button
               type="button"
               onClick={onOpenFollowers}
-              className="rounded-xl border border-[var(--border)] bg-[var(--card-2)]/60 hover:border-[#D71921]/40 p-2.5 flex flex-col items-center justify-center text-center cursor-pointer transition-colors"
+              className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--card-2)]/70 hover:border-[#D71921]/40 p-2.5 flex flex-col items-center justify-center text-center cursor-pointer transition-colors"
             >
-              <span className="font-mono font-bold text-sm sm:text-base text-[var(--text)]">
+              <span
+                className="font-mono font-bold text-[var(--text)] leading-tight truncate max-w-full"
+                style={{ fontSize: 'clamp(12px, 3vw, 15px)' }}
+              >
                 {data.followers}
               </span>
-              <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--muted)]">
+              <span className="text-[10px] font-mono uppercase tracking-wide text-[var(--muted)] mt-0.5">
                 Followers
               </span>
             </button>
             <button
               type="button"
               onClick={onOpenFollowing}
-              className="rounded-xl border border-[var(--border)] bg-[var(--card-2)]/60 hover:border-[#D71921]/40 p-2.5 flex flex-col items-center justify-center text-center cursor-pointer transition-colors"
+              className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--card-2)]/70 hover:border-[#D71921]/40 p-2.5 flex flex-col items-center justify-center text-center cursor-pointer transition-colors"
             >
-              <span className="font-mono font-bold text-sm sm:text-base text-[var(--text)]">
+              <span
+                className="font-mono font-bold text-[var(--text)] leading-tight truncate max-w-full"
+                style={{ fontSize: 'clamp(12px, 3vw, 15px)' }}
+              >
                 {data.following}
               </span>
-              <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--muted)]">
+              <span className="text-[10px] font-mono uppercase tracking-wide text-[var(--muted)] mt-0.5">
                 Following
               </span>
             </button>
@@ -673,7 +817,7 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 2. CLEAN-SOCIAL: banner, avatar overlapping with stats at its right, then name, nameplate, buttons
+  // 2. CLEAN-SOCIAL: banner, avatar overlapping with stats at its right (2x2 grid so no cramping), then name, nameplate, buttons
   // ───────────────────────────────────────────────────────────────────────────
   if (layout === 'clean-social') {
     return (
@@ -686,7 +830,7 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
           accentColor={accentColor}
           playKey={effectPlayKey}
         />
-        <div className="relative">
+        <div className="relative z-10">
           {renderBanner('w-full h-24 sm:h-32')}
           <TopBannerOverlayControls
             onClose={onClose}
@@ -695,53 +839,66 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
           />
         </div>
 
-        <div className="px-4 sm:px-6 pb-5 flex flex-col gap-3.5 relative z-10">
-          {/* Avatar overlapping on left + inline stats row on the right */}
-          <div className="flex items-end justify-between gap-3 -mt-9 sm:-mt-11">
-            <div className="p-1 rounded-full bg-[var(--card)] shrink-0">
+        <div className="px-4 sm:px-6 pb-5 flex flex-col gap-3.5 relative z-20">
+          {/* Avatar overlapping on left + 2x2 stats grid on the right (never cramped or overlapping) */}
+          <div className="flex items-start justify-between gap-3 pt-2">
+            <div className="-mt-11 sm:-mt-13 p-1 rounded-full bg-[var(--card)] shrink-0 relative z-30 overflow-visible">
               <AvatarWithGuaranteedRing data={data} size={avatarSize} />
             </div>
 
-            <div className="flex-1 flex items-center justify-around bg-[var(--card-2)]/70 border border-[var(--border)] rounded-2xl py-2 px-2 sm:px-4">
-              <div className="flex flex-col items-center">
-                <span className="font-mono font-bold text-xs sm:text-sm text-[var(--text)]">
-                  Lv.{data.level}
+            <div
+              className={`flex-1 min-w-0 grid ${
+                previewMode ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4'
+              } gap-1.5`}
+            >
+              <div className="min-w-0 rounded-xl bg-[var(--card-2)]/80 border border-[var(--border)] py-1.5 px-2 flex flex-col items-center justify-center text-center">
+                <span
+                  className="font-mono font-bold text-[var(--text)] leading-tight truncate max-w-full"
+                  style={{ fontSize: 'clamp(11px, 2.6vw, 14px)' }}
+                >
+                  LV.{data.level}
                 </span>
-                <span className="text-[10px] text-[var(--muted)]">Level</span>
+                <span className="text-[9px] font-mono uppercase text-[var(--muted)]">Level</span>
               </div>
-              <div className="w-px h-6 bg-[var(--border)]" />
-              <button
-                type="button"
-                onClick={onOpenFollowers}
-                className="flex flex-col items-center cursor-pointer hover:opacity-80"
-              >
-                <span className="font-mono font-bold text-xs sm:text-sm text-[var(--text)]">
-                  {data.followers}
-                </span>
-                <span className="text-[10px] text-[var(--muted)]">Followers</span>
-              </button>
-              <div className="w-px h-6 bg-[var(--border)]" />
-              <button
-                type="button"
-                onClick={onOpenFollowing}
-                className="flex flex-col items-center cursor-pointer hover:opacity-80"
-              >
-                <span className="font-mono font-bold text-xs sm:text-sm text-[var(--text)]">
-                  {data.following}
-                </span>
-                <span className="text-[10px] text-[var(--muted)]">Following</span>
-              </button>
-              <div className="w-px h-6 bg-[var(--border)]" />
               <button
                 type="button"
                 onClick={onOpenWallet}
-                className="flex flex-col items-center cursor-pointer hover:opacity-80"
+                className="min-w-0 rounded-xl bg-[var(--card-2)]/80 border border-[var(--border)] py-1.5 px-2 flex flex-col items-center justify-center text-center cursor-pointer hover:border-[#E8A317]/50"
               >
-                <span className="font-mono font-bold text-xs sm:text-sm text-[#D97706] dark:text-[#FBBF24] flex items-center gap-0.5">
-                  <KobanIcon size={12} />
-                  {data.coins.toLocaleString()}
+                <span
+                  className="font-mono font-bold text-[#B45309] dark:text-[#FBBF24] flex items-center justify-center gap-0.5 leading-tight truncate max-w-full"
+                  style={{ fontSize: 'clamp(11px, 2.6vw, 14px)' }}
+                >
+                  <KobanIcon size={11} />
+                  <span>{data.coins.toLocaleString()}</span>
                 </span>
-                <span className="text-[10px] text-[var(--muted)]">Kobans</span>
+                <span className="text-[9px] font-mono uppercase text-[var(--muted)]">Kobans</span>
+              </button>
+              <button
+                type="button"
+                onClick={onOpenFollowers}
+                className="min-w-0 rounded-xl bg-[var(--card-2)]/80 border border-[var(--border)] py-1.5 px-2 flex flex-col items-center justify-center text-center cursor-pointer hover:border-[#D71921]/40"
+              >
+                <span
+                  className="font-mono font-bold text-[var(--text)] leading-tight truncate max-w-full"
+                  style={{ fontSize: 'clamp(11px, 2.6vw, 14px)' }}
+                >
+                  {data.followers}
+                </span>
+                <span className="text-[9px] font-mono uppercase text-[var(--muted)]">Followers</span>
+              </button>
+              <button
+                type="button"
+                onClick={onOpenFollowing}
+                className="min-w-0 rounded-xl bg-[var(--card-2)]/80 border border-[var(--border)] py-1.5 px-2 flex flex-col items-center justify-center text-center cursor-pointer hover:border-[#D71921]/40"
+              >
+                <span
+                  className="font-mono font-bold text-[var(--text)] leading-tight truncate max-w-full"
+                  style={{ fontSize: 'clamp(11px, 2.6vw, 14px)' }}
+                >
+                  {data.following}
+                </span>
+                <span className="text-[9px] font-mono uppercase text-[var(--muted)]">Following</span>
               </button>
             </div>
           </div>
@@ -768,7 +925,8 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
   if (layout === 'dark-passport') {
     return (
       <div
-        className="relative w-full overflow-hidden flex flex-col bg-gradient-to-br from-[#0B0C10] via-[#12151E] to-[#1A1016] text-white p-3 sm:p-5"
+        className="dark-surface-preserve relative w-full overflow-hidden flex flex-col bg-gradient-to-br from-[#0B0C10] via-[#12151E] to-[#1A1016] text-white p-3.5 sm:p-5"
+        style={{ color: '#FFFFFF' }}
         data-profile-layout="dark-passport"
       >
         <HeaderProfileEffectOverlay
@@ -778,14 +936,20 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
         />
 
         {/* Passport header bar */}
-        <div className="relative z-10 flex items-center justify-between pb-2.5 mb-3 border-b border-white/10 text-[10px] font-mono uppercase tracking-[0.2em] text-amber-400/90">
-          <span>BOARDLY ACADEMIC PASSPORT · #{shortId}</span>
+        <div
+          className="relative z-10 flex items-center justify-between pb-2.5 mb-3 border-b border-white/15 text-[10px] font-mono uppercase tracking-[0.16em]"
+          style={{ color: '#FBBF24' }}
+        >
+          <span>BOARDLY PASSPORT · #{shortId}</span>
           <span>VERIFIED ID</span>
         </div>
 
         {/* Framed inner banner + avatar + nameplate */}
-        <div className="relative z-10 rounded-2xl overflow-hidden border border-white/15 bg-black/40 shadow-inner">
-          <div className="relative">
+        <div
+          className="relative z-10 rounded-2xl overflow-hidden border border-white/20 shadow-inner"
+          style={{ backgroundColor: 'rgba(10, 12, 18, 0.78)' }}
+        >
+          <div className="relative z-10">
             {renderBanner('w-full h-24 sm:h-32')}
             <TopBannerOverlayControls
               onClose={onClose}
@@ -794,11 +958,14 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
             />
           </div>
 
-          <div className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3.5 -mt-8 sm:-mt-10 relative z-10">
-            <div className="p-1 rounded-full bg-[#12151E] border border-white/15 self-start">
+          <div className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3 -mt-9 sm:-mt-10 relative z-20">
+            <div
+              className="p-1 rounded-full border border-white/25 self-start relative z-30 overflow-visible"
+              style={{ backgroundColor: '#12151E' }}
+            >
               <AvatarWithGuaranteedRing data={data} size={avatarSize} />
             </div>
-            <div className="flex-1 pt-1 sm:pt-6">
+            <div className="flex-1 min-w-0 pt-1 sm:pt-5">
               <IdentityMetaBlock
                 data={data}
                 shortId={shortId}
@@ -812,38 +979,82 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
           </div>
         </div>
 
-        {/* Passport Stat Tiles */}
-        <div className="relative z-10 grid grid-cols-4 gap-2 mt-3">
-          <div className="rounded-xl bg-white/[0.06] border border-white/10 p-2.5 text-center">
-            <div className="text-[10px] font-mono uppercase text-white/50">Level</div>
-            <div className="font-mono font-bold text-sm text-white mt-0.5">LV.{data.level}</div>
+        {/* Passport Stat Tiles: white/light text on dark surface */}
+        <div className={`relative z-10 grid ${statGridCols} gap-2 mt-3`}>
+          <div
+            className="min-w-0 rounded-xl border border-white/15 p-2.5 text-center"
+            style={{ backgroundColor: 'rgba(255, 255, 255, 0.08)' }}
+          >
+            <div
+              className="text-[10px] font-mono uppercase"
+              style={{ color: 'rgba(255, 255, 255, 0.72)' }}
+            >
+              Level
+            </div>
+            <div
+              className="font-mono font-bold mt-0.5 truncate"
+              style={{ color: '#FFFFFF', fontSize: 'clamp(12px, 3vw, 15px)' }}
+            >
+              LV.{data.level}
+            </div>
           </div>
           <button
             type="button"
             onClick={onOpenWallet}
-            className="rounded-xl bg-white/[0.06] border border-white/10 p-2.5 text-center cursor-pointer hover:bg-white/10"
+            className="min-w-0 rounded-xl border border-white/15 p-2.5 text-center cursor-pointer hover:bg-white/15"
+            style={{ backgroundColor: 'rgba(255, 255, 255, 0.08)' }}
           >
-            <div className="text-[10px] font-mono uppercase text-white/50">Kobans</div>
-            <div className="font-mono font-bold text-sm text-amber-400 mt-0.5 flex items-center justify-center gap-1">
+            <div
+              className="text-[10px] font-mono uppercase"
+              style={{ color: 'rgba(255, 255, 255, 0.72)' }}
+            >
+              Kobans
+            </div>
+            <div
+              className="font-mono font-bold mt-0.5 flex items-center justify-center gap-1 truncate"
+              style={{ color: '#FDE047', fontSize: 'clamp(12px, 3vw, 15px)' }}
+            >
               <KobanIcon size={12} />
-              {data.coins.toLocaleString()}
+              <span>{data.coins.toLocaleString()}</span>
             </div>
           </button>
           <button
             type="button"
             onClick={onOpenFollowers}
-            className="rounded-xl bg-white/[0.06] border border-white/10 p-2.5 text-center cursor-pointer hover:bg-white/10"
+            className="min-w-0 rounded-xl border border-white/15 p-2.5 text-center cursor-pointer hover:bg-white/15"
+            style={{ backgroundColor: 'rgba(255, 255, 255, 0.08)' }}
           >
-            <div className="text-[10px] font-mono uppercase text-white/50">Followers</div>
-            <div className="font-mono font-bold text-sm text-white mt-0.5">{data.followers}</div>
+            <div
+              className="text-[10px] font-mono uppercase"
+              style={{ color: 'rgba(255, 255, 255, 0.72)' }}
+            >
+              Followers
+            </div>
+            <div
+              className="font-mono font-bold mt-0.5 truncate"
+              style={{ color: '#FFFFFF', fontSize: 'clamp(12px, 3vw, 15px)' }}
+            >
+              {data.followers}
+            </div>
           </button>
           <button
             type="button"
             onClick={onOpenFollowing}
-            className="rounded-xl bg-white/[0.06] border border-white/10 p-2.5 text-center cursor-pointer hover:bg-white/10"
+            className="min-w-0 rounded-xl border border-white/15 p-2.5 text-center cursor-pointer hover:bg-white/15"
+            style={{ backgroundColor: 'rgba(255, 255, 255, 0.08)' }}
           >
-            <div className="text-[10px] font-mono uppercase text-white/50">Following</div>
-            <div className="font-mono font-bold text-sm text-white mt-0.5">{data.following}</div>
+            <div
+              className="text-[10px] font-mono uppercase"
+              style={{ color: 'rgba(255, 255, 255, 0.72)' }}
+            >
+              Following
+            </div>
+            <div
+              className="font-mono font-bold mt-0.5 truncate"
+              style={{ color: '#FFFFFF', fontSize: 'clamp(12px, 3vw, 15px)' }}
+            >
+              {data.following}
+            </div>
           </button>
         </div>
 
@@ -856,7 +1067,7 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 4. CENTERED-HERO: banner, large centered avatar, centered name, nameplate and 3 stats
+  // 4. CENTERED-HERO: banner, large centered avatar, centered name, nameplate and stats
   // ───────────────────────────────────────────────────────────────────────────
   if (layout === 'centered-hero') {
     return (
@@ -869,7 +1080,7 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
           accentColor={accentColor}
           playKey={effectPlayKey}
         />
-        <div className="relative">
+        <div className="relative z-10">
           {renderBanner('w-full h-28 sm:h-36')}
           <TopBannerOverlayControls
             onClose={onClose}
@@ -878,9 +1089,9 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
           />
         </div>
 
-        <div className="px-4 sm:px-6 pb-5 flex flex-col items-center text-center gap-3 relative z-10">
-          <div className="-mt-12 sm:-mt-14 p-1.5 rounded-full bg-[var(--card)] shadow-lg">
-            <AvatarWithGuaranteedRing data={data} size={previewMode ? 76 : 96} />
+        <div className="px-4 sm:px-6 pb-5 flex flex-col items-center text-center gap-3 relative z-20">
+          <div className="-mt-12 sm:-mt-14 p-1.5 rounded-full bg-[var(--card)] shadow-lg relative z-30 overflow-visible">
+            <AvatarWithGuaranteedRing data={data} size={previewMode ? 76 : 92} />
           </div>
 
           <IdentityMetaBlock
@@ -893,39 +1104,63 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
             isPublicMode={isPublicMode}
           />
 
-          {/* 3 Centered Stat Columns */}
-          <div className="w-full max-w-md grid grid-cols-3 gap-2.5 pt-1">
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--card-2)]/60 py-2.5 px-3 flex flex-col items-center">
-              <span className="font-mono font-extrabold text-sm sm:text-base text-[var(--text)]">
+          {/* Centered Stat Tiles */}
+          <div className={`w-full max-w-md grid ${statGridCols} gap-2 pt-0.5`}>
+            <div className="min-w-0 rounded-2xl border border-[var(--border)] bg-[var(--card-2)]/70 py-2 px-2.5 flex flex-col items-center justify-center">
+              <span
+                className="font-mono font-extrabold text-[var(--text)] leading-tight truncate max-w-full"
+                style={{ fontSize: 'clamp(12px, 3vw, 15px)' }}
+              >
                 LV.{data.level}
               </span>
-              <span className="text-[10px] font-mono uppercase text-[var(--muted)]">
+              <span className="text-[10px] font-mono uppercase text-[var(--muted)] mt-0.5">
                 Level
               </span>
             </div>
             <button
               type="button"
               onClick={onOpenWallet}
-              className="rounded-2xl border border-[var(--border)] bg-[var(--card-2)]/60 py-2.5 px-3 flex flex-col items-center cursor-pointer hover:border-[#E8A317]/50"
+              className="min-w-0 rounded-2xl border border-[var(--border)] bg-[var(--card-2)]/70 py-2 px-2.5 flex flex-col items-center justify-center cursor-pointer hover:border-[#E8A317]/50"
             >
-              <span className="font-mono font-extrabold text-sm sm:text-base text-[#D97706] dark:text-[#FBBF24] flex items-center gap-1">
+              <span
+                className="font-mono font-extrabold text-[#B45309] dark:text-[#FBBF24] flex items-center justify-center gap-1 leading-tight truncate max-w-full"
+                style={{ fontSize: 'clamp(12px, 3vw, 15px)' }}
+              >
                 <KobanIcon size={13} />
-                {data.coins.toLocaleString()}
+                <span>{data.coins.toLocaleString()}</span>
               </span>
-              <span className="text-[10px] font-mono uppercase text-[var(--muted)]">
+              <span className="text-[10px] font-mono uppercase text-[var(--muted)] mt-0.5">
                 Kobans
               </span>
             </button>
             <button
               type="button"
               onClick={onOpenFollowers}
-              className="rounded-2xl border border-[var(--border)] bg-[var(--card-2)]/60 py-2.5 px-3 flex flex-col items-center cursor-pointer hover:border-[#D71921]/40"
+              className="min-w-0 rounded-2xl border border-[var(--border)] bg-[var(--card-2)]/70 py-2 px-2.5 flex flex-col items-center justify-center cursor-pointer hover:border-[#D71921]/40"
             >
-              <span className="font-mono font-extrabold text-sm sm:text-base text-[var(--text)]">
-                {data.followers} / {data.following}
+              <span
+                className="font-mono font-extrabold text-[var(--text)] leading-tight truncate max-w-full"
+                style={{ fontSize: 'clamp(12px, 3vw, 15px)' }}
+              >
+                {data.followers}
               </span>
-              <span className="text-[10px] font-mono uppercase text-[var(--muted)]">
+              <span className="text-[10px] font-mono uppercase text-[var(--muted)] mt-0.5">
                 Followers
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={onOpenFollowing}
+              className="min-w-0 rounded-2xl border border-[var(--border)] bg-[var(--card-2)]/70 py-2 px-2.5 flex flex-col items-center justify-center cursor-pointer hover:border-[#D71921]/40"
+            >
+              <span
+                className="font-mono font-extrabold text-[var(--text)] leading-tight truncate max-w-full"
+                style={{ fontSize: 'clamp(12px, 3vw, 15px)' }}
+              >
+                {data.following}
+              </span>
+              <span className="text-[10px] font-mono uppercase text-[var(--muted)] mt-0.5">
+                Following
               </span>
             </button>
           </div>
@@ -938,12 +1173,13 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 5. FULL-COVER: banner fills the top half with avatar, name and nameplate over a dark gradient, and a sheet with stats slides over it
+  // 5. FULL-COVER: banner fills the top half with avatar, name and nameplate over a dark gradient, and a dark glass sheet with stats slides over it
   // ───────────────────────────────────────────────────────────────────────────
   if (layout === 'full-cover') {
     return (
       <div
-        className="relative w-full overflow-hidden flex flex-col bg-[var(--card)] text-[var(--text)]"
+        className="dark-surface-preserve relative w-full overflow-hidden flex flex-col bg-[#0F1016] text-white"
+        style={{ backgroundColor: '#0F1016', color: '#FFFFFF' }}
         data-profile-layout="full-cover"
       >
         <HeaderProfileEffectOverlay
@@ -953,16 +1189,24 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
         />
 
         {/* Top half full-cover banner with avatar, name, and nameplate over dark gradient */}
-        <div className="relative w-full h-56 sm:h-64 overflow-hidden">
-          {renderBanner('w-full h-full')}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/15 pointer-events-none" />
+        <div className="relative w-full min-h-[210px] sm:min-h-[240px] flex flex-col justify-end overflow-hidden pt-10 pb-8">
+          <div className="absolute inset-0 z-0">
+            {renderBanner('w-full h-full')}
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background:
+                  'linear-gradient(to top, rgba(10,11,16,0.96) 0%, rgba(10,11,16,0.68) 55%, rgba(10,11,16,0.25) 100%)',
+              }}
+            />
+          </div>
           <TopBannerOverlayControls
             onClose={onClose}
             onPreviewAsPublic={onPreviewAsPublic}
             showPreviewBtn={!isPublicMode && !previewMode}
           />
 
-          <div className="absolute inset-x-0 bottom-6 px-4 sm:px-6 flex items-end gap-3.5 z-10">
+          <div className="relative z-20 px-4 sm:px-6 flex items-end gap-3.5">
             <AvatarWithGuaranteedRing data={data} size={avatarSize} />
             <div className="flex-1 min-w-0 pb-0.5">
               <IdentityMetaBlock
@@ -978,50 +1222,91 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
           </div>
         </div>
 
-        {/* Sliding bottom sheet with stats & buttons */}
-        <div className="relative z-20 -mt-5 rounded-t-3xl bg-[var(--card)] border-t border-[var(--border)] px-4 sm:px-6 pt-3 pb-5 flex flex-col gap-3.5 shadow-[0_-8px_24px_rgba(0,0,0,0.2)]">
-          <div className="w-10 h-1 rounded-full bg-[var(--border)] mx-auto" />
-          <div className="grid grid-cols-4 gap-2">
-            <div className="rounded-xl bg-[var(--card-2)]/70 border border-[var(--border)] p-2 text-center">
-              <div className="font-mono font-bold text-xs sm:text-sm text-[var(--text)]">
+        {/* Sliding dark glass bottom sheet with white/light stat tiles & light Store/Settings buttons */}
+        <div
+          className="relative z-30 -mt-5 rounded-t-3xl border-t border-white/15 px-4 sm:px-6 pt-3 pb-5 flex flex-col gap-3.5 shadow-[0_-8px_24px_rgba(0,0,0,0.45)]"
+          style={{ backgroundColor: '#14161F', color: '#FFFFFF' }}
+        >
+          <div className="w-10 h-1 rounded-full bg-white/25 mx-auto" />
+          <div className={`grid ${statGridCols} gap-2`}>
+            <div
+              className="min-w-0 rounded-xl border border-white/15 p-2 text-center"
+              style={{ backgroundColor: 'rgba(255, 255, 255, 0.08)' }}
+            >
+              <div
+                className="font-mono font-bold truncate"
+                style={{ color: '#FFFFFF', fontSize: 'clamp(12px, 3vw, 15px)' }}
+              >
                 LV.{data.level}
               </div>
-              <div className="text-[10px] text-[var(--muted)]">Level</div>
+              <div
+                className="text-[10px] font-mono uppercase mt-0.5"
+                style={{ color: 'rgba(255, 255, 255, 0.75)' }}
+              >
+                Level
+              </div>
             </div>
             <button
               type="button"
               onClick={onOpenWallet}
-              className="rounded-xl bg-[var(--card-2)]/70 border border-[var(--border)] p-2 text-center cursor-pointer"
+              className="min-w-0 rounded-xl border border-white/15 p-2 text-center cursor-pointer hover:bg-white/15"
+              style={{ backgroundColor: 'rgba(255, 255, 255, 0.08)' }}
             >
-              <div className="font-mono font-bold text-xs sm:text-sm text-[#D97706] dark:text-[#FBBF24] flex items-center justify-center gap-0.5">
+              <div
+                className="font-mono font-bold flex items-center justify-center gap-1 truncate"
+                style={{ color: '#FDE047', fontSize: 'clamp(12px, 3vw, 15px)' }}
+              >
                 <KobanIcon size={12} />
-                {data.coins.toLocaleString()}
+                <span>{data.coins.toLocaleString()}</span>
               </div>
-              <div className="text-[10px] text-[var(--muted)]">Kobans</div>
+              <div
+                className="text-[10px] font-mono uppercase mt-0.5"
+                style={{ color: 'rgba(255, 255, 255, 0.75)' }}
+              >
+                Kobans
+              </div>
             </button>
             <button
               type="button"
               onClick={onOpenFollowers}
-              className="rounded-xl bg-[var(--card-2)]/70 border border-[var(--border)] p-2 text-center cursor-pointer"
+              className="min-w-0 rounded-xl border border-white/15 p-2 text-center cursor-pointer hover:bg-white/15"
+              style={{ backgroundColor: 'rgba(255, 255, 255, 0.08)' }}
             >
-              <div className="font-mono font-bold text-xs sm:text-sm text-[var(--text)]">
+              <div
+                className="font-mono font-bold truncate"
+                style={{ color: '#FFFFFF', fontSize: 'clamp(12px, 3vw, 15px)' }}
+              >
                 {data.followers}
               </div>
-              <div className="text-[10px] text-[var(--muted)]">Followers</div>
+              <div
+                className="text-[10px] font-mono uppercase mt-0.5"
+                style={{ color: 'rgba(255, 255, 255, 0.75)' }}
+              >
+                Followers
+              </div>
             </button>
             <button
               type="button"
               onClick={onOpenFollowing}
-              className="rounded-xl bg-[var(--card-2)]/70 border border-[var(--border)] p-2 text-center cursor-pointer"
+              className="min-w-0 rounded-xl border border-white/15 p-2 text-center cursor-pointer hover:bg-white/15"
+              style={{ backgroundColor: 'rgba(255, 255, 255, 0.08)' }}
             >
-              <div className="font-mono font-bold text-xs sm:text-sm text-[var(--text)]">
+              <div
+                className="font-mono font-bold truncate"
+                style={{ color: '#FFFFFF', fontSize: 'clamp(12px, 3vw, 15px)' }}
+              >
                 {data.following}
               </div>
-              <div className="text-[10px] text-[var(--muted)]">Following</div>
+              <div
+                className="text-[10px] font-mono uppercase mt-0.5"
+                style={{ color: 'rgba(255, 255, 255, 0.75)' }}
+              >
+                Following
+              </div>
             </button>
           </div>
           {badgeRowNode}
-          <ProfileActionButtonsRow props={props} />
+          <ProfileActionButtonsRow props={props} variant="dark" />
         </div>
       </div>
     );
@@ -1033,7 +1318,8 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
   if (layout === 'trading-card') {
     return (
       <div
-        className="relative w-full overflow-hidden p-3 sm:p-4 bg-gradient-to-br from-[#2B1F0A] via-[#13110E] to-[#291B07] text-white border-4 border-[#F59E0B] shadow-[inset_0_0_24px_rgba(245,158,11,0.25)]"
+        className="dark-surface-preserve relative w-full overflow-hidden p-3 sm:p-4 bg-gradient-to-br from-[#2B1F0A] via-[#13110E] to-[#291B07] text-white border-4 border-[#F59E0B] shadow-[inset_0_0_24px_rgba(245,158,11,0.25)]"
+        style={{ color: '#FFFFFF' }}
         data-profile-layout="trading-card"
       >
         <HeaderProfileEffectOverlay
@@ -1042,28 +1328,64 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
           playKey={effectPlayKey}
         />
 
-        {/* Collectible Card Top Header Bar: Nameplate as Title + Level/HP */}
-        <div className="relative z-10 flex items-center justify-between gap-2 px-3 py-2 rounded-t-xl bg-gradient-to-r from-amber-500/25 via-amber-400/15 to-amber-500/25 border border-amber-400/40">
-          <div className="flex items-center gap-2 min-w-0">
-            <AlwaysVisibleNameplate
-              nameplateId={data.nameplate}
-              displayName={data.displayName}
-              shortId={shortId}
-              darkSurface={true}
-            />
-            {data.proBadge && (
-              <ProBadge
-                design={data.proBadge}
-                size="sm"
-                animated
-                priority
-                onClick={onProBadgeClick}
+        {/* Collectible Card Top Header Bar: Nameplate scaled cleanly to fit + Level/HP */}
+        <div
+          className="relative z-10 flex flex-col gap-2 px-3 py-2.5 rounded-t-xl border border-amber-400/45"
+          style={{
+            background:
+              'linear-gradient(90deg, rgba(245,158,11,0.24) 0%, rgba(18,16,12,0.85) 50%, rgba(245,158,11,0.24) 100%)',
+          }}
+        >
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+              <AlwaysVisibleNameplate
+                nameplateId={data.nameplate}
+                displayName={data.displayName}
+                shortId={shortId}
+                darkSurface={true}
+                className="max-w-full"
               />
-            )}
+            </div>
+            <div
+              className="flex items-center gap-1.5 font-mono font-black text-xs shrink-0"
+              style={{ color: '#FDE047' }}
+            >
+              <Trophy size={13} style={{ color: '#FBBF24' }} />
+              <span>LV.{data.level}</span>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5 font-mono font-black text-xs text-amber-300 shrink-0">
-            <Trophy size={13} className="text-amber-400" />
-            <span>LV.{data.level}</span>
+
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 min-w-0 flex-wrap">
+              <span
+                className="font-heading font-bold text-sm truncate"
+                style={{ color: '#FFFFFF' }}
+              >
+                {data.displayName}
+              </span>
+              <span className="font-mono text-xs" style={{ color: '#FDE68A' }}>
+                @{data.username}
+              </span>
+              {data.proBadge && (
+                <ProBadge
+                  design={data.proBadge}
+                  size="sm"
+                  animated
+                  priority
+                  onClick={onProBadgeClick}
+                />
+              )}
+            </div>
+            <div
+              className="inline-flex items-center gap-1 text-[11px] font-semibold"
+              style={{ color: '#6EE7B7' }}
+            >
+              <span
+                className="w-2 h-2 rounded-full animate-pulse"
+                style={{ backgroundColor: '#34D399' }}
+              />
+              <span>Active</span>
+            </div>
           </div>
         </div>
 
@@ -1075,17 +1397,16 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
             onPreviewAsPublic={onPreviewAsPublic}
             showPreviewBtn={!isPublicMode && !previewMode}
           />
-          <div className="absolute bottom-2 right-2 z-20 p-1 rounded-full bg-[#13110E]/90 border-2 border-amber-400 shadow-xl">
-            <AvatarWithGuaranteedRing data={data} size={previewMode ? 58 : 72} />
+          <div
+            className="absolute bottom-2 right-2 z-30 p-1 rounded-full border-2 border-amber-400 shadow-xl overflow-visible"
+            style={{ backgroundColor: '#13110E' }}
+          >
+            <AvatarWithGuaranteedRing data={data} size={previewMode ? 58 : 70} />
           </div>
-          <div className="absolute bottom-2 left-2.5 z-20 px-2 py-0.5 rounded bg-black/75 border border-amber-400/40 font-mono text-[11px] text-amber-200">
-            {data.displayName} · @{data.username}
-          </div>
-        </div>
-
-        {/* Card Lore & Stat Attributes Box */}
-        <div className="relative z-10 mt-2.5 rounded-xl bg-black/45 border border-amber-400/30 p-3 flex flex-col gap-2.5">
-          <div className="flex items-center justify-between flex-wrap gap-2">
+          <div
+            className="absolute bottom-2 left-2.5 z-20 px-2 py-1 rounded border border-amber-400/40"
+            style={{ backgroundColor: 'rgba(0,0,0,0.82)', color: '#FEF08A' }}
+          >
             <RoleBadge
               role={data.role}
               customRole={data.customRole || undefined}
@@ -1094,20 +1415,71 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
                 data.role === 'superadmin' ||
                 data.role === 'admin'
               }
-              size="md"
+              size="sm"
             />
-            <div className="flex items-center gap-3 font-mono text-xs text-amber-200">
-              <button type="button" onClick={onOpenWallet} className="flex items-center gap-1 cursor-pointer">
-                <KobanIcon size={13} />
-                <strong>{data.coins.toLocaleString()}</strong>
-              </button>
-              <button type="button" onClick={onOpenFollowers} className="cursor-pointer">
-                <strong>{data.followers}</strong> Followers
-              </button>
-              <button type="button" onClick={onOpenFollowing} className="cursor-pointer">
-                <strong>{data.following}</strong> Following
-              </button>
+          </div>
+        </div>
+
+        {/* Card Lore & Stat Attributes Box */}
+        <div
+          className="relative z-10 mt-2.5 rounded-xl border border-amber-400/35 p-3 flex flex-col gap-2.5"
+          style={{ backgroundColor: 'rgba(12, 10, 8, 0.85)', color: '#FFFFFF' }}
+        >
+          <div className={`grid ${statGridCols} gap-2`}>
+            <div
+              className="min-w-0 rounded-lg border border-amber-400/25 p-2 text-center"
+              style={{ backgroundColor: 'rgba(255, 255, 255, 0.06)' }}
+            >
+              <div className="text-[9px] font-mono uppercase" style={{ color: '#FDE68A' }}>
+                Level
+              </div>
+              <div className="font-mono font-bold text-xs sm:text-sm" style={{ color: '#FFFFFF' }}>
+                LV.{data.level}
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={onOpenWallet}
+              className="min-w-0 rounded-lg border border-amber-400/25 p-2 text-center cursor-pointer"
+              style={{ backgroundColor: 'rgba(255, 255, 255, 0.06)' }}
+            >
+              <div className="text-[9px] font-mono uppercase" style={{ color: '#FDE68A' }}>
+                Kobans
+              </div>
+              <div
+                className="font-mono font-bold text-xs sm:text-sm flex items-center justify-center gap-1"
+                style={{ color: '#FDE047' }}
+              >
+                <KobanIcon size={12} />
+                <span>{data.coins.toLocaleString()}</span>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={onOpenFollowers}
+              className="min-w-0 rounded-lg border border-amber-400/25 p-2 text-center cursor-pointer"
+              style={{ backgroundColor: 'rgba(255, 255, 255, 0.06)' }}
+            >
+              <div className="text-[9px] font-mono uppercase" style={{ color: '#FDE68A' }}>
+                Followers
+              </div>
+              <div className="font-mono font-bold text-xs sm:text-sm" style={{ color: '#FFFFFF' }}>
+                {data.followers}
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={onOpenFollowing}
+              className="min-w-0 rounded-lg border border-amber-400/25 p-2 text-center cursor-pointer"
+              style={{ backgroundColor: 'rgba(255, 255, 255, 0.06)' }}
+            >
+              <div className="text-[9px] font-mono uppercase" style={{ color: '#FDE68A' }}>
+                Following
+              </div>
+              <div className="font-mono font-bold text-xs sm:text-sm" style={{ color: '#FFFFFF' }}>
+                {data.following}
+              </div>
+            </button>
           </div>
           {badgeRowNode}
           <ProfileActionButtonsRow props={props} variant="dark" />
@@ -1122,7 +1494,8 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
   if (layout === 'retro-pixel') {
     return (
       <div
-        className="relative w-full overflow-hidden bg-[#090D16] text-emerald-300 font-mono border-2 border-emerald-500/70 shadow-[0_0_24px_rgba(16,185,129,0.15)]"
+        className="dark-surface-preserve relative w-full overflow-hidden bg-[#090D16] font-mono border-2 border-emerald-500/80 shadow-[0_0_24px_rgba(16,185,129,0.15)]"
+        style={{ backgroundColor: '#090D16', color: '#6EE7B7' }}
         data-profile-layout="retro-pixel"
       >
         <HeaderProfileEffectOverlay
@@ -1132,25 +1505,40 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
         />
 
         {/* Retro OS Title Bar: username.exe */}
-        <div className="relative z-20 flex items-center justify-between px-3 py-1.5 bg-emerald-950/90 border-b-2 border-emerald-500/70">
-          <div className="flex items-center gap-2 text-xs font-bold text-emerald-300">
-            <span className="w-2.5 h-2.5 bg-emerald-400 inline-block" />
-            <span>{data.username}.exe</span>
+        <div
+          className="relative z-20 flex items-center justify-between px-3 py-1.5 border-b-2 border-emerald-500/70"
+          style={{ backgroundColor: '#052E16', color: '#A7F3D0' }}
+        >
+          <div className="flex items-center gap-2 text-xs font-bold min-w-0">
+            <span
+              className="w-2.5 h-2.5 inline-block shrink-0"
+              style={{ backgroundColor: '#34D399' }}
+            />
+            <span className="truncate" style={{ color: '#ECFDF5' }}>
+              {data.username}.exe
+            </span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             {!isPublicMode && !previewMode && onPreviewAsPublic && (
               <button
                 type="button"
                 onClick={onPreviewAsPublic}
-                className="px-2 py-0.5 bg-black border border-emerald-400 text-[10px] text-emerald-300 cursor-pointer"
+                className="px-2 py-0.5 border border-emerald-400 text-[10px] cursor-pointer"
+                style={{ backgroundColor: '#000000', color: '#6EE7B7' }}
               >
                 [VIEW_PUBLIC]
               </button>
             )}
-            <span className="px-1.5 py-0.5 bg-black border border-emerald-500/60 text-[10px] text-emerald-400">
+            <span
+              className="px-1.5 py-0.5 border border-emerald-500/60 text-[10px]"
+              style={{ backgroundColor: '#000000', color: '#34D399' }}
+            >
               _
             </span>
-            <span className="px-1.5 py-0.5 bg-black border border-emerald-500/60 text-[10px] text-emerald-400">
+            <span
+              className="px-1.5 py-0.5 border border-emerald-500/60 text-[10px]"
+              style={{ backgroundColor: '#000000', color: '#34D399' }}
+            >
               □
             </span>
             {onClose && (
@@ -1158,6 +1546,7 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
                 type="button"
                 onClick={onClose}
                 className="px-1.5 py-0.5 bg-red-600 text-white border border-red-300 text-[10px] font-bold cursor-pointer"
+                style={{ backgroundColor: '#DC2626', color: '#FFFFFF' }}
               >
                 X
               </button>
@@ -1166,24 +1555,29 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
         </div>
 
         {/* Banner Viewport */}
-        <div className="relative border-b-2 border-emerald-500/50">
+        <div className="relative z-10 border-b-2 border-emerald-500/50">
           {renderBanner('w-full h-24 sm:h-32')}
         </div>
 
         {/* Terminal Body */}
-        <div className="relative z-10 p-4 flex flex-col gap-3">
-          <div className="flex items-start gap-3.5">
+        <div className="relative z-20 p-3.5 sm:p-4 flex flex-col gap-3">
+          <div className="flex items-start gap-3">
             <AvatarWithGuaranteedRing
               data={data}
-              size={previewMode ? 64 : 80}
+              size={previewMode ? 60 : 76}
               squarePixel={true}
             />
-            <div className="flex-1 min-w-0 flex flex-col gap-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-base sm:text-lg font-bold text-white">
+            <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                <span
+                  className="text-sm sm:text-base font-bold truncate max-w-full"
+                  style={{ color: '#FFFFFF' }}
+                >
                   {data.displayName}
                 </span>
-                <span className="text-xs text-emerald-400">@{data.username}</span>
+                <span className="text-xs shrink-0" style={{ color: '#6EE7B7' }}>
+                  @{data.username}
+                </span>
                 {data.proBadge && (
                   <ProBadge
                     design={data.proBadge}
@@ -1194,13 +1588,7 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
                   />
                 )}
               </div>
-              <AlwaysVisibleNameplate
-                nameplateId={data.nameplate}
-                displayName={data.displayName}
-                shortId={shortId}
-                darkSurface={true}
-              />
-              <div className="pt-0.5">
+              <div className="flex items-center gap-2 flex-wrap">
                 <RoleBadge
                   role={data.role}
                   customRole={data.customRole || undefined}
@@ -1211,41 +1599,95 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
                   }
                   size="sm"
                 />
+                <div
+                  className="inline-flex items-center gap-1.5 text-xs font-bold"
+                  style={{ color: '#6EE7B7' }}
+                >
+                  <span
+                    className="w-2 h-2 inline-block animate-pulse"
+                    style={{ backgroundColor: '#34D399' }}
+                  />
+                  <span>Active</span>
+                </div>
               </div>
             </div>
           </div>
 
+          {/* Full-width Nameplate Row inside Retro Pixel Window so it never clips */}
+          <div className="w-full min-w-0 max-w-full overflow-hidden">
+            <AlwaysVisibleNameplate
+              nameplateId={data.nameplate}
+              displayName={data.displayName}
+              shortId={shortId}
+              darkSurface={true}
+              className="max-w-full"
+            />
+          </div>
+
           {/* Blocky Terminal Stats */}
-          <div className="grid grid-cols-4 gap-2 pt-1">
-            <div className="bg-black border-2 border-emerald-500/50 p-2 text-center">
-              <div className="text-[9px] text-emerald-500 uppercase">LVL</div>
-              <div className="text-xs sm:text-sm font-bold text-emerald-200">{data.level}</div>
+          <div className={`grid ${statGridCols} gap-2 pt-0.5`}>
+            <div
+              className="min-w-0 border-2 border-emerald-500/60 p-2 text-center"
+              style={{ backgroundColor: '#030712' }}
+            >
+              <div className="text-[9px] uppercase" style={{ color: '#6EE7B7' }}>
+                LEVEL
+              </div>
+              <div
+                className="font-bold truncate mt-0.5"
+                style={{ color: '#FFFFFF', fontSize: 'clamp(12px, 3vw, 14px)' }}
+              >
+                LV.{data.level}
+              </div>
             </div>
             <button
               type="button"
               onClick={onOpenWallet}
-              className="bg-black border-2 border-emerald-500/50 p-2 text-center cursor-pointer"
+              className="min-w-0 border-2 border-emerald-500/60 p-2 text-center cursor-pointer"
+              style={{ backgroundColor: '#030712' }}
             >
-              <div className="text-[9px] text-emerald-500 uppercase">KOBANS</div>
-              <div className="text-xs sm:text-sm font-bold text-amber-300">
-                {data.coins.toLocaleString()}
+              <div className="text-[9px] uppercase" style={{ color: '#6EE7B7' }}>
+                KOBANS
+              </div>
+              <div
+                className="font-bold flex items-center justify-center gap-1 truncate mt-0.5"
+                style={{ color: '#FDE047', fontSize: 'clamp(12px, 3vw, 14px)' }}
+              >
+                <KobanIcon size={12} />
+                <span>{data.coins.toLocaleString()}</span>
               </div>
             </button>
             <button
               type="button"
               onClick={onOpenFollowers}
-              className="bg-black border-2 border-emerald-500/50 p-2 text-center cursor-pointer"
+              className="min-w-0 border-2 border-emerald-500/60 p-2 text-center cursor-pointer"
+              style={{ backgroundColor: '#030712' }}
             >
-              <div className="text-[9px] text-emerald-500 uppercase">FOLLOWERS</div>
-              <div className="text-xs sm:text-sm font-bold text-emerald-200">{data.followers}</div>
+              <div className="text-[9px] uppercase" style={{ color: '#6EE7B7' }}>
+                FOLLOWERS
+              </div>
+              <div
+                className="font-bold truncate mt-0.5"
+                style={{ color: '#FFFFFF', fontSize: 'clamp(12px, 3vw, 14px)' }}
+              >
+                {data.followers}
+              </div>
             </button>
             <button
               type="button"
               onClick={onOpenFollowing}
-              className="bg-black border-2 border-emerald-500/50 p-2 text-center cursor-pointer"
+              className="min-w-0 border-2 border-emerald-500/60 p-2 text-center cursor-pointer"
+              style={{ backgroundColor: '#030712' }}
             >
-              <div className="text-[9px] text-emerald-500 uppercase">FOLLOWING</div>
-              <div className="text-xs sm:text-sm font-bold text-emerald-200">{data.following}</div>
+              <div className="text-[9px] uppercase" style={{ color: '#6EE7B7' }}>
+                FOLLOWING
+              </div>
+              <div
+                className="font-bold truncate mt-0.5"
+                style={{ color: '#FFFFFF', fontSize: 'clamp(12px, 3vw, 14px)' }}
+              >
+                {data.following}
+              </div>
             </button>
           </div>
 
@@ -1262,13 +1704,17 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
   if (layout === 'glass') {
     return (
       <div
-        className="relative w-full overflow-hidden p-4 sm:p-6 text-white min-h-[290px] flex flex-col justify-end"
+        className="dark-surface-preserve relative w-full overflow-hidden p-3.5 sm:p-5 text-white min-h-[290px] flex flex-col justify-end"
+        style={{ backgroundColor: '#0B0C12', color: '#FFFFFF' }}
         data-profile-layout="glass"
       >
         {/* Full Background Banner */}
         <div className="absolute inset-0 z-0">
           {renderBanner('w-full h-full')}
-          <div className="absolute inset-0 bg-black/35" />
+          <div
+            className="absolute inset-0"
+            style={{ backgroundColor: 'rgba(8, 10, 16, 0.48)' }}
+          />
         </div>
 
         <HeaderProfileEffectOverlay
@@ -1284,7 +1730,13 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
         />
 
         {/* Frosted Glass Panel */}
-        <div className="relative z-10 rounded-3xl bg-black/45 dark:bg-black/55 backdrop-blur-xl border border-white/25 p-4 sm:p-5 shadow-2xl flex flex-col gap-3.5 mt-10">
+        <div
+          className="relative z-20 rounded-3xl backdrop-blur-xl border border-white/25 p-4 sm:p-5 shadow-2xl flex flex-col gap-3.5 mt-8"
+          style={{
+            backgroundColor: 'rgba(14, 16, 24, 0.72)',
+            color: '#FFFFFF',
+          }}
+        >
           <div className="flex flex-col sm:flex-row sm:items-center gap-3.5">
             <AvatarWithGuaranteedRing data={data} size={avatarSize} />
             <div className="flex-1 min-w-0">
@@ -1300,43 +1752,81 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
             </div>
           </div>
 
-          <div className="grid grid-cols-4 gap-2 pt-1">
-            <div className="rounded-xl bg-white/10 border border-white/15 p-2 text-center backdrop-blur-md">
-              <div className="font-mono font-bold text-xs sm:text-sm text-white">
+          <div className={`grid ${statGridCols} gap-2 pt-0.5`}>
+            <div
+              className="min-w-0 rounded-xl border border-white/20 p-2 text-center backdrop-blur-md"
+              style={{ backgroundColor: 'rgba(255, 255, 255, 0.12)' }}
+            >
+              <div
+                className="font-mono font-bold truncate"
+                style={{ color: '#FFFFFF', fontSize: 'clamp(12px, 3vw, 15px)' }}
+              >
                 LV.{data.level}
               </div>
-              <div className="text-[10px] text-white/70">Level</div>
+              <div
+                className="text-[10px] font-mono uppercase mt-0.5"
+                style={{ color: 'rgba(255, 255, 255, 0.8)' }}
+              >
+                Level
+              </div>
             </div>
             <button
               type="button"
               onClick={onOpenWallet}
-              className="rounded-xl bg-white/10 border border-white/15 p-2 text-center backdrop-blur-md cursor-pointer"
+              className="min-w-0 rounded-xl border border-white/20 p-2 text-center backdrop-blur-md cursor-pointer hover:bg-white/20"
+              style={{ backgroundColor: 'rgba(255, 255, 255, 0.12)' }}
             >
-              <div className="font-mono font-bold text-xs sm:text-sm text-amber-300 flex items-center justify-center gap-1">
+              <div
+                className="font-mono font-bold flex items-center justify-center gap-1 truncate"
+                style={{ color: '#FDE047', fontSize: 'clamp(12px, 3vw, 15px)' }}
+              >
                 <KobanIcon size={12} />
-                {data.coins.toLocaleString()}
+                <span>{data.coins.toLocaleString()}</span>
               </div>
-              <div className="text-[10px] text-white/70">Kobans</div>
+              <div
+                className="text-[10px] font-mono uppercase mt-0.5"
+                style={{ color: 'rgba(255, 255, 255, 0.8)' }}
+              >
+                Kobans
+              </div>
             </button>
             <button
               type="button"
               onClick={onOpenFollowers}
-              className="rounded-xl bg-white/10 border border-white/15 p-2 text-center backdrop-blur-md cursor-pointer"
+              className="min-w-0 rounded-xl border border-white/20 p-2 text-center backdrop-blur-md cursor-pointer hover:bg-white/20"
+              style={{ backgroundColor: 'rgba(255, 255, 255, 0.12)' }}
             >
-              <div className="font-mono font-bold text-xs sm:text-sm text-white">
+              <div
+                className="font-mono font-bold truncate"
+                style={{ color: '#FFFFFF', fontSize: 'clamp(12px, 3vw, 15px)' }}
+              >
                 {data.followers}
               </div>
-              <div className="text-[10px] text-white/70">Followers</div>
+              <div
+                className="text-[10px] font-mono uppercase mt-0.5"
+                style={{ color: 'rgba(255, 255, 255, 0.8)' }}
+              >
+                Followers
+              </div>
             </button>
             <button
               type="button"
               onClick={onOpenFollowing}
-              className="rounded-xl bg-white/10 border border-white/15 p-2 text-center backdrop-blur-md cursor-pointer"
+              className="min-w-0 rounded-xl border border-white/20 p-2 text-center backdrop-blur-md cursor-pointer hover:bg-white/20"
+              style={{ backgroundColor: 'rgba(255, 255, 255, 0.12)' }}
             >
-              <div className="font-mono font-bold text-xs sm:text-sm text-white">
+              <div
+                className="font-mono font-bold truncate"
+                style={{ color: '#FFFFFF', fontSize: 'clamp(12px, 3vw, 15px)' }}
+              >
                 {data.following}
               </div>
-              <div className="text-[10px] text-white/70">Following</div>
+              <div
+                className="text-[10px] font-mono uppercase mt-0.5"
+                style={{ color: 'rgba(255, 255, 255, 0.8)' }}
+              >
+                Following
+              </div>
             </button>
           </div>
 
@@ -1348,7 +1838,7 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 9. ID-BADGE: lanyard clip and a white badge with the banner, centered avatar, nameplate, barcode and stats
+  // 9. ID-BADGE: lanyard clip and a badge with the banner, centered overlapping avatar (never cut off), nameplate, barcode and stats
   // ───────────────────────────────────────────────────────────────────────────
   if (layout === 'id-badge') {
     return (
@@ -1363,16 +1853,17 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
         />
 
         {/* Lanyard Clip at Top */}
-        <div className="relative z-10 flex flex-col items-center -mb-2">
+        <div className="relative z-20 flex flex-col items-center -mb-2">
           <div className="w-8 h-5 rounded-t-lg border-2 border-zinc-400 dark:border-zinc-500 bg-zinc-300 dark:bg-zinc-700" />
           <div className="w-16 h-3.5 rounded-full bg-zinc-700 dark:bg-zinc-300 shadow-md flex items-center justify-center">
             <div className="w-8 h-1 rounded-full bg-white/60 dark:bg-black/60" />
           </div>
         </div>
 
-        {/* Crisp White/Credential Badge Card */}
+        {/* Credential Badge Card */}
         <div className="relative z-10 w-full max-w-xl rounded-3xl bg-white dark:bg-[#18191E] text-zinc-900 dark:text-white border border-black/10 dark:border-white/15 shadow-xl overflow-hidden flex flex-col items-center text-center">
-          <div className="relative w-full">
+          {/* Banner at z-10 */}
+          <div className="relative z-10 w-full">
             {renderBanner('w-full h-24 sm:h-28')}
             <TopBannerOverlayControls
               onClose={onClose}
@@ -1381,11 +1872,12 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
             />
           </div>
 
-          <div className="-mt-10 p-1 rounded-full bg-white dark:bg-[#18191E] shadow-md">
+          {/* Overlapping Avatar at z-30 with overflow-visible so the banner NEVER cuts off the avatar or its frame */}
+          <div className="relative z-30 -mt-10 p-1.5 rounded-full bg-white dark:bg-[#18191E] shadow-lg overflow-visible">
             <AvatarWithGuaranteedRing data={data} size={avatarSize} />
           </div>
 
-          <div className="px-4 sm:px-6 pt-2 pb-4 w-full flex flex-col items-center gap-2.5">
+          <div className="relative z-20 px-4 sm:px-6 pt-2 pb-4 w-full flex flex-col items-center gap-2.5">
             <IdentityMetaBlock
               data={data}
               shortId={shortId}
@@ -1397,30 +1889,55 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
             />
 
             {/* Credential Stats Strip */}
-            <div className="w-full grid grid-cols-4 gap-1.5 py-2 px-3 rounded-xl bg-zinc-100 dark:bg-white/[0.06] border border-black/5 dark:border-white/10 text-xs font-mono">
-              <div>
-                <div className="text-[9px] uppercase text-zinc-500 dark:text-zinc-400">LVL</div>
-                <div className="font-bold">{data.level}</div>
+            <div
+              className={`w-full grid ${statGridCols} gap-2 py-2.5 px-3 rounded-xl bg-zinc-100 dark:bg-white/[0.06] border border-black/5 dark:border-white/10 text-xs font-mono`}
+            >
+              <div className="min-w-0">
+                <div className="text-[9px] uppercase text-zinc-500 dark:text-zinc-400">LEVEL</div>
+                <div
+                  className="font-bold truncate mt-0.5"
+                  style={{ fontSize: 'clamp(12px, 3vw, 14px)' }}
+                >
+                  LV.{data.level}
+                </div>
               </div>
-              <button type="button" onClick={onOpenWallet} className="cursor-pointer">
+              <button type="button" onClick={onOpenWallet} className="min-w-0 cursor-pointer">
                 <div className="text-[9px] uppercase text-zinc-500 dark:text-zinc-400">KOBANS</div>
-                <div className="font-bold text-amber-600 dark:text-amber-400">
-                  {data.coins.toLocaleString()}
+                <div
+                  className="font-bold text-amber-600 dark:text-amber-400 flex items-center justify-center gap-1 truncate mt-0.5"
+                  style={{ fontSize: 'clamp(12px, 3vw, 14px)' }}
+                >
+                  <KobanIcon size={12} />
+                  <span>{data.coins.toLocaleString()}</span>
                 </div>
               </button>
-              <button type="button" onClick={onOpenFollowers} className="cursor-pointer">
-                <div className="text-[9px] uppercase text-zinc-500 dark:text-zinc-400">FOLLOWERS</div>
-                <div className="font-bold">{data.followers}</div>
+              <button type="button" onClick={onOpenFollowers} className="min-w-0 cursor-pointer">
+                <div className="text-[9px] uppercase text-zinc-500 dark:text-zinc-400">
+                  FOLLOWERS
+                </div>
+                <div
+                  className="font-bold truncate mt-0.5"
+                  style={{ fontSize: 'clamp(12px, 3vw, 14px)' }}
+                >
+                  {data.followers}
+                </div>
               </button>
-              <button type="button" onClick={onOpenFollowing} className="cursor-pointer">
-                <div className="text-[9px] uppercase text-zinc-500 dark:text-zinc-400">FOLLOWING</div>
-                <div className="font-bold">{data.following}</div>
+              <button type="button" onClick={onOpenFollowing} className="min-w-0 cursor-pointer">
+                <div className="text-[9px] uppercase text-zinc-500 dark:text-zinc-400">
+                  FOLLOWING
+                </div>
+                <div
+                  className="font-bold truncate mt-0.5"
+                  style={{ fontSize: 'clamp(12px, 3vw, 14px)' }}
+                >
+                  {data.following}
+                </div>
               </button>
             </div>
 
             {/* Barcode Strip */}
-            <div className="w-full py-2 px-4 rounded-xl bg-zinc-50 dark:bg-black/40 border border-dashed border-zinc-300 dark:border-white/15 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-0.5 h-6 overflow-hidden">
+            <div className="w-full py-2 px-3.5 rounded-xl bg-zinc-50 dark:bg-black/40 border border-dashed border-zinc-300 dark:border-white/15 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-0.5 h-5 overflow-hidden">
                 {[2, 4, 1, 3, 2, 1, 4, 2, 3, 1, 2, 4, 1, 2, 3, 2, 1, 3, 4, 1, 2].map(
                   (w, idx) => (
                     <span
@@ -1431,8 +1948,8 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
                   )
                 )}
               </div>
-              <div className="flex items-center gap-1.5 font-mono text-[10px] text-zinc-500 dark:text-zinc-400 shrink-0">
-                <QrCode size={14} />
+              <div className="flex items-center gap-1 font-mono text-[10px] text-zinc-500 dark:text-zinc-400 shrink-0">
+                <QrCode size={13} />
                 <span>ID-{shortId}</span>
               </div>
             </div>
@@ -1446,7 +1963,7 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // 10. LOADOUT-SHOWCASE: slim banner, avatar and name, then a list of every equipped item with a thumbnail, a label and a Change button
+  // 10. LOADOUT-SHOWCASE: slim banner, avatar and name (never overflowing banner), then a list of every equipped item with a thumbnail, full category label ("NAMEPLATE" never cut off) and a Change button
   // ───────────────────────────────────────────────────────────────────────────
   const bannerMeta = data.banner ? getCosmeticById(data.banner) : null;
   const avatarMeta = data.avatar ? getCosmeticById(data.avatar) : null;
@@ -1457,11 +1974,11 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
   const equippedList = [
     {
       key: 'banner',
-      category: 'Banner',
+      category: 'BANNER',
       label: bannerMeta?.name || 'Dot Matrix Default Banner',
-      icon: <ImageIcon size={13} className="text-[#D71921]" />,
+      icon: <ImageIcon size={12} className="text-[#D71921] shrink-0" />,
       thumb: (
-        <div className="w-14 h-8 rounded-lg overflow-hidden border border-[var(--border)] shrink-0">
+        <div className="w-11 h-8 rounded-lg overflow-hidden border border-[var(--border)] shrink-0">
           <CosmeticErrorBoundary fallback={<DefaultDotMatrixBanner accentColor={accentColor} />}>
             <BannerRenderer
               bannerId={data.banner}
@@ -1475,50 +1992,58 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
     },
     {
       key: 'avatar',
-      category: 'Avatar (PFP)',
+      category: 'AVATAR (PFP)',
       label: avatarMeta?.name || data.avatar || 'Standard Student Avatar',
-      icon: <UserIcon size={13} className="text-[#D71921]" />,
+      icon: <UserIcon size={12} className="text-[#D71921] shrink-0" />,
       thumb: (
         <div className="w-9 h-9 rounded-full overflow-hidden border border-[var(--border)] flex items-center justify-center bg-[var(--card-2)] shrink-0">
-          <AvatarPicture itemId={data.avatar} size={34} />
+          <AvatarPicture itemId={data.avatar} size={32} />
         </div>
       ),
     },
     {
       key: 'frame',
-      category: 'Avatar Frame',
+      category: 'AVATAR FRAME',
       label: frameMeta?.name || 'Crimson Standard Ring',
-      icon: <Disc size={13} className="text-[#D71921]" />,
+      icon: <Disc size={12} className="text-[#D71921] shrink-0" />,
       thumb: (
         <div className="w-9 h-9 rounded-full flex items-center justify-center bg-[var(--card-2)] border border-[var(--border)] shrink-0">
-          <AvatarFrame itemId={data.frame || 'none'} size={32}>
-            <div className="w-5 h-5 rounded-full bg-[#D71921]/20 border border-[#D71921]/60" />
+          <AvatarFrame itemId={data.frame || 'none'} size={30}>
+            <div className="w-4 h-4 rounded-full bg-[#D71921]/20 border border-[#D71921]/60" />
           </AvatarFrame>
         </div>
       ),
     },
     {
       key: 'nameplate',
-      category: 'Nameplate',
+      category: 'NAMEPLATE',
       label: plateMeta?.name || 'Standard Student Nameplate',
-      icon: <Tag size={13} className="text-[#D71921]" />,
+      icon: <Tag size={12} className="text-[#D71921] shrink-0" />,
       thumb: (
-        <div className="px-2 py-0.5 rounded bg-[var(--card-2)] border border-[var(--border)] max-w-[120px] overflow-hidden shrink-0">
-          <AlwaysVisibleNameplate
-            nameplateId={data.nameplate}
-            displayName={data.displayName}
-            shortId={shortId}
-          />
+        <div
+          className="w-11 h-8 rounded-lg bg-[var(--card-2)] border border-[var(--border)] overflow-hidden flex items-center justify-center shrink-0 p-0.5"
+          style={{ objectFit: 'contain' }}
+        >
+          <div
+            className="origin-center pointer-events-none flex items-center justify-center"
+            style={{ transform: 'scale(0.45)', width: '200px' }}
+          >
+            <AlwaysVisibleNameplate
+              nameplateId={data.nameplate}
+              displayName={data.displayName}
+              shortId={shortId}
+            />
+          </div>
         </div>
       ),
     },
     {
       key: 'effect',
-      category: 'Profile Effect',
+      category: 'PROFILE EFFECT',
       label: effectMeta?.name || 'Ambient Header Sparkles',
-      icon: <Wand2 size={13} className="text-[#D71921]" />,
+      icon: <Wand2 size={12} className="text-[#D71921] shrink-0" />,
       thumb: (
-        <div className="w-12 h-8 rounded-lg bg-[#141418] border border-white/15 relative overflow-hidden flex items-center justify-center shrink-0">
+        <div className="dark-surface-preserve w-11 h-8 rounded-lg bg-[#141418] border border-white/15 relative overflow-hidden flex items-center justify-center shrink-0">
           <Sparkles size={13} className="text-amber-400 animate-pulse" />
         </div>
       ),
@@ -1537,7 +2062,7 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
       />
 
       {/* Slim Banner */}
-      <div className="relative">
+      <div className="relative z-10">
         {renderBanner('w-full h-20 sm:h-24')}
         <TopBannerOverlayControls
           onClose={onClose}
@@ -1546,33 +2071,25 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
         />
       </div>
 
-      <div className="px-4 sm:px-6 pb-5 flex flex-col gap-3.5 relative z-10">
-        {/* Header with Avatar, Name, Nameplate, and Inline Stats */}
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 -mt-8 sm:-mt-10">
-          <div className="flex items-end gap-3">
-            <div className="p-1 rounded-full bg-[var(--card)]">
-              <AvatarWithGuaranteedRing data={data} size={previewMode ? 64 : 80} />
-            </div>
-            <div className="pb-1">
-              <IdentityMetaBlock
-                data={data}
-                shortId={shortId}
-                showNameplateUnderName={true}
-                onProBadgeClick={onProBadgeClick}
-                followsMe={followsMe}
-                isPublicMode={isPublicMode}
-              />
-            </div>
+      <div className="px-4 sm:px-6 pb-5 flex flex-col gap-3 relative z-20">
+        {/* Avatar overlaps banner cleanly; Name & Stats sit below banner so name NEVER overflows banner */}
+        <div className="flex items-end justify-between gap-2 -mt-8 relative z-30">
+          <div className="p-1 rounded-full bg-[var(--card)] shrink-0 overflow-visible">
+            <AvatarWithGuaranteedRing data={data} size={previewMode ? 62 : 76} />
           </div>
 
-          <div className="flex items-center gap-3 text-xs font-mono text-[var(--muted)]">
+          <div className="flex items-center gap-2 text-[11px] font-mono text-[var(--muted)] flex-wrap justify-end pb-1">
             <span>
               <strong className="text-[var(--text)]">LV.{data.level}</strong>
             </span>
             <span>·</span>
-            <button type="button" onClick={onOpenWallet} className="flex items-center gap-1 cursor-pointer">
+            <button
+              type="button"
+              onClick={onOpenWallet}
+              className="flex items-center gap-1 cursor-pointer"
+            >
               <KobanIcon size={12} />
-              <strong className="text-[#D97706] dark:text-[#FBBF24]">
+              <strong className="text-[#B45309] dark:text-[#FBBF24]">
                 {data.coins.toLocaleString()}
               </strong>
             </button>
@@ -1583,28 +2100,40 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
           </div>
         </div>
 
-        {/* Equipped Store Items List with Thumbnail, Label & Change Button */}
+        {/* Identity Meta Block below the banner so long names wrap/truncate with ellipsis and never overflow banner */}
+        <div className="min-w-0 max-w-full">
+          <IdentityMetaBlock
+            data={data}
+            shortId={shortId}
+            showNameplateUnderName={true}
+            onProBadgeClick={onProBadgeClick}
+            followsMe={followsMe}
+            isPublicMode={isPublicMode}
+          />
+        </div>
+
+        {/* Equipped Store Items List with Thumbnail, Unclipped Category Label & Change Button */}
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card-2)]/50 divide-y divide-[var(--border)] overflow-hidden">
-          <div className="px-3.5 py-2 flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] bg-[var(--card-2)]">
-            <span className="flex items-center gap-1.5">
-              <Layers size={12} className="text-[#D71921]" />
-              <span>Equipped Loadout (All 5 Store Slots)</span>
+          <div className="px-3 py-2 flex items-center justify-between gap-2 text-[10px] font-mono uppercase tracking-wider text-[var(--muted)] bg-[var(--card-2)]">
+            <span className="flex items-center gap-1.5 min-w-0 truncate">
+              <Layers size={12} className="text-[#D71921] shrink-0" />
+              <span className="truncate">Equipped Loadout (5 Slots)</span>
             </span>
-            <span>5 / 5 Active</span>
+            <span className="shrink-0 font-bold text-[#D71921]">5 / 5 Active</span>
           </div>
           {equippedList.map((slot) => (
             <div
               key={slot.key}
-              className="px-3.5 py-2.5 flex items-center justify-between gap-3 hover:bg-[var(--card-2)]/80 transition-colors"
+              className="px-3 py-2 flex items-center justify-between gap-2.5 hover:bg-[var(--card-2)]/80 transition-colors"
             >
-              <div className="flex items-center gap-3 min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 {slot.thumb}
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase text-[var(--muted)]">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1 text-[10px] font-mono font-bold uppercase text-[var(--muted)] whitespace-nowrap">
                     {slot.icon}
                     <span>{slot.category}</span>
                   </div>
-                  <div className="text-xs sm:text-sm font-heading font-semibold text-[var(--text)] truncate">
+                  <div className="text-xs font-heading font-semibold text-[var(--text)] truncate">
                     {slot.label}
                   </div>
                 </div>
@@ -1612,7 +2141,7 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
               <button
                 type="button"
                 onClick={() => onOpenStore?.(slot.key)}
-                className="px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:border-[#D71921] text-xs font-heading font-semibold text-[var(--text)] transition-colors cursor-pointer shrink-0"
+                className="px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:border-[#D71921] text-[11px] font-heading font-semibold text-[var(--text)] transition-colors cursor-pointer shrink-0"
               >
                 Change
               </button>

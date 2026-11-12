@@ -619,12 +619,6 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
       )`),
     ]);
 
-    try {
-      await db.prepare(`ALTER TABLE user_usernames ADD COLUMN profile_layout TEXT DEFAULT 'game-card'`).run();
-    } catch {
-      // Column already exists
-    }
-
     schemaInitialized = true;
   } catch (err) {
     console.error('[CloudflareWorker] D1 schema init warning:', err);
@@ -5566,6 +5560,120 @@ ${urls
     // 2b. Economy, Store Koban Purchases, Coupons, and Pro Subscription Guard Routes
     const cleanWorkerPath = url.pathname.replace(/\/+$/, '') || '/';
     const workerMethod = req.method.toUpperCase();
+
+    if (cleanWorkerPath === '/api/auth/profile-layout') {
+      try {
+        if (!env.DB) {
+          return jsonResponse({ ok: false, error: 'Database binding (env.DB) is not available.' }, 500, cors);
+        }
+        const authedUser = await verifyFirebaseIdToken(req, env).catch((authErr) => {
+          console.error('[CloudflareWorker] profile-layout auth error:', authErr);
+          return null;
+        });
+
+        const ALLOWED_LAYOUTS = [
+          'game-card',
+          'clean-social',
+          'dark-passport',
+          'centered-hero',
+          'full-cover',
+          'trading-card',
+          'retro-pixel',
+          'glass',
+          'id-badge',
+          'loadout-showcase',
+        ];
+
+        if (workerMethod === 'GET') {
+          const targetUid = String(url.searchParams.get('uid') || authedUser?.uid || '').trim();
+          if (!targetUid) {
+            return jsonResponse({ ok: false, error: 'Missing uid.' }, 400, cors);
+          }
+          const row = await env.DB
+            .prepare('SELECT profile_layout FROM user_usernames WHERE uid = ? LIMIT 1')
+            .bind(targetUid)
+            .first<{ profile_layout?: string }>()
+            .catch(() => null);
+          const rawSaved = typeof row?.profile_layout === 'string' ? row.profile_layout.trim() : '';
+          const resolvedLayout = ALLOWED_LAYOUTS.includes(rawSaved) ? rawSaved : 'game-card';
+          return jsonResponse(
+            {
+              ok: true,
+              uid: targetUid,
+              layout: resolvedLayout,
+              profile_layout: resolvedLayout,
+              profileLayout: resolvedLayout,
+            },
+            200,
+            cors
+          );
+        }
+
+        if (workerMethod === 'POST' || workerMethod === 'PUT') {
+          const sessionUid =
+            authedUser && typeof authedUser.uid === 'string' && authedUser.uid.trim().length > 0
+              ? authedUser.uid.trim()
+              : null;
+          if (!sessionUid) {
+            return jsonResponse(
+              { ok: false, error: 'Authentication required. Please sign in again.' },
+              401,
+              cors
+            );
+          }
+
+          let body: Record<string, unknown> = {};
+          try {
+            body = (await req.json()) as Record<string, unknown>;
+          } catch (parseErr) {
+            console.error('[CloudflareWorker] profile-layout invalid JSON:', parseErr);
+            return jsonResponse({ ok: false, error: 'Invalid JSON body.' }, 400, cors);
+          }
+
+          const rawLayout = body?.layout ?? body?.profile_layout ?? body?.profileLayout;
+          const candidateLayout = typeof rawLayout === 'string' ? rawLayout.trim() : '';
+          if (!candidateLayout || !ALLOWED_LAYOUTS.includes(candidateLayout)) {
+            return jsonResponse(
+              {
+                ok: false,
+                error: `Invalid layout id "${candidateLayout || String(rawLayout ?? '')}".`,
+              },
+              400,
+              cors
+            );
+          }
+
+          const updatedAt = Math.floor(Date.now());
+          await env.DB
+            .prepare('UPDATE user_usernames SET profile_layout = ?, updated_at = ? WHERE uid = ?')
+            .bind(candidateLayout, updatedAt, sessionUid)
+            .run();
+
+          return jsonResponse(
+            {
+              ok: true,
+              layout: candidateLayout,
+              profile_layout: candidateLayout,
+              profileLayout: candidateLayout,
+              uid: sessionUid,
+              updatedAt,
+            },
+            200,
+            cors
+          );
+        }
+      } catch (err: any) {
+        console.error('[CloudflareWorker] /api/auth/profile-layout error:', err);
+        return jsonResponse(
+          {
+            ok: false,
+            error: err instanceof Error ? err.message : String(err || 'Server error while saving layout.'),
+          },
+          500,
+          cors
+        );
+      }
+    }
 
     if (
       cleanWorkerPath === '/api/coupons' ||

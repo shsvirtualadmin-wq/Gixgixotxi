@@ -35,8 +35,6 @@ const CACHED_DOCK_PATHS = new Set([
   '/dashboard/grand-line',
   '/dashboard/store',
   '/store',
-  '/settings',
-  '/dashboard/settings',
 ]);
 
 const MAX_KEEP_ALIVE_TABS = 6;

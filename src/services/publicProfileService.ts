@@ -262,7 +262,7 @@ export async function saveProfileLayoutToServer(
     return {
       ok: false,
       layout: DEFAULT_PROFILE_LAYOUT,
-      error: 'Invalid profile layout.',
+      error: `Invalid layout id "${layout}".`,
     };
   }
   const validLayout: ProfileLayoutId = layout;
@@ -290,22 +290,43 @@ export async function saveProfileLayoutToServer(
       }),
     });
 
-    const json = await res.json().catch(() => ({}));
+    const rawText = await res.text().catch(() => '');
+    let json: Record<string, any> | null = null;
+    if (rawText) {
+      try {
+        json = JSON.parse(rawText) as Record<string, any>;
+      } catch {
+        json = null;
+      }
+    }
+
     if (!res.ok || !json?.ok) {
+      const serverErrorText =
+        (typeof json?.error === 'string' && json.error.trim()) ||
+        (typeof json?.message === 'string' && json.message.trim()) ||
+        (rawText && !rawText.trim().startsWith('<') ? rawText.trim().slice(0, 220) : '') ||
+        `Failed to save layout (HTTP ${res.status})`;
       return {
         ok: false,
         layout: validLayout,
-        error: json?.error || `Failed to save layout (HTTP ${res.status})`,
+        error: serverErrorText,
       };
     }
 
+    const confirmedLayout = normalizeProfileLayout(
+      json.layout ?? json.profile_layout ?? json.profileLayout ?? validLayout
+    );
+
     // Mirror to Firestore users/{uid} and publicProfiles/{uid} non-blockingly and broadcast live
     if (uid) {
+      const { seedProfileLayoutFromServer } = await import('@/hooks/useSecurityStatus');
+      seedProfileLayoutFromServer(uid, confirmedLayout);
+
       setDoc(
         doc(db, 'users', uid),
         {
-          profileLayout: validLayout,
-          profile_layout: validLayout,
+          profileLayout: confirmedLayout,
+          profile_layout: confirmedLayout,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -313,19 +334,19 @@ export async function saveProfileLayoutToServer(
       setDoc(
         doc(db, 'publicProfiles', uid),
         {
-          profileLayout: validLayout,
-          profile_layout: validLayout,
+          profileLayout: confirmedLayout,
+          profile_layout: confirmedLayout,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       ).catch(() => {});
       broadcastPublicProfileUpdate(uid, {
-        profileLayout: validLayout,
-        profile_layout: validLayout,
+        profileLayout: confirmedLayout,
+        profile_layout: confirmedLayout,
       });
     }
 
-    return { ok: true, layout: validLayout };
+    return { ok: true, layout: confirmedLayout };
   } catch (err) {
     return {
       ok: false,

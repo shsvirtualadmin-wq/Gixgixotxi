@@ -452,9 +452,10 @@ const PremiumAnimatedNameplate: React.FC<{
   return (
     <div
       ref={containerRef}
-      className={`relative inline-flex items-center justify-center gap-2 px-3.5 py-1.5 max-w-full overflow-hidden select-none box-border rounded-md shadow-md ${className}`}
+      className={`dark-surface-preserve relative inline-flex items-center justify-center gap-2 px-3 py-1.5 max-w-full min-w-0 overflow-hidden select-none box-border rounded-md shadow-md ${className}`}
       style={{
         background: config.bgGradient,
+        maxWidth: '100%',
         overflow: 'hidden',
         contain: 'paint',
       }}
@@ -888,14 +889,15 @@ const PixelPopMarqueeNameplate: React.FC<NameplateProps> = ({
       ref={containerRef}
       data-nameplate-id="plate-pixel-pop-arcade"
       data-testid="plate-pixel-pop-arcade"
-      className={`plate-pixel-pop-arcade relative inline-flex items-center justify-center max-w-full overflow-hidden select-none box-border rounded-lg shadow-md ${className}`}
+      className={`dark-surface-preserve plate-pixel-pop-arcade relative inline-flex items-center justify-center max-w-full min-w-0 overflow-hidden select-none box-border rounded-lg shadow-md ${className}`}
       style={{
-        minWidth: '216px',
-        minHeight: '38px',
-        paddingLeft: '21%',
-        paddingRight: '21%',
-        paddingTop: '7px',
-        paddingBottom: '7px',
+        width: 'auto',
+        maxWidth: '100%',
+        minHeight: '34px',
+        paddingLeft: '14%',
+        paddingRight: '14%',
+        paddingTop: '6px',
+        paddingBottom: '6px',
         background: 'linear-gradient(135deg, #1B1B3A 0%, #2A1F5C 100%)',
         border: '1px solid #121028',
         contain: 'paint',
@@ -909,7 +911,7 @@ const PixelPopMarqueeNameplate: React.FC<NameplateProps> = ({
           loading="eager"
           decoding="async"
           onError={() => setPosterFailed(true)}
-          className="plate-pixel-pop-arcade-poster absolute inset-0 w-full h-full object-fill pointer-events-none"
+          className="plate-pixel-pop-arcade-poster absolute inset-0 w-full h-full object-contain pointer-events-none"
         />
       )}
 
@@ -928,7 +930,7 @@ const PixelPopMarqueeNameplate: React.FC<NameplateProps> = ({
           onCanPlay={handleVideoReady}
           onPlaying={() => setAutoplayBlocked(false)}
           onError={() => setVideoFailed(true)}
-          className={`plate-pixel-pop-arcade-video absolute inset-0 w-full h-full object-fill pointer-events-none transition-opacity duration-200 ${
+          className={`plate-pixel-pop-arcade-video absolute inset-0 w-full h-full object-contain pointer-events-none transition-opacity duration-200 ${
             showVideo ? 'opacity-100' : 'opacity-0'
           }`}
         >

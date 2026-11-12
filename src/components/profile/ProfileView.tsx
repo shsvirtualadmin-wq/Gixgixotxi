@@ -64,6 +64,7 @@ import { WalletModal } from './WalletModal';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { useProfileLayoutStatus } from '@/hooks/useSecurityStatus';
 import {
   getPublicProfile,
   syncPublicProfile,
@@ -157,6 +158,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   } = useWallet();
   const effectivePlan = useEffectivePlan();
   const { effectiveProBadge } = useProBadge();
+  const selfLayoutStatus = useProfileLayoutStatus();
 
   // Determine true mode
   const currentUid = authUser?.uid || authProfile?.uid || null;
@@ -824,14 +826,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           avatarKey: op.avatarKey || prev?.avatarKey || null,
           avatarVariant: op.avatarVariant || prev?.avatarVariant || null,
           profileLayout: normalizeProfileLayout(
-            op.profileLayout ??
+            (selfLayoutStatus.ready ? selfLayoutStatus.layout : null) ??
+              (authProfile as any)?.profileLayout ??
+              (authProfile as any)?.profile_layout ??
+              op.profileLayout ??
               op.profile_layout ??
               prev?.profileLayout ??
               prev?.profile_layout ??
               DEFAULT_PROFILE_LAYOUT
           ),
           profile_layout: normalizeProfileLayout(
-            op.profileLayout ??
+            (selfLayoutStatus.ready ? selfLayoutStatus.layout : null) ??
+              (authProfile as any)?.profileLayout ??
+              (authProfile as any)?.profile_layout ??
+              op.profileLayout ??
               op.profile_layout ??
               prev?.profileLayout ??
               prev?.profile_layout ??
@@ -861,7 +869,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         return nextProfile;
       });
     }
-  }, [isViewingSelf, ownProfile, authProfile, ownEquipped, walletLoading, previewAsPublic, currentUid, authUser?.displayName, authUser?.email, isAdmin, isGuest]);
+  }, [isViewingSelf, ownProfile, authProfile, ownEquipped, walletLoading, previewAsPublic, currentUid, authUser?.displayName, authUser?.email, isAdmin, isGuest, selfLayoutStatus.layout, selfLayoutStatus.ready]);
 
   // Rank title computation
   const rank = useMemo(() => {
@@ -1237,32 +1245,54 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         propLayout ??
           propData?.profile_layout ??
           propData?.profileLayout ??
+          (isViewingSelf && selfLayoutStatus.ready ? selfLayoutStatus.layout : null) ??
           profile?.profileLayout ??
           profile?.profile_layout ??
           (isViewingSelf
-            ? (ownProfile as any)?.profileLayout ??
-              (ownProfile as any)?.profile_layout ??
-              (authProfile as any)?.profileLayout ??
-              (authProfile as any)?.profile_layout
+            ? (authProfile as any)?.profileLayout ??
+              (authProfile as any)?.profile_layout ??
+              (ownProfile as any)?.profileLayout ??
+              (ownProfile as any)?.profile_layout
             : null) ??
           DEFAULT_PROFILE_LAYOUT
       ),
-    [propLayout, propData, profile, isViewingSelf, ownProfile, authProfile]
+    [propLayout, propData, isViewingSelf, selfLayoutStatus.ready, selfLayoutStatus.layout, profile, authProfile, ownProfile]
   );
 
-  // When rendered in Settings > Profile Layout live preview carousel, render the card directly
+  // When rendered in Settings > Profile Layout live preview carousel, render the live profile card
   if (previewMode && propData) {
     return (
-      <div className="relative w-full rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-md overflow-hidden flex flex-col">
+      <div className="relative w-full bg-[var(--card)] text-[var(--text)] overflow-hidden flex flex-col">
         <ProfileLayoutsRenderer
           layout={resolvedLayoutId}
           data={sharedProfileData}
           previewMode={true}
           shortId={deriveFallbackShortId(sharedProfileData.uid || '0')}
-          onEditProfile={() => navigate('/dashboard/profile')}
-          onOpenStore={() => navigate('/store')}
-          onOpenSettings={() => navigate('/settings')}
         />
+        {resolvedLayoutId !== 'loadout-showcase' && (
+          <div className="px-4 py-3 border-t border-[var(--border)] bg-[var(--card)] flex flex-col gap-2.5">
+            <div className="flex items-center gap-5 border-b border-[var(--border)] pb-2 text-xs font-heading font-semibold">
+              <span className="text-[var(--text)] border-b-2 border-[#D71921] pb-1.5 -mb-2">
+                Overview
+              </span>
+              <span className="text-[var(--muted)]">Loadout</span>
+              <span className="text-[var(--muted)]">Badges</span>
+            </div>
+            <div className="p-3 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-heading font-semibold text-[11px] text-[var(--text)]">
+                  About Me
+                </span>
+                <span className="font-mono text-[10px] text-[var(--muted)]">
+                  #{deriveFallbackShortId(sharedProfileData.uid || '0')}
+                </span>
+              </div>
+              <p className="text-[11px] text-[var(--muted)] line-clamp-2 leading-relaxed">
+                {sharedProfileData.bio || 'Preparing for MDCAT, ECAT & board exams on Boardly.'}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

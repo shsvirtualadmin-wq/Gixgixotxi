@@ -456,7 +456,6 @@ export async function ensureEmailVerificationD1Schema(db: RewardsD1Database): Pr
     `ALTER TABLE user_usernames ADD COLUMN bio TEXT DEFAULT ''`,
     `ALTER TABLE user_usernames ADD COLUMN status TEXT DEFAULT ''`,
     `ALTER TABLE user_usernames ADD COLUMN accent TEXT DEFAULT ''`,
-    `ALTER TABLE user_usernames ADD COLUMN profile_layout TEXT DEFAULT 'game-card'`,
     `ALTER TABLE guest_accounts ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
     `ALTER TABLE guest_accounts ADD COLUMN abandoned_at INTEGER DEFAULT NULL`,
     `ALTER TABLE guest_accounts ADD COLUMN purge_after INTEGER DEFAULT NULL`,
@@ -2862,7 +2861,7 @@ export async function handleAuthApiRequest(
       request,
       env,
       db,
-      tokenVerifierOverride: tokenVerifier,
+      tokenVerifierOverride: opts.tokenVerifierOverride,
     }).catch(() => null);
 
     const isCallerSuperAdmin = Boolean(caller && (caller.isSuperAdmin || caller.role === 'superadmin'));
@@ -3042,112 +3041,120 @@ export async function handleAuthApiRequest(
     subPath === 'profile-layout' &&
     (request.method === 'POST' || request.method === 'PUT' || request.method === 'GET')
   ) {
-    const caller = await resolveCurrentUser({
-      request,
-      env,
-      db,
-      tokenVerifierOverride: tokenVerifier,
-    }).catch(() => null);
-
-    if (request.method === 'GET') {
-      const targetUid = String(url.searchParams.get('uid') || caller?.uid || '').trim();
-      if (!targetUid) {
-        return jsonResponse({ ok: false, error: 'Missing uid.', code: 'MISSING_UID' }, 400);
+    try {
+      const targetDb = opts.dbOverride || env?.DB || db;
+      if (!targetDb) {
+        return jsonResponse(
+          { ok: false, error: 'Database binding (env.DB) is not available.' },
+          500
+        );
       }
-      const row = await db
-        .prepare('SELECT profile_layout FROM user_usernames WHERE uid = ?1 LIMIT 1')
-        .bind(targetUid)
-        .first<{ profile_layout?: string }>()
-        .catch(() => null);
-      const resolvedLayout = normalizeAuthProfileLayout(row?.profile_layout);
+
+      const caller = await resolveCurrentUser({
+        request,
+        env,
+        db: targetDb,
+        tokenVerifierOverride: opts.tokenVerifierOverride,
+      }).catch((authErr) => {
+        console.error('[AuthWorker] profile-layout session check error:', authErr);
+        return null;
+      });
+
+      if (request.method === 'GET') {
+        const targetUid = String(url.searchParams.get('uid') || caller?.uid || '').trim();
+        if (!targetUid) {
+          return jsonResponse({ ok: false, error: 'Missing uid.', code: 'MISSING_UID' }, 400);
+        }
+        const row = await targetDb
+          .prepare('SELECT profile_layout FROM user_usernames WHERE uid = ? LIMIT 1')
+          .bind(targetUid)
+          .first<{ profile_layout?: string }>()
+          .catch(() => null);
+        const resolvedLayout = normalizeAuthProfileLayout(row?.profile_layout);
+        return jsonResponse({
+          ok: true,
+          uid: targetUid,
+          layout: resolvedLayout,
+          profile_layout: resolvedLayout,
+          profileLayout: resolvedLayout,
+        });
+      }
+
+      const sessionUid =
+        caller && typeof caller.uid === 'string' && caller.uid.trim().length > 0
+          ? caller.uid.trim()
+          : null;
+
+      if (!sessionUid) {
+        return jsonResponse(
+          { ok: false, error: 'Authentication required. Please sign in again.', code: 'UNAUTHENTICATED' },
+          401
+        );
+      }
+
+      let body: {
+        layout?: unknown;
+        profile_layout?: unknown;
+        profileLayout?: unknown;
+      } = {};
+      try {
+        body = (await request.json()) as typeof body;
+      } catch (parseErr) {
+        console.error('[AuthWorker] profile-layout invalid JSON:', parseErr);
+        return jsonResponse({ ok: false, error: 'Invalid JSON body.', code: 'INVALID_JSON' }, 400);
+      }
+
+      const rawLayout = body?.layout ?? body?.profile_layout ?? body?.profileLayout;
+      const candidateLayout = typeof rawLayout === 'string' ? rawLayout.trim() : '';
+      const ALLOWED_LAYOUTS = [
+        'game-card',
+        'clean-social',
+        'dark-passport',
+        'centered-hero',
+        'full-cover',
+        'trading-card',
+        'retro-pixel',
+        'glass',
+        'id-badge',
+        'loadout-showcase',
+      ];
+
+      if (!candidateLayout || !ALLOWED_LAYOUTS.includes(candidateLayout)) {
+        return jsonResponse(
+          {
+            ok: false,
+            error: `Invalid layout id "${candidateLayout || String(rawLayout ?? '')}". Must be one of: ${ALLOWED_LAYOUTS.join(', ')}.`,
+            code: 'INVALID_PROFILE_LAYOUT',
+          },
+          400
+        );
+      }
+
+      const updatedAt = Math.floor(Date.now());
+
+      await targetDb
+        .prepare('UPDATE user_usernames SET profile_layout = ?, updated_at = ? WHERE uid = ?')
+        .bind(candidateLayout, updatedAt, sessionUid)
+        .run();
+
       return jsonResponse({
         ok: true,
-        uid: targetUid,
-        layout: resolvedLayout,
-        profile_layout: resolvedLayout,
-        profileLayout: resolvedLayout,
+        layout: candidateLayout,
+        profile_layout: candidateLayout,
+        profileLayout: candidateLayout,
+        uid: sessionUid,
+        updatedAt,
       });
+    } catch (err: any) {
+      console.error('[AuthWorker] /api/auth/profile-layout error:', err);
+      const errMsg =
+        err instanceof Error && err.message
+          ? err.message
+          : typeof err === 'string' && err
+          ? err
+          : 'Internal server error while saving profile layout.';
+      return jsonResponse({ ok: false, error: errMsg }, 500);
     }
-
-    if (!caller || !caller.uid) {
-      return jsonResponse(
-        { ok: false, error: 'Authentication required.', code: 'UNAUTHENTICATED' },
-        401
-      );
-    }
-
-    let body: {
-      layout?: unknown;
-      profile_layout?: unknown;
-      profileLayout?: unknown;
-    } = {};
-    try {
-      body = (await request.json()) as typeof body;
-    } catch {
-      return jsonResponse({ ok: false, error: 'Invalid JSON body.', code: 'INVALID_JSON' }, 400);
-    }
-
-    const rawLayout = body.layout ?? body.profile_layout ?? body.profileLayout;
-    if (!isValidAuthProfileLayout(rawLayout)) {
-      return jsonResponse(
-        {
-          ok: false,
-          error: 'Invalid profile layout. Must be one of the 10 allowed layouts.',
-          code: 'INVALID_PROFILE_LAYOUT',
-        },
-        400
-      );
-    }
-
-    const validLayout = String(rawLayout).trim();
-    const sessionUid = caller.uid;
-
-    const existingRow = await db
-      .prepare('SELECT username_lower, username_display, uid FROM user_usernames WHERE uid = ?1 LIMIT 1')
-      .bind(sessionUid)
-      .first<{ username_lower: string; username_display: string; uid: string }>()
-      .catch(() => null);
-
-    if (!existingRow) {
-      const fallbackU = (
-        caller.username ||
-        `user_${sessionUid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}`
-      ).trim();
-      const lowerU = fallbackU.toLowerCase();
-      try {
-        await db
-          .prepare(
-            `INSERT OR IGNORE INTO user_usernames (username_lower, username_display, uid, account_type, email, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
-          )
-          .bind(
-            lowerU,
-            fallbackU,
-            sessionUid,
-            sessionUid.startsWith('guest_') ? 'guest' : 'registered',
-            (caller.email || '').toLowerCase(),
-            nowMs,
-            nowMs
-          )
-          .run();
-      } catch {
-        // Ignore if username conflict
-      }
-    }
-
-    await db
-      .prepare('UPDATE user_usernames SET profile_layout = ?1, updated_at = ?2 WHERE uid = ?3')
-      .bind(validLayout, nowMs, sessionUid)
-      .run();
-
-    return jsonResponse({
-      ok: true,
-      uid: sessionUid,
-      layout: validLayout,
-      profile_layout: validLayout,
-      profileLayout: validLayout,
-      updatedAt: nowMs,
-    });
   }
 
   // ─── G1c. GET /api/auth/resolve-profiles (Batched Live Author & 14-Day Hold Username Lookup) ───
@@ -3386,7 +3393,7 @@ export async function handleAuthApiRequest(
       request,
       env,
       db,
-      tokenVerifierOverride: tokenVerifier,
+      tokenVerifierOverride: opts.tokenVerifierOverride,
     });
     if (!caller) {
       return jsonResponse({ ok: false, error: 'Authentication required.', code: 'UNAUTHENTICATED' }, 401);

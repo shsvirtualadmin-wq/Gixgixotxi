@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef, type FormEvent, type TouchEvent } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type FormEvent, type TouchEvent } from 'react';
 import { useNavigate, Link, useLocation, useParams } from 'react-router-dom';
 import {
   User,
@@ -71,11 +71,15 @@ import {
   useLiveProfileData,
   type ProfileLayoutId,
 } from '@/lib/profileLayouts';
-import { saveProfileLayoutToServer } from '@/services/publicProfileService';
+import {
+  saveProfileLayoutToServer,
+  broadcastPublicProfileUpdate,
+} from '@/services/publicProfileService';
 import { ProfileView, invalidateProfileMemoryCache } from '@/components/profile/ProfileView';
 import {
   useSecurityStatus,
   useProfileLayoutStatus,
+  seedProfileLayoutFromServer,
   readCachedPlanLabelForUid,
   writeCachedPlanLabelForUid,
   readCachedNotificationPrefsForUid,
@@ -377,27 +381,98 @@ export function SettingsPage() {
         : profile?.profileLayout ?? profile?.profile_layout ?? DEFAULT_PROFILE_LAYOUT
     )
   );
+  const selectedLayoutRef = useRef<ProfileLayoutId>(selectedProfileLayout);
+  const layoutCarouselRef = useRef<HTMLDivElement | null>(null);
+  const programmaticScrollRef = useRef<boolean>(false);
   const [layoutSaving, setLayoutSaving] = useState(false);
   const [layoutMessage, setLayoutMessage] = useState<{
     type: 'success' | 'error';
     text: string;
   } | null>(null);
 
+  const scrollCarouselToLayout = useCallback(
+    (layoutId: ProfileLayoutId, behavior: ScrollBehavior = 'auto') => {
+      const carousel = layoutCarouselRef.current;
+      if (!carousel) return;
+      const cardEl = carousel.querySelector<HTMLElement>(
+        `[data-layout-card="${layoutId}"]`
+      );
+      if (!cardEl) return;
+      const targetLeft = Math.max(
+        0,
+        cardEl.offsetLeft - (carousel.clientWidth - cardEl.offsetWidth) / 2
+      );
+      programmaticScrollRef.current = true;
+      if (behavior === 'auto') {
+        carousel.scrollLeft = targetLeft;
+      } else {
+        carousel.scrollTo({ left: targetLeft, behavior });
+      }
+      window.setTimeout(() => {
+        programmaticScrollRef.current = false;
+      }, behavior === 'auto' ? 60 : 360);
+    },
+    []
+  );
+
+  const selectProfileLayoutLocally = useCallback(
+    (layoutId: ProfileLayoutId, scrollBehavior?: ScrollBehavior) => {
+      const normalized = normalizeProfileLayout(layoutId);
+      selectedLayoutRef.current = normalized;
+      setSelectedProfileLayout(normalized);
+      setLayoutMessage(null);
+      if (typeof window !== 'undefined' && window.location.hash) {
+        window.history.replaceState(
+          window.history.state,
+          '',
+          window.location.pathname + window.location.search
+        );
+      }
+      if (scrollBehavior) {
+        scrollCarouselToLayout(normalized, scrollBehavior);
+      }
+    },
+    [scrollCarouselToLayout]
+  );
+
   // Keep local editor in sync when shared profileLayoutStatus resolves from server
   useEffect(() => {
     if (profileLayoutStatus.known) {
       const resolved = normalizeProfileLayout(profileLayoutStatus.layout);
       setSavedProfileLayout(resolved);
-      setSelectedProfileLayout((prev) => (layoutSaving ? prev : resolved));
+      if (!layoutSaving) {
+        selectedLayoutRef.current = resolved;
+        setSelectedProfileLayout(resolved);
+      }
     }
   }, [profileLayoutStatus.known, profileLayoutStatus.layout, layoutSaving]);
 
+  // Restore carousel scroll position to selectedLayoutRef.current whenever opening Profile Layout
+  useLayoutEffect(() => {
+    if (activeSubPage !== 'profile-layout') return;
+    const targetId = selectedLayoutRef.current;
+    scrollCarouselToLayout(targetId, 'auto');
+    const rafId = window.requestAnimationFrame(() => {
+      scrollCarouselToLayout(selectedLayoutRef.current, 'auto');
+    });
+    const timerId = window.setTimeout(() => {
+      scrollCarouselToLayout(selectedLayoutRef.current, 'auto');
+    }, 90);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(timerId);
+    };
+  }, [activeSubPage, scrollCarouselToLayout]);
+
   const handleSaveProfileLayout = async () => {
-    if (!activeUid || layoutSaving) return;
+    if (layoutSaving) return;
+    const targetLayout = normalizeProfileLayout(
+      selectedLayoutRef.current || selectedProfileLayout
+    );
     setLayoutSaving(true);
     setLayoutMessage(null);
     try {
-      const res = await saveProfileLayoutToServer(activeUid, selectedProfileLayout);
+      const res = await saveProfileLayoutToServer(activeUid, targetLayout);
       if (!res.ok) {
         setLayoutMessage({
           type: 'error',
@@ -405,17 +480,31 @@ export function SettingsPage() {
         });
         return;
       }
-      setSavedProfileLayout(res.layout);
-      setSelectedProfileLayout(res.layout);
-      profileLayoutStatus.setLayout(res.layout);
+      const confirmed = normalizeProfileLayout(res.layout);
+      selectedLayoutRef.current = confirmed;
+      setSavedProfileLayout(confirmed);
+      setSelectedProfileLayout(confirmed);
+      profileLayoutStatus.setLayout(confirmed);
+      if (activeUid) {
+        seedProfileLayoutFromServer(activeUid, confirmed);
+        broadcastPublicProfileUpdate(activeUid, {
+          profileLayout: confirmed,
+          profile_layout: confirmed,
+        });
+        invalidateProfileMemoryCache(activeUid);
+      }
       updateLocalProfile({
-        profileLayout: res.layout,
-        profile_layout: res.layout,
+        profileLayout: confirmed,
+        profile_layout: confirmed,
       });
-      invalidateProfileMemoryCache(activeUid);
       setLayoutMessage({
         type: 'success',
         text: 'Profile layout saved.',
+      });
+    } catch (err: any) {
+      setLayoutMessage({
+        type: 'error',
+        text: err?.message || 'Unexpected error while saving profile layout.',
       });
     } finally {
       setLayoutSaving(false);
@@ -505,15 +594,52 @@ export function SettingsPage() {
     };
   }, [normalizedUsername, formatValidation.valid, formatValidation.error, formatValidation.reason, profile?.username, checkUsernameAvailability]);
 
-  // Open a sub-page and push a history state so phone back button closes the sub-page
+  const baseSettingsPath = useMemo(
+    () =>
+      location.pathname.startsWith('/dashboard/settings')
+        ? '/dashboard/settings'
+        : '/settings',
+    [location.pathname]
+  );
+
+  // Ensure direct entry to /settings/:subPage or /settings#subPage has /settings directly underneath in history
+  const seededDirectSubPageHistoryRef = useRef(false);
+  useEffect(() => {
+    if (seededDirectSubPageHistoryRef.current || typeof window === 'undefined') return;
+    const fromHash = mapHashToSubPage(window.location.hash);
+    const fromParam = params.subPage
+      ? mapHashToSubPage(params.subPage)
+      : { subPage: null, targetId: null };
+    const initialSubPage = fromParam.subPage || fromHash.subPage;
+    if (!initialSubPage) {
+      seededDirectSubPageHistoryRef.current = true;
+      return;
+    }
+    const histState = window.history.state;
+    const alreadyFromRoot = Boolean(
+      histState?.fromSettingsRoot || histState?.usr?.fromSettingsRoot
+    );
+    seededDirectSubPageHistoryRef.current = true;
+    if (!alreadyFromRoot) {
+      const subPageUrl = `${baseSettingsPath}/${initialSubPage}`;
+      window.history.replaceState({ settingsRoot: true }, '', baseSettingsPath);
+      window.history.pushState(
+        { fromSettingsRoot: true, settingsSubPage: initialSubPage },
+        '',
+        subPageUrl
+      );
+    }
+  }, [baseSettingsPath, params.subPage]);
+
+  // Open a sub-page with exactly ONE history entry (/settings/:subPage)
   const openSubPage = useCallback(
     (subPage: SettingsSubPageId, targetId?: string) => {
       setActiveSubPage(subPage);
       setSearchQuery('');
       setSearchFocused(false);
-      const nextHash = targetId ? `#${targetId}` : `#${subPage}`;
-      if (window.location.hash !== nextHash) {
-        window.history.pushState({ settingsSubPage: subPage }, '', `${location.pathname}${nextHash}`);
+      const targetPath = `${baseSettingsPath}/${subPage}`;
+      if (location.pathname !== targetPath) {
+        navigate(targetPath, { state: { fromSettingsRoot: true, targetId } });
       }
       window.scrollTo({ top: 0, behavior: smoothMode ? 'auto' : 'smooth' });
 
@@ -531,30 +657,53 @@ export function SettingsPage() {
         }, 120);
       }
     },
-    [location.pathname, smoothMode]
+    [baseSettingsPath, location.pathname, navigate, smoothMode]
   );
 
-  // Close the active sub-page
+  // Close the active sub-page -> go strictly one level: Sub-page -> Settings
   const closeSubPage = useCallback(() => {
     setActiveSubPage(null);
-    if (params.subPage) {
-      const basePath = location.pathname.startsWith('/dashboard/settings')
-        ? '/dashboard/settings'
-        : '/settings';
-      navigate(basePath, { replace: true });
-    } else if (window.location.hash) {
-      window.history.pushState({}, '', location.pathname);
+    const histState = typeof window !== 'undefined' ? window.history.state : null;
+    const cameFromSettingsRoot = Boolean(
+      (location.state as any)?.fromSettingsRoot ||
+        histState?.fromSettingsRoot ||
+        histState?.usr?.fromSettingsRoot
+    );
+    if (cameFromSettingsRoot && typeof window !== 'undefined' && window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate(baseSettingsPath, { replace: true });
     }
     window.scrollTo({ top: 0, behavior: smoothMode ? 'auto' : 'smooth' });
-  }, [location.pathname, navigate, params.subPage, smoothMode]);
+  }, [baseSettingsPath, location.state, navigate, smoothMode]);
 
   // Sync sub-page with URL path param, hash & browser/phone back button (popstate)
   useEffect(() => {
     const syncFromLocation = () => {
+      const pathMatch = window.location.pathname.match(
+        /^\/(?:dashboard\/)?settings\/([^/?#]+)/
+      );
+      const rawSeg = pathMatch?.[1] || params.subPage || '';
+      const fromParam = rawSeg
+        ? mapHashToSubPage(rawSeg)
+        : { subPage: null, targetId: null };
       const fromHash = mapHashToSubPage(window.location.hash);
-      const fromParam = params.subPage ? mapHashToSubPage(params.subPage) : { subPage: null, targetId: null };
-      const subPage = fromHash.subPage || fromParam.subPage;
-      const targetId = fromHash.targetId || fromParam.targetId;
+      const subPage = fromParam.subPage || fromHash.subPage;
+      const targetId =
+        fromParam.targetId ||
+        fromHash.targetId ||
+        ((location.state as any)?.targetId as string | null) ||
+        null;
+
+      // Normalize legacy #hash URL to /settings/:subPage in-place without adding extra history entry
+      if (!fromParam.subPage && fromHash.subPage && typeof window !== 'undefined') {
+        window.history.replaceState(
+          { ...window.history.state, fromSettingsRoot: true, settingsSubPage: fromHash.subPage },
+          '',
+          `${baseSettingsPath}/${fromHash.subPage}`
+        );
+      }
+
       setActiveSubPage(subPage);
       if (targetId === 'settings-delete-account') {
         setDeleteConfirmOpen(true);
@@ -574,17 +723,27 @@ export function SettingsPage() {
     syncFromLocation();
     window.addEventListener('popstate', syncFromLocation);
     return () => window.removeEventListener('popstate', syncFromLocation);
-  }, [location.hash, params.subPage, smoothMode]);
+  }, [baseSettingsPath, location.hash, location.pathname, location.state, params.subPage, smoothMode]);
 
-  // Swipe-back gesture handler on sub-pages
+  // Swipe-back gesture handler on sub-pages (ignores horizontal swipes inside the layout carousel)
   const handleTouchStart = (e: TouchEvent<HTMLDivElement>) => {
     if (!activeSubPage || e.touches.length !== 1) return;
+    const targetEl = e.target as HTMLElement | null;
+    if (targetEl?.closest?.('[data-layout-carousel="true"]')) {
+      touchStartRef.current = null;
+      return;
+    }
     const t = e.touches[0];
     touchStartRef.current = { x: t.clientX, y: t.clientY };
   };
 
   const handleTouchEnd = (e: TouchEvent<HTMLDivElement>) => {
     if (!activeSubPage || !touchStartRef.current || e.changedTouches.length !== 1) return;
+    const targetEl = e.target as HTMLElement | null;
+    if (targetEl?.closest?.('[data-layout-carousel="true"]')) {
+      touchStartRef.current = null;
+      return;
+    }
     const t = e.changedTouches[0];
     const deltaX = t.clientX - touchStartRef.current.x;
     const deltaY = t.clientY - touchStartRef.current.y;
@@ -1777,135 +1936,235 @@ export function SettingsPage() {
             </div>
           )}
 
-          {/* 5b. PROFILE LAYOUT SUB-PAGE (Horizontally Swipeable 10 Live Preview Cards) */}
-          {activeSubPage === 'profile-layout' && (
-            <div className="space-y-5 pt-1">
-              <div className="stg-group !mt-2">
-                <div className="stg-group-label flex items-center justify-between">
-                  <span>Choose Profile Layout (10 Layouts)</span>
-                  <span className="text-[11px] font-mono text-[#D71921]">
-                    Swipe horizontally →
-                  </span>
+          {/* 5b. PROFILE LAYOUT SUB-PAGE (Glass UI + 10 Scaled Live Preview Cards + Floating Glass Save Pill) */}
+          {activeSubPage === 'profile-layout' && (() => {
+            const selectedLayoutMeta =
+              PROFILE_LAYOUT_METADATA.find((m) => m.id === selectedProfileLayout) ||
+              PROFILE_LAYOUT_METADATA[0];
+            const selectedIdx = Math.max(
+              0,
+              PROFILE_LAYOUT_METADATA.findIndex((m) => m.id === selectedProfileLayout)
+            );
+            const isCurrentSelectionSaved = selectedProfileLayout === savedProfileLayout;
+
+            return (
+              <div className="space-y-4 pt-1 pb-24">
+                {/* Glass Intro Card */}
+                <div className="rounded-3xl p-4 bg-[var(--glass-surface)] backdrop-blur-xl border border-[var(--glass-border)] shadow-[var(--glass-shadow)]">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-[var(--menu-subtext)]">
+                      Choose Profile Layout (10 Layouts)
+                    </span>
+                    <span className="text-[11px] font-mono font-semibold text-[#D71921]">
+                      Swipe horizontally →
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--menu-subtext)] mt-1 leading-relaxed">
+                    Every card renders a live preview with your equipped banner, avatar, frame, nameplate, and profile effect. Tap a card to select it, then press Save below.
+                  </p>
                 </div>
-                <p className="stg-footnote !mt-0 !mb-3">
-                  Every layout renders your equipped banner, avatar, frame, nameplate, and profile effect live. Tap a card to preview and press Save to apply everywhere your profile is shown.
-                </p>
 
                 {/* Horizontally Swipeable Carousel of 10 Live Preview Cards */}
-                <div
-                  className="flex gap-4 overflow-x-auto pb-4 pt-1 px-1 snap-x snap-mandatory scrollbar-thin"
-                  style={{ WebkitOverflowScrolling: 'touch' }}
-                >
-                  {PROFILE_LAYOUT_METADATA.map((item, idx) => {
-                    const isSelected = selectedProfileLayout === item.id;
-                    const isCurrentlySaved = savedProfileLayout === item.id;
-                    const previewData = {
-                      ...ownLiveProfileData,
-                      displayName: effectiveDisplayName,
-                      display_name: effectiveDisplayName,
-                      username: effectiveUsername,
-                      proBadge: effectiveProBadge || ownLiveProfileData.proBadge,
-                      isPro: Boolean(isActivePro || ownLiveProfileData.isPro),
-                      profile_layout: item.id,
-                      profileLayout: item.id,
-                    };
+                <div className="-mx-4">
+                  <div
+                    ref={layoutCarouselRef}
+                    data-layout-carousel="true"
+                    onTouchStart={(e) => e.stopPropagation()}
+                    onTouchMove={(e) => e.stopPropagation()}
+                    onTouchEnd={(e) => e.stopPropagation()}
+                    onScroll={(e) => {
+                      if (programmaticScrollRef.current) return;
+                      const carousel = e.currentTarget;
+                      const center = carousel.scrollLeft + carousel.clientWidth / 2;
+                      const cards = carousel.querySelectorAll<HTMLElement>('[data-layout-card]');
+                      let closestId: ProfileLayoutId | null = null;
+                      let minDistance = Infinity;
+                      cards.forEach((card) => {
+                        const cardCenter = card.offsetLeft + card.offsetWidth / 2;
+                        const dist = Math.abs(center - cardCenter);
+                        if (dist < minDistance) {
+                          minDistance = dist;
+                          closestId = card.getAttribute('data-layout-card') as ProfileLayoutId;
+                        }
+                      });
+                      if (closestId && closestId !== selectedLayoutRef.current) {
+                        selectedLayoutRef.current = closestId;
+                        setSelectedProfileLayout(closestId);
+                      }
+                    }}
+                    className="flex items-start gap-4 overflow-x-auto pb-3 pt-1 px-4 snap-x snap-mandatory scrollbar-thin"
+                    style={{
+                      WebkitOverflowScrolling: 'touch',
+                      overscrollBehaviorX: 'contain',
+                      touchAction: 'pan-x pan-y',
+                      scrollSnapType: 'x mandatory',
+                    }}
+                  >
+                    {PROFILE_LAYOUT_METADATA.map((item, idx) => {
+                      const isSelected = selectedProfileLayout === item.id;
+                      const isCurrentlySaved = savedProfileLayout === item.id;
+                      const previewData = {
+                        ...ownLiveProfileData,
+                        displayName: effectiveDisplayName,
+                        display_name: effectiveDisplayName,
+                        username: effectiveUsername,
+                        proBadge: effectiveProBadge || ownLiveProfileData.proBadge,
+                        isPro: Boolean(isActivePro || ownLiveProfileData.isPro),
+                        profile_layout: item.id,
+                        profileLayout: item.id,
+                      };
 
-                    return (
-                      <div
-                        key={item.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => {
-                          setSelectedProfileLayout(item.id);
-                          setLayoutMessage(null);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            setSelectedProfileLayout(item.id);
-                            setLayoutMessage(null);
-                          }
-                        }}
-                        data-layout-card={item.id}
-                        className={`snap-center shrink-0 w-[310px] sm:w-[360px] rounded-3xl p-3 transition-all cursor-pointer select-none flex flex-col justify-between bg-[var(--card)] border ${
-                          isSelected
-                            ? 'ring-2 ring-[#D71921] border-[#D71921] shadow-[0_8px_30px_rgba(215,25,33,0.2)]'
-                            : 'border-[var(--border)] hover:border-[var(--text)]/30 opacity-90 hover:opacity-100'
-                        }`}
-                      >
-                        {/* Card Header Bar with Layout Title & Check Badge */}
-                        <div className="flex items-center justify-between gap-2 mb-2.5 px-1">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 text-[var(--muted)]">
-                                #{idx + 1}
-                              </span>
-                              <span className="font-heading font-bold text-sm text-[var(--text)] truncate">
-                                {item.name}
-                              </span>
-                              {isCurrentlySaved && (
-                                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-semibold">
-                                  Active
+                      return (
+                        <div
+                          key={item.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => selectProfileLayoutLocally(item.id, 'smooth')}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              selectProfileLayoutLocally(item.id, 'smooth');
+                            }
+                          }}
+                          data-layout-card={item.id}
+                          style={{ scrollSnapAlign: 'center' }}
+                          className={`snap-center shrink-0 w-[300px] rounded-3xl p-3 transition-all cursor-pointer select-none flex flex-col justify-start bg-[var(--glass-surface)] backdrop-blur-xl border ${
+                            isSelected
+                              ? 'ring-2 ring-[#D71921] border-[#D71921] shadow-[0_10px_28px_rgba(215,25,33,0.22)]'
+                              : 'border-[var(--glass-border)] shadow-[var(--glass-shadow)] hover:border-[var(--text)]/25 opacity-95 hover:opacity-100'
+                          }`}
+                        >
+                          {/* Card Header Bar directly above the 9:16 preview */}
+                          <div className="flex items-center justify-between gap-2 mb-2.5 px-1">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-md bg-black/5 dark:bg-white/10 text-[var(--menu-subtext)]">
+                                  #{idx + 1}
                                 </span>
-                              )}
+                                <span className="font-heading font-bold text-sm text-[var(--menu-text)] truncate">
+                                  {item.name}
+                                </span>
+                                {isCurrentlySaved && (
+                                  <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-semibold shrink-0">
+                                    Active
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-[var(--menu-subtext)] truncate mt-0.5">
+                                {item.subtitle}
+                              </p>
                             </div>
-                            <p className="text-[11px] text-[var(--muted)] line-clamp-1 mt-0.5">
-                              {item.subtitle}
-                            </p>
+
+                            <div
+                              className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-colors ${
+                                isSelected
+                                  ? 'bg-[#D71921] text-white shadow-sm'
+                                  : 'border border-[var(--glass-border)] bg-black/5 dark:bg-white/5 text-transparent'
+                              }`}
+                            >
+                              <Check size={14} strokeWidth={3} />
+                            </div>
                           </div>
 
-                          <div
-                            className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-colors ${
-                              isSelected
-                                ? 'bg-[#D71921] text-white shadow-sm'
-                                : 'border border-[var(--border)] bg-[var(--card-2)] text-transparent'
-                            }`}
-                          >
-                            <Check size={14} strokeWidth={3} />
+                          {/* Fixed 9:16 Live Preview Directly Under Title (276x490 at 300px card width) */}
+                          <div className="w-[276px] h-[490px] aspect-[9/16] rounded-2xl overflow-hidden border border-[var(--glass-border)] bg-[var(--card)] relative pointer-events-none select-none">
+                            <div
+                              style={{
+                                width: '394px',
+                                minHeight: '700px',
+                                transform: 'scale(0.7005)',
+                                transformOrigin: 'top left',
+                                pointerEvents: 'none',
+                              }}
+                            >
+                              <ProfileView
+                                layout={item.id}
+                                data={previewData}
+                                previewMode={true}
+                              />
+                            </div>
                           </div>
                         </div>
+                      );
+                    })}
+                  </div>
 
-                        {/* Live ProfileView Preview with User's Own Equipped Items */}
-                        <div className="pointer-events-none rounded-2xl overflow-hidden border border-[var(--border)]">
-                          <ProfileView
-                            layout={item.id}
-                            data={previewData}
-                            previewMode={true}
-                          />
+                  {/* Dot Indicator Row Under Carousel */}
+                  <div
+                    className="flex items-center justify-center gap-2 pt-2 pb-1"
+                    role="tablist"
+                    aria-label="Profile layout indicator dots"
+                  >
+                    {PROFILE_LAYOUT_METADATA.map((item, idx) => {
+                      const active = selectedProfileLayout === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={active}
+                          aria-label={`Select layout ${idx + 1}: ${item.name}`}
+                          onClick={() => selectProfileLayoutLocally(item.id, 'smooth')}
+                          className={`h-2 rounded-full transition-all cursor-pointer ${
+                            active
+                              ? 'w-6 bg-[#D71921]'
+                              : 'w-2 bg-black/20 dark:bg-white/20 hover:bg-black/40 dark:hover:bg-white/40'
+                          }`}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Server Error / Success Message Box */}
+                {layoutMessage && (
+                  <div
+                    role="alert"
+                    className={`rounded-2xl p-3.5 text-xs font-semibold border flex items-center gap-2 backdrop-blur-xl ${
+                      layoutMessage.type === 'success'
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-300'
+                        : 'bg-red-500/10 border-red-500/35 text-[#D71921] dark:text-red-300'
+                    }`}
+                  >
+                    {layoutMessage.type === 'success' ? (
+                      <Check size={15} className="shrink-0" />
+                    ) : (
+                      <AlertCircle size={15} className="shrink-0" />
+                    )}
+                    <span className="break-words">{layoutMessage.text}</span>
+                  </div>
+                )}
+
+                {/* Floating Glass Pill Save Bar at the Bottom */}
+                <div className="sticky bottom-4 z-40 pt-1">
+                  <div className="rounded-full pl-4 pr-2 py-2 bg-[var(--glass-surface)] backdrop-blur-2xl border border-[var(--glass-border)] shadow-[var(--glass-shadow)] flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex items-center gap-2.5">
+                      <span className="w-6 h-6 rounded-full bg-[#D71921]/12 text-[#D71921] font-mono text-[11px] font-bold flex items-center justify-center shrink-0">
+                        #{selectedIdx + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-mono uppercase tracking-wider text-[var(--menu-subtext)] leading-none">
+                          {isCurrentSelectionSaved ? 'Active Layout' : 'Selected Layout'}
+                        </div>
+                        <div className="text-sm font-heading font-bold text-[var(--menu-text)] truncate mt-0.5">
+                          {selectedLayoutMeta.name}
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={layoutSaving}
+                      onClick={() => void handleSaveProfileLayout()}
+                      className="px-5 py-2.5 rounded-full bg-[#D71921] hover:bg-[#b8141b] active:scale-[0.98] text-white font-semibold text-xs sm:text-sm shadow-[0_4px_14px_rgba(215,20,31,0.28)] transition-all disabled:opacity-60 cursor-pointer shrink-0"
+                    >
+                      {layoutSaving ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
                 </div>
               </div>
-
-              {layoutMessage && (
-                <div
-                  className={`rounded-2xl p-3.5 text-xs font-semibold border flex items-center gap-2 ${
-                    layoutMessage.type === 'success'
-                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-300'
-                      : 'bg-red-500/10 border-red-500/30 text-[#D71921] dark:text-red-300'
-                  }`}
-                >
-                  {layoutMessage.type === 'success' ? (
-                    <Check size={15} className="shrink-0" />
-                  ) : (
-                    <AlertCircle size={15} className="shrink-0" />
-                  )}
-                  <span>{layoutMessage.text}</span>
-                </div>
-              )}
-
-              <button
-                type="button"
-                disabled={layoutSaving}
-                onClick={() => void handleSaveProfileLayout()}
-                className="stg-btn-primary"
-              >
-                {layoutSaving ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-          )}
+            );
+          })()}
 
           {/* 6. PRO BADGE SUB-PAGE */}
           {activeSubPage === 'pro-badge' && (

@@ -3223,7 +3223,7 @@ export class InMemoryD1Database implements RewardsD1Database {
       if (upper.includes('SET PROFILE_LAYOUT =') && !upper.includes('SET DISPLAY_NAME =')) {
         const profile_layout = String(args[0] ?? 'game-card').trim() || 'game-card';
         const updatedAt = Number(args[1] ?? Date.now());
-        const uid = String(args[2] ?? '');
+        const uid = String(args[2] ?? '').trim();
         let changes = 0;
         for (const r of this.tables.user_usernames.values()) {
           if (r.uid === uid) {
@@ -3231,6 +3231,28 @@ export class InMemoryD1Database implements RewardsD1Database {
             r.updated_at = updatedAt;
             changes++;
           }
+        }
+        if (changes === 0 && uid) {
+          const fallbackUser = `user_${uid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12).toLowerCase() || 'student'}`;
+          this.tables.user_usernames.set(fallbackUser, {
+            username_lower: fallbackUser,
+            username_display: fallbackUser,
+            uid,
+            account_type: uid.startsWith('guest_') ? 'guest' : 'registered',
+            email: '',
+            display_name: '',
+            avatar: '',
+            frame: null,
+            role: 'student',
+            custom_role: null,
+            bio: '',
+            status: '',
+            accent: '',
+            profile_layout,
+            created_at: updatedAt,
+            updated_at: updatedAt,
+          });
+          changes = 1;
         }
         return changes;
       }
