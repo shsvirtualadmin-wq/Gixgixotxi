@@ -50,7 +50,7 @@ export function Footer() {
 
   return (
     <footer
-      className="boardly-red-footer relative w-full mt-auto bg-[#D71921] text-white rounded-t-[36px] sm:rounded-t-[48px] lg:rounded-t-[58px] pt-16 sm:pt-20 lg:pt-24 select-none border-t border-white/25 shadow-[0_-24px_50px_-10px_rgba(215,25,33,0.38),0_-8px_25px_rgba(0,0,0,0.6),inset_0_1.5px_1px_rgba(255,255,255,0.35)]"
+      className="boardly-red-footer relative overflow-hidden isolate w-full mt-auto bg-[#D71921] text-white rounded-t-[36px] sm:rounded-t-[48px] lg:rounded-t-[58px] pt-16 sm:pt-20 lg:pt-24 select-none border-t border-white/25 shadow-[0_-8px_24px_rgba(0,0,0,0.45),inset_0_1.5px_1px_rgba(255,255,255,0.35)]"
       style={{
         backgroundColor: '#D71921',
         width: '100%',

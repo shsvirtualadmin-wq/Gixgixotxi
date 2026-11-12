@@ -58,17 +58,9 @@ export function FaqSection() {
     <section
       id="faq"
       ref={sectionRef}
-      className="relative py-14 sm:py-20 lg:py-28 overflow-hidden cv-auto-section"
+      className="relative isolate py-14 sm:py-20 lg:py-28 overflow-hidden cv-auto-section"
       style={{ scrollMarginTop: 'calc(var(--nav-h) + 24px)' }}
     >
-      {/* Ambient soft red radial glow behind the FAQ section */}
-      <div
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] pointer-events-none -z-10 opacity-70"
-        aria-hidden="true"
-      >
-        <div className="w-full h-full bg-[radial-gradient(ellipse_at_center,rgba(215,25,33,0.12)_0%,rgba(215,25,33,0.03)_55%,transparent_75%)]" />
-      </div>
-
       <div className="boardly-container relative z-10">
         {/* Section Header */}
         <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
@@ -76,7 +68,7 @@ export function FaqSection() {
           <div className="flex justify-center mb-4">
             <span className="section-chip inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide">
               <span
-                className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.85)] shrink-0"
+                className="w-1.5 h-1.5 rounded-full bg-[#D71921] shrink-0"
                 aria-hidden="true"
               />
               Got Questions?
@@ -143,7 +135,7 @@ export function FaqSection() {
                   <span
                     className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border transition-all duration-300 ${
                       isOpen
-                        ? 'bg-[#D71921]/20 border-[#D71921]/60 text-[var(--text-primary)] shadow-[0_0_12px_rgba(215,25,33,0.35)]'
+                        ? 'bg-[var(--accent-red-soft)] border-[var(--accent-red-border)] text-[var(--text-primary)]'
                         : 'icon-tile text-white/70 group-hover:text-white group-hover:border-white/25'
                     }`}
                     aria-hidden="true"

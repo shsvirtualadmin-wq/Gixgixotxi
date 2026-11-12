@@ -5,12 +5,20 @@ import { PhoneMockup } from './PhoneMockup';
 export function HeroSection() {
   return (
     <section
-      className="relative overflow-hidden"
+      className="relative overflow-hidden isolate"
       style={{
         paddingTop: 'calc(64px + 24px + env(safe-area-inset-top, 0px))',
         paddingBottom: '64px',
       }}
     >
+      {/* Contained faint hero ambient glow (opacity .12) */}
+      <div
+        className="absolute inset-0 -z-10 pointer-events-none opacity-[0.12]"
+        style={{
+          background: 'radial-gradient(circle at 50% 35%, #d7141f 0%, transparent 65%)',
+        }}
+        aria-hidden="true"
+      />
       <div className="boardly-container relative z-10">
         {/* 2-column hero grid (1.12fr .88fr, gap 48px, align-items: center), 1 column on mobile */}
         <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-10 lg:gap-14 items-center">
@@ -65,7 +73,7 @@ export function HeroSection() {
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3.5 w-full sm:w-auto">
               <Link
                 to="/signup"
-                className="h-12 px-6 rounded-full inline-flex items-center justify-center gap-2 text-sm font-heading font-bold bg-[#D71921] hover:bg-[#b8141b] text-white shadow-[0_10px_25px_rgba(215,25,33,0.38)] hover:shadow-[0_14px_30px_rgba(215,25,33,0.5)] transition-all duration-200 hover:-translate-y-1 active:scale-[0.98] w-full sm:w-auto group cursor-pointer"
+                className="h-12 px-6 rounded-full inline-flex items-center justify-center gap-2 text-sm font-heading font-bold bg-[#D71921] hover:bg-[#b8141b] text-white shadow-[0_4px_14px_rgba(215,20,31,0.28)] hover:shadow-[0_4px_14px_rgba(215,20,31,0.28)] transition-all duration-200 hover:-translate-y-1 active:scale-[0.98] w-full sm:w-auto group cursor-pointer"
               >
                 <span>Start Practicing Free</span>
                 <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
@@ -82,15 +90,15 @@ export function HeroSection() {
             {/* Feature bullets row with even spacing */}
             <div className="mt-8 pt-5 border-t border-white/10 flex flex-wrap items-center justify-center lg:justify-start gap-x-6 gap-y-2.5 w-full">
               <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] shrink-0 shadow-[0_0_8px_rgba(215,25,33,0.8)]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] shrink-0" />
                 <span className="text-xs text-[var(--muted)] font-medium">Comprehensive MCQ Banks</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] shrink-0 shadow-[0_0_8px_rgba(215,25,33,0.8)]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] shrink-0" />
                 <span className="text-xs text-[var(--muted)] font-medium">Step-by-step KaTeX</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] shrink-0 shadow-[0_0_8px_rgba(215,25,33,0.8)]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] shrink-0" />
                 <span className="text-xs text-[var(--muted)] font-medium">PKT Midnight Resets</span>
               </div>
             </div>

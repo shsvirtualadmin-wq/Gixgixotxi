@@ -37,14 +37,16 @@ export function WallpaperThumbnail({
 const CrimsonArcArtwork = React.memo(function CrimsonArcArtwork({ isThumbnail = false }: { isThumbnail?: boolean }) {
   return (
     <div className="absolute inset-0 w-full h-full overflow-hidden bg-[#050508]">
-      {/* Deep Red Radial Glows */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            'radial-gradient(circle at 88% 12%, rgba(215, 25, 33, 0.32) 0%, rgba(140, 15, 20, 0.16) 35%, transparent 70%), radial-gradient(circle at 15% 85%, rgba(180, 20, 25, 0.12) 0%, transparent 50%)',
-        }}
-      />
+      {/* Deep Red Radial Glows (thumbnail preview only so full-screen dark mode has zero red background bleed) */}
+      {isThumbnail && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(circle at 88% 12%, rgba(215, 25, 33, 0.32) 0%, rgba(140, 15, 20, 0.16) 35%, transparent 70%), radial-gradient(circle at 15% 85%, rgba(180, 20, 25, 0.12) 0%, transparent 50%)',
+          }}
+        />
+      )}
 
       {/* Inline Scalable SVG: Concentric Arcs, Circuit Lines & Dot Matrix */}
       <svg
@@ -135,14 +137,16 @@ const CrimsonArcArtwork = React.memo(function CrimsonArcArtwork({ isThumbnail = 
 const EmberGridArtwork = React.memo(function EmberGridArtwork({ isThumbnail = false }: { isThumbnail?: boolean }) {
   return (
     <div className="absolute inset-0 w-full h-full overflow-hidden bg-[#050505]">
-      {/* Warm Ambient Ember Core */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            'radial-gradient(ellipse at 50% 50%, rgba(200, 25, 32, 0.16) 0%, rgba(100, 10, 15, 0.06) 45%, transparent 75%)',
-        }}
-      />
+      {/* Warm Ambient Ember Core (thumbnail preview only) */}
+      {isThumbnail && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse at 50% 50%, rgba(200, 25, 32, 0.16) 0%, rgba(100, 10, 15, 0.06) 45%, transparent 75%)',
+          }}
+        />
+      )}
 
       {/* SVG Dot Matrix with Edge Vignette Mask */}
       <svg
@@ -199,14 +203,16 @@ const EmberGridArtwork = React.memo(function EmberGridArtwork({ isThumbnail = fa
 const MidnightArtwork = React.memo(function MidnightArtwork({ isThumbnail = false }: { isThumbnail?: boolean }) {
   return (
     <div className="absolute inset-0 w-full h-full overflow-hidden bg-[#030305]">
-      {/* Outer Velvety Crimson Vignette */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            'radial-gradient(ellipse at center, #050508 40%, rgba(18, 4, 7, 0.85) 75%, rgba(160, 15, 24, 0.18) 100%)',
-        }}
-      />
+      {/* Outer Velvety Crimson Vignette (thumbnail preview only) */}
+      {isThumbnail && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse at center, #050508 40%, rgba(18, 4, 7, 0.85) 75%, rgba(160, 15, 24, 0.18) 100%)',
+          }}
+        />
+      )}
 
       {/* Subtle Micro-Noise / Star-field dots for depth */}
       <svg

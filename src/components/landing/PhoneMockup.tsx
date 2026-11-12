@@ -147,29 +147,13 @@ export function PhoneMockup({
   return (
     <div
       ref={containerRef}
-      className={`relative flex flex-col items-center w-full max-w-[480px] lg:max-w-[450px] mx-auto select-none ${
+      className={`relative overflow-hidden isolate flex flex-col items-center w-full max-w-[480px] lg:max-w-[450px] mx-auto select-none ${
         !isInView ? 'pause-animations-offscreen' : ''
       }`}
       onMouseEnter={pauseAutoRotation}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Ambient background glow behind the cluster (static radial-gradient, zero blur filter) */}
-      <div
-        className="absolute -top-12 -right-8 w-72 h-72 sm:w-96 sm:h-96 rounded-full pointer-events-none opacity-45"
-        style={{
-          background: 'radial-gradient(circle, rgba(215, 25, 33, 0.22) 0%, rgba(255, 255, 255, 0.03) 42%, transparent 70%)',
-        }}
-        aria-hidden="true"
-      />
-      <div
-        className="absolute -bottom-8 -left-8 w-64 h-64 sm:w-80 sm:h-80 rounded-full pointer-events-none opacity-30"
-        style={{
-          background: 'radial-gradient(circle, rgba(255, 255, 255, 0.08) 0%, rgba(215, 25, 33, 0.12) 48%, transparent 70%)',
-        }}
-        aria-hidden="true"
-      />
-
       {/* Floating Glass Widgets Layered Composition */}
       <div className="relative w-full min-h-[380px] sm:min-h-[420px] flex flex-col justify-center py-2 sm:py-4">
         {/* VIEW 0: COCKPIT */}
@@ -188,7 +172,7 @@ export function PhoneMockup({
                 Daily Goal: 25 MCQs
               </div>
               <div className="mt-2.5 w-full bg-[var(--border-strong)] rounded-full h-1.5 overflow-hidden">
-                <div className="bg-gradient-to-r from-[#D71921] to-[#ff4d56] h-full rounded-full w-[72%]" />
+                <div className="bg-[#d7141f] h-full rounded-full w-[72%]" />
               </div>
             </div>
 
@@ -198,7 +182,7 @@ export function PhoneMockup({
                 <div className="flex items-center gap-2 text-xs mb-2.5 text-[var(--text)] font-semibold">
                   <span className="w-2 h-2 rounded-full bg-[#D71921]" />
                   <span>7-Day Streak</span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#D71921]/15 text-[#D71921] font-bold">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[var(--accent-red-soft)] text-[var(--accent-red)] border border-[var(--accent-red-border)] font-bold">
                     Active
                   </span>
                 </div>
@@ -208,7 +192,7 @@ export function PhoneMockup({
                       <span
                         className={`w-3 h-3 rounded-full transition-all ${
                           idx < 5
-                            ? 'bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.6)]'
+                            ? 'bg-[#D71921]'
                             : 'bg-[var(--border-strong)]'
                         }`}
                       />
@@ -220,7 +204,7 @@ export function PhoneMockup({
 
               {/* Daily Ring Display Widget (non-button) */}
               <div className="flex flex-col items-center justify-center shrink-0 pl-3 border-l border-white/10">
-                <div className="w-14 h-14 rounded-full border-[3px] border-[#D71921] border-t-[var(--border-strong)] flex flex-col items-center justify-center shadow-[0_0_15px_rgba(215,25,33,0.2)]">
+                <div className="w-14 h-14 rounded-full border-[3px] border-[#D71921] border-t-[var(--border-strong)] flex flex-col items-center justify-center">
                   <span className="font-dot text-sm font-bold text-[var(--text)] leading-none">18</span>
                   <span className="text-[10px] text-[var(--text-muted)] leading-none mt-0.5">/25</span>
                 </div>
@@ -247,7 +231,7 @@ export function PhoneMockup({
                 <button
                   type="button"
                   onClick={pauseAutoRotation}
-                  className="px-3.5 py-1.5 text-xs font-heading font-semibold rounded-full bg-[#D71921] hover:bg-[#b8141b] text-white shrink-0 shadow-[0_4px_14px_rgba(215,25,33,0.4)] transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                  className="px-3.5 py-1.5 text-xs font-heading font-semibold rounded-full bg-[#D71921] hover:bg-[#b8141b] text-white shrink-0 transition-all hover:scale-105 active:scale-95 cursor-pointer"
                 >
                   Drill
                 </button>
@@ -263,7 +247,7 @@ export function PhoneMockup({
                 <button
                   type="button"
                   onClick={pauseAutoRotation}
-                  className="px-3.5 py-1.5 text-xs font-heading font-semibold rounded-full bg-[#D71921] hover:bg-[#b8141b] text-white shrink-0 shadow-[0_4px_14px_rgba(215,25,33,0.4)] transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                  className="px-3.5 py-1.5 text-xs font-heading font-semibold rounded-full bg-[#D71921] hover:bg-[#b8141b] text-white shrink-0 transition-all hover:scale-105 active:scale-95 cursor-pointer"
                 >
                   Drill
                 </button>
@@ -288,7 +272,7 @@ export function PhoneMockup({
                   <div className="bg-[#D71921] h-full rounded-full w-[84%]" />
                 </div>
               </div>
-              <div className="w-12 h-12 rounded-full border-2 border-[#D71921] flex flex-col items-center justify-center font-dot text-xs font-bold text-[var(--text)] shrink-0 shadow-[0_0_14px_rgba(215,25,33,0.25)]">
+              <div className="w-12 h-12 rounded-full border-2 border-[#D71921] flex flex-col items-center justify-center font-dot text-xs font-bold text-[var(--text)] shrink-0">
                 PKT
               </div>
             </div>
@@ -332,7 +316,7 @@ export function PhoneMockup({
             <div className="w-full sm:w-[94%] ml-auto p-4 sm:p-5 rounded-[28px] glass-card animate-float-1 transition-transform">
               <div className="flex items-center justify-between text-xs text-[var(--text-muted)] mb-1.5 font-medium">
                 <span>Campus Ambassador</span>
-                <span className="px-2 py-0.5 rounded-full bg-[#D71921]/15 text-[#D71921] font-semibold text-[10px]">
+                <span className="px-2 py-0.5 rounded-full bg-[var(--accent-red-soft)] text-[var(--accent-red)] border border-[var(--accent-red-border)] font-semibold text-[10px]">
                   Verified
                 </span>
               </div>
@@ -406,12 +390,12 @@ export function PhoneMockup({
             </div>
 
             {/* Widget 3: Live Queue Banner */}
-            <div className="w-full p-4 rounded-[28px] bg-[#D71921] shadow-[0_20px_45px_rgba(215,25,33,0.38)] flex items-center justify-between text-white animate-float-3 transition-transform px-5">
+            <div className="relative overflow-hidden isolate w-full p-4 rounded-[28px] bg-[#D71921] shadow-[0_4px_14px_rgba(215,20,31,0.28)] flex items-center justify-between text-white animate-float-3 transition-transform px-5">
               <div className="min-w-0">
                 <div className="text-xs sm:text-[13px] font-bold">Queue Active</div>
                 <div className="text-[11px] text-white/85">Sunday 8:00 PM PKT</div>
               </div>
-              <span className="px-2.5 py-1 text-[10px] font-mono font-bold rounded-full bg-white/20 text-white shrink-0">
+              <span className="px-2.5 py-1 text-[10px] font-mono font-bold rounded-full bg-[var(--accent-red-soft)] border border-[var(--accent-red-border)] text-white shrink-0">
                 LIVE
               </span>
             </div>
@@ -450,7 +434,7 @@ export function PhoneMockup({
                   onClick={() => changeScreen(tab.id, true)}
                   className={`h-7 sm:h-8 px-2.5 sm:px-3.5 rounded-full text-[11px] sm:text-xs font-heading font-semibold transition-all cursor-pointer whitespace-nowrap active:scale-95 ${
                     isActive
-                      ? 'bg-[#D71921] text-white shadow-[0_4px_14px_rgba(215,25,33,0.45)]'
+                      ? 'preview-tab-active'
                       : 'text-white/60 hover:text-white hover:bg-white/[0.06]'
                   }`}
                 >

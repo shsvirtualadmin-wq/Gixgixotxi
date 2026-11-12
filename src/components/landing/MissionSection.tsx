@@ -5,19 +5,11 @@ export function MissionSection() {
   return (
     <section
       id="mission"
-      className="relative py-14 sm:py-20 lg:py-28 cv-auto-section"
+      className="relative overflow-hidden isolate py-14 sm:py-20 lg:py-28 cv-auto-section"
       style={{ scrollMarginTop: 'calc(var(--nav-h) + 24px)' }}
     >
       <div className="boardly-container">
         <div className="max-w-[880px] mx-auto w-full relative">
-          {/* Ambient red & white radial glow centered behind floating glass card (static gradient) */}
-          <div
-            className="absolute -inset-6 sm:-inset-12 -z-10 pointer-events-none opacity-85"
-            aria-hidden="true"
-          >
-            <div className="w-full h-full bg-[radial-gradient(ellipse_at_center,rgba(215,25,33,0.16)_0%,rgba(215,25,33,0.05)_45%,rgba(255,255,255,0.02)_65%,transparent_72%)]" />
-          </div>
-
           {/* Floating Glass Panel */}
           <div
             className="animate-float-2 glass-panel relative rounded-[32px] sm:rounded-[36px] lg:rounded-[40px] p-7 sm:p-12 lg:p-14 text-center"
@@ -26,7 +18,7 @@ export function MissionSection() {
             <div className="flex justify-center mb-5 sm:mb-6">
               <span className="section-chip">
                 <span
-                  className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.85)] shrink-0"
+                  className="w-1.5 h-1.5 rounded-full bg-[#D71921] shrink-0"
                   aria-hidden="true"
                 />
                 Why We Built Boardly

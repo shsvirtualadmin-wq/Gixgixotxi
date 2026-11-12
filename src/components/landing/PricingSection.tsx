@@ -54,7 +54,7 @@ export function PricingSection() {
     <section
       id="pricing"
       ref={sectionRef}
-      className="relative py-14 sm:py-20 lg:py-28 cv-auto-section"
+      className="relative overflow-hidden isolate py-14 sm:py-20 lg:py-28 cv-auto-section"
       style={{ scrollMarginTop: 'calc(var(--nav-h) + 24px)' }}
     >
       <div className="boardly-container">
@@ -64,7 +64,7 @@ export function PricingSection() {
           <div className="flex justify-center mb-4">
             <span className="section-chip">
               <span
-                className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.85)] shrink-0"
+                className="w-1.5 h-1.5 rounded-full bg-[#D71921] shrink-0"
                 aria-hidden="true"
               />
               Simple, Fair Pricing
@@ -90,14 +90,8 @@ export function PricingSection() {
           </p>
         </div>
 
-        {/* Pricing Cards Container with Ambient Glows */}
+        {/* Pricing Cards Container */}
         <div className="relative">
-          {/* Ambient red radial behind Unlimited card + subtle gold radial behind Koban card */}
-          <div className="absolute -inset-4 sm:-inset-10 -z-10 pointer-events-none overflow-hidden" aria-hidden="true">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[450px] bg-[radial-gradient(ellipse_at_center,rgba(215,25,33,0.14)_0%,rgba(215,25,33,0.03)_55%,transparent_75%)] opacity-80" />
-            <div className="absolute top-1/2 right-[5%] -translate-y-1/2 w-[350px] h-[350px] bg-[radial-gradient(ellipse_at_center,rgba(232,163,23,0.1)_0%,rgba(232,163,23,0.02)_55%,transparent_75%)] opacity-75" />
-          </div>
-
           {/* 3-Column Pricing Grid: Equal height, aligned rows, responsive reordering */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto items-stretch relative z-10">
             {/* Free Tier Card */}
@@ -156,23 +150,17 @@ export function PricingSection() {
               </div>
             </div>
 
-            {/* Unlimited Tier Card: Featured, slightly brighter surface, red border, static red glow */}
+            {/* Unlimited Tier Card: Featured, slightly brighter surface, 1px red border, neutral shadow */}
             <div
-              className={`glass-card-highlight order-1 md:order-2 h-full flex flex-col justify-between relative rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-7 sm:p-8 lg:p-9 transition-all duration-300 ease-out hover:-translate-y-1.5 ${
+              className={`glass-card-highlight order-1 md:order-2 h-full flex flex-col justify-between relative overflow-hidden isolate rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-7 sm:p-8 lg:p-9 transition-all duration-300 ease-out hover:-translate-y-1.5 ${
                 isVisible ? 'opacity-100 translate-y-0' : 'opacity-80 translate-y-3'
               }`}
               style={{ transitionDelay: '90ms' }}
             >
-              {/* Subtle static red radial glow */}
-              <div
-                className="absolute -inset-1 rounded-[34px] bg-[radial-gradient(ellipse_at_center,rgba(215,25,33,0.18)_0%,transparent_70%)] pointer-events-none -z-10"
-                aria-hidden="true"
-              />
-
               <div className="flex flex-col flex-1">
                 {/* Plan chip row */}
                 <div className="flex items-center justify-between min-h-[28px] mb-3.5">
-                  <span className="px-3 py-1 rounded-full text-xs font-semibold font-heading bg-[#D71921] text-white shadow-[0_2px_8px_rgba(215,25,33,0.4)]">
+                  <span className="px-3 py-1 rounded-full text-xs font-semibold font-heading bg-[#D71921] text-white">
                     Unlimited
                   </span>
                   <span className="text-xs text-[var(--muted)] font-medium font-heading">
@@ -199,7 +187,7 @@ export function PricingSection() {
                 <div className="flex flex-col gap-3 flex-1">
                   {UNLIMITED_FEATURES.map((feature) => (
                     <div key={feature} className="flex items-start gap-2.5 text-xs sm:text-[13px] text-white leading-snug">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_6px_rgba(215,25,33,0.8)] shrink-0 mt-1.5" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] shrink-0 mt-1.5" />
                       <span>{feature}</span>
                     </div>
                   ))}
@@ -210,7 +198,7 @@ export function PricingSection() {
               <div className="mt-auto pt-6 flex flex-col justify-end">
                 <Link
                   to="/signup"
-                  className="inline-flex items-center justify-center w-full h-[48px] rounded-full bg-[#D71921] hover:bg-[#b8141b] text-white font-semibold text-sm font-heading shadow-[0_6px_20px_rgba(215,25,33,0.4)] hover:shadow-[0_8px_24px_rgba(215,25,33,0.55)] transition-all duration-200 active:scale-[0.98]"
+                  className="inline-flex items-center justify-center w-full h-[48px] rounded-full bg-[#D71921] hover:bg-[#b8141b] text-white font-semibold text-sm font-heading shadow-[0_4px_14px_rgba(215,20,31,0.28)] hover:shadow-[0_4px_14px_rgba(215,20,31,0.28)] transition-all duration-200 active:scale-[0.98]"
                 >
                   Get Unlimited
                 </Link>

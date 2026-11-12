@@ -52,7 +52,7 @@ export function HowItWorks() {
   return (
     <section
       ref={sectionRef}
-      className="relative py-14 sm:py-20 lg:py-28 cv-auto-section"
+      className="relative overflow-hidden isolate py-14 sm:py-20 lg:py-28 cv-auto-section"
     >
       <div className="boardly-container">
         {/* Centered Section Header */}
@@ -61,7 +61,7 @@ export function HowItWorks() {
           <div className="flex justify-center mb-4">
             <span className="section-chip">
               <span
-                className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.85)] shrink-0"
+                className="w-1.5 h-1.5 rounded-full bg-[#D71921] shrink-0"
                 aria-hidden="true"
               />
               Simple 3-Step Strategy
@@ -89,14 +89,6 @@ export function HowItWorks() {
 
         {/* Floating Cards Container */}
         <div className="relative">
-          {/* Ambient red radial glow behind cards */}
-          <div
-            className="absolute -inset-4 sm:-inset-10 -z-10 pointer-events-none opacity-60"
-            aria-hidden="true"
-          >
-            <div className="w-full h-full bg-[radial-gradient(ellipse_at_center,rgba(215,25,33,0.12)_0%,rgba(215,25,33,0.03)_50%,transparent_70%)]" />
-          </div>
-
           {/* Subtly connected connector line behind the row at the height of the numbers */}
           <div
             className="hidden md:block absolute top-[58px] left-[10%] right-[10%] h-[1px] bg-gradient-to-r from-transparent via-white/15 to-transparent pointer-events-none z-0"
@@ -121,7 +113,7 @@ export function HowItWorks() {
                     {/* Top row: Big dot-matrix number, icon tile top-right */}
                     <div className="flex items-center justify-between mb-5">
                       <span
-                        className="font-doto text-[34px] sm:text-[38px] leading-none font-bold text-white/95 drop-shadow-[0_0_12px_rgba(215,25,33,0.28)]"
+                        className="font-doto text-[34px] sm:text-[38px] leading-none font-bold text-white/95"
                       >
                         {item.step}
                       </span>

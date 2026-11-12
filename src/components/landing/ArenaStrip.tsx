@@ -50,38 +50,24 @@ export function ArenaStrip() {
     <section
       id="grand-line"
       ref={sectionRef}
-      className="relative py-14 sm:py-20 lg:py-28 cv-auto-section"
+      className="relative overflow-hidden isolate py-14 sm:py-20 lg:py-28 cv-auto-section"
       style={{ scrollMarginTop: 'calc(var(--nav-h) + 24px)' }}
     >
       <div className="boardly-container">
         <div className="relative">
-          {/* Ambient red & dark radial glow behind and around the floating card */}
+          {/* Outer Floating Glass Panel with red accent border and neutral layered shadow */}
           <div
-            className="absolute -inset-4 sm:-inset-10 -z-10 pointer-events-none opacity-85"
-            aria-hidden="true"
-          >
-            <div className="w-full h-full bg-[radial-gradient(ellipse_at_center,rgba(215,25,33,0.18)_0%,rgba(215,25,33,0.06)_45%,rgba(255,255,255,0.02)_65%,transparent_75%)]" />
-          </div>
-
-          {/* Outer Floating Glass Panel with red accent border, internal radial glow and deep layered shadows */}
-          <div
-            className={`glass-card-highlight relative overflow-hidden rounded-[26px] sm:rounded-[36px] lg:rounded-[40px] p-7 sm:p-10 lg:p-14 transition-all duration-500 ease-out ${
+            className={`glass-card-highlight relative overflow-hidden isolate rounded-[26px] sm:rounded-[36px] lg:rounded-[40px] p-7 sm:p-10 lg:p-14 transition-all duration-500 ease-out ${
               isVisible ? 'opacity-100 translate-y-0' : 'opacity-90 translate-y-2'
             }`}
           >
-            {/* Subtle internal red radial gradient so the box stands out elegantly as the key block */}
-            <div
-              className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-[radial-gradient(circle,rgba(215,25,33,0.12)_0%,transparent_70%)] pointer-events-none -z-0"
-              aria-hidden="true"
-            />
-
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center relative z-10">
               {/* Left Column: Event info */}
               <div className="flex flex-col items-start text-left gap-4">
                 {/* Grand Line chip */}
-                <span className="section-chip !border-[#D71921]/40 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide">
+                <span className="section-chip !border-[var(--accent-red-border)] inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide">
                   <span
-                    className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.85)] shrink-0"
+                    className="w-1.5 h-1.5 rounded-full bg-[#D71921] shrink-0"
                     aria-hidden="true"
                   />
                   Grand Line
@@ -109,7 +95,7 @@ export function ArenaStrip() {
                 <div className="pt-2 w-full sm:w-auto">
                   <Link
                     to="/grand-line"
-                    className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-full bg-[#D71921] hover:bg-[#b8141b] text-white font-semibold text-sm tracking-wide font-heading shadow-[0_6px_20px_rgba(215,25,33,0.4)] hover:shadow-[0_8px_24px_rgba(215,25,33,0.55)] hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-200 group w-full sm:w-auto"
+                    className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-full bg-[#D71921] hover:bg-[#b8141b] text-white font-semibold text-sm tracking-wide font-heading shadow-[0_4px_14px_rgba(215,20,31,0.28)] hover:shadow-[0_4px_14px_rgba(215,20,31,0.28)] hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-200 group w-full sm:w-auto"
                   >
                     <span>Browse Grand Line</span>
                     <ArrowRight size={16} className="transition-transform group-hover:translate-x-1.5" />
@@ -126,7 +112,7 @@ export function ArenaStrip() {
                       className="font-semibold text-white flex items-center gap-2 font-heading tracking-tight"
                       style={{ fontFamily: 'var(--font-heading)' }}
                     >
-                      <span className="w-2 h-2 rounded-full bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.9)] shrink-0" />
+                      <span className="w-2 h-2 rounded-full bg-[#D71921] shrink-0" />
                       Grand Line Top Scorers
                     </span>
                     <span
@@ -170,7 +156,7 @@ export function ArenaStrip() {
                     </div>
                   ) : (
                     <div className="glass-row py-6 px-4 rounded-[20px] sm:rounded-[24px] text-center space-y-2.5">
-                      <div className="icon-tile w-11 h-11 rounded-[16px] mx-auto flex items-center justify-center text-[#D71921] shadow-[0_0_15px_rgba(215,25,33,0.3)] animate-float-1">
+                      <div className="icon-tile w-11 h-11 rounded-[16px] mx-auto flex items-center justify-center text-[#D71921] animate-float-1">
                         <Trophy size={19} />
                       </div>
                       <div className="text-xs font-semibold text-white font-heading">

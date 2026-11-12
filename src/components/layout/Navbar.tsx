@@ -209,7 +209,7 @@ export function Navbar() {
                       onClick={handleClose}
                       className={`font-dot text-[20px] sm:text-[24px] leading-tight min-h-[48px] flex items-center px-3.5 py-2 rounded-2xl transition-all tracking-tight motion-reduce:transition-none active:scale-[0.98] ${
                         active
-                          ? 'bg-[#D71921]/15 text-[#D71921] border border-[#D71921]/30 font-extrabold shadow-[0_2px_12px_rgba(215,25,33,0.2)]'
+                          ? 'bg-[var(--accent-red-soft)] text-[var(--accent-red)] border border-[var(--accent-red-border)] font-extrabold'
                           : isDark
                             ? 'text-[var(--text)] hover:text-[#D71921] hover:bg-white/[0.06] border border-transparent'
                             : 'text-[#111827] hover:text-[#D71921] hover:bg-black/[0.04] border border-transparent'
@@ -255,7 +255,7 @@ export function Navbar() {
                 <Link
                   to="/signup"
                   onClick={handleClose}
-                  className="w-full flex items-center justify-center rounded-full transition-all text-[14px] font-semibold bg-[#D71921] hover:bg-[#b8141b] text-white shadow-[0_4px_18px_rgba(215,25,33,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] active:scale-[0.98]"
+                  className="w-full flex items-center justify-center rounded-full transition-all text-[14px] font-semibold bg-[#D71921] hover:bg-[#b8141b] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] active:scale-[0.98]"
                   style={{
                     height: '48px',
                     fontFamily: 'var(--font-heading)',

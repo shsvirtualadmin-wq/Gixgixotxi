@@ -43,17 +43,9 @@ export function FeaturesGrid() {
     <section
       ref={sectionRef}
       id="features"
-      className="relative py-14 sm:py-20 lg:py-28 overflow-hidden cv-auto-section"
+      className="relative isolate py-14 sm:py-20 lg:py-28 overflow-hidden cv-auto-section"
       style={{ scrollMarginTop: 'calc(var(--nav-h) + 24px)' }}
     >
-      {/* Ambient background glow behind the grid (static radial-gradient) */}
-      <div
-        className="absolute inset-0 -z-10 pointer-events-none overflow-hidden"
-        aria-hidden="true"
-      >
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[880px] h-[520px] bg-[radial-gradient(ellipse_at_center,rgba(215,25,33,0.11)_0%,rgba(215,25,33,0.03)_45%,transparent_72%)] opacity-85" />
-      </div>
-
       <div className="boardly-container">
         {/* Section Header */}
         <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
@@ -144,7 +136,7 @@ export function FeaturesGrid() {
             {/* Pinned Footer with Red-Dot Caption */}
             <div className="mt-6 pt-4 border-t border-white/10 min-h-[44px] flex items-center gap-2 text-xs text-[var(--muted)]">
               <span
-                className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_6px_rgba(215,25,33,0.8)] shrink-0"
+                className="w-1.5 h-1.5 rounded-full bg-[#D71921] shrink-0"
                 aria-hidden="true"
               />
               <span>Formulas and step derivations verified in KaTeX</span>
@@ -179,8 +171,8 @@ export function FeaturesGrid() {
                 </p>
               </div>
 
-              {/* Callout with red left accent line and faint glow */}
-              <div className="p-3.5 sm:p-4 rounded-[18px] glass-row !border-l-[3px] !border-l-[#D71921] text-white shadow-[0_0_20px_rgba(215,25,33,0.06)]">
+              {/* Callout with red left accent line */}
+              <div className="p-3.5 sm:p-4 rounded-[18px] glass-row !border-l-[3px] !border-l-[#D71921] text-white">
                 <span className="text-xs font-medium text-white/90 leading-relaxed block">
                   Free, unlimited sharing and peer learning for everyone.
                 </span>
