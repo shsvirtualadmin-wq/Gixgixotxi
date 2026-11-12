@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
-import { Sun, Moon, Bell } from 'lucide-react';
+import { Sun, Moon } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useTheme } from '@/hooks/useTheme';
 import { useWallet } from '@/hooks/useWallet';
-import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 import { KobanChip } from '@/components/koban/KobanIcon';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import {
@@ -45,7 +44,6 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
 
   const { theme, toggle: toggleTheme } = useTheme();
   const { effectiveProBadge } = useProBadge();
-  const unreadCount = useUnreadNotificationsCount();
 
   // Track viewport size so phones (<640px) use the bottom sheet and desktop uses the avatar dropdown
   useEffect(() => {
@@ -134,14 +132,14 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
         }}
       >
         <div
-          className="w-full max-w-5xl mx-auto min-w-0 box-border h-14 sm:h-[60px] px-3 sm:px-5 rounded-full dashboard-glass-bar allow-backdrop-blur flex flex-row items-center justify-between gap-2 pointer-events-auto transition-all duration-200 overflow-visible"
+          className="w-full max-w-5xl mx-auto min-w-0 box-border h-14 sm:h-[60px] px-3 rounded-full dashboard-glass-bar allow-backdrop-blur flex flex-row items-center justify-between gap-2 pointer-events-auto transition-all duration-200 overflow-hidden"
         >
-          {/* Left side: Boardly Doto logo with fixed reserved width so it NEVER truncates to "Board" */}
-          <div className="flex flex-col justify-center shrink-0 min-w-[78px] sm:min-w-[92px]">
-            <div className="inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
+          {/* Left side: Boardly Doto logo and PRO pill */}
+          <div className="flex flex-col justify-center shrink-0 min-w-0">
+            <div className="inline-flex items-center gap-2 shrink-0 whitespace-nowrap">
               <Link
                 to="/dashboard"
-                className="inline-flex items-center shrink-0 whitespace-nowrap select-none leading-none tracking-tight hover:opacity-90 transition-opacity text-[17px] min-[390px]:text-[20px] sm:text-[22px]"
+                className="inline-flex items-center shrink-0 whitespace-nowrap select-none leading-none tracking-tight hover:opacity-90 transition-opacity text-[18px] min-[390px]:text-[20px] sm:text-[22px]"
                 style={{
                   fontFamily: "'Doto', var(--font-dot), sans-serif",
                   fontWeight: 800,
@@ -180,30 +178,15 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
             )}
           </div>
 
-          {/* Right side: Reserved-width Kobans balance chip, Notification bell, Theme toggle, Profile avatar (all flex-shrink: 0) */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto overflow-visible">
-            {/* Kobans Wallet Chip (reserved min-width prevents layout shift) */}
+          {/* Right side: Coin chip, Theme toggle, and Profile avatar */}
+          <div className="flex items-center gap-2 shrink-0 ml-auto">
+            {/* Kobans Wallet Chip */}
             <Link
               to="/store"
               title="Boardly Store & Kobans Wallet"
-              className="flex items-center justify-end shrink-0 min-w-[68px] sm:min-w-[76px] whitespace-nowrap transition-transform hover:scale-105"
+              className="flex items-center justify-end shrink-0 whitespace-nowrap transition-transform hover:scale-105"
             >
               <KobanChip balance={kobanBalance} loading={walletLoading} />
-            </Link>
-
-            {/* Notification Bell (40px round glass icon button) */}
-            <Link
-              to="/dashboard/notifications"
-              aria-label="Notifications"
-              title="Notifications"
-              className="relative flex w-10 h-10 min-w-[40px] min-h-[40px] rounded-full dashboard-topbar-icon-btn items-center justify-center hover:opacity-90 transition-opacity cursor-pointer shrink-0"
-            >
-              <Bell size={17} strokeWidth={1.85} />
-              {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-[#D71921] text-white text-[9px] font-bold flex items-center justify-center leading-none border border-black/30 shadow-sm tabular-nums">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
             </Link>
 
             {/* Theme Toggle (40px round glass icon button) */}

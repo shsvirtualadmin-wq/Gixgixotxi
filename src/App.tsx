@@ -349,6 +349,8 @@ function AppInner() {
           <Route path="plans" element={<PlansBillingPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="settings/:subPage" element={<SettingsPage />} />
+          <Route path="menu" element={<OverviewPage />} />
           <Route path="contact" element={<Navigate to="/contact" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
@@ -380,6 +382,10 @@ function AppInner() {
         </Route>
         <Route path="/settings" element={<DashboardShell />}>
           <Route index element={<SettingsPage />} />
+          <Route path=":subPage" element={<SettingsPage />} />
+        </Route>
+        <Route path="/menu" element={<DashboardShell />}>
+          <Route index element={<OverviewPage />} />
         </Route>
         <Route path="/profile/edit" element={<DashboardShell />}>
           <Route index element={<ProfilePage />} />

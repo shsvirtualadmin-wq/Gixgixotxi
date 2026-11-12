@@ -12,7 +12,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Flame,
-  Bell,
   MessageCircle,
   Users,
   Menu,
@@ -22,7 +21,6 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
-import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 import { useUnreadMessagesCount } from '@/hooks/useUnreadMessagesCount';
 import { getHomeUrl, isUserAuthenticated } from '@/utils/homeUrl';
 import { useSmoothMode } from '@/utils/smoothMode';
@@ -45,8 +43,6 @@ interface BubblePosition {
   width: number;
   dockWidth: number;
 }
-
-const BUBBLE_LENS_WIDTH = 64;
 
 function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false;
@@ -74,22 +70,27 @@ function DashboardBottomNavComponent() {
   const { profileLoading } = useAuth();
   const { requireAuth } = useAuthGate();
   const { isOpen: isProfileModalOpen } = useProfileModal();
-  const unreadCount = useUnreadNotificationsCount();
   const unreadMessagesCount = useUnreadMessagesCount();
   const { smoothMode: isSmoothMode } = useSmoothMode();
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(
+    location.pathname === '/menu' || location.pathname === '/dashboard/menu'
+  );
   const [isExternalModalOpen, setIsExternalModalOpen] = useState(false);
   const lowEndDevice = useMemo(() => isLowEndHardware(), []);
 
   const isAuthenticated = isUserAuthenticated(user, profileLoading);
   const homeUrl = getHomeUrl(user, profileLoading);
 
-  // Auto-close menu page on any route change
+  // Auto-close menu page on route change (or open when routed to /menu)
   useEffect(() => {
-    setIsMenuOpen(false);
+    if (location.pathname === '/menu' || location.pathname === '/dashboard/menu') {
+      setIsMenuOpen(true);
+    } else {
+      setIsMenuOpen(false);
+    }
   }, [location.pathname]);
 
   // Detect any open full-screen external modal across the app and hide the bottom navigation
@@ -156,7 +157,14 @@ function DashboardBottomNavComponent() {
     };
   }, [location.pathname]);
 
-  const shouldHideBottomNav = isProfileModalOpen || isExternalModalOpen || isMenuOpen;
+  const isSettingsScreen =
+    location.pathname === '/settings' ||
+    location.pathname.startsWith('/settings/') ||
+    location.pathname === '/dashboard/settings' ||
+    location.pathname.startsWith('/dashboard/settings/');
+
+  const shouldHideBottomNav =
+    isSettingsScreen || isProfileModalOpen || isExternalModalOpen || isMenuOpen;
 
   const role = profile?.role || 'student';
   const isApprovedCaptain =
@@ -170,7 +178,7 @@ function DashboardBottomNavComponent() {
       ? '/commons'
       : '/dashboard/commons';
 
-  // Unified 7-Tab Student Nav: Commons, Home, Notifications, Messages, Streaks, Squad, Menu
+  // Unified 6-Tab Student Nav: Commons (compass), Dashboard (grid), Messages (chat), Streak (flame), Friends (community), Menu (hamburger)
   const navItems: DockTabItem[] = useMemo(
     () => [
       {
@@ -182,24 +190,10 @@ function DashboardBottomNavComponent() {
       {
         id: 'home',
         to: isAuthenticated ? '/dashboard' : homeUrl,
-        label: 'Home',
+        label: 'Dashboard',
         icon: <LayoutDashboard strokeWidth={2} />,
         end: true,
       },
-      isAuthenticated
-        ? {
-            id: 'notifications',
-            to: '/dashboard/notifications',
-            label: 'Notifications',
-            icon: <Bell strokeWidth={2} />,
-            badge: unreadCount > 0 ? unreadCount : undefined,
-          }
-        : {
-            id: 'notifications',
-            label: 'Notifications',
-            icon: <Bell strokeWidth={2} />,
-            onClick: () => requireAuth('view your notifications'),
-          },
       isAuthenticated
         ? {
             id: 'messages',
@@ -218,19 +212,19 @@ function DashboardBottomNavComponent() {
         ? {
             id: 'streaks',
             to: '/dashboard/streaks',
-            label: 'Streaks',
+            label: 'Streak',
             icon: <Flame strokeWidth={2} />,
           }
         : {
             id: 'streaks',
-            label: 'Streaks',
+            label: 'Streak',
             icon: <Flame strokeWidth={2} />,
             onClick: () => requireAuth('track your daily study streaks'),
           },
       {
         id: 'crew',
         to: crewLink,
-        label: 'Squad',
+        label: 'Friends',
         icon: <Users strokeWidth={2} />,
       },
       {
@@ -242,7 +236,7 @@ function DashboardBottomNavComponent() {
         },
       },
     ],
-    [isAuthenticated, homeUrl, commonsLink, unreadCount, unreadMessagesCount, crewLink, requireAuth]
+    [isAuthenticated, homeUrl, commonsLink, unreadMessagesCount, crewLink, requireAuth]
   );
 
   // Determine active tab from current route / state
@@ -250,7 +244,11 @@ function DashboardBottomNavComponent() {
     const p = location.pathname;
     if (
       isMenuOpen ||
+      p === '/menu' ||
+      p === '/dashboard/menu' ||
       p.startsWith('/store') ||
+      p.startsWith('/dashboard/notifications') ||
+      p === '/notifications' ||
       p === '/contact' ||
       (isApprovedCaptain &&
         (p.startsWith('/dashboard/captain') || p.startsWith('/dashboard/ambassador')))
@@ -265,9 +263,6 @@ function DashboardBottomNavComponent() {
     }
     if (p.startsWith('/dashboard/messages') || p === '/messages') {
       return 'messages';
-    }
-    if (p.startsWith('/dashboard/notifications') || p === '/notifications') {
-      return 'notifications';
     }
     if (
       p.startsWith('/dashboard/commons') ||
@@ -285,7 +280,7 @@ function DashboardBottomNavComponent() {
 
   const [pos, setPos] = useState<BubblePosition>({
     left: 6,
-    width: BUBBLE_LENS_WIDTH,
+    width: 0,
     dockWidth: 0,
   });
   const posRef = useRef<BubblePosition>(pos);
@@ -321,7 +316,7 @@ function DashboardBottomNavComponent() {
     captured: false,
     startClientX: 0,
     initialLeft: 6,
-    bubbleWidth: BUBBLE_LENS_WIDTH,
+    bubbleWidth: 0,
     dockWidth: 0,
     minLeft: 0,
     maxLeft: 0,
@@ -334,28 +329,40 @@ function DashboardBottomNavComponent() {
     );
   }, [navItems]);
 
-  const measureTab = useCallback((tabId: string): BubblePosition | null => {
-    const dockEl = dockRef.current;
-    const btnEl = btnRefs.current[tabId] ?? null;
-    if (!dockEl || !isTabElementVisible(btnEl)) return null;
-    const dockRect = dockEl.getBoundingClientRect();
-    const btnRect = btnEl.getBoundingClientRect();
-    if (btnRect.width <= 0 || dockRect.width <= 0) return null;
+  const measureTab = useCallback(
+    (tabId: string): BubblePosition | null => {
+      const dockEl = dockRef.current;
+      const btnEl = btnRefs.current[tabId] ?? null;
+      if (!dockEl || !isTabElementVisible(btnEl)) return null;
+      const dockRect = dockEl.getBoundingClientRect();
+      const btnRect = btnEl.getBoundingClientRect();
+      if (btnRect.width <= 0 || dockRect.width <= 0) return null;
 
-    const dockWidth = Math.round(dockRect.width);
-    const lensWidth = BUBBLE_LENS_WIDTH;
-    const tabCenter = btnRect.left - dockRect.left + btnRect.width / 2;
-    const rawLeft = Math.round(tabCenter - lensWidth / 2);
-    const minLeft = 6;
-    const maxLeft = Math.max(minLeft, dockWidth - lensWidth - 6);
-    const clampedLeft = Math.max(minLeft, Math.min(maxLeft, rawLeft));
+      const visibleCount = Math.max(1, getVisibleTabs().length || navItems.length);
+      const dockWidth = Math.round(dockRect.width);
+      const pad = 6;
+      const gap = 2;
+      const computedSlotWidth = Math.round(
+        (dockWidth - pad * 2 - gap * (visibleCount - 1)) / visibleCount
+      );
+      const lensWidth = Math.max(
+        44,
+        Math.round(btnRect.width > 0 ? btnRect.width : computedSlotWidth)
+      );
+      const tabCenter = btnRect.left - dockRect.left + btnRect.width / 2;
+      const rawLeft = Math.round(tabCenter - lensWidth / 2);
+      const minLeft = pad;
+      const maxLeft = Math.max(minLeft, dockWidth - lensWidth - pad);
+      const clampedLeft = Math.max(minLeft, Math.min(maxLeft, rawLeft));
 
-    return {
-      left: clampedLeft,
-      width: lensWidth,
-      dockWidth,
-    };
-  }, []);
+      return {
+        left: clampedLeft,
+        width: lensWidth,
+        dockWidth,
+      };
+    },
+    [getVisibleTabs, navItems.length]
+  );
 
   const triggerLiquidMove = useCallback(() => {
     if (prefersReducedMotion()) {
@@ -550,7 +557,11 @@ function DashboardBottomNavComponent() {
     const currentM = measureTab(activeTabId) || posRef.current;
     const dockRect = dockEl.getBoundingClientRect();
     const dockWidth = Math.round(dockRect.width);
-    const bubbleWidth = BUBBLE_LENS_WIDTH;
+    const visibleCount = Math.max(1, getVisibleTabs().length || navItems.length);
+    const computedSlotWidth = Math.round(
+      (dockWidth - 12 - 2 * (visibleCount - 1)) / visibleCount
+    );
+    const bubbleWidth = currentM.width > 0 ? currentM.width : Math.max(44, computedSlotWidth);
     const minLeft = 6;
     const maxLeft = Math.max(minLeft, dockWidth - bubbleWidth - 6);
     const clampedLeft = Math.min(maxLeft, Math.max(minLeft, currentM.left));
@@ -700,8 +711,10 @@ function DashboardBottomNavComponent() {
   const highlightedId =
     (isDragging || isPressed) && dragHighlightId ? dragHighlightId : activeTabId;
 
+  const tabCount = Math.max(1, navItems.length);
   const activeIdx = Math.max(0, navItems.findIndex((i) => i.id === activeTabId));
-  const fallbackLeft = `calc(((100% / ${navItems.length}) * ${activeIdx + 0.5}) - ${BUBBLE_LENS_WIDTH / 2}px)`;
+  const fallbackWidth = `calc((100% - 12px - ${(tabCount - 1) * 2}px) / ${tabCount})`;
+  const fallbackLeft = `calc(6px + (${activeIdx} * (((100% - 12px - ${(tabCount - 1) * 2}px) / ${tabCount}) + 2px)))`;
 
   const stopNavPropagation = (e: React.SyntheticEvent) => {
     e.stopPropagation();
@@ -716,6 +729,8 @@ function DashboardBottomNavComponent() {
       role="tablist"
       aria-label="Student Dashboard Navigation"
       aria-hidden={shouldHideBottomNav}
+      hidden={shouldHideBottomNav}
+      style={shouldHideBottomNav ? { display: 'none' } : undefined}
       onClick={stopNavPropagation}
       onMouseDown={stopNavPropagation}
       onTouchStart={stopNavPropagation}
@@ -733,7 +748,7 @@ function DashboardBottomNavComponent() {
       {/* (a) .plate: absolute, inset 0, fully rounded, the dock's liquid glass */}
       <div className="plate dark-surface-preserve" aria-hidden="true" />
 
-      {/* (b) .g: 52px tall x 64px wide resting flat inside the 64px pill; scales to 1.35x when pressed or dragging */}
+      {/* (b) .g: 52px tall x dynamic tab-count width resting flat inside the 64px pill; scales to 1.35x when pressed or dragging */}
       <div
         ref={bubbleRef}
         aria-hidden="true"
@@ -742,7 +757,7 @@ function DashboardBottomNavComponent() {
         } ${isMoving ? 'is-moving' : ''} ${isPressed ? 'is-pressed out' : ''}`}
         style={{
           left: pos.dockWidth > 0 ? `${pos.left}px` : fallbackLeft,
-          width: `${pos.width || BUBBLE_LENS_WIDTH}px`,
+          width: pos.dockWidth > 0 && pos.width > 0 ? `${pos.width}px` : fallbackWidth,
         }}
       >
         <div className={`gi dark-surface-preserve ${isPressed || isDragging ? 'out' : ''}`} />
@@ -814,7 +829,12 @@ function DashboardBottomNavComponent() {
       {/* ─── FULL-SCREEN MENU PAGE (SLIDES IN FROM RIGHT) ───────────────── */}
       <HamburgerMenuSheet
         isOpen={isMenuOpen}
-        onClose={() => setIsMenuOpen(false)}
+        onClose={() => {
+          setIsMenuOpen(false);
+          if (location.pathname === '/menu' || location.pathname === '/dashboard/menu') {
+            navigate('/dashboard', { replace: true });
+          }
+        }}
       />
     </>
   );

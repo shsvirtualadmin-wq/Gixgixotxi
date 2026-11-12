@@ -447,21 +447,19 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             <Shield size={18} />
           </Link>
 
-          {user && (
-            <Link
-              to="/dashboard/notifications"
-              className="relative p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors min-w-[38px] min-h-[38px] sm:min-w-[40px] sm:min-h-[40px] flex items-center justify-center"
-              title="Notifications"
-              aria-label="Notifications"
-            >
-              <Bell size={18} />
-              {unreadNotifCount > 0 && (
-                <span className="absolute top-1 right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-[#D71921] text-white text-[10px] font-bold flex items-center justify-center leading-none">
-                  {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
-                </span>
-              )}
-            </Link>
-          )}
+          <Link
+            to="/dashboard/notifications"
+            className="relative p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors min-w-[38px] min-h-[38px] sm:min-w-[40px] sm:min-h-[40px] flex items-center justify-center"
+            title="Notifications"
+            aria-label="Notifications"
+          >
+            <Bell size={18} />
+            {unreadNotifCount > 0 && (
+              <span className="absolute top-1 right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-[#D71921] text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
+              </span>
+            )}
+          </Link>
 
           <button
             onClick={() => loadPosts()}

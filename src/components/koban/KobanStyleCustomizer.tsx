@@ -169,7 +169,7 @@ export const KobanStyleCustomizer: React.FC<KobanStyleCustomizerProps> = ({
     KOBAN_DESIGNS.find((d) => d.id === draft.design)?.name || 'Neon K Chip';
 
   return (
-    <div id="koban-icon" className={compact ? 'space-y-4' : 'space-y-4 pb-10'}>
+    <div id="koban-icon" className="space-y-4">
       {/* ─── TOP: PINNED LIVE PREVIEW (LARGE ANIMATED ICON + HEADER BALANCE CHIP) ─── */}
       <div className={compact ? '' : 'stg-sticky-preview'}>
         <div className="stg-card p-4 shadow-sm">

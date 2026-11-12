@@ -164,7 +164,7 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
   }
 
   return (
-    <div className="space-y-4 pb-10">
+    <div className="space-y-4">
       {/* Sticky Live Preview at the Top */}
       <div className="stg-sticky-preview">
         <div className="stg-card p-4 space-y-3 shadow-sm">

@@ -57,6 +57,12 @@ import {
   writeOptimisticUserSnapshot,
   clearOptimisticUserSnapshot,
 } from '@/lib/swrCache';
+import {
+  seedSecurityStatusFromServer,
+  seedProfileLayoutFromServer,
+  preloadSecurityAndSettingsForUid,
+  clearSecurityStatusCache,
+} from '@/hooks/useSecurityStatus';
 
 const GuestLogoutConfirmModal = lazy(() =>
   import('@/components/auth/GuestLogoutConfirmModal').then((m) => ({
@@ -912,6 +918,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setGuestSessionToken(effectiveToken);
         setUser(synthUser);
         setProfile(guestProfile);
+        preloadSecurityAndSettingsForUid(g.uid, true);
         writeOptimisticUserSnapshot({
           uid: g.uid,
           email: '',
@@ -1005,6 +1012,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           twoFactorEnabled?: boolean;
           totpEnabled?: boolean;
           email2faEnabled?: boolean;
+          emailCodeEnabled?: boolean;
+          backupCodesRemaining?: number;
+          trustedDevicesCount?: number;
+          rememberedDevices?: number;
+          lastChangedAt?: number | null;
           deviceTrusted?: boolean;
           requiredPurpose?: 'login' | 'signup' | '2fa' | null;
           pendingExpiresAt?: number | null;
@@ -1013,6 +1025,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           maskedEmail?: string;
           cooldownSeconds?: number;
         };
+
+        if (statusRes.ok && statusData.ok !== false) {
+          seedSecurityStatusFromServer(firebaseUser.uid, statusData);
+        }
 
         if (statusRes.ok && statusData.verified) {
           try {
@@ -1132,6 +1148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (firebaseUser) {
         setUser(firebaseUser);
+        preloadSecurityAndSettingsForUid(firebaseUser.uid, false);
 
         // Run verification gate, Firestore profile load, and D1 `/api/auth/me` in parallel instead of a sequential waterfall
         const [, , meCheck] = await Promise.all([
@@ -1157,9 +1174,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (!isMounted) return;
 
-        // Apply server-side username and trusted role from `/api/auth/me` if registered user has one in D1
+        // Apply server-side username, twoFactorStatus, profileLayout, and trusted role from `/api/auth/me`
         if (meCheck?.ok && meCheck.meData?.user) {
           const { meData, idToken } = meCheck;
+          const twoFactorPayload = meData.twoFactorStatus || meData.user.twoFactorStatus;
+          if (twoFactorPayload) {
+            seedSecurityStatusFromServer(firebaseUser.uid, twoFactorPayload);
+          }
+          const profileLayoutPayload =
+            meData.profileLayout ??
+            meData.profile_layout ??
+            meData.user.profileLayout ??
+            meData.user.profile_layout;
+          if (typeof profileLayoutPayload === 'string') {
+            seedProfileLayoutFromServer(firebaseUser.uid, profileLayoutPayload);
+          }
           const serverRoleRaw = String(meData.user.role || '').trim().toLowerCase();
           const trustedRole = SUPER_ADMIN_UID_ALLOWLIST.has(firebaseUser.uid)
             ? 'admin'
@@ -1253,6 +1282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Confirmed: neither a Firebase user nor an active guest session
         clearOptimisticUserSnapshot();
+        clearSecurityStatusCache();
         try {
           localStorage.removeItem('boardly_user_authenticated');
           localStorage.removeItem(GUEST_TOKEN_LS_KEY);
@@ -2163,6 +2193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthError(null);
     const savedGuestToken = guestSessionToken || localStorage.getItem(GUEST_TOKEN_LS_KEY) || '';
     const guestUid = isGuest ? profile?.uid || user?.uid || '' : '';
+    clearSecurityStatusCache(user?.uid || profile?.uid || null);
     try {
       localStorage.removeItem('boardly_user_authenticated');
       localStorage.removeItem(GUEST_TOKEN_LS_KEY);

@@ -18,38 +18,15 @@ import { GoogleAuthProvider, reauthenticateWithPopup } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { setStoredTrustedDeviceToken } from '@/lib/api';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
-
-interface TwoFactorStatusData {
-  totpEnabled: boolean;
-  email2faEnabled: boolean;
-  twoFactorEnabled: boolean;
-  remainingBackupCodes: number;
-  trustedDevicesCount: number;
-  recoveryPending: boolean;
-  recoveryDisableAt: number | null;
-  lastChangedAt: number | null;
-  badgeLabel: 'Off' | 'Authenticator' | 'Email code' | 'Both' | 'Recovery pending';
-}
+import { useSecurityStatus } from '@/hooks/useSecurityStatus';
 
 const ADMIN_2FA_BANNER_DISMISSED_KEY = 'boardly_admin_2fa_banner_dismissed';
 
 export function SecuritySettingsSection() {
   const { user, isAdmin, isGuest } = useAuth();
+  const status = useSecurityStatus();
+  const { refresh: refreshSecurityStatus, updateStatus } = status;
 
-  const [status, setStatus] = useState<TwoFactorStatusData>({
-    totpEnabled: false,
-    email2faEnabled: false,
-    twoFactorEnabled: false,
-    remainingBackupCodes: 0,
-    trustedDevicesCount: 0,
-    recoveryPending: false,
-    recoveryDisableAt: null,
-    lastChangedAt: null,
-    badgeLabel: 'Off',
-  });
-  const [loadingStatus, setLoadingStatus] = useState(true);
   const [adminBannerDismissed, setAdminBannerDismissed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(ADMIN_2FA_BANNER_DISMISSED_KEY) === '1';
@@ -95,55 +72,11 @@ export function SecuritySettingsSection() {
     auth.currentUser?.providerData?.some((p) => p.providerId === 'google.com')
   );
 
-  const fetch2faStatus = useCallback(async () => {
-    if (!auth.currentUser || isGuest) {
-      setLoadingStatus(false);
-      return;
-    }
-    try {
-      const idToken = await auth.currentUser.getIdToken();
-      const res = await fetch('/api/auth/2fa/status', {
-        credentials: 'include',
-        headers: { Authorization: `Bearer ${idToken}` },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data?.ok) {
-        const totpOn = Boolean(data.totpEnabled);
-        const emailOn = Boolean(data.email2faEnabled);
-        const recPending = Boolean(data.recoveryPending);
-        const badge =
-          data.badgeLabel ||
-          (recPending && (totpOn || emailOn)
-            ? 'Recovery pending'
-            : totpOn && emailOn
-            ? 'Both'
-            : totpOn
-            ? 'Authenticator'
-            : emailOn
-            ? 'Email code'
-            : 'Off');
-        setStatus({
-          totpEnabled: totpOn,
-          email2faEnabled: emailOn,
-          twoFactorEnabled: Boolean(data.twoFactorEnabled ?? (totpOn || emailOn)),
-          remainingBackupCodes: Number(data.backupCodesRemaining ?? data.remainingBackupCodes ?? 0),
-          trustedDevicesCount: Number(data.trustedDevicesCount || 0),
-          recoveryPending: recPending,
-          recoveryDisableAt: data.recoveryDisableAt || null,
-          lastChangedAt: data.lastChangedAt || data.updatedAt || null,
-          badgeLabel: badge,
-        });
-      }
-    } catch {
-      // Ignore network error on initial load
-    } finally {
-      setLoadingStatus(false);
-    }
-  }, [isGuest]);
-
   useEffect(() => {
-    void fetch2faStatus();
-  }, [fetch2faStatus]);
+    if (user?.uid && !isGuest) {
+      void refreshSecurityStatus();
+    }
+  }, [user?.uid, isGuest, refreshSecurityStatus]);
 
   if (!user || isGuest) {
     return null;
@@ -242,12 +175,24 @@ export function SecuritySettingsSection() {
         return;
       }
 
-      setOneTimeBackupCodes(Array.isArray(data.backupCodes) ? data.backupCodes : []);
+      const generatedCodes = Array.isArray(data.backupCodes) ? data.backupCodes : [];
+      setOneTimeBackupCodes(generatedCodes);
       setTotpStep('backup_codes');
       setTotpPassword('');
       setTotpVerifyCode('');
       setSuccessMsg('Authenticator app enabled! Save your 10 one-time backup codes now.');
-      await fetch2faStatus();
+      updateStatus({
+        totpEnabled: true,
+        backupCodesRemaining: Number(data.backupCodesRemaining ?? generatedCodes.length ?? 10),
+        ...(typeof data.emailCodeEnabled === 'boolean'
+          ? { emailCodeEnabled: data.emailCodeEnabled }
+          : {}),
+        ...(typeof data.rememberedDevices === 'number'
+          ? { rememberedDevices: data.rememberedDevices }
+          : {}),
+        lastChangedAt: data.lastChangedAt ?? Date.now(),
+      });
+      await refreshSecurityStatus();
     } catch (err: any) {
       setErrorMsg(err?.message || 'Could not enable authenticator app.');
     } finally {
@@ -318,7 +263,18 @@ export function SecuritySettingsSection() {
           ? 'Email code at login is now turned on.'
           : 'Email code at login has been turned off.'
       );
-      await fetch2faStatus();
+      updateStatus({
+        emailCodeEnabled: Boolean(data.emailCodeEnabled ?? data.email2faEnabled ?? enabled),
+        ...(typeof data.totpEnabled === 'boolean' ? { totpEnabled: data.totpEnabled } : {}),
+        ...(typeof data.backupCodesRemaining === 'number'
+          ? { backupCodesRemaining: data.backupCodesRemaining }
+          : {}),
+        ...(typeof data.rememberedDevices === 'number'
+          ? { rememberedDevices: data.rememberedDevices }
+          : {}),
+        lastChangedAt: data.lastChangedAt ?? Date.now(),
+      });
+      await refreshSecurityStatus();
     } catch (err: any) {
       setErrorMsg(err?.message || 'Could not update email two-step verification.');
     } finally {
@@ -354,13 +310,18 @@ export function SecuritySettingsSection() {
           setErrorMsg(data?.error || 'Could not regenerate backup codes.');
           return;
         }
-        setOneTimeBackupCodes(Array.isArray(data.backupCodes) ? data.backupCodes : []);
+        const generatedCodes = Array.isArray(data.backupCodes) ? data.backupCodes : [];
+        setOneTimeBackupCodes(generatedCodes);
         setTotpStep('backup_codes');
         setActionModal(null);
         setActionPassword('');
         setActionCode('');
         setSuccessMsg('Generated 10 new backup codes. Your previous backup codes are now invalid.');
-        await fetch2faStatus();
+        updateStatus({
+          backupCodesRemaining: Number(data.backupCodesRemaining ?? generatedCodes.length ?? 10),
+          lastChangedAt: data.lastChangedAt ?? Date.now(),
+        });
+        await refreshSecurityStatus();
       } else {
         const target = actionModal === 'disable_totp' ? 'totp' : 'all';
         const res = await fetch('/api/auth/2fa/disable', {
@@ -391,7 +352,20 @@ export function SecuritySettingsSection() {
             ? 'Authenticator app has been turned off.'
             : 'Two-step verification has been turned off.'
         );
-        await fetch2faStatus();
+        updateStatus({
+          totpEnabled: Boolean(data.totpEnabled ?? false),
+          emailCodeEnabled: Boolean(
+            data.emailCodeEnabled ??
+              data.email2faEnabled ??
+              (target === 'all' ? false : status.emailCodeEnabled)
+          ),
+          backupCodesRemaining: Number(data.backupCodesRemaining ?? 0),
+          ...(typeof data.rememberedDevices === 'number'
+            ? { rememberedDevices: data.rememberedDevices }
+            : {}),
+          lastChangedAt: data.lastChangedAt ?? Date.now(),
+        });
+        await refreshSecurityStatus();
       }
     } catch (err: any) {
       setErrorMsg(err?.message || 'Action failed.');
@@ -422,7 +396,11 @@ export function SecuritySettingsSection() {
         setSuccessMsg(
           'Signed out of all remembered devices. Every device will require verification on its next login.'
         );
-        await fetch2faStatus();
+        updateStatus({
+          rememberedDevices: 0,
+          lastChangedAt: data.lastChangedAt ?? Date.now(),
+        });
+        await refreshSecurityStatus();
       } else {
         setErrorMsg(data?.error || 'Could not revoke trusted devices.');
       }
@@ -601,7 +579,13 @@ export function SecuritySettingsSection() {
             </div>
             <div className="stg-row-right">
               <span className="stg-row-value">
-                {loadingStatus ? 'Checking…' : status.totpEnabled ? 'Enabled' : 'Off'}
+                {!status.known ? (
+                  <span className="stg-row-value-skeleton" aria-label="Loading" />
+                ) : status.totpEnabled ? (
+                  'Enabled'
+                ) : (
+                  'Off'
+                )}
               </span>
             </div>
           </div>
@@ -1004,7 +988,13 @@ export function SecuritySettingsSection() {
               <span className="stg-row-label">Remembered devices</span>
             </div>
             <div className="stg-row-right">
-              <span className="stg-row-value">{status.trustedDevicesCount} active</span>
+              <span className="stg-row-value">
+                {!status.known ? (
+                  <span className="stg-row-value-skeleton" aria-label="Loading" />
+                ) : (
+                  `${status.rememberedDevices} active`
+                )}
+              </span>
             </div>
           </div>
 

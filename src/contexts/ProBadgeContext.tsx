@@ -18,33 +18,43 @@ const LS_KEY_GLOBAL = 'boardly_pro_badge_v1';
 const getLsKeyForUser = (uid?: string | null) =>
   uid ? `boardly_pro_badge_v1_${uid}` : LS_KEY_GLOBAL;
 
-function readSettingsFromLocalStorage(uid?: string | null): ProBadgeSettings {
+function readSettingsFromLocalStorage(uid?: string | null): {
+  settings: ProBadgeSettings;
+  hasCached: boolean;
+} {
   try {
-    if (typeof window === 'undefined' || !window.localStorage) {
-      return DEFAULT_PRO_BADGE_SETTINGS;
+    if (typeof window === 'undefined' || !window.localStorage || !uid) {
+      return { settings: DEFAULT_PRO_BADGE_SETTINGS, hasCached: false };
     }
-    const rawUser = uid ? window.localStorage.getItem(getLsKeyForUser(uid)) : null;
-    const rawGlobal = window.localStorage.getItem(LS_KEY_GLOBAL);
-    const raw = rawUser || rawGlobal;
-    if (!raw) return DEFAULT_PRO_BADGE_SETTINGS;
-    const parsed = JSON.parse(raw);
+    const rawUser = window.localStorage.getItem(getLsKeyForUser(uid));
+    if (!rawUser) return { settings: DEFAULT_PRO_BADGE_SETTINGS, hasCached: false };
+    const parsed = JSON.parse(rawUser);
     const check = validateProBadgePayload(parsed);
     if (check.valid && check.value) {
-      return check.value;
+      return { settings: check.value, hasCached: true };
     }
   } catch {
     // Ignore storage errors
   }
-  return DEFAULT_PRO_BADGE_SETTINGS;
+  return { settings: DEFAULT_PRO_BADGE_SETTINGS, hasCached: false };
 }
 
 function writeSettingsToLocalStorage(settings: ProBadgeSettings, uid?: string | null): void {
   try {
-    if (typeof window === 'undefined' || !window.localStorage) return;
+    if (typeof window === 'undefined' || !window.localStorage || !uid) return;
     const serialized = JSON.stringify(settings);
-    window.localStorage.setItem(LS_KEY_GLOBAL, serialized);
+    window.localStorage.setItem(getLsKeyForUser(uid), serialized);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function clearProBadgeCacheForUid(uid?: string | null): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    window.localStorage.removeItem(LS_KEY_GLOBAL);
     if (uid) {
-      window.localStorage.setItem(getLsKeyForUser(uid), serialized);
+      window.localStorage.removeItem(getLsKeyForUser(uid));
     }
   } catch {
     // Ignore storage errors
@@ -86,6 +96,7 @@ export interface ProBadgeContextValue {
   isActivePro: boolean;
   isPendingVerification: boolean;
   loading: boolean;
+  known: boolean;
   saving: boolean;
   saveProBadge: (next: ProBadgeSettings) => Promise<{ ok: boolean; error?: string }>;
 }
@@ -96,6 +107,7 @@ const ProBadgeContext = createContext<ProBadgeContextValue>({
   isActivePro: false,
   isPendingVerification: false,
   loading: false,
+  known: false,
   saving: false,
   saveProBadge: async () => ({ ok: true }),
 });
@@ -108,7 +120,10 @@ export function ProBadgeProvider({ children }: { children: React.ReactNode }) {
   const { user, isGuest } = useAuth();
   const effectivePlan = useEffectivePlan();
   const [settings, setSettings] = useState<ProBadgeSettings>(() =>
-    readSettingsFromLocalStorage(null)
+    readSettingsFromLocalStorage(user?.uid || null).settings
+  );
+  const [known, setKnown] = useState<boolean>(() =>
+    readSettingsFromLocalStorage(user?.uid || null).hasCached
   );
   const [serverActivePro, setServerActivePro] = useState<boolean | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -133,19 +148,27 @@ export function ProBadgeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const uid = user?.uid || null;
-    const cached = readSettingsFromLocalStorage(uid);
+    const { settings: cached, hasCached } = readSettingsFromLocalStorage(uid);
     setSettings(cached);
 
     if (!uid || isGuest || uid.startsWith('guest_')) {
       loadedUidRef.current = null;
       setServerActivePro(false);
+      setKnown(Boolean(uid && (isGuest || uid.startsWith('guest_'))));
       return;
+    }
+
+    if (hasCached) {
+      setKnown(true);
     }
 
     if (loadedUidRef.current === uid) {
       return;
     }
     loadedUidRef.current = uid;
+    if (!hasCached) {
+      setKnown(false);
+    }
 
     let cancelled = false;
     setLoading(true);
@@ -184,16 +207,20 @@ export function ProBadgeProvider({ children }: { children: React.ReactNode }) {
 
     inFlightProBadgePromise
       .then((resolved) => {
-        if (!cancelled && resolved) {
-          setSettings(resolved.settings);
-          if (typeof resolved.serverActivePro === 'boolean') {
-            setServerActivePro(resolved.serverActivePro);
+        if (!cancelled) {
+          if (resolved) {
+            setSettings(resolved.settings);
+            if (typeof resolved.serverActivePro === 'boolean') {
+              setServerActivePro(resolved.serverActivePro);
+            }
           }
+          setKnown(true);
         }
       })
       .finally(() => {
         if (!cancelled) {
           setLoading(false);
+          setKnown(true);
         }
       });
 
@@ -254,6 +281,7 @@ export function ProBadgeProvider({ children }: { children: React.ReactNode }) {
           visible: typeof data.visible === 'boolean' ? data.visible : valid.visible,
         };
         setSettings(savedSettings);
+        setKnown(true);
         writeSettingsToLocalStorage(savedSettings, uid);
 
         const nextEffective: ProBadgeDesignId | null = savedSettings.visible
@@ -308,10 +336,11 @@ export function ProBadgeProvider({ children }: { children: React.ReactNode }) {
       isActivePro,
       isPendingVerification,
       loading,
+      known,
       saving,
       saveProBadge,
     }),
-    [settings, effectiveProBadge, isActivePro, isPendingVerification, loading, saving, saveProBadge]
+    [settings, effectiveProBadge, isActivePro, isPendingVerification, loading, known, saving, saveProBadge]
   );
 
   return <ProBadgeContext.Provider value={contextValue}>{children}</ProBadgeContext.Provider>;

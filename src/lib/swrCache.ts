@@ -332,7 +332,7 @@ export function scheduleIdleTabPrefetch(uid?: string | null): void {
   idlePrefetchScheduled = true;
 
   const runPrefetch = () => {
-    const tabs = ['commons', 'home', 'notifications', 'streaks', 'messages', 'crew'];
+    const tabs = ['commons', 'home', 'streaks', 'messages', 'crew'];
     tabs.forEach((tab, idx) => {
       setTimeout(() => {
         prefetchTabRouteAndData(tab, uid);

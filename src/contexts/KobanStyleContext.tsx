@@ -12,33 +12,43 @@ const LS_KEY_GLOBAL = 'boardly_koban_style_v1';
 const getLsKeyForUser = (uid?: string | null) =>
   uid ? `boardly_koban_style_v1_${uid}` : LS_KEY_GLOBAL;
 
-function readStyleFromLocalStorage(uid?: string | null): KobanStyleSettings {
+function readStyleFromLocalStorage(uid?: string | null): {
+  style: KobanStyleSettings;
+  hasCached: boolean;
+} {
   try {
-    if (typeof window === 'undefined' || !window.localStorage) {
-      return DEFAULT_KOBAN_STYLE;
+    if (typeof window === 'undefined' || !window.localStorage || !uid) {
+      return { style: DEFAULT_KOBAN_STYLE, hasCached: false };
     }
-    const rawUser = uid ? window.localStorage.getItem(getLsKeyForUser(uid)) : null;
-    const rawGlobal = window.localStorage.getItem(LS_KEY_GLOBAL);
-    const raw = rawUser || rawGlobal;
-    if (!raw) return DEFAULT_KOBAN_STYLE;
-    const parsed = JSON.parse(raw);
+    const rawUser = window.localStorage.getItem(getLsKeyForUser(uid));
+    if (!rawUser) return { style: DEFAULT_KOBAN_STYLE, hasCached: false };
+    const parsed = JSON.parse(rawUser);
     const check = validateKobanStylePayload(parsed);
     if (check.valid && check.value) {
-      return check.value;
+      return { style: check.value, hasCached: true };
     }
   } catch {
     // Ignore storage errors (private mode / quota)
   }
-  return DEFAULT_KOBAN_STYLE;
+  return { style: DEFAULT_KOBAN_STYLE, hasCached: false };
 }
 
 function writeStyleToLocalStorage(style: KobanStyleSettings, uid?: string | null): void {
   try {
-    if (typeof window === 'undefined' || !window.localStorage) return;
+    if (typeof window === 'undefined' || !window.localStorage || !uid) return;
     const serialized = JSON.stringify(style);
-    window.localStorage.setItem(LS_KEY_GLOBAL, serialized);
+    window.localStorage.setItem(getLsKeyForUser(uid), serialized);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+export function clearKobanStyleCacheForUid(uid?: string | null): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    window.localStorage.removeItem(LS_KEY_GLOBAL);
     if (uid) {
-      window.localStorage.setItem(getLsKeyForUser(uid), serialized);
+      window.localStorage.removeItem(getLsKeyForUser(uid));
     }
   } catch {
     // Ignore storage errors
@@ -74,6 +84,7 @@ async function buildKobanStyleAuthHeaders(): Promise<Record<string, string>> {
 export interface KobanStyleContextValue {
   style: KobanStyleSettings;
   loading: boolean;
+  known: boolean;
   saving: boolean;
   saveStyle: (nextStyle: KobanStyleSettings) => Promise<{ ok: boolean; error?: string }>;
   resetToDefault: () => Promise<{ ok: boolean; error?: string }>;
@@ -82,6 +93,7 @@ export interface KobanStyleContextValue {
 const KobanStyleContext = createContext<KobanStyleContextValue>({
   style: DEFAULT_KOBAN_STYLE,
   loading: false,
+  known: false,
   saving: false,
   saveStyle: async () => ({ ok: true }),
   resetToDefault: async () => ({ ok: true }),
@@ -92,7 +104,12 @@ let inFlightKobanStyleUid: string | null = null;
 
 export function KobanStyleProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const [style, setStyle] = useState<KobanStyleSettings>(() => readStyleFromLocalStorage(null));
+  const [style, setStyle] = useState<KobanStyleSettings>(() =>
+    readStyleFromLocalStorage(user?.uid || null).style
+  );
+  const [known, setKnown] = useState<boolean>(() =>
+    readStyleFromLocalStorage(user?.uid || null).hasCached
+  );
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const loadedUidRef = useRef<string | null>(null);
@@ -102,18 +119,26 @@ export function KobanStyleProvider({ children }: { children: React.ReactNode }) 
     const uid = user?.uid || null;
 
     // Instant paint from localStorage for this user before network completes
-    const cached = readStyleFromLocalStorage(uid);
+    const { style: cached, hasCached } = readStyleFromLocalStorage(uid);
     setStyle(cached);
 
     if (!uid) {
       loadedUidRef.current = null;
+      setKnown(false);
       return;
+    }
+
+    if (hasCached) {
+      setKnown(true);
     }
 
     if (loadedUidRef.current === uid) {
       return;
     }
     loadedUidRef.current = uid;
+    if (!hasCached) {
+      setKnown(false);
+    }
 
     let cancelled = false;
     setLoading(true);
@@ -148,13 +173,17 @@ export function KobanStyleProvider({ children }: { children: React.ReactNode }) 
 
     inFlightKobanStylePromise
       .then((resolved) => {
-        if (!cancelled && resolved) {
-          setStyle(resolved);
+        if (!cancelled) {
+          if (resolved) {
+            setStyle(resolved);
+          }
+          setKnown(true);
         }
       })
       .finally(() => {
         if (!cancelled) {
           setLoading(false);
+          setKnown(true);
         }
       });
 
@@ -195,13 +224,14 @@ export function KobanStyleProvider({ children }: { children: React.ReactNode }) 
           const finalStyle =
             serverValidated.valid && serverValidated.value ? serverValidated.value : validStyle;
           setStyle(finalStyle);
+          setKnown(true);
           writeStyleToLocalStorage(finalStyle, uid);
           setSaving(false);
           return { ok: true };
         } else {
           // Unauthenticated visitor fallback: save locally
           setStyle(validStyle);
-          writeStyleToLocalStorage(validStyle, null);
+          setKnown(true);
           setSaving(false);
           return { ok: true };
         }
@@ -224,11 +254,12 @@ export function KobanStyleProvider({ children }: { children: React.ReactNode }) 
     () => ({
       style,
       loading,
+      known,
       saving,
       saveStyle,
       resetToDefault,
     }),
-    [style, loading, saving, saveStyle, resetToDefault]
+    [style, loading, known, saving, saveStyle, resetToDefault]
   );
 
   return (

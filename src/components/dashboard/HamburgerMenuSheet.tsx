@@ -21,7 +21,6 @@ import {
   User,
   AtSign,
   Lock,
-  Bell,
   Mail,
   Trash2,
   MessageCircle,
@@ -41,6 +40,8 @@ import { sanitizeStudentDisplayName, isAdminAccount } from '@/utils/privacy';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { useProBadge } from '@/contexts/ProBadgeContext';
+import { useSecurityStatus, clearSecurityStatusCache } from '@/hooks/useSecurityStatus';
+import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 
 export interface HamburgerMenuSheetProps {
   isOpen: boolean;
@@ -50,6 +51,7 @@ export interface HamburgerMenuSheetProps {
 export const APP_VERSION = 'v1.0.0';
 
 export function clearCachedAuthAndAdminStorage() {
+  clearSecurityStatusCache();
   try {
     const lsKeysToRemove: string[] = [
       'boardly_user_authenticated',
@@ -57,6 +59,8 @@ export function clearCachedAuthAndAdminStorage() {
       'boardly_admin_token',
       'boardly_admin_cache',
       'boardly_last_route',
+      'boardly_pro_badge_v1',
+      'boardly_koban_style_v1',
     ];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
@@ -67,6 +71,12 @@ export function clearCachedAuthAndAdminStorage() {
           k.startsWith('boardly_role') ||
           k.startsWith('boardly_auth') ||
           k.startsWith('boardly_token') ||
+          k.startsWith('boardly_security_status_v1_') ||
+          k.startsWith('boardly_profile_layout_v1_') ||
+          k.startsWith('boardly_settings_plan_v1_') ||
+          k.startsWith('boardly_notif_prefs_v1_') ||
+          k.startsWith('boardly_pro_badge_v1_') ||
+          k.startsWith('boardly_koban_style_v1_') ||
           k.startsWith('firebase:authUser'))
       ) {
         lsKeysToRemove.push(k);
@@ -190,6 +200,8 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   const { balance: kobanBalance, equipped } = useWallet();
   const { themeSetting, resolvedTheme, setTheme } = useTheme();
   const { effectiveProBadge } = useProBadge();
+  const securityStatus = useSecurityStatus();
+  const unreadNotifCount = useUnreadNotificationsCount();
 
   // Single trusted server-verified role value keyed strictly by uid
   const confirmedRole: string | null =
@@ -257,6 +269,8 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
     pathname.startsWith('/leaderboard') || pathname.includes('leaderboard');
   const isRewardsActive =
     pathname.startsWith('/rewards') || pathname.startsWith('/dashboard/rewards');
+  const isNotificationsActive =
+    pathname.startsWith('/dashboard/notifications') || pathname === '/notifications';
   const isSettingsActive =
     pathname.startsWith('/settings') || pathname.startsWith('/dashboard/settings');
   const isCaptainActive =
@@ -266,7 +280,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
 
   const q = searchQuery.trim().toLowerCase();
 
-  // Group 1: Boardly Commons, Grand Line Mock Tests, Boardly Store (with coin count badge), Leaderboard, Rewards
+  // Group 1 ("Boardly Store" group): Boardly Commons, Grand Line Mock Tests, Boardly Store (with coin count badge), Notifications (with unread badge), Leaderboard, Rewards
   const group1Rows = useMemo<MenuRowDefinition[]>(() => [
     {
       id: 'commons',
@@ -299,6 +313,23 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
       ),
     },
     {
+      id: 'notifications',
+      label: 'Notifications',
+      keywords: 'notifications alerts bell inbox updates mentions activity',
+      icon: <Mail size={18} strokeWidth={1.9} />,
+      active: isNotificationsActive,
+      onClick: () => onNavigate(notificationsTarget),
+      rightBadge:
+        unreadNotifCount > 0 ? (
+          <span
+            className="min-w-[20px] h-[20px] px-1.5 rounded-full bg-[#D71921] text-white text-[11px] font-bold inline-flex items-center justify-center leading-none tabular-nums"
+            title={`${unreadNotifCount} unread`}
+          >
+            {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
+          </span>
+        ) : undefined,
+    },
+    {
       id: 'leaderboard',
       label: 'Leaderboard',
       keywords: 'leaderboard rankings top scorers standings',
@@ -321,6 +352,9 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
     isGrandLineActive,
     isStoreActive,
     kobanBalance,
+    isNotificationsActive,
+    notificationsTarget,
+    unreadNotifCount,
     isLeaderboardActive,
     isRewardsActive,
     onNavigate,
@@ -691,12 +725,11 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
       },
       {
         id: 'setting-notifications',
-        label: 'Notifications',
+        label: 'Notification preferences',
         subtitle: 'Settings · Koban receipts & test start notifications',
         keywords: [
-          'notifications',
+          'notification preferences',
           'email notifications',
-          'alerts',
           'receipts',
           'koban receipts',
           'test start notifications',
@@ -705,7 +738,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         ],
         section: 'Settings',
         route: '/settings#settings-notifications',
-        icon: <Bell size={18} strokeWidth={1.9} />,
+        icon: <Mail size={18} strokeWidth={1.9} />,
       },
       {
         id: 'setting-password',
@@ -728,7 +761,9 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
       {
         id: 'setting-2fa',
         label: 'Security & Two-Step Verification',
-        subtitle: 'Settings · Authenticator app (TOTP), backup codes & email code',
+        subtitle: securityStatus.known
+          ? `Settings · ${securityStatus.rowLabel} · Authenticator app (TOTP), backup codes & email code`
+          : 'Settings · Authenticator app (TOTP), backup codes & email code',
         keywords: [
           '2fa',
           'two-step verification',
@@ -738,15 +773,25 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
           'backup codes',
           'regenerate backup codes',
           'security',
+          ...(securityStatus.known ? [securityStatus.rowLabel.toLowerCase()] : []),
         ],
         section: 'Settings',
         route: '/settings#security-totp',
         icon: <Shield size={18} strokeWidth={1.9} />,
+        rightBadge: securityStatus.known ? (
+          <span className="text-xs font-medium text-[var(--menu-subtext)]">
+            {securityStatus.rowLabel}
+          </span>
+        ) : (
+          <span className="stg-row-value-skeleton" aria-label="Loading" />
+        ),
       },
       {
         id: 'setting-email-2fa',
         label: 'Email code at login',
-        subtitle: 'Settings · Security · 6-digit login verification code',
+        subtitle: securityStatus.known
+          ? `Settings · Security · ${securityStatus.emailCodeEnabled ? 'Enabled' : 'Off'}`
+          : 'Settings · Security · 6-digit login verification code',
         keywords: [
           'email code at login',
           'email 2fa',
@@ -757,11 +802,20 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         section: 'Settings',
         route: '/settings#security-email-2fa',
         icon: <Mail size={18} strokeWidth={1.9} />,
+        rightBadge: securityStatus.known ? (
+          <span className="text-xs font-medium text-[var(--menu-subtext)]">
+            {securityStatus.emailCodeEnabled ? 'Email code' : 'Off'}
+          </span>
+        ) : (
+          <span className="stg-row-value-skeleton" aria-label="Loading" />
+        ),
       },
       {
         id: 'setting-remembered-devices',
         label: 'Remembered devices & Sign out of all devices',
-        subtitle: 'Settings · Security · Revoke trusted sessions everywhere',
+        subtitle: securityStatus.known
+          ? `Settings · Security · ${securityStatus.rememberedDevices} active`
+          : 'Settings · Security · Revoke trusted sessions everywhere',
         keywords: [
           'remembered devices',
           'trusted devices',
@@ -772,6 +826,13 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         section: 'Settings',
         route: '/settings#security-devices',
         icon: <Shield size={18} strokeWidth={1.9} />,
+        rightBadge: securityStatus.known ? (
+          <span className="text-xs font-medium text-[var(--menu-subtext)]">
+            {securityStatus.rememberedDevices} active
+          </span>
+        ) : (
+          <span className="stg-row-value-skeleton" aria-label="Loading" />
+        ),
       },
       {
         id: 'setting-delete-account',
@@ -879,11 +940,11 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
       {
         id: 'page-notifications',
         label: 'Notifications',
-        subtitle: 'Activity alerts & updates',
-        keywords: ['notifications', 'alerts', 'bell', 'updates', 'mentions', 'activity'],
+        subtitle: 'Activity alerts, inbox & updates',
+        keywords: ['notifications', 'alerts', 'bell', 'inbox', 'updates', 'mentions', 'activity'],
         section: 'Pages',
         route: notificationsTarget,
-        icon: <Bell size={18} strokeWidth={1.9} />,
+        icon: <Mail size={18} strokeWidth={1.9} />,
       },
       {
         id: 'page-friends',
@@ -988,6 +1049,10 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
     messagesTarget,
     notificationsTarget,
     crewTarget,
+    securityStatus.known,
+    securityStatus.rowLabel,
+    securityStatus.emailCodeEnabled,
+    securityStatus.rememberedDevices,
   ]);
 
   // Ranked universal search results grouped by section

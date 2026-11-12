@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Bell,
   CheckCheck,
   RefreshCw,
   Megaphone,
@@ -1180,7 +1179,7 @@ export function NotificationsPage() {
                       }
                       return (
                         <span className="rs-chip">
-                          <Bell className="w-2.5 h-2.5" strokeWidth={2} />
+                          <Sparkles className="w-2.5 h-2.5" strokeWidth={2} />
                           SYSTEM
                         </span>
                       );

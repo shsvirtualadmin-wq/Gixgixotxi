@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type FormEvent, type TouchEvent } from 'react';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { useNavigate, Link, useLocation, useParams } from 'react-router-dom';
 import {
   User,
   Lock,
@@ -7,7 +7,6 @@ import {
   Sun,
   Moon,
   Monitor,
-  Bell,
   Crown,
   Check,
   AlertCircle,
@@ -74,6 +73,14 @@ import {
 } from '@/lib/profileLayouts';
 import { saveProfileLayoutToServer } from '@/services/publicProfileService';
 import { ProfileView, invalidateProfileMemoryCache } from '@/components/profile/ProfileView';
+import {
+  useSecurityStatus,
+  useProfileLayoutStatus,
+  readCachedPlanLabelForUid,
+  writeCachedPlanLabelForUid,
+  readCachedNotificationPrefsForUid,
+  writeCachedNotificationPrefsForUid,
+} from '@/hooks/useSecurityStatus';
 
 // Strictly cosmetic academic badge options (cannot grant admin/moderator privileges)
 const COSMETIC_ROLE_OPTIONS = [
@@ -223,6 +230,8 @@ export function SettingsPage() {
   const {
     user,
     profile,
+    profileLoading,
+    otpVerificationState,
     isAdmin,
     isGuest,
     checkUsernameAvailability,
@@ -236,13 +245,25 @@ export function SettingsPage() {
   const { smoothMode, toggleSmoothMode } = useSmoothMode();
   const { hideDragon, setHideDragon } = useDragonHiddenPreference();
   const { openProfile } = useProfileModal();
-  const { settings: proBadgeSettings, isActivePro, effectiveProBadge } = useProBadge();
-  const { style: kobanStyle } = useKobanStyle();
+  const {
+    settings: proBadgeSettings,
+    isActivePro,
+    effectiveProBadge,
+    known: proBadgeKnown,
+  } = useProBadge();
+  const { style: kobanStyle, known: kobanStyleKnown } = useKobanStyle();
+  const securityStatus = useSecurityStatus();
+  const profileLayoutStatus = useProfileLayoutStatus();
   const navigate = useNavigate();
   const location = useLocation();
+  const params = useParams<{ subPage?: string }>();
 
-  // Sub-page navigation state
+  // Sub-page navigation state (supports both /settings/:subPage and #hash)
   const [activeSubPage, setActiveSubPage] = useState<SettingsSubPageId | null>(() => {
+    if (params.subPage) {
+      const fromParam = mapHashToSubPage(params.subPage).subPage;
+      if (fromParam) return fromParam;
+    }
     if (typeof window === 'undefined') return null;
     return mapHashToSubPage(window.location.hash).subPage;
   });
@@ -296,13 +317,30 @@ export function SettingsPage() {
     text: string;
   } | null>(null);
 
-  // Notification Preferences State
-  const [emailKobanReceipts, setEmailKobanReceipts] = useState<boolean>(
-    profile?.notificationPrefs?.emailKobanReceipts !== false
+  // Notification Preferences State (SWR per-uid)
+  const activeUid = user?.uid || profile?.uid || '';
+  const cachedNotifPrefs = useMemo(
+    () => readCachedNotificationPrefsForUid(activeUid),
+    [activeUid]
   );
-  const [emailArenaStarts, setEmailArenaStarts] = useState<boolean>(
-    profile?.notificationPrefs?.emailArenaStarts !== false
-  );
+  const [emailKobanReceipts, setEmailKobanReceipts] = useState<boolean>(() => {
+    if (profile?.notificationPrefs) {
+      return profile.notificationPrefs.emailKobanReceipts !== false;
+    }
+    if (cachedNotifPrefs) {
+      return cachedNotifPrefs.emailKobanReceipts;
+    }
+    return true;
+  });
+  const [emailArenaStarts, setEmailArenaStarts] = useState<boolean>(() => {
+    if (profile?.notificationPrefs) {
+      return profile.notificationPrefs.emailArenaStarts !== false;
+    }
+    if (cachedNotifPrefs) {
+      return cachedNotifPrefs.emailArenaStarts;
+    }
+    return true;
+  });
   const [notifSaving, setNotifSaving] = useState(false);
   const [notifMessage, setNotifMessage] = useState<{
     type: 'success' | 'error';
@@ -317,8 +355,7 @@ export function SettingsPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Profile Layout State (10 layouts, default 'game-card')
-  const activeUid = user?.uid || profile?.uid || '';
+  // Profile Layout State (10 layouts, shared store + D1 sync)
   const { data: ownLiveProfileData } = useLiveProfileData(
     activeUid,
     profile as any,
@@ -328,16 +365,16 @@ export function SettingsPage() {
 
   const [savedProfileLayout, setSavedProfileLayout] = useState<ProfileLayoutId>(() =>
     normalizeProfileLayout(
-      profile?.profileLayout ??
-        profile?.profile_layout ??
-        DEFAULT_PROFILE_LAYOUT
+      profileLayoutStatus.known
+        ? profileLayoutStatus.layout
+        : profile?.profileLayout ?? profile?.profile_layout ?? DEFAULT_PROFILE_LAYOUT
     )
   );
   const [selectedProfileLayout, setSelectedProfileLayout] = useState<ProfileLayoutId>(() =>
     normalizeProfileLayout(
-      profile?.profileLayout ??
-        profile?.profile_layout ??
-        DEFAULT_PROFILE_LAYOUT
+      profileLayoutStatus.known
+        ? profileLayoutStatus.layout
+        : profile?.profileLayout ?? profile?.profile_layout ?? DEFAULT_PROFILE_LAYOUT
     )
   );
   const [layoutSaving, setLayoutSaving] = useState(false);
@@ -346,26 +383,14 @@ export function SettingsPage() {
     text: string;
   } | null>(null);
 
-  // Load saved profile_layout from D1 for the authenticated user's UID
+  // Keep local editor in sync when shared profileLayoutStatus resolves from server
   useEffect(() => {
-    if (!activeUid) return;
-    let cancelled = false;
-    fetch(`/api/auth/profile-layout?uid=${encodeURIComponent(activeUid)}`, {
-      headers: { Accept: 'application/json' },
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((json) => {
-        if (!cancelled && json?.ok && (json.profile_layout || json.layout)) {
-          const resolved = normalizeProfileLayout(json.profile_layout ?? json.layout);
-          setSavedProfileLayout(resolved);
-          setSelectedProfileLayout(resolved);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [activeUid]);
+    if (profileLayoutStatus.known) {
+      const resolved = normalizeProfileLayout(profileLayoutStatus.layout);
+      setSavedProfileLayout(resolved);
+      setSelectedProfileLayout((prev) => (layoutSaving ? prev : resolved));
+    }
+  }, [profileLayoutStatus.known, profileLayoutStatus.layout, layoutSaving]);
 
   const handleSaveProfileLayout = async () => {
     if (!activeUid || layoutSaving) return;
@@ -382,6 +407,7 @@ export function SettingsPage() {
       }
       setSavedProfileLayout(res.layout);
       setSelectedProfileLayout(res.layout);
+      profileLayoutStatus.setLayout(res.layout);
       updateLocalProfile({
         profileLayout: res.layout,
         profile_layout: res.layout,
@@ -409,10 +435,19 @@ export function SettingsPage() {
       setCustomRole(profile.customRole);
     }
     if (profile?.notificationPrefs) {
-      setEmailKobanReceipts(profile.notificationPrefs.emailKobanReceipts !== false);
-      setEmailArenaStarts(profile.notificationPrefs.emailArenaStarts !== false);
+      const nextReceipts = profile.notificationPrefs.emailKobanReceipts !== false;
+      const nextArena = profile.notificationPrefs.emailArenaStarts !== false;
+      setEmailKobanReceipts(nextReceipts);
+      setEmailArenaStarts(nextArena);
+      if (activeUid) {
+        writeCachedNotificationPrefsForUid(activeUid, {
+          emailKobanReceipts: nextReceipts,
+          emailArenaStarts: nextArena,
+        });
+      }
     }
   }, [
+    activeUid,
     profile?.displayName,
     profile?.username,
     profile?.customRole,
@@ -502,16 +537,24 @@ export function SettingsPage() {
   // Close the active sub-page
   const closeSubPage = useCallback(() => {
     setActiveSubPage(null);
-    if (window.location.hash) {
+    if (params.subPage) {
+      const basePath = location.pathname.startsWith('/dashboard/settings')
+        ? '/dashboard/settings'
+        : '/settings';
+      navigate(basePath, { replace: true });
+    } else if (window.location.hash) {
       window.history.pushState({}, '', location.pathname);
     }
     window.scrollTo({ top: 0, behavior: smoothMode ? 'auto' : 'smooth' });
-  }, [location.pathname, smoothMode]);
+  }, [location.pathname, navigate, params.subPage, smoothMode]);
 
-  // Sync sub-page with URL hash & browser/phone back button (popstate)
+  // Sync sub-page with URL path param, hash & browser/phone back button (popstate)
   useEffect(() => {
     const syncFromLocation = () => {
-      const { subPage, targetId } = mapHashToSubPage(window.location.hash);
+      const fromHash = mapHashToSubPage(window.location.hash);
+      const fromParam = params.subPage ? mapHashToSubPage(params.subPage) : { subPage: null, targetId: null };
+      const subPage = fromHash.subPage || fromParam.subPage;
+      const targetId = fromHash.targetId || fromParam.targetId;
       setActiveSubPage(subPage);
       if (targetId === 'settings-delete-account') {
         setDeleteConfirmOpen(true);
@@ -531,7 +574,7 @@ export function SettingsPage() {
     syncFromLocation();
     window.addEventListener('popstate', syncFromLocation);
     return () => window.removeEventListener('popstate', syncFromLocation);
-  }, [location.hash, smoothMode]);
+  }, [location.hash, params.subPage, smoothMode]);
 
   // Swipe-back gesture handler on sub-pages
   const handleTouchStart = (e: TouchEvent<HTMLDivElement>) => {
@@ -733,6 +776,10 @@ export function SettingsPage() {
           emailArenaStarts: nextArena,
         },
       });
+      writeCachedNotificationPrefsForUid(user.uid, {
+        emailKobanReceipts: nextReceipts,
+        emailArenaStarts: nextArena,
+      });
       setNotifMessage({ type: 'success', text: 'Notification preferences saved.' });
     } catch (err) {
       setNotifMessage({
@@ -840,7 +887,7 @@ export function SettingsPage() {
     }
   };
 
-  // Computed display values for Main Settings rows
+  // Computed display values for Main Settings rows (load-early SWR, never show a placeholder that later changes)
   const effectiveDisplayName =
     profile?.displayName ||
     user?.displayName ||
@@ -859,12 +906,51 @@ export function SettingsPage() {
     return customRole || 'Student';
   }, [isGuest, effectivePlan.source, effectivePlan.isUnlimited, isAdmin, customRole]);
 
-  const planRowValue = useMemo(() => {
+  const planRowValue = useMemo<string | null>(() => {
     if (isGuest) return 'Guest Mode';
-    if (effectivePlan.source === 'superadmin') return 'Superadmin · Unlimited';
-    if (effectivePlan.isUnlimited) return 'Pro · Unlimited';
-    return 'Free Plan';
-  }, [isGuest, effectivePlan.source, effectivePlan.isUnlimited]);
+    if (!effectivePlan.loading) {
+      const resolved =
+        effectivePlan.source === 'superadmin'
+          ? 'Superadmin · Unlimited'
+          : effectivePlan.isUnlimited
+          ? 'Pro · Unlimited'
+          : 'Free Plan';
+      if (activeUid) {
+        writeCachedPlanLabelForUid(activeUid, resolved);
+      }
+      return resolved;
+    }
+    return readCachedPlanLabelForUid(activeUid);
+  }, [isGuest, effectivePlan.loading, effectivePlan.source, effectivePlan.isUnlimited, activeUid]);
+
+  const emailRowValue = useMemo<string | null>(() => {
+    if (isGuest) return 'Guest';
+    if (
+      otpVerificationState.status === 'verified' ||
+      Boolean(user?.emailVerified) ||
+      Boolean((profile as any)?.emailVerified)
+    ) {
+      return 'Verified';
+    }
+    if (otpVerificationState.status === 'checking' || (profileLoading && !profile)) {
+      return null;
+    }
+    return 'Unverified';
+  }, [isGuest, otpVerificationState.status, user?.emailVerified, profile, profileLoading]);
+
+  const usernameRowValue = useMemo<string | null>(() => {
+    if (profile?.username) return `@${profile.username}`;
+    if (!profileLoading && (user || profile)) return `@${effectiveUsername}`;
+    return null;
+  }, [profile, profileLoading, user, effectiveUsername]);
+
+  const displayNameRowValue = useMemo<string | null>(() => {
+    if (profile?.displayName || user?.displayName) {
+      return profile?.displayName || user?.displayName || null;
+    }
+    if (!profileLoading && (user || profile)) return effectiveDisplayName;
+    return null;
+  }, [profile, profileLoading, user, effectiveDisplayName]);
 
   const appearanceValueLabel = useMemo(() => {
     if (themePreference === 'light') return 'Light';
@@ -872,28 +958,71 @@ export function SettingsPage() {
     return 'System';
   }, [themePreference]);
 
-  const proBadgeRowValue = useMemo(() => {
+  const proBadgeRowValue = useMemo<string | null>(() => {
+    if (isGuest) return 'Pro Only';
+    if (!proBadgeKnown || effectivePlan.loading) return null;
     if (!isActivePro) return 'Pro Only';
     if (!proBadgeSettings.visible) return 'Hidden';
     const found = PRO_BADGE_DESIGNS.find((d) => d.id === proBadgeSettings.design);
     return found?.name || 'Ember';
-  }, [isActivePro, proBadgeSettings.visible, proBadgeSettings.design]);
+  }, [
+    isGuest,
+    proBadgeKnown,
+    effectivePlan.loading,
+    isActivePro,
+    proBadgeSettings.visible,
+    proBadgeSettings.design,
+  ]);
 
-  const profileLayoutRowValue = useMemo(() => {
-    const found = PROFILE_LAYOUT_METADATA.find((l) => l.id === savedProfileLayout);
-    return found?.name || 'Game Card';
-  }, [savedProfileLayout]);
+  const profileLayoutRowValue = useMemo<string | null>(() => {
+    if (isGuest) {
+      const found = PROFILE_LAYOUT_METADATA.find((l) => l.id === savedProfileLayout);
+      return found?.name || 'Game Card';
+    }
+    if (profileLayoutStatus.known) {
+      return profileLayoutStatus.name;
+    }
+    const fromProfile = profile?.profileLayout ?? profile?.profile_layout;
+    if (fromProfile) {
+      const normalized = normalizeProfileLayout(fromProfile);
+      const found = PROFILE_LAYOUT_METADATA.find((l) => l.id === normalized);
+      return found?.name || 'Game Card';
+    }
+    return null;
+  }, [
+    isGuest,
+    savedProfileLayout,
+    profileLayoutStatus.known,
+    profileLayoutStatus.name,
+    profile?.profileLayout,
+    profile?.profile_layout,
+  ]);
 
-  const kobanRowValue = useMemo(() => {
+  const kobanRowValue = useMemo<string | null>(() => {
+    if (!kobanStyleKnown && !isGuest) return null;
     const found = KOBAN_DESIGNS.find((d) => d.id === kobanStyle.design);
     return found?.name || 'Neon K Chip';
-  }, [kobanStyle.design]);
+  }, [kobanStyleKnown, isGuest, kobanStyle.design]);
 
-  const notificationsRowValue = useMemo(() => {
+  const notificationsKnown = Boolean(
+    isGuest ||
+      profile?.notificationPrefs !== undefined ||
+      cachedNotifPrefs !== null ||
+      !profileLoading
+  );
+
+  const notificationsRowValue = useMemo<string | null>(() => {
+    if (!notificationsKnown) return null;
     if (emailKobanReceipts && emailArenaStarts) return 'Enabled';
     if (!emailKobanReceipts && !emailArenaStarts) return 'Critical Only';
     return 'Custom';
-  }, [emailKobanReceipts, emailArenaStarts]);
+  }, [notificationsKnown, emailKobanReceipts, emailArenaStarts]);
+
+  const securityRowValue = useMemo<string | null>(() => {
+    if (isGuest) return 'Off';
+    if (!securityStatus.known) return null;
+    return securityStatus.rowLabel;
+  }, [isGuest, securityStatus.known, securityStatus.rowLabel]);
 
   const equippedAvatarId =
     equipped?.avatar ||
@@ -917,21 +1046,21 @@ export function SettingsPage() {
           {
             id: 'email' as SettingsSubPageId,
             label: 'Account Email',
-            value: isGuest ? 'Guest' : 'Verified',
+            value: emailRowValue,
             icon: Mail,
             keywords: ['email', 'address', 'verified', 'contact', 'account email'],
           },
           {
             id: 'username' as SettingsSubPageId,
             label: 'Username & Study Role',
-            value: `@${effectiveUsername}`,
+            value: usernameRowValue,
             icon: AtSign,
             keywords: ['username', 'handle', 'study role', 'matric', 'fsc', 'mdcat', 'ecat', 'badge'],
           },
           {
             id: 'display-name' as SettingsSubPageId,
             label: 'Display Name',
-            value: effectiveDisplayName,
+            value: displayNameRowValue,
             icon: User,
             keywords: ['display name', 'full name', 'name', 'real name', 'approval'],
           },
@@ -979,13 +1108,13 @@ export function SettingsPage() {
             id: 'notifications' as SettingsSubPageId,
             label: 'Notifications',
             value: notificationsRowValue,
-            icon: Bell,
+            icon: Mail,
             keywords: ['notifications', 'email alerts', 'koban receipts', 'test start', 'arena'],
           },
           {
             id: 'security' as SettingsSubPageId,
             label: 'Security & Two-Step Verification',
-            value: profile?.twoFactorStatus?.twoFactorEnabled ? 'Enabled' : 'Off',
+            value: securityRowValue,
             icon: Shield,
             keywords: ['security', 'password', '2fa', 'two-step', 'totp', 'authenticator', 'backup codes', 'devices', 'delete account'],
           },
@@ -1001,16 +1130,16 @@ export function SettingsPage() {
     ],
     [
       planRowValue,
-      isGuest,
-      effectiveUsername,
-      effectiveDisplayName,
+      emailRowValue,
+      usernameRowValue,
+      displayNameRowValue,
       appearanceValueLabel,
       themePreference,
       profileLayoutRowValue,
       proBadgeRowValue,
       kobanRowValue,
       notificationsRowValue,
-      profile?.twoFactorStatus?.twoFactorEnabled,
+      securityRowValue,
     ]
   );
 
@@ -1194,7 +1323,7 @@ export function SettingsPage() {
         rows: group.rows.filter(
           (row) =>
             row.label.toLowerCase().includes(normalizedQuery) ||
-            row.value.toLowerCase().includes(normalizedQuery) ||
+            (row.value ? row.value.toLowerCase().includes(normalizedQuery) : false) ||
             row.keywords.some((kw) => kw.toLowerCase().includes(normalizedQuery))
         ),
       }))
@@ -1849,7 +1978,7 @@ export function SettingsPage() {
                   >
                     <div className="stg-row-left">
                       <span className="stg-row-icon">
-                        <Bell size={17} />
+                        <Mail size={17} />
                       </span>
                       <span className="stg-row-label">Test start notifications</span>
                     </div>
@@ -2182,41 +2311,7 @@ export function SettingsPage() {
         <div className="stg-top-header-slot" aria-hidden="true" />
       </header>
 
-      <div className="stg-container pb-10">
-        {/* Top In-Page "Search settings" Bar */}
-        <div className="stg-search-wrap">
-          <div className={`fsm-search-pill ${searchFocused ? 'is-focused' : ''}`}>
-            <Search
-              size={18}
-              className="text-[var(--menu-subtext)] shrink-0 pointer-events-none"
-            />
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchQuery}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search settings"
-              aria-label="Search settings"
-              className="fsm-search-input"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchQuery('');
-                  searchInputRef.current?.focus();
-                }}
-                aria-label="Clear search"
-                className="w-6 h-6 rounded-full bg-[var(--menu-icon-bg)] text-[var(--menu-subtext)] hover:text-[var(--menu-text)] inline-flex items-center justify-center cursor-pointer shrink-0"
-              >
-                <X size={13} />
-              </button>
-            )}
-          </div>
-        </div>
-
+      <div className="stg-container">
         {/* Centered 88px Avatar + Edit Pencil Badge, Name, @username, Role Pill */}
         <div className="flex flex-col items-center text-center pt-3 pb-2">
           <div className="relative inline-flex items-center justify-center overflow-visible">
@@ -2306,8 +2401,10 @@ export function SettingsPage() {
                       <span className="stg-row-label">{row.label}</span>
                     </div>
                     <div className="stg-row-right">
-                      {row.value && (
+                      {row.value !== null ? (
                         <span className="stg-row-value">{row.value}</span>
+                      ) : (
+                        <span className="stg-row-value-skeleton" aria-label="Loading" />
                       )}
                       <ChevronRight size={17} className="shrink-0 opacity-75" />
                     </div>
@@ -2394,6 +2491,40 @@ export function SettingsPage() {
             </div>
           </div>
         )}
+
+        {/* Floating "Search settings" Glass Pill at the Bottom */}
+        <div className="stg-search-wrap">
+          <div className={`fsm-search-pill ${searchFocused ? 'is-focused' : ''}`}>
+            <Search
+              size={18}
+              className="text-[var(--menu-subtext)] shrink-0 pointer-events-none"
+            />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search settings"
+              aria-label="Search settings"
+              className="fsm-search-input"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  searchInputRef.current?.focus();
+                }}
+                aria-label="Clear search"
+                className="w-6 h-6 rounded-full bg-[var(--menu-icon-bg)] text-[var(--menu-subtext)] hover:text-[var(--menu-text)] inline-flex items-center justify-center cursor-pointer shrink-0"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       <GuestUpgradeModal

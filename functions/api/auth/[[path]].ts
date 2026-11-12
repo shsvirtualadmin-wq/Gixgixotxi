@@ -1747,12 +1747,23 @@ export async function handleAuthApiRequest(
       );
     }
 
-    // Check if the registered user has a canonical username in `user_usernames`
-    const usernameRow = await db
-      .prepare('SELECT username_lower, username_display, email FROM user_usernames WHERE uid = ?1 LIMIT 1')
-      .bind(resolved.uid)
-      .first<{ username_lower: string; username_display: string; email?: string }>()
-      .catch(() => null);
+    // Check if the registered user has a canonical username & profile_layout in `user_usernames` and load 2FA status in parallel
+    const [usernameRow, twoFactorStatus] = await Promise.all([
+      db
+        .prepare(
+          'SELECT username_lower, username_display, email, profile_layout, custom_role FROM user_usernames WHERE uid = ?1 LIMIT 1'
+        )
+        .bind(resolved.uid)
+        .first<{
+          username_lower: string;
+          username_display: string;
+          email?: string;
+          profile_layout?: string;
+          custom_role?: string;
+        }>()
+        .catch(() => null),
+      getUserTwoFactorStatusFromD1(db, resolved.uid, nowMs).catch(() => null),
+    ]);
 
     if (usernameRow && !usernameRow.email && resolved.email) {
       await db
@@ -1761,6 +1772,15 @@ export async function handleAuthApiRequest(
         .run()
         .catch(() => {});
     }
+
+    const resolvedProfileLayout = normalizeAuthProfileLayout(usernameRow?.profile_layout);
+    const enrichedTwoFactorStatus = twoFactorStatus
+      ? {
+          ...twoFactorStatus,
+          emailCodeEnabled: Boolean(twoFactorStatus.email2faEnabled),
+          rememberedDevices: Number(twoFactorStatus.trustedDevicesCount || 0),
+        }
+      : null;
 
     const regPayload = {
       uid: resolved.uid,
@@ -1774,9 +1794,12 @@ export async function handleAuthApiRequest(
       isGuest: false,
       plan: resolved.plan,
       role: resolved.role,
-      customRole: resolved.customRole,
+      customRole: usernameRow?.custom_role || resolved.customRole,
       emailVerified: resolved.emailVerified,
       sessionVerified: resolved.sessionVerified,
+      profileLayout: resolvedProfileLayout,
+      profile_layout: resolvedProfileLayout,
+      twoFactorStatus: enrichedTwoFactorStatus,
     };
 
     return jsonResponse(
@@ -1786,6 +1809,8 @@ export async function handleAuthApiRequest(
         accountType: 'registered',
         hasRegisteredUsername: Boolean(usernameRow?.username_display),
         user: regPayload,
+        twoFactorStatus: enrichedTwoFactorStatus,
+        profileLayout: resolvedProfileLayout,
         guest: null,
       },
       200
@@ -4943,6 +4968,8 @@ export async function handleAuthApiRequest(
     return jsonResponse({
       ok: true,
       ...status,
+      emailCodeEnabled: Boolean(status.email2faEnabled),
+      rememberedDevices: Number(status.trustedDevicesCount || 0),
     });
   }
 
@@ -5180,11 +5207,19 @@ export async function handleAuthApiRequest(
       senderOverride: opts.emailSenderOverride,
     });
 
+    const updatedStatus = await getUserTwoFactorStatusFromD1(db, uid, nowMs).catch(() => null);
     return jsonResponse({
       ok: true,
       totpEnabled: true,
       twoFactorEnabled: true,
       backupCodes: plainBackupCodes,
+      ...(updatedStatus
+        ? {
+            ...updatedStatus,
+            emailCodeEnabled: Boolean(updatedStatus.email2faEnabled),
+            rememberedDevices: Number(updatedStatus.trustedDevicesCount || 0),
+          }
+        : { backupCodesRemaining: 10, remainingBackupCodes: 10, lastChangedAt: nowMs }),
     });
   }
 
@@ -5303,11 +5338,20 @@ export async function handleAuthApiRequest(
       senderOverride: opts.emailSenderOverride,
     });
 
+    const updatedStatus = await getUserTwoFactorStatusFromD1(db, uid, nowMs).catch(() => null);
     return jsonResponse({
       ok: true,
       email2faEnabled: targetEnabled,
+      emailCodeEnabled: targetEnabled,
       totpEnabled: Boolean(existing && Number(existing.totp_enabled) === 1),
       twoFactorEnabled: targetEnabled || Boolean(existing && Number(existing.totp_enabled) === 1),
+      ...(updatedStatus
+        ? {
+            ...updatedStatus,
+            emailCodeEnabled: Boolean(updatedStatus.email2faEnabled),
+            rememberedDevices: Number(updatedStatus.trustedDevicesCount || 0),
+          }
+        : { lastChangedAt: nowMs }),
     });
   }
 
@@ -5379,9 +5423,17 @@ export async function handleAuthApiRequest(
       senderOverride: opts.emailSenderOverride,
     });
 
+    const updatedStatus = await getUserTwoFactorStatusFromD1(db, uid, nowMs).catch(() => null);
     return jsonResponse({
       ok: true,
       backupCodes: plainBackupCodes,
+      ...(updatedStatus
+        ? {
+            ...updatedStatus,
+            emailCodeEnabled: Boolean(updatedStatus.email2faEnabled),
+            rememberedDevices: Number(updatedStatus.trustedDevicesCount || 0),
+          }
+        : { backupCodesRemaining: 10, remainingBackupCodes: 10, lastChangedAt: nowMs }),
     });
   }
 
@@ -5497,11 +5549,20 @@ export async function handleAuthApiRequest(
       senderOverride: opts.emailSenderOverride,
     });
 
+    const updatedStatus = await getUserTwoFactorStatusFromD1(db, uid, nowMs).catch(() => null);
     return jsonResponse({
       ok: true,
       totpEnabled: Boolean(nextTotp),
       email2faEnabled: Boolean(nextEmail),
+      emailCodeEnabled: Boolean(nextEmail),
       twoFactorEnabled: Boolean(nextTotp || nextEmail),
+      ...(updatedStatus
+        ? {
+            ...updatedStatus,
+            emailCodeEnabled: Boolean(updatedStatus.email2faEnabled),
+            rememberedDevices: Number(updatedStatus.trustedDevicesCount || 0),
+          }
+        : { lastChangedAt: nowMs }),
     });
   }
 
@@ -5682,10 +5743,18 @@ export async function handleAuthApiRequest(
       nowMs,
     });
 
+    const updatedStatus = await getUserTwoFactorStatusFromD1(db, uid, nowMs).catch(() => null);
     return jsonResponse(
       {
         ok: true,
         revoked: true,
+        ...(updatedStatus
+          ? {
+              ...updatedStatus,
+              emailCodeEnabled: Boolean(updatedStatus.email2faEnabled),
+              rememberedDevices: Number(updatedStatus.trustedDevicesCount || 0),
+            }
+          : { rememberedDevices: 0, trustedDevicesCount: 0, lastChangedAt: nowMs }),
       },
       200,
       {
