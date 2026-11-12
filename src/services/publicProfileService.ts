@@ -23,6 +23,12 @@ import {
   isValidProBadgeDesign,
   normalizeProBadgeDesign,
 } from '@/lib/proBadgeDesigns';
+import {
+  DEFAULT_PROFILE_LAYOUT,
+  isValidProfileLayout,
+  normalizeProfileLayout,
+  type ProfileLayoutId,
+} from '@/lib/profileLayouts';
 import type { PublicProfile as BasePublicProfile } from '@/types';
 
 export interface PublicProfile extends BasePublicProfile {
@@ -39,6 +45,8 @@ export interface PublicProfile extends BasePublicProfile {
   equippedEffect?: string | null;
   equippedStreakBadges?: string[];
   proBadge?: string | null;
+  profileLayout?: ProfileLayoutId;
+  profile_layout?: ProfileLayoutId;
 }
 
 export type PublicUserProfile = PublicProfile;
@@ -187,6 +195,11 @@ export function broadcastPublicProfileUpdate(
       ? normalizeProBadgeDesign(partial.proBadge)
       : null;
   }
+  if ('profileLayout' in partial || 'profile_layout' in partial) {
+    const nextLayout = normalizeProfileLayout(partial.profileLayout ?? partial.profile_layout);
+    merged.profileLayout = nextLayout;
+    merged.profile_layout = nextLayout;
+  }
   saveToCaches(uid, merged, true);
   return merged;
 }
@@ -230,10 +243,95 @@ export async function syncProfileToD1Backend(
         bio: data.bio !== undefined ? data.bio : undefined,
         status: data.status !== undefined ? data.status : undefined,
         accent: data.accent !== undefined ? data.accent : undefined,
+        profile_layout:
+          data.profileLayout !== undefined || data.profile_layout !== undefined
+            ? normalizeProfileLayout(data.profileLayout ?? data.profile_layout)
+            : undefined,
       }),
     });
   } catch {
     // Non-fatal network error
+  }
+}
+
+export async function saveProfileLayoutToServer(
+  uid: string,
+  layout: string
+): Promise<{ ok: boolean; layout: ProfileLayoutId; error?: string }> {
+  if (!isValidProfileLayout(layout)) {
+    return {
+      ok: false,
+      layout: DEFAULT_PROFILE_LAYOUT,
+      error: 'Invalid profile layout.',
+    };
+  }
+  const validLayout: ProfileLayoutId = layout;
+  try {
+    const { auth } = await import('@/lib/firebase');
+    const token = await auth.currentUser?.getIdToken().catch(() => null);
+    const guestSession = (() => {
+      try {
+        return localStorage.getItem('boardly_guest_session_token') || '';
+      } catch {
+        return '';
+      }
+    })();
+
+    const res = await fetch('/api/auth/profile-layout', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(guestSession ? { 'X-Guest-Session': guestSession } : {}),
+      },
+      body: JSON.stringify({
+        layout: validLayout,
+        profile_layout: validLayout,
+      }),
+    });
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      return {
+        ok: false,
+        layout: validLayout,
+        error: json?.error || `Failed to save layout (HTTP ${res.status})`,
+      };
+    }
+
+    // Mirror to Firestore users/{uid} and publicProfiles/{uid} non-blockingly and broadcast live
+    if (uid) {
+      setDoc(
+        doc(db, 'users', uid),
+        {
+          profileLayout: validLayout,
+          profile_layout: validLayout,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch(() => {});
+      setDoc(
+        doc(db, 'publicProfiles', uid),
+        {
+          profileLayout: validLayout,
+          profile_layout: validLayout,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch(() => {});
+      broadcastPublicProfileUpdate(uid, {
+        profileLayout: validLayout,
+        profile_layout: validLayout,
+      });
+    }
+
+    return { ok: true, layout: validLayout };
+  } catch (err) {
+    return {
+      ok: false,
+      layout: validLayout,
+      error: err instanceof Error ? err.message : 'Network error saving profile layout.',
+    };
   }
 }
 
@@ -523,6 +621,22 @@ export function normalizePublicProfileDoc(
         ? normalizeProBadgeDesign(candidateDesign)
         : DEFAULT_PRO_BADGE_DESIGN;
     })(),
+    profileLayout: normalizeProfileLayout(
+      p.d1ProfileLayout ||
+        p.profile_layout ||
+        p.profileLayout ||
+        u.profile_layout ||
+        u.profileLayout ||
+        DEFAULT_PROFILE_LAYOUT
+    ),
+    profile_layout: normalizeProfileLayout(
+      p.d1ProfileLayout ||
+        p.profile_layout ||
+        p.profileLayout ||
+        u.profile_layout ||
+        u.profileLayout ||
+        DEFAULT_PROFILE_LAYOUT
+    ),
     updatedAt: u.updatedAt || p.updatedAt || null,
   };
 }
@@ -585,6 +699,13 @@ async function fetchPublicProfileFromNetwork(uid: string): Promise<PublicProfile
             ...(d1Data.status !== null && d1Data.status !== undefined ? { status: d1Data.status } : {}),
             ...(d1Data.accent ? { accent: d1Data.accent } : {}),
             ...(d1Data.proBadge !== undefined ? { proBadge: d1Data.proBadge } : {}),
+            ...(d1Data.profileLayout || d1Data.profile_layout
+              ? {
+                  profileLayout: normalizeProfileLayout(d1Data.profileLayout ?? d1Data.profile_layout),
+                  profile_layout: normalizeProfileLayout(d1Data.profileLayout ?? d1Data.profile_layout),
+                  d1ProfileLayout: normalizeProfileLayout(d1Data.profileLayout ?? d1Data.profile_layout),
+                }
+              : {}),
           }
         : {}),
     };
@@ -596,6 +717,12 @@ async function fetchPublicProfileFromNetwork(uid: string): Promise<PublicProfile
             ...(d1Data.displayName ? { displayName: d1Data.displayName } : {}),
             ...(d1Data.avatar ? { avatar: d1Data.avatar, equippedAvatar: d1Data.avatar } : {}),
             ...(d1Data.frame ? { frame: d1Data.frame, equippedFrame: d1Data.frame } : {}),
+            ...(d1Data.profileLayout || d1Data.profile_layout
+              ? {
+                  profileLayout: normalizeProfileLayout(d1Data.profileLayout ?? d1Data.profile_layout),
+                  profile_layout: normalizeProfileLayout(d1Data.profileLayout ?? d1Data.profile_layout),
+                }
+              : {}),
           }
         : {}),
     };
@@ -762,6 +889,13 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
                   ...(d1Data.role ? { role: d1Data.role, d1Role: d1Data.role } : {}),
                   ...(d1Data.customRole ? { customRole: d1Data.customRole, d1CustomRole: d1Data.customRole } : {}),
                   ...(d1Data.proBadge !== undefined ? { proBadge: d1Data.proBadge } : {}),
+                  ...(d1Data.profileLayout || d1Data.profile_layout
+                    ? {
+                        profileLayout: normalizeProfileLayout(d1Data.profileLayout ?? d1Data.profile_layout),
+                        profile_layout: normalizeProfileLayout(d1Data.profileLayout ?? d1Data.profile_layout),
+                        d1ProfileLayout: normalizeProfileLayout(d1Data.profileLayout ?? d1Data.profile_layout),
+                      }
+                    : {}),
                 }
               : {}),
           };
@@ -775,6 +909,12 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
                     ? { avatar: d1Data.avatar, equippedAvatar: d1Data.avatar }
                     : {}),
                   ...(d1Data.frame ? { frame: d1Data.frame, equippedFrame: d1Data.frame } : {}),
+                  ...(d1Data.profileLayout || d1Data.profile_layout
+                    ? {
+                        profileLayout: normalizeProfileLayout(d1Data.profileLayout ?? d1Data.profile_layout),
+                        profile_layout: normalizeProfileLayout(d1Data.profileLayout ?? d1Data.profile_layout),
+                      }
+                    : {}),
                 }
               : {}),
           };

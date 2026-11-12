@@ -104,8 +104,22 @@ import { sanitizeStudentDisplayName, isAdminAccount } from '@/utils/privacy';
 import { BoardlyAvatar, resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import type { PublicProfile } from '@/types';
+import {
+  DEFAULT_PROFILE_LAYOUT,
+  normalizeProfileLayout,
+  buildSharedProfileData,
+  type ProfileLayoutId,
+  type SharedProfileData,
+} from '@/lib/profileLayouts';
+import { ProfileLayoutsRenderer } from './ProfileLayoutsRenderer';
 
 export interface ProfileViewProps {
+  /** Explicit layout ID (one of the 10 layouts). Falls back to data.profile_layout or 'game-card'. */
+  layout?: ProfileLayoutId | string | null;
+  /** Pre-resolved shared profile data object by UID. */
+  data?: SharedProfileData | null;
+  /** When true, renders the compact live preview card for Settings > Profile Layout carousel. */
+  previewMode?: boolean;
   /** If targetUid is provided and not current user, runs in PUBLIC mode. */
   targetUid?: string | null;
   /** Whether mounted full-page (e.g. /dashboard/profile centered column max-w-960px) or in dialog */
@@ -117,6 +131,9 @@ export interface ProfileViewProps {
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
+  layout: propLayout,
+  data: propData,
+  previewMode = false,
   targetUid,
   isFullPage = false,
   onClose,
@@ -339,6 +356,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               ...(d1Live?.bio !== null && d1Live?.bio !== undefined ? { bio: d1Live.bio } : {}),
               ...(d1Live?.status !== null && d1Live?.status !== undefined ? { status: d1Live.status } : {}),
               ...(d1Live?.accent ? { accent: d1Live.accent } : {}),
+              ...(d1Live?.profile_layout || d1Live?.profileLayout
+                ? {
+                    profileLayout: normalizeProfileLayout(d1Live.profile_layout ?? d1Live.profileLayout),
+                    profile_layout: normalizeProfileLayout(d1Live.profile_layout ?? d1Live.profileLayout),
+                  }
+                : {}),
             }
           : null;
         const pubData: Record<string, any> | null = rawPubData || d1Live
@@ -354,6 +377,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               ...(d1Live?.status !== null && d1Live?.status !== undefined ? { status: d1Live.status } : {}),
               ...(d1Live?.accent ? { accent: d1Live.accent } : {}),
               ...(d1Live?.proBadge !== undefined ? { proBadge: d1Live.proBadge } : {}),
+              ...(d1Live?.profile_layout || d1Live?.profileLayout
+                ? {
+                    profileLayout: normalizeProfileLayout(d1Live.profile_layout ?? d1Live.profileLayout),
+                    profile_layout: normalizeProfileLayout(d1Live.profile_layout ?? d1Live.profileLayout),
+                  }
+                : {}),
             }
           : null;
 
@@ -588,6 +617,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               ? normalizeProBadgeDesign(candidateDesign)
               : DEFAULT_PRO_BADGE_DESIGN;
           })(),
+          profileLayout: normalizeProfileLayout(
+            d1Live?.profile_layout ??
+              d1Live?.profileLayout ??
+              pubData?.profile_layout ??
+              pubData?.profileLayout ??
+              uData?.profile_layout ??
+              uData?.profileLayout ??
+              DEFAULT_PROFILE_LAYOUT
+          ),
+          profile_layout: normalizeProfileLayout(
+            d1Live?.profile_layout ??
+              d1Live?.profileLayout ??
+              pubData?.profile_layout ??
+              pubData?.profileLayout ??
+              uData?.profile_layout ??
+              uData?.profileLayout ??
+              DEFAULT_PROFILE_LAYOUT
+          ),
         };
 
         if (!isMounted) return;
@@ -632,6 +679,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       if (!isMounted || !updatedProf) return;
       setProfile((prev) => {
         if (!prev) return prev;
+        const nextLayout =
+          updatedProf.profileLayout || updatedProf.profile_layout
+            ? normalizeProfileLayout(updatedProf.profileLayout ?? updatedProf.profile_layout)
+            : prev.profileLayout || prev.profile_layout || DEFAULT_PROFILE_LAYOUT;
         const merged: PublicProfile = {
           ...prev,
           displayName: updatedProf.displayName || prev.displayName,
@@ -642,6 +693,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           avatar: updatedProf.avatar ?? prev.avatar,
           frame: updatedProf.frame ?? prev.frame,
           proBadge: updatedProf.proBadge !== undefined ? updatedProf.proBadge : prev.proBadge,
+          profileLayout: nextLayout,
+          profile_layout: nextLayout,
           equipped: {
             ...(prev.equipped || { effect: null, frame: null, nameplate: null, avatar: null, banner: null }),
             ...(updatedProf.equipped || {}),
@@ -770,6 +823,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           photoURL: null,
           avatarKey: op.avatarKey || prev?.avatarKey || null,
           avatarVariant: op.avatarVariant || prev?.avatarVariant || null,
+          profileLayout: normalizeProfileLayout(
+            op.profileLayout ??
+              op.profile_layout ??
+              prev?.profileLayout ??
+              prev?.profile_layout ??
+              DEFAULT_PROFILE_LAYOUT
+          ),
+          profile_layout: normalizeProfileLayout(
+            op.profileLayout ??
+              op.profile_layout ??
+              prev?.profileLayout ??
+              prev?.profile_layout ??
+              DEFAULT_PROFILE_LAYOUT
+          ),
         };
 
         if (currentUid) {
@@ -1109,13 +1176,98 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     });
   };
 
-  const accentColor = profile?.accent || '#D71921';
+  const accentColor = propData?.accent || profile?.accent || '#D71921';
   const effectiveEffectId =
+    propData?.effect ||
     profile?.effectId ||
     (isViewingSelf && !previewAsPublic ? ownEquipped?.effect : null) ||
     null;
 
-  if (loading && !profile) {
+  // Build the single shared profile data object resolved strictly by UID
+  const sharedProfileData: SharedProfileData = useMemo(() => {
+    if (propData) {
+      const resolvedOverride = propLayout
+        ? normalizeProfileLayout(propLayout)
+        : normalizeProfileLayout(propData.profile_layout ?? propData.profileLayout);
+      return {
+        ...propData,
+        profile_layout: resolvedOverride,
+        profileLayout: resolvedOverride,
+      };
+    }
+
+    const activeUid = String(profile?.uid || targetUid || currentUid || 'guest').trim();
+    const built = buildSharedProfileData({
+      uid: activeUid,
+      publicProfile: profile as any,
+      ownUserProfile: isViewingSelf && !previewAsPublic ? ((ownProfile || authProfile) as any) : null,
+      walletCoins: isViewingSelf ? kobanBalance : null,
+      walletEquipped: isViewingSelf && !previewAsPublic ? (ownEquipped as any) : null,
+      overrideLayout: propLayout ? normalizeProfileLayout(propLayout) : null,
+    });
+
+    const activeProBadge = isViewingSelf ? effectiveProBadge : profile?.proBadge;
+    return {
+      ...built,
+      level: studentLevel,
+      proBadge: activeProBadge || built.proBadge || null,
+      isPro: Boolean(activeProBadge || built.isPro),
+      followers: Number(profile?.followersCount ?? built.followers ?? 0),
+      following: Number(profile?.followingCount ?? built.following ?? 0),
+    };
+  }, [
+    propData,
+    propLayout,
+    profile,
+    targetUid,
+    currentUid,
+    isViewingSelf,
+    previewAsPublic,
+    ownProfile,
+    authProfile,
+    kobanBalance,
+    ownEquipped,
+    effectiveProBadge,
+    studentLevel,
+  ]);
+
+  const resolvedLayoutId: ProfileLayoutId = useMemo(
+    () =>
+      normalizeProfileLayout(
+        propLayout ??
+          propData?.profile_layout ??
+          propData?.profileLayout ??
+          profile?.profileLayout ??
+          profile?.profile_layout ??
+          (isViewingSelf
+            ? (ownProfile as any)?.profileLayout ??
+              (ownProfile as any)?.profile_layout ??
+              (authProfile as any)?.profileLayout ??
+              (authProfile as any)?.profile_layout
+            : null) ??
+          DEFAULT_PROFILE_LAYOUT
+      ),
+    [propLayout, propData, profile, isViewingSelf, ownProfile, authProfile]
+  );
+
+  // When rendered in Settings > Profile Layout live preview carousel, render the card directly
+  if (previewMode && propData) {
+    return (
+      <div className="relative w-full rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-md overflow-hidden flex flex-col">
+        <ProfileLayoutsRenderer
+          layout={resolvedLayoutId}
+          data={sharedProfileData}
+          previewMode={true}
+          shortId={deriveFallbackShortId(sharedProfileData.uid || '0')}
+          onEditProfile={() => navigate('/dashboard/profile')}
+          onOpenStore={() => navigate('/store')}
+          onOpenSettings={() => navigate('/settings')}
+        />
+      </div>
+    );
+  }
+
+  if (loading && !profile && !propData) {
     return (
       <div
         className={`relative w-full flex flex-col bg-[var(--background)] text-[var(--text)] ${
@@ -1140,6 +1292,128 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       </div>
     );
   }
+
+  // Compute public mode chat button state
+  const canChatDirectly =
+    (isFollowedByMe && followsMe) ||
+    Boolean(chatPermission?.canChat) ||
+    chatPermission?.outgoingRequest?.status === 'accepted' ||
+    chatPermission?.incomingRequest?.status === 'accepted';
+  const isPendingOutgoing = chatPermission?.outgoingRequest?.status === 'pending';
+  const isPendingIncoming = chatPermission?.incomingRequest?.status === 'pending';
+  const isCooldown = Boolean(chatPermission?.isCooldownActive);
+  const messageButtonDisabled =
+    chatRequestWorking || (!canChatDirectly && (isPendingOutgoing || isCooldown));
+  let messageButtonLabel = 'Message';
+  if (chatRequestWorking) {
+    messageButtonLabel = 'Sending...';
+  } else if (canChatDirectly) {
+    messageButtonLabel = 'Message';
+  } else if (isPendingIncoming) {
+    messageButtonLabel = 'Respond to Request';
+  } else if (isPendingOutgoing || isCooldown) {
+    messageButtonLabel = 'Request Sent';
+  }
+
+  const badgeRowNode = (
+    <div className="relative flex items-center gap-1.5 flex-wrap pt-0.5">
+      {(profile?.role === 'captain' || profile?.badges?.includes('captain')) && (
+        <button
+          type="button"
+          onClick={() =>
+            setBadgePopover({
+              name: 'Nakama Captain',
+              meaning: 'Founder and leader of a verified study crew',
+            })
+          }
+          className="w-6 h-6 rounded-md bg-blue-500/10 border border-blue-500/30 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
+          title="Nakama Captain"
+        >
+          <Award size={13} className="text-blue-500" />
+        </button>
+      )}
+      {profile?.crewName && (
+        <button
+          type="button"
+          onClick={() =>
+            setBadgePopover({
+              name: 'Crew Member',
+              meaning: `Enlisted in crew: ${profile.crewName}`,
+            })
+          }
+          className="w-6 h-6 rounded-md bg-purple-500/10 border border-purple-500/30 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
+          title={`Crew: ${profile.crewName}`}
+        >
+          <Users size={13} className="text-purple-500" />
+        </button>
+      )}
+      {((isViewingSelf && isAdmin) ||
+        profile?.role === 'superadmin' ||
+        profile?.badges?.includes('staff')) && (
+        <button
+          type="button"
+          onClick={() =>
+            setBadgePopover({
+              name: 'Staff Proctor',
+              meaning: 'Official Boardly administrator and academic proctor',
+            })
+          }
+          className="w-6 h-6 rounded-md bg-red-500/10 border border-red-500/30 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
+          title="Boardly Staff"
+        >
+          <Shield size={13} className="text-red-500" />
+        </button>
+      )}
+      {equippedStreakBadges.map((badgeId) => {
+        const b = STREAK_BADGES.find((s) => s.id === badgeId);
+        if (!b) return null;
+        return (
+          <button
+            key={b.id}
+            type="button"
+            onClick={() => setBadgePopover({ name: b.name, meaning: b.description })}
+            className="w-6 h-6 rounded-md border flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
+            style={{
+              backgroundColor: `${b.color}15`,
+              borderColor: `${b.color}40`,
+            }}
+            title={b.name}
+          >
+            <Flame size={13} style={{ color: b.color }} />
+          </button>
+        );
+      })}
+      {pinnedShowcase.map((stampId) => {
+        const s = PASSPORT_STAMPS.find((p) => p.id === stampId);
+        if (!s) return null;
+        return (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => setBadgePopover({ name: s.name, meaning: s.requirement })}
+            className="w-6 h-6 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
+            title={s.name}
+          >
+            <Award size={13} />
+          </button>
+        );
+      })}
+      {badgePopover && (
+        <div className="absolute left-0 bottom-full mb-2 z-50 p-2.5 rounded-xl floating-blur backdrop-blur-lg border border-[var(--border)] shadow-xl text-xs flex flex-col gap-1 min-w-[200px] animate-fade-in">
+          <div className="flex items-center justify-between">
+            <span className="font-heading font-bold text-[var(--text)]">{badgePopover.name}</span>
+            <button
+              onClick={() => setBadgePopover(null)}
+              className="text-[var(--muted)] hover:text-[var(--text)]"
+            >
+              <X size={12} />
+            </button>
+          </div>
+          <p className="text-[11px] text-[var(--muted)]">{badgePopover.meaning}</p>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div
@@ -1174,470 +1448,66 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
       {/* ── MAIN CARD CONTAINER ── */}
       <div className="relative w-full rounded-2xl sm:rounded-3xl border border-[var(--border)] bg-[var(--card)] shadow-lg overflow-hidden flex flex-col">
-        {/* ── 1. BANNER (Matches Store header framing: h-28 mobile, sm:h-36 desktop) ── */}
-        <div className="relative w-full h-28 sm:h-36 overflow-hidden shrink-0 select-none">
-          <CosmeticErrorBoundary
-            fallback={<DefaultDotMatrixBanner accentColor={accentColor} />}
-          >
-            <BannerRenderer
-              bannerId={profile?.banner}
-              accentColor={accentColor}
-              animated={true}
-              showReadabilityOverlay={true}
-            />
-          </CosmeticErrorBoundary>
-
-          {/* Close button on mobile/dialog */}
-          {onClose && (
-            <button
-              onClick={() => onClose()}
-              className="absolute top-3 left-3 z-40 w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer border border-white/20"
-              aria-label="Close"
-            >
-              <X size={16} />
-            </button>
-          )}
-
-          {/* Owner preview toggle button on top right of banner */}
-          {isViewingSelf && !previewAsPublic && (
-            <button
-              onClick={() => setPreviewAsPublic(true)}
-              className="absolute top-3 right-3 z-40 px-2.5 py-1 rounded-full bg-black/60 hover:bg-black/80 text-white text-[11px] font-heading font-semibold flex items-center gap-1.5 backdrop-blur-md border border-white/20 transition-colors cursor-pointer"
-            >
-              <Eye size={13} />
-              <span className="hidden sm:inline">View as others</span>
-            </button>
-          )}
-
-          </div>
-
-        {/* ── 2. AVATAR & HEADER DETAILS ── */}
-        <div className="px-4 sm:px-6 pb-4 flex flex-col gap-3">
-          {/* Avatar row with half-banner overlap */}
-          <div className="flex items-end justify-between -mt-[44px] sm:-mt-[60px] relative z-20">
-            {/* Avatar container (88px mobile, 120px desktop, never clipped) */}
-            <div className="p-1 rounded-full bg-[var(--card)] shrink-0 overflow-visible relative">
-              <BoardlyAvatar
-                uid={profile?.uid || targetUid || currentUid}
-                equippedAvatar={profile?.avatar || (profile?.equipped?.avatar as string)}
-                frame={profile?.frame || (profile?.equipped?.frame as string) || 'none'}
-                name={profile?.displayName || 'Student'}
-                size={window.innerWidth < 640 ? 76 : 104}
-              />
-              {/* Level Badge anchored to bottom-right of avatar (duplicate ADMIN tag removed) */}
-              <div
-                className="absolute -bottom-1 -right-1 z-30 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-600 to-amber-500 text-white font-mono font-black text-[10px] sm:text-[11px] shadow-md border-2 border-[var(--card)] flex items-center gap-0.5 select-none"
-                title={`Level ${studentLevel} Student`}
-              >
-                <span className="text-[8px] font-extrabold text-amber-200">LV</span>
-                <span>{studentLevel}</span>
-              </div>
-            </div>
-
-            {/* Kobans Chip (OWN MODE ONLY) - Opens Wallet Modal */}
-            {isViewingSelf && !isPublicMode && (
-              <div className="mb-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setWalletModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--card-2)] border border-[#E8A317]/30 hover:border-[#E8A317] text-[#D97706] dark:text-[#FBBF24] font-mono text-xs font-bold transition-colors shadow-sm cursor-pointer"
-                  title="Your Koban balance - View Wallet"
-                >
-                  <KobanIcon size={15} />
-                  <span>{kobanBalance.toLocaleString()}</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* ── 3. NAME ROW ── */}
-          <div className="flex flex-col gap-1 mt-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Nameplate: ID shown only once inside the nameplate */}
-              {profile?.nameplate ? (
-                <Nameplate
-                  itemId={profile.nameplate}
-                  name={
-                    profile?.displayName ||
-                    (isViewingSelf ? ownProfile?.displayName || authProfile?.displayName || ownProfile?.username || authProfile?.username : null) ||
-                    'Student'
-                  }
-                  shortId={profile?.studentId || profile?.shortId || deriveFallbackShortId(profile?.uid || '0')}
-                />
-              ) : (
-                <h1 className="font-heading font-bold text-lg sm:text-xl text-[var(--text)] truncate flex items-center gap-1.5">
-                  <span>
-                    {profile?.displayName ||
-                      (isViewingSelf ? ownProfile?.displayName || authProfile?.displayName || ownProfile?.username || authProfile?.username : null) ||
-                      'Student'}
-                  </span>
-                  <span className="font-mono text-xs font-normal text-[var(--muted)]">
-                    #{profile?.studentId || profile?.shortId || deriveFallbackShortId(profile?.uid || '0')}
-                  </span>
-                </h1>
-              )}
-
-              {/* Username pill / handle */}
-              {((profile as any)?.username || (isViewingSelf && (ownProfile?.username || authProfile?.username))) && (
-                <span className="font-mono text-xs text-[var(--muted)]">
-                  @{(profile as any)?.username || ownProfile?.username || authProfile?.username}
-                </span>
-              )}
-
-              {/* Active Pro Badge (size="lg" = 34px on Profile) */}
-              {(isViewingSelf ? effectiveProBadge : profile?.proBadge) && (
-                <ProBadge
-                  design={(isViewingSelf ? effectiveProBadge : profile?.proBadge) || 'ember'}
-                  size="lg"
-                  animated
-                  priority
-                  onClick={() =>
-                    setBadgePopover({
-                      name: 'Pro Member',
-                      meaning: 'Unlimited mock exams & AI assistance',
-                    })
-                  }
-                  className="cursor-pointer"
-                />
-              )}
-
-              {/* Explicit Guest badge when account is a guest */}
-              {((isViewingSelf && isGuest) || (profile as any)?.isGuest || profile?.uid?.startsWith('guest_')) && (
-                <span className="font-mono text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-500">
-                  Guest
-                </span>
-              )}
-
-              {/* Public mode: Follows you tag */}
-              {isPublicMode && followsMe && (
-                <span className="font-mono text-[10px] uppercase font-semibold px-2 py-0.5 rounded bg-[var(--card-2)] border border-[var(--border)] text-[var(--muted)]">
-                  Follows you
-                </span>
-              )}
-            </div>
-
-            {/* Role badge & Active status line (shown once under the nameplate) */}
-            <div className="flex items-center gap-2 flex-wrap text-xs mt-0.5">
-              <RoleBadge
-                role={profile?.role || (isViewingSelf ? ownProfile?.role : 'Student')}
-                customRole={
-                  ((isViewingSelf && isGuest) || (profile as any)?.isGuest)
-                    ? 'Guest'
-                    : profile?.customRole || (isViewingSelf ? ownProfile?.customRole : undefined)
-                }
-                isSuperAdmin={
-                  isAdminAccount(profile?.uid) ||
-                  (isViewingSelf && isAdmin) ||
-                  profile?.role === 'superadmin' ||
-                  profile?.role === 'admin'
-                }
-                size="md"
-              />
-
-              {/* Green dot with "Active" next to it (no quote marks) */}
-              <div className="flex items-center gap-1.5 text-xs text-emerald-500 font-sans font-medium select-none">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
-                <span>Active</span>
-              </div>
-
-              {profile?.status && profile.status.toLowerCase() !== 'active' && (
-                <div className="flex items-center gap-1.5 text-[var(--muted)] text-xs truncate max-w-sm">
-                  <span>·</span>
-                  <span className="truncate">{profile.status.replace(/^["']|["']$/g, '')}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ── 4. FOLLOW COUNTS (Tappable) ── */}
-          <div className="flex items-center gap-3 text-xs font-mono text-[var(--muted)] pt-1">
-            <button
-              onClick={() => setFollowListTab('followers')}
-              className="hover:text-[var(--text)] transition-colors cursor-pointer group"
-            >
-              <strong className="text-[var(--text)] font-bold mr-1 group-hover:text-[var(--red)] transition-colors">
-                {profile?.followersCount || 0}
-              </strong>
-              followers
-            </button>
-            <span>·</span>
-            <button
-              onClick={() => setFollowListTab('following')}
-              className="hover:text-[var(--text)] transition-colors cursor-pointer group"
-            >
-              <strong className="text-[var(--text)] font-bold mr-1 group-hover:text-[var(--red)] transition-colors">
-                {profile?.followingCount || 0}
-              </strong>
-              following
-            </button>
-          </div>
-
-          {/* ── 5. BADGE ICONS ROW (Small icon-only 24px, 6px gap, original SVG) ── */}
-          <div className="relative flex items-center gap-1.5 flex-wrap pt-1">
-            {/* Captain badge */}
-            {(profile?.role === 'captain' || profile?.badges?.includes('captain')) && (
-              <button
-                type="button"
-                onClick={() => setBadgePopover({ name: 'Nakama Captain', meaning: 'Founder and leader of a verified study crew' })}
-                className="w-6 h-6 rounded-md bg-blue-500/10 border border-blue-500/30 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
-                title="Nakama Captain"
-              >
-                <Award size={13} className="text-blue-500" />
-              </button>
-            )}
-
-            {/* Crew leader */}
-            {profile?.crewName && (
-              <button
-                type="button"
-                onClick={() => setBadgePopover({ name: 'Crew Member', meaning: `Enlisted in crew: ${profile.crewName}` })}
-                className="w-6 h-6 rounded-md bg-purple-500/10 border border-purple-500/30 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
-                title={`Crew: ${profile.crewName}`}
-              >
-                <Users size={13} className="text-purple-500" />
-              </button>
-            )}
-
-            {/* Staff badge (superadmin only) */}
-            {((isViewingSelf && isAdmin) || profile?.role === 'superadmin' || profile?.badges?.includes('staff')) && (
-              <button
-                type="button"
-                onClick={() => setBadgePopover({ name: 'Staff Proctor', meaning: 'Official Boardly administrator and academic proctor' })}
-                className="w-6 h-6 rounded-md bg-red-500/10 border border-red-500/30 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
-                title="Boardly Staff"
-              >
-                <Shield size={13} className="text-red-500" />
-              </button>
-            )}
-
-            {/* Equipped Streak Badges (up to 3) */}
-            {equippedStreakBadges.map((badgeId) => {
-              const b = STREAK_BADGES.find((s) => s.id === badgeId);
-              if (!b) return null;
-              return (
-                <button
-                  key={b.id}
-                  type="button"
-                  onClick={() => setBadgePopover({ name: b.name, meaning: b.description })}
-                  className="w-6 h-6 rounded-md border flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
-                  style={{
-                    backgroundColor: `${b.color}15`,
-                    borderColor: `${b.color}40`,
-                  }}
-                  title={b.name}
-                >
-                  <Flame size={13} style={{ color: b.color }} />
-                </button>
-              );
-            })}
-
-            {/* Pinned Showcase Stamps (up to 3) */}
-            {pinnedShowcase.map((stampId) => {
-              const s = PASSPORT_STAMPS.find((p) => p.id === stampId);
-              if (!s) return null;
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setBadgePopover({ name: s.name, meaning: s.requirement })}
-                  className="w-6 h-6 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
-                  title={s.name}
-                >
-                  <Award size={13} />
-                </button>
-              );
-            })}
-
-            {/* Badge popover dialog */}
-            {badgePopover && (
-              <div className="absolute left-0 bottom-full mb-2 z-50 p-2.5 rounded-xl floating-blur backdrop-blur-lg border border-[var(--border)] shadow-xl text-xs flex flex-col gap-1 min-w-[200px] animate-fade-in">
-                <div className="flex items-center justify-between">
-                  <span className="font-heading font-bold text-[var(--text)]">{badgePopover.name}</span>
-                  <button onClick={() => setBadgePopover(null)} className="text-[var(--muted)] hover:text-[var(--text)]">
-                    <X size={12} />
-                  </button>
-                </div>
-                <p className="text-[11px] text-[var(--muted)]">{badgePopover.meaning}</p>
-              </div>
-            )}
-          </div>
-
-          {/* ── 6. ACTIONS ROW ── */}
-          <div className="flex items-center gap-2 pt-2 flex-wrap">
-            {isViewingSelf && !isPublicMode ? (
-              // ── OWN MODE ACTIONS ──
-              <>
-                {isGuest && (
-                  <button
-                    type="button"
-                    onClick={() => setGuestUpgradeModalOpen(true)}
-                    className="h-11 px-4 rounded-lg bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                  >
-                    <UserPlus size={14} />
-                    <span>Upgrade to a full account</span>
-                  </button>
-                )}
-
-                <button
-                  onClick={() => setEditSheetOpen(true)}
-                  className="h-11 px-4 rounded-lg bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                >
-                  <Edit3 size={14} />
-                  <span>Edit Profile</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    if (onClose) onClose(true);
-                    navigate('/store');
-                  }}
-                  className="h-11 px-4 rounded-lg border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                >
-                  <ShoppingBag size={14} className="text-[#E8A317]" />
-                  <span>Boardly Store</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    if (onClose) onClose(true);
-                    navigate('/rewards');
-                  }}
-                  className="h-11 px-4 rounded-lg border border-[#D71921]/35 bg-[#D71921]/10 hover:bg-[#D71921]/20 text-[#D71921] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                >
-                  <Sparkles size={14} className="text-[#D71921]" />
-                  <span>Rewards</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setDmInitialTab(incomingRequestsCount > 0 ? 'requests' : 'chat');
-                    setDmModalOpen(true);
-                  }}
-                  className="h-11 px-4 rounded-lg border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap relative"
-                  title="Messages & Chat Requests"
-                >
-                  <MessageSquare size={14} />
-                  <span>Messages</span>
-                  {incomingRequestsCount > 0 && (
-                    <span className="px-1.5 py-0.5 rounded-full bg-[#D71921] text-white text-[10px] font-mono font-bold leading-none">
-                      {incomingRequestsCount}
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  onClick={() => {
-                    if (onClose) onClose(true);
-                    navigate('/settings');
-                  }}
-                  className="h-11 px-3.5 rounded-lg border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                  title="Settings"
-                >
-                  <Settings size={15} />
-                  <span className="hidden sm:inline">Settings</span>
-                </button>
-              </>
-            ) : (
-              // ── PUBLIC MODE ACTIONS ──
-              <>
-                {/* Follow Button (shown to both signed-in visitors and guests) */}
-                {currentUid !== profile?.uid && (
-                  <button
-                    onClick={handleFollowToggle}
-                    disabled={followWorking}
-                    className={`h-11 px-5 rounded-lg text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                      isFollowedByMe
-                        ? 'border border-[var(--border)] text-[var(--text)] hover:border-red-500 hover:text-red-500 bg-transparent'
-                        : 'bg-[var(--red)] hover:bg-[var(--red-dark)] text-white'
-                    }`}
-                  >
-                    {isFollowedByMe ? (
-                      <>
-                        <UserCheck size={14} />
-                        <span>Following</span>
-                      </>
-                    ) : (
-                      <>
-                        <UserPlus size={14} />
-                        <span>Follow</span>
-                      </>
-                    )}
-                  </button>
-                )}
-
-                {/* Message / Chat Request Button (hidden on own profile) */}
-                {!isViewingSelf && currentUid !== profile?.uid && (() => {
-                  const canChatDirectly =
-                    (isFollowedByMe && followsMe) ||
-                    Boolean(chatPermission?.canChat) ||
-                    chatPermission?.outgoingRequest?.status === 'accepted' ||
-                    chatPermission?.incomingRequest?.status === 'accepted';
-                  const isPendingOutgoing = chatPermission?.outgoingRequest?.status === 'pending';
-                  const isPendingIncoming = chatPermission?.incomingRequest?.status === 'pending';
-                  const isCooldown = Boolean(chatPermission?.isCooldownActive);
-                  const isDisabled = chatRequestWorking || (!canChatDirectly && (isPendingOutgoing || isCooldown));
-
-                  let buttonLabel = 'Message';
-                  if (chatRequestWorking) {
-                    buttonLabel = 'Sending...';
-                  } else if (canChatDirectly) {
-                    buttonLabel = 'Message';
-                  } else if (isPendingIncoming) {
-                    buttonLabel = 'Respond to Request';
-                  } else if (isPendingOutgoing || isCooldown) {
-                    buttonLabel = 'Request Sent';
-                  }
-
-                  return (
-                    <button
-                      onClick={handleMessageOrRequestClick}
-                      disabled={isDisabled}
-                      className={`h-11 px-4 rounded-lg border text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                        isDisabled
-                          ? 'border-[var(--border)] bg-[var(--card-2)] text-[var(--muted)] opacity-70 cursor-not-allowed'
-                          : isPendingIncoming
-                          ? 'border-[#D71921]/40 bg-[#D71921]/10 hover:bg-[#D71921]/20 text-[#D71921] cursor-pointer'
-                          : 'border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] cursor-pointer'
-                      }`}
-                      title={
-                        canChatDirectly
-                          ? 'Send a direct message'
-                          : isPendingOutgoing
-                          ? 'Chat request sent and awaiting response'
-                          : isCooldown
-                          ? 'Request declined — 24h cooldown active'
-                          : 'Send a chat request'
-                      }
-                    >
-                      <MessageSquare size={14} />
-                      <span>{buttonLabel}</span>
-                    </button>
-                  );
-                })()}
-
-                {/* Share profile button */}
-                <button
-                  onClick={() => setShareModalOpen(true)}
-                  className="h-11 px-4 rounded-lg border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                >
-                  <Share2 size={14} />
-                  <span>Share Profile</span>
-                </button>
-
-                {/* View crew button */}
-                {profile?.crewName && (
-                  <button
-                    onClick={() => setCrewDetailModalOpen(true)}
-                    className="h-11 px-4 rounded-lg border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                  >
-                    <Users size={14} />
-                    <span>View Crew</span>
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        </div>
+        {/* ── CONFIGURABLE 10-LAYOUT HEADER (Renders all 5 store items + buttons) ── */}
+        <ProfileLayoutsRenderer
+          layout={resolvedLayoutId}
+          data={sharedProfileData}
+          isPublicMode={isPublicMode}
+          previewMode={false}
+          shortId={
+            profile?.studentId ||
+            profile?.shortId ||
+            deriveFallbackShortId(sharedProfileData.uid || '0')
+          }
+          onClose={onClose ? () => onClose() : undefined}
+          onPreviewAsPublic={
+            isViewingSelf && !previewAsPublic ? () => setPreviewAsPublic(true) : undefined
+          }
+          onEditProfile={() => setEditSheetOpen(true)}
+          onOpenStore={() => {
+            if (onClose) onClose(true);
+            navigate('/store');
+          }}
+          onOpenSettings={() => {
+            if (onClose) onClose(true);
+            navigate('/settings');
+          }}
+          onOpenWallet={() => setWalletModalOpen(true)}
+          onOpenRewards={() => {
+            if (onClose) onClose(true);
+            navigate('/rewards');
+          }}
+          onOpenMessages={() => {
+            setDmInitialTab(incomingRequestsCount > 0 ? 'requests' : 'chat');
+            setDmModalOpen(true);
+          }}
+          onOpenFollowers={() => setFollowListTab('followers')}
+          onOpenFollowing={() => setFollowListTab('following')}
+          onFollowToggle={currentUid !== profile?.uid ? handleFollowToggle : undefined}
+          onMessageClick={
+            !isViewingSelf && currentUid !== profile?.uid ? handleMessageOrRequestClick : undefined
+          }
+          onShareProfile={() => setShareModalOpen(true)}
+          onViewCrew={profile?.crewName ? () => setCrewDetailModalOpen(true) : undefined}
+          onUpgradeGuest={isGuest ? () => setGuestUpgradeModalOpen(true) : undefined}
+          onProBadgeClick={() =>
+            setBadgePopover({
+              name: 'Pro Member',
+              meaning: 'Unlimited mock exams & AI assistance',
+            })
+          }
+          isFollowedByMe={isFollowedByMe}
+          followsMe={followsMe}
+          followWorking={followWorking}
+          incomingRequestsCount={incomingRequestsCount}
+          messageButtonLabel={messageButtonLabel}
+          messageButtonDisabled={messageButtonDisabled}
+          messageButtonHighlight={isPendingIncoming}
+          isGuest={isGuest}
+          crewName={profile?.crewName}
+          badgeRowNode={badgeRowNode}
+          effectPlayKey={effectPlayKey}
+        />
 
         {/* ── 7. TABS WITH UNDERLINE STYLE ── */}
         <div className="px-4 sm:px-6 border-b border-[var(--border)] flex items-center gap-6 overflow-x-auto scrollbar-none">

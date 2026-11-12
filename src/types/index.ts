@@ -75,6 +75,8 @@ export interface UserProfile {
   proBadge?: string | null;
   proBadgeDesign?: string | null;
   proBadgeVisible?: boolean;
+  profileLayout?: string | null;
+  profile_layout?: string | null;
   notificationPrefs?: {
     emailKobanReceipts?: boolean;
     emailArenaStarts?: boolean;
@@ -176,6 +178,8 @@ export interface PublicProfile {
   customAvatarUrl?: string | null;
   equippedFrameId?: string | null;
   proBadge?: string | null;
+  profileLayout?: string | null;
+  profile_layout?: string | null;
   updatedAt?: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;
 }
 

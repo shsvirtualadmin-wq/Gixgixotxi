@@ -1734,6 +1734,7 @@ export interface InMemoryD1Tables {
         bio?: string;
         status?: string;
         accent?: string;
+        profile_layout?: string;
         created_at: number;
         updated_at: number;
       }
@@ -1979,6 +1980,7 @@ export class InMemoryD1Database implements RewardsD1Database {
               username_display: r.username_display || r.username || r.username_lower,
               account_type: isSwapped ? 'registered' : rawAccType,
               email: isSwapped ? rawAccType.toLowerCase() : rawEmail,
+              profile_layout: String(r.profile_layout || 'game-card'),
             });
           }
         }
@@ -3184,6 +3186,7 @@ export class InMemoryD1Database implements RewardsD1Database {
         uid,
         account_type,
         email: email || existingByLower?.email || existingByUid?.email || '',
+        profile_layout: existingByUid?.profile_layout || existingByLower?.profile_layout || 'game-card',
         created_at: existingByUid?.created_at || existingByLower?.created_at || created_at,
         updated_at,
       });
@@ -3217,6 +3220,20 @@ export class InMemoryD1Database implements RewardsD1Database {
     }
 
     if (upper.startsWith('UPDATE USER_USERNAMES')) {
+      if (upper.includes('SET PROFILE_LAYOUT =') && !upper.includes('SET DISPLAY_NAME =')) {
+        const profile_layout = String(args[0] ?? 'game-card').trim() || 'game-card';
+        const updatedAt = Number(args[1] ?? Date.now());
+        const uid = String(args[2] ?? '');
+        let changes = 0;
+        for (const r of this.tables.user_usernames.values()) {
+          if (r.uid === uid) {
+            r.profile_layout = profile_layout;
+            r.updated_at = updatedAt;
+            changes++;
+          }
+        }
+        return changes;
+      }
       if (upper.includes('SET DISPLAY_NAME =')) {
         const display_name = String(args[0] ?? '').trim();
         const avatar = String(args[1] ?? '').trim();
@@ -3226,8 +3243,12 @@ export class InMemoryD1Database implements RewardsD1Database {
         const bio = String(args[5] ?? '');
         const status = String(args[6] ?? '');
         const accent = String(args[7] ?? '');
-        const updatedAt = Number(args[8] ?? Date.now());
-        const uid = String(args[9] ?? '');
+        const hasProfileLayoutCol = upper.includes('PROFILE_LAYOUT =');
+        const profile_layout = hasProfileLayoutCol
+          ? String(args[8] ?? 'game-card').trim() || 'game-card'
+          : undefined;
+        const updatedAt = Number(args[hasProfileLayoutCol ? 9 : 8] ?? Date.now());
+        const uid = String(args[hasProfileLayoutCol ? 10 : 9] ?? '');
         let changes = 0;
         for (const r of this.tables.user_usernames.values()) {
           if (r.uid === uid) {
@@ -3239,6 +3260,7 @@ export class InMemoryD1Database implements RewardsD1Database {
             if (bio !== undefined) r.bio = bio;
             if (status !== undefined) r.status = status;
             if (accent !== undefined) r.accent = accent;
+            if (profile_layout !== undefined) r.profile_layout = profile_layout;
             r.updated_at = updatedAt;
             changes++;
           }

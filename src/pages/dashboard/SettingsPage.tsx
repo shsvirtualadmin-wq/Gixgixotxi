@@ -64,6 +64,16 @@ import {
   LEGAL_LAST_UPDATED_LABEL,
 } from '@/constants/legalConsent';
 import { validateUsernameFormat } from '@/utils/usernameValidation';
+import { Layout } from 'lucide-react';
+import {
+  PROFILE_LAYOUT_METADATA,
+  DEFAULT_PROFILE_LAYOUT,
+  normalizeProfileLayout,
+  useLiveProfileData,
+  type ProfileLayoutId,
+} from '@/lib/profileLayouts';
+import { saveProfileLayoutToServer } from '@/services/publicProfileService';
+import { ProfileView, invalidateProfileMemoryCache } from '@/components/profile/ProfileView';
 
 // Strictly cosmetic academic badge options (cannot grant admin/moderator privileges)
 const COSMETIC_ROLE_OPTIONS = [
@@ -113,6 +123,7 @@ export type SettingsSubPageId =
   | 'username'
   | 'display-name'
   | 'appearance'
+  | 'profile-layout'
   | 'pro-badge'
   | 'koban-icon'
   | 'notifications'
@@ -134,6 +145,7 @@ const SUBPAGE_TITLES: Record<SettingsSubPageId, string> = {
   username: 'Username & Study Role',
   'display-name': 'Display Name',
   appearance: 'Appearance',
+  'profile-layout': 'Profile Layout',
   'pro-badge': 'Pro Badge',
   'koban-icon': 'Koban Icon',
   notifications: 'Notifications',
@@ -165,6 +177,10 @@ function mapHashToSubPage(rawHash: string): {
     case 'settings-appearance':
     case 'appearance':
       return { subPage: 'appearance', targetId: null };
+    case 'settings-profile-layout':
+    case 'profile-layout':
+    case 'appearance-profile-layout':
+      return { subPage: 'profile-layout', targetId: null };
     case 'settings-theme':
       return { subPage: 'appearance', targetId: 'settings-theme' };
     case 'appearance-reduce-effects':
@@ -215,7 +231,7 @@ export function SettingsPage() {
     signOutUser,
   } = useAuth();
   const effectivePlan = useEffectivePlan();
-  const { equipped } = useWallet();
+  const { balance: kobanBalance, equipped } = useWallet();
   const { themeSetting: themePreference, setTheme: setThemePreference } = useTheme();
   const { smoothMode, toggleSmoothMode } = useSmoothMode();
   const { hideDragon, setHideDragon } = useDragonHiddenPreference();
@@ -300,6 +316,85 @@ export function SettingsPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Profile Layout State (10 layouts, default 'game-card')
+  const activeUid = user?.uid || profile?.uid || '';
+  const { data: ownLiveProfileData } = useLiveProfileData(
+    activeUid,
+    profile as any,
+    kobanBalance,
+    equipped as any
+  );
+
+  const [savedProfileLayout, setSavedProfileLayout] = useState<ProfileLayoutId>(() =>
+    normalizeProfileLayout(
+      profile?.profileLayout ??
+        profile?.profile_layout ??
+        DEFAULT_PROFILE_LAYOUT
+    )
+  );
+  const [selectedProfileLayout, setSelectedProfileLayout] = useState<ProfileLayoutId>(() =>
+    normalizeProfileLayout(
+      profile?.profileLayout ??
+        profile?.profile_layout ??
+        DEFAULT_PROFILE_LAYOUT
+    )
+  );
+  const [layoutSaving, setLayoutSaving] = useState(false);
+  const [layoutMessage, setLayoutMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+
+  // Load saved profile_layout from D1 for the authenticated user's UID
+  useEffect(() => {
+    if (!activeUid) return;
+    let cancelled = false;
+    fetch(`/api/auth/profile-layout?uid=${encodeURIComponent(activeUid)}`, {
+      headers: { Accept: 'application/json' },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (!cancelled && json?.ok && (json.profile_layout || json.layout)) {
+          const resolved = normalizeProfileLayout(json.profile_layout ?? json.layout);
+          setSavedProfileLayout(resolved);
+          setSelectedProfileLayout(resolved);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeUid]);
+
+  const handleSaveProfileLayout = async () => {
+    if (!activeUid || layoutSaving) return;
+    setLayoutSaving(true);
+    setLayoutMessage(null);
+    try {
+      const res = await saveProfileLayoutToServer(activeUid, selectedProfileLayout);
+      if (!res.ok) {
+        setLayoutMessage({
+          type: 'error',
+          text: res.error || 'Could not save profile layout.',
+        });
+        return;
+      }
+      setSavedProfileLayout(res.layout);
+      setSelectedProfileLayout(res.layout);
+      updateLocalProfile({
+        profileLayout: res.layout,
+        profile_layout: res.layout,
+      });
+      invalidateProfileMemoryCache(activeUid);
+      setLayoutMessage({
+        type: 'success',
+        text: 'Profile layout saved.',
+      });
+    } finally {
+      setLayoutSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (profile?.displayName) {
@@ -784,6 +879,11 @@ export function SettingsPage() {
     return found?.name || 'Ember';
   }, [isActivePro, proBadgeSettings.visible, proBadgeSettings.design]);
 
+  const profileLayoutRowValue = useMemo(() => {
+    const found = PROFILE_LAYOUT_METADATA.find((l) => l.id === savedProfileLayout);
+    return found?.name || 'Game Card';
+  }, [savedProfileLayout]);
+
   const kobanRowValue = useMemo(() => {
     const found = KOBAN_DESIGNS.find((d) => d.id === kobanStyle.design);
     return found?.name || 'Neon K Chip';
@@ -849,6 +949,13 @@ export function SettingsPage() {
             keywords: ['appearance', 'theme', 'light', 'dark', 'system', 'reduce effects', 'smooth mode', 'dragon', 'hide dragon'],
           },
           {
+            id: 'profile-layout' as SettingsSubPageId,
+            label: 'Profile Layout',
+            value: profileLayoutRowValue,
+            icon: Layout,
+            keywords: ['profile', 'layout', 'design', 'theme', 'banner', 'profile layout', 'game card', 'passport', 'trading card', 'retro', 'glass', 'id badge', 'loadout'],
+          },
+          {
             id: 'pro-badge' as SettingsSubPageId,
             label: 'Pro Badge',
             value: proBadgeRowValue,
@@ -899,6 +1006,7 @@ export function SettingsPage() {
       effectiveDisplayName,
       appearanceValueLabel,
       themePreference,
+      profileLayoutRowValue,
       proBadgeRowValue,
       kobanRowValue,
       notificationsRowValue,
@@ -967,6 +1075,13 @@ export function SettingsPage() {
         subPage: 'appearance',
         targetId: 'settings-dragon',
         keywords: ['hide dragon', 'dragon', 'mascot', 'companion', 'pet'],
+      },
+      {
+        id: 'deep-profile-layout',
+        label: 'Profile layout',
+        subtitle: `Personalize · ${profileLayoutRowValue}`,
+        subPage: 'profile-layout',
+        keywords: ['profile', 'layout', 'design', 'theme', 'banner', 'profile layout', 'game card', 'clean social', 'dark passport', 'centered hero', 'full cover', 'trading card', 'retro pixel', 'glass', 'id badge', 'loadout showcase'],
       },
       {
         id: 'deep-pro-badge',
@@ -1061,6 +1176,7 @@ export function SettingsPage() {
       appearanceValueLabel,
       smoothMode,
       hideDragon,
+      profileLayoutRowValue,
       proBadgeRowValue,
       kobanRowValue,
       emailKobanReceipts,
@@ -1529,6 +1645,136 @@ export function SettingsPage() {
                   Hides the interactive companion dragon across your dashboard while keeping all your XP and evolution progress intact.
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* 5b. PROFILE LAYOUT SUB-PAGE (Horizontally Swipeable 10 Live Preview Cards) */}
+          {activeSubPage === 'profile-layout' && (
+            <div className="space-y-5 pt-1">
+              <div className="stg-group !mt-2">
+                <div className="stg-group-label flex items-center justify-between">
+                  <span>Choose Profile Layout (10 Layouts)</span>
+                  <span className="text-[11px] font-mono text-[#D71921]">
+                    Swipe horizontally →
+                  </span>
+                </div>
+                <p className="stg-footnote !mt-0 !mb-3">
+                  Every layout renders your equipped banner, avatar, frame, nameplate, and profile effect live. Tap a card to preview and press Save to apply everywhere your profile is shown.
+                </p>
+
+                {/* Horizontally Swipeable Carousel of 10 Live Preview Cards */}
+                <div
+                  className="flex gap-4 overflow-x-auto pb-4 pt-1 px-1 snap-x snap-mandatory scrollbar-thin"
+                  style={{ WebkitOverflowScrolling: 'touch' }}
+                >
+                  {PROFILE_LAYOUT_METADATA.map((item, idx) => {
+                    const isSelected = selectedProfileLayout === item.id;
+                    const isCurrentlySaved = savedProfileLayout === item.id;
+                    const previewData = {
+                      ...ownLiveProfileData,
+                      displayName: effectiveDisplayName,
+                      display_name: effectiveDisplayName,
+                      username: effectiveUsername,
+                      proBadge: effectiveProBadge || ownLiveProfileData.proBadge,
+                      isPro: Boolean(isActivePro || ownLiveProfileData.isPro),
+                      profile_layout: item.id,
+                      profileLayout: item.id,
+                    };
+
+                    return (
+                      <div
+                        key={item.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          setSelectedProfileLayout(item.id);
+                          setLayoutMessage(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedProfileLayout(item.id);
+                            setLayoutMessage(null);
+                          }
+                        }}
+                        data-layout-card={item.id}
+                        className={`snap-center shrink-0 w-[310px] sm:w-[360px] rounded-3xl p-3 transition-all cursor-pointer select-none flex flex-col justify-between bg-[var(--card)] border ${
+                          isSelected
+                            ? 'ring-2 ring-[#D71921] border-[#D71921] shadow-[0_8px_30px_rgba(215,25,33,0.2)]'
+                            : 'border-[var(--border)] hover:border-[var(--text)]/30 opacity-90 hover:opacity-100'
+                        }`}
+                      >
+                        {/* Card Header Bar with Layout Title & Check Badge */}
+                        <div className="flex items-center justify-between gap-2 mb-2.5 px-1">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 text-[var(--muted)]">
+                                #{idx + 1}
+                              </span>
+                              <span className="font-heading font-bold text-sm text-[var(--text)] truncate">
+                                {item.name}
+                              </span>
+                              {isCurrentlySaved && (
+                                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-semibold">
+                                  Active
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-[var(--muted)] line-clamp-1 mt-0.5">
+                              {item.subtitle}
+                            </p>
+                          </div>
+
+                          <div
+                            className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-colors ${
+                              isSelected
+                                ? 'bg-[#D71921] text-white shadow-sm'
+                                : 'border border-[var(--border)] bg-[var(--card-2)] text-transparent'
+                            }`}
+                          >
+                            <Check size={14} strokeWidth={3} />
+                          </div>
+                        </div>
+
+                        {/* Live ProfileView Preview with User's Own Equipped Items */}
+                        <div className="pointer-events-none rounded-2xl overflow-hidden border border-[var(--border)]">
+                          <ProfileView
+                            layout={item.id}
+                            data={previewData}
+                            previewMode={true}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {layoutMessage && (
+                <div
+                  className={`rounded-2xl p-3.5 text-xs font-semibold border flex items-center gap-2 ${
+                    layoutMessage.type === 'success'
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-300'
+                      : 'bg-red-500/10 border-red-500/30 text-[#D71921] dark:text-red-300'
+                  }`}
+                >
+                  {layoutMessage.type === 'success' ? (
+                    <Check size={15} className="shrink-0" />
+                  ) : (
+                    <AlertCircle size={15} className="shrink-0" />
+                  )}
+                  <span>{layoutMessage.text}</span>
+                </div>
+              )}
+
+              <button
+                type="button"
+                disabled={layoutSaving}
+                onClick={() => void handleSaveProfileLayout()}
+                className="stg-btn-primary"
+              >
+                {layoutSaving ? 'Saving…' : 'Save'}
+              </button>
             </div>
           )}
 

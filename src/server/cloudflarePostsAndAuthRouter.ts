@@ -744,6 +744,8 @@ export interface LiveAuthorResolved {
   role: string | null;
   customRole: string | null;
   proBadge: ProBadgeDesignId | null;
+  profileLayout?: string | null;
+  profile_layout?: string | null;
   isDeleted?: boolean;
 }
 
@@ -866,6 +868,7 @@ export function resolveLiveAuthorsBatchSync(
       liveCustomRole ||
       liveProBadge
     ) {
+      const liveProfileLayout = String(uRow?.profile_layout || 'game-card').trim() || 'game-card';
       result.set(uid, {
         uid,
         username: liveUsername,
@@ -875,6 +878,8 @@ export function resolveLiveAuthorsBatchSync(
         role: liveRole,
         customRole: liveCustomRole,
         proBadge: liveProBadge,
+        profileLayout: liveProfileLayout,
+        profile_layout: liveProfileLayout,
       });
     }
   }
@@ -10545,6 +10550,9 @@ ${entries
   };
 
   app.post('/api/auth/profile-sync', delegateToAuthWorker);
+  app.post('/api/auth/profile-layout', delegateToAuthWorker);
+  app.put('/api/auth/profile-layout', delegateToAuthWorker);
+  app.get('/api/auth/profile-layout', delegateToAuthWorker);
   app.get('/api/auth/resolve-profiles', delegateToAuthWorker);
   app.post('/api/auth/username-register', delegateToAuthWorker);
   app.get('/api/auth/username-check', delegateToAuthWorker);

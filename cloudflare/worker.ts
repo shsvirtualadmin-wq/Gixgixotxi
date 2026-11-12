@@ -619,6 +619,12 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
       )`),
     ]);
 
+    try {
+      await db.prepare(`ALTER TABLE user_usernames ADD COLUMN profile_layout TEXT DEFAULT 'game-card'`).run();
+    } catch {
+      // Column already exists
+    }
+
     schemaInitialized = true;
   } catch (err) {
     console.error('[CloudflareWorker] D1 schema init warning:', err);

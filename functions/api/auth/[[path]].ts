@@ -456,6 +456,7 @@ export async function ensureEmailVerificationD1Schema(db: RewardsD1Database): Pr
     `ALTER TABLE user_usernames ADD COLUMN bio TEXT DEFAULT ''`,
     `ALTER TABLE user_usernames ADD COLUMN status TEXT DEFAULT ''`,
     `ALTER TABLE user_usernames ADD COLUMN accent TEXT DEFAULT ''`,
+    `ALTER TABLE user_usernames ADD COLUMN profile_layout TEXT DEFAULT 'game-card'`,
     `ALTER TABLE guest_accounts ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`,
     `ALTER TABLE guest_accounts ADD COLUMN abandoned_at INTEGER DEFAULT NULL`,
     `ALTER TABLE guest_accounts ADD COLUMN purge_after INTEGER DEFAULT NULL`,
@@ -468,6 +469,32 @@ export async function ensureEmailVerificationD1Schema(db: RewardsD1Database): Pr
       // Column or index already exists
     }
   }
+}
+
+export const AUTH_PROFILE_LAYOUT_IDS = [
+  'game-card',
+  'clean-social',
+  'dark-passport',
+  'centered-hero',
+  'full-cover',
+  'trading-card',
+  'retro-pixel',
+  'glass',
+  'id-badge',
+  'loadout-showcase',
+] as const;
+
+const AUTH_PROFILE_LAYOUT_SET = new Set<string>(AUTH_PROFILE_LAYOUT_IDS);
+
+export function isValidAuthProfileLayout(val: unknown): boolean {
+  return typeof val === 'string' && AUTH_PROFILE_LAYOUT_SET.has(val.trim());
+}
+
+export function normalizeAuthProfileLayout(val: unknown): string {
+  if (typeof val === 'string' && AUTH_PROFILE_LAYOUT_SET.has(val.trim())) {
+    return val.trim();
+  }
+  return 'game-card';
 }
 
 // ─── Resend Email Builder & Dispatcher ────────────────────────────────────────
@@ -2796,6 +2823,9 @@ export async function handleAuthApiRequest(
       status?: string;
       accent?: string;
       email?: string;
+      profile_layout?: string;
+      profileLayout?: string;
+      layout?: string;
     } = {};
     try {
       body = (await request.json()) as typeof body;
@@ -2826,7 +2856,15 @@ export async function handleAuthApiRequest(
       return jsonResponse({ ok: false, error: 'Missing user uid.' }, 400);
     }
 
-    // Strict whitelist: only display_name, avatar, frame, bio, status, and accent may be written by normal users.
+    const rawLayoutInput = body.profile_layout ?? body.profileLayout ?? body.layout;
+    if (rawLayoutInput !== undefined && !isValidAuthProfileLayout(rawLayoutInput)) {
+      return jsonResponse(
+        { ok: false, error: 'Invalid profile layout.', code: 'INVALID_PROFILE_LAYOUT' },
+        400
+      );
+    }
+
+    // Strict whitelist: only display_name, avatar, frame, bio, status, accent, and profile_layout may be written by normal users.
     // Only an authenticated real superadmin can write role or custom_role.
     const displayName = String(body.displayName ?? body.nickname ?? body.name ?? '').trim();
     const hasAvatarProp =
@@ -2848,7 +2886,7 @@ export async function handleAuthApiRequest(
 
     const existingRow = await db
       .prepare(
-        'SELECT username_lower, username_display, uid, account_type, email, display_name, avatar, frame, role, custom_role, bio, status, accent FROM user_usernames WHERE uid = ?1 LIMIT 1'
+        'SELECT username_lower, username_display, uid, account_type, email, display_name, avatar, frame, role, custom_role, bio, status, accent, profile_layout FROM user_usernames WHERE uid = ?1 LIMIT 1'
       )
       .bind(targetUid)
       .first<{
@@ -2865,6 +2903,7 @@ export async function handleAuthApiRequest(
         bio?: string;
         status?: string;
         accent?: string;
+        profile_layout?: string;
       }>();
 
     let fallbackUsernameDisplay = existingRow?.username_display || '';
@@ -2926,12 +2965,16 @@ export async function handleAuthApiRequest(
     const nextBio = bio !== undefined ? bio : (existingRow?.bio ?? '');
     const nextStatus = statusText !== undefined ? statusText : (existingRow?.status ?? '');
     const nextAccent = accent !== undefined ? accent : (existingRow?.accent ?? '');
+    const nextProfileLayout =
+      rawLayoutInput !== undefined
+        ? normalizeAuthProfileLayout(rawLayoutInput)
+        : normalizeAuthProfileLayout(existingRow?.profile_layout);
 
     await db
       .prepare(
         `UPDATE user_usernames
-         SET display_name = ?1, avatar = ?2, frame = ?3, role = ?4, custom_role = ?5, bio = ?6, status = ?7, accent = ?8, updated_at = ?9
-         WHERE uid = ?10`
+         SET display_name = ?1, avatar = ?2, frame = ?3, role = ?4, custom_role = ?5, bio = ?6, status = ?7, accent = ?8, profile_layout = ?9, updated_at = ?10
+         WHERE uid = ?11`
       )
       .bind(
         nextDisplayName,
@@ -2942,6 +2985,7 @@ export async function handleAuthApiRequest(
         nextBio,
         nextStatus,
         nextAccent,
+        nextProfileLayout,
         nowMs,
         targetUid
       )
@@ -2961,8 +3005,123 @@ export async function handleAuthApiRequest(
         bio: nextBio,
         status: nextStatus,
         accent: nextAccent,
+        profile_layout: nextProfileLayout,
+        profileLayout: nextProfileLayout,
         updatedAt: nowMs,
       },
+    });
+  }
+
+  // ─── G1b2. POST/PUT/GET /api/auth/profile-layout (Save & Read Profile Layout by Session UID) ───
+  if (
+    subPath === 'profile-layout' &&
+    (request.method === 'POST' || request.method === 'PUT' || request.method === 'GET')
+  ) {
+    const caller = await resolveCurrentUser({
+      request,
+      env,
+      db,
+      tokenVerifierOverride: tokenVerifier,
+    }).catch(() => null);
+
+    if (request.method === 'GET') {
+      const targetUid = String(url.searchParams.get('uid') || caller?.uid || '').trim();
+      if (!targetUid) {
+        return jsonResponse({ ok: false, error: 'Missing uid.', code: 'MISSING_UID' }, 400);
+      }
+      const row = await db
+        .prepare('SELECT profile_layout FROM user_usernames WHERE uid = ?1 LIMIT 1')
+        .bind(targetUid)
+        .first<{ profile_layout?: string }>()
+        .catch(() => null);
+      const resolvedLayout = normalizeAuthProfileLayout(row?.profile_layout);
+      return jsonResponse({
+        ok: true,
+        uid: targetUid,
+        layout: resolvedLayout,
+        profile_layout: resolvedLayout,
+        profileLayout: resolvedLayout,
+      });
+    }
+
+    if (!caller || !caller.uid) {
+      return jsonResponse(
+        { ok: false, error: 'Authentication required.', code: 'UNAUTHENTICATED' },
+        401
+      );
+    }
+
+    let body: {
+      layout?: unknown;
+      profile_layout?: unknown;
+      profileLayout?: unknown;
+    } = {};
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return jsonResponse({ ok: false, error: 'Invalid JSON body.', code: 'INVALID_JSON' }, 400);
+    }
+
+    const rawLayout = body.layout ?? body.profile_layout ?? body.profileLayout;
+    if (!isValidAuthProfileLayout(rawLayout)) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'Invalid profile layout. Must be one of the 10 allowed layouts.',
+          code: 'INVALID_PROFILE_LAYOUT',
+        },
+        400
+      );
+    }
+
+    const validLayout = String(rawLayout).trim();
+    const sessionUid = caller.uid;
+
+    const existingRow = await db
+      .prepare('SELECT username_lower, username_display, uid FROM user_usernames WHERE uid = ?1 LIMIT 1')
+      .bind(sessionUid)
+      .first<{ username_lower: string; username_display: string; uid: string }>()
+      .catch(() => null);
+
+    if (!existingRow) {
+      const fallbackU = (
+        caller.username ||
+        `user_${sessionUid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}`
+      ).trim();
+      const lowerU = fallbackU.toLowerCase();
+      try {
+        await db
+          .prepare(
+            `INSERT OR IGNORE INTO user_usernames (username_lower, username_display, uid, account_type, email, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
+          )
+          .bind(
+            lowerU,
+            fallbackU,
+            sessionUid,
+            sessionUid.startsWith('guest_') ? 'guest' : 'registered',
+            (caller.email || '').toLowerCase(),
+            nowMs,
+            nowMs
+          )
+          .run();
+      } catch {
+        // Ignore if username conflict
+      }
+    }
+
+    await db
+      .prepare('UPDATE user_usernames SET profile_layout = ?1, updated_at = ?2 WHERE uid = ?3')
+      .bind(validLayout, nowMs, sessionUid)
+      .run();
+
+    return jsonResponse({
+      ok: true,
+      uid: sessionUid,
+      layout: validLayout,
+      profile_layout: validLayout,
+      profileLayout: validLayout,
+      updatedAt: nowMs,
     });
   }
 
@@ -2976,13 +3135,14 @@ export async function handleAuthApiRequest(
       // 1. Check active user_usernames
       const activeRow = await db
         .prepare(
-          'SELECT username_lower, username_display, uid, account_type, display_name, avatar, frame, role, custom_role, bio, status, accent, updated_at FROM user_usernames WHERE username_lower = ?1 LIMIT 1'
+          'SELECT username_lower, username_display, uid, account_type, display_name, avatar, frame, role, custom_role, bio, status, accent, profile_layout, updated_at FROM user_usernames WHERE username_lower = ?1 LIMIT 1'
         )
         .bind(queryUsername)
         .first<any>();
 
       if (activeRow && activeRow.uid) {
         const badgeMap = await resolveProBadgesBatch([activeRow.uid], db, env, nowMs);
+        const resolvedLayout = normalizeAuthProfileLayout(activeRow.profile_layout);
         return jsonResponse({
           ok: true,
           found: true,
@@ -3000,6 +3160,8 @@ export async function handleAuthApiRequest(
             bio: activeRow.bio || '',
             status: activeRow.status || '',
             accent: activeRow.accent || '',
+            profile_layout: resolvedLayout,
+            profileLayout: resolvedLayout,
             proBadge: badgeMap.get(String(activeRow.uid)) ?? null,
           },
         });
@@ -3025,6 +3187,8 @@ export async function handleAuthApiRequest(
             frame: null,
             role: guestRow.role || 'student',
             customRole: null,
+            profile_layout: 'game-card',
+            profileLayout: 'game-card',
             proBadge: null,
           },
         });
@@ -3041,13 +3205,14 @@ export async function handleAuthApiRequest(
       if (historyRow && historyRow.uid) {
         const currentRow = await db
           .prepare(
-            'SELECT username_lower, username_display, uid, display_name, avatar, frame, role, custom_role, bio, status, accent FROM user_usernames WHERE uid = ?1 LIMIT 1'
+            'SELECT username_lower, username_display, uid, display_name, avatar, frame, role, custom_role, bio, status, accent, profile_layout FROM user_usernames WHERE uid = ?1 LIMIT 1'
           )
           .bind(historyRow.uid)
           .first<any>();
 
         const badgeMap = await resolveProBadgesBatch([historyRow.uid], db, env, nowMs);
         const currentUsername = currentRow?.username_display || currentRow?.username_lower || historyRow.uid;
+        const resolvedLayout = normalizeAuthProfileLayout(currentRow?.profile_layout);
         return jsonResponse({
           ok: true,
           found: true,
@@ -3067,6 +3232,8 @@ export async function handleAuthApiRequest(
                 bio: currentRow.bio || '',
                 status: currentRow.status || '',
                 accent: currentRow.accent || '',
+                profile_layout: resolvedLayout,
+                profileLayout: resolvedLayout,
                 proBadge: badgeMap.get(String(historyRow.uid)) ?? null,
               }
             : null,
@@ -3093,7 +3260,7 @@ export async function handleAuthApiRequest(
     const [unameRes, guestRes, roleRes, proBadgesMap] = await Promise.all([
       db
         .prepare(
-          `SELECT username_lower, username_display, uid, display_name, avatar, frame, role, custom_role, bio, status, accent, updated_at
+          `SELECT username_lower, username_display, uid, display_name, avatar, frame, role, custom_role, bio, status, accent, profile_layout, updated_at
            FROM user_usernames WHERE uid IN (${placeholders})`
         )
         .bind(...uids)
@@ -3135,6 +3302,8 @@ export async function handleAuthApiRequest(
         frame: null,
         role: rInfo?.role || g.role || 'student',
         customRole: rInfo?.custom_role ?? null,
+        profile_layout: 'game-card',
+        profileLayout: 'game-card',
         proBadge: null,
       };
     }
@@ -3153,6 +3322,7 @@ export async function handleAuthApiRequest(
         ? 'superadmin'
         : rInfo?.role || u.role || 'student';
       const uname = u.username_display || u.username || u.username_lower || '';
+      const resolvedLayout = normalizeAuthProfileLayout(u.profile_layout);
       profiles[uidStr] = {
         uid: uidStr,
         username: uname,
@@ -3164,6 +3334,8 @@ export async function handleAuthApiRequest(
         bio: u.bio || '',
         status: u.status || '',
         accent: u.accent || '',
+        profile_layout: resolvedLayout,
+        profileLayout: resolvedLayout,
         proBadge: proBadgesMap.get(uidStr) ?? null,
       };
     }
