@@ -311,6 +311,14 @@ export function prefetchTabRouteAndData(tabId: string, uid?: string | null): voi
       void import('@/pages/dashboard/ProfilePage').catch(() => {});
       break;
     }
+    case 'menu':
+    case 'rewards': {
+      void import('@/pages/RewardsPage').catch(() => {});
+      void import('@/services/rewardsService')
+        .then((m) => m.prefetchRewardsSummary(uid))
+        .catch(() => {});
+      break;
+    }
     default:
       break;
   }
@@ -319,8 +327,8 @@ export function prefetchTabRouteAndData(tabId: string, uid?: string | null): voi
 let idlePrefetchScheduled = false;
 
 /**
- * Schedules background prefetching of core dock tabs after initial paint + idle
- * so the first tap on any bottom-nav tab is instant.
+ * Schedules background prefetching of core dock tabs and Rewards summary after initial paint + idle
+ * so the first tap on any bottom-nav tab or the Rewards page is instant.
  */
 export function scheduleIdleTabPrefetch(uid?: string | null): void {
   if (typeof window === 'undefined' || idlePrefetchScheduled) return;
@@ -332,17 +340,18 @@ export function scheduleIdleTabPrefetch(uid?: string | null): void {
   idlePrefetchScheduled = true;
 
   const runPrefetch = () => {
-    const tabs = ['commons', 'home', 'streaks', 'messages', 'crew'];
+    const tabs = ['commons', 'home', 'rewards', 'streaks', 'messages', 'crew'];
     tabs.forEach((tab, idx) => {
       setTimeout(() => {
         prefetchTabRouteAndData(tab, uid);
-      }, idx * 180);
+      }, idx * 160);
     });
   };
 
   if ('requestIdleCallback' in window) {
-    (window as any).requestIdleCallback(runPrefetch, { timeout: 2500 });
+    (window as any).requestIdleCallback(runPrefetch, { timeout: 2000 });
   } else {
-    setTimeout(runPrefetch, 1200);
+    setTimeout(runPrefetch, 900);
   }
 }
+

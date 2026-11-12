@@ -1920,12 +1920,16 @@ body,
   /* Keep proper glass blur on navbars, headers, sheets, and modals on phones */
   header nav.allow-backdrop-blur,
   nav.allow-backdrop-blur,
-  .public-header-glass-bar,
   .more-sheet-panel,
   .avatar-dropdown-panel,
   .glass {
     -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
     backdrop-filter: blur(24px) saturate(180%) !important;
+  }
+  .boardly-top-nav-pill,
+  .public-header-glass-bar {
+    -webkit-backdrop-filter: blur(18px) saturate(160%) !important;
+    backdrop-filter: blur(18px) saturate(160%) !important;
   }
   .dashboard-glass-bar {
     -webkit-backdrop-filter: blur(20px) saturate(1.6) !important;
@@ -3250,13 +3254,18 @@ html[data-tab-hidden="true"] *::after {
   }
   .glass,
   .dashboard-glass-bar,
-  .public-header-glass-bar,
   .more-sheet-panel,
   .avatar-dropdown-panel {
     background: rgba(255, 255, 255, 0.92) !important;
   }
-  :is(.dark, [data-theme="dark"]) :is(.glass, .dashboard-glass-bar, .public-header-glass-bar, .more-sheet-panel, .avatar-dropdown-panel) {
+  :is(.dark, [data-theme="dark"]) :is(.glass, .dashboard-glass-bar, .more-sheet-panel, .avatar-dropdown-panel) {
     background: rgba(20, 20, 22, 0.92) !important;
+  }
+  .boardly-top-nav-pill,
+  .public-header-glass-bar {
+    background: rgba(40, 6, 10, 0.92) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
   .more-glass-card,
   .more-glass-tile {
@@ -6203,12 +6212,114 @@ html:not(.dark) .zenryu-stage--active {
   --rank-default-text: #e2e8f0;
 }
 
+.boardly-top-nav-pill,
 .public-header-glass-bar {
-  background: var(--public-header-bg) !important;
-  border: 1px solid var(--public-header-border) !important;
-  box-shadow: var(--public-header-shadow) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
-  backdrop-filter: blur(24px) saturate(180%) !important;
+  position: fixed !important;
+  top: calc(env(safe-area-inset-top, 0px) + 8px) !important;
+  left: 12px !important;
+  right: 12px !important;
+  max-width: 1200px;
+  margin-inline: auto;
+  height: 64px !important;
+  min-height: 64px !important;
+  max-height: 64px !important;
+  padding-inline: 14px 10px;
+  border-radius: 32px !important;
+  z-index: 1000 !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-sizing: border-box;
+  background: linear-gradient(135deg, rgba(120, 10, 20, 0.78), rgba(200, 20, 40, 0.62)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 8px 24px rgba(120, 10, 20, 0.35) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(160%) !important;
+  backdrop-filter: blur(18px) saturate(160%) !important;
+  transform: translateZ(0);
+  will-change: transform;
+  isolation: isolate;
+  contain: layout paint;
+  color: #ffffff;
+  user-select: none;
+  pointer-events: auto;
+  transition: none !important;
+}
+
+@media (min-width: 640px) {
+  .boardly-top-nav-pill,
+  .public-header-glass-bar {
+    padding-inline: 20px 14px;
+    gap: 12px;
+  }
+}
+
+.boardly-top-nav-pill *,
+.public-header-glass-bar * {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  will-change: auto !important;
+}
+
+.boardly-top-nav-circle-btn {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #ffffff !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 150ms ease, transform 150ms ease;
+}
+
+.boardly-top-nav-circle-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.boardly-top-nav-circle-btn:active {
+  transform: scale(0.95);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .boardly-top-nav-pill,
+  .public-header-glass-bar {
+    background: rgba(40, 6, 10, 0.92) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
+
+html.smooth-mode .boardly-top-nav-pill,
+html.smooth-mode .public-header-glass-bar,
+[data-smooth-mode="true"] .boardly-top-nav-pill,
+[data-smooth-mode="true"] .public-header-glass-bar,
+html.low-fx .boardly-top-nav-pill,
+html.low-fx .public-header-glass-bar,
+[data-low-fx="true"] .boardly-top-nav-pill,
+[data-low-fx="true"] .public-header-glass-bar {
+  background: rgba(40, 6, 10, 0.92) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .boardly-top-nav-pill,
+  .public-header-glass-bar {
+    background: rgba(40, 6, 10, 0.92) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
 }
 
 .captain-glass-panel {
@@ -7698,7 +7809,7 @@ html:not(.dark) .zenryu-stage--active {
 
   user-select: none;
   -webkit-user-select: none;
-  touch-action: pan-y;
+  touch-action: manipulation;
 }
 
 @media (min-width: 768px) {
@@ -7709,7 +7820,7 @@ html:not(.dark) .zenryu-stage--active {
   }
 }
 
-/* Sibling (a): .plate — the pill's liquid glass background, border, top highlight gradient & shadow */
+/* Sibling (a): .plate — the static liquid glass blur layer behind the bubble (never animates) */
 .sdn-dock > .plate {
   position: absolute;
   inset: 0;
@@ -7720,25 +7831,29 @@ html:not(.dark) .zenryu-stage--active {
   background-image: var(--nav-top-highlight);
   border: 1px solid var(--nav-glass-border);
   box-shadow: var(--nav-glass-shadow);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(175%);
+  backdrop-filter: blur(24px) saturate(175%);
+  transform: translateZ(0);
 }
 
-/* Sibling (b): .g — the active-tab glass bubble:
-   - Resting state: sits flat ("laid down") inside the 64px pill (52px tall x 64px wide, top: 6px, zero overflow above or below).
-   - Pressed / dragging state: lifts and scales up to 1.35x, extending above and below the 64px pill. */
+/* Sibling (b): .g — GPU-accelerated active-tab glass bubble driven strictly by translate3d:
+   - Never animates width, left, top, blur, or box-shadow.
+   - Uses a fast 210ms spring on transform & opacity only. */
 .sdn-dock > .g {
   position: absolute;
   top: 6px;
+  left: 0;
   height: 52px;
-  width: calc((100% - (var(--pad) * 2) - (var(--gap) * 5)) / 6);
+  width: var(--slot-w, calc((100% - (var(--pad) * 2) - (var(--gap) * 5)) / 6));
   z-index: 2;
   pointer-events: none;
   overflow: visible;
-  will-change: left, width, transform;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  will-change: transform;
   transition:
-    left 350ms cubic-bezier(0.34, 1.56, 0.64, 1),
-    width 350ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    transform 210ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease;
 }
 
 /* Instant placement on initial load / window resize */
@@ -7747,57 +7862,41 @@ html:not(.dark) .zenryu-stage--active {
   animation: none !important;
 }
 
-/* Follow finger horizontally while dragging */
+/* Follow finger horizontally while dragging with zero lag */
 .sdn-dock > .g.is-dragging {
-  transition:
-    left 45ms linear,
-    width 120ms ease-out !important;
+  transition: transform 35ms linear !important;
 }
 
 /* Inner glass bubble (.gi):
-   - Resting state: flat subtle glass tint inside the pill (scale(1)).
-   - Pressed / dragging state: scales to 1.35 with intensified blur and rim highlight, animating back down with 350ms cubic-bezier(0.34,1.56,0.64,1). */
+   - Zero backdrop-filter (blur stays on static .plate behind the bubble).
+   - Animates ONLY transform and opacity with a 210ms spring. */
 .sdn-dock > .g > .gi {
   width: 100%;
   height: 100%;
   border-radius: 9999px;
   pointer-events: none;
   background-color: var(--bubble-bg);
-  -webkit-backdrop-filter: blur(10px) saturate(150%);
-  backdrop-filter: blur(10px) saturate(150%);
-  border: 1px solid color-mix(in srgb, var(--bubble-rim) 55%, transparent);
-  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--bubble-rim) 45%, transparent);
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  border: 1.5px solid color-mix(in srgb, var(--bubble-rim) 70%, transparent);
+  box-shadow:
+    inset 0 1px 3px color-mix(in srgb, var(--bubble-rim) 55%, transparent),
+    var(--bubble-inner-shadow);
   transform-origin: center center;
-  transform: scale(1);
-  will-change: transform, box-shadow, backdrop-filter;
+  transform: translate3d(0, 0, 0) scale(1);
+  will-change: transform;
   transition:
-    transform 350ms cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow 350ms cubic-bezier(0.34, 1.56, 0.64, 1),
-    border-color 250ms ease,
-    backdrop-filter 250ms ease,
-    -webkit-backdrop-filter 250ms ease;
+    transform 210ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease;
 }
 
-/* Slight liquid stretch while sliding between tabs when not pressed */
-.sdn-dock > .g.is-moving:not(.is-pressed):not(.is-dragging) > .gi {
-  transform: scaleX(1.06) scaleY(0.96);
-}
-
-/* Pressed or dragging on the nav lifts the bubble to 1.35x above and below the pill with intensified glass blur & rim highlight */
+/* Pressed or dragging on the nav lifts the bubble to 1.35x using GPU transform only */
 .sdn-dock.is-pressed > .g > .gi,
 .sdn-dock > .g.out > .gi,
 .sdn-dock > .g > .gi.out,
 .sdn-dock > .g.is-pressed > .gi,
 .sdn-dock > .g.is-dragging > .gi {
-  transform: scale(1.35);
-  -webkit-backdrop-filter: blur(22px) saturate(210%);
-  backdrop-filter: blur(22px) saturate(210%);
-  border-color: var(--bubble-rim);
-  box-shadow:
-    inset 0 0 0 1.5px var(--bubble-rim),
-    inset 0 2px 8px var(--bubble-rim),
-    var(--bubble-inner-shadow),
-    var(--bubble-outer-glow);
+  transform: translate3d(0, 0, 0) scale(1.35);
 }
 
 .sdn-dock > .g.is-instant > .gi {
@@ -7815,6 +7914,7 @@ html:not(.dark) .zenryu-stage--active {
   gap: var(--gap);
   width: 100%;
   height: 100%;
+  touch-action: manipulation;
 }
 
 /* Tab button: inactive icons use var(--nav-icon-inactive) with no background */
@@ -7834,11 +7934,12 @@ html:not(.dark) .zenryu-stage--active {
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
   background: transparent !important;
   border: none;
   outline: none;
   color: var(--nav-icon-inactive);
-  transition: color 180ms ease, transform 160ms ease;
+  transition: color 120ms ease, transform 120ms ease;
 }
 
 .sdn-tab-btn[hidden],
@@ -7871,17 +7972,18 @@ html:not(.dark) .zenryu-stage--active {
   border: 1.5px solid var(--bubble-rim);
 }
 
-/* Low-end devices or Smooth Mode */
+/* Low-memory devices or Reduce effects ("Smooth Mode"): drop backdrop blur and use solid translucent colour */
 .sdn-dock.low-fx > .plate,
 :is(html.smooth-mode, html[data-smooth-mode="true"]) .sdn-dock > .plate {
-  -webkit-backdrop-filter: blur(16px) saturate(160%);
-  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background-color: color-mix(in srgb, var(--menu-card) 94%, transparent);
 }
 
 .sdn-dock.low-fx > .g > .gi,
 :is(html.smooth-mode, html[data-smooth-mode="true"]) .sdn-dock > .g > .gi {
-  -webkit-backdrop-filter: blur(12px) saturate(180%);
-  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
 /* Reduced motion */
@@ -7891,7 +7993,6 @@ html:not(.dark) .zenryu-stage--active {
   .sdn-dock > .g > .gi,
   .sdn-dock > .g.out > .gi,
   .sdn-dock > .g > .gi.out,
-  .sdn-dock > .g.is-moving > .gi,
   .sdn-dock > .g.is-pressed > .gi,
   .sdn-tab-btn {
     transition: none !important;
@@ -7900,9 +8001,8 @@ html:not(.dark) .zenryu-stage--active {
   .sdn-dock > .g > .gi,
   .sdn-dock > .g.out > .gi,
   .sdn-dock > .g > .gi.out,
-  .sdn-dock > .g.is-moving > .gi,
   .sdn-dock > .g.is-pressed > .gi {
-    transform: scale(1) !important;
+    transform: translate3d(0, 0, 0) scale(1) !important;
   }
 }
 

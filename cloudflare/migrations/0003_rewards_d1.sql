@@ -28,6 +28,12 @@ CREATE TABLE IF NOT EXISTS reward_daily_claims (
 CREATE INDEX IF NOT EXISTS idx_reward_daily_claims_uid_created
   ON reward_daily_claims(uid, created_at DESC);
 
+CREATE INDEX IF NOT EXISTS idx_reward_daily_claims_uid_pkt_date
+  ON reward_daily_claims(uid, pkt_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_reward_daily_claims_uid_status
+  ON reward_daily_claims(uid, credit_status);
+
 -- 3. reward_milestone_claims: one claim per (uid, milestone_id) enforced by PRIMARY KEY
 CREATE TABLE IF NOT EXISTS reward_milestone_claims (
   uid TEXT NOT NULL,
@@ -40,6 +46,9 @@ CREATE TABLE IF NOT EXISTS reward_milestone_claims (
 
 CREATE INDEX IF NOT EXISTS idx_reward_milestone_claims_uid
   ON reward_milestone_claims(uid);
+
+CREATE INDEX IF NOT EXISTS idx_reward_milestone_claims_uid_created
+  ON reward_milestone_claims(uid, created_at DESC);
 
 -- 4. referral_codes: permanent unique BLD-XXXXXX code per user
 CREATE TABLE IF NOT EXISTS referral_codes (
@@ -71,6 +80,12 @@ CREATE TABLE IF NOT EXISTS referrals (
 
 CREATE INDEX IF NOT EXISTS idx_referrals_inviter_uid
   ON referrals(inviter_uid, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_referrals_invitee_uid
+  ON referrals(invitee_uid, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_referrals_inviter_status_paid
+  ON referrals(inviter_uid, status, paid_at);
 
 CREATE INDEX IF NOT EXISTS idx_referrals_ip_hash_created
   ON referrals(ip_hash, created_at DESC);

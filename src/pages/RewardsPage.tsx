@@ -17,7 +17,6 @@ import {
   Moon,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { GuestUpgradeModal } from '@/components/auth/GuestUpgradeModal';
 import {
   EmailVerificationRequiredCard,
   isEmailVerificationRequiredError,
@@ -53,7 +52,15 @@ import {
   claimMilestoneReward,
   fetchRewardsState,
   getPendingReferralCode,
+  readCachedRewardsState,
 } from '@/services/rewardsService';
+import { recordRewardsContentPaint } from '@/lib/navStore';
+
+const LazyGuestUpgradeModal = React.lazy(() =>
+  import('@/components/auth/GuestUpgradeModal').then((m) => ({
+    default: m.GuestUpgradeModal,
+  }))
+);
 
 type RewardsTabId = 'checkin' | 'milestones' | 'invite' | 'faq';
 
@@ -150,12 +157,16 @@ export function RewardsPage() {
   // Single-open FAQ accordion state
   const [openFaqId, setOpenFaqId] = useState<string | null>(FAQ_ITEMS[0].id);
 
-  const [state, setState] = useState<RewardsStateResponse>(() =>
-    buildFallbackClientState(user?.uid)
+  const initialCachedRef = useRef<RewardsStateResponse | null>(
+    readCachedRewardsState(user?.uid)
   );
-  const [loading, setLoading] = useState<boolean>(true);
+  const [state, setState] = useState<RewardsStateResponse>(
+    () => initialCachedRef.current || buildFallbackClientState(user?.uid)
+  );
+  const [loading, setLoading] = useState<boolean>(() => !initialCachedRef.current);
   const [countdownSec, setCountdownSec] = useState<number>(() =>
-    getSecondsUntilNextPktMidnight()
+    initialCachedRef.current?.daily?.secondsUntilNextPktMidnight ||
+      getSecondsUntilNextPktMidnight()
   );
 
   // Action feedback states
@@ -304,6 +315,7 @@ export function RewardsPage() {
     }
     try {
       const fetched = await fetchRewardsState(user?.uid);
+      initialCachedRef.current = fetched;
       setState(fetched);
       if (fetched.daily?.secondsUntilNextPktMidnight) {
         setCountdownSec(fetched.daily.secondsUntilNextPktMidnight);
@@ -323,8 +335,20 @@ export function RewardsPage() {
   }, [user?.uid]);
 
   useEffect(() => {
-    loadState(false);
-  }, [loadState]);
+    const cached = readCachedRewardsState(user?.uid);
+    if (cached) {
+      initialCachedRef.current = cached;
+      setState(cached);
+      setLoading(false);
+      recordRewardsContentPaint('cache');
+      // Refresh in the background (stale-while-revalidate)
+      void loadState(true);
+    } else {
+      void loadState(false).then(() => {
+        recordRewardsContentPaint('network');
+      });
+    }
+  }, [user?.uid, loadState]);
 
   // Tick PKT midnight countdown every second
   useEffect(() => {
@@ -925,6 +949,37 @@ export function RewardsPage() {
           onChange={handleTabChange}
           ariaLabel="Student Rewards sections"
         />
+
+        {/* First-visit skeleton shimmer banner (shown only when cold cache is fetching) */}
+        {loading && !initialCachedRef.current && (
+          <div
+            data-testid="rewards-first-visit-skeleton"
+            aria-hidden="true"
+            className="grid grid-cols-2 sm:grid-cols-3 gap-3 animate-pulse"
+          >
+            <div
+              className="h-16 rounded-[24px] border"
+              style={{
+                backgroundColor: 'var(--rw-card)',
+                borderColor: 'var(--rw-border)',
+              }}
+            />
+            <div
+              className="h-16 rounded-[24px] border"
+              style={{
+                backgroundColor: 'var(--rw-card)',
+                borderColor: 'var(--rw-border)',
+              }}
+            />
+            <div
+              className="hidden sm:block h-16 rounded-[24px] border"
+              style={{
+                backgroundColor: 'var(--rw-card)',
+                borderColor: 'var(--rw-border)',
+              }}
+            />
+          </div>
+        )}
 
         {/* ─── 3. CHECK-IN TAB (#checkin) ─────────────────────────────────── */}
         {activeTab === 'checkin' && (
@@ -1996,11 +2051,15 @@ export function RewardsPage() {
         </div>
       </footer>
 
-      <GuestUpgradeModal
-        isOpen={isUpgradeModalOpen}
-        onClose={() => setIsUpgradeModalOpen(false)}
-        defaultReason="Create a free account to claim rewards and keep your username, progress, and test attempts."
-      />
+      {isUpgradeModalOpen && (
+        <React.Suspense fallback={null}>
+          <LazyGuestUpgradeModal
+            isOpen={isUpgradeModalOpen}
+            onClose={() => setIsUpgradeModalOpen(false)}
+            defaultReason="Create a free account to claim rewards and keep your username, progress, and test attempts."
+          />
+        </React.Suspense>
+      )}
     </div>
   );
 }

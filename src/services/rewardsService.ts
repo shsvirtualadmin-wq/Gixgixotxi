@@ -13,6 +13,7 @@ import {
   computeDailyProgressState,
   computeMilestonesState,
   generateDeterministicReferralCode,
+  getSecondsUntilNextPktMidnight,
   isValidReferralCodeFormat,
   normalizeReferralCode,
   type RewardsMode,
@@ -167,15 +168,110 @@ export function buildFallbackClientState(uid?: string | null): RewardsStateRespo
   };
 }
 
-export async function fetchRewardsState(uid?: string | null): Promise<RewardsStateResponse> {
-  const url = '/api/rewards/state';
+// ─── Memory + localStorage SWR Cache Keyed by UID (Cleared on Sign Out) ──────
+
+const REWARDS_CACHE_LS_PREFIX = 'boardly_rewards_summary_v1_';
+const REWARDS_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const rewardsMemoryCache = new Map<string, { data: RewardsStateResponse; updatedAt: number }>();
+const inFlightRewardsSummary = new Map<string, Promise<RewardsStateResponse>>();
+
+function getRewardsCacheKey(uid?: string | null): string {
+  const resolvedUid = uid || auth.currentUser?.uid || 'anon';
+  return `${REWARDS_CACHE_LS_PREFIX}${resolvedUid}`;
+}
+
+export function readCachedRewardsState(uid?: string | null): RewardsStateResponse | null {
+  const key = getRewardsCacheKey(uid);
+  const mem = rewardsMemoryCache.get(key);
+  if (mem && Date.now() - mem.updatedAt <= REWARDS_CACHE_MAX_AGE_MS) {
+    return {
+      ...mem.data,
+      daily: {
+        ...mem.data.daily,
+        secondsUntilNextPktMidnight: getSecondsUntilNextPktMidnight(),
+      },
+    };
+  }
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { data: RewardsStateResponse; updatedAt: number };
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      !parsed.data ||
+      !parsed.data.daily ||
+      !Array.isArray(parsed.data.milestones)
+    ) {
+      return null;
+    }
+    if (Date.now() - (parsed.updatedAt || 0) > REWARDS_CACHE_MAX_AGE_MS) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+    rewardsMemoryCache.set(key, parsed);
+    return {
+      ...parsed.data,
+      daily: {
+        ...parsed.data.daily,
+        secondsUntilNextPktMidnight: getSecondsUntilNextPktMidnight(),
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function writeCachedRewardsState(
+  uid: string | null | undefined,
+  data: RewardsStateResponse
+): void {
+  if (!data || data.loadError) return;
+  const key = getRewardsCacheKey(uid);
+  const entry = { data, updatedAt: Date.now() };
+  rewardsMemoryCache.set(key, entry);
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(entry));
+  } catch {
+    // Ignore quota errors
+  }
+}
+
+export function clearCachedRewardsState(): void {
+  rewardsMemoryCache.clear();
+  inFlightRewardsSummary.clear();
+  if (typeof window === 'undefined') return;
+  try {
+    for (let i = window.localStorage.length - 1; i >= 0; i--) {
+      const k = window.localStorage.key(i);
+      if (k && k.startsWith(REWARDS_CACHE_LS_PREFIX)) {
+        window.localStorage.removeItem(k);
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+async function fetchRewardsSummaryNetwork(uid?: string | null): Promise<RewardsStateResponse> {
+  const resolvedUid = uid || auth.currentUser?.uid || null;
+  const primaryUrl = '/api/rewards/summary';
   try {
     const headers = await getAuthHeaders();
-    const res = await fetch(url, {
+    let res = await fetch(primaryUrl, {
       method: 'GET',
       headers,
       credentials: 'include',
     });
+    if (res.status === 404) {
+      res = await fetch('/api/rewards/state', {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
+    }
     const rawText = await res.text();
     let data: any = null;
     try {
@@ -190,14 +286,14 @@ export async function fetchRewardsState(uid?: string | null): Promise<RewardsSta
         rawText.slice(0, 200).trim() ||
         res.statusText ||
         'Failed to load reward settings';
-      console.error('[Rewards State Load Failed]', {
-        url,
+      console.error('[Rewards Summary Load Failed]', {
+        url: primaryUrl,
         method: 'GET',
         status: res.status,
         statusText: res.statusText,
         response: data ?? rawText,
       });
-      const fallback = buildFallbackClientState(uid);
+      const fallback = buildFallbackClientState(resolvedUid);
       return {
         ...fallback,
         httpStatus: res.status,
@@ -206,8 +302,8 @@ export async function fetchRewardsState(uid?: string | null): Promise<RewardsSta
     }
 
     if (data && typeof data === 'object' && data.daily && Array.isArray(data.milestones)) {
-      if (uid && (!data.serverConfigured || data.referral?.myCode === 'BLD-7K9M2P')) {
-        const deterministic = generateDeterministicReferralCode(uid, 0);
+      if (resolvedUid && (!data.serverConfigured || data.referral?.myCode === 'BLD-7K9M2P')) {
+        const deterministic = generateDeterministicReferralCode(resolvedUid, 0);
         data.referral = {
           ...data.referral,
           myCode: deterministic,
@@ -222,34 +318,54 @@ export async function fetchRewardsState(uid?: string | null): Promise<RewardsSta
         data.comingSoon = true;
       }
       data.httpStatus = res.status;
-      return data as RewardsStateResponse;
+      const typed = data as RewardsStateResponse;
+      writeCachedRewardsState(resolvedUid, typed);
+      return typed;
     }
 
-    console.error('[Rewards State Invalid Payload]', {
-      url,
+    console.error('[Rewards Summary Invalid Payload]', {
+      url: primaryUrl,
       method: 'GET',
       status: res.status,
       statusText: res.statusText,
       response: data ?? rawText,
     });
-    const fallback = buildFallbackClientState(uid);
+    const fallback = buildFallbackClientState(resolvedUid);
     return {
       ...fallback,
       httpStatus: res.status,
-      loadError: `HTTP ${res.status}: Invalid response payload from /api/rewards/state`,
+      loadError: `HTTP ${res.status}: Invalid response payload from /api/rewards/summary`,
     };
   } catch (err: any) {
-    console.error('[Rewards State Network Error]', {
-      url,
+    console.error('[Rewards Summary Network Error]', {
+      url: primaryUrl,
       method: 'GET',
       error: err?.message || String(err),
     });
-    const fallback = buildFallbackClientState(uid);
+    const fallback = buildFallbackClientState(resolvedUid);
     return {
       ...fallback,
-      loadError: `Failed to load reward settings: ${err?.message || 'Unable to reach /api/rewards/state'}`,
+      loadError: `Failed to load reward settings: ${err?.message || 'Unable to reach /api/rewards/summary'}`,
     };
   }
+}
+
+export async function fetchRewardsState(uid?: string | null): Promise<RewardsStateResponse> {
+  const dedupeKey = getRewardsCacheKey(uid);
+  const existing = inFlightRewardsSummary.get(dedupeKey);
+  if (existing) {
+    return existing;
+  }
+  const promise = fetchRewardsSummaryNetwork(uid).finally(() => {
+    inFlightRewardsSummary.delete(dedupeKey);
+  });
+  inFlightRewardsSummary.set(dedupeKey, promise);
+  return promise;
+}
+
+export function prefetchRewardsSummary(uid?: string | null): void {
+  void import('@/pages/RewardsPage').catch(() => {});
+  void fetchRewardsState(uid).catch(() => {});
 }
 
 export async function claimDailyReward(): Promise<{

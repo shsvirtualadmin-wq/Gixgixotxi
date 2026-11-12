@@ -95,7 +95,12 @@ export function PublicLayout() {
           </BoardlySuspenseBoundary>
         </div>
       ) : (
-        <main className="flex-1 flex flex-col pt-20 sm:pt-24 pb-[var(--sdn-page-pb)]">
+        <main
+          className="flex-1 flex flex-col pb-[var(--sdn-page-pb)]"
+          style={{
+            paddingTop: 'calc(64px + 24px + env(safe-area-inset-top, 0px))',
+          }}
+        >
           <BoardlySuspenseBoundary variant="page">
             <Outlet />
           </BoardlySuspenseBoundary>

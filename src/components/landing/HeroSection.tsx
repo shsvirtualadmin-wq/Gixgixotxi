@@ -7,19 +7,10 @@ export function HeroSection() {
     <section
       className="relative overflow-hidden"
       style={{
-        paddingTop: 'calc(80px + 36px + env(safe-area-inset-top, 0px))',
+        paddingTop: 'calc(64px + 24px + env(safe-area-inset-top, 0px))',
         paddingBottom: '64px',
       }}
     >
-      {/* Background ambient radial glow for the hero area (static gradient, zero blur filter pass) */}
-      <div
-        className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] sm:w-[900px] h-[450px] rounded-full pointer-events-none opacity-45"
-        style={{
-          background: 'radial-gradient(circle, rgba(215, 25, 33, 0.18) 0%, rgba(255, 255, 255, 0.02) 45%, transparent 72%)',
-        }}
-        aria-hidden="true"
-      />
-
       <div className="boardly-container relative z-10">
         {/* 2-column hero grid (1.12fr .88fr, gap 48px, align-items: center), 1 column on mobile */}
         <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-10 lg:gap-14 items-center">

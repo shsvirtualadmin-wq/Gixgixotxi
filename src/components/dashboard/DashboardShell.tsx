@@ -19,13 +19,27 @@ const GuestUpgradeModal = React.lazy(() =>
 
 const CACHED_DOCK_PATHS = new Set([
   '/dashboard',
-  '/dashboard/grand-line',
-  '/commons',
   '/dashboard/commons',
+  '/commons',
+  '/dashboard/messages',
+  '/messages',
   '/dashboard/chat',
+  '/dashboard/streaks',
+  '/dashboard/crew',
+  '/crew/my',
+  '/crew/dashboard',
+  '/dashboard/notifications',
+  '/notifications',
+  '/dashboard/practice',
+  '/practice',
+  '/dashboard/grand-line',
+  '/dashboard/store',
+  '/store',
   '/settings',
   '/dashboard/settings',
 ]);
+
+const MAX_KEEP_ALIVE_TABS = 6;
 
 function KeepAliveTabsOutlet() {
   const location = useLocation();
@@ -35,6 +49,15 @@ function KeepAliveTabsOutlet() {
   const cacheRef = useRef<Map<string, React.ReactNode>>(new Map());
 
   if (isCacheableTab && currentOutlet) {
+    // Refresh LRU order and cap at MAX_KEEP_ALIVE_TABS
+    if (cacheRef.current.has(normalizedPath)) {
+      cacheRef.current.delete(normalizedPath);
+    } else if (cacheRef.current.size >= MAX_KEEP_ALIVE_TABS) {
+      const oldestKey = cacheRef.current.keys().next().value;
+      if (oldestKey) {
+        cacheRef.current.delete(oldestKey);
+      }
+    }
     cacheRef.current.set(normalizedPath, currentOutlet);
   }
 
@@ -48,11 +71,13 @@ function KeepAliveTabsOutlet() {
             style={{ display: isActive ? 'contents' : 'none' }}
             aria-hidden={!isActive}
           >
-            {element}
+            <BoardlySuspenseBoundary variant="page">{element}</BoardlySuspenseBoundary>
           </div>
         );
       })}
-      {!isCacheableTab && currentOutlet}
+      {!isCacheableTab && (
+        <BoardlySuspenseBoundary variant="page">{currentOutlet}</BoardlySuspenseBoundary>
+      )}
     </>
   );
 }

@@ -42,6 +42,8 @@ import { ProBadge } from '@/components/ui/ProBadge';
 import { useProBadge } from '@/contexts/ProBadgeContext';
 import { useSecurityStatus, clearSecurityStatusCache } from '@/hooks/useSecurityStatus';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
+import { clearCachedRewardsState, prefetchRewardsSummary } from '@/services/rewardsService';
+import { markRewardsTapStart } from '@/lib/navStore';
 
 export interface HamburgerMenuSheetProps {
   isOpen: boolean;
@@ -52,6 +54,7 @@ export const APP_VERSION = 'v1.0.0';
 
 export function clearCachedAuthAndAdminStorage() {
   clearSecurityStatusCache();
+  clearCachedRewardsState();
   try {
     const lsKeysToRemove: string[] = [
       'boardly_user_authenticated',
@@ -72,6 +75,7 @@ export function clearCachedAuthAndAdminStorage() {
           k.startsWith('boardly_auth') ||
           k.startsWith('boardly_token') ||
           k.startsWith('boardly_security_status_v1_') ||
+          k.startsWith('boardly_rewards_summary_v1_') ||
           k.startsWith('boardly_profile_layout_v1_') ||
           k.startsWith('boardly_settings_plan_v1_') ||
           k.startsWith('boardly_notif_prefs_v1_') ||
@@ -344,7 +348,10 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
       keywords: 'rewards daily check-in referrals kobans streaks bonus',
       icon: <Sparkles size={18} strokeWidth={1.9} />,
       active: isRewardsActive,
-      onClick: () => onNavigate('/rewards'),
+      onClick: () => {
+        markRewardsTapStart();
+        onNavigate('/rewards');
+      },
     },
   ], [
     isCommonsActive,
@@ -1358,6 +1365,9 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
       setSearchQuery('');
       setIsSearchFocused(false);
       setIsRendered(true);
+      // Warm up the Rewards chunk + summary data as soon as the menu opens
+      void import('@/pages/RewardsPage').catch(() => {});
+      prefetchRewardsSummary(user?.uid);
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setIsVisible(true);
@@ -1371,7 +1381,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
       }, 320);
     }
     return () => clearTimeout(timer);
-  }, [isOpen, isSigningOut]);
+  }, [isOpen, isSigningOut, user?.uid]);
 
   // Phone's back button support via history popstate
   useEffect(() => {
@@ -1494,6 +1504,9 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
   // Navigate & close
   const handleNav = useCallback(
     (target: string) => {
+      if (target.startsWith('/rewards')) {
+        markRewardsTapStart();
+      }
       const shouldReplace = pushedHistoryRef.current;
       pushedHistoryRef.current = false;
       onClose();
