@@ -15,6 +15,7 @@ import {
   type GeminiKeyStatusRecord,
 } from '../services/botContentGenerator';
 import { validateAndNormalizeQuestionMath } from '../utils/katexValidator';
+import { repairD1McqRow } from '../lib/math';
 import {
   PRE_SEEDED_UNIVERSITIES,
   buildUniversitySlug,
@@ -6880,7 +6881,8 @@ ${entries
     const paged = matching.slice(offset, offset + limit);
     const letterToIdx: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
 
-    const formatted = paged.map((m) => {
+    const formatted = paged.map((rawMcq) => {
+      const m = repairD1McqRow(rawMcq);
       const base: Record<string, any> = {
         id: m.id,
         university_id: m.university_id,

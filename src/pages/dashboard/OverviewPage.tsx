@@ -39,6 +39,7 @@ import {
   type D1McqRow,
 } from '@/constants/d1Universities';
 import { MathText } from '@/components/ui/MathText';
+import { repairSplitOrGarbledMcqOptions } from '@/lib/math';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { UniversityGridSkeleton } from '@/components/ui/Skeleton';
 import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
@@ -912,324 +913,88 @@ export function OverviewPage() {
         </Suspense>
       </div>
 
-      {/* ── FULL-SCREEN UNIVERSITY TEST RUNNER (100dvh, solid background, no backdrop-filter/blur) ── */}
+      {/* ── FULL-SCREEN UNIVERSITY TEST RUNNER (Apple × Nothing OS 100dvh layout) ── */}
       {activeUni && (
         <div
-          className="fixed inset-0 z-[100] w-screen h-[100dvh] flex flex-col bg-[var(--bg)] text-[var(--text)] overflow-hidden select-none"
-          style={{
-            height: '100dvh',
-            backdropFilter: 'none',
-            WebkitBackdropFilter: 'none',
-          }}
+          className="fixed inset-0 z-[100] nt-quiz-shell select-none"
           role="dialog"
           aria-modal="true"
           aria-label={`${activeUni.name} Test Runner`}
         >
-          {/* 1. SLIM TOP BAR (University logo, name, h:mm:ss timer, PDF download, Report, Close X) */}
-          <header
-            className="shrink-0 w-full border-b border-[var(--border)] bg-[var(--surface)] px-3 sm:px-5 flex items-center justify-between gap-2"
-            style={{
-              paddingTop: 'max(8px, env(safe-area-inset-top, 8px))',
-              paddingBottom: '8px',
-              minHeight: '56px',
-            }}
-          >
-            {/* Left: University Logo + Name */}
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="cockpit-uni-circle cockpit-uni-circle--live shrink-0 w-9 h-9 text-xs">
-                {activeUni.logo_url ? (
-                  <img
-                    src={activeUni.logo_url}
-                    alt={activeUni.name}
-                    className="w-5 h-5 object-contain rounded-full"
-                  />
-                ) : (
-                  <span>{getUniversityInitials(activeUni.name)}</span>
-                )}
-              </div>
-              <div className="min-w-0">
-                <h2
-                  className="text-sm sm:text-base font-bold text-[var(--text)] truncate leading-tight"
-                  style={{ fontFamily: 'var(--font-heading)' }}
-                >
-                  {activeUni.name}
-                </h2>
-                <p className="text-[11px] text-[var(--text-muted)] truncate leading-tight hidden sm:block">
-                  {getUniversityTestSpec(activeUni).patternLabel}
-                </p>
-              </div>
-            </div>
-
-            {/* Center/Right Controls: Timer (h:mm:ss), Question Palette trigger on mobile, PDF Download, Report, Close X */}
-            <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-              {(testStage === 'running' || testStage === 'loading') && (
-                <div
-                  className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs sm:text-sm font-bold tabular-nums ${
-                    remainingSeconds > 0 && remainingSeconds < 300
-                      ? 'border-[var(--accent)] bg-[var(--cockpit-pill-live-bg)] text-[var(--accent)]'
-                      : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)]'
-                  }`}
-                  style={{ fontFamily: "'Doto', var(--font-dot), monospace" }}
-                  aria-label="Time remaining"
-                >
-                  <Clock size={14} className="text-[var(--accent)] shrink-0" />
-                  <span>{formatDurationClock(remainingSeconds)}</span>
-                </div>
-              )}
-
-              {testStage === 'running' && testMcqs.length > 0 && (
-                <>
-                  {/* PDF Download Question Paper (Test Screen) */}
-                  <PdfDownloadButton
-                    onDownload={handleDownloadQuestionPaperPdf}
-                    label="PDF"
-                    variant="secondary"
-                    className="!px-2.5 !py-1.5 !min-h-[38px] !rounded-lg !text-xs"
-                  />
-
-                  {/* Mobile Question Palette Sheet Trigger */}
-                  <button
-                    type="button"
-                    onClick={() => setMobilePaletteOpen(true)}
-                    className="lg:hidden inline-flex items-center gap-1.5 min-h-[38px] px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] text-xs font-semibold text-[var(--text)] cursor-pointer"
-                    aria-label="Open Question Palette"
-                  >
-                    <LayoutGrid size={14} className="text-[var(--accent)]" />
-                    <span className="tabular-nums">
-                      {answeredCount}/{testMcqs.length}
+          {testStage === 'running' || testStage === 'loading' ? (
+            <>
+              {/* 1–4. CENTERED MAIN COLUMN (max-w 760px, fits 100dvh with no scrolling) */}
+              <div className="nt-quiz-main">
+                {/* 1. TOP BAR: round "SAT" chip (red text), timer chip, PDF icon button, close icon button */}
+                <header className="nt-topbar">
+                  <div className="nt-chip nt-chip--exam" title={activeUni.name}>
+                    <span>
+                      {activeUni.name.replace(/\s*\(.*?\)\s*/g, '').trim() || activeUni.name}
                     </span>
-                  </button>
+                  </div>
 
-                  {/* Report Button */}
-                  {currentMcq && (
+                  <div className="nt-topbar-right">
+                    <div
+                      className={`nt-chip nt-chip--timer ${
+                        remainingSeconds > 0 && remainingSeconds < 300
+                          ? 'nt-chip--timer-urgent'
+                          : ''
+                      }`}
+                      aria-label="Time remaining"
+                    >
+                      <Clock size={14} className="text-[#d71921] shrink-0" />
+                      <span className="nt-doto">{formatDurationClock(remainingSeconds)}</span>
+                    </div>
+
+                    {testStage === 'running' && testMcqs.length > 0 && (
+                      <PdfDownloadButton
+                        onDownload={handleDownloadQuestionPaperPdf}
+                        iconOnly
+                        title="Download Test PDF"
+                      />
+                    )}
+
                     <button
                       type="button"
-                      onClick={() => void handleReportCurrentMcq(currentMcq)}
-                      className="inline-flex items-center gap-1 min-h-[38px] px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] text-xs font-medium text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] cursor-pointer transition-colors"
-                      title="Report an issue with this question"
-                      aria-label="Report question"
+                      onClick={handleRequestCloseRunner}
+                      aria-label="Close test runner"
+                      title="Close test"
+                      className="nt-chip nt-chip--icon"
                     >
-                      <Flag size={13} />
-                      <span className="hidden sm:inline">Report</span>
+                      <X size={17} />
                     </button>
-                  )}
-                </>
-              )}
-
-              {/* Close X Button */}
-              <button
-                type="button"
-                onClick={handleRequestCloseRunner}
-                aria-label="Close test runner"
-                className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-lg border border-[var(--border)] bg-[var(--surface-2)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--accent)] cursor-pointer transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-          </header>
-
-          {/* 2. SCROLLABLE MIDDLE + SIDE QUESTION PALETTE ON WIDE SCREENS */}
-          <div className="flex-1 min-h-0 flex flex-row overflow-hidden">
-            <main className="flex-1 min-w-0 overflow-y-auto px-4 py-5 sm:px-6 sm:py-7">
-              <div className="w-full max-w-[760px] mx-auto">
-                {/* STAGE A: OVERVIEW / SUBJECT FILTER SETUP */}
-                {testStage === 'overview' && (
-                  <div className="cockpit-surface-card p-5 sm:p-7 space-y-6">
-                    <div className="space-y-1">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--accent)]">
-                        Official Test Configuration
-                      </span>
-                      <h3
-                        className="text-lg sm:text-xl font-bold text-[var(--text)]"
-                        style={{ fontFamily: 'var(--font-dot)' }}
-                      >
-                        {activeUni.name} Entry Test
-                      </h3>
-                      <p className="text-xs sm:text-sm text-[var(--text-muted)]">
-                        {getUniversityTestSpec(activeUni).patternLabel}
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="cockpit-subrow p-3.5 space-y-1">
-                        <span className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
-                          Available Pool
-                        </span>
-                        <div
-                          className="text-sm sm:text-base font-bold text-[var(--text)] tabular-nums"
-                          style={{ fontFamily: 'var(--font-heading)' }}
-                        >
-                          {Number(activeUni.mcq_count || 0).toLocaleString()} MCQs
-                        </div>
-                      </div>
-                      <div className="cockpit-subrow p-3.5 space-y-1">
-                        <span className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
-                          Duration
-                        </span>
-                        <div
-                          className="text-sm sm:text-base font-bold text-[var(--text)] tabular-nums"
-                          style={{ fontFamily: 'var(--font-heading)' }}
-                        >
-                          {formatDurationClock(getUniversityTestSpec(activeUni).durationMinutes * 60)}
-                        </div>
-                      </div>
-                      <div className="cockpit-subrow p-3.5 space-y-1">
-                        <span className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
-                          Marking
-                        </span>
-                        <div
-                          className="text-sm sm:text-base font-bold text-[var(--text)] tabular-nums"
-                          style={{ fontFamily: 'var(--font-heading)' }}
-                        >
-                          {getUniversityTestSpec(activeUni).markingLabel}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Subject Scope Filter (Skeleton while loading, never text loader) */}
-                    <div className="space-y-2.5">
-                      <label
-                        className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider"
-                        style={{ fontFamily: 'var(--font-heading)' }}
-                      >
-                        Select Subject Scope
-                      </label>
-                      {loadingTopics ? (
-                        <div className="flex flex-wrap gap-2" aria-hidden="true">
-                          <div className="h-9 w-32 rounded-full skeleton-shimmer" />
-                          <div className="h-9 w-28 rounded-full skeleton-shimmer" />
-                          <div className="h-9 w-24 rounded-full skeleton-shimmer" />
-                          <div className="h-9 w-28 rounded-full skeleton-shimmer" />
-                        </div>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedSubject('all');
-                              setSelectedTopic('all');
-                            }}
-                            className={`cockpit-uni-pill min-h-[38px] px-3.5 cursor-pointer ${
-                              selectedSubject === 'all'
-                                ? 'cockpit-uni-pill--live'
-                                : 'cockpit-uni-pill--soon'
-                            }`}
-                          >
-                            Full Pattern ({activeUni.mcq_count})
-                          </button>
-                          {uniTopicsTree.map((s) => (
-                            <button
-                              key={s.subject}
-                              type="button"
-                              onClick={() => {
-                                setSelectedSubject(s.subject);
-                                setSelectedTopic('all');
-                              }}
-                              className={`cockpit-uni-pill min-h-[38px] px-3.5 cursor-pointer ${
-                                selectedSubject === s.subject
-                                  ? 'cockpit-uni-pill--live'
-                                  : 'cockpit-uni-pill--soon'
-                              }`}
-                            >
-                              {s.subject} ({s.total})
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {selectedSubject !== 'all' && (
-                      <div className="space-y-2.5">
-                        <label
-                          className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider"
-                          style={{ fontFamily: 'var(--font-heading)' }}
-                        >
-                          Select Chapter / Topic
-                        </label>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedTopic('all')}
-                            className={`cockpit-uni-pill min-h-[36px] px-3 cursor-pointer ${
-                              selectedTopic === 'all'
-                                ? 'cockpit-uni-pill--live'
-                                : 'cockpit-uni-pill--soon'
-                            }`}
-                          >
-                            All Topics
-                          </button>
-                          {(
-                            uniTopicsTree.find((x) => x.subject === selectedSubject)?.topics ||
-                            []
-                          ).map((t) => (
-                            <button
-                              key={t.topic}
-                              type="button"
-                              onClick={() => setSelectedTopic(t.topic)}
-                              className={`cockpit-uni-pill min-h-[36px] px-3 cursor-pointer ${
-                                selectedTopic === t.topic
-                                  ? 'cockpit-uni-pill--live'
-                                  : 'cockpit-uni-pill--soon'
-                              }`}
-                            >
-                              {t.topic} ({t.count})
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {testError && (
-                      <div className="cockpit-subrow p-3.5 text-xs text-[var(--accent)] flex items-center gap-2">
-                        <AlertCircle size={15} className="shrink-0" />
-                        <span>{testError}</span>
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-end gap-3 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setActiveUni(null)}
-                        className="inline-flex items-center justify-center min-h-[48px] px-5 py-2.5 rounded-full text-xs sm:text-sm font-semibold cockpit-subrow text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        disabled={loadingMcqs}
-                        onClick={() =>
-                          void startUniversityD1Test(activeUni, selectedSubject, selectedTopic)
-                        }
-                        className="relative overflow-hidden inline-flex items-center justify-center gap-2 min-h-[48px] px-6 py-2.5 rounded-full text-xs sm:text-sm font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-75"
-                      >
-                        <span>Start {activeUni.name} Test</span>
-                        <ArrowRight size={15} />
-                      </button>
-                    </div>
                   </div>
-                )}
+                </header>
 
-                {/* STAGE B: SKELETON WHILE QUESTIONS LOAD (NEVER A TEXT LOADER) */}
+                {/* STAGE B: SKELETON WHILE QUESTIONS LOAD */}
                 {(testStage === 'loading' || (loadingMcqs && testStage !== 'running')) && (
-                  <div className="space-y-4" aria-busy="true" aria-label="Loading test questions">
-                    <div className="cockpit-surface-card p-5 sm:p-6 space-y-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="h-6 w-36 rounded-full skeleton-shimmer" />
-                        <div className="h-6 w-24 rounded-full skeleton-shimmer" />
+                  <div
+                    className="flex-1 min-h-0 flex flex-col gap-3"
+                    aria-busy="true"
+                    aria-label="Loading test questions"
+                  >
+                    <div className="nt-progress">
+                      <div className="nt-progress-row">
+                        <div className="h-7 w-28 rounded-lg skeleton-shimmer" />
+                        <div className="h-4 w-24 rounded-md skeleton-shimmer" />
                       </div>
-                      <div className="space-y-2.5 pt-2">
-                        <div className="h-5 w-full rounded-lg skeleton-shimmer" />
-                        <div className="h-5 w-5/6 rounded-lg skeleton-shimmer" />
-                        <div className="h-5 w-2/3 rounded-lg skeleton-shimmer" />
+                      <div className="h-3 w-full rounded-full skeleton-shimmer" />
+                    </div>
+                    <div className="nt-qcard space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="h-7 w-40 rounded-full skeleton-shimmer" />
+                        <div className="h-7 w-20 rounded-full skeleton-shimmer" />
+                      </div>
+                      <div className="space-y-2 pt-1">
+                        <div className="h-4 w-full rounded-md skeleton-shimmer" />
+                        <div className="h-4 w-5/6 rounded-md skeleton-shimmer" />
+                        <div className="h-4 w-2/3 rounded-md skeleton-shimmer" />
                       </div>
                     </div>
-                    <div className="space-y-3">
+                    <div className="nt-options-grid">
                       {[0, 1, 2, 3].map((idx) => (
-                        <div
-                          key={idx}
-                          className="w-full min-h-[56px] rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 flex items-center gap-3.5"
-                        >
-                          <div className="w-7 h-7 rounded-full skeleton-shimmer shrink-0" />
+                        <div key={idx} className="nt-option-card">
+                          <div className="w-8 h-8 rounded-full skeleton-shimmer shrink-0" />
                           <div className="h-4 flex-1 rounded-md skeleton-shimmer" />
                         </div>
                       ))}
@@ -1237,33 +1002,66 @@ export function OverviewPage() {
                   </div>
                 )}
 
-                {/* STAGE C: RUNNING TEST QUESTION & OPTIONS */}
+                {/* STAGE C: RUNNING TEST QUESTION & OPTIONS (Apple × Nothing OS) */}
                 {testStage === 'running' && currentMcq && (
-                  <div className="space-y-5 pb-6">
-                    {reportNotice && (
-                      <div
-                        role="status"
-                        aria-live="polite"
-                        className="cockpit-subrow px-4 py-2.5 text-xs font-semibold text-[var(--accent)] flex items-center justify-between"
-                      >
-                        <span>{reportNotice}</span>
+                  <>
+                    {/* 2. PROGRESS: large question number on left, "Answered X/Y" on right, 2-row dot strip below */}
+                    <section className="nt-progress" aria-label="Test progress">
+                      <div className="nt-progress-row">
+                        <span className="nt-progress-qnum nt-doto">
+                          {currentIndex + 1} / {testMcqs.length}
+                        </span>
+                        <span className="nt-progress-answered">
+                          Answered {answeredCount}/{testMcqs.length}
+                        </span>
                       </div>
-                    )}
 
-                    {/* Subject / Chapter Tag + Question Number + Flag Button */}
-                    <div className="cockpit-surface-card p-5 sm:p-6 space-y-4">
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span
-                            className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-[var(--cockpit-pill-live-bg)] text-[var(--accent)] tabular-nums"
-                            style={{ fontFamily: "'Doto', var(--font-dot), monospace" }}
-                          >
-                            Q{currentIndex + 1} / {testMcqs.length}
-                          </span>
-                          <span className="cockpit-uni-pill cockpit-uni-pill--soon text-xs">
-                            {currentMcq.subject} · {currentMcq.topic}
-                          </span>
-                        </div>
+                      <div
+                        className="nt-dots-grid"
+                        style={
+                          {
+                            '--nt-dot-cols': Math.max(1, Math.ceil(testMcqs.length / 2)),
+                          } as React.CSSProperties
+                        }
+                        role="tablist"
+                        aria-label="Questions navigation strip"
+                      >
+                        {testMcqs.map((q, dotIdx) => {
+                          const isCurrent = dotIdx === currentIndex;
+                          const isDotAnswered = Boolean(answers[q.id]);
+                          return (
+                            <button
+                              key={q.id}
+                              type="button"
+                              role="tab"
+                              aria-selected={isCurrent}
+                              aria-label={`Question ${dotIdx + 1}${
+                                isDotAnswered ? ' (Answered)' : ''
+                              }`}
+                              onClick={() => setCurrentIndex(dotIdx)}
+                              className={`nt-dot ${
+                                isCurrent
+                                  ? 'nt-dot--current'
+                                  : isDotAnswered
+                                  ? 'nt-dot--answered'
+                                  : ''
+                              }`}
+                            />
+                          );
+                        })}
+                      </div>
+                    </section>
+
+                    {/* 3. QUESTION CARD: rounded 28px card with subject tag pill, Flag pill button, and question text */}
+                    <section className="nt-qcard" aria-label={`Question ${currentIndex + 1}`}>
+                      <div className="nt-qcard-header">
+                        <span
+                          className="nt-subject-pill"
+                          title={`${currentMcq.subject} · ${currentMcq.topic}`}
+                        >
+                          {currentMcq.subject}
+                          {currentMcq.topic ? ` · ${currentMcq.topic}` : ''}
+                        </span>
 
                         <button
                           type="button"
@@ -1273,383 +1071,464 @@ export function OverviewPage() {
                               [currentMcq.id]: !prev[currentMcq.id],
                             }))
                           }
-                          className={`inline-flex items-center gap-1.5 min-h-[36px] px-3 py-1 rounded-lg border text-xs font-semibold cursor-pointer transition-colors ${
-                            flaggedMap[currentMcq.id]
-                              ? 'border-amber-500/60 bg-amber-500/15 text-amber-500'
-                              : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]'
+                          aria-pressed={Boolean(flaggedMap[currentMcq.id])}
+                          className={`nt-flag-pill ${
+                            flaggedMap[currentMcq.id] ? 'nt-flag-pill--active' : ''
                           }`}
                         >
                           <Bookmark
-                            size={13}
-                            className={flaggedMap[currentMcq.id] ? 'fill-amber-500 text-amber-500' : ''}
+                            size={12}
+                            fill={flaggedMap[currentMcq.id] ? 'currentColor' : 'none'}
                           />
                           <span>{flaggedMap[currentMcq.id] ? 'Flagged' : 'Flag'}</span>
                         </button>
                       </div>
 
-                      {/* Question Stem */}
-                      <div className="text-base sm:text-lg font-medium text-[var(--text)] leading-relaxed pt-1 select-text">
+                      <div className="nt-qcard-stem select-text">
                         <MathText text={currentMcq.question} block />
                       </div>
-                    </div>
+                    </section>
 
-                    {/* Options A / B / C / D (Single column, >= 56px tall) */}
-                    <div className="space-y-3" role="radiogroup" aria-label={`Question ${currentIndex + 1} options`}>
-                      {(
-                        [
-                          ['A', currentMcq.option_a],
-                          ['B', currentMcq.option_b],
-                          ['C', currentMcq.option_c],
-                          ['D', currentMcq.option_d],
-                        ] as const
-                      ).map(([letter, optText]) => {
-                        const selected = answers[currentMcq.id] === letter;
-                        return (
-                          <button
-                            key={letter}
-                            type="button"
-                            role="radio"
-                            aria-checked={selected}
-                            onClick={() =>
-                              setAnswers((prev) => ({
-                                ...prev,
-                                [currentMcq.id]: letter,
-                              }))
-                            }
-                            className={`w-full min-h-[56px] text-left px-4 py-3.5 rounded-2xl border flex items-center gap-3.5 transition-colors cursor-pointer ${
-                              selected
-                                ? 'border-[var(--accent)] bg-[var(--cockpit-pill-live-bg)] text-[var(--text)] shadow-[0_0_0_1px_var(--accent)]'
-                                : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text)] hover:border-[var(--accent)]'
-                            }`}
-                          >
-                            <span
-                              className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center shrink-0 ${
-                                selected
-                                  ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
-                                  : 'bg-[var(--surface-2)] text-[var(--text-muted)] border border-[var(--border)]'
-                              }`}
-                              style={{ fontFamily: 'var(--font-heading)' }}
-                            >
-                              {letter}
-                            </span>
-                            <span className="text-sm sm:text-base leading-relaxed flex-1 min-w-0 select-text">
-                              <MathText text={optText} />
-                            </span>
-                          </button>
-                        );
-                      })}
+                    {/* 4. OPTIONS: A–D rounded 22px cards, resizing to fit remaining space (4 rows mobile, 2x2 >=700px) */}
+                    {(() => {
+                      const cleanOpts = repairSplitOrGarbledMcqOptions([
+                        currentMcq.option_a,
+                        currentMcq.option_b,
+                        currentMcq.option_c,
+                        currentMcq.option_d,
+                      ]);
+                      const optionPairs = [
+                        ['A', cleanOpts[0]],
+                        ['B', cleanOpts[1]],
+                        ['C', cleanOpts[2]],
+                        ['D', cleanOpts[3]],
+                      ] as const;
+
+                      return (
+                        <div
+                          className="nt-options-grid"
+                          role="radiogroup"
+                          aria-label={`Question ${currentIndex + 1} options`}
+                        >
+                          {optionPairs.map(([letter, optText]) => {
+                            const selected = answers[currentMcq.id] === letter;
+                            return (
+                              <button
+                                key={letter}
+                                type="button"
+                                role="radio"
+                                aria-checked={selected}
+                                onClick={() =>
+                                  setAnswers((prev) => ({
+                                    ...prev,
+                                    [currentMcq.id]: letter,
+                                  }))
+                                }
+                                className={`nt-option-card ${
+                                  selected ? 'nt-option-card--selected' : ''
+                                }`}
+                              >
+                                <span className="nt-option-badge">{letter}</span>
+                                <span className="nt-option-text select-text">
+                                  <MathText text={optText} />
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+              </div>
+
+              {/* 5. BOTTOM DOCK: pinned, frosted-glass bar with square Previous icon button, Next button, and red Finish & Submit button */}
+              {testStage === 'running' && testMcqs.length > 0 && (
+                <footer className="nt-bottom-dock">
+                  <div className="nt-bottom-dock-inner">
+                    <button
+                      type="button"
+                      disabled={currentIndex === 0}
+                      onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
+                      aria-label="Previous question"
+                      title="Previous question"
+                      className="nt-btn-prev"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+
+                    <div className="nt-dock-right">
+                      <button
+                        type="button"
+                        disabled={currentIndex >= testMcqs.length - 1}
+                        onClick={() =>
+                          setCurrentIndex((i) => Math.min(testMcqs.length - 1, i + 1))
+                        }
+                        className="nt-btn-next"
+                      >
+                        <span>Next</span>
+                        <ChevronRight size={16} />
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={submittingTest}
+                        onClick={() => setConfirmSubmitOpen(true)}
+                        className="nt-btn-submit"
+                      >
+                        <span>{submittingTest ? 'Submitting...' : 'Finish & Submit'}</span>
+                        {submittingTest && <ButtonLineLoader />}
+                      </button>
                     </div>
                   </div>
-                )}
+                </footer>
+              )}
+            </>
+          ) : (
+            /* OVERVIEW & RESULTS STAGES */
+            <>
+              <header
+                className="shrink-0 w-full border-b border-[var(--nt-border)] bg-[var(--nt-surface)] px-3 sm:px-5 flex items-center justify-between gap-2"
+                style={{
+                  paddingTop: 'max(8px, env(safe-area-inset-top, 8px))',
+                  paddingBottom: '8px',
+                  minHeight: '56px',
+                }}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="nt-chip nt-chip--exam">
+                    <span>
+                      {activeUni.name.replace(/\s*\(.*?\)\s*/g, '').trim() || activeUni.name}
+                    </span>
+                  </div>
+                  <div className="min-w-0 hidden sm:block">
+                    <p className="text-xs text-[var(--nt-muted)] truncate leading-tight">
+                      {getUniversityTestSpec(activeUni).patternLabel}
+                    </p>
+                  </div>
+                </div>
 
-                {/* STAGE D: TEST RESULTS + PDF DOWNLOAD (ANSWERS + SCORE) */}
-                {testStage === 'results' && testResultSummary && (
-                  <div className="space-y-5 pb-8">
-                    <div className="cockpit-surface-card p-5 sm:p-6 text-center space-y-4">
-                      <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--cockpit-pill-live-bg)] text-[var(--accent)]">
-                        <Award size={24} />
-                      </div>
-                      <div className="space-y-1">
-                        <h3
-                          className="text-lg sm:text-2xl font-bold text-[var(--text)]"
-                          style={{ fontFamily: 'var(--font-dot)' }}
-                        >
-                          {activeUni.name} Test Complete
-                        </h3>
-                        <p className="text-xs sm:text-sm text-[var(--text-muted)]">
-                          Official Score Breakdown & Verified Answer Key
-                        </p>
-                      </div>
+                <button
+                  type="button"
+                  onClick={handleRequestCloseRunner}
+                  aria-label="Close test runner"
+                  className="nt-chip nt-chip--icon"
+                >
+                  <X size={18} />
+                </button>
+              </header>
 
-                      <div className="grid grid-cols-3 gap-3 max-w-md mx-auto">
-                        <div className="cockpit-subrow p-3">
-                          <div className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
-                            Accuracy
-                          </div>
-                          <div
-                            className="text-base sm:text-lg font-bold text-[var(--accent)] tabular-nums"
-                            style={{ fontFamily: 'var(--font-heading)' }}
+              <div className="flex-1 min-h-0 flex flex-row overflow-hidden">
+                <main className="flex-1 min-w-0 overflow-y-auto px-4 py-5 sm:px-6 sm:py-7">
+                  <div className="w-full max-w-[760px] mx-auto">
+                    {/* STAGE A: OVERVIEW / SUBJECT FILTER SETUP */}
+                    {testStage === 'overview' && (
+                      <div className="cockpit-surface-card p-5 sm:p-7 space-y-6">
+                        <div className="space-y-1">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--accent)]">
+                            Official Test Configuration
+                          </span>
+                          <h3
+                            className="text-lg sm:text-xl font-bold text-[var(--text)]"
+                            style={{ fontFamily: 'var(--font-dot)' }}
                           >
-                            {testResultSummary.accuracy}%
+                            {activeUni.name} Entry Test
+                          </h3>
+                          <p className="text-xs sm:text-sm text-[var(--text-muted)]">
+                            {getUniversityTestSpec(activeUni).patternLabel}
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="cockpit-subrow p-3.5 space-y-1">
+                            <span className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
+                              Available Pool
+                            </span>
+                            <div
+                              className="text-sm sm:text-base font-bold text-[var(--text)] tabular-nums"
+                              style={{ fontFamily: 'var(--font-heading)' }}
+                            >
+                              {Number(activeUni.mcq_count || 0).toLocaleString()} MCQs
+                            </div>
+                          </div>
+                          <div className="cockpit-subrow p-3.5 space-y-1">
+                            <span className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
+                              Duration
+                            </span>
+                            <div
+                              className="text-sm sm:text-base font-bold text-[var(--text)] tabular-nums"
+                              style={{ fontFamily: 'var(--font-heading)' }}
+                            >
+                              {formatDurationClock(
+                                getUniversityTestSpec(activeUni).durationMinutes * 60
+                              )}
+                            </div>
+                          </div>
+                          <div className="cockpit-subrow p-3.5 space-y-1">
+                            <span className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
+                              Marking
+                            </span>
+                            <div
+                              className="text-sm sm:text-base font-bold text-[var(--text)] tabular-nums"
+                              style={{ fontFamily: 'var(--font-heading)' }}
+                            >
+                              {getUniversityTestSpec(activeUni).markingLabel}
+                            </div>
                           </div>
                         </div>
-                        <div className="cockpit-subrow p-3">
-                          <div className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
-                            Correct
-                          </div>
-                          <div
-                            className="text-base sm:text-lg font-bold text-[var(--text)] tabular-nums"
+
+                        <div className="space-y-2.5">
+                          <label
+                            className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider"
                             style={{ fontFamily: 'var(--font-heading)' }}
                           >
-                            {testResultSummary.correctCount}/{testResultSummary.totalQuestions}
-                          </div>
-                        </div>
-                        <div className="cockpit-subrow p-3">
-                          <div className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
-                            Net Score
-                          </div>
-                          <div
-                            className="text-base sm:text-lg font-bold text-[var(--text)] tabular-nums"
-                            style={{ fontFamily: 'var(--font-heading)' }}
-                          >
-                            {testResultSummary.score}/{testResultSummary.maxScore}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* PDF Download Answers + Score + Retake Actions */}
-                      <div className="flex items-center justify-center gap-2.5 flex-wrap pt-2">
-                        <PdfDownloadButton
-                          onDownload={handleDownloadResultsPdf}
-                          label="Download Results & Answer Key (PDF)"
-                          variant="primary"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setTestStage('overview')}
-                          className="inline-flex items-center justify-center min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold cockpit-subrow text-[var(--text)] cursor-pointer"
-                        >
-                          New Filter
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setActiveUni(null)}
-                          className="inline-flex items-center justify-center min-h-[44px] px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] cursor-pointer"
-                        >
-                          Back to Cockpit
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Review Answers & Explanations */}
-                    <div className="space-y-3">
-                      {testMcqs.map((q, idx) => {
-                        const userAns = answers[q.id];
-                        const ver = verifiedMap[q.id];
-                        const correctAns = (ver?.correctAnswer || q.correct_answer || 'A').toUpperCase();
-                        const isCorrect = userAns === correctAns;
-                        return (
-                          <div key={q.id} className="cockpit-surface-card p-4 sm:p-5 space-y-2.5 text-xs sm:text-sm select-text">
-                            <div className="flex items-center justify-between gap-2 flex-wrap">
-                              <span className="font-bold text-[var(--text)]">
-                                Q{idx + 1}. {q.subject} · {q.topic}
-                              </span>
-                              <span
-                                className={`cockpit-uni-pill ${
-                                  isCorrect
+                            Select Subject Scope
+                          </label>
+                          {loadingTopics ? (
+                            <div className="flex flex-wrap gap-2" aria-hidden="true">
+                              <div className="h-9 w-32 rounded-full skeleton-shimmer" />
+                              <div className="h-9 w-28 rounded-full skeleton-shimmer" />
+                              <div className="h-9 w-24 rounded-full skeleton-shimmer" />
+                              <div className="h-9 w-28 rounded-full skeleton-shimmer" />
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedSubject('all');
+                                  setSelectedTopic('all');
+                                }}
+                                className={`cockpit-uni-pill min-h-[38px] px-3.5 cursor-pointer ${
+                                  selectedSubject === 'all'
                                     ? 'cockpit-uni-pill--live'
                                     : 'cockpit-uni-pill--soon'
                                 }`}
                               >
-                                {userAns ? `Your Ans: ${userAns}` : 'Unanswered'} · Correct: {correctAns}
-                              </span>
+                                Full Pattern ({activeUni.mcq_count})
+                              </button>
+                              {uniTopicsTree.map((s) => (
+                                <button
+                                  key={s.subject}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedSubject(s.subject);
+                                    setSelectedTopic('all');
+                                  }}
+                                  className={`cockpit-uni-pill min-h-[38px] px-3.5 cursor-pointer ${
+                                    selectedSubject === s.subject
+                                      ? 'cockpit-uni-pill--live'
+                                      : 'cockpit-uni-pill--soon'
+                                  }`}
+                                >
+                                  {s.subject} ({s.total})
+                                </button>
+                              ))}
                             </div>
-                            <div className="text-[var(--text)] font-medium">
-                              <MathText text={q.question} block />
+                          )}
+                        </div>
+
+                        {selectedSubject !== 'all' && (
+                          <div className="space-y-2.5">
+                            <label
+                              className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider"
+                              style={{ fontFamily: 'var(--font-heading)' }}
+                            >
+                              Select Chapter / Topic
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTopic('all')}
+                                className={`cockpit-uni-pill min-h-[36px] px-3 cursor-pointer ${
+                                  selectedTopic === 'all'
+                                    ? 'cockpit-uni-pill--live'
+                                    : 'cockpit-uni-pill--soon'
+                                }`}
+                              >
+                                All Topics
+                              </button>
+                              {(
+                                uniTopicsTree.find((x) => x.subject === selectedSubject)?.topics ||
+                                []
+                              ).map((t) => (
+                                <button
+                                  key={t.topic}
+                                  type="button"
+                                  onClick={() => setSelectedTopic(t.topic)}
+                                  className={`cockpit-uni-pill min-h-[36px] px-3 cursor-pointer ${
+                                    selectedTopic === t.topic
+                                      ? 'cockpit-uni-pill--live'
+                                      : 'cockpit-uni-pill--soon'
+                                  }`}
+                                >
+                                  {t.topic} ({t.count})
+                                </button>
+                              ))}
                             </div>
-                            {(ver?.explanation || q.explanation) && (
-                              <div className="text-xs text-[var(--text-muted)] pt-2 border-t border-[var(--border)]">
-                                <MathText text={ver?.explanation || q.explanation} block />
-                              </div>
-                            )}
                           </div>
-                        );
-                      })}
-                    </div>
+                        )}
+
+                        {testError && (
+                          <div className="cockpit-subrow p-3.5 text-xs text-[var(--accent)] flex items-center gap-2">
+                            <AlertCircle size={15} className="shrink-0" />
+                            <span>{testError}</span>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-end gap-3 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setActiveUni(null)}
+                            className="inline-flex items-center justify-center min-h-[48px] px-5 py-2.5 rounded-full text-xs sm:text-sm font-semibold cockpit-subrow text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={loadingMcqs}
+                            onClick={() =>
+                              void startUniversityD1Test(
+                                activeUni,
+                                selectedSubject,
+                                selectedTopic
+                              )
+                            }
+                            className="relative overflow-hidden inline-flex items-center justify-center gap-2 min-h-[48px] px-6 py-2.5 rounded-full text-xs sm:text-sm font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-75"
+                          >
+                            <span>Start {activeUni.name} Test</span>
+                            <ArrowRight size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* STAGE D: TEST RESULTS + PDF DOWNLOAD (ANSWERS + SCORE) */}
+                    {testStage === 'results' && testResultSummary && (
+                      <div className="space-y-5 pb-8">
+                        <div className="cockpit-surface-card p-5 sm:p-6 text-center space-y-4">
+                          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--cockpit-pill-live-bg)] text-[var(--accent)]">
+                            <Award size={24} />
+                          </div>
+                          <div className="space-y-1">
+                            <h3
+                              className="text-lg sm:text-2xl font-bold text-[var(--text)]"
+                              style={{ fontFamily: 'var(--font-dot)' }}
+                            >
+                              {activeUni.name} Test Complete
+                            </h3>
+                            <p className="text-xs sm:text-sm text-[var(--text-muted)]">
+                              Official Score Breakdown & Verified Answer Key
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-3 max-w-md mx-auto">
+                            <div className="cockpit-subrow p-3">
+                              <div className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
+                                Accuracy
+                              </div>
+                              <div
+                                className="text-base sm:text-lg font-bold text-[var(--accent)] tabular-nums"
+                                style={{ fontFamily: 'var(--font-heading)' }}
+                              >
+                                {testResultSummary.accuracy}%
+                              </div>
+                            </div>
+                            <div className="cockpit-subrow p-3">
+                              <div className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
+                                Correct
+                              </div>
+                              <div
+                                className="text-base sm:text-lg font-bold text-[var(--text)] tabular-nums"
+                                style={{ fontFamily: 'var(--font-heading)' }}
+                              >
+                                {testResultSummary.correctCount}/{testResultSummary.totalQuestions}
+                              </div>
+                            </div>
+                            <div className="cockpit-subrow p-3">
+                              <div className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
+                                Net Score
+                              </div>
+                              <div
+                                className="text-base sm:text-lg font-bold text-[var(--text)] tabular-nums"
+                                style={{ fontFamily: 'var(--font-heading)' }}
+                              >
+                                {testResultSummary.score}/{testResultSummary.maxScore}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-center gap-2.5 flex-wrap pt-2">
+                            <PdfDownloadButton
+                              onDownload={handleDownloadResultsPdf}
+                              label="Download Results & Answer Key (PDF)"
+                              variant="primary"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setTestStage('overview')}
+                              className="inline-flex items-center justify-center min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold cockpit-subrow text-[var(--text)] cursor-pointer"
+                            >
+                              New Filter
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setActiveUni(null)}
+                              className="inline-flex items-center justify-center min-h-[44px] px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] cursor-pointer"
+                            >
+                              Back to Cockpit
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          {testMcqs.map((q, idx) => {
+                            const userAns = answers[q.id];
+                            const ver = verifiedMap[q.id];
+                            const correctAns = (
+                              ver?.correctAnswer ||
+                              q.correct_answer ||
+                              'A'
+                            ).toUpperCase();
+                            const isCorrect = userAns === correctAns;
+                            return (
+                              <div
+                                key={q.id}
+                                className="cockpit-surface-card p-4 sm:p-5 space-y-2.5 text-xs sm:text-sm select-text"
+                              >
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <span className="font-bold text-[var(--text)]">
+                                    Q{idx + 1}. {q.subject} · {q.topic}
+                                  </span>
+                                  <span
+                                    className={`cockpit-uni-pill ${
+                                      isCorrect
+                                        ? 'cockpit-uni-pill--live'
+                                        : 'cockpit-uni-pill--soon'
+                                    }`}
+                                  >
+                                    {userAns ? `Your Ans: ${userAns}` : 'Unanswered'} · Correct:{' '}
+                                    {correctAns}
+                                  </span>
+                                </div>
+                                <div className="text-[var(--text)] font-medium">
+                                  <MathText text={q.question} block />
+                                </div>
+                                {(ver?.explanation || q.explanation) && (
+                                  <div className="text-xs text-[var(--text-muted)] pt-2 border-t border-[var(--border)]">
+                                    <MathText text={ver?.explanation || q.explanation} block />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
+                </main>
               </div>
-            </main>
-
-            {/* WIDE SCREEN QUESTION PALETTE SIDE PANEL (Tablet & PC) */}
-            {testStage === 'running' && testMcqs.length > 0 && (
-              <aside
-                aria-label="Question Palette"
-                className="hidden lg:flex w-[300px] shrink-0 border-l border-[var(--border)] bg-[var(--surface)] flex-col overflow-hidden"
-              >
-                <div className="p-4 border-b border-[var(--border)] space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span
-                      className="text-xs font-bold uppercase tracking-wider text-[var(--text)]"
-                      style={{ fontFamily: 'var(--font-heading)' }}
-                    >
-                      Question Palette
-                    </span>
-                    <span className="text-xs font-semibold text-[var(--text-muted)] tabular-nums">
-                      {answeredCount}/{testMcqs.length} Answered
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-[11px]">
-                    <div className="cockpit-subrow px-2.5 py-1.5 flex items-center justify-between">
-                      <span className="text-[var(--text-muted)]">Answered</span>
-                      <strong className="text-emerald-500 tabular-nums">{answeredCount}</strong>
-                    </div>
-                    <div className="cockpit-subrow px-2.5 py-1.5 flex items-center justify-between">
-                      <span className="text-[var(--text-muted)]">Flagged</span>
-                      <strong className="text-amber-500 tabular-nums">{flaggedCount}</strong>
-                    </div>
-                    <div className="cockpit-subrow px-2.5 py-1.5 flex items-center justify-between">
-                      <span className="text-[var(--text-muted)]">Left</span>
-                      <strong className="text-[var(--text)] tabular-nums">{unansweredCount}</strong>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-4">
-                  <div className="grid grid-cols-5 gap-2">
-                    {testMcqs.map((q, idx) => {
-                      const isCurrent = idx === currentIndex;
-                      const isAnswered = Boolean(answers[q.id]);
-                      const isFlagged = Boolean(flaggedMap[q.id]);
-
-                      let btnStyle =
-                        'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-muted)] hover:border-[var(--accent)]';
-                      if (isCurrent) {
-                        btnStyle =
-                          'border-[var(--accent)] bg-[var(--accent)] text-white font-bold shadow-sm';
-                      } else if (isFlagged) {
-                        btnStyle =
-                          'border-amber-500/60 bg-amber-500/15 text-amber-500 font-bold';
-                      } else if (isAnswered) {
-                        btnStyle =
-                          'border-emerald-500/50 bg-emerald-500/15 text-emerald-500 font-semibold';
-                      }
-
-                      return (
-                        <button
-                          key={q.id}
-                          type="button"
-                          onClick={() => setCurrentIndex(idx)}
-                          aria-label={`Go to question ${idx + 1}`}
-                          aria-current={isCurrent ? 'step' : undefined}
-                          className={`h-10 rounded-xl border text-xs tabular-nums flex items-center justify-center cursor-pointer transition-colors ${btnStyle}`}
-                        >
-                          {idx + 1}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </aside>
-            )}
-          </div>
-
-          {/* 3. FIXED BOTTOM ACTION BAR (Previous, Next, Finish & Submit respecting safe-area insets) */}
-          {testStage === 'running' && testMcqs.length > 0 && (
-            <footer
-              className="shrink-0 w-full border-t border-[var(--border)] bg-[var(--surface)] px-3 sm:px-6"
-              style={{
-                paddingTop: '10px',
-                paddingBottom: 'max(12px, env(safe-area-inset-bottom, 12px))',
-              }}
-            >
-              <div className="w-full max-w-[760px] mx-auto flex items-center justify-between gap-2.5">
-                <button
-                  type="button"
-                  disabled={currentIndex === 0}
-                  onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
-                  className="inline-flex items-center justify-center gap-1.5 min-h-[46px] px-4 sm:px-5 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs sm:text-sm font-semibold text-[var(--text)] disabled:opacity-40 cursor-pointer"
-                >
-                  <ChevronLeft size={16} />
-                  <span>Previous</span>
-                </button>
-
-                <div className="flex items-center gap-2.5">
-                  <button
-                    type="button"
-                    disabled={currentIndex >= testMcqs.length - 1}
-                    onClick={() =>
-                      setCurrentIndex((i) => Math.min(testMcqs.length - 1, i + 1))
-                    }
-                    className="inline-flex items-center justify-center gap-1.5 min-h-[46px] px-4 sm:px-5 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs sm:text-sm font-semibold text-[var(--text)] disabled:opacity-40 cursor-pointer"
-                  >
-                    <span>Next</span>
-                    <ChevronRight size={16} />
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={submittingTest}
-                    onClick={() => setConfirmSubmitOpen(true)}
-                    className="relative overflow-hidden inline-flex items-center justify-center gap-1.5 min-h-[46px] px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-95 cursor-pointer disabled:opacity-75"
-                  >
-                    {!submittingTest && <CheckCircle2 size={16} />}
-                    <span>{submittingTest ? 'Submitting...' : 'Finish & Submit'}</span>
-                    {submittingTest && <ButtonLineLoader />}
-                  </button>
-                </div>
-              </div>
-            </footer>
-          )}
-
-          {/* MOBILE SLIDE-UP QUESTION PALETTE SHEET */}
-          {mobilePaletteOpen && testStage === 'running' && (
-            <div
-              className="lg:hidden fixed inset-0 z-[110] bg-black/70 flex flex-col justify-end"
-              onClick={() => setMobilePaletteOpen(false)}
-            >
-              <div
-                className="w-full rounded-t-3xl bg-[var(--surface)] border-t border-[var(--border)] p-4 space-y-4 max-h-[75dvh] flex flex-col"
-                style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom, 16px))' }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
-                  <div>
-                    <h4
-                      className="text-sm font-bold text-[var(--text)]"
-                      style={{ fontFamily: 'var(--font-heading)' }}
-                    >
-                      Question Palette
-                    </h4>
-                    <p className="text-xs text-[var(--text-muted)]">
-                      {answeredCount} Answered · {flaggedCount} Flagged · {unansweredCount} Unanswered
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setMobilePaletteOpen(false)}
-                    className="w-9 h-9 rounded-full bg-[var(--surface-2)] flex items-center justify-center text-[var(--text-muted)]"
-                    aria-label="Close palette"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto">
-                  <div className="grid grid-cols-5 gap-2">
-                    {testMcqs.map((q, idx) => {
-                      const isCurrent = idx === currentIndex;
-                      const isAnswered = Boolean(answers[q.id]);
-                      const isFlagged = Boolean(flaggedMap[q.id]);
-
-                      let btnStyle =
-                        'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-muted)]';
-                      if (isCurrent) {
-                        btnStyle = 'border-[var(--accent)] bg-[var(--accent)] text-white font-bold';
-                      } else if (isFlagged) {
-                        btnStyle = 'border-amber-500/60 bg-amber-500/15 text-amber-500 font-bold';
-                      } else if (isAnswered) {
-                        btnStyle = 'border-emerald-500/50 bg-emerald-500/15 text-emerald-500 font-semibold';
-                      }
-
-                      return (
-                        <button
-                          key={q.id}
-                          type="button"
-                          onClick={() => {
-                            setCurrentIndex(idx);
-                            setMobilePaletteOpen(false);
-                          }}
-                          className={`h-11 rounded-xl border text-xs tabular-nums flex items-center justify-center ${btnStyle}`}
-                        >
-                          {idx + 1}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
+            </>
           )}
 
           {/* CONFIRM FINISH & SUBMIT DIALOG (Shows Unanswered Count) */}

@@ -8,14 +8,25 @@ import {
   saveAttemptProgress,
   submitAttempt,
 } from '@/services/testEngine';
-import { TestHeader } from '@/components/test/TestHeader';
 import { QuestionCard } from '@/components/test/QuestionCard';
 import { QuestionPalette } from '@/components/test/QuestionPalette';
 import { ConfirmSubmitModal } from '@/components/test/ConfirmSubmitModal';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { getUniversityRulesSummary } from '@/constants/universityCriteria';
-import { Sparkles, Lock, X, AlertCircle, Check } from 'lucide-react';
+import { formatSubjectName } from '@/constants/taxonomy';
+import {
+  Sparkles,
+  Lock,
+  X,
+  AlertCircle,
+  Check,
+  Clock,
+  Download,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
 import { notifyTestStarted } from '@/services/emailNotificationService';
 
@@ -454,28 +465,40 @@ export function TestRunnerPage() {
   if (loading) {
     return (
       <div
-        className="w-screen h-[100dvh] flex flex-col bg-[var(--bg)] text-[var(--text)] overflow-hidden"
+        className="nt-quiz-shell select-none"
         aria-busy="true"
         aria-label="Loading test questions"
       >
-        <div className="h-16 border-b border-[var(--border)] bg-[var(--surface)] px-5 flex items-center justify-between">
-          <div className="h-7 w-28 rounded-full skeleton-shimmer" />
-          <div className="h-7 w-36 rounded-full skeleton-shimmer" />
-          <div className="h-8 w-24 rounded-xl skeleton-shimmer" />
-        </div>
-        <div className="flex-1 max-w-[760px] w-full mx-auto px-4 py-8 space-y-4">
-          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 space-y-4">
-            <div className="h-5 w-32 rounded-full skeleton-shimmer" />
-            <div className="h-5 w-full rounded-lg skeleton-shimmer" />
-            <div className="h-5 w-4/5 rounded-lg skeleton-shimmer" />
+        <div className="nt-quiz-main">
+          <header className="nt-topbar">
+            <div className="h-10 w-20 rounded-full skeleton-shimmer" />
+            <div className="nt-topbar-right">
+              <div className="h-10 w-28 rounded-full skeleton-shimmer" />
+              <div className="h-10 w-10 rounded-full skeleton-shimmer" />
+              <div className="h-10 w-10 rounded-full skeleton-shimmer" />
+            </div>
+          </header>
+          <div className="nt-progress">
+            <div className="nt-progress-row">
+              <div className="h-7 w-28 rounded-lg skeleton-shimmer" />
+              <div className="h-4 w-24 rounded-md skeleton-shimmer" />
+            </div>
+            <div className="h-3 w-full rounded-full skeleton-shimmer" />
           </div>
-          <div className="space-y-3">
+          <div className="nt-qcard space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="h-7 w-40 rounded-full skeleton-shimmer" />
+              <div className="h-7 w-20 rounded-full skeleton-shimmer" />
+            </div>
+            <div className="space-y-2 pt-1">
+              <div className="h-4 w-full rounded-md skeleton-shimmer" />
+              <div className="h-4 w-4/5 rounded-md skeleton-shimmer" />
+            </div>
+          </div>
+          <div className="nt-options-grid">
             {[0, 1, 2, 3].map((idx) => (
-              <div
-                key={idx}
-                className="w-full min-h-[56px] rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 flex items-center gap-3.5"
-              >
-                <div className="w-7 h-7 rounded-full skeleton-shimmer shrink-0" />
+              <div key={idx} className="nt-option-card">
+                <div className="w-8 h-8 rounded-full skeleton-shimmer shrink-0" />
                 <div className="h-4 flex-1 rounded-md skeleton-shimmer" />
               </div>
             ))}
@@ -506,45 +529,84 @@ export function TestRunnerPage() {
   }
 
   const currentQ = questions[currentIndex] || questions[0];
-  const title = [
-    attempt.subject && attempt.subject !== 'Any' ? attempt.subject : 'Practice Drill',
-    attempt.university && attempt.university !== 'Any' ? `(${attempt.university})` : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
+  const examChipLabel =
+    attempt.university && attempt.university !== 'Any'
+      ? attempt.university.replace(/\s*\(.*?\)\s*/g, '').trim().toUpperCase()
+      : attempt.subject && attempt.subject !== 'Any'
+      ? formatSubjectName(attempt.subject)
+      : 'SAT';
+
+  const formatTimerText = (secs: number | null) => {
+    if (secs === null) return '00:00';
+    const safe = Math.max(0, Math.floor(secs));
+    const h = Math.floor(safe / 3600);
+    const m = Math.floor((safe % 3600) / 60);
+    const s = safe % 60;
+    if (h > 0) {
+      return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  const isTimerUrgent =
+    attempt.timed && secondsRemaining !== null && secondsRemaining > 0 && secondsRemaining < 300;
 
   return (
-    <div
-      style={{
-        minHeight: '100dvh',
-        display: 'flex',
-        flexDirection: 'column',
-        background: 'var(--bg)',
-      }}
-    >
-      {/* 64px Glass Header */}
-      <TestHeader
-        title={title}
-        currentIndex={currentIndex}
-        totalQuestions={questions.length}
-        secondsRemaining={secondsRemaining}
-        timed={attempt.timed}
-        answeredCount={Object.keys(userAnswers).length}
-        flaggedCount={flagged.length}
-        onOpenPalette={() => setPaletteOpen(true)}
-        onRequestSubmit={() => setConfirmModalOpen(true)}
-      />
+    <div className="nt-quiz-shell select-none">
+      {/* 1–4. CENTERED MAIN COLUMN (max-w 760px, fits 100dvh with no scrolling) */}
+      <main className="nt-quiz-main">
+        {/* 1. TOP BAR: round "SAT" chip (red text), timer chip, PDF icon button, close icon button */}
+        <header className="nt-topbar">
+          <div className="nt-chip nt-chip--exam" title={examChipLabel}>
+            <span>{examChipLabel}</span>
+          </div>
 
-      {/* Main Test Cockpit Body */}
-      <main
-        style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          padding: '2rem 1.25rem',
-        }}
-      >
+          <div className="nt-topbar-right">
+            {attempt.timed && secondsRemaining !== null && (
+              <div
+                className={`nt-chip nt-chip--timer ${
+                  isTimerUrgent ? 'nt-chip--timer-urgent' : ''
+                }`}
+                aria-label="Time remaining"
+              >
+                <Clock size={14} className="text-[#d71921] shrink-0" />
+                <span className="nt-doto">{formatTimerText(secondsRemaining)}</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              title={
+                isPro || isAdmin
+                  ? 'Download test questions as PDF'
+                  : 'Download test questions as PDF (Pro Feature)'
+              }
+              aria-label="Download PDF"
+              className="nt-chip nt-chip--icon"
+            >
+              <Download size={16} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (isSubjectToDailyLimit) {
+                  setLeaveWarningOpen(true);
+                } else {
+                  navigate('/dashboard/practice');
+                }
+              }}
+              title="Close test"
+              aria-label="Close test"
+              className="nt-chip nt-chip--icon"
+            >
+              <X size={17} />
+            </button>
+          </div>
+        </header>
+
+        {/* 2–4. PROGRESS + QUESTION CARD + 4 OPTIONS GRID */}
         <QuestionCard
           question={currentQ}
           index={currentIndex}
@@ -554,15 +616,51 @@ export function TestRunnerPage() {
           onSelectAnswer={handleSelectAnswer}
           onClearAnswer={handleClearAnswer}
           onToggleFlag={handleToggleFlag}
-          onPrev={() => setCurrentIndex((i) => Math.max(0, i - 1))}
-          onNext={() => setCurrentIndex((i) => Math.min(questions.length - 1, i + 1))}
-          canPrev={currentIndex > 0}
-          canNext={currentIndex < questions.length - 1}
+          userAnswersMap={userAnswers}
+          onSelectIndex={(idx) => setCurrentIndex(idx)}
           university={attempt.university || undefined}
           isPro={isPro || isAdmin}
           onDownloadPdf={handleDownloadPdf}
         />
       </main>
+
+      {/* 5. BOTTOM DOCK: pinned, frosted-glass bar with square Previous icon button, Next button, and red Finish & Submit button */}
+      <footer className="nt-bottom-dock">
+        <div className="nt-bottom-dock-inner">
+          <button
+            type="button"
+            disabled={currentIndex === 0}
+            onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
+            aria-label="Previous question"
+            title="Previous question"
+            className="nt-btn-prev"
+          >
+            <ChevronLeft size={18} />
+          </button>
+
+          <div className="nt-dock-right">
+            <button
+              type="button"
+              disabled={currentIndex >= questions.length - 1}
+              onClick={() => setCurrentIndex((i) => Math.min(questions.length - 1, i + 1))}
+              className="nt-btn-next"
+            >
+              <span>Next</span>
+              <ChevronRight size={16} />
+            </button>
+
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => setConfirmModalOpen(true)}
+              className="nt-btn-submit"
+            >
+              <span>{submitting ? 'Submitting...' : 'Finish & Submit'}</span>
+              {submitting && <ButtonLineLoader />}
+            </button>
+          </div>
+        </div>
+      </footer>
 
       {/* Slide-over Palette */}
       <QuestionPalette

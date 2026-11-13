@@ -12,6 +12,8 @@ export interface PdfDownloadButtonProps {
   className?: string;
   variant?: 'primary' | 'secondary' | 'outline' | 'compact';
   disabled?: boolean;
+  iconOnly?: boolean;
+  title?: string;
 }
 
 export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
@@ -20,6 +22,8 @@ export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
   className = '',
   variant = 'primary',
   disabled = false,
+  iconOnly = false,
+  title,
 }) => {
   const [isExporting, setIsExporting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -60,6 +64,27 @@ export const PdfDownloadButton: React.FC<PdfDownloadButtonProps> = ({
         return 'bg-[var(--accent,#D71921)] text-white hover:opacity-95 shadow-sm';
     }
   };
+
+  if (iconOnly) {
+    return (
+      <button
+        type="button"
+        onClick={startDownloadFlow}
+        disabled={disabled || isExporting}
+        title={title || (errorMsg ? 'Retry PDF' : label || 'Download PDF')}
+        aria-label={title || (errorMsg ? 'Retry PDF' : label || 'Download PDF')}
+        className={`nt-chip nt-chip--icon relative overflow-hidden disabled:opacity-60 disabled:cursor-not-allowed ${className}`}
+      >
+        <Download
+          size={16}
+          className={`shrink-0 transition-transform duration-200 ${
+            isExporting ? 'animate-pulse text-[#d71921]' : ''
+          }`}
+        />
+        {isExporting && <ButtonLineLoader />}
+      </button>
+    );
+  }
 
   return (
     <button

@@ -35,6 +35,7 @@ import {
   type D1McqRow,
 } from '@/constants/d1Universities';
 import { MathText } from '@/components/ui/MathText';
+import { repairSplitOrGarbledMcqOptions } from '@/lib/math';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
@@ -1252,14 +1253,22 @@ export function PracticePage() {
                     </div>
 
                     <div className="grid grid-cols-1 gap-2.5">
-                      {(
-                        [
-                          ['A', currentQ.option_a],
-                          ['B', currentQ.option_b],
-                          ['C', currentQ.option_c],
-                          ['D', currentQ.option_d],
-                        ] as const
-                      ).map(([letter, text]) => {
+                      {(() => {
+                        const cleanOpts = repairSplitOrGarbledMcqOptions([
+                          currentQ.option_a,
+                          currentQ.option_b,
+                          currentQ.option_c,
+                          currentQ.option_d,
+                        ]);
+                        return (
+                          [
+                            ['A', cleanOpts[0]],
+                            ['B', cleanOpts[1]],
+                            ['C', cleanOpts[2]],
+                            ['D', cleanOpts[3]],
+                          ] as const
+                        );
+                      })().map(([letter, text]) => {
                         const isSelected = chosen === letter;
                         const isCorrect = currentQ.correct_answer === letter;
                         let styleClass =

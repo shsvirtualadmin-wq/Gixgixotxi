@@ -36,23 +36,283 @@ const SUBSCRIPT_MAP: Record<string, string> = {
 };
 
 /**
+ * Normalizes LaTeX thousands-separator comma groupings like `1{,}170` or `$1{,}170$`
+ * into clean `1,170` and repairs escaped `\$1{,}170$` or `\$1,170$` wrappers.
+ */
+export function normalizeLatexThousandsCommas(text: string): string {
+  if (!text) return text;
+  let out = text;
+  // Convert `1{,}170` or `1\{,\}170` (including multiple groups like `1{,}234{,}567`) -> `1,170`
+  let prev = '';
+  while (out !== prev) {
+    prev = out;
+    out = out.replace(/(\d)\s*\\?\{\s*,\s*\\?\}\s*(?=\d)/g, '$1,');
+  }
+  // If `protectCurrencyDollars` previously escaped the leading `$` of a `$1,170$` math block (`\$1,170$`),
+  // unwrap the pure number so neither `$` nor `\` is shown literally.
+  out = out.replace(
+    /\\?\$\s*([+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?)\s*\$/g,
+    '$1'
+  );
+  return out;
+}
+
+const LEFT_SPLIT_OPT_RE = /^(.*?)\\?\$?\s*([+-]?\d[\d,]*)\{\s*$/;
+const RIGHT_SPLIT_OPT_RE = /^\s*\}(\d[\d,.\s]*?)\$?(.*)$/;
+
+/**
+ * Cleans an individual MCQ option string, repairing garbled fragments like
+ * `"$1{"`, `"}170$"`, `"\\$1{"`, `"$1{,}170$"`, or `"1{,}170"`.
+ */
+export function cleanMcqOptionText(raw: string): string {
+  if (!raw || typeof raw !== 'string') return '';
+  let s = normalizeLatexThousandsCommas(raw.trim());
+
+  // Unwrap pure comma-grouped or plain numbers wrapped in $...$ or \$...$ (e.g. "$1,170$" -> "1,170")
+  const pureNumMatch = s.match(/^\\?\$\s*([+-]?\d[\d,]*(?:\.\d+)?(?:\s*%)?)\s*\\?\$$/);
+  if (pureNumMatch) {
+    return pureNumMatch[1].trim();
+  }
+
+  // Repair single-option split artifact like "$1{170$" or "$1{,170$" or "$1,170}$"
+  s = s.replace(
+    /^\\?\$?\s*([+-]?\d[\d,]*)\{\s*,?\s*(\d[\d,]*(?:\.\d+)?)\s*\}?\s*\\?\$?$/,
+    '$1,$2'
+  );
+  s = s.replace(
+    /^\\?\$?\s*\{?\s*([+-]?\d[\d,]*)\s*,\s*\}\s*(\d[\d,]*(?:\.\d+)?)\s*\\?\$?$/,
+    '$1,$2'
+  );
+
+  // If an orphan half remains (e.g. "$1{" or "\\$1{" or "}170$"), strip the broken delimiters
+  const leftOnly = s.match(LEFT_SPLIT_OPT_RE);
+  if (leftOnly && !s.includes('}')) {
+    const prefix = leftOnly[1].replace(/\\?\$$/, '').trim();
+    const digits = leftOnly[2].trim();
+    return prefix ? `${prefix} ${digits}` : digits;
+  }
+  const rightOnly = s.match(RIGHT_SPLIT_OPT_RE);
+  if (rightOnly && !s.includes('{')) {
+    const digits = rightOnly[1].trim();
+    const suffix = rightOnly[2].replace(/^\\?\$/, '').trim();
+    return suffix ? `${digits} ${suffix}` : digits;
+  }
+
+  return s;
+}
+
+function formatNumberWithCommas(n: number): string {
+  const sign = n < 0 ? '-' : '';
+  const abs = Math.abs(n);
+  const parts = String(abs).split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return sign + parts.join('.');
+}
+
+/**
+ * Repairs a 4-option MCQ array where unquoted CSV commas inside `$1{,}170$`
+ * split a single number across two option cells (`"$1{"` and `"}170$"`).
+ * Works on both unshuffled `[option_a, option_b, option_c, option_d]` and already-shuffled options.
+ */
+export function repairSplitOrGarbledMcqOptions(
+  options: readonly string[],
+  extraCandidate?: string
+): [string, string, string, string] {
+  const rawList = [
+    String(options[0] ?? '').trim(),
+    String(options[1] ?? '').trim(),
+    String(options[2] ?? '').trim(),
+    String(options[3] ?? '').trim(),
+  ];
+
+  // Quick check: do any options contain `{` or `}` or `\$`?
+  const hasSuspect = rawList.some(
+    (o) => o.includes('{') || o.includes('}') || o.includes('\\$')
+  );
+  if (!hasSuspect) {
+    return [
+      cleanMcqOptionText(rawList[0]),
+      cleanMcqOptionText(rawList[1]),
+      cleanMcqOptionText(rawList[2]),
+      cleanMcqOptionText(rawList[3]),
+    ];
+  }
+
+  const usedIndices = new Set<number>();
+  const mergedValues: string[] = [];
+  const slotMap = new Map<number, string>();
+
+  // Pass 1: Match adjacent or non-adjacent (shuffled) left+right split pairs (`"$1{"` + `"}170$"` -> `"1,170"`)
+  for (let i = 0; i < rawList.length; i++) {
+    if (usedIndices.has(i)) continue;
+    const leftMatch = rawList[i].match(LEFT_SPLIT_OPT_RE);
+    if (!leftMatch) continue;
+
+    // Prefer adjacent i+1 first, then any unused j
+    const candidateJs = [i + 1, 0, 1, 2, 3].filter(
+      (j, idx, arr) => j >= 0 && j < 4 && j !== i && !usedIndices.has(j) && arr.indexOf(j) === idx
+    );
+    let pairedJ = -1;
+    let rightMatch: RegExpMatchArray | null = null;
+    for (const j of candidateJs) {
+      const m = rawList[j].match(RIGHT_SPLIT_OPT_RE);
+      if (m) {
+        pairedJ = j;
+        rightMatch = m;
+        break;
+      }
+    }
+
+    if (pairedJ !== -1 && rightMatch) {
+      usedIndices.add(i);
+      usedIndices.add(pairedJ);
+      const prefix = leftMatch[1].replace(/\\?\$$/, '').trim();
+      const leftDigits = leftMatch[2].trim();
+      const rightDigits = rightMatch[1].trim();
+      const suffix = rightMatch[2].replace(/^\\?\$/, '').trim();
+      const combined = `${prefix ? prefix + ' ' : ''}${leftDigits},${rightDigits}${suffix ? ' ' + suffix : ''}`.trim();
+      slotMap.set(i, combined);
+      mergedValues.push(combined);
+    } else if (extraCandidate) {
+      // Check if the matching right half spilled into explanation/extraCandidate
+      const extraTrim = String(extraCandidate).trim();
+      const extraRight = extraTrim.match(RIGHT_SPLIT_OPT_RE);
+      if (extraRight) {
+        usedIndices.add(i);
+        const prefix = leftMatch[1].replace(/\\?\$$/, '').trim();
+        const leftDigits = leftMatch[2].trim();
+        const rightDigits = extraRight[1].trim();
+        const combined = `${prefix ? prefix + ' ' : ''}${leftDigits},${rightDigits}`.trim();
+        slotMap.set(i, combined);
+        mergedValues.push(combined);
+      }
+    }
+  }
+
+  // Pass 2: Collect remaining non-consumed options
+  for (let i = 0; i < 4; i++) {
+    if (usedIndices.has(i)) continue;
+    slotMap.set(i, cleanMcqOptionText(rawList[i]));
+  }
+
+  // If no pair was merged, simply return cleaned individual options
+  if (slotMap.size === 4) {
+    return [
+      slotMap.get(0) || cleanMcqOptionText(rawList[0]),
+      slotMap.get(1) || cleanMcqOptionText(rawList[1]),
+      slotMap.get(2) || cleanMcqOptionText(rawList[2]),
+      slotMap.get(3) || cleanMcqOptionText(rawList[3]),
+    ];
+  }
+
+  // Pass 3: Fill any slot freed by merging two split halves so there are 4 distinct, valid options
+  const existingSet = new Set<string>(Array.from(slotMap.values()).filter(Boolean));
+  const extraCleaned = extraCandidate ? cleanMcqOptionText(extraCandidate) : '';
+  const extraLooksLikeOption =
+    extraCleaned.length > 0 &&
+    extraCleaned.length <= 24 &&
+    !existingSet.has(extraCleaned) &&
+    !/\b(because|therefore|since|given|substitut|equation|formula|correct|solution|step)\b/i.test(extraCleaned);
+
+  // Parse base number from first merged value (e.g. "1,170" -> 1170) to generate clean distractors if needed
+  const baseNumericStr = (mergedValues[0] || '1,170').replace(/,/g, '');
+  const baseNum = parseFloat(baseNumericStr);
+  const candidateDistractors: string[] = [];
+  if (extraLooksLikeOption) {
+    candidateDistractors.push(extraCleaned);
+  }
+  if (Number.isFinite(baseNum)) {
+    const step = Math.abs(baseNum) >= 1000 ? 100 : Math.abs(baseNum) >= 100 ? 10 : 5;
+    const offsets = [step, -step, step * 2, -step * 2, step * 3, Math.round(baseNum * 0.5)];
+    for (const off of offsets) {
+      const val = baseNum + off;
+      if (val > 0 || baseNum < 0) {
+        const formatted = formatNumberWithCommas(val);
+        if (!existingSet.has(formatted) && !candidateDistractors.includes(formatted)) {
+          candidateDistractors.push(formatted);
+        }
+      }
+    }
+  }
+
+  let distractorIdx = 0;
+  const finalTuple: [string, string, string, string] = ['', '', '', ''];
+  for (let i = 0; i < 4; i++) {
+    const val = slotMap.get(i);
+    if (val !== undefined && val !== '') {
+      finalTuple[i] = val;
+    } else {
+      const replacement =
+        candidateDistractors[distractorIdx++] ||
+        cleanMcqOptionText(rawList[i]) ||
+        `Option ${String.fromCharCode(65 + i)}`;
+      finalTuple[i] = replacement;
+      existingSet.add(replacement);
+    }
+  }
+
+  return finalTuple;
+}
+
+/**
+ * Repairs `option_a..option_d` and `options` on a D1 MCQ row object in place.
+ */
+export function repairD1McqRow<T extends Record<string, any>>(row: T): T {
+  if (!row || typeof row !== 'object') return row;
+  const rawTuple = [
+    String(row.option_a ?? row.options?.[0] ?? ''),
+    String(row.option_b ?? row.options?.[1] ?? ''),
+    String(row.option_c ?? row.options?.[2] ?? ''),
+    String(row.option_d ?? row.options?.[3] ?? ''),
+  ];
+  const [optA, optB, optC, optD] = repairSplitOrGarbledMcqOptions(
+    rawTuple,
+    typeof row.explanation === 'string' ? row.explanation : undefined
+  );
+  const next: Record<string, any> = { ...row };
+  if ('option_a' in row || 'option_b' in row) {
+    next.option_a = optA;
+    next.option_b = optB;
+    next.option_c = optC;
+    next.option_d = optD;
+  }
+  if (Array.isArray(row.options)) {
+    next.options = [optA, optB, optC, optD];
+  }
+  if (typeof row.question === 'string') {
+    next.question = normalizeLatexThousandsCommas(row.question);
+  }
+  if (typeof row.q === 'string') {
+    next.q = normalizeLatexThousandsCommas(row.q);
+  }
+  if (typeof row.stem === 'string') {
+    next.stem = normalizeLatexThousandsCommas(row.stem);
+  }
+  return next as T;
+}
+
+/**
  * Escapes currency dollar signs so prices (e.g. "$5", "$10 and $20", "$1,200.50")
  * never trigger inline $...$ math mode.
  */
 export function protectCurrencyDollars(text: string): string {
   if (!text || !text.includes('$')) return text;
 
+  let out = normalizeLatexThousandsCommas(text);
+  if (!out.includes('$')) return out;
+
   // 1. Protect pairs where two currency amounts appear on the same line:
   // e.g. "costs $15 and the pen costs $5" -> escape both $ signs
-  let out = text.replace(
+  out = out.replace(
     /(?<!\\|\$)\$(\d+(?:[.,]\d+)?\b(?:\s+[a-zA-Z]+)+[^$\n]*?)\$(?=\d)/g,
     (_m, between: string) => `\\$${between}\\$`
   );
 
   // 2. If a single unescaped $ followed by digits remains (e.g. "$50"), escape it too
+  // (but NOT if followed by `{` or `}` which indicates a LaTeX brace fragment).
   const unescapedDollars = out.match(/(?<!\\)\$/g);
   if (unescapedDollars && unescapedDollars.length === 1) {
-    out = out.replace(/(?<!\\)\$(\d+(?:[.,]\d+)?)\b/g, (_m, amt: string) => `\\$${amt}`);
+    out = out.replace(/(?<!\\)\$(\d+(?:[.,]\d+)?)\b(?![{}])/g, (_m, amt: string) => `\\$${amt}`);
   }
 
   return out;

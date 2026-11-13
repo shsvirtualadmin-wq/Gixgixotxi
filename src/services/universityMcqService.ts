@@ -7,7 +7,11 @@ import {
   normalizeCorrectLetter,
 } from '../constants/d1Universities';
 import { auth } from '../lib/firebase';
-import { convertAsciiMathToLatex } from '../lib/math';
+import {
+  convertAsciiMathToLatex,
+  repairD1McqRow,
+  repairSplitOrGarbledMcqOptions,
+} from '../lib/math';
 
 export interface ParsedImportMcqRow {
   rowIndex: number;
@@ -437,7 +441,7 @@ export async function fetchMcqs(params: FetchMcqsParams = {}): Promise<{
     const res = await apiRequest<{ ok?: boolean; mcqs?: D1McqRow[]; total?: number }>(
       `/api/mcqs?${qs.toString()}`
     );
-    const list = Array.isArray(res.mcqs) ? res.mcqs : [];
+    const list = Array.isArray(res.mcqs) ? res.mcqs.map((m) => repairD1McqRow(m)) : [];
     return {
       mcqs: list,
       total: typeof res.total === 'number' ? res.total : list.length,
@@ -1007,6 +1011,7 @@ export function parseCsvRecords(csvText: string): string[][] {
   let currentRow: string[] = [];
   let currentField = '';
   let inQuotes = false;
+  let braceDepth = 0;
 
   const text = csvText.replace(/^\uFEFF/, '');
   for (let i = 0; i < text.length; i++) {
@@ -1025,10 +1030,17 @@ export function parseCsvRecords(csvText: string): string[][] {
     } else {
       if (ch === '"') {
         inQuotes = true;
-      } else if (ch === ',') {
+      } else if (ch === '{') {
+        braceDepth++;
+        currentField += ch;
+      } else if (ch === '}') {
+        if (braceDepth > 0) braceDepth--;
+        currentField += ch;
+      } else if (ch === ',' && braceDepth === 0) {
         currentRow.push(currentField.trim());
         currentField = '';
       } else if (ch === '\r' && next === '\n') {
+        braceDepth = 0;
         currentRow.push(currentField.trim());
         if (currentRow.some((cell) => cell.length > 0)) {
           rows.push(currentRow);
@@ -1037,6 +1049,7 @@ export function parseCsvRecords(csvText: string): string[][] {
         currentField = '';
         i++;
       } else if (ch === '\n' || ch === '\r') {
+        braceDepth = 0;
         currentRow.push(currentField.trim());
         if (currentRow.some((cell) => cell.length > 0)) {
           rows.push(currentRow);
@@ -1348,15 +1361,20 @@ export function parseImportInput(
       continue;
     }
 
+    const [repairedA, repairedB, repairedC, repairedD] = repairSplitOrGarbledMcqOptions(
+      [option_a, option_b, option_c, option_d],
+      explanation
+    );
+
     rows.push({
       rowIndex: rowNum,
       subject,
       topic,
       question: convertAsciiMathToLatex(question),
-      option_a: convertAsciiMathToLatex(option_a),
-      option_b: convertAsciiMathToLatex(option_b),
-      option_c: convertAsciiMathToLatex(option_c),
-      option_d: convertAsciiMathToLatex(option_d),
+      option_a: convertAsciiMathToLatex(repairedA),
+      option_b: convertAsciiMathToLatex(repairedB),
+      option_c: convertAsciiMathToLatex(repairedC),
+      option_d: convertAsciiMathToLatex(repairedD),
       correct_answer: correct,
       explanation: convertAsciiMathToLatex(explanation),
       difficulty,

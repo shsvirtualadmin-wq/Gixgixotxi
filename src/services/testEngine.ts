@@ -482,19 +482,24 @@ export async function fetchQuestionsForAttempt(attempt: Partial<AttemptDoc>): Pr
       }
 
       if (d1Rows.length > 0) {
+        const { repairSplitOrGarbledMcqOptions, normalizeLatexThousandsCommas } = await import('@/lib/math');
         const picked = shuffleArray(d1Rows).slice(0, needed);
         return picked.map((row: any) => {
-          const rawOptions: [string, string, string, string] = [
-            String(row.option_a || 'Option A'),
-            String(row.option_b || 'Option B'),
-            String(row.option_c || 'Option C'),
-            String(row.option_d || 'Option D'),
-          ];
+          const rawOptions: [string, string, string, string] = repairSplitOrGarbledMcqOptions(
+            [
+              String(row.option_a || 'Option A'),
+              String(row.option_b || 'Option B'),
+              String(row.option_c || 'Option C'),
+              String(row.option_d || 'Option D'),
+            ],
+            typeof row.explanation === 'string' ? row.explanation : undefined
+          );
           const { shuffledOptions, optionMapping } = shuffleOptions(rawOptions);
+          const cleanStem = normalizeLatexThousandsCommas(String(row.question || ''));
           return {
             id: String(row.id),
-            q: String(row.question || ''),
-            stem: String(row.question || ''),
+            q: cleanStem,
+            stem: cleanStem,
             options: shuffledOptions,
             optionMapping,
             subject: String(row.subject || attempt.subject || 'general'),

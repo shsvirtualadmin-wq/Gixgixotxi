@@ -27,6 +27,7 @@ import {
   type GradedAttemptQuestion,
 } from '@/services/ambassadorTestService';
 import { MathText } from '@/components/ui/MathText';
+import { repairSplitOrGarbledMcqOptions } from '@/lib/math';
 import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { extractIdFromSlug } from '@/utils/privacy';
@@ -879,18 +880,18 @@ export function GrandLineTestRunnerPage() {
 
           {/* Question Stem */}
           <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 sm:p-6 space-y-5">
-            <div dir="auto" className="text-base sm:text-lg font-medium text-[var(--text)] leading-relaxed">
+            <div dir="ltr" className="text-base sm:text-lg font-medium text-[var(--text)] leading-relaxed">
               <MathText text={currentQ.question} />
             </div>
 
             <div className="space-y-2.5">
-              {currentQ.options.map((opt, idx) => {
+              {repairSplitOrGarbledMcqOptions(currentQ.options).map((opt, idx) => {
                 const selected = answers[currentIndex] === idx;
                 return (
                   <button
                     key={idx}
                     type="button"
-                    dir="auto"
+                    dir="ltr"
                     onClick={() => setAnswers((prev) => ({ ...prev, [currentIndex]: idx }))}
                     className={`w-full text-left p-3.5 sm:p-4 rounded-xl border transition-all flex items-center gap-3 cursor-pointer ${
                       selected

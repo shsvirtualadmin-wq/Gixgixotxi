@@ -11241,3 +11241,552 @@ html.smooth-mode .stg-shell .fsm-back-btn,
     transition: none !important;
   }
 }
+
+/* ============================================================================
+   APPLE × NOTHING OS MCQ TEST-TAKING SCREEN (.nt-quiz-*)
+   ============================================================================ */
+
+.nt-quiz-shell {
+  /* Light mode tokens */
+  --nt-bg: #f2f2f4;
+  --nt-dot-grid: rgba(0, 0, 0, 0.065);
+  --nt-surface: #ffffff;
+  --nt-surface-raised: #f2f2f4;
+  --nt-border: rgba(0, 0, 0, 0.09);
+  --nt-text: #111111;
+  --nt-muted: #8e8e93;
+  --nt-accent: #d71921;
+  --nt-accent-tint: rgba(215, 25, 33, 0.075);
+  --nt-dot-answered: #111111;
+  --nt-dot-remaining: rgba(0, 0, 0, 0.16);
+  --nt-dock-bg: rgba(255, 255, 255, 0.76);
+  --nt-sys-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter', sans-serif;
+
+  width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--nt-bg);
+  background-image: radial-gradient(var(--nt-dot-grid) 1px, transparent 1px);
+  background-size: 14px 14px;
+  color: var(--nt-text);
+  font-family: var(--nt-sys-font);
+  box-sizing: border-box;
+  position: relative;
+}
+
+:is(.dark, [data-theme="dark"]) .nt-quiz-shell,
+.nt-quiz-shell:where(.dark, [data-theme="dark"]) {
+  /* Dark mode tokens */
+  --nt-bg: #000000;
+  --nt-dot-grid: rgba(255, 255, 255, 0.075);
+  --nt-surface: #0e0e10;
+  --nt-surface-raised: #17171a;
+  --nt-border: rgba(255, 255, 255, 0.09);
+  --nt-text: #f5f5f7;
+  --nt-muted: #8e8e93;
+  --nt-accent: #d71921;
+  --nt-accent-tint: rgba(215, 25, 33, 0.11);
+  --nt-dot-answered: #ffffff;
+  --nt-dot-remaining: #2a2a2e;
+  --nt-dock-bg: rgba(14, 14, 16, 0.72);
+}
+
+/* Enforce system UI font everywhere inside the quiz shell except .nt-doto */
+.nt-quiz-shell button,
+.nt-quiz-shell span:not(.nt-doto):not(.katex):not(.katex *),
+.nt-quiz-shell div:not(.nt-doto):not(.katex):not(.katex *),
+.nt-quiz-shell h1:not(.nt-doto),
+.nt-quiz-shell h2:not(.nt-doto),
+.nt-quiz-shell h3:not(.nt-doto) {
+  font-family: var(--nt-sys-font);
+}
+
+/* Dot-matrix font ("Doto") ONLY for timer and large question number */
+.nt-doto {
+  font-family: 'Doto', monospace !important;
+  font-optical-sizing: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Centered column (max-width 760px) filling the viewport above the bottom dock */
+.nt-quiz-main {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: max(10px, env(safe-area-inset-top, 10px)) clamp(12px, 3vw, 20px) clamp(8px, 1.2vh, 14px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.35vh, 14px);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* 1. TOP BAR: round "SAT" chip (red text), timer chip, PDF icon button, close icon button (40px tall pills) */
+.nt-topbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+}
+
+.nt-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.nt-chip {
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  border-radius: 9999px;
+  background: var(--nt-surface);
+  border: 1px solid var(--nt-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  transition: border-color 0.16s ease, background-color 0.16s ease, transform 0.16s ease;
+}
+
+.nt-chip--exam {
+  padding: 0 16px;
+  color: var(--nt-accent);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  max-width: 190px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nt-chip--timer {
+  padding: 0 14px;
+  gap: 7px;
+  color: var(--nt-text);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.nt-chip--timer-urgent {
+  border-color: var(--nt-accent);
+  color: var(--nt-accent);
+}
+
+.nt-chip--icon {
+  width: 40px;
+  min-width: 40px;
+  padding: 0;
+  color: var(--nt-text);
+  cursor: pointer;
+}
+
+.nt-chip--icon:hover:not(:disabled) {
+  background: var(--nt-surface-raised);
+}
+
+.nt-chip--icon:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+/* 2. PROGRESS: large question number on left, "Answered 0/100" on right, 100 small dots below in 2 rows */
+.nt-progress {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(5px, 0.85vh, 9px);
+}
+
+.nt-progress-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.nt-progress-qnum {
+  font-size: clamp(1.35rem, 3.2vh, 2.05rem);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--nt-text);
+  letter-spacing: 0.02em;
+}
+
+.nt-progress-answered {
+  font-size: clamp(0.75rem, 1.5vh, 0.84rem);
+  font-weight: 500;
+  color: var(--nt-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.nt-dots-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--nt-dot-cols, 50), minmax(0, 1fr));
+  grid-auto-rows: 4px;
+  gap: 4px 3px;
+  width: 100%;
+  align-items: center;
+}
+
+.nt-dot {
+  width: 100%;
+  max-width: 6px;
+  height: 4px;
+  border-radius: 9999px;
+  background-color: var(--nt-dot-remaining);
+  border: none;
+  padding: 0;
+  margin: 0 auto;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.nt-dot--answered {
+  background-color: var(--nt-dot-answered);
+}
+
+.nt-dot--current {
+  background-color: var(--nt-accent);
+  transform: scaleY(1.25);
+}
+
+/* 3. QUESTION CARD: rounded 28px card with subject tag pill, Flag pill button (solid red when flagged), and question text */
+.nt-qcard {
+  flex-shrink: 1;
+  min-height: 0;
+  border-radius: 28px;
+  background: var(--nt-surface);
+  border: 1px solid var(--nt-border);
+  padding: clamp(12px, 2vh, 20px) clamp(14px, 2.5vw, 22px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.3vh, 14px);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.nt-qcard-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.nt-subject-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 9999px;
+  background: var(--nt-surface-raised);
+  border: 1px solid var(--nt-border);
+  color: var(--nt-muted);
+  font-size: clamp(0.7rem, 1.4vh, 0.8rem);
+  font-weight: 500;
+  max-width: calc(100% - 96px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nt-flag-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 13px;
+  border-radius: 9999px;
+  background: var(--nt-surface-raised);
+  border: 1px solid var(--nt-border);
+  color: var(--nt-muted);
+  font-size: clamp(0.7rem, 1.4vh, 0.8rem);
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.nt-flag-pill:hover {
+  color: var(--nt-text);
+}
+
+.nt-flag-pill:active {
+  transform: scale(0.96);
+}
+
+.nt-flag-pill--active,
+.nt-flag-pill--active:hover {
+  background: var(--nt-accent);
+  border-color: var(--nt-accent);
+  color: #ffffff;
+}
+
+.nt-qcard-stem {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  color: var(--nt-text);
+  font-size: clamp(0.92rem, 1.95vh, 1.08rem);
+  line-height: 1.5;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.nt-qcard-stem::-webkit-scrollbar {
+  display: none;
+}
+
+/* 4. OPTIONS (A-D): 4 rows of minmax(0, ~92px) on mobile, 2x2 grid on wide screens (>=700px) */
+.nt-options-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: repeat(4, minmax(0, min(92px, 1fr)));
+  gap: clamp(6px, 1.1vh, 10px);
+  align-content: stretch;
+}
+
+@media (min-width: 700px) {
+  .nt-options-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, min(92px, 1fr)));
+    gap: clamp(8px, 1.3vh, 12px);
+  }
+}
+
+.nt-option-card {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border-radius: 22px;
+  background: var(--nt-surface);
+  border: 1px solid var(--nt-border);
+  padding: clamp(8px, 1.25vh, 14px) clamp(12px, 2vw, 18px);
+  display: flex;
+  align-items: center;
+  gap: clamp(10px, 1.5vw, 14px);
+  text-align: left;
+  color: var(--nt-text);
+  cursor: pointer;
+  box-sizing: border-box;
+  overflow: hidden;
+  direction: ltr;
+  unicode-bidi: isolate;
+  transition:
+    transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+    border-color 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.nt-option-card:hover:not(:disabled):not(.nt-option-card--selected) {
+  background: var(--nt-surface-raised);
+}
+
+.nt-option-card:active:not(:disabled) {
+  transform: scale(0.975);
+}
+
+.nt-option-card--selected {
+  border-color: var(--nt-accent);
+  background: var(--nt-accent-tint);
+}
+
+.nt-option-badge {
+  width: clamp(28px, 4.1vh, 36px);
+  height: clamp(28px, 4.1vh, 36px);
+  border-radius: 9999px;
+  background: var(--nt-surface-raised);
+  border: 1px solid var(--nt-border);
+  color: var(--nt-text);
+  font-size: clamp(0.75rem, 1.6vh, 0.875rem);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.nt-option-card--selected .nt-option-badge {
+  background: var(--nt-accent);
+  border-color: var(--nt-accent);
+  color: #ffffff;
+}
+
+.nt-option-text {
+  flex: 1;
+  min-width: 0;
+  max-height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  color: var(--nt-text);
+  font-size: clamp(0.875rem, 1.85vh, 1rem);
+  line-height: 1.38;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.nt-option-text::-webkit-scrollbar {
+  display: none;
+}
+
+/* Shrink letter circles and text slightly on very short screens */
+@media (max-height: 680px) {
+  .nt-chip {
+    height: 36px;
+    min-height: 36px;
+    max-height: 36px;
+  }
+  .nt-chip--icon {
+    width: 36px;
+    min-width: 36px;
+  }
+  .nt-qcard {
+    border-radius: 22px;
+    padding: 10px 14px;
+    gap: 6px;
+  }
+  .nt-qcard-stem {
+    font-size: 0.875rem;
+    line-height: 1.4;
+  }
+  .nt-option-card {
+    border-radius: 18px;
+    padding: 6px 12px;
+  }
+  .nt-option-badge {
+    width: 26px;
+    height: 26px;
+    font-size: 0.72rem;
+  }
+  .nt-option-text {
+    font-size: 0.82rem;
+    line-height: 1.3;
+  }
+}
+
+/* 5. BOTTOM DOCK: pinned, frosted-glass bar (backdrop-filter: blur(24px) saturate(1.6)) */
+.nt-bottom-dock {
+  flex-shrink: 0;
+  width: 100%;
+  background: var(--nt-dock-bg);
+  border-top: 1px solid var(--nt-border);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
+  padding: clamp(8px, 1.2vh, 12px) clamp(12px, 3vw, 20px) max(10px, env(safe-area-inset-bottom, 10px));
+  box-sizing: border-box;
+  z-index: 20;
+}
+
+.nt-bottom-dock-inner {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.nt-dock-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nt-btn-prev {
+  width: clamp(40px, 5.2vh, 44px);
+  height: clamp(40px, 5.2vh, 44px);
+  border-radius: 14px;
+  background: var(--nt-surface-raised);
+  border: 1px solid var(--nt-border);
+  color: var(--nt-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.16s ease, opacity 0.16s ease, background-color 0.16s ease;
+}
+
+.nt-btn-prev:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.nt-btn-prev:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.nt-btn-next {
+  height: clamp(40px, 5.2vh, 44px);
+  padding: 0 clamp(16px, 2.5vw, 22px);
+  border-radius: 14px;
+  background: var(--nt-surface-raised);
+  border: 1px solid var(--nt-border);
+  color: var(--nt-text);
+  font-size: clamp(0.8125rem, 1.6vh, 0.875rem);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: transform 0.16s ease, opacity 0.16s ease, background-color 0.16s ease;
+}
+
+.nt-btn-next:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.nt-btn-next:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.nt-btn-submit {
+  height: clamp(40px, 5.2vh, 44px);
+  padding: 0 clamp(16px, 2.6vw, 24px);
+  border-radius: 14px;
+  background: var(--nt-accent);
+  border: 1px solid var(--nt-accent);
+  color: #ffffff;
+  font-size: clamp(0.8125rem, 1.6vh, 0.875rem);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.16s ease, opacity 0.16s ease;
+}
+
+.nt-btn-submit:hover:not(:disabled) {
+  opacity: 0.94;
+}
+
+.nt-btn-submit:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.nt-btn-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+

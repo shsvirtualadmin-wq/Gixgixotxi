@@ -4717,18 +4717,52 @@ ${urls
             .all<D1McqRow>();
 
           const letterToIdx: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+          const repairWorkerMcqOpts = (opts: [string, string, string, string]): [string, string, string, string] => {
+            const leftRe = /^(.*?)\\?\$?\s*([+-]?\d[\d,]*)\{\s*$/;
+            const rightRe = /^\s*\}(\d[\d,.\s]*?)\$?(.*)$/;
+            const cleanOne = (raw: string) => {
+              let s = String(raw || '').trim().replace(/(\d)\s*\\?\{\s*,\s*\\?\}\s*(?=\d)/g, '$1,');
+              s = s.replace(/\\?\$\s*([+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?)\s*\$/g, '$1');
+              const pure = s.match(/^\\?\$\s*([+-]?\d[\d,]*(?:\.\d+)?(?:\s*%)?)\s*\\?\$$/);
+              if (pure) return pure[1].trim();
+              const lo = s.match(leftRe);
+              if (lo && !s.includes('}')) return `${lo[1].replace(/\\?\$$/, '').trim()} ${lo[2].trim()}`.trim();
+              const ro = s.match(rightRe);
+              if (ro && !s.includes('{')) return `${ro[1].trim()} ${ro[2].replace(/^\\?\$/, '').trim()}`.trim();
+              return s;
+            };
+            const out: [string, string, string, string] = [...opts];
+            for (let i = 0; i < 3; i++) {
+              const lm = out[i].match(leftRe);
+              const rm = out[i + 1].match(rightRe);
+              if (lm && rm) {
+                const combined = `${lm[1].replace(/\\?\$$/, '').trim()} ${lm[2].trim()},${rm[1].trim()}`.trim();
+                out[i] = combined;
+                const baseNum = parseFloat(combined.replace(/[^0-9.-]/g, '')) || 1170;
+                const altNum = Math.round(baseNum + 100);
+                out[i + 1] = String(altNum).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+              }
+            }
+            return [cleanOne(out[0]), cleanOne(out[1]), cleanOne(out[2]), cleanOne(out[3])];
+          };
           const mcqs = (results || []).map((m) => {
+            const [optA, optB, optC, optD] = repairWorkerMcqOpts([
+              m.option_a,
+              m.option_b,
+              m.option_c,
+              m.option_d,
+            ]);
             const base: Record<string, any> = {
               id: m.id,
               university_id: m.university_id,
               subject: m.subject,
               topic: m.topic,
-              question: m.question,
-              option_a: m.option_a,
-              option_b: m.option_b,
-              option_c: m.option_c,
-              option_d: m.option_d,
-              options: [m.option_a, m.option_b, m.option_c, m.option_d],
+              question: String(m.question || '').replace(/(\d)\s*\\?\{\s*,\s*\\?\}\s*(?=\d)/g, '$1,'),
+              option_a: optA,
+              option_b: optB,
+              option_c: optC,
+              option_d: optD,
+              options: [optA, optB, optC, optD],
               difficulty: m.difficulty,
               created_at: m.created_at,
             };

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type katexType from 'katex';
 import 'katex/dist/katex.min.css';
-import { convertAsciiMathToLatex } from '@/lib/math';
+import { convertAsciiMathToLatex, normalizeLatexThousandsCommas, cleanMcqOptionText } from '@/lib/math';
 
 type KatexModule = typeof katexType;
 
@@ -112,7 +112,9 @@ function getNormalizedMathString(raw: string): string {
   const cached = convertedTextCache.get(raw);
   if (cached !== undefined) return cached;
 
-  const converted = convertAsciiMathToLatex(raw);
+  const preCleaned =
+    raw.length <= 48 ? cleanMcqOptionText(raw) : normalizeLatexThousandsCommas(raw);
+  const converted = convertAsciiMathToLatex(preCleaned);
   if (convertedTextCache.size >= MAX_CONVERTED_CACHE) {
     const firstKey = convertedTextCache.keys().next().value;
     if (firstKey !== undefined) convertedTextCache.delete(firstKey);
@@ -290,6 +292,8 @@ function renderMathSegment(seg: ParsedSegment, index: number, prefix: string) {
     return (
       <span
         key={`${prefix}-fallback-${index}`}
+        dir="ltr"
+        style={{ direction: 'ltr', unicodeBidi: 'isolate' }}
         className="katex-fallback font-mono text-sm px-1 py-0.5 rounded bg-[var(--surface-2)] [overflow-wrap:anywhere] [word-break:break-word]"
       >
         {seg.content}
@@ -301,8 +305,9 @@ function renderMathSegment(seg: ParsedSegment, index: number, prefix: string) {
     return (
       <span
         key={`${prefix}-disp-${index}`}
+        dir="ltr"
         className="katex-display-box block my-2.5 overflow-x-auto max-w-full min-w-0 text-center py-1 scrollbar-none"
-        style={{ WebkitOverflowScrolling: 'touch' }}
+        style={{ WebkitOverflowScrolling: 'touch', direction: 'ltr', unicodeBidi: 'isolate' }}
         dangerouslySetInnerHTML={{ __html: html }}
       />
     );
@@ -311,8 +316,9 @@ function renderMathSegment(seg: ParsedSegment, index: number, prefix: string) {
   return (
     <span
       key={`${prefix}-inline-${index}`}
+      dir="ltr"
       className="katex-inline-math inline leading-none align-baseline max-w-full min-w-0 overflow-x-auto"
-      style={{ WebkitOverflowScrolling: 'touch' }}
+      style={{ WebkitOverflowScrolling: 'touch', direction: 'ltr', unicodeBidi: 'isolate' }}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
@@ -380,6 +386,7 @@ export const MathText = React.memo(function MathText({
         return (
           <h4
             key={lineKey}
+            dir="ltr"
             className="font-bold text-xs uppercase tracking-wider text-[var(--accent,#D71921)] mt-3.5 mb-1.5 font-mono select-none [overflow-wrap:anywhere] [word-break:break-word]"
           >
             {renderLineSegments(title, lineKey)}
@@ -392,6 +399,7 @@ export const MathText = React.memo(function MathText({
         return (
           <h3
             key={lineKey}
+            dir="ltr"
             className="font-bold text-sm uppercase tracking-wide text-[var(--accent,#D71921)] mt-4 mb-2 font-display [overflow-wrap:anywhere] [word-break:break-word]"
           >
             {renderLineSegments(title, lineKey)}
@@ -404,6 +412,7 @@ export const MathText = React.memo(function MathText({
         return (
           <h2
             key={lineKey}
+            dir="ltr"
             className="font-bold text-base text-[var(--text)] mt-4 mb-2 font-display [overflow-wrap:anywhere] [word-break:break-word]"
           >
             {renderLineSegments(title, lineKey)}
@@ -416,7 +425,7 @@ export const MathText = React.memo(function MathText({
         const num = orderedMatch[1];
         const body = orderedMatch[2];
         return (
-          <div key={lineKey} className="flex items-start gap-2 my-1 text-sm leading-relaxed min-w-0 max-w-full">
+          <div key={lineKey} dir="ltr" className="flex items-start gap-2 my-1 text-sm leading-relaxed min-w-0 max-w-full">
             <span className="font-bold text-xs text-[var(--accent,#D71921)] min-w-[20px] select-none pt-0.5 shrink-0">
               {num}.
             </span>
@@ -431,7 +440,7 @@ export const MathText = React.memo(function MathText({
       if (bulletMatch) {
         const body = bulletMatch[1];
         return (
-          <div key={lineKey} className="flex items-start gap-2 my-1 text-sm leading-relaxed min-w-0 max-w-full">
+          <div key={lineKey} dir="ltr" className="flex items-start gap-2 my-1 text-sm leading-relaxed min-w-0 max-w-full">
             <span className="text-[var(--accent,#D71921)] select-none text-base leading-none pt-0.5 shrink-0">
               &bull;
             </span>
@@ -449,6 +458,7 @@ export const MathText = React.memo(function MathText({
       return (
         <div
           key={lineKey}
+          dir="ltr"
           className="my-1 text-sm leading-relaxed min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]"
         >
           {renderLineSegments(line, lineKey)}
@@ -459,6 +469,8 @@ export const MathText = React.memo(function MathText({
 
   const baseStyle: CSSProperties = {
     color: 'inherit',
+    direction: 'ltr',
+    unicodeBidi: 'isolate',
     overflowWrap: 'anywhere',
     wordBreak: 'break-word',
     ...style,
@@ -467,6 +479,7 @@ export const MathText = React.memo(function MathText({
   if (block) {
     return (
       <div
+        dir="ltr"
         className={`katex-root-block w-full max-w-full min-w-0 overflow-x-hidden [overflow-wrap:anywhere] [word-break:break-word] ${className}`}
         style={baseStyle}
       >
@@ -477,6 +490,7 @@ export const MathText = React.memo(function MathText({
 
   return (
     <span
+      dir="ltr"
       className={`katex-root-inline max-w-full min-w-0 [overflow-wrap:anywhere] [word-break:break-word] ${className}`}
       style={baseStyle}
     >
