@@ -56,13 +56,18 @@ import {
   readOptimisticUserSnapshot,
   writeOptimisticUserSnapshot,
   clearOptimisticUserSnapshot,
+  readOptimisticWalletSnapshot,
+  writeOptimisticWalletSnapshot,
 } from '@/lib/swrCache';
 import {
   seedSecurityStatusFromServer,
   seedProfileLayoutFromServer,
+  commitSavedProfileLayout,
+  getProfileLayoutSnapshotForUid,
   preloadSecurityAndSettingsForUid,
   clearSecurityStatusCache,
 } from '@/hooks/useSecurityStatus';
+import { migrateGuestKobanStyleToUser } from '@/contexts/KobanStyleContext';
 
 const GuestLogoutConfirmModal = lazy(() =>
   import('@/components/auth/GuestLogoutConfirmModal').then((m) => ({
@@ -271,6 +276,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(() => {
     const opt = readOptimisticUserSnapshot();
     if (!opt) return null;
+    const walletSnap = readOptimisticWalletSnapshot(opt.uid);
+    let cachedCustom: Record<string, any> = {};
+    try {
+      if (typeof window !== 'undefined') {
+        const raw = window.localStorage.getItem(`cached_profile_${opt.uid}`);
+        if (raw) cachedCustom = JSON.parse(raw) || {};
+      }
+    } catch {
+      // Ignore
+    }
+    const restoredEquipped = {
+      effect:
+        walletSnap?.equipped?.effect ??
+        cachedCustom?.equipped?.effect ??
+        cachedCustom?.equippedEffect ??
+        null,
+      frame:
+        walletSnap?.equipped?.frame ??
+        cachedCustom?.equipped?.frame ??
+        cachedCustom?.equippedFrame ??
+        opt.frame ??
+        null,
+      nameplate:
+        walletSnap?.equipped?.nameplate ??
+        cachedCustom?.equipped?.nameplate ??
+        cachedCustom?.equippedNameplate ??
+        null,
+      avatar:
+        walletSnap?.equipped?.avatar ??
+        cachedCustom?.equipped?.avatar ??
+        cachedCustom?.equippedAvatar ??
+        opt.avatar ??
+        null,
+      banner:
+        walletSnap?.equipped?.banner ??
+        cachedCustom?.equipped?.banner ??
+        cachedCustom?.equippedBanner ??
+        null,
+    };
+    const layoutSnap = getProfileLayoutSnapshotForUid(opt.uid);
+    const restoredLayout =
+      (layoutSnap.known ? layoutSnap.layout : null) ||
+      (opt.profileLayout as any) ||
+      cachedCustom?.profileLayout ||
+      undefined;
     const restored: UserProfile = {
       uid: opt.uid,
       email: opt.email || '',
@@ -288,15 +338,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       onboardingCompleted: true,
       streak: Number(opt.streak || 0),
       targetUniversity: opt.targetUniversity,
-      avatar: opt.avatar || undefined,
-      frame: opt.frame || undefined,
-      equipped: {
-        effect: null,
-        frame: opt.frame || null,
-        nameplate: null,
-        avatar: opt.avatar || null,
-        banner: null,
-      },
+      avatar: restoredEquipped.avatar || opt.avatar || undefined,
+      frame: restoredEquipped.frame || opt.frame || undefined,
+      equipped: restoredEquipped,
+      ...(restoredLayout ? { profileLayout: restoredLayout } : {}),
     };
     seedSharedUserProfileCache(opt.uid, restored);
     return restored;
@@ -324,6 +369,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [guestLogoutLoading, setGuestLogoutLoading] = useState(false);
   const [showGuestUpgradeFromLogout, setShowGuestUpgradeFromLogout] = useState(false);
   const pendingGuestLogoutResolversRef = useRef<Array<() => void>>([]);
+  const signingOutGuestUidRef = useRef<string | null>(null);
   const [usernamePromptState, setUsernamePromptState] = useState<{
     open: boolean;
     allowSkip: boolean;
@@ -884,6 +930,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const g = meData.guest || (meData.user?.accountType === 'guest' ? meData.user : null);
       if (meRes.ok && meData.authenticated && g && g.uid) {
+        if (signingOutGuestUidRef.current === g.uid) {
+          return false;
+        }
         const guestUsername = g.username || g.displayName || 'Guest';
         const guestDisplayName = g.displayName || guestUsername;
         const effectiveToken = savedGuestToken || `${g.uid}.cookie_session`;
@@ -893,14 +942,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch {
           // Ignore storage error
         }
+        let cachedGuestCustom: Record<string, any> = {};
+        try {
+          const rawCached = localStorage.getItem(`cached_profile_${g.uid}`);
+          if (rawCached) {
+            cachedGuestCustom = JSON.parse(rawCached) || {};
+          }
+        } catch {
+          // Ignore
+        }
+        const walletSnap = readOptimisticWalletSnapshot(g.uid);
+        const layoutSnap = getProfileLayoutSnapshotForUid(g.uid);
+        const serverLayout =
+          (meData as any).profileLayout ??
+          (meData as any).profile_layout ??
+          (g as any).profileLayout ??
+          (g as any).profile_layout;
+        if (typeof serverLayout === 'string' && serverLayout.trim()) {
+          seedProfileLayoutFromServer(g.uid, serverLayout, { isPassiveSeed: true });
+        }
+        const prevSameGuest =
+          profileRef.current && profileRef.current.uid === g.uid ? profileRef.current : null;
+        const mergedEquipped = {
+          ...(cachedGuestCustom.equipped || {}),
+          ...(prevSameGuest?.equipped || {}),
+          ...(walletSnap?.equipped || {}),
+        };
+        const resolvedGuestLayout =
+          (layoutSnap.known ? layoutSnap.layout : null) ||
+          prevSameGuest?.profileLayout ||
+          cachedGuestCustom.profileLayout ||
+          (typeof serverLayout === 'string' ? (serverLayout as any) : undefined);
+
         const synthUser = buildSyntheticGuestUser(g.uid, guestUsername, effectiveToken);
         const guestProfile: UserProfile = {
+          ...(prevSameGuest || {}),
           uid: g.uid,
           email: '',
-          displayName: guestDisplayName,
-          name: guestDisplayName,
+          displayName: prevSameGuest?.displayName || cachedGuestCustom.displayName || guestDisplayName,
+          name: prevSameGuest?.name || cachedGuestCustom.name || guestDisplayName,
           username: guestUsername,
-          shortId: g.shortId || 'GUEST',
+          shortId: g.shortId || prevSameGuest?.shortId || 'GUEST',
           role: 'student',
           customRole: 'Guest',
           plan: 'free',
@@ -909,11 +991,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           accountType: 'guest',
           profileCompleted: true,
           onboardingCompleted: true,
-          targetUniversity: g.targetUniversity || 'General Prep',
-          testsCompleted: Number(g.testsCompleted || 0),
-          totalQuestionsSolved: Number(g.totalQuestionsSolved || 0),
-          streak: Number(g.streak || 0),
+          targetUniversity:
+            prevSameGuest?.targetUniversity ||
+            cachedGuestCustom.targetUniversity ||
+            g.targetUniversity ||
+            'General Prep',
+          testsCompleted: Number(g.testsCompleted ?? prevSameGuest?.testsCompleted ?? 0),
+          totalQuestionsSolved: Number(
+            g.totalQuestionsSolved ?? prevSameGuest?.totalQuestionsSolved ?? 0
+          ),
+          streak: Number(g.streak ?? prevSameGuest?.streak ?? 0),
           lastActiveAt: (g as any).lastActiveAt || Date.now(),
+          ...(Object.keys(mergedEquipped).length > 0 ? { equipped: mergedEquipped } : {}),
+          ...(resolvedGuestLayout ? { profileLayout: resolvedGuestLayout } : {}),
+          ...(prevSameGuest?.avatarId || cachedGuestCustom.avatarId
+            ? { avatarId: prevSameGuest?.avatarId || cachedGuestCustom.avatarId }
+            : {}),
+          ...(prevSameGuest?.photoURL || cachedGuestCustom.photoURL
+            ? { photoURL: prevSameGuest?.photoURL || cachedGuestCustom.photoURL }
+            : {}),
         };
         setGuestSessionToken(effectiveToken);
         setUser(synthUser);
@@ -922,7 +1018,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         writeOptimisticUserSnapshot({
           uid: g.uid,
           email: '',
-          displayName: guestDisplayName,
+          displayName: guestProfile.displayName || guestDisplayName,
           username: guestUsername,
           shortId: guestProfile.shortId,
           role: 'student',
@@ -931,6 +1027,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           isGuest: true,
           streak: Number(g.streak || 0),
           targetUniversity: guestProfile.targetUniversity,
+          profileLayout: guestProfile.profileLayout,
         });
         setOtpVerificationState({
           status: 'verified',
@@ -1187,7 +1284,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             meData.user.profileLayout ??
             meData.user.profile_layout;
           if (typeof profileLayoutPayload === 'string') {
-            seedProfileLayoutFromServer(firebaseUser.uid, profileLayoutPayload);
+            seedProfileLayoutFromServer(firebaseUser.uid, profileLayoutPayload, {
+              isPassiveSeed: true,
+            });
           }
           const serverRoleRaw = String(meData.user.role || '').trim().toLowerCase();
           const trustedRole = SUPER_ADMIN_UID_ALLOWLIST.has(firebaseUser.uid)
@@ -1551,6 +1650,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Non-fatal
         }
 
+        let guestCachedCustom: Record<string, any> = {};
+        try {
+          const raw = localStorage.getItem(`cached_profile_${guestUid}`);
+          if (raw) guestCachedCustom = JSON.parse(raw) || {};
+        } catch {
+          // Ignore
+        }
+        const guestWalletSnap = readOptimisticWalletSnapshot(guestUid);
+        const guestLayoutSnap = getProfileLayoutSnapshotForUid(guestUid);
+        const migratedKobanStyle = migrateGuestKobanStyleToUser(guestUid, newFirebaseUser.uid);
+        if (migratedKobanStyle) {
+          void fetch('/api/koban-style', {
+            method: 'PUT',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+              'X-User-Uid': newFirebaseUser.uid,
+            },
+            body: JSON.stringify(migratedKobanStyle),
+          }).catch(() => {});
+        }
+        const carriedLayout =
+          (guestLayoutSnap.known ? guestLayoutSnap.layout : null) ||
+          profile.profileLayout ||
+          guestCachedCustom.profileLayout ||
+          undefined;
+        if (carriedLayout) {
+          commitSavedProfileLayout(newFirebaseUser.uid, carriedLayout);
+        }
+        const carriedEquipped = {
+          ...(guestCachedCustom.equipped || {}),
+          ...(profile.equipped || {}),
+          ...(guestWalletSnap?.equipped || {}),
+        };
+        if (guestWalletSnap) {
+          writeOptimisticWalletSnapshot(newFirebaseUser.uid, {
+            balance: guestWalletSnap.balance,
+            equipped: carriedEquipped,
+            owned: guestWalletSnap.owned,
+          });
+        }
+
         const upgradedProfileDoc: UserProfile = {
           uid: newFirebaseUser.uid,
           email: cleanEmail,
@@ -1571,7 +1713,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             upgData.totalQuestionsSolved ?? profile.totalQuestionsSolved ?? 0
           ),
           streak: Number(upgData.streak ?? profile.streak ?? 0),
+          ...(Object.keys(carriedEquipped).length > 0 ? { equipped: carriedEquipped } : {}),
+          ...(carriedLayout ? { profileLayout: carriedLayout } : {}),
+          ...(profile.avatarId || guestCachedCustom.avatarId
+            ? { avatarId: profile.avatarId || guestCachedCustom.avatarId }
+            : {}),
+          ...(profile.photoURL || guestCachedCustom.photoURL
+            ? { photoURL: profile.photoURL || guestCachedCustom.photoURL }
+            : {}),
         };
+
+        try {
+          localStorage.setItem(
+            `cached_profile_${newFirebaseUser.uid}`,
+            JSON.stringify({ ...guestCachedCustom, ...upgradedProfileDoc })
+          );
+        } catch {
+          // Ignore
+        }
 
         const { role: _r1, plan: _p1, status: _s1, ...safeUpgradedEmailDoc } = upgradedProfileDoc;
         await setDoc(
@@ -1586,6 +1745,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           { merge: true }
         ).catch(() => {});
 
+        if (Object.keys(carriedEquipped).length > 0 || (guestWalletSnap?.owned?.length ?? 0) > 0) {
+          await setDoc(
+            doc(db, 'wallets', newFirebaseUser.uid),
+            {
+              equipped: carriedEquipped,
+              ...(guestWalletSnap?.owned ? { owned: guestWalletSnap.owned } : {}),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          ).catch(() => {});
+        }
+
         await setDoc(
           doc(db, 'publicProfiles', newFirebaseUser.uid),
           {
@@ -1594,6 +1765,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             username: guestUsername,
             studentId: upgradedProfileDoc.shortId,
             role: 'student',
+            ...(Object.keys(carriedEquipped).length > 0 ? { equipped: carriedEquipped } : {}),
+            ...(carriedLayout ? { profileLayout: carriedLayout } : {}),
             stats: {
               streak: upgradedProfileDoc.streak || 0,
               testsCompleted: upgradedProfileDoc.testsCompleted || 0,
@@ -1768,13 +1941,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }),
       }).catch(() => {});
 
+      let guestCachedGoogleCustom: Record<string, any> = {};
+      try {
+        const raw = localStorage.getItem(`cached_profile_${guestUid}`);
+        if (raw) guestCachedGoogleCustom = JSON.parse(raw) || {};
+      } catch {
+        // Ignore
+      }
+      const guestGoogleWalletSnap = readOptimisticWalletSnapshot(guestUid);
+      const guestGoogleLayoutSnap = getProfileLayoutSnapshotForUid(guestUid);
+      const migratedGoogleKobanStyle = migrateGuestKobanStyleToUser(guestUid, googleUser.uid);
+      if (migratedGoogleKobanStyle) {
+        void fetch('/api/koban-style', {
+          method: 'PUT',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+            'X-User-Uid': googleUser.uid,
+          },
+          body: JSON.stringify(migratedGoogleKobanStyle),
+        }).catch(() => {});
+      }
+      const carriedGoogleLayout =
+        (guestGoogleLayoutSnap.known ? guestGoogleLayoutSnap.layout : null) ||
+        snapshotGuestProfile.profileLayout ||
+        guestCachedGoogleCustom.profileLayout ||
+        undefined;
+      if (carriedGoogleLayout) {
+        commitSavedProfileLayout(googleUser.uid, carriedGoogleLayout);
+      }
+      const carriedGoogleEquipped = {
+        ...(guestCachedGoogleCustom.equipped || {}),
+        ...(snapshotGuestProfile.equipped || {}),
+        ...(guestGoogleWalletSnap?.equipped || {}),
+      };
+      if (guestGoogleWalletSnap) {
+        writeOptimisticWalletSnapshot(googleUser.uid, {
+          balance: guestGoogleWalletSnap.balance,
+          equipped: carriedGoogleEquipped,
+          owned: guestGoogleWalletSnap.owned,
+        });
+      }
+
       const upgradedProfileDoc: UserProfile = {
         uid: googleUser.uid,
         email: (googleUser.email || '').toLowerCase(),
         displayName: guestUsername,
         name: googleUser.displayName || guestUsername,
         username: guestUsername,
-        photoURL: null,
+        photoURL: snapshotGuestProfile.photoURL || guestCachedGoogleCustom.photoURL || null,
         shortId: upgData?.shortId || snapshotGuestProfile.shortId || deriveFallbackShortId(googleUser.uid),
         role: 'student',
         plan: 'free',
@@ -1792,7 +2008,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           upgData?.totalQuestionsSolved ?? snapshotGuestProfile.totalQuestionsSolved ?? 0
         ),
         streak: Number(upgData?.streak ?? snapshotGuestProfile.streak ?? 0),
+        ...(Object.keys(carriedGoogleEquipped).length > 0 ? { equipped: carriedGoogleEquipped } : {}),
+        ...(carriedGoogleLayout ? { profileLayout: carriedGoogleLayout } : {}),
+        ...(snapshotGuestProfile.avatarId || guestCachedGoogleCustom.avatarId
+          ? { avatarId: snapshotGuestProfile.avatarId || guestCachedGoogleCustom.avatarId }
+          : {}),
       };
+
+      try {
+        localStorage.setItem(
+          `cached_profile_${googleUser.uid}`,
+          JSON.stringify({ ...guestCachedGoogleCustom, ...upgradedProfileDoc })
+        );
+      } catch {
+        // Ignore
+      }
 
       const { role: _r2, plan: _p2, status: _s2, ...safeUpgradedGoogleDoc } = upgradedProfileDoc;
       await setDoc(
@@ -1807,6 +2037,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         { merge: true }
       ).catch(() => {});
 
+      if (
+        Object.keys(carriedGoogleEquipped).length > 0 ||
+        (guestGoogleWalletSnap?.owned?.length ?? 0) > 0
+      ) {
+        await setDoc(
+          doc(db, 'wallets', googleUser.uid),
+          {
+            equipped: carriedGoogleEquipped,
+            ...(guestGoogleWalletSnap?.owned ? { owned: guestGoogleWalletSnap.owned } : {}),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ).catch(() => {});
+      }
+
       await setDoc(
         doc(db, 'publicProfiles', googleUser.uid),
         {
@@ -1815,6 +2060,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           username: guestUsername,
           studentId: upgradedProfileDoc.shortId,
           role: 'student',
+          ...(Object.keys(carriedGoogleEquipped).length > 0 ? { equipped: carriedGoogleEquipped } : {}),
+          ...(carriedGoogleLayout ? { profileLayout: carriedGoogleLayout } : {}),
           stats: {
             streak: upgradedProfileDoc.streak || 0,
             testsCompleted: upgradedProfileDoc.testsCompleted || 0,
@@ -2191,28 +2438,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const executeForceSignOut = useCallback(async () => {
     setAuthError(null);
-    const savedGuestToken = guestSessionToken || localStorage.getItem(GUEST_TOKEN_LS_KEY) || '';
-    const guestUid = isGuest ? profile?.uid || user?.uid || '' : '';
-    clearSecurityStatusCache(user?.uid || profile?.uid || null);
+    const savedGuestToken =
+      guestSessionToken ||
+      (typeof window !== 'undefined' ? localStorage.getItem(GUEST_TOKEN_LS_KEY) : '') ||
+      '';
+    const currentUid = user?.uid || profile?.uid || '';
+    const guestUid = isGuest ? currentUid : '';
+    const wasGuest = Boolean(savedGuestToken || isGuest);
+
+    if (guestUid) {
+      signingOutGuestUidRef.current = guestUid;
+    }
+
+    // 1. Immediately clear local caches & update React state so sign-out feels instant (0ms lag)
+    clearOptimisticUserSnapshot();
+    clearSecurityStatusCache(currentUid || null);
     try {
       localStorage.removeItem('boardly_user_authenticated');
       localStorage.removeItem(GUEST_TOKEN_LS_KEY);
+      if (guestUid) {
+        localStorage.removeItem(`cached_profile_${guestUid}`);
+      }
     } catch {
       // Ignore storage errors
     }
     setStoredGuestSessionToken(null);
     setGuestSessionToken(null);
-    if (savedGuestToken || isGuest) {
-      await fetch('/api/auth/guest/logout', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(savedGuestToken ? { 'X-Guest-Session': savedGuestToken } : {}),
-        },
-        body: JSON.stringify({ uid: guestUid }),
-      }).catch(() => {});
-    }
     setOtpVerificationState({
       status: 'idle',
       purpose: null,
@@ -2222,9 +2473,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       error: null,
     });
     setUsernamePromptState({ open: false, allowSkip: false, suggested: '' });
+    setShowGuestLogoutConfirm(false);
+    setGuestLogoutLoading(false);
     setUser(null);
     setProfile(null);
-    await firebaseSignOut(auth).catch(() => {});
+
+    // 2. Run server-side guest session revocation and Firebase signOut in the background without blocking UI
+    void (async () => {
+      try {
+        if (wasGuest) {
+          await fetch('/api/auth/guest/logout', {
+            method: 'POST',
+            credentials: 'include',
+            keepalive: true,
+            headers: {
+              'Content-Type': 'application/json',
+              ...(savedGuestToken ? { 'X-Guest-Session': savedGuestToken } : {}),
+            },
+            body: JSON.stringify({ uid: guestUid }),
+          }).catch(() => {});
+        }
+        await firebaseSignOut(auth).catch(() => {});
+      } finally {
+        if (signingOutGuestUidRef.current === guestUid) {
+          signingOutGuestUidRef.current = null;
+        }
+      }
+    })();
   }, [guestSessionToken, isGuest, profile?.uid, user?.uid]);
 
   const signOutUser = useCallback(
@@ -2242,9 +2517,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleConfirmGuestLogout = useCallback(async () => {
     setGuestLogoutLoading(true);
+    setShowGuestLogoutConfirm(false);
     try {
       await executeForceSignOut();
-      setShowGuestLogoutConfirm(false);
       const resolvers = [...pendingGuestLogoutResolversRef.current];
       pendingGuestLogoutResolversRef.current = [];
       for (const r of resolvers) {

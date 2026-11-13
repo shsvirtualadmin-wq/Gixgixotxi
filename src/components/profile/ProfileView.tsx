@@ -64,7 +64,10 @@ import { WalletModal } from './WalletModal';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
-import { useProfileLayoutStatus } from '@/hooks/useSecurityStatus';
+import {
+  useProfileLayoutStatus,
+  getProfileLayoutSnapshotForUid,
+} from '@/hooks/useSecurityStatus';
 import {
   getPublicProfile,
   syncPublicProfile,
@@ -241,6 +244,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     }
   }, [targetUid]);
 
+  const selfContextRef = useRef({
+    ownProfile,
+    authProfile,
+    ownEquipped,
+    authUserDisplayName: authUser?.displayName || null,
+    authUserEmail: authUser?.email || null,
+  });
+  selfContextRef.current = {
+    ownProfile,
+    authProfile,
+    ownEquipped,
+    authUserDisplayName: authUser?.displayName || null,
+    authUserEmail: authUser?.email || null,
+  };
+
   useEffect(() => {
     let isMounted = true;
     const resolvedUid = targetUid || currentUid;
@@ -249,8 +267,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       return;
     }
 
-    // For a guest viewing their own profile, build the profile directly from the shared AuthContext state (never query Firestore)
-    const activeGuestSource = ownProfile || authProfile;
+    const {
+      ownProfile: curOwnProfile,
+      authProfile: curAuthProfile,
+      ownEquipped: curOwnEquipped,
+      authUserDisplayName,
+    } = selfContextRef.current;
+
+    // For a guest viewing their own profile, build the profile from AuthContext + wallet + D1 state
+    const activeGuestSource = (curOwnProfile || curAuthProfile) as Record<string, any> | null;
     if (
       (isViewingSelf && (isGuest || resolvedUid.startsWith('guest_'))) ||
       resolvedUid.startsWith('guest_')
@@ -258,13 +283,49 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       const guestUsername =
         activeGuestSource?.username ||
         activeGuestSource?.displayName ||
-        authUser?.displayName ||
+        authUserDisplayName ||
         resolvedUid.replace(/^guest_/, '');
       const guestDisplayName =
         activeGuestSource?.displayName ||
         activeGuestSource?.name ||
         guestUsername;
       const guestShortId = activeGuestSource?.shortId || 'GUEST';
+      const guestLayoutSnapshot = getProfileLayoutSnapshotForUid(resolvedUid);
+      const guestLayout = normalizeProfileLayout(
+        (guestLayoutSnapshot.known ? guestLayoutSnapshot.layout : null) ??
+          activeGuestSource?.profileLayout ??
+          activeGuestSource?.profile_layout ??
+          DEFAULT_PROFILE_LAYOUT
+      );
+      const guestAvatar =
+        resolveCosmeticItemId(curOwnEquipped?.avatar, 'avatar') ||
+        resolveCosmeticItemId(activeGuestSource?.equipped?.avatar, 'avatar') ||
+        resolveCosmeticItemId(activeGuestSource?.avatar, 'avatar') ||
+        activeGuestSource?.avatarKey ||
+        null;
+      const guestBanner =
+        curOwnEquipped?.banner ||
+        activeGuestSource?.equipped?.banner ||
+        activeGuestSource?.equippedBanner ||
+        activeGuestSource?.banner ||
+        null;
+      const guestFrame =
+        curOwnEquipped?.frame ||
+        activeGuestSource?.equipped?.frame ||
+        activeGuestSource?.equippedFrame ||
+        activeGuestSource?.frame ||
+        null;
+      const guestNameplate =
+        curOwnEquipped?.nameplate ||
+        activeGuestSource?.equipped?.nameplate ||
+        activeGuestSource?.equippedNameplate ||
+        activeGuestSource?.nameplate ||
+        null;
+      const guestEffect =
+        curOwnEquipped?.effect ||
+        activeGuestSource?.equipped?.effect ||
+        activeGuestSource?.effectId ||
+        null;
 
       const guestPublicProfile: PublicProfile & { username?: string; isGuest?: boolean; accountType?: string } = {
         uid: resolvedUid,
@@ -272,15 +333,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         username: guestUsername,
         studentId: guestShortId,
         shortId: guestShortId,
-        avatar: activeGuestSource?.avatarKey || null,
-        banner: null,
-        frame: null,
-        nameplate: null,
-        effectId: null,
+        avatar: guestAvatar,
+        banner: guestBanner,
+        frame: guestFrame,
+        nameplate: guestNameplate,
+        effectId: guestEffect,
         badges: [],
         bio: activeGuestSource?.bio || '',
-        status: 'active',
-        accent: '#D71921',
+        status: activeGuestSource?.status || 'active',
+        accent: activeGuestSource?.accent || '#D71921',
         memberSince: null,
         crewName: null,
         stats: {
@@ -296,14 +357,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         customRole: 'Guest',
         isGuest: true,
         accountType: 'guest',
+        profileLayout: guestLayout,
+        profile_layout: guestLayout,
         equipped: {
-          effect: null,
-          frame: null,
-          nameplate: null,
-          avatar: null,
-          banner: null,
+          effect: guestEffect,
+          frame: guestFrame,
+          nameplate: guestNameplate,
+          avatar: guestAvatar,
+          banner: guestBanner,
         },
-        avatarUrl: null,
+        avatarUrl: guestAvatar,
         photoURL: null,
         avatarKey: activeGuestSource?.avatarKey || null,
         avatarVariant: activeGuestSource?.avatarVariant || null,
@@ -313,7 +376,43 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       profileMemoryCache.set(resolvedUid, { profile: guestPublicProfile, timestamp: Date.now() });
       setLoading(false);
       setFetchError(null);
-      return;
+
+      const unsubGuestLive = subscribePublicProfile(resolvedUid, (updatedProf) => {
+        if (!isMounted || !updatedProf) return;
+        setProfile((prev) => {
+          if (!prev) return prev;
+          const nextLayout =
+            updatedProf.profileLayout || updatedProf.profile_layout
+              ? normalizeProfileLayout(updatedProf.profileLayout ?? updatedProf.profile_layout)
+              : prev.profileLayout || prev.profile_layout || DEFAULT_PROFILE_LAYOUT;
+          const merged: PublicProfile = {
+            ...prev,
+            displayName: updatedProf.displayName || prev.displayName,
+            ...(updatedProf.username ? { username: updatedProf.username } : {}),
+            bio: updatedProf.bio ?? prev.bio,
+            status: updatedProf.status ?? prev.status,
+            accent: updatedProf.accent || prev.accent,
+            avatar: updatedProf.avatar ?? updatedProf.equipped?.avatar ?? prev.avatar,
+            frame: updatedProf.frame ?? updatedProf.equipped?.frame ?? prev.frame,
+            banner: updatedProf.banner ?? updatedProf.equipped?.banner ?? prev.banner,
+            nameplate: updatedProf.nameplate ?? updatedProf.equipped?.nameplate ?? prev.nameplate,
+            effectId: updatedProf.effectId ?? updatedProf.equipped?.effect ?? prev.effectId,
+            profileLayout: nextLayout,
+            profile_layout: nextLayout,
+            equipped: {
+              ...(prev.equipped || { effect: null, frame: null, nameplate: null, avatar: null, banner: null }),
+              ...(updatedProf.equipped || {}),
+            },
+          };
+          profileMemoryCache.set(resolvedUid, { profile: merged, timestamp: Date.now() });
+          return merged;
+        });
+      });
+
+      return () => {
+        isMounted = false;
+        unsubGuestLive();
+      };
     }
 
     // Instant cache restore: if this profile was previously viewed, display it immediately
@@ -413,17 +512,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           }
         }
 
+        const {
+          ownProfile: latestOwnProfile,
+          authProfile: latestAuthProfile,
+          ownEquipped: latestOwnEquipped,
+          authUserDisplayName: latestAuthUserDisplayName,
+          authUserEmail: latestAuthUserEmail,
+        } = selfContextRef.current;
+
         const candidateName =
           (uid === currentUid
-            ? ownProfile?.displayName ||
+            ? latestOwnProfile?.displayName ||
               uData?.displayName ||
               pubData?.displayName ||
-              ownProfile?.username ||
+              latestOwnProfile?.username ||
               uData?.username ||
               pubData?.username ||
-              authProfile?.displayName ||
-              authProfile?.username ||
-              authUser?.displayName
+              latestAuthProfile?.displayName ||
+              latestAuthProfile?.username ||
+              latestAuthUserDisplayName
             : uData?.displayName ||
               pubData?.displayName ||
               uData?.username ||
@@ -432,9 +539,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           postAuthorName;
         const candidateUsername =
           (uid === currentUid
-            ? ownProfile?.username || uData?.username || pubData?.username || authProfile?.username
+            ? latestOwnProfile?.username || uData?.username || pubData?.username || latestAuthProfile?.username
             : uData?.username || pubData?.username) || null;
-        const candidateEmail = uData?.email || pubData?.email || (uid === currentUid ? authUser?.email : null);
+        const candidateEmail = uData?.email || pubData?.email || (uid === currentUid ? latestAuthUserEmail : null);
 
         const isAdminAccountUser =
           isAdminAccount(uid) ||
@@ -476,13 +583,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           cleanName = sanitizeStudentDisplayName(candidateName, shortCode);
         }
 
-        const mergedEquipped = {
-          ...(walletData?.equipped || {}),
-          ...(pubData?.equipped || {}),
-          ...(uData?.equipped || {}),
-        };
+        // Resolve each cosmetic slot using non-empty truthy priority so null in one doc never masks a valid equipped ID in another
+        const selfEq = uid === currentUid ? latestOwnEquipped : null;
         const avatar =
-          resolveCosmeticItemId(mergedEquipped?.avatar, 'avatar') ||
+          resolveCosmeticItemId(selfEq?.avatar, 'avatar') ||
+          resolveCosmeticItemId(walletData?.equipped?.avatar, 'avatar') ||
+          resolveCosmeticItemId(uData?.equipped?.avatar, 'avatar') ||
+          resolveCosmeticItemId(pubData?.equipped?.avatar, 'avatar') ||
           resolveCosmeticItemId(uData?.equippedAvatar, 'avatar') ||
           resolveCosmeticItemId(pubData?.equippedAvatar, 'avatar') ||
           resolveCosmeticItemId(uData?.avatar, 'avatar') ||
@@ -493,7 +600,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         const avatarUrl = avatar;
         const photoURL = null;
         const frame =
-          (mergedEquipped?.frame as string) ||
+          (selfEq?.frame as string) ||
+          (walletData?.equipped?.frame as string) ||
+          (uData?.equipped?.frame as string) ||
+          (pubData?.equipped?.frame as string) ||
           (uData?.equippedFrame as string) ||
           (pubData?.equippedFrame as string) ||
           (uData?.frame as string) ||
@@ -501,25 +611,36 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           postAuthorFrame ||
           null;
         const nameplate =
-          (mergedEquipped?.nameplate as string) ||
+          (selfEq?.nameplate as string) ||
+          (walletData?.equipped?.nameplate as string) ||
+          (uData?.equipped?.nameplate as string) ||
+          (pubData?.equipped?.nameplate as string) ||
           (uData?.equippedNameplate as string) ||
           (pubData?.equippedNameplate as string) ||
           (uData?.nameplate as string) ||
           (pubData?.nameplate as string) ||
           null;
         const banner =
-          (mergedEquipped?.banner as string) ||
+          (selfEq?.banner as string) ||
+          (walletData?.equipped?.banner as string) ||
+          (uData?.equipped?.banner as string) ||
+          (pubData?.equipped?.banner as string) ||
           (uData?.equippedBanner as string) ||
           (pubData?.equippedBanner as string) ||
           (uData?.banner as string) ||
           (pubData?.banner as string) ||
+          (d1Live?.banner as string) ||
           null;
         const effectId =
-          (mergedEquipped?.effect as string) ||
+          (selfEq?.effect as string) ||
+          (walletData?.equipped?.effect as string) ||
+          (uData?.equipped?.effect as string) ||
+          (pubData?.equipped?.effect as string) ||
           (uData?.equippedEffect as string) ||
           (pubData?.equippedEffect as string) ||
           (uData?.effectId as string) ||
           (pubData?.effectId as string) ||
+          (d1Live?.effect as string) ||
           null;
         const equipped = {
           effect: effectId,
@@ -620,7 +741,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               : DEFAULT_PRO_BADGE_DESIGN;
           })(),
           profileLayout: normalizeProfileLayout(
-            d1Live?.profile_layout ??
+            (getProfileLayoutSnapshotForUid(uid).known ? getProfileLayoutSnapshotForUid(uid).layout : null) ??
+              d1Live?.profile_layout ??
               d1Live?.profileLayout ??
               pubData?.profile_layout ??
               pubData?.profileLayout ??
@@ -629,7 +751,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               DEFAULT_PROFILE_LAYOUT
           ),
           profile_layout: normalizeProfileLayout(
-            d1Live?.profile_layout ??
+            (getProfileLayoutSnapshotForUid(uid).known ? getProfileLayoutSnapshotForUid(uid).layout : null) ??
+              d1Live?.profile_layout ??
               d1Live?.profileLayout ??
               pubData?.profile_layout ??
               pubData?.profileLayout ??
@@ -692,8 +815,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           bio: updatedProf.bio ?? prev.bio,
           status: updatedProf.status ?? prev.status,
           accent: updatedProf.accent || prev.accent,
-          avatar: updatedProf.avatar ?? prev.avatar,
-          frame: updatedProf.frame ?? prev.frame,
+          avatar: updatedProf.avatar ?? updatedProf.equipped?.avatar ?? prev.avatar,
+          frame: updatedProf.frame ?? updatedProf.equipped?.frame ?? prev.frame,
+          banner: updatedProf.banner ?? updatedProf.equipped?.banner ?? prev.banner,
+          nameplate: updatedProf.nameplate ?? updatedProf.equipped?.nameplate ?? prev.nameplate,
+          effectId: updatedProf.effectId ?? updatedProf.equipped?.effect ?? prev.effectId,
           proBadge: updatedProf.proBadge !== undefined ? updatedProf.proBadge : prev.proBadge,
           profileLayout: nextLayout,
           profile_layout: nextLayout,
@@ -711,7 +837,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       isMounted = false;
       unsubLiveProfile();
     };
-  }, [targetUid, currentUid, isAdmin, isGuest, isViewingSelf, ownProfile, authProfile, authUser?.displayName, authUser?.email]);
+  }, [targetUid, currentUid, isAdmin, isGuest, isViewingSelf]);
 
   // When viewing self in own mode, safely merge ownProfile/ownEquipped without wiping loaded cosmetics or follower counts
   useEffect(() => {
@@ -826,23 +952,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           avatarKey: op.avatarKey || prev?.avatarKey || null,
           avatarVariant: op.avatarVariant || prev?.avatarVariant || null,
           profileLayout: normalizeProfileLayout(
-            (selfLayoutStatus.ready ? selfLayoutStatus.layout : null) ??
+            (selfLayoutStatus.known ? selfLayoutStatus.layout : null) ??
+              prev?.profileLayout ??
+              prev?.profile_layout ??
               (authProfile as any)?.profileLayout ??
               (authProfile as any)?.profile_layout ??
               op.profileLayout ??
               op.profile_layout ??
-              prev?.profileLayout ??
-              prev?.profile_layout ??
               DEFAULT_PROFILE_LAYOUT
           ),
           profile_layout: normalizeProfileLayout(
-            (selfLayoutStatus.ready ? selfLayoutStatus.layout : null) ??
+            (selfLayoutStatus.known ? selfLayoutStatus.layout : null) ??
+              prev?.profileLayout ??
+              prev?.profile_layout ??
               (authProfile as any)?.profileLayout ??
               (authProfile as any)?.profile_layout ??
               op.profileLayout ??
               op.profile_layout ??
-              prev?.profileLayout ??
-              prev?.profile_layout ??
               DEFAULT_PROFILE_LAYOUT
           ),
         };
@@ -869,7 +995,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         return nextProfile;
       });
     }
-  }, [isViewingSelf, ownProfile, authProfile, ownEquipped, walletLoading, previewAsPublic, currentUid, authUser?.displayName, authUser?.email, isAdmin, isGuest, selfLayoutStatus.layout, selfLayoutStatus.ready]);
+  }, [isViewingSelf, ownProfile, authProfile, ownEquipped, walletLoading, previewAsPublic, currentUid, authUser?.displayName, authUser?.email, isAdmin, isGuest, selfLayoutStatus.layout, selfLayoutStatus.known, selfLayoutStatus.ready]);
 
   // Rank title computation
   const rank = useMemo(() => {
@@ -1245,7 +1371,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         propLayout ??
           propData?.profile_layout ??
           propData?.profileLayout ??
-          (isViewingSelf && selfLayoutStatus.ready ? selfLayoutStatus.layout : null) ??
+          (isViewingSelf && selfLayoutStatus.known ? selfLayoutStatus.layout : null) ??
           profile?.profileLayout ??
           profile?.profile_layout ??
           (isViewingSelf
@@ -1256,7 +1382,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             : null) ??
           DEFAULT_PROFILE_LAYOUT
       ),
-    [propLayout, propData, isViewingSelf, selfLayoutStatus.ready, selfLayoutStatus.layout, profile, authProfile, ownProfile]
+    [propLayout, propData, isViewingSelf, selfLayoutStatus.known, selfLayoutStatus.layout, profile, authProfile, ownProfile]
   );
 
   // When rendered in Settings > Profile Layout live preview carousel, render the live profile card
@@ -1297,7 +1423,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     );
   }
 
-  if (loading && !profile && !propData) {
+  if (
+    (loading && !profile && !propData) ||
+    (isViewingSelf && !propData && !selfLayoutStatus.known && selfLayoutStatus.loading)
+  ) {
     return (
       <div
         className={`relative w-full flex flex-col bg-[var(--background)] text-[var(--text)] ${

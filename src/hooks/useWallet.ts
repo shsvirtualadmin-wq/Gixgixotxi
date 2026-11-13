@@ -45,12 +45,14 @@ const DEFAULT_WALLET: WalletDoc = {
 // Module-level in-memory session cache & in-flight deduplication: Read the wallet once per session per user
 const sessionWalletCache: { [uid: string]: WalletDoc | undefined } = {};
 const inFlightWalletPromises: { [uid: string]: Promise<WalletDoc> | undefined } = {};
+const inFlightSingleItemPurchases = new Set<string>();
 const walletSubscribers = new Set<(uid: string, doc: WalletDoc) => void>();
 
 function notifyWalletSubscribers(uid: string, doc: WalletDoc) {
   writeOptimisticWalletSnapshot({
     uid,
     balance: doc.balance,
+    owned: doc.owned,
     equipped: doc.equipped,
   });
   walletSubscribers.forEach((cb) => {
@@ -72,7 +74,7 @@ export function useWallet() {
     if (optimistic) {
       return {
         balance: optimistic.balance,
-        owned: [],
+        owned: Array.isArray(optimistic.owned) ? optimistic.owned : [],
         equipped: optimistic.equipped || DEFAULT_WALLET.equipped,
       };
     }
@@ -100,23 +102,83 @@ export function useWallet() {
   );
 
   const fetchWallet = useCallback(async (uid: string, forceRefresh = false) => {
-    if (!uid || uid.startsWith('guest_')) {
-      sessionWalletCache[uid] = DEFAULT_WALLET;
+    if (!uid) {
       setWallet(DEFAULT_WALLET);
       setLoading(false);
       return DEFAULT_WALLET;
     }
 
-    if (!forceRefresh && sessionWalletCache[uid]) {
-      setWallet(sessionWalletCache[uid]);
+    if (uid.startsWith('guest_')) {
+      const existingCached = sessionWalletCache[uid];
+      const optimistic = readOptimisticWalletSnapshot(uid);
+      const cachedProfile = getSharedUserProfileSnapshot(uid) as Record<string, any> | null;
+      const pEquipped = cachedProfile?.equipped || {};
+      const guestWallet: WalletDoc = {
+        balance: existingCached?.balance ?? optimistic?.balance ?? 0,
+        owned: Array.from(
+          new Set([
+            ...(existingCached?.owned || []),
+            ...(optimistic?.owned || []),
+            ...(Array.isArray(cachedProfile?.ownedCosmetics) ? cachedProfile.ownedCosmetics : []),
+          ])
+        ),
+        equipped: {
+          effect:
+            existingCached?.equipped?.effect ??
+            optimistic?.equipped?.effect ??
+            pEquipped.effect ??
+            cachedProfile?.effectId ??
+            null,
+          frame:
+            existingCached?.equipped?.frame ??
+            optimistic?.equipped?.frame ??
+            pEquipped.frame ??
+            cachedProfile?.frame ??
+            cachedProfile?.equippedFrame ??
+            null,
+          nameplate:
+            existingCached?.equipped?.nameplate ??
+            optimistic?.equipped?.nameplate ??
+            pEquipped.nameplate ??
+            cachedProfile?.nameplate ??
+            cachedProfile?.equippedNameplate ??
+            null,
+          avatar:
+            existingCached?.equipped?.avatar ??
+            optimistic?.equipped?.avatar ??
+            pEquipped.avatar ??
+            cachedProfile?.avatar ??
+            cachedProfile?.equippedAvatar ??
+            null,
+          banner:
+            existingCached?.equipped?.banner ??
+            optimistic?.equipped?.banner ??
+            pEquipped.banner ??
+            cachedProfile?.banner ??
+            cachedProfile?.equippedBanner ??
+            null,
+        },
+      };
+      walletRef.current = guestWallet;
+      sessionWalletCache[uid] = guestWallet;
+      setWallet(guestWallet);
+      notifyWalletSubscribers(uid, guestWallet);
       setLoading(false);
-      return sessionWalletCache[uid];
+      return guestWallet;
+    }
+
+    if (!forceRefresh && sessionWalletCache[uid]) {
+      walletRef.current = sessionWalletCache[uid]!;
+      setWallet(sessionWalletCache[uid]!);
+      setLoading(false);
+      return sessionWalletCache[uid]!;
     }
 
     if (!forceRefresh && inFlightWalletPromises[uid]) {
       setLoading(true);
       try {
-        const sharedResult = await inFlightWalletPromises[uid];
+        const sharedResult = await inFlightWalletPromises[uid]!;
+        walletRef.current = sharedResult;
         setWallet(sharedResult);
         return sharedResult;
       } finally {
@@ -175,6 +237,7 @@ export function useWallet() {
         const unlockedIds: string[] = unlockedSnap
           ? unlockedSnap.docs.map((d) => String(d.data()?.itemId || d.id))
           : [];
+        const cachedOwned: string[] = sessionWalletCache[uid]?.owned || [];
 
         if (snap && snap.exists()) {
           const data = snap.data() as Partial<WalletDoc>;
@@ -189,7 +252,7 @@ export function useWallet() {
 
           const walletOwned = Array.isArray(data.owned) ? data.owned : [];
           const mergedOwned = Array.from(
-            new Set([...walletOwned, ...userOwned, ...unlockedIds])
+            new Set([...walletOwned, ...userOwned, ...unlockedIds, ...cachedOwned])
           );
 
           const rawEquipped = {
@@ -201,32 +264,33 @@ export function useWallet() {
             balance: resolvedBalance,
             owned: mergedOwned,
             equipped: {
-              effect: rawEquipped.effect ?? uData?.effectId ?? null,
-              frame: rawEquipped.frame ?? uData?.frame ?? uData?.equippedFrame ?? null,
+              effect: rawEquipped.effect || uData?.effectId || null,
+              frame: rawEquipped.frame || uData?.frame || uData?.equippedFrame || null,
               nameplate:
-                rawEquipped.nameplate ?? uData?.nameplate ?? uData?.equippedNameplate ?? null,
-              avatar: rawEquipped.avatar ?? uData?.avatar ?? uData?.equippedAvatar ?? null,
-              banner: rawEquipped.banner ?? uData?.banner ?? uData?.equippedBanner ?? null,
+                rawEquipped.nameplate || uData?.nameplate || uData?.equippedNameplate || null,
+              avatar: rawEquipped.avatar || uData?.avatar || uData?.equippedAvatar || null,
+              banner: rawEquipped.banner || uData?.banner || uData?.equippedBanner || null,
             },
             updatedAt: data.updatedAt,
           };
+          walletRef.current = cleanWallet;
           sessionWalletCache[uid] = cleanWallet;
           notifyWalletSubscribers(uid, cleanWallet);
           return cleanWallet;
         } else {
           // Initialize wallet document using existing user balance & unlocked items so we never overwrite a non-zero user balance with 0
-          const mergedOwned = Array.from(new Set([...userOwned, ...unlockedIds]));
+          const mergedOwned = Array.from(new Set([...userOwned, ...unlockedIds, ...cachedOwned]));
           const uEquipped = uData?.equipped || {};
           const initial: WalletDoc = {
             balance: userBalance,
             owned: mergedOwned,
             equipped: {
-              effect: uEquipped.effect ?? uData?.effectId ?? null,
-              frame: uEquipped.frame ?? uData?.frame ?? uData?.equippedFrame ?? null,
+              effect: uEquipped.effect || uData?.effectId || null,
+              frame: uEquipped.frame || uData?.frame || uData?.equippedFrame || null,
               nameplate:
-                uEquipped.nameplate ?? uData?.nameplate ?? uData?.equippedNameplate ?? null,
-              avatar: uEquipped.avatar ?? uData?.avatar ?? uData?.equippedAvatar ?? null,
-              banner: uEquipped.banner ?? uData?.banner ?? uData?.equippedBanner ?? null,
+                uEquipped.nameplate || uData?.nameplate || uData?.equippedNameplate || null,
+              avatar: uEquipped.avatar || uData?.avatar || uData?.equippedAvatar || null,
+              banner: uEquipped.banner || uData?.banner || uData?.equippedBanner || null,
             },
             updatedAt: serverTimestamp(),
           };
@@ -238,6 +302,7 @@ export function useWallet() {
               err
             );
           });
+          walletRef.current = initial;
           sessionWalletCache[uid] = initial;
           notifyWalletSubscribers(uid, initial);
           return initial;
@@ -258,6 +323,7 @@ export function useWallet() {
     inFlightWalletPromises[uid] = loadPromise;
     try {
       const resolved = await loadPromise;
+      walletRef.current = resolved;
       setWallet(resolved);
       return resolved;
     } finally {
@@ -274,6 +340,7 @@ export function useWallet() {
 
     const onSub = (updatedUid: string, updatedDoc: WalletDoc) => {
       if (updatedUid === user.uid) {
+        walletRef.current = updatedDoc;
         setWallet(updatedDoc);
         setLoading(false);
       }
@@ -290,6 +357,7 @@ export function useWallet() {
           ...(sessionWalletCache[user.uid] || walletRef.current),
           balance: nextBalance,
         };
+        walletRef.current = nextWallet;
         sessionWalletCache[user.uid] = nextWallet;
         notifyWalletSubscribers(user.uid, nextWallet);
       }
@@ -316,9 +384,18 @@ export function useWallet() {
       itemId: string | null
     ) => {
       if (!user?.uid) throw new Error('Must be logged in to equip cosmetics');
-      const current = walletRef.current;
+      const current = sessionWalletCache[user.uid] || walletRef.current;
+      const isGuestUid = user.uid.startsWith('guest_');
+      const mergedCurrentOwned = Array.from(
+        new Set([...(current.owned || []), ...(walletRef.current.owned || [])])
+      );
 
-      if (!isSuperAdminUser && itemId !== null && !current.owned.includes(itemId)) {
+      if (
+        !isSuperAdminUser &&
+        !isGuestUid &&
+        itemId !== null &&
+        !mergedCurrentOwned.includes(itemId)
+      ) {
         throw new Error(
           'You do not own this cosmetic item. Please unlock it from the Store first.'
         );
@@ -329,47 +406,68 @@ export function useWallet() {
         [type]: itemId,
       };
 
-      const walletDocRef = doc(db, 'wallets', user.uid);
+      // Optimistically update in-memory ref and cache immediately so UI reflects equip right away
+      const updated: WalletDoc = {
+        ...current,
+        owned:
+          itemId && !mergedCurrentOwned.includes(itemId)
+            ? [...mergedCurrentOwned, itemId]
+            : mergedCurrentOwned,
+        equipped: updatedEquipped,
+      };
+      walletRef.current = updated;
+      sessionWalletCache[user.uid] = updated;
+      setWallet(updated);
+      notifyWalletSubscribers(user.uid, updated);
 
-      try {
-        await runTransaction(db, async (tx) => {
-          const snap = await tx.get(walletDocRef);
-          const curData = snap.exists() ? (snap.data() as WalletDoc) : current;
-          const ownedList = Array.from(
-            new Set([
-              ...(Array.isArray(curData.owned) ? curData.owned : []),
-              ...(Array.isArray(current.owned) ? current.owned : []),
-            ])
-          );
-          if (!isSuperAdminUser && itemId !== null && !ownedList.includes(itemId)) {
-            throw new Error('Item not owned');
-          }
-          if (snap.exists()) {
-            tx.update(walletDocRef, {
-              equipped: updatedEquipped,
-              updatedAt: serverTimestamp(),
-            });
-          } else {
-            tx.set(
-              walletDocRef,
-              {
-                balance: typeof curData.balance === 'number' ? curData.balance : current.balance,
+      if (!isGuestUid) {
+        const walletDocRef = doc(db, 'wallets', user.uid);
+        try {
+          await runTransaction(db, async (tx) => {
+            const snap = await tx.get(walletDocRef);
+            const curData = snap.exists() ? (snap.data() as WalletDoc) : current;
+            const ownedList = Array.from(
+              new Set([
+                ...(Array.isArray(curData.owned) ? curData.owned : []),
+                ...mergedCurrentOwned,
+                ...(itemId ? [itemId] : []),
+              ])
+            );
+            if (snap.exists()) {
+              tx.update(walletDocRef, {
                 owned: ownedList,
                 equipped: updatedEquipped,
                 updatedAt: serverTimestamp(),
-              },
-              { merge: true }
-            );
-          }
-        });
-      } catch (err: any) {
-        console.error(
-          '[useWallet] equipCosmetic transaction error:',
-          err?.code || 'ERROR',
-          `wallets/${user.uid}`,
-          err
-        );
-        throw err;
+              });
+            } else {
+              tx.set(
+                walletDocRef,
+                {
+                  balance: typeof curData.balance === 'number' ? curData.balance : current.balance,
+                  owned: ownedList,
+                  equipped: updatedEquipped,
+                  updatedAt: serverTimestamp(),
+                },
+                { merge: true }
+              );
+            }
+          });
+        } catch (err: any) {
+          console.warn(
+            '[useWallet] equipCosmetic transaction fallback:',
+            err?.code || 'ERROR',
+            `wallets/${user.uid}`
+          );
+          await setDoc(
+            walletDocRef,
+            {
+              owned: updated.owned,
+              equipped: updatedEquipped,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          ).catch(() => {});
+        }
       }
 
       const topLevelSlotField: Record<string, unknown> =
@@ -379,34 +477,54 @@ export function useWallet() {
       if (type === 'banner') topLevelSlotField.equippedBanner = itemId;
       if (type === 'nameplate') topLevelSlotField.equippedNameplate = itemId;
 
-      // Persist equipped cosmetics to users/{uid} so useUserProfile listener stays in sync
-      await setDoc(
-        doc(db, 'users', user.uid),
-        {
-          equipped: updatedEquipped,
-          ...topLevelSlotField,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      ).catch((err: any) => {
-        console.error(
-          '[useWallet] Failed to mirror equipped cosmetic to users doc:',
-          err?.code || 'ERROR',
-          `users/${user.uid}`,
-          err
-        );
-      });
+      if (!isGuestUid) {
+        // Persist equipped cosmetics to users/{uid} so useUserProfile listener stays in sync
+        await setDoc(
+          doc(db, 'users', user.uid),
+          {
+            equipped: updatedEquipped,
+            ...topLevelSlotField,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ).catch((err: any) => {
+          console.error(
+            '[useWallet] Failed to mirror equipped cosmetic to users doc:',
+            err?.code || 'ERROR',
+            `users/${user.uid}`,
+            err
+          );
+        });
+      }
+
+      // Update local cached user profile for both email and guest users
+      if (typeof window !== 'undefined' && window.localStorage) {
+        for (const lsKey of [`cached_profile_${user.uid}`, `boardly_user_profile_${user.uid}`]) {
+          try {
+            const raw = window.localStorage.getItem(lsKey);
+            const parsed = raw ? JSON.parse(raw) : { uid: user.uid };
+            parsed.equipped = { ...(parsed.equipped || {}), ...updatedEquipped };
+            Object.assign(parsed, topLevelSlotField);
+            window.localStorage.setItem(lsKey, JSON.stringify(parsed));
+          } catch {
+            // Ignore storage errors
+          }
+        }
+      }
 
       // Synchronize to public profile so leaderboards, crew roster, and other viewers display it
       await syncPublicProfile(user.uid, {
         equipped: updatedEquipped,
         ...topLevelSlotField,
-      });
+      }).catch(() => {});
 
       await syncProfileToD1Backend(user.uid, {
         displayName: user.displayName || undefined,
         avatar: updatedEquipped.avatar ?? '',
         frame: updatedEquipped.frame ?? null,
+        banner: updatedEquipped.banner ?? null,
+        nameplate: updatedEquipped.nameplate ?? null,
+        effect: updatedEquipped.effect ?? null,
       }).catch(() => {});
 
       broadcastPublicProfileUpdate(user.uid, {
@@ -422,14 +540,6 @@ export function useWallet() {
         effectId: updatedEquipped.effect ?? null,
       });
       invalidateCommonsPostsCache();
-
-      const updated: WalletDoc = {
-        ...current,
-        equipped: updatedEquipped,
-      };
-      sessionWalletCache[user.uid] = updated;
-      setWallet(updated);
-      notifyWalletSubscribers(user.uid, updated);
     },
     [user?.uid, user?.displayName, isSuperAdminUser]
   );
@@ -444,27 +554,54 @@ export function useWallet() {
       idempotencyKey?: string
     ) => {
       if (!user?.uid) throw new Error('Must be logged in to purchase cosmetics');
-      const { purchaseCosmeticItem } = await import('@/services/kobanService');
-      const result = await purchaseCosmeticItem(
-        user.uid,
-        item,
-        isSuperAdminUser,
-        idempotencyKey
+      const currentOwned = Array.from(
+        new Set([
+          ...(walletRef.current.owned || []),
+          ...(sessionWalletCache[user.uid]?.owned || []),
+        ])
       );
-      const updatedOwned = result.owned
-        ? result.owned
-        : walletRef.current.owned.includes(item.id)
-        ? walletRef.current.owned
-        : [...walletRef.current.owned, item.id];
-      const updated: WalletDoc = {
-        ...walletRef.current,
-        balance: result.newBalance,
-        owned: updatedOwned,
-      };
-      sessionWalletCache[user.uid] = updated;
-      setWallet(updated);
-      notifyWalletSubscribers(user.uid, updated);
-      return result;
+      if (!isSuperAdminUser && currentOwned.includes(item.id)) {
+        throw new Error('You already own this item.');
+      }
+
+      const lockKey = `${user.uid}:${item.id}`;
+      if (inFlightSingleItemPurchases.has(lockKey)) {
+        throw new Error('Purchase is already in progress. Please wait.');
+      }
+      inFlightSingleItemPurchases.add(lockKey);
+
+      try {
+        const { purchaseCosmeticItem } = await import('@/services/kobanService');
+        const result = await purchaseCosmeticItem(
+          user.uid,
+          item,
+          isSuperAdminUser,
+          idempotencyKey
+        );
+        const updatedOwned = Array.from(
+          new Set([
+            ...currentOwned,
+            ...(Array.isArray(result.owned) ? result.owned : []),
+            item.id,
+          ])
+        );
+        const updated: WalletDoc = {
+          ...(sessionWalletCache[user.uid] || walletRef.current),
+          balance: result.newBalance,
+          owned: updatedOwned,
+        };
+        // Synchronously update walletRef and session cache BEFORE returning so immediate equipCosmetic succeeds
+        walletRef.current = updated;
+        sessionWalletCache[user.uid] = updated;
+        setWallet(updated);
+        notifyWalletSubscribers(user.uid, updated);
+        return {
+          ...result,
+          owned: updatedOwned,
+        };
+      } finally {
+        inFlightSingleItemPurchases.delete(lockKey);
+      }
     },
     [user?.uid, isSuperAdminUser]
   );
@@ -486,11 +623,19 @@ export function useWallet() {
         isSuperAdmin: isSuperAdminUser,
       });
       if (result.flaggedItems.length === 0 && result.purchasedItems.length > 0) {
+        const mergedOwned = Array.from(
+          new Set([
+            ...(walletRef.current.owned || []),
+            ...(result.owned || []),
+            ...result.purchasedItems.map((i) => i.id),
+          ])
+        );
         const updated: WalletDoc = {
           ...walletRef.current,
           balance: result.newBalance,
-          owned: result.owned,
+          owned: mergedOwned,
         };
+        walletRef.current = updated;
         sessionWalletCache[user.uid] = updated;
         setWallet(updated);
         notifyWalletSubscribers(user.uid, updated);
@@ -498,8 +643,11 @@ export function useWallet() {
         const updated: WalletDoc = {
           ...walletRef.current,
           balance: result.newBalance,
-          owned: result.owned,
+          owned: Array.from(
+            new Set([...(walletRef.current.owned || []), ...(result.owned || [])])
+          ),
         };
+        walletRef.current = updated;
         sessionWalletCache[user.uid] = updated;
         setWallet(updated);
         notifyWalletSubscribers(user.uid, updated);
@@ -520,42 +668,54 @@ export function useWallet() {
       >
     ) => {
       if (!user?.uid) throw new Error('Must be logged in to equip cosmetics');
-      const current = walletRef.current;
+      const current = sessionWalletCache[user.uid] || walletRef.current;
+      const isGuestUid = user.uid.startsWith('guest_');
 
       const updatedEquipped: EquippedCosmetics = {
         ...current.equipped,
         ...slotUpdates,
       };
 
-      const walletDocRef = doc(db, 'wallets', user.uid);
+      const updated: WalletDoc = {
+        ...current,
+        equipped: updatedEquipped,
+      };
+      walletRef.current = updated;
+      sessionWalletCache[user.uid] = updated;
+      setWallet(updated);
+      notifyWalletSubscribers(user.uid, updated);
 
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(walletDocRef);
-        const curData = snap.exists() ? (snap.data() as WalletDoc) : current;
-        const ownedList = Array.from(
-          new Set([
-            ...(Array.isArray(curData.owned) ? curData.owned : []),
-            ...(Array.isArray(current.owned) ? current.owned : []),
-          ])
-        );
-        if (snap.exists()) {
-          tx.update(walletDocRef, {
-            equipped: updatedEquipped,
-            updatedAt: serverTimestamp(),
-          });
-        } else {
-          tx.set(
-            walletDocRef,
-            {
-              balance: typeof curData.balance === 'number' ? curData.balance : current.balance,
+      if (!isGuestUid) {
+        const walletDocRef = doc(db, 'wallets', user.uid);
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(walletDocRef);
+          const curData = snap.exists() ? (snap.data() as WalletDoc) : current;
+          const ownedList = Array.from(
+            new Set([
+              ...(Array.isArray(curData.owned) ? curData.owned : []),
+              ...(Array.isArray(current.owned) ? current.owned : []),
+            ])
+          );
+          if (snap.exists()) {
+            tx.update(walletDocRef, {
               owned: ownedList,
               equipped: updatedEquipped,
               updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
-        }
-      });
+            });
+          } else {
+            tx.set(
+              walletDocRef,
+              {
+                balance: typeof curData.balance === 'number' ? curData.balance : current.balance,
+                owned: ownedList,
+                equipped: updatedEquipped,
+                updatedAt: serverTimestamp(),
+              },
+              { merge: true }
+            );
+          }
+        }).catch(() => {});
+      }
 
       const topLevelFields: Record<string, unknown> = {};
       if ('effect' in slotUpdates) topLevelFields.effectId = slotUpdates.effect ?? null;
@@ -576,27 +736,46 @@ export function useWallet() {
         topLevelFields.equippedNameplate = slotUpdates.nameplate ?? null;
       }
 
-      await setDoc(
-        doc(db, 'users', user.uid),
-        {
-          equipped: updatedEquipped,
-          ...topLevelFields,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      ).catch((err: any) => {
-        console.error('[useWallet] Failed to mirror multi-equip to users doc:', err);
-      });
+      if (!isGuestUid) {
+        await setDoc(
+          doc(db, 'users', user.uid),
+          {
+            equipped: updatedEquipped,
+            ...topLevelFields,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ).catch((err: any) => {
+          console.error('[useWallet] Failed to mirror multi-equip to users doc:', err);
+        });
+      }
+
+      if (typeof window !== 'undefined' && window.localStorage) {
+        for (const lsKey of [`cached_profile_${user.uid}`, `boardly_user_profile_${user.uid}`]) {
+          try {
+            const raw = window.localStorage.getItem(lsKey);
+            const parsed = raw ? JSON.parse(raw) : { uid: user.uid };
+            parsed.equipped = { ...(parsed.equipped || {}), ...updatedEquipped };
+            Object.assign(parsed, topLevelFields);
+            window.localStorage.setItem(lsKey, JSON.stringify(parsed));
+          } catch {
+            // Ignore
+          }
+        }
+      }
 
       await syncPublicProfile(user.uid, {
         equipped: updatedEquipped,
         ...topLevelFields,
-      });
+      }).catch(() => {});
 
       await syncProfileToD1Backend(user.uid, {
         displayName: user.displayName || undefined,
         avatar: updatedEquipped.avatar ?? '',
         frame: updatedEquipped.frame ?? null,
+        banner: updatedEquipped.banner ?? null,
+        nameplate: updatedEquipped.nameplate ?? null,
+        effect: updatedEquipped.effect ?? null,
       }).catch(() => {});
 
       broadcastPublicProfileUpdate(user.uid, {
@@ -612,14 +791,6 @@ export function useWallet() {
         effectId: updatedEquipped.effect ?? null,
       });
       invalidateCommonsPostsCache();
-
-      const updated: WalletDoc = {
-        ...walletRef.current,
-        equipped: updatedEquipped,
-      };
-      sessionWalletCache[user.uid] = updated;
-      setWallet(updated);
-      notifyWalletSubscribers(user.uid, updated);
     },
     [user?.uid, user?.displayName]
   );

@@ -1651,6 +1651,11 @@ export async function handleEconomyApiRequest(context: {
       .trim()
       .replace(/[^a-zA-Z0-9_-]/g, '_')
       .slice(0, 64);
+    const sortedItemKey = uniqueRawItems
+      .map((i) => String(i.id).trim())
+      .sort()
+      .join(',');
+    const userItemsLockKey = `store_items:${verifiedUser.uid}:${sortedItemKey}`;
     const idempotencyKey = explicitIdempotencyRaw || `chk_${Date.now()}`;
     const storeCacheKey = explicitIdempotencyRaw
       ? `store:${verifiedUser.uid}:${explicitIdempotencyRaw}`
@@ -1662,7 +1667,10 @@ export async function handleEconomyApiRequest(context: {
         alreadyProcessed: true,
       });
     }
-    if (storeCacheKey && inFlightEconomyPurchases.has(storeCacheKey)) {
+    if (
+      (storeCacheKey && inFlightEconomyPurchases.has(storeCacheKey)) ||
+      inFlightEconomyPurchases.has(userItemsLockKey)
+    ) {
       return jsonResponse(
         {
           ok: false,
@@ -1675,6 +1683,7 @@ export async function handleEconomyApiRequest(context: {
     if (storeCacheKey) {
       inFlightEconomyPurchases.add(storeCacheKey);
     }
+    inFlightEconomyPurchases.add(userItemsLockKey);
 
     try {
       const firstItemId = String(uniqueRawItems[0].id);
@@ -1692,7 +1701,7 @@ export async function handleEconomyApiRequest(context: {
       const walletBal =
         walletDoc && typeof walletDoc.balance === 'number' && Number.isFinite(walletDoc.balance)
           ? Math.max(0, Math.floor(walletDoc.balance))
-          : 0;
+          : null;
       const userKobans =
         userDoc && typeof userDoc.kobans === 'number' && Number.isFinite(userDoc.kobans)
           ? Math.max(0, Math.floor(userDoc.kobans))
@@ -1701,7 +1710,8 @@ export async function handleEconomyApiRequest(context: {
         userDoc && typeof userDoc.kobanBalance === 'number' && Number.isFinite(userDoc.kobanBalance)
           ? Math.max(0, Math.floor(userDoc.kobanBalance))
           : 0;
-      const currentBalance = Math.max(walletBal, userKobans, userKobanBal);
+      const currentBalance =
+        walletBal !== null ? walletBal : Math.max(userKobans, userKobanBal);
 
       const existingOwned = new Set<string>([
         ...(Array.isArray(walletDoc?.owned) ? walletDoc.owned : []),
@@ -1959,6 +1969,7 @@ export async function handleEconomyApiRequest(context: {
       return jsonResponse(responsePayload);
     } finally {
       if (storeCacheKey) inFlightEconomyPurchases.delete(storeCacheKey);
+      inFlightEconomyPurchases.delete(userItemsLockKey);
     }
   }
 

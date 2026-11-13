@@ -28,6 +28,8 @@ import {
   respondToChatRequest,
   subscribeIncomingChatRequests,
   subscribeUserConversations,
+  getCachedUserConversations,
+  getCachedIncomingChatRequests,
   getOrCreateConversation,
   sendMessage,
   subscribeMessages,
@@ -879,8 +881,16 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
 
   const [activeTab, setActiveTab] = useState<'chat' | 'requests'>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [incomingRequests, setIncomingRequests] = useState<ChatRequest[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>(
+    () => getCachedUserConversations(currentUid) || []
+  );
+  const [incomingRequests, setIncomingRequests] = useState<ChatRequest[]>(
+    () => getCachedIncomingChatRequests(currentUid) || []
+  );
+  const [loadingConversations, setLoadingConversations] = useState<boolean>(() => {
+    if (!currentUid || isGuest || currentUid.startsWith('guest_')) return false;
+    return getCachedUserConversations(currentUid) === null;
+  });
   const outgoingRequests = useOutgoingChatRequests(currentUid);
 
   const [selectedPartner, setSelectedPartner] = useState<TargetChatUser | null>(
@@ -917,11 +927,34 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
 
   // Subscribe to conversations & incoming requests
   useEffect(() => {
-    if (!currentUid || isGuest || currentUid.startsWith('guest_')) return;
+    if (!currentUid || isGuest || currentUid.startsWith('guest_')) {
+      setLoadingConversations(false);
+      return;
+    }
 
-    const unsubConvs = subscribeUserConversations(currentUid, (convs) => {
-      setConversations(convs);
-    });
+    const cachedConvs = getCachedUserConversations(currentUid);
+    if (cachedConvs) {
+      setConversations(cachedConvs);
+      setLoadingConversations(false);
+    } else {
+      setLoadingConversations(true);
+    }
+
+    const cachedReqs = getCachedIncomingChatRequests(currentUid);
+    if (cachedReqs) {
+      setIncomingRequests(cachedReqs);
+    }
+
+    const unsubConvs = subscribeUserConversations(
+      currentUid,
+      (convs) => {
+        setConversations(convs);
+        setLoadingConversations(false);
+      },
+      () => {
+        setLoadingConversations(false);
+      }
+    );
     const unsubReqs = subscribeIncomingChatRequests(currentUid, (reqs) => {
       setIncomingRequests(reqs);
     });
@@ -1167,7 +1200,37 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
           </div>
 
           {/* Conversation Rows */}
-          {filteredConversations.length === 0 ? (
+          {loadingConversations && conversations.length === 0 ? (
+            <div className="space-y-2.5" data-testid="chats-loading-skeleton">
+              {[1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="msg-conv-card animate-pulse pointer-events-none"
+                >
+                  <div
+                    className="w-12 h-12 rounded-full shrink-0"
+                    style={{ backgroundColor: 'var(--rs-card2)' }}
+                  />
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div
+                        className="h-3.5 w-28 rounded"
+                        style={{ backgroundColor: 'var(--rs-card2)' }}
+                      />
+                      <div
+                        className="h-3 w-12 rounded"
+                        style={{ backgroundColor: 'var(--rs-card2)' }}
+                      />
+                    </div>
+                    <div
+                      className="h-3 w-44 rounded"
+                      style={{ backgroundColor: 'var(--rs-card2)' }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filteredConversations.length === 0 ? (
             <div className="msg-empty-box">
               <div
                 className="w-12 h-12 rounded-full flex items-center justify-center mb-1"

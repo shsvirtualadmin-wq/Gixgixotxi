@@ -46,6 +46,7 @@ export interface OptimisticUserSnapshot {
 export interface OptimisticWalletSnapshot {
   uid: string;
   balance: number;
+  owned?: string[];
   equipped: {
     effect: string | null;
     frame: string | null;
@@ -301,6 +302,11 @@ export function prefetchTabRouteAndData(tabId: string, uid?: string | null): voi
     }
     case 'messages': {
       void import('@/pages/dashboard/MessagesPage').catch(() => {});
+      if (uid && !uid.startsWith('guest_')) {
+        void import('@/services/chatService')
+          .then((m) => m.prefetchUserChats(uid))
+          .catch(() => {});
+      }
       break;
     }
     case 'crew': {

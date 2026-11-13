@@ -573,6 +573,10 @@ export const StorePage: React.FC<StorePageProps> = ({
   const openSinglePurchaseConfirm = useCallback(
     (item: EnrichedCosmeticItem) => {
       if (purchasingSingleLockRef.current || cartProcessing) return;
+      if (!isSuperAdmin && owned.includes(item.id)) {
+        showToast('error', 'You already own this item.');
+        return;
+      }
       // Enforce only ONE modal/sheet open at a time
       setDetailItemId(null);
       setCartOpen(false);
@@ -588,7 +592,7 @@ export const StorePage: React.FC<StorePageProps> = ({
       }
       setConfirmBuyItem(item);
     },
-    [cartProcessing, confirmBuyItem?.id]
+    [cartProcessing, confirmBuyItem?.id, isSuperAdmin, owned, showToast]
   );
 
   // Keyboard navigation & Escape / browser Back button support for sheets
@@ -710,6 +714,11 @@ export const StorePage: React.FC<StorePageProps> = ({
       );
       return;
     }
+    if (!isSuperAdmin && owned.includes(confirmBuyItem.id)) {
+      setSinglePurchaseError('You already own this item.');
+      showToast('error', 'You already own this item.');
+      return;
+    }
     if (!singlePurchaseKeyRef.current) {
       singlePurchaseKeyRef.current = `single_${confirmBuyItem.id}_${Date.now()}_${Math.random()
         .toString(36)
@@ -726,7 +735,11 @@ export const StorePage: React.FC<StorePageProps> = ({
       );
       removeFromCart(confirmBuyItem.id);
       triggerCoinBurst();
-      await equipCosmetic(confirmBuyItem.type, confirmBuyItem.id);
+      try {
+        await equipCosmetic(confirmBuyItem.type, confirmBuyItem.id);
+      } catch (equipErr) {
+        console.warn('[StorePage] Post-purchase auto-equip warning:', equipErr);
+      }
       setSinglePurchaseSuccess({
         item: confirmBuyItem,
         newBalance: res.newBalance,

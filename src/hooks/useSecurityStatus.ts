@@ -364,7 +364,9 @@ export interface ProfileLayoutSnapshot {
   uid: string;
   layout: ProfileLayoutId;
   known: boolean;
+  ready: boolean;
   loading: boolean;
+  savedAt?: number;
 }
 
 const layoutMemoryStore = new Map<string, ProfileLayoutSnapshot>();
@@ -388,21 +390,43 @@ function subscribeLayoutStore(listener: () => void): () => void {
   };
 }
 
-function readLayoutFromLocalStorage(uid: string): ProfileLayoutId | null {
+function readLayoutFromLocalStorage(uid: string): { layout: ProfileLayoutId; savedAt?: number } | null {
   if (!uid || typeof window === 'undefined' || !window.localStorage) return null;
   try {
     const raw = window.localStorage.getItem(`${LAYOUT_LS_PREFIX}${uid}`);
     if (!raw) return null;
-    return normalizeProfileLayout(raw);
+    if (raw.startsWith('{')) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.layout === 'string') {
+        return {
+          layout: normalizeProfileLayout(parsed.layout),
+          savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : undefined,
+        };
+      }
+    }
+    return { layout: normalizeProfileLayout(raw) };
   } catch {
     return null;
   }
 }
 
-function writeLayoutToLocalStorage(uid: string, layout: ProfileLayoutId): void {
+function writeLayoutToLocalStorage(uid: string, layout: ProfileLayoutId, savedAt?: number): void {
   if (!uid || typeof window === 'undefined' || !window.localStorage) return;
   try {
-    window.localStorage.setItem(`${LAYOUT_LS_PREFIX}${uid}`, layout);
+    window.localStorage.setItem(
+      `${LAYOUT_LS_PREFIX}${uid}`,
+      JSON.stringify({ layout, savedAt: savedAt ?? Date.now() })
+    );
+    // Also keep cached_profile_${uid} and boardly_user_profile_${uid} synchronized so no stale cache reverts the layout
+    for (const lsKey of [`cached_profile_${uid}`, `boardly_user_profile_${uid}`]) {
+      const rawProf = window.localStorage.getItem(lsKey);
+      if (rawProf) {
+        const parsed = JSON.parse(rawProf);
+        parsed.profileLayout = layout;
+        parsed.profile_layout = layout;
+        window.localStorage.setItem(lsKey, JSON.stringify(parsed));
+      }
+    }
   } catch {
     // Ignore
   }
@@ -414,7 +438,7 @@ export function getProfileLayoutSnapshotForUid(uid: string): ProfileLayoutSnapsh
     const anonKey = '__anonymous__';
     let anon = layoutMemoryStore.get(anonKey);
     if (!anon) {
-      anon = { uid: '', layout: DEFAULT_PROFILE_LAYOUT, known: false, loading: false };
+      anon = { uid: '', layout: DEFAULT_PROFILE_LAYOUT, known: false, ready: false, loading: false };
       layoutMemoryStore.set(anonKey, anon);
     }
     return anon;
@@ -427,9 +451,11 @@ export function getProfileLayoutSnapshotForUid(uid: string): ProfileLayoutSnapsh
   if (fromLs) {
     const snap: ProfileLayoutSnapshot = {
       uid: cleanUid,
-      layout: fromLs,
+      layout: fromLs.layout,
       known: true,
+      ready: true,
       loading: false,
+      savedAt: fromLs.savedAt,
     };
     layoutMemoryStore.set(cleanUid, snap);
     return snap;
@@ -439,27 +465,73 @@ export function getProfileLayoutSnapshotForUid(uid: string): ProfileLayoutSnapsh
     uid: cleanUid,
     layout: DEFAULT_PROFILE_LAYOUT,
     known: false,
+    ready: false,
     loading: true,
   };
   layoutMemoryStore.set(cleanUid, unknown);
   return unknown;
 }
 
-export function seedProfileLayoutFromServer(
-  uid: string,
-  rawLayout: unknown
-): void {
+/**
+ * Authoritatively commits a user-saved profile layout (optimistically on tap + confirmed after POST)
+ * so stale background fetches or AuthContext snapshots can never overwrite it.
+ */
+export function commitSavedProfileLayout(uid: string, rawLayout: unknown): void {
   const cleanUid = (uid || '').trim();
   if (!cleanUid || typeof rawLayout !== 'string' || !rawLayout.trim()) return;
   const resolved = normalizeProfileLayout(rawLayout);
+  const now = Date.now();
   const nextSnap: ProfileLayoutSnapshot = {
     uid: cleanUid,
     layout: resolved,
     known: true,
+    ready: true,
     loading: false,
+    savedAt: now,
   };
   layoutMemoryStore.set(cleanUid, nextSnap);
-  writeLayoutToLocalStorage(cleanUid, resolved);
+  writeLayoutToLocalStorage(cleanUid, resolved, now);
+  emitLayoutChange();
+}
+
+export function seedProfileLayoutFromServer(
+  uid: string,
+  rawLayout: unknown,
+  options?: { isAuthoritativeSave?: boolean; isPassiveSeed?: boolean }
+): void {
+  const cleanUid = (uid || '').trim();
+  if (!cleanUid || typeof rawLayout !== 'string' || !rawLayout.trim()) return;
+  if (options?.isAuthoritativeSave) {
+    commitSavedProfileLayout(cleanUid, rawLayout);
+    return;
+  }
+
+  const resolved = normalizeProfileLayout(rawLayout);
+  const existing = layoutMemoryStore.get(cleanUid) || readLayoutFromLocalStorage(cleanUid);
+
+  // Never let a passive seed (e.g. from AuthContext.profile) overwrite an already-known layout
+  if (options?.isPassiveSeed && existing && 'layout' in existing) {
+    const existingMem = layoutMemoryStore.get(cleanUid);
+    if (existingMem?.known) {
+      return;
+    }
+  }
+
+  // Never let a late background response overwrite a layout that the user explicitly saved in the last 60s
+  if (existing?.savedAt && Date.now() - existing.savedAt < 60_000 && existing.layout !== resolved) {
+    return;
+  }
+
+  const nextSnap: ProfileLayoutSnapshot = {
+    uid: cleanUid,
+    layout: resolved,
+    known: true,
+    ready: true,
+    loading: false,
+    savedAt: existing?.savedAt,
+  };
+  layoutMemoryStore.set(cleanUid, nextSnap);
+  writeLayoutToLocalStorage(cleanUid, resolved, existing?.savedAt);
   emitLayoutChange();
 }
 
@@ -490,6 +562,7 @@ export async function refreshProfileLayoutForUid(uid: string): Promise<void> {
       layoutMemoryStore.set(cleanUid, {
         ...cur,
         known: true,
+        ready: true,
         loading: false,
       });
       emitLayoutChange();
@@ -672,6 +745,7 @@ export function useSecurityStatus(): UseSecurityStatusResult {
 export function useProfileLayoutStatus(): {
   layout: ProfileLayoutId;
   known: boolean;
+  ready: boolean;
   loading: boolean;
   setLayout: (next: ProfileLayoutId) => void;
   refresh: () => Promise<void>;
@@ -693,7 +767,9 @@ export function useProfileLayoutStatus(): {
   useEffect(() => {
     if (!uid) return;
     if (profile?.profileLayout || profile?.profile_layout) {
-      seedProfileLayoutFromServer(uid, profile.profileLayout ?? profile.profile_layout);
+      seedProfileLayoutFromServer(uid, profile.profileLayout ?? profile.profile_layout, {
+        isPassiveSeed: true,
+      });
     }
     void refreshProfileLayoutForUid(uid);
   }, [uid, profile?.profileLayout, profile?.profile_layout]);
@@ -701,7 +777,7 @@ export function useProfileLayoutStatus(): {
   const setLayout = useCallback(
     (next: ProfileLayoutId) => {
       if (!uid) return;
-      seedProfileLayoutFromServer(uid, next);
+      commitSavedProfileLayout(uid, next);
     },
     [uid]
   );
@@ -714,6 +790,7 @@ export function useProfileLayoutStatus(): {
   return {
     layout: snapshot.layout,
     known: snapshot.known,
+    ready: snapshot.known,
     loading: snapshot.loading,
     setLayout,
     refresh,

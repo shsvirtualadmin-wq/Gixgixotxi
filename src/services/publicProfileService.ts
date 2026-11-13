@@ -195,6 +195,32 @@ export function broadcastPublicProfileUpdate(
       ? normalizeProBadgeDesign(partial.proBadge)
       : null;
   }
+  if ('banner' in partial || (partial.equipped && 'banner' in partial.equipped)) {
+    const nextBanner = partial.banner !== undefined ? partial.banner : partial.equipped?.banner ?? null;
+    merged.banner = nextBanner;
+    merged.equipped = {
+      ...(merged.equipped || { effect: null, frame: null, nameplate: null, avatar: null, banner: null }),
+      banner: nextBanner,
+    };
+  }
+  if ('nameplate' in partial || (partial.equipped && 'nameplate' in partial.equipped)) {
+    const nextNameplate =
+      partial.nameplate !== undefined ? partial.nameplate : partial.equipped?.nameplate ?? null;
+    merged.nameplate = nextNameplate;
+    merged.equipped = {
+      ...(merged.equipped || { effect: null, frame: null, nameplate: null, avatar: null, banner: null }),
+      nameplate: nextNameplate,
+    };
+  }
+  if ('effectId' in partial || (partial.equipped && 'effect' in partial.equipped)) {
+    const nextEffect =
+      partial.effectId !== undefined ? partial.effectId : partial.equipped?.effect ?? null;
+    merged.effectId = nextEffect;
+    merged.equipped = {
+      ...(merged.equipped || { effect: null, frame: null, nameplate: null, avatar: null, banner: null }),
+      effect: nextEffect,
+    };
+  }
   if ('profileLayout' in partial || 'profile_layout' in partial) {
     const nextLayout = normalizeProfileLayout(partial.profileLayout ?? partial.profile_layout);
     merged.profileLayout = nextLayout;
@@ -227,12 +253,19 @@ export async function syncProfileToD1Backend(
       data.equipped?.frame ?? data.equippedFrame ?? data.frame,
       'frame'
     );
+    const equippedBanner =
+      data.equipped?.banner ?? data.equippedBanner ?? data.banner;
+    const equippedNameplate =
+      data.equipped?.nameplate ?? data.equippedNameplate ?? data.nameplate;
+    const equippedEffect =
+      data.equipped?.effect ?? data.equippedEffect ?? data.effectId ?? data.effect;
     await fetch('/api/auth/profile-sync', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(guestSession ? { 'X-Guest-Session': guestSession } : {}),
+        'X-User-Uid': uid,
       },
       body: JSON.stringify({
         uid,
@@ -240,6 +273,9 @@ export async function syncProfileToD1Backend(
         displayName: data.displayName || data.nickname || data.name || undefined,
         avatar: equippedAvatar !== undefined ? equippedAvatar : undefined,
         frame: equippedFrame !== undefined ? equippedFrame : undefined,
+        banner: equippedBanner !== undefined ? equippedBanner : undefined,
+        nameplate: equippedNameplate !== undefined ? equippedNameplate : undefined,
+        effect: equippedEffect !== undefined ? equippedEffect : undefined,
         bio: data.bio !== undefined ? data.bio : undefined,
         status: data.status !== undefined ? data.status : undefined,
         accent: data.accent !== undefined ? data.accent : undefined,
@@ -266,6 +302,17 @@ export async function saveProfileLayoutToServer(
     };
   }
   const validLayout: ProfileLayoutId = layout;
+
+  // Optimistically commit immediately so navigating back to Profile never flickers or reverts
+  if (uid) {
+    const { commitSavedProfileLayout } = await import('@/hooks/useSecurityStatus');
+    commitSavedProfileLayout(uid, validLayout);
+    broadcastPublicProfileUpdate(uid, {
+      profileLayout: validLayout,
+      profile_layout: validLayout,
+    });
+  }
+
   try {
     const { auth } = await import('@/lib/firebase');
     const token = await auth.currentUser?.getIdToken().catch(() => null);
@@ -283,8 +330,10 @@ export async function saveProfileLayoutToServer(
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(guestSession ? { 'X-Guest-Session': guestSession } : {}),
+        ...(uid ? { 'X-User-Uid': uid } : {}),
       },
       body: JSON.stringify({
+        uid,
         layout: validLayout,
         profile_layout: validLayout,
       }),
@@ -317,29 +366,31 @@ export async function saveProfileLayoutToServer(
       json.layout ?? json.profile_layout ?? json.profileLayout ?? validLayout
     );
 
-    // Mirror to Firestore users/{uid} and publicProfiles/{uid} non-blockingly and broadcast live
+    // Confirm authoritative save in shared store, Firestore, and live broadcast
     if (uid) {
-      const { seedProfileLayoutFromServer } = await import('@/hooks/useSecurityStatus');
-      seedProfileLayoutFromServer(uid, confirmedLayout);
+      const { commitSavedProfileLayout } = await import('@/hooks/useSecurityStatus');
+      commitSavedProfileLayout(uid, confirmedLayout);
 
-      setDoc(
-        doc(db, 'users', uid),
-        {
-          profileLayout: confirmedLayout,
-          profile_layout: confirmedLayout,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      ).catch(() => {});
-      setDoc(
-        doc(db, 'publicProfiles', uid),
-        {
-          profileLayout: confirmedLayout,
-          profile_layout: confirmedLayout,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      ).catch(() => {});
+      if (!uid.startsWith('guest_')) {
+        setDoc(
+          doc(db, 'users', uid),
+          {
+            profileLayout: confirmedLayout,
+            profile_layout: confirmedLayout,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ).catch(() => {});
+        setDoc(
+          doc(db, 'publicProfiles', uid),
+          {
+            profileLayout: confirmedLayout,
+            profile_layout: confirmedLayout,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ).catch(() => {});
+      }
       broadcastPublicProfileUpdate(uid, {
         profileLayout: confirmedLayout,
         profile_layout: confirmedLayout,

@@ -55,10 +55,24 @@ export function clearKobanStyleCacheForUid(uid?: string | null): void {
   }
 }
 
-async function buildKobanStyleAuthHeaders(): Promise<Record<string, string>> {
+export function migrateGuestKobanStyleToUser(
+  guestUid?: string | null,
+  newUid?: string | null
+): KobanStyleSettings | null {
+  if (!guestUid || !newUid || guestUid === newUid) return null;
+  const { style, hasCached } = readStyleFromLocalStorage(guestUid);
+  if (!hasCached) return null;
+  writeStyleToLocalStorage(style, newUid);
+  return style;
+}
+
+async function buildKobanStyleAuthHeaders(uid?: string | null): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
+  if (uid) {
+    headers['X-User-Uid'] = uid;
+  }
   try {
     if (!auth.currentUser && typeof auth.authStateReady === 'function') {
       await auth.authStateReady();
@@ -113,6 +127,7 @@ export function KobanStyleProvider({ children }: { children: React.ReactNode }) 
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const loadedUidRef = useRef<string | null>(null);
+  const lastSavedAtRef = useRef<number>(0);
 
   // Sync from server once on app start / when user changes (without waiting on profileLoading waterfall)
   useEffect(() => {
@@ -142,12 +157,13 @@ export function KobanStyleProvider({ children }: { children: React.ReactNode }) 
 
     let cancelled = false;
     setLoading(true);
+    const fetchStartedAt = Date.now();
 
     if (!inFlightKobanStylePromise || inFlightKobanStyleUid !== uid) {
       inFlightKobanStyleUid = uid;
       inFlightKobanStylePromise = (async () => {
         try {
-          const headers = await buildKobanStyleAuthHeaders();
+          const headers = await buildKobanStyleAuthHeaders(uid);
           const res = await fetch('/api/koban-style', {
             method: 'GET',
             headers,
@@ -158,7 +174,20 @@ export function KobanStyleProvider({ children }: { children: React.ReactNode }) 
           if (data?.ok && data?.style) {
             const check = validateKobanStylePayload(data.style);
             if (check.valid && check.value) {
-              writeStyleToLocalStorage(check.value, uid);
+              // If the user has a locally cached style and the server returned uncustomized default (updatedAt: null),
+              // keep the user's locally saved style and push it to the server in the background.
+              if (data.updatedAt == null && hasCached) {
+                void fetch('/api/koban-style', {
+                  method: 'PUT',
+                  headers,
+                  credentials: 'include',
+                  body: JSON.stringify(cached),
+                }).catch(() => {});
+                return cached;
+              }
+              if (lastSavedAtRef.current <= fetchStartedAt) {
+                writeStyleToLocalStorage(check.value, uid);
+              }
               return check.value;
             }
           }
@@ -174,7 +203,7 @@ export function KobanStyleProvider({ children }: { children: React.ReactNode }) 
     inFlightKobanStylePromise
       .then((resolved) => {
         if (!cancelled) {
-          if (resolved) {
+          if (resolved && lastSavedAtRef.current <= fetchStartedAt) {
             setStyle(resolved);
           }
           setKnown(true);
@@ -202,10 +231,18 @@ export function KobanStyleProvider({ children }: { children: React.ReactNode }) 
       const validStyle = check.value;
       const uid = user?.uid || null;
       setSaving(true);
+      lastSavedAtRef.current = Date.now();
+
+      // Update local state & per-UID storage optimistically for both guest and email accounts
+      setStyle(validStyle);
+      setKnown(true);
+      if (uid) {
+        writeStyleToLocalStorage(validStyle, uid);
+      }
 
       try {
         if (uid) {
-          const headers = await buildKobanStyleAuthHeaders();
+          const headers = await buildKobanStyleAuthHeaders(uid);
           const res = await fetch('/api/koban-style', {
             method: 'PUT',
             headers,
@@ -214,6 +251,11 @@ export function KobanStyleProvider({ children }: { children: React.ReactNode }) 
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || !data?.ok) {
+            // For guest accounts, if D1 session cookie wasn't attached by browser, still keep the per-guest local save
+            if (uid.startsWith('guest_') && res.status === 401) {
+              setSaving(false);
+              return { ok: true };
+            }
             setSaving(false);
             return {
               ok: false,
@@ -230,12 +272,14 @@ export function KobanStyleProvider({ children }: { children: React.ReactNode }) 
           return { ok: true };
         } else {
           // Unauthenticated visitor fallback: save locally
-          setStyle(validStyle);
-          setKnown(true);
           setSaving(false);
           return { ok: true };
         }
       } catch (err: any) {
+        if (uid?.startsWith('guest_')) {
+          setSaving(false);
+          return { ok: true };
+        }
         setSaving(false);
         return {
           ok: false,

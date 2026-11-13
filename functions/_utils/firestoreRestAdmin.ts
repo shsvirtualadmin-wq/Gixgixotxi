@@ -517,29 +517,41 @@ export async function isD1UserSessionVerified(
  * Verifies the Bearer Firebase ID token and queries `user_roles` in D1 (`env.DB`).
  */
 export function extractGuestSessionTokenFromRequest(request: Request): string | null {
+  const cookieHeader = request.headers.get('Cookie') || request.headers.get('cookie') || '';
+  let cookieToken: string | null = null;
+  if (cookieHeader) {
+    const match = cookieHeader.match(/(?:^|;\s*)boardly_guest_session=([^;]+)/);
+    if (match?.[1]) {
+      try {
+        cookieToken = decodeURIComponent(match[1].trim());
+      } catch {
+        cookieToken = match[1].trim();
+      }
+    }
+  }
+
   const headerToken = (request.headers.get('X-Guest-Session') || '').trim();
   if (headerToken) {
-    return headerToken.startsWith('guest_guest_') ? headerToken.slice('guest_'.length) : headerToken;
+    const normalized = headerToken.startsWith('guest_guest_')
+      ? headerToken.slice('guest_'.length)
+      : headerToken;
+    if (normalized.endsWith('.cookie_session') && cookieToken && !cookieToken.endsWith('.cookie_session')) {
+      return cookieToken;
+    }
+    return normalized;
   }
 
   const authHeader = (request.headers.get('Authorization') || '').trim();
   if (authHeader.startsWith('Bearer guest_')) {
     const raw = authHeader.slice('Bearer '.length).trim();
-    return raw.startsWith('guest_guest_') ? raw.slice('guest_'.length) : raw;
+    const normalized = raw.startsWith('guest_guest_') ? raw.slice('guest_'.length) : raw;
+    if (normalized.endsWith('.cookie_session') && cookieToken && !cookieToken.endsWith('.cookie_session')) {
+      return cookieToken;
+    }
+    return normalized;
   }
 
-  const cookieHeader = request.headers.get('Cookie') || request.headers.get('cookie') || '';
-  if (cookieHeader) {
-    const match = cookieHeader.match(/(?:^|;\s*)boardly_guest_session=([^;]+)/);
-    if (match?.[1]) {
-      try {
-        return decodeURIComponent(match[1].trim());
-      } catch {
-        return match[1].trim();
-      }
-    }
-  }
-  return null;
+  return cookieToken;
 }
 
 export async function computeGuestTokenSha256Hex(rawToken: string, secret = 'boardly-default-otp-hmac-secret-v1-do-not-expose'): Promise<string> {
@@ -626,9 +638,20 @@ export async function authenticateD1GuestSession(
   if (!rawToken || rawToken.length < 16) return null;
 
   try {
-    const tokenHash = await computeGuestTokenSha256Hex(rawToken, secret);
+    const defaultSecret = 'boardly-default-otp-hmac-secret-v1-do-not-expose';
+    const effectiveSecret = (
+      secret ||
+      (typeof process !== 'undefined'
+        ? process.env?.OTP_HMAC_SECRET ||
+          process.env?.EMAIL_VERIFICATION_SECRET ||
+          process.env?.INTERNAL_EMAIL_SECRET
+        : '') ||
+      defaultSecret
+    ).trim();
+
+    const tokenHash = await computeGuestTokenSha256Hex(rawToken, effectiveSecret);
     const now = Date.now();
-    const sessionRow = await db
+    let sessionRow = await db
       .prepare(
         'SELECT session_id, token_hash, uid, expires_at, revoked FROM guest_sessions WHERE token_hash = ?1 LIMIT 1'
       )
@@ -640,6 +663,46 @@ export async function authenticateD1GuestSession(
         expires_at: number;
         revoked: number;
       }>();
+
+    if (!sessionRow && effectiveSecret !== defaultSecret) {
+      const fallbackHash = await computeGuestTokenSha256Hex(rawToken, defaultSecret);
+      sessionRow = await db
+        .prepare(
+          'SELECT session_id, token_hash, uid, expires_at, revoked FROM guest_sessions WHERE token_hash = ?1 LIMIT 1'
+        )
+        .bind(fallbackHash)
+        .first<{
+          session_id: string;
+          token_hash: string;
+          uid: string;
+          expires_at: number;
+          revoked: number;
+        }>();
+    }
+
+    if (!sessionRow && rawToken.endsWith('.cookie_session')) {
+      const candidateUid = rawToken.slice(0, -'.cookie_session'.length).trim();
+      if (candidateUid.startsWith('guest_')) {
+        const rows = await db
+          .prepare(
+            'SELECT session_id, token_hash, uid, expires_at, revoked FROM guest_sessions WHERE uid = ?1'
+          )
+          .bind(candidateUid)
+          .all<{
+            session_id: string;
+            token_hash: string;
+            uid: string;
+            expires_at: number;
+            revoked: number;
+          }>();
+        const activeRow = (rows.results || []).find(
+          (r) => Number(r.revoked) === 0 && Number(r.expires_at) > now
+        );
+        if (activeRow) {
+          sessionRow = activeRow;
+        }
+      }
+    }
 
     if (!sessionRow || Number(sessionRow.revoked) === 1 || Number(sessionRow.expires_at) <= now) {
       return null;

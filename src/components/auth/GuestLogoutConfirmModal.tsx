@@ -58,9 +58,9 @@ export const GuestLogoutConfirmModal: React.FC<GuestLogoutConfirmModalProps> = (
 
         <p
           data-testid="guest-logout-warning-text"
-          className="text-sm text-white/80 leading-relaxed mb-6"
+          className="text-sm sm:text-[15px] text-white/90 leading-relaxed mb-6 break-words"
         >
-          You will lose this guest account and its progress, and you can&apos;t log back in. Create a free account first to keep it.
+          If you sign out without connecting an email, your progress won&apos;t be saved, this account will be deleted, and you can&apos;t log in again.
         </p>
 
         <div className="flex flex-col gap-2.5">
@@ -69,10 +69,10 @@ export const GuestLogoutConfirmModal: React.FC<GuestLogoutConfirmModalProps> = (
             data-testid="guest-logout-create-account-btn"
             disabled={loading}
             onClick={onCreateAccount}
-            className="w-full py-3 px-4 rounded-xl bg-[#D71921] hover:bg-[#b8141b] text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+            className="w-full min-h-[46px] py-3 px-4 rounded-xl bg-[#D71921] hover:bg-[#b8141b] text-white font-semibold text-sm flex items-center justify-center gap-2 text-center transition-colors cursor-pointer disabled:opacity-50"
           >
-            <UserPlus className="w-4 h-4" />
-            <span>Create account (keep my progress)</span>
+            <UserPlus className="w-4 h-4 shrink-0" />
+            <span>Connect email / Create account</span>
           </button>
 
           <button
@@ -80,10 +80,10 @@ export const GuestLogoutConfirmModal: React.FC<GuestLogoutConfirmModalProps> = (
             data-testid="guest-logout-confirm-btn"
             disabled={loading}
             onClick={onConfirmLogout}
-            className="w-full py-3 px-4 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-white/85 font-semibold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+            className="w-full min-h-[46px] py-3 px-4 rounded-xl border border-white/20 bg-white/[0.07] hover:bg-white/[0.12] text-white font-semibold text-sm flex items-center justify-center gap-2 text-center transition-colors cursor-pointer disabled:opacity-50"
           >
-            <LogOut className="w-4 h-4" />
-            <span>{loading ? 'Logging out...' : 'Log out anyway'}</span>
+            <LogOut className="w-4 h-4 shrink-0" />
+            <span>{loading ? 'Signing out...' : 'Sign out anyway'}</span>
           </button>
         </div>
       </div>

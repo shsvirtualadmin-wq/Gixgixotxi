@@ -32,6 +32,8 @@ export const StoreItemDetailPage: React.FC = () => {
 
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const busyLockRef = React.useRef(false);
+  const idempotencyKeyRef = React.useRef<string>('');
 
   const cosmetic =
     getCosmeticById(itemParam) ||
@@ -77,6 +79,7 @@ export const StoreItemDetailPage: React.FC = () => {
   };
 
   const handleAction = async () => {
+    if (busyLockRef.current || busy) return;
     if (!user || isGuest || user.uid.startsWith('guest_')) {
       setFeedback(
         'Guest accounts cannot purchase items with Kobans. Please create a registered account to unlock this item.'
@@ -84,6 +87,7 @@ export const StoreItemDetailPage: React.FC = () => {
       requireAuth(`unlock "${cosmetic.name}" in the Boardly Store`);
       return;
     }
+    busyLockRef.current = true;
     setBusy(true);
     setFeedback(null);
     try {
@@ -91,7 +95,12 @@ export const StoreItemDetailPage: React.FC = () => {
         await equipCosmetic(cosmetic.type, isEquipped ? null : cosmetic.id);
         setFeedback(isEquipped ? 'Unequipped item.' : 'Equipped to your student profile!');
       } else {
-        const res = await purchaseCosmetic(cosmetic);
+        if (!idempotencyKeyRef.current) {
+          idempotencyKeyRef.current = `detail_${cosmetic.id}_${Date.now()}_${Math.random()
+            .toString(36)
+            .slice(2, 8)}`;
+        }
+        const res = await purchaseCosmetic(cosmetic, idempotencyKeyRef.current);
         if (res.success) {
           setFeedback('Unlocked! You can now equip this item.');
         }
@@ -103,6 +112,7 @@ export const StoreItemDetailPage: React.FC = () => {
           : 'Could not complete Store purchase. Please try again.'
       );
     } finally {
+      busyLockRef.current = false;
       setBusy(false);
     }
   };

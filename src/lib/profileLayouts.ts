@@ -210,60 +210,52 @@ export function buildSharedProfileData(params: {
   const avatar = resolveCosmeticItemId(rawAvatar, 'avatar') || 'avatar-1';
 
   const rawFrame =
-    walletEquipped?.frame !== undefined
-      ? walletEquipped.frame
-      : ownUserProfile?.equipped?.frame !== undefined
-      ? ownUserProfile.equipped.frame
-      : ownUserProfile?.equippedFrame !== undefined
-      ? ownUserProfile.equippedFrame
-      : ownUserProfile?.frame !== undefined
-      ? ownUserProfile.frame
-      : publicProfile?.equipped?.frame !== undefined
-      ? publicProfile.equipped.frame
-      : publicProfile?.equippedFrame !== undefined
-      ? publicProfile.equippedFrame
-      : publicProfile?.frame;
+    walletEquipped?.frame ||
+    ownUserProfile?.equipped?.frame ||
+    ownUserProfile?.equippedFrame ||
+    ownUserProfile?.frame ||
+    publicProfile?.equipped?.frame ||
+    publicProfile?.equippedFrame ||
+    publicProfile?.frame ||
+    null;
 
-  const frame = resolveCosmeticItemId(rawFrame, 'frame') || null;
+  const frame = resolveCosmeticItemId(rawFrame, 'frame') || rawFrame || null;
 
-  const banner =
-    (walletEquipped?.banner !== undefined
-      ? walletEquipped.banner
-      : ownUserProfile?.equipped?.banner !== undefined
-      ? ownUserProfile.equipped.banner
-      : ownUserProfile?.banner !== undefined
-      ? ownUserProfile.banner
-      : publicProfile?.equipped?.banner !== undefined
-      ? publicProfile.equipped.banner
-      : publicProfile?.equippedBanner !== undefined
-      ? publicProfile.equippedBanner
-      : publicProfile?.banner) || null;
+  const rawBanner =
+    walletEquipped?.banner ||
+    ownUserProfile?.equipped?.banner ||
+    ownUserProfile?.equippedBanner ||
+    ownUserProfile?.banner ||
+    publicProfile?.equipped?.banner ||
+    publicProfile?.equippedBanner ||
+    publicProfile?.banner ||
+    null;
 
-  const nameplate =
-    (walletEquipped?.nameplate !== undefined
-      ? walletEquipped.nameplate
-      : ownUserProfile?.equipped?.nameplate !== undefined
-      ? ownUserProfile.equipped.nameplate
-      : ownUserProfile?.nameplate !== undefined
-      ? ownUserProfile.nameplate
-      : publicProfile?.equipped?.nameplate !== undefined
-      ? publicProfile.equipped.nameplate
-      : publicProfile?.equippedNameplate !== undefined
-      ? publicProfile.equippedNameplate
-      : publicProfile?.nameplate) || null;
+  const banner = resolveCosmeticItemId(rawBanner, 'banner') || rawBanner || null;
 
-  const effect =
-    (walletEquipped?.effect !== undefined
-      ? walletEquipped.effect
-      : ownUserProfile?.equipped?.effect !== undefined
-      ? ownUserProfile.equipped.effect
-      : (ownUserProfile as Record<string, any> | null)?.effectId !== undefined
-      ? (ownUserProfile as Record<string, any>).effectId
-      : publicProfile?.equipped?.effect !== undefined
-      ? publicProfile.equipped.effect
-      : publicProfile?.equippedEffect !== undefined
-      ? publicProfile.equippedEffect
-      : publicProfile?.effectId) || null;
+  const rawNameplate =
+    walletEquipped?.nameplate ||
+    ownUserProfile?.equipped?.nameplate ||
+    ownUserProfile?.equippedNameplate ||
+    ownUserProfile?.nameplate ||
+    publicProfile?.equipped?.nameplate ||
+    publicProfile?.equippedNameplate ||
+    publicProfile?.nameplate ||
+    null;
+
+  const nameplate = resolveCosmeticItemId(rawNameplate, 'nameplate') || rawNameplate || null;
+
+  const rawEffect =
+    walletEquipped?.effect ||
+    ownUserProfile?.equipped?.effect ||
+    ownUserProfile?.equippedEffect ||
+    (ownUserProfile as Record<string, any> | null)?.effectId ||
+    publicProfile?.equipped?.effect ||
+    publicProfile?.equippedEffect ||
+    publicProfile?.effectId ||
+    null;
+
+  const effect = resolveCosmeticItemId(rawEffect, 'effect') || rawEffect || null;
 
   const role = String(
     ownUserProfile?.role || publicProfile?.role || 'student'

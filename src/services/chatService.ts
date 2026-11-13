@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   addDoc,
   updateDoc,
@@ -17,8 +18,10 @@ import { isFollowing } from '@/services/followService';
 import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import {
   getPublicProfiles,
+  getCachedPublicProfile,
   subscribeAllPublicProfiles,
 } from '@/services/publicProfileService';
+import { readSwrCache, writeSwrCache } from '@/lib/swrCache';
 
 export const CHAT_REQUEST_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -464,6 +467,108 @@ export async function respondToChatRequest(
   }
 }
 
+const CHAT_CONVS_CACHE_PREFIX = 'chat_convs_v1:';
+const CHAT_REQS_CACHE_PREFIX = 'chat_reqs_v1:';
+
+export function getCachedUserConversations(uid?: string | null): Conversation[] | null {
+  if (!uid || uid.startsWith('guest_')) return null;
+  const entry = readSwrCache<Conversation[]>(`${CHAT_CONVS_CACHE_PREFIX}${uid}`);
+  return entry?.data || null;
+}
+
+export function getCachedIncomingChatRequests(uid?: string | null): ChatRequest[] | null {
+  if (!uid || uid.startsWith('guest_')) return null;
+  const entry = readSwrCache<ChatRequest[]>(`${CHAT_REQS_CACHE_PREFIX}${uid}`);
+  return entry?.data || null;
+}
+
+/**
+ * Preloads the user's top conversations and incoming requests in the background
+ * on app start / nav load so tapping the Messages icon opens instantaneously.
+ */
+export async function prefetchUserChats(uid?: string | null): Promise<void> {
+  if (!uid || uid.startsWith('guest_')) return;
+  try {
+    const convsQ = query(
+      collection(db, 'conversations'),
+      where('participants', 'array-contains', uid),
+      limit(25)
+    );
+    const reqsQ = query(
+      collection(db, 'chatRequests'),
+      where('toUid', '==', uid),
+      where('status', '==', 'pending'),
+      limit(25)
+    );
+    const [convSnap, reqSnap] = await Promise.all([
+      getDocs(convsQ).catch(() => null),
+      getDocs(reqsQ).catch(() => null),
+    ]);
+
+    const uidsToPrefetch = new Set<string>();
+
+    if (convSnap) {
+      const convs: Conversation[] = [];
+      convSnap.forEach((d) => {
+        const data = d.data();
+        const lastMsg = data.lastMessage || data.lastMessageText || '';
+        const lastSender = data.lastSenderId || data.lastMessageSenderId || '';
+        const lastMsgAt = data.lastMessageAt || data.updatedAt || null;
+        const lastMsgAtMs =
+          typeof data.lastMessageAtMs === 'number'
+            ? data.lastMessageAtMs
+            : toTimestampMs(lastMsgAt);
+        const participants = Array.isArray(data.participants) ? data.participants : [];
+        participants.forEach((p: string) => {
+          if (p && !p.startsWith('anon_')) uidsToPrefetch.add(p);
+        });
+        convs.push({
+          id: d.id,
+          participants,
+          participantDetails: data.participantDetails || {},
+          lastMessage: lastMsg,
+          lastMessageText: lastMsg,
+          lastMessageSenderId: lastSender,
+          lastMessageAt: lastMsgAt,
+          lastMessageAtMs,
+          lastSenderId: lastSender,
+          createdAt: data.createdAt || null,
+          updatedAt: data.updatedAt || null,
+        });
+      });
+      convs.sort(
+        (a, b) =>
+          toTimestampMs(b.lastMessageAt || b.updatedAt, b.lastMessageAtMs) -
+          toTimestampMs(a.lastMessageAt || a.updatedAt, a.lastMessageAtMs)
+      );
+      writeSwrCache(`${CHAT_CONVS_CACHE_PREFIX}${uid}`, convs, true);
+    }
+
+    if (reqSnap) {
+      const reqs: ChatRequest[] = [];
+      reqSnap.forEach((d) => {
+        const parsed = parseChatRequestDoc(d.id, d.data());
+        if (parsed.fromUid && !parsed.fromUid.startsWith('anon_')) {
+          uidsToPrefetch.add(parsed.fromUid);
+        }
+        reqs.push(parsed);
+      });
+      reqs.sort(
+        (a, b) =>
+          toTimestampMs(b.createdAt, b.createdAtMs) -
+          toTimestampMs(a.createdAt, a.createdAtMs)
+      );
+      writeSwrCache(`${CHAT_REQS_CACHE_PREFIX}${uid}`, reqs, true);
+    }
+
+    if (uidsToPrefetch.size > 0) {
+      void getPublicProfiles(Array.from(uidsToPrefetch)).catch(() => {});
+    }
+  } catch {
+    // Non-fatal background prefetch
+  }
+}
+
 /**
  * Subscribes to incoming pending chat requests for `uid`.
  */
@@ -477,16 +582,60 @@ export function subscribeIncomingChatRequests(
     return () => {};
   }
 
+  const cachedInitial = getCachedIncomingChatRequests(uid);
+  if (cachedInitial) {
+    onUpdate(cachedInitial);
+  }
+
   const q = query(
     collection(db, 'chatRequests'),
     where('toUid', '==', uid),
     where('status', '==', 'pending'),
-    limit(50)
+    limit(25)
   );
 
-  let latestRequests: ChatRequest[] = [];
+  let latestRequests: ChatRequest[] = cachedInitial || [];
+
+  const applyProfileMapToReqs = (
+    reqs: ChatRequest[],
+    lookup: (id: string) => any
+  ): ChatRequest[] =>
+    reqs.map((r) => {
+      const fromLive = lookup(r.fromUid);
+      const toLive = lookup(r.toUid);
+      return {
+        ...r,
+        fromName: fromLive?.displayName || r.fromName,
+        fromAvatar:
+          resolveCosmeticItemId(
+            fromLive?.equippedAvatar || fromLive?.equipped?.avatar || fromLive?.avatar,
+            'avatar'
+          ) || r.fromAvatar,
+        fromFrame:
+          resolveCosmeticItemId(
+            fromLive?.equippedFrame || fromLive?.equipped?.frame || fromLive?.frame,
+            'frame'
+          ) || r.fromFrame,
+        toName: toLive?.displayName || r.toName,
+        toAvatar:
+          resolveCosmeticItemId(
+            toLive?.equippedAvatar || toLive?.equipped?.avatar || toLive?.avatar,
+            'avatar'
+          ) || r.toAvatar,
+        toFrame:
+          resolveCosmeticItemId(
+            toLive?.equippedFrame || toLive?.equipped?.frame || toLive?.frame,
+            'frame'
+          ) || r.toFrame,
+      };
+    });
 
   const emitWithLiveProfiles = (reqs: ChatRequest[]) => {
+    // 1. Emit immediately using any synchronously cached profiles so UI never waits on network
+    const immediate = applyProfileMapToReqs(reqs, (id) => getCachedPublicProfile(id));
+    writeSwrCache(`${CHAT_REQS_CACHE_PREFIX}${uid}`, immediate, true);
+    onUpdate(immediate);
+
     const uids = Array.from(
       new Set(
         reqs
@@ -494,46 +643,16 @@ export function subscribeIncomingChatRequests(
           .filter((id): id is string => Boolean(id && !id.startsWith('anon_')))
       )
     );
-    if (uids.length === 0) {
-      onUpdate(reqs);
-      return;
-    }
+    if (uids.length === 0) return;
+
+    // 2. Refresh profiles in background
     getPublicProfiles(uids)
       .then((liveMap) => {
-        const enriched = reqs.map((r) => {
-          const fromLive = liveMap.get(r.fromUid);
-          const toLive = liveMap.get(r.toUid);
-          return {
-            ...r,
-            fromName: fromLive?.displayName || r.fromName,
-            fromAvatar:
-              resolveCosmeticItemId(
-                fromLive?.equippedAvatar || fromLive?.equipped?.avatar || fromLive?.avatar,
-                'avatar'
-              ) || r.fromAvatar,
-            fromFrame:
-              resolveCosmeticItemId(
-                fromLive?.equippedFrame || fromLive?.equipped?.frame || fromLive?.frame,
-                'frame'
-              ) || r.fromFrame,
-            toName: toLive?.displayName || r.toName,
-            toAvatar:
-              resolveCosmeticItemId(
-                toLive?.equippedAvatar || toLive?.equipped?.avatar || toLive?.avatar,
-                'avatar'
-              ) || r.toAvatar,
-            toFrame:
-              resolveCosmeticItemId(
-                toLive?.equippedFrame || toLive?.equipped?.frame || toLive?.frame,
-                'frame'
-              ) || r.toFrame,
-          };
-        });
+        const enriched = applyProfileMapToReqs(reqs, (id) => liveMap.get(id));
+        writeSwrCache(`${CHAT_REQS_CACHE_PREFIX}${uid}`, enriched, true);
         onUpdate(enriched);
       })
-      .catch(() => {
-        onUpdate(reqs);
-      });
+      .catch(() => {});
   };
 
   const unsubSnap = onSnapshot(
@@ -579,15 +698,63 @@ export function subscribeUserConversations(
     return () => {};
   }
 
+  const cachedInitial = getCachedUserConversations(uid);
+  if (cachedInitial) {
+    onUpdate(cachedInitial);
+  }
+
   const q = query(
     collection(db, 'conversations'),
     where('participants', 'array-contains', uid),
-    limit(50)
+    limit(25)
   );
 
-  let latestConvs: Conversation[] = [];
+  let latestConvs: Conversation[] = cachedInitial || [];
+
+  const applyProfileMapToConvs = (
+    convs: Conversation[],
+    lookup: (id: string) => any
+  ): Conversation[] =>
+    convs.map((c) => {
+      const nextDetails: Record<string, ConversationParticipant> = {
+        ...(c.participantDetails || {}),
+      };
+      for (const pUid of c.participants || []) {
+        const live = lookup(pUid);
+        if (live) {
+          const prev = nextDetails[pUid] || { displayName: 'Student' };
+          nextDetails[pUid] = {
+            ...prev,
+            displayName: live.displayName || prev.displayName || 'Student',
+            avatar:
+              resolveCosmeticItemId(
+                live.equippedAvatar || live.equipped?.avatar || live.avatar,
+                'avatar'
+              ) ||
+              prev.avatar ||
+              null,
+            frame:
+              resolveCosmeticItemId(
+                live.equippedFrame || live.equipped?.frame || live.frame,
+                'frame'
+              ) ||
+              prev.frame ||
+              null,
+          };
+        }
+      }
+      return {
+        ...c,
+        participantDetails: nextDetails,
+      };
+    });
 
   const emitConvsWithLiveProfiles = (convs: Conversation[]) => {
+    // 1. Emit immediately using cached profiles so chat list renders without waiting for network
+    const immediate = applyProfileMapToConvs(convs, (id) => getCachedPublicProfile(id));
+    writeSwrCache(`${CHAT_CONVS_CACHE_PREFIX}${uid}`, immediate, true);
+    onUpdate(immediate);
+
     const allUids = Array.from(
       new Set(
         convs
@@ -595,46 +762,16 @@ export function subscribeUserConversations(
           .filter((id): id is string => Boolean(id && !id.startsWith('anon_')))
       )
     );
-    if (allUids.length === 0) {
-      onUpdate(convs);
-      return;
-    }
+    if (allUids.length === 0) return;
+
+    // 2. Enrich profiles in the background
     getPublicProfiles(allUids)
       .then((liveMap) => {
-        const enriched = convs.map((c) => {
-          const nextDetails: Record<string, ConversationParticipant> = {
-            ...(c.participantDetails || {}),
-          };
-          for (const pUid of c.participants || []) {
-            const live = liveMap.get(pUid);
-            if (live) {
-              const prev = nextDetails[pUid] || { displayName: 'Student' };
-              nextDetails[pUid] = {
-                ...prev,
-                displayName: live.displayName || prev.displayName || 'Student',
-                avatar:
-                  resolveCosmeticItemId(
-                    live.equippedAvatar || live.equipped?.avatar || live.avatar,
-                    'avatar'
-                  ) || prev.avatar || null,
-                frame:
-                  resolveCosmeticItemId(
-                    live.equippedFrame || live.equipped?.frame || live.frame,
-                    'frame'
-                  ) || prev.frame || null,
-              };
-            }
-          }
-          return {
-            ...c,
-            participantDetails: nextDetails,
-          };
-        });
+        const enriched = applyProfileMapToConvs(convs, (id) => liveMap.get(id));
+        writeSwrCache(`${CHAT_CONVS_CACHE_PREFIX}${uid}`, enriched, true);
         onUpdate(enriched);
       })
-      .catch(() => {
-        onUpdate(convs);
-      });
+      .catch(() => {});
   };
 
   const unsubSnap = onSnapshot(
@@ -662,7 +799,9 @@ export function subscribeUserConversations(
         });
       });
       convs.sort(
-        (a, b) => toTimestampMs(b.lastMessageAt || b.updatedAt) - toTimestampMs(a.lastMessageAt || a.updatedAt)
+        (a, b) =>
+          toTimestampMs(b.lastMessageAt || b.updatedAt, b.lastMessageAtMs) -
+          toTimestampMs(a.lastMessageAt || a.updatedAt, a.lastMessageAtMs)
       );
       latestConvs = convs;
       emitConvsWithLiveProfiles(convs);

@@ -41,6 +41,7 @@ import {
 
 import { isD1UserSessionVerified } from '../functions/_utils/firestoreRestAdmin';
 import { handleEconomyApiRequest } from '../functions/api/economy/[[path]]';
+import { handleKobanStyleRequest } from '../functions/api/koban-style';
 
 export interface Env {
   DB?: D1Database;
@@ -5673,6 +5674,22 @@ ${urls
           cors
         );
       }
+    }
+
+    if (cleanWorkerPath === '/api/koban-style') {
+      return handleKobanStyleRequest({
+        request: req,
+        env: (env || {}) as any,
+        tokenVerifierOverride: async () => {
+          const verified = await verifyFirebaseIdToken(req, env);
+          if (!verified?.uid) return null;
+          return {
+            uid: verified.uid,
+            email: verified.email || undefined,
+            name: verified.name || undefined,
+          };
+        },
+      });
     }
 
     if (

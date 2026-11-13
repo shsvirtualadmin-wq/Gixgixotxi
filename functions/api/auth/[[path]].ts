@@ -2517,6 +2517,61 @@ export async function handleAuthApiRequest(
       .bind('registered', email, newUid, nowMs, nowMs, targetGuestUid)
       .run();
 
+    // 2b. Migrate guest Koban icon customization in `user_koban_style` to the new registered UID
+    try {
+      const guestKobanRow = await db
+        .prepare(
+          'SELECT user_id, design, main_color, accent_color, glow_color, glow, motion, sparkle, updated_at FROM user_koban_style WHERE user_id = ?1 LIMIT 1'
+        )
+        .bind(targetGuestUid)
+        .first<{
+          user_id: string;
+          design: string;
+          main_color: string;
+          accent_color: string;
+          glow_color: string;
+          glow: number;
+          motion: string;
+          sparkle: number;
+          updated_at: number;
+        }>();
+      if (guestKobanRow) {
+        await db
+          .prepare(
+            `INSERT INTO user_koban_style (user_id, design, main_color, accent_color, glow_color, glow, motion, sparkle, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(user_id) DO UPDATE SET
+               design = excluded.design,
+               main_color = excluded.main_color,
+               accent_color = excluded.accent_color,
+               glow_color = excluded.glow_color,
+               glow = excluded.glow,
+               motion = excluded.motion,
+               sparkle = excluded.sparkle,
+               updated_at = excluded.updated_at`
+          )
+          .bind(
+            newUid,
+            guestKobanRow.design,
+            guestKobanRow.main_color,
+            guestKobanRow.accent_color,
+            guestKobanRow.glow_color,
+            Number(guestKobanRow.glow),
+            guestKobanRow.motion,
+            Number(guestKobanRow.sparkle),
+            nowMs
+          )
+          .run();
+        await db
+          .prepare('DELETE FROM user_koban_style WHERE user_id = ?1')
+          .bind(targetGuestUid)
+          .run()
+          .catch(() => {});
+      }
+    } catch {
+      // Non-fatal if user_koban_style table is not yet initialized
+    }
+
     // 3. Revoke guest sessions
     await db
       .prepare('UPDATE guest_sessions SET revoked = 1 WHERE uid = ?1')

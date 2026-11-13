@@ -19,6 +19,15 @@ import {
 import { isAdminAccount } from '@/constants/superAdmin';
 import { useAuth } from '@/contexts/AuthContext';
 import { sanitizeStudentDisplayName, buildEntitySlug } from '@/utils/privacy';
+import { readSwrCache, writeSwrCache } from '@/lib/swrCache';
+
+const LEADERBOARD_SWR_KEY = 'gl_leaderboard_enriched_v1';
+
+interface CachedLeaderboardSnapshot {
+  scorers: GlobalTopScorerEntry[];
+  profilesByUid: Record<string, PublicUserProfileSummary>;
+  tests: AmbassadorTestDoc[];
+}
 
 function formatTimeTaken(seconds: number): string {
   const safe = Math.max(0, Math.floor(Number(seconds) || 0));
@@ -36,23 +45,34 @@ function getRankBadgeClass(rank: number): string {
 
 export const GrandLineLeaderboardPage: React.FC = () => {
   const { user } = useAuth();
-  const [scorers, setScorers] = useState<GlobalTopScorerEntry[]>([]);
-  const [tests, setTests] = useState<AmbassadorTestDoc[]>([]);
-  const [profilesByUid, setProfilesByUid] = useState<Record<string, PublicUserProfileSummary>>({});
-  const [loading, setLoading] = useState(true);
+  const initialCache = readSwrCache<CachedLeaderboardSnapshot>(LEADERBOARD_SWR_KEY)?.data || null;
+
+  const [scorers, setScorers] = useState<GlobalTopScorerEntry[]>(
+    () => initialCache?.scorers || []
+  );
+  const [tests, setTests] = useState<AmbassadorTestDoc[]>(
+    () => initialCache?.tests || []
+  );
+  const [profilesByUid, setProfilesByUid] = useState<Record<string, PublicUserProfileSummary>>(
+    () => initialCache?.profilesByUid || {}
+  );
+  const [loading, setLoading] = useState<boolean>(() => !initialCache);
   const [loadError, setLoadError] = useState(false);
 
-  const loadLeaderboardData = useCallback(async () => {
-    setLoading(true);
+  const loadLeaderboardData = useCallback(async (background = false) => {
+    if (!background) {
+      setLoading(true);
+    }
     setLoadError(false);
     try {
-      const [topList, publicTests] = await Promise.all([
-        getGlobalGrandLineTopScorers(25),
-        getAllPublicGrandLineTests().catch(() => [] as AmbassadorTestDoc[]),
-      ]);
-      setScorers(topList);
-      setTests(publicTests.slice(0, 6));
+      // Kick off tests fetch in parallel without blocking the leaderboard rows
+      const publicTestsPromise = getAllPublicGrandLineTests().catch(
+        () => [] as AmbassadorTestDoc[]
+      );
 
+      // 1. Fetch top scorers and all their public profiles (avatars + PRO status) in a single batched flow
+      // before rendering the rows so name, avatar, PRO badge, and score appear together at once.
+      const topList = await getGlobalGrandLineTopScorers(25);
       const uids = Array.from(
         new Set(
           topList
@@ -60,36 +80,65 @@ export const GrandLineLeaderboardPage: React.FC = () => {
             .filter((uid) => uid.length > 0)
         )
       );
-      if (uids.length > 0) {
-        const initialCached: Record<string, PublicUserProfileSummary> = {};
-        for (const uid of uids) {
-          const cached = getCachedPublicProfile(uid);
-          if (cached) initialCached[uid] = cached;
-        }
-        if (Object.keys(initialCached).length > 0) {
-          setProfilesByUid((prev) => ({ ...prev, ...initialCached }));
-        }
-        getPublicProfiles(uids)
-          .then((fetched) => {
-            setProfilesByUid((prev) => ({ ...prev, ...Object.fromEntries(fetched) }));
-          })
-          .catch(() => {
-            // Keep cached/entry avatars on fallback
-          });
+
+      const mergedProfiles: Record<string, PublicUserProfileSummary> = {};
+      for (const uid of uids) {
+        const cached = getCachedPublicProfile(uid);
+        if (cached) mergedProfiles[uid] = cached;
       }
+
+      if (uids.length > 0) {
+        try {
+          const fetched = await getPublicProfiles(uids);
+          fetched.forEach((prof, uid) => {
+            mergedProfiles[uid] = prof;
+          });
+        } catch {
+          // Keep cached profiles on transient network error
+        }
+      }
+
+      setProfilesByUid(mergedProfiles);
+      setScorers(topList);
+      setLoading(false);
+
+      const publicTests = await publicTestsPromise;
+      const slicedTests = publicTests.slice(0, 6);
+      setTests(slicedTests);
+
+      writeSwrCache<CachedLeaderboardSnapshot>(
+        LEADERBOARD_SWR_KEY,
+        {
+          scorers: topList,
+          profilesByUid: mergedProfiles,
+          tests: slicedTests,
+        },
+        true
+      );
     } catch {
-      setLoadError(true);
+      if (!background) {
+        setLoadError(true);
+      }
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void loadLeaderboardData();
+    const cached = readSwrCache<CachedLeaderboardSnapshot>(LEADERBOARD_SWR_KEY)?.data;
+    if (cached) {
+      setScorers(cached.scorers);
+      setProfilesByUid(cached.profilesByUid);
+      setTests(cached.tests);
+      setLoading(false);
+      void loadLeaderboardData(true);
+    } else {
+      void loadLeaderboardData(false);
+    }
   }, [loadLeaderboardData]);
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-2 sm:pt-3 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-4 sm:px-6 overflow-x-hidden">
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-2 sm:pt-3 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-3 sm:px-6 overflow-x-hidden">
       <PageMeta
         title="Grand Line Leaderboard — Live Standings & Top Scorers | Boardly"
         description="View real-time student rankings and top scorers across public Grand Line mock tests authored by Nakama Captains on Boardly."
@@ -104,7 +153,7 @@ export const GrandLineLeaderboardPage: React.FC = () => {
           ]}
         />
 
-        <section className="captain-glass-panel p-6 sm:p-8 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <section className="captain-glass-panel p-5 sm:p-8 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="section-chip-red mb-3">
               <Sparkles size={13} />
@@ -126,8 +175,8 @@ export const GrandLineLeaderboardPage: React.FC = () => {
           </Link>
         </section>
 
-        <section className="captain-glass-panel p-4 sm:p-6 mb-6 overflow-hidden">
-          <div className="flex items-center justify-between gap-2 mb-4">
+        <section className="captain-glass-panel p-3 sm:p-6 mb-6 overflow-hidden">
+          <div className="flex items-center justify-between gap-2 mb-4 px-1 sm:px-0">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
               GLOBAL TOP PERFORMERS
             </h2>
@@ -139,9 +188,25 @@ export const GrandLineLeaderboardPage: React.FC = () => {
           </div>
 
           {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="captain-glass-card h-[68px] animate-pulse" />
+            <div className="space-y-2.5" data-testid="leaderboard-skeleton-rows">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div
+                  key={i}
+                  className="ranking-glass-row min-h-[64px] flex items-center justify-between gap-2.5 p-2.5 sm:px-4 sm:py-3.5 animate-pulse"
+                >
+                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0 flex-1">
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white/10 shrink-0" />
+                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-white/10 shrink-0" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="h-3.5 w-32 sm:w-44 rounded bg-white/10" />
+                      <div className="h-2.5 w-24 sm:w-36 rounded bg-white/5" />
+                    </div>
+                  </div>
+                  <div className="shrink-0 space-y-1.5 text-right">
+                    <div className="h-3.5 w-10 rounded bg-white/10 ml-auto" />
+                    <div className="h-2.5 w-8 rounded bg-white/5 ml-auto" />
+                  </div>
+                </div>
               ))}
             </div>
           ) : loadError ? (
@@ -155,7 +220,7 @@ export const GrandLineLeaderboardPage: React.FC = () => {
               </p>
               <button
                 type="button"
-                onClick={() => void loadLeaderboardData()}
+                onClick={() => void loadLeaderboardData(false)}
                 className="btn-primary min-h-[44px] px-5 py-2 text-xs font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <RefreshCw size={13} />
@@ -198,13 +263,17 @@ export const GrandLineLeaderboardPage: React.FC = () => {
                 return (
                   <div
                     key={`${uid || displayName}-${idx}`}
-                    className={`ranking-glass-row min-h-[68px] flex items-center justify-between gap-3 p-3 sm:px-4 sm:py-3.5 ${
+                    className={`ranking-glass-row min-h-[64px] sm:min-h-[68px] flex items-center justify-between gap-2 sm:gap-3 px-2.5 py-2.5 sm:px-4 sm:py-3.5 ${
                       isCurrentUser ? 'ranking-glass-row--highlight' : ''
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0 flex-1">
-                      <span className={getRankBadgeClass(rank)}>#{rank}</span>
-                      <div className="w-[44px] h-[44px] shrink-0 flex items-center justify-center">
+                    <div className="flex items-center gap-2 sm:gap-3.5 min-w-0 flex-1">
+                      <span
+                        className={`${getRankBadgeClass(rank)} !w-6 !h-6 !text-[10px] sm:!w-8 sm:!h-8 sm:!text-xs shrink-0`}
+                      >
+                        #{rank}
+                      </span>
+                      <div className="w-9 h-9 sm:w-[44px] sm:h-[44px] shrink-0 flex items-center justify-center">
                         <BoardlyAvatar
                           uid={uid || `${rank}-${displayName}`}
                           name={displayName}
@@ -217,16 +286,18 @@ export const GrandLineLeaderboardPage: React.FC = () => {
                           }
                           equippedFrameId={liveProfile?.equippedFrameId || null}
                           isSuperAdmin={isSuperAdminActor}
-                          size={44}
+                          size={38}
                         />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-xs sm:text-sm font-bold text-[var(--text)] truncate">
+                        <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
+                          <span className="text-[13px] sm:text-sm font-bold text-[var(--text)] truncate min-w-0">
                             {displayName}
                           </span>
                           {proBadgeDesign && (
-                            <ProBadge design={proBadgeDesign} size="sm" listMode />
+                            <span className="shrink-0 scale-90 sm:scale-100 origin-left inline-flex items-center">
+                              <ProBadge design={proBadgeDesign} size="sm" listMode />
+                            </span>
                           )}
                           {isCurrentUser && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#D71921] text-white shrink-0">
@@ -236,11 +307,11 @@ export const GrandLineLeaderboardPage: React.FC = () => {
                         </div>
                         <p className="text-[11px] text-[var(--muted)] font-mono tabular-nums truncate mt-0.5">
                           {entry.testTitle ? `${entry.testTitle} · ` : ''}
-                          {formatTimeTaken(entry.timeTakenSeconds)} · {entry.percentage}% accuracy
+                          {formatTimeTaken(entry.timeTakenSeconds)} · {entry.percentage}%
                         </p>
                       </div>
                     </div>
-                    <div className="text-right shrink-0 whitespace-nowrap tabular-nums pl-2">
+                    <div className="text-right shrink-0 whitespace-nowrap tabular-nums pl-1 sm:pl-2">
                       <span className="text-xs sm:text-sm font-bold font-mono text-[var(--text)] block whitespace-nowrap">
                         {entry.totalQuestions > 0
                           ? `${entry.score}/${entry.totalQuestions}`
