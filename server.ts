@@ -14052,6 +14052,29 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       return next();
     }
 
+    const hostHeader = String(req.headers.host || '').toLowerCase();
+    const searchSuffix = req.originalUrl?.includes('?')
+      ? req.originalUrl.slice(req.originalUrl.indexOf('?'))
+      : '';
+    if (hostHeader.startsWith('www.')) {
+      return res.redirect(301, `https://boardly.cfd${rawPath}${searchSuffix}`);
+    }
+
+    if (rawPath.startsWith('/commons/post/')) {
+      const slugParam = decodeURIComponent(rawPath.slice('/commons/post/'.length));
+      const resolvedForRedirect = resolveServerRouteMeta(rawPath);
+      if (
+        resolvedForRedirect.statusCode === 200 &&
+        resolvedForRedirect.canonical &&
+        !slugParam.includes('-')
+      ) {
+        const canonicalPath = resolvedForRedirect.canonical.replace(/^https?:\/\/[^/]+/, '');
+        if (canonicalPath && canonicalPath !== rawPath) {
+          return res.redirect(301, `${canonicalPath}${searchSuffix}`);
+        }
+      }
+    }
+
     const ua = (req.headers['user-agent'] || '').toLowerCase();
     const isBot =
       /facebookexternalhit|whatsapp|twitterbot|telegrambot|discordbot|linkedinbot|slackbot|googlebot|bingbot|yandex|duckduckbot|applebot|crawler|spider/i.test(
@@ -14072,9 +14095,10 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     const ogImage = resolvedMeta.ogImage;
     const canonical = resolvedMeta.canonical;
     const h1Text = resolvedMeta.h1;
-    const jsonLd: Record<string, any> = {
+    const fallbackJsonLd: Record<string, any> = {
       '@context': 'https://schema.org',
-      '@type': ogType === 'article' ? 'LearningResource' : 'WebPage',
+      '@type': ogType === 'article' ? 'DiscussionForumPosting' : 'WebPage',
+      headline: title,
       name: title,
       description,
       url: canonical,
@@ -14084,6 +14108,13 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         url: 'https://boardly.cfd',
       },
     };
+    const jsonLdString = resolvedMeta.jsonLd || JSON.stringify(fallbackJsonLd);
+    const bodyHtml =
+      resolvedMeta.rootBodyHtml ||
+      `<main>
+    <h1>${h1Text}</h1>
+    <p>${description}</p>
+  </main>`;
 
     const crawlerHtml = `<!doctype html>
 <html lang="en" data-theme="dark">
@@ -14104,7 +14135,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   <meta name="twitter:title" content="${title}" />
   <meta name="twitter:description" content="${description}" />
   <meta name="twitter:image" content="${ogImage}" />
-  <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
+  <script type="application/ld+json">${jsonLdString}</script>
 </head>
 <body style="font-family: sans-serif; background-color: #000000; color: #ffffff; padding: 24px;">
   <header>
@@ -14113,7 +14144,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       <a href="https://boardly.cfd/mcqs">Subject MCQs</a> |
       <a href="https://boardly.cfd/subjects">Subjects</a> |
       <a href="https://boardly.cfd/commons">Boardly Commons</a> |
-      <a href="https://boardly.cfd/study-material">Study Material</a> |
+      <a href="https://boardly.cfd/material">Study Material</a> |
       <a href="https://boardly.cfd/features">Features</a> |
       <a href="https://boardly.cfd/leaderboard">Leaderboard</a> |
       <a href="https://boardly.cfd/grand-line">Grand Line</a> |
@@ -14123,10 +14154,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       <a href="https://boardly.cfd/pricing">Pricing</a>
     </nav>
   </header>
-  <main>
-    <h1>${h1Text}</h1>
-    <p>${description}</p>
-  </main>
+  <div id="root">${bodyHtml}</div>
 </body>
 </html>`;
 
@@ -14176,8 +14204,9 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       try {
         const indexPath = path.join(distPath, "index.html");
         const rawHtml = fs.readFileSync(indexPath, "utf-8");
+        const routeMeta = resolveServerRouteMeta(req.path || "/");
         const enrichedHtml = injectRouteMetaIntoHtml(rawHtml, req.path || "/");
-        res.status(200).type("text/html").send(enrichedHtml);
+        res.status(routeMeta.statusCode || 200).type("text/html").send(enrichedHtml);
       } catch {
         res.sendFile(path.join(distPath, "index.html"));
       }

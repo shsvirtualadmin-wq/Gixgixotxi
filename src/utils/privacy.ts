@@ -129,7 +129,8 @@ export function buildEntitySlug(id: string, title?: string | null): string {
     .replace(/['’]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
+    .slice(0, 72)
+    .replace(/-+$/g, '');
   return slug ? `${cleanId}-${slug}` : cleanId;
 }
 

@@ -801,33 +801,37 @@ export function saveD1Store(store: D1StoreData): void {
 const edgeFeedCache = new Map<string, { payload: any; expiresAt: number }>();
 
 export function buildSlug(id: string, title: string): string {
+  const cleanId = String(id || '').trim();
   const cleanTitle = String(title || 'post')
     .toLowerCase()
+    .trim()
+    .replace(/['’]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 72);
-  return `${id}-${cleanTitle || 'post'}`;
+    .slice(0, 72)
+    .replace(/-+$/g, '');
+  return `${cleanId}-${cleanTitle || 'post'}`;
 }
 
 export function extractIdFromSlugOrId(slugOrId: string): string {
-  const trimmed = String(slugOrId || '').trim();
+  const trimmed = decodeURIComponent(String(slugOrId || '')).trim();
   if (!trimmed) return '';
   const uuidMatch = trimmed.match(
     /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-|$)/i
   );
   if (uuidMatch) return uuidMatch[1];
-  if (trimmed.startsWith('post_gen_')) {
-    const m = trimmed.match(/^(post_gen_\d+)/);
-    if (m) return m[1];
-  }
-  if (trimmed.startsWith('post_')) {
-    const m = trimmed.match(/^(post_\d+_[a-zA-Z0-9]+)/);
-    if (m) return m[1];
-  }
+  const anonTopicMatch = trimmed.match(/^(commons_anon_topic_\d+)(?:-|$)/i);
+  if (anonTopicMatch) return anonTopicMatch[1];
+  const postGenMatch = trimmed.match(/^(post_gen_\d+)(?:-|$)/i);
+  if (postGenMatch) return postGenMatch[1];
+  const postTsMatch = trimmed.match(/^(post_\d+_[a-zA-Z0-9]+)(?:-|$)/i);
+  if (postTsMatch) return postTsMatch[1];
+  const postGenericMatch = trimmed.match(/^(post_[a-zA-Z0-9_]+)(?:-|$)/i);
+  if (postGenericMatch) return postGenericMatch[1];
   const glMatch = trimmed.match(/^(gl-[a-z0-9]+-\d+)(?:-|$)/i);
   if (glMatch) return glMatch[1];
   const dashIdx = trimmed.indexOf('-');
-  if (dashIdx >= 15) {
+  if (dashIdx > 0) {
     return trimmed.slice(0, dashIdx);
   }
   return trimmed;
@@ -1480,14 +1484,20 @@ export function registerCloudflarePostsAndAuthRoutes(
     getGoogleAccessToken?: () => Promise<string | null>;
   }
 ): void {
-  // 1. Dynamic Sitemap XML & Sitemap Index generated directly from D1 posts with <lastmod>
-  app.get('/sitemap.xml', (_req, res) => {
-    const store = loadD1Store();
-    const visiblePosts = store.posts.filter(
-      (p) => !p.is_hidden && p.status !== 'removed' && (!p.visibility || p.visibility === 'public')
-    );
-    const nowIso = new Date().toISOString();
+  // 1. Dynamic Sitemap XML & Sitemap Index generated directly from D1 posts with <lastmod> (read-only)
+  const SITEMAP_PAGE_SIZE = 1000;
+  const isPublicSitemapPost = (p: D1PostRow) =>
+    !p.is_hidden &&
+    !(p as any).deleted &&
+    !(p as any).is_deleted &&
+    p.status !== 'removed' &&
+    p.status !== 'deleted' &&
+    p.status !== 'private' &&
+    p.status !== 'members_only' &&
+    p.status !== 'anonymous_restricted' &&
+    (!p.visibility || p.visibility === 'public');
 
+  const getStaticSitemapEntries = (nowIso: string) => {
     const staticUrls = [
       'https://boardly.cfd/',
       'https://boardly.cfd/commons',
@@ -1503,17 +1513,38 @@ export function registerCloudflarePostsAndAuthRoutes(
       'https://boardly.cfd/how-it-works',
       'https://boardly.cfd/faq',
     ];
+    return staticUrls.map((loc) => ({
+      loc,
+      lastmod: nowIso,
+      changefreq: 'daily',
+      priority: loc === 'https://boardly.cfd/' ? '1.0' : '0.9',
+    }));
+  };
 
-    const entries: Array<{ loc: string; lastmod: string; changefreq: string; priority: string }> =
-      staticUrls.map((loc) => ({
-        loc,
-        lastmod: nowIso,
-        changefreq: 'daily',
-        priority: '0.9',
-      }));
+  const renderUrlsetXml = (
+    entries: Array<{ loc: string; lastmod: string; changefreq: string; priority: string }>
+  ) => `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${entries
+  .map(
+    (u) => `  <url>
+    <loc>${escapeHtmlAttr(u.loc)}</loc>
+    <lastmod>${escapeHtmlAttr(u.lastmod)}</lastmod>
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority}</priority>
+  </url>`
+  )
+  .join('\n')}
+</urlset>`;
+
+  app.get('/sitemap.xml', (_req, res) => {
+    const store = loadD1Store();
+    const visiblePosts = store.posts.filter(isPublicSitemapPost);
+    const nowIso = new Date().toISOString();
+    const entries = getStaticSitemapEntries(nowIso);
 
     for (const p of visiblePosts) {
-      const slug = p.slug || buildSlug(p.id, p.title);
+      const slug = buildSlug(p.id, p.title);
       const lastmodMs = Number(p.updated_at || p.created_at || Date.now());
       const lastmod = new Date(lastmodMs > 0 ? lastmodMs : Date.now()).toISOString();
       entries.push({
@@ -1532,38 +1563,74 @@ export function registerCloudflarePostsAndAuthRoutes(
       }
     }
 
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${entries
-  .map(
-    (u) => `  <url>
-    <loc>${escapeHtmlAttr(u.loc)}</loc>
-    <lastmod>${escapeHtmlAttr(u.lastmod)}</lastmod>
-    <changefreq>${u.changefreq}</changefreq>
-    <priority>${u.priority}</priority>
-  </url>`
-  )
-  .join('\n')}
-</urlset>`;
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
+    return res.status(200).send(renderUrlsetXml(entries));
+  });
+
+  app.get('/sitemap-static.xml', (_req, res) => {
+    const nowIso = new Date().toISOString();
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=600');
+    return res.status(200).send(renderUrlsetXml(getStaticSitemapEntries(nowIso)));
+  });
+
+  const handlePostsSitemap = (req: express.Request, res: express.Response) => {
+    const store = loadD1Store();
+    const visiblePosts = store.posts.filter(isPublicSitemapPost);
+    const rawPage = Number((req.params as any)?.page || req.query?.page || 1);
+    const page = Number.isFinite(rawPage) && rawPage >= 1 ? Math.floor(rawPage) : 1;
+    const start = (page - 1) * SITEMAP_PAGE_SIZE;
+    const slice = visiblePosts.slice(start, start + SITEMAP_PAGE_SIZE);
+
+    const entries: Array<{ loc: string; lastmod: string; changefreq: string; priority: string }> = [];
+    for (const p of slice) {
+      const slug = buildSlug(p.id, p.title);
+      const lastmodMs = Number(p.updated_at || p.created_at || Date.now());
+      const lastmod = new Date(lastmodMs > 0 ? lastmodMs : Date.now()).toISOString();
+      entries.push({
+        loc: `https://boardly.cfd/commons/post/${slug}`,
+        lastmod,
+        changefreq: 'daily',
+        priority: '0.8',
+      });
+    }
 
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=120, s-maxage=300, stale-while-revalidate=600');
-    return res.status(200).send(xml);
-  });
+    return res.status(200).send(renderUrlsetXml(entries));
+  };
+
+  app.get('/sitemap-posts.xml', handlePostsSitemap);
+  app.get('/sitemap-posts-:page.xml', handlePostsSitemap);
 
   app.get('/sitemap-index.xml', (_req, res) => {
     const store = loadD1Store();
-    const latestMs = store.posts.reduce(
+    const visiblePosts = store.posts.filter(isPublicSitemapPost);
+    const latestMs = visiblePosts.reduce(
       (acc, p) => Math.max(acc, Number(p.updated_at || p.created_at || 0)),
       Date.now()
     );
     const lastmod = new Date(latestMs).toISOString();
+    const totalPages = Math.max(1, Math.ceil(visiblePosts.length / SITEMAP_PAGE_SIZE));
+    const postSitemaps = Array.from({ length: totalPages }, (_, idx) => {
+      const loc =
+        totalPages === 1
+          ? 'https://boardly.cfd/sitemap-posts.xml'
+          : `https://boardly.cfd/sitemap-posts-${idx + 1}.xml`;
+      return `  <sitemap>
+    <loc>${escapeHtmlAttr(loc)}</loc>
+    <lastmod>${escapeHtmlAttr(lastmod)}</lastmod>
+  </sitemap>`;
+    }).join('\n');
+
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <sitemap>
-    <loc>https://boardly.cfd/sitemap.xml</loc>
+    <loc>https://boardly.cfd/sitemap-static.xml</loc>
     <lastmod>${escapeHtmlAttr(lastmod)}</lastmod>
   </sitemap>
+${postSitemaps}
 </sitemapindex>`;
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=120, s-maxage=300');
@@ -10953,7 +11020,13 @@ export function resolveServerRouteMeta(pathname: string) {
     const isMissingOrPrivate =
       !d1Row ||
       Boolean(d1Row.is_hidden) ||
+      Boolean((d1Row as any).deleted) ||
+      Boolean((d1Row as any).is_deleted) ||
       d1Row.status === 'removed' ||
+      d1Row.status === 'deleted' ||
+      d1Row.status === 'private' ||
+      d1Row.status === 'members_only' ||
+      d1Row.status === 'anonymous_restricted' ||
       (d1Row.visibility && d1Row.visibility !== 'public');
 
     if (isMissingOrPrivate) {
@@ -10975,26 +11048,67 @@ export function resolveServerRouteMeta(pathname: string) {
 
     const isMaterial =
       cleanPath.startsWith('/material/') || cleanPath.startsWith('/study-material/');
-    const canonicalSlug = d1Row.slug || buildSlug(d1Row.id, d1Row.title);
+    const canonicalSlug = buildSlug(d1Row.id, d1Row.title);
     const canonicalUrl = isMaterial
       ? `https://boardly.cfd/material/${canonicalSlug}`
       : `https://boardly.cfd/commons/post/${canonicalSlug}`;
 
     const title = isMaterial
       ? `${d1Row.title} — ${d1Row.subject || 'Study Material'} PDF & Notes | Boardly`
-      : `${d1Row.title} — ${d1Row.subject || 'Student Discussion'} | Boardly Commons`;
+      : `${d1Row.title} | Boardly Commons`;
 
-    const rawDesc = String(d1Row.description || '').replace(/\s+/g, ' ').trim();
-    const authorLabel = d1Row.is_anonymous
-      ? 'Anonymous Student'
-      : d1Row.author_name || 'Boardly Student';
+    const maskSensitiveText = (txt: string) =>
+      String(txt || '')
+        .replace(
+          /https?:\/\/(?:chat\.whatsapp\.com|wa\.me|api\.whatsapp\.com)\/[^\s)]+/gi,
+          '[WhatsApp link hidden for student privacy]'
+        )
+        .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[email hidden]')
+        .replace(/(?:\+92|0092|0)[\s.-]?3\d{2}[\s.-]?\d{7}\b/g, '[phone hidden]');
 
-    // First 150 to 160 characters of the post for meta description
+    const safeAuthorDisplayName = (rawName: string | undefined | null, isAnon: number | boolean) => {
+      if (isAnon) return 'Anonymous Student';
+      const cleaned = String(rawName || '').trim();
+      if (!cleaned) return 'Boardly Student';
+      if (cleaned.includes('@')) {
+        const prefix = cleaned.split('@')[0]?.trim() || '';
+        return prefix.length >= 2 && !prefix.includes('.')
+          ? prefix.charAt(0).toUpperCase() + prefix.slice(1)
+          : 'Boardly Student';
+      }
+      return cleaned;
+    };
+
+    const maskedBodyText = maskSensitiveText(d1Row.description || '');
+    const rawDesc = maskedBodyText.replace(/\s+/g, ' ').trim();
+    const authorLabel = safeAuthorDisplayName(d1Row.author_name, d1Row.is_anonymous);
+
+    // First ~155 characters of the post for meta description
     const description = rawDesc
       ? rawDesc.length > 158
         ? `${rawDesc.slice(0, 155).trimEnd()}...`
         : rawDesc
       : `Read "${d1Row.title}" by ${authorLabel} in ${d1Row.subject || 'Boardly Commons'} on Boardly.`;
+
+    let postOgImage = baseMeta.ogImage;
+    try {
+      const parsedFiles = JSON.parse(d1Row.files_json || '[]');
+      if (Array.isArray(parsedFiles)) {
+        const firstImg = parsedFiles.find(
+          (f: any) =>
+            f?.url &&
+            (String(f.type || '').startsWith('image/') ||
+              /\.(png|jpe?g|webp|gif)$/i.test(String(f.name || f.url || '')))
+        );
+        if (firstImg?.url) {
+          postOgImage = String(firstImg.url).startsWith('http')
+            ? String(firstImg.url)
+            : `https://boardly.cfd${String(firstImg.url).startsWith('/') ? '' : '/'}${String(firstImg.url)}`;
+        }
+      }
+    } catch {
+      // keep fallback brand ogImage
+    }
 
     const createdMs = Number(d1Row.created_at || Date.now());
     const updatedMs = Number(d1Row.updated_at || createdMs);
@@ -11009,6 +11123,27 @@ export function resolveServerRouteMeta(pathname: string) {
 
     const commentCount = Math.max(Number(d1Row.comment_count || 0), topComments.length);
 
+    // Compute related public posts at render time (read-only)
+    const targetSubj = String(d1Row.subject || '').toLowerCase().trim();
+    const relatedPosts = store.posts
+      .filter(
+        (p) =>
+          p.id !== d1Row.id &&
+          !p.is_hidden &&
+          !(p as any).deleted &&
+          !(p as any).is_deleted &&
+          p.status !== 'removed' &&
+          p.status !== 'deleted' &&
+          (!p.visibility || p.visibility === 'public')
+      )
+      .sort((a, b) => {
+        const aMatch = String(a.subject || '').toLowerCase().trim() === targetSubj ? 1 : 0;
+        const bMatch = String(b.subject || '').toLowerCase().trim() === targetSubj ? 1 : 0;
+        if (aMatch !== bMatch) return bMatch - aMatch;
+        return Number(b.created_at || 0) - Number(a.created_at || 0);
+      })
+      .slice(0, 4);
+
     const jsonLdObj = {
       '@context': 'https://schema.org',
       '@type': 'DiscussionForumPosting',
@@ -11019,7 +11154,7 @@ export function resolveServerRouteMeta(pathname: string) {
         '@id': canonicalUrl,
       },
       headline: d1Row.title,
-      text: d1Row.description || d1Row.title,
+      text: maskedBodyText || d1Row.title,
       articleSection: d1Row.subject || 'General',
       datePublished: publishedIso,
       dateModified: modifiedIso,
@@ -11047,11 +11182,11 @@ export function resolveServerRouteMeta(pathname: string) {
       commentCount,
       comment: topComments.map((c) => ({
         '@type': 'Comment',
-        text: String(c.text || ''),
+        text: maskSensitiveText(String(c.text || '')),
         dateCreated: new Date(Number(c.created_at || createdMs)).toISOString(),
         author: {
           '@type': 'Person',
-          name: c.is_anonymous ? 'Anonymous Student' : String(c.author_name || 'Student'),
+          name: safeAuthorDisplayName(c.author_name, c.is_anonymous),
         },
       })),
     };
@@ -11064,24 +11199,47 @@ export function resolveServerRouteMeta(pathname: string) {
       <h2 style="font-size:18px;font-weight:700;margin-bottom:12px;">Comments (${commentCount})</h2>
       ${topComments
         .map((c) => {
-          const cAuthor = c.is_anonymous ? 'Anonymous Student' : String(c.author_name || 'Student');
+          const cAuthor = safeAuthorDisplayName(c.author_name, c.is_anonymous);
           const cDate = new Date(Number(c.created_at || createdMs)).toISOString();
           return `<div itemprop="comment" itemscope itemtype="https://schema.org/Comment" style="margin-bottom:14px;padding:12px;border-radius:10px;background:rgba(255,255,255,0.03);">
         <div style="font-size:13px;color:#a1a1aa;margin-bottom:4px;">
           <strong itemprop="author">${escapeHtmlAttr(cAuthor)}</strong> • <time itemprop="dateCreated" datetime="${escapeHtmlAttr(cDate)}">${escapeHtmlAttr(cDate.slice(0, 10))}</time>
         </div>
-        <div itemprop="text" style="font-size:14px;line-height:1.5;color:#e4e4e7;">${escapeHtmlAttr(String(c.text || ''))}</div>
+        <div itemprop="text" style="font-size:14px;line-height:1.5;color:#e4e4e7;">${escapeHtmlAttr(maskSensitiveText(String(c.text || '')))}</div>
       </div>`;
         })
         .join('\n')}
     </section>`
+        : `<section aria-label="Comments" style="margin-top:28px;border-top:1px solid rgba(255,255,255,0.1);padding-top:20px;">
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:8px;">Comments (${commentCount})</h2>
+      <p style="font-size:14px;color:#a1a1aa;">Sign in on Boardly Commons to join the discussion.</p>
+    </section>`;
+
+    const relatedHtml =
+      relatedPosts.length > 0
+        ? `<section aria-label="Related posts" style="margin-top:28px;border-top:1px solid rgba(255,255,255,0.1);padding-top:20px;">
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:12px;">Related Posts in ${escapeHtmlAttr(d1Row.subject || 'Boardly Commons')}</h2>
+      <ul style="list-style:none;padding:0;margin:0;display:grid;gap:10px;">
+        ${relatedPosts
+          .map((rp) => {
+            const rpSlug = buildSlug(rp.id, rp.title);
+            return `<li><a href="https://boardly.cfd/commons/post/${escapeHtmlAttr(rpSlug)}" style="color:#e11d2e;text-decoration:underline;font-weight:600;">${escapeHtmlAttr(rp.title)}</a> <span style="font-size:12px;color:#a1a1aa;">(${escapeHtmlAttr(rp.subject || 'Commons')})</span></li>`;
+          })
+          .join('\n        ')}
+      </ul>
+    </section>`
         : '';
 
     const rootBodyHtml = `<main style="max-width:820px;margin:0 auto;padding:32px 20px;color:#f4f4f5;font-family:system-ui,-apple-system,sans-serif;">
+  <nav aria-label="Breadcrumb" style="font-size:13px;color:#a1a1aa;margin-bottom:16px;">
+    <a href="https://boardly.cfd/" style="color:#a1a1aa;text-decoration:underline;">Home</a> &gt;
+    <a href="https://boardly.cfd/commons" style="color:#a1a1aa;text-decoration:underline;">Commons</a> &gt;
+    <span aria-current="page" style="color:#ffffff;">${escapeHtmlAttr(d1Row.title)}</span>
+  </nav>
   <article itemscope itemtype="https://schema.org/DiscussionForumPosting">
     <header style="margin-bottom:20px;">
       <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:#e11d2e;margin-bottom:8px;">
-        ${escapeHtmlAttr(d1Row.subject || 'General')} • Class ${escapeHtmlAttr(d1Row.class_level || '11/12')} • ${escapeHtmlAttr(d1Row.board || 'Federal')} Board
+        ${escapeHtmlAttr(d1Row.subject || 'General')} • Class ${escapeHtmlAttr(d1Row.class_level || '11/12')} • ${escapeHtmlAttr(d1Row.board || 'Federal')} Board • ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'}
       </div>
       <h1 itemprop="headline" style="font-size:28px;font-weight:800;line-height:1.3;margin:0 0 12px;color:#ffffff;">${escapeHtmlAttr(d1Row.title)}</h1>
       <div style="font-size:13px;color:#a1a1aa;">
@@ -11089,8 +11247,9 @@ export function resolveServerRouteMeta(pathname: string) {
         on <time itemprop="datePublished" datetime="${escapeHtmlAttr(publishedIso)}">${escapeHtmlAttr(formattedDate)}</time>
       </div>
     </header>
-    <div itemprop="text" style="font-size:16px;line-height:1.75;color:#e4e4e7;white-space:pre-wrap;">${escapeHtmlAttr(d1Row.description || d1Row.title)}</div>
+    <div itemprop="text" style="font-size:16px;line-height:1.75;color:#e4e4e7;white-space:pre-wrap;">${escapeHtmlAttr(maskedBodyText || d1Row.title)}</div>
     ${commentsHtml}
+    ${relatedHtml}
   </article>
 </main>`;
 
@@ -11100,6 +11259,7 @@ export function resolveServerRouteMeta(pathname: string) {
       description,
       canonical: canonicalUrl,
       ogType: 'article' as const,
+      ogImage: postOgImage,
       h1: d1Row.title,
       statusCode: 200,
       jsonLd,
@@ -11172,7 +11332,7 @@ export function injectRouteMetaIntoHtml(html: string, pathname: string): string 
       `<meta name="twitter:image" content="${img}" />`
     );
 
-  if (meta.jsonLd) {
+  if (meta.jsonLd && !out.includes('id="boardly-post-jsonld"')) {
     out = out.replace(
       /<\/head>/i,
       `  <script id="boardly-post-jsonld" type="application/ld+json">${meta.jsonLd}</script>\n</head>`
@@ -11180,10 +11340,17 @@ export function injectRouteMetaIntoHtml(html: string, pathname: string): string 
   }
 
   if (meta.rootBodyHtml) {
-    out = out.replace(
-      /<div\s+id="root"\s*><\/div>/i,
-      `<div id="root">${meta.rootBodyHtml}</div>`
-    );
+    if (/<div\s+id="root"\s*>[\s\S]*?<\/div>\s*(?=<script\b)/i.test(out)) {
+      out = out.replace(
+        /<div\s+id="root"\s*>[\s\S]*?<\/div>\s*(?=<script\b)/i,
+        `<div id="root">${meta.rootBodyHtml}</div>\n    `
+      );
+    } else {
+      out = out.replace(
+        /<div\s+id="root"\s*><\/div>/i,
+        `<div id="root">${meta.rootBodyHtml}</div>`
+      );
+    }
   }
 
   return out;
@@ -11219,9 +11386,10 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
     }
     const escaped = pattern
       .replace(/\/+$/, '')
+      .replace(/\./g, '\\.')
       .replace(/:([a-zA-Z0-9_]+)/g, (_m, name) => {
         paramNames.push(name);
-        return '([^/]+)';
+        return '([^/.]+)';
       });
     return { regex: new RegExp(`^${escaped || '/'}/?$`), paramNames };
   };
@@ -11248,10 +11416,10 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
     const isApiRoute = pathname === '/api' || pathname.startsWith('/api/');
     const isAuthRoute = isAuthenticatedAppRoute(pathname);
 
-    // 1. Public GET-only SEO redirects, trailing-slash rule, and crawler pre-rendered HTML
-    //    Strictly excludes every /api/* path, every non-GET request, and all authenticated app routes.
+    // 1. Public GET/HEAD SEO redirects, trailing-slash rule, and crawler pre-rendered HTML
+    //    Strictly excludes every /api/* path, every mutating request, and all authenticated app routes.
     if (
-      req.method === 'GET' &&
+      (req.method === 'GET' || req.method === 'HEAD') &&
       !isApiRoute &&
       !isAuthRoute &&
       !pathname.startsWith('/assets/') &&
@@ -11261,6 +11429,14 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
     ) {
       const cleanPublicPath = pathname.replace(/\/+$/, '') || '/';
       const searchSuffix = parsedUrl.search || '';
+      const hostHeader = String(req.headers?.host || '').toLowerCase();
+
+      // 301 redirect www.boardly.cfd -> https://boardly.cfd
+      if (hostHeader.startsWith('www.')) {
+        res.writeHead(301, { Location: `https://boardly.cfd${cleanPublicPath}${searchSuffix}` });
+        res.end();
+        return;
+      }
 
       if (cleanPublicPath === '/about-kobans') {
         res.writeHead(301, { Location: `/kobans${searchSuffix}` });
@@ -11276,6 +11452,30 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
         res.writeHead(301, { Location: `${cleanPublicPath}${searchSuffix}` });
         res.end();
         return;
+      }
+
+      // 301 redirect ID-only /commons/post/{id} to canonical /commons/post/{id}-{slug}
+      if (cleanPublicPath.startsWith('/commons/post/')) {
+        const slugParam = decodeURIComponent(cleanPublicPath.slice('/commons/post/'.length));
+        const store = loadD1Store();
+        const exactIdRow = store.posts.find(
+          (p) =>
+            p.id === slugParam &&
+            !p.is_hidden &&
+            !(p as any).deleted &&
+            !(p as any).is_deleted &&
+            p.status !== 'removed' &&
+            p.status !== 'deleted' &&
+            (!p.visibility || p.visibility === 'public')
+        );
+        if (exactIdRow) {
+          const canonicalSlug = buildSlug(exactIdRow.id, exactIdRow.title);
+          if (canonicalSlug && canonicalSlug !== slugParam) {
+            res.writeHead(301, { Location: `/commons/post/${canonicalSlug}${searchSuffix}` });
+            res.end();
+            return;
+          }
+        }
       }
 
       const ua = String(req.headers?.['user-agent'] || '').toLowerCase();

@@ -136,7 +136,10 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
         <img
           src={resolvedUrl}
           alt={file.name || 'Study attachment'}
+          width={800}
+          height={450}
           loading="lazy"
+          decoding="async"
           onLoad={handleImageLoad}
           onError={handleImageError}
           className={`w-full max-w-full h-auto max-h-[420px] object-contain bg-black/20 transition-opacity duration-200 ${

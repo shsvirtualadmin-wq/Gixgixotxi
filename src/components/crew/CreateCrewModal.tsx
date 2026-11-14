@@ -1,8 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Sparkles, Users, Check, AlertCircle } from 'lucide-react';
-import { AvatarPicker } from '@/lib/matrixAvatars';
-import { type MatrixAvatarVariant } from '@/lib/matrixAvatarsData';
+import { X, Sparkles, Users, Check, AlertCircle, ChevronDown } from 'lucide-react';
+import { MatrixAvatar } from '@/lib/matrixAvatars';
+import {
+  MATRIX_AVATARS,
+  MATRIX_VARIANTS,
+  type MatrixAvatarVariant,
+} from '@/lib/matrixAvatarsData';
 import type { CrewTier, CrewJoinMode } from '@/types/crew';
 import { createNewCrew } from '@/services/crewService';
 import { useBodyScrollLock } from '@/utils/scrollLock';
@@ -18,6 +22,21 @@ interface CreateCrewModalProps {
   };
 }
 
+const LOGO_THEMES = [
+  'all',
+  'skull',
+  'robot',
+  'animal',
+  'flame',
+  'bolt',
+  'star',
+  'shield',
+  'crown',
+  'planet',
+  'science',
+  'glyph',
+] as const;
+
 export const CreateCrewModal: React.FC<CreateCrewModalProps> = ({
   onClose,
   onSuccess,
@@ -31,6 +50,10 @@ export const CreateCrewModal: React.FC<CreateCrewModalProps> = ({
   const [minStreak, setMinStreak] = useState<number>(0);
   const [tier, setTier] = useState<CrewTier>('free');
 
+  const [logoSheetOpen, setLogoSheetOpen] = useState(false);
+  const [logoFilterTheme, setLogoFilterTheme] = useState<string>('all');
+  const sheetTouchStartYRef = useRef<number | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,13 +61,57 @@ export const CreateCrewModal: React.FC<CreateCrewModalProps> = ({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !loading) {
-        onClose();
+      if (e.key === 'Escape') {
+        if (logoSheetOpen) {
+          e.stopPropagation();
+          setLogoSheetOpen(false);
+        } else if (!loading) {
+          onClose();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [loading, onClose]);
+  }, [loading, logoSheetOpen, onClose]);
+
+  const selectedAvatarDef = useMemo(
+    () => MATRIX_AVATARS.find((a) => a.key === avatarKey) || MATRIX_AVATARS[0],
+    [avatarKey]
+  );
+
+  const selectedVariantDef = useMemo(
+    () => MATRIX_VARIANTS[avatarVariant] || MATRIX_VARIANTS['red-on-black'],
+    [avatarVariant]
+  );
+
+  const filteredLogos = useMemo(
+    () =>
+      MATRIX_AVATARS.filter((a) =>
+        logoFilterTheme === 'all' ? true : a.theme === logoFilterTheme
+      ),
+    [logoFilterTheme]
+  );
+
+  const activeCategoryLabel = useMemo(() => {
+    if (logoFilterTheme === 'all') {
+      const theme = selectedAvatarDef?.theme || 'skull';
+      return theme.charAt(0).toUpperCase() + theme.slice(1);
+    }
+    return logoFilterTheme.charAt(0).toUpperCase() + logoFilterTheme.slice(1);
+  }, [logoFilterTheme, selectedAvatarDef]);
+
+  const handleSheetTouchStart = (e: React.TouchEvent) => {
+    sheetTouchStartYRef.current = e.touches[0]?.clientY ?? null;
+  };
+
+  const handleSheetTouchEnd = (e: React.TouchEvent) => {
+    if (sheetTouchStartYRef.current === null) return;
+    const endY = e.changedTouches[0]?.clientY ?? sheetTouchStartYRef.current;
+    if (endY - sheetTouchStartYRef.current > 75) {
+      setLogoSheetOpen(false);
+    }
+    sheetTouchStartYRef.current = null;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,10 +149,7 @@ export const CreateCrewModal: React.FC<CreateCrewModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-label="Create Study Squad"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !loading) onClose();
-      }}
-      className="overlay-blur bg-black/60 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4"
+      className="fixed inset-0 bg-[var(--bg)] text-[var(--text)] flex flex-col overflow-hidden"
       style={{
         position: 'fixed',
         inset: 0,
@@ -94,221 +158,408 @@ export const CreateCrewModal: React.FC<CreateCrewModalProps> = ({
         zIndex: 1200,
       }}
     >
+      {/* Question Bank Ambient Blobs */}
+      <div className="aqb-ambient-blobs" aria-hidden="true">
+        <div className="aqb-blob aqb-blob--top" />
+        <div className="aqb-blob aqb-blob--bottom" />
+      </div>
+
       <form
         onSubmit={handleSubmit}
-        onClick={(e) => e.stopPropagation()}
-        className="bg-[#0A0A0A] border border-[rgba(255,255,255,0.15)] rounded-t-2xl sm:rounded-2xl max-w-xl w-full text-white shadow-2xl relative flex flex-col overflow-hidden"
-        style={{
-          maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - 16px)',
-        }}
+        className="relative z-10 flex flex-col flex-1 min-h-0 w-full overflow-hidden"
       >
-        {/* Pinned Header */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-[rgba(255,255,255,0.1)] shrink-0">
-          <div>
-            <h2 className="text-xl font-bold font-heading text-white">Create Study Squad</h2>
-            <p className="text-xs text-[rgba(255,255,255,0.65)]">
-              Assemble your team, track collective streaks, and compete on the Pakistan leaderboard.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-[rgba(255,255,255,0.6)] hover:text-white hover:bg-white/10"
-            aria-label="Close"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        {/* Internally Scrollable Body */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-5 space-y-5">
-          {error && (
-            <div className="p-3 rounded-xl bg-red-950/40 border border-[#D71921] text-[#D71921] text-xs flex items-center gap-2">
-              <AlertCircle size={16} className="shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Name & Bio */}
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-semibold text-[rgba(255,255,255,0.85)] mb-1">
-                Crew Name *
-              </label>
-              <input
-                type="text"
-                required
-                maxLength={50}
-                placeholder="e.g. FAST Titans, NET Vanguard, GIKI Orbit"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#141414] border border-[rgba(255,255,255,0.12)] text-sm text-white placeholder-[rgba(255,255,255,0.3)] focus:outline-none focus:border-[#D71921]"
-              />
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-semibold text-[rgba(255,255,255,0.85)]">
-                  Bio (Max 160 characters)
-                </label>
-                <span className="text-[11px] text-[rgba(255,255,255,0.4)]">
-                  {bio.length}/160
-                </span>
-              </div>
-              <textarea
-                maxLength={160}
-                rows={2}
-                placeholder="Brief squad description, universities, or study motto..."
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-[#141414] border border-[rgba(255,255,255,0.12)] text-sm text-white placeholder-[rgba(255,255,255,0.3)] focus:outline-none focus:border-[#D71921] resize-none"
-              />
-            </div>
-          </div>
-
-          {/* Logo Picker */}
-          <div className="p-3.5 rounded-xl bg-[#0F0F0F] border border-[rgba(255,255,255,0.08)]">
-            <AvatarPicker
-              title="Pick Squad Dot-Matrix Logo"
-              selectedKey={avatarKey}
-              selectedVariant={avatarVariant}
-              onSelect={(key, variant) => {
-                setAvatarKey(key);
-                setAvatarVariant(variant);
-              }}
-            />
-          </div>
-
-          {/* Join Conditions */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-[rgba(255,255,255,0.85)] mb-1">
-                Join Mode
-              </label>
-              <select
-                value={joinMode}
-                onChange={(e) => setJoinMode(e.target.value as CrewJoinMode)}
-                className="w-full px-3 py-2.5 rounded-xl bg-[#141414] border border-[rgba(255,255,255,0.12)] text-xs text-white focus:outline-none focus:border-[#D71921]"
-              >
-                <option value="direct">Direct Join (Instant entry)</option>
-                <option value="request">Request Approval (Admin review)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[rgba(255,255,255,0.85)] mb-1">
-                Minimum Streak Required
-              </label>
-              <select
-                value={minStreak}
-                onChange={(e) => setMinStreak(Number(e.target.value))}
-                className="w-full px-3 py-2.5 rounded-xl bg-[#141414] border border-[rgba(255,255,255,0.12)] text-xs text-white focus:outline-none focus:border-[#D71921]"
-              >
-                <option value={0}>0 days (Anyone can join)</option>
-                <option value={3}>3-day study streak</option>
-                <option value={7}>7-day study streak</option>
-                <option value={14}>14-day study streak</option>
-                <option value={30}>30-day master streak</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Size Tier Selection */}
-          <div className="space-y-2">
-            <label className="block text-xs font-semibold text-[rgba(255,255,255,0.85)]">
-              Squad Size &amp; Billing Tier
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Free Tier */}
-              <button
-                type="button"
-                onClick={() => setTier('free')}
-                className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between gap-2 ${
-                  tier === 'free'
-                    ? 'bg-[#181818] border-white ring-1 ring-white'
-                    : 'bg-[#101010] border-[rgba(255,255,255,0.08)] hover:bg-[#141414]'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-heading font-bold text-sm text-white">Free Crew</span>
-                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-white/10 text-white">
-                      PKR 0
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-[rgba(255,255,255,0.6)] mt-1">
-                    Up to 5 squad members (including leader). Ideal for close study partners.
-                  </p>
-                </div>
-                <div className="text-[10px] text-[rgba(255,255,255,0.7)] flex items-center gap-1">
-                  <Check size={12} className="text-emerald-400" /> Free forever, no card required
-                </div>
-              </button>
-
-              {/* Large Tier */}
-              <button
-                type="button"
-                onClick={() => setTier('paid')}
-                className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between gap-2 ${
-                  tier === 'paid'
-                    ? 'bg-[#201011] border-[#D71921] ring-1 ring-[#D71921]'
-                    : 'bg-[#101010] border-[rgba(255,255,255,0.08)] hover:bg-[#141414]'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-heading font-bold text-sm text-white flex items-center gap-1.5">
-                      <Sparkles size={13} className="text-[#D71921]" /> Large Crew
-                    </span>
-                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-[#D71921] text-white font-bold">
-                      PKR 499 / mo
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-[rgba(255,255,255,0.6)] mt-1">
-                    More than 5 members (up to 30) + <strong>Pro sharing</strong> for all squad members!
-                  </p>
-                </div>
-                <div className="text-[10px] text-[rgba(255,255,255,0.7)] flex items-center gap-1">
-                  <Check size={12} className="text-[#D71921]" /> Includes shared Pro for all members
-                </div>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Pinned Footer with safe-area-inset-bottom */}
+        {/* Single Unified Scrollable Page Area */}
         <div
-          className="px-6 pt-3 flex items-center justify-end gap-3 border-t border-[rgba(255,255,255,0.1)] bg-[#0A0A0A] shrink-0"
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 pb-8"
+          style={{
+            paddingTop: 'calc(16px + env(safe-area-inset-top, 0px))',
+          }}
+        >
+          <div className="aqb-container !max-w-2xl !gap-4 sm:!gap-[18px]">
+            {/* 1. Header Card */}
+            <header className="aqb-glass-card !rounded-[28px] p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-3 min-w-0">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between sm:justify-start gap-2.5 flex-wrap min-w-0">
+                    <h2 className="aqb-page-title">Create Study Squad</h2>
+                    <span className="aqb-admin-chip">NEW SQUAD</span>
+                  </div>
+                  <p className="mt-1.5 text-[13.5px] text-[var(--text-secondary)] leading-snug">
+                    Assemble your team, track collective streaks, and compete on the Pakistan leaderboard.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={loading}
+                  aria-label="Close"
+                  className="aqb-icon-btn !w-11 !h-11 !min-w-[44px] !min-h-[44px]"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </header>
+
+            {error && (
+              <div
+                role="alert"
+                className="aqb-glass-card p-3.5 flex items-center gap-2.5 border border-[var(--accent)] text-[var(--accent)] text-xs font-semibold"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span className="flex-1">{error}</span>
+              </div>
+            )}
+
+            {/* 2. Details Card (Crew Name & Bio) */}
+            <section className="aqb-glass-card p-4 sm:p-5 flex flex-col gap-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
+                  Crew Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={50}
+                  placeholder="e.g. FAST Titans, NET Vanguard, GIKI Orbit"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="aqb-input"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    Bio (Max 160 characters)
+                  </label>
+                  <span className="text-[11px] font-mono font-bold text-[var(--text-muted)] tabular-nums">
+                    {bio.length}/160
+                  </span>
+                </div>
+                <textarea
+                  maxLength={160}
+                  rows={2}
+                  placeholder="Brief squad description, universities, or study motto..."
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  className="aqb-input resize-none min-h-[76px]"
+                />
+              </div>
+            </section>
+
+            {/* 3. Squad Logo Card ("Working in" Pattern) */}
+            <section className="aqb-glass-card aqb-glass-card--selected p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  SQUAD LOGO
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="aqb-pill aqb-pill--tag font-bold">
+                    {selectedVariantDef.label}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setLogoSheetOpen(true)}
+                className="w-full text-left flex items-center justify-between gap-3 py-1.5 rounded-2xl transition active:scale-[0.99] min-w-0 cursor-pointer"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <MatrixAvatar
+                    avatarKey={avatarKey}
+                    variant={avatarVariant}
+                    size={46}
+                    className="rounded-2xl shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <div className="text-base font-extrabold text-[var(--text)] truncate">
+                      {selectedAvatarDef.label}
+                    </div>
+                    <div className="text-xs font-mono text-[var(--text-muted)] truncate">
+                      {selectedVariantDef.label}
+                    </div>
+                  </div>
+                </div>
+
+                <span className="aqb-btn aqb-btn--glass !min-h-[40px] !px-3 !py-1.5 text-xs shrink-0">
+                  Change
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </span>
+              </button>
+            </section>
+
+            {/* 5. Rules Card (Join Mode & Minimum Streak Required) */}
+            <section className="aqb-glass-card p-4 sm:p-5 flex flex-col gap-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
+                  Join Mode
+                </label>
+                <select
+                  value={joinMode}
+                  onChange={(e) => setJoinMode(e.target.value as CrewJoinMode)}
+                  className="aqb-input"
+                >
+                  <option value="direct">Direct Join (Instant entry)</option>
+                  <option value="request">Request Approval (Admin review)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1.5">
+                  Minimum Streak Required
+                </label>
+                <select
+                  value={minStreak}
+                  onChange={(e) => setMinStreak(Number(e.target.value))}
+                  className="aqb-input"
+                >
+                  <option value={0}>0 days (Anyone can join)</option>
+                  <option value={3}>3-day study streak</option>
+                  <option value={7}>7-day study streak</option>
+                  <option value={14}>14-day study streak</option>
+                  <option value={30}>30-day master streak</option>
+                </select>
+              </div>
+            </section>
+
+            {/* 6. Squad Size & Billing Tier */}
+            <section className="flex flex-col gap-2.5">
+              <div className="px-1 text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                Squad Size &amp; Billing Tier
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {/* Free Crew Card */}
+                <button
+                  type="button"
+                  onClick={() => setTier('free')}
+                  className={`aqb-glass-card p-4 text-left flex flex-col justify-between gap-3 cursor-pointer ${
+                    tier === 'free' ? 'aqb-glass-card--selected' : ''
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-base font-extrabold text-[var(--text)]">
+                        Free Crew
+                      </span>
+                      <span className="aqb-pill aqb-pill--coming-soon tabular-nums font-mono font-bold">
+                        PKR 0
+                      </span>
+                    </div>
+                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed mt-1.5">
+                      Up to 5 squad members (including leader). Ideal for close study partners.
+                    </p>
+                  </div>
+                  <div className="pt-2.5 border-t border-[var(--border)] text-[11px] font-semibold text-[var(--text-secondary)] flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                    <span>Free forever, no card required</span>
+                  </div>
+                </button>
+
+                {/* Large Crew Card */}
+                <button
+                  type="button"
+                  onClick={() => setTier('paid')}
+                  className={`aqb-glass-card p-4 text-left flex flex-col justify-between gap-3 cursor-pointer ${
+                    tier === 'paid' ? 'aqb-glass-card--selected' : ''
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-base font-extrabold text-[var(--text)] flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                        <span>Large Crew</span>
+                      </span>
+                      <span className="aqb-admin-chip tabular-nums font-mono">
+                        PKR 499 / MO
+                      </span>
+                    </div>
+                    <p className="text-xs text-[var(--text-secondary)] leading-relaxed mt-1.5">
+                      More than 5 members (up to 30) +{' '}
+                      <strong className="text-[var(--text)]">Pro sharing</strong> for all squad members!
+                    </p>
+                  </div>
+                  <div className="pt-2.5 border-t border-[var(--border)] text-[11px] font-semibold text-[var(--text-secondary)] flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                    <span>Includes shared Pro for all members</span>
+                  </div>
+                </button>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        {/* 7. Pinned Safe-Area Footer */}
+        <div
+          className="shrink-0 border-t border-[var(--border)] bg-[var(--glass-surface-strong)] backdrop-blur-xl px-4 sm:px-6 pt-3"
           style={{
             paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
           }}
         >
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="px-4 py-2 rounded-xl text-xs text-[rgba(255,255,255,0.7)] hover:text-white"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={loading || !name.trim()}
-            className="px-6 py-2.5 rounded-xl bg-[#D71921] hover:bg-[#b0131a] text-white text-xs font-bold transition-all shadow-md disabled:opacity-50 flex items-center gap-2"
-          >
-            {loading ? (
-              'Creating Crew...'
-            ) : (
-              <>
-                <Users size={14} />
-                <span>Create Squad</span>
-              </>
-            )}
-          </button>
+          <div className="max-w-2xl mx-auto w-full flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="aqb-btn aqb-btn--glass shrink-0"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading || !name.trim()}
+              className="aqb-btn aqb-btn--primary flex-1"
+            >
+              {loading ? (
+                'Creating Crew...'
+              ) : (
+                <>
+                  <Users className="w-4 h-4 shrink-0" />
+                  <span>Create Squad</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </form>
+
+      {/* 4. Logo Picker Sheet ("Select University" Pattern) */}
+      {logoSheetOpen && (
+        <div
+          className="aqb-sheet-backdrop"
+          style={{ zIndex: 1250 }}
+          onClick={() => setLogoSheetOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Select Logo"
+        >
+          <div
+            className="aqb-sheet"
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={handleSheetTouchStart}
+            onTouchEnd={handleSheetTouchEnd}
+          >
+            <div className="aqb-sheet-handle-bar">
+              <div className="aqb-sheet-handle-pill" />
+            </div>
+
+            <div className="aqb-sheet-header">
+              <div className="min-w-0">
+                <h2 className="text-base font-extrabold text-[var(--text)] truncate">
+                  Select Logo
+                </h2>
+                <p className="text-xs text-[var(--text-muted)] truncate">
+                  {MATRIX_AVATARS.length} logos · {activeCategoryLabel}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLogoSheetOpen(false)}
+                aria-label="Close logo picker"
+                className="aqb-icon-btn !w-10 !h-10 !min-w-[40px] !min-h-[40px]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="aqb-sheet-body flex flex-col gap-4">
+              {/* Color Variants Row at Top of Sheet */}
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2">
+                  Color Variant
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {(Object.keys(MATRIX_VARIANTS) as MatrixAvatarVariant[]).map((variantKey) => {
+                    const pal = MATRIX_VARIANTS[variantKey];
+                    const isSelectedVariant = avatarVariant === variantKey;
+                    return (
+                      <button
+                        key={variantKey}
+                        type="button"
+                        onClick={() => setAvatarVariant(variantKey)}
+                        className={`aqb-btn !min-h-[42px] !px-3 text-xs justify-start ${
+                          isSelectedVariant ? 'aqb-btn--primary' : 'aqb-btn--glass'
+                        }`}
+                      >
+                        <span
+                          className="w-4 h-4 rounded-md flex items-center justify-center shrink-0"
+                          style={{
+                            backgroundColor: pal.bg,
+                            border: `1px solid ${pal.border}`,
+                          }}
+                        >
+                          <span
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: pal.activeDot }}
+                          />
+                        </span>
+                        <span className="truncate">{pal.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Horizontally Scrollable Category Chips Row */}
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2">
+                  Category
+                </div>
+                <div className="aqb-hscroll-fade">
+                  {LOGO_THEMES.map((th) => (
+                    <button
+                      key={th}
+                      type="button"
+                      onClick={() => setLogoFilterTheme(th)}
+                      className={`aqb-btn !min-h-[40px] !px-3.5 text-xs capitalize shrink-0 ${
+                        logoFilterTheme === th ? 'aqb-btn--primary' : 'aqb-btn--glass'
+                      }`}
+                    >
+                      {th}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Logos Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {filteredLogos.map((av) => {
+                  const isSelected = avatarKey === av.key;
+                  return (
+                    <button
+                      key={av.key}
+                      type="button"
+                      onClick={() => {
+                        setAvatarKey(av.key);
+                        setLogoSheetOpen(false);
+                      }}
+                      className={`aqb-glass-card p-3 text-left flex items-center gap-3 cursor-pointer ${
+                        isSelected ? 'aqb-glass-card--selected' : ''
+                      }`}
+                    >
+                      <MatrixAvatar
+                        avatarKey={av.key}
+                        variant={avatarVariant}
+                        size={44}
+                        className="rounded-2xl shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-extrabold text-[var(--text)] truncate">
+                          {av.label}
+                        </div>
+                        <div className="text-[11px] font-mono uppercase text-[var(--text-muted)] truncate">
+                          {av.theme}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body
   );
 };
-

@@ -88,6 +88,7 @@ export const PublicPostDetailPage: React.FC = () => {
   const [submittingComment, setSubmittingComment] = useState(false);
   const [viewerImage, setViewerImage] = useState<{ url: string; name?: string } | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [visibleCommentsLimit, setVisibleCommentsLimit] = useState(15);
   const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const loadData = useCallback(async () => {
@@ -204,6 +205,7 @@ export const PublicPostDetailPage: React.FC = () => {
     if (rawHash.startsWith('#comment-')) {
       const targetCmtId = decodeURIComponent(rawHash.slice('#comment-'.length));
       setHighlightedCommentId(targetCmtId);
+      setVisibleCommentsLimit((prev) => Math.max(prev, comments.length));
       const timer = setTimeout(() => {
         const el = document.getElementById(`comment-${targetCmtId}`);
         if (el) {
@@ -340,9 +342,32 @@ export const PublicPostDetailPage: React.FC = () => {
       !/\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(f.url || '')
   );
 
-  const createdDateIso = post.createdAt?.toDate
-    ? post.createdAt.toDate().toISOString()
+  const createdDateObj = post.createdAt?.toDate
+    ? post.createdAt.toDate()
+    : typeof post.createdAt === 'string' || typeof post.createdAt === 'number'
+    ? new Date(post.createdAt)
+    : new Date();
+  const createdDateIso = !isNaN(createdDateObj.getTime())
+    ? createdDateObj.toISOString()
     : new Date().toISOString();
+  const updatedDateObj = (post as any).updatedAt?.toDate
+    ? (post as any).updatedAt.toDate()
+    : (post as any).updatedAt
+    ? new Date((post as any).updatedAt)
+    : createdDateObj;
+  const modifiedDateIso = !isNaN(updatedDateObj.getTime())
+    ? updatedDateObj.toISOString()
+    : createdDateIso;
+  const formattedPostDate = !isNaN(createdDateObj.getTime())
+    ? createdDateObj.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : 'Recently';
+
+  const totalCommentsCount = Math.max(post.commentCount || 0, comments.length);
+  const postOgImage = imageFiles[0]?.url || '/assets/og-image.png';
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -350,11 +375,13 @@ export const PublicPostDetailPage: React.FC = () => {
     headline: post.title,
     text: maskPublicUserText(post.description),
     datePublished: createdDateIso,
+    dateModified: modifiedDateIso,
     url: `https://boardly.cfd${canonicalPath}`,
     author: {
       '@type': 'Person',
       name: authorDisplay,
     },
+    commentCount: totalCommentsCount,
     interactionStatistic: [
       {
         '@type': 'InteractionCounter',
@@ -364,7 +391,7 @@ export const PublicPostDetailPage: React.FC = () => {
       {
         '@type': 'InteractionCounter',
         interactionType: 'https://schema.org/CommentAction',
-        userInteractionCount: comments.length,
+        userInteractionCount: totalCommentsCount,
       },
     ],
   };
@@ -521,13 +548,14 @@ export const PublicPostDetailPage: React.FC = () => {
   return (
     <div className="min-h-screen w-full max-w-full min-w-0 box-border overflow-x-hidden bg-[var(--bg)] text-[var(--text)] pt-28 pb-[calc(120px+env(safe-area-inset-bottom,0px))] px-4 sm:px-6">
       <PageMeta
-        title={`${post.title} — ${resolvedPractice.subjectSlug ? resolvedPractice.label : post.subject || 'Boardly Commons'}`}
+        title={`${post.title} | Boardly Commons`}
         description={
-          maskPublicUserText(post.description).slice(0, 155) ||
+          maskPublicUserText(post.description).replace(/\s+/g, ' ').trim().slice(0, 155) ||
           `Read ${post.title} shared in Boardly Commons for ${resolvedPractice.label || 'exam'} preparation.`
         }
         canonicalPath={canonicalPath}
         ogType="article"
+        ogImage={postOgImage}
         jsonLd={jsonLd}
       />
 
@@ -603,6 +631,8 @@ export const PublicPostDetailPage: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-white/55 mt-0.5 flex-wrap">
+                  <time dateTime={createdDateIso}>{formattedPostDate}</time>
+                  <span>·</span>
                   <span className="inline-flex items-center gap-1">
                     {post.isAnonymous ? <EyeOff size={12} /> : <Globe size={12} />}
                     <span>{post.isAnonymous ? 'Anonymous' : 'Public'}</span>
@@ -853,7 +883,7 @@ export const PublicPostDetailPage: React.FC = () => {
             </p>
           ) : (
             <div className="space-y-3 w-full max-w-full min-w-0">
-              {comments.map((c) => {
+              {comments.slice(0, visibleCommentsLimit).map((c) => {
                 const liveCAuthor =
                   !c.isAnonymous && c.authorUid ? liveAuthors[c.authorUid] : undefined;
                 const cAuthor = c.isAnonymous
@@ -981,6 +1011,18 @@ export const PublicPostDetailPage: React.FC = () => {
                   </div>
                 );
               })}
+
+              {comments.length > visibleCommentsLimit && (
+                <div className="pt-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCommentsLimit((prev) => prev + 15)}
+                    className="px-4 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-xs font-semibold text-white/80 hover:text-white transition-colors cursor-pointer"
+                  >
+                    Load more comments ({comments.length - visibleCommentsLimit} remaining)
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </section>

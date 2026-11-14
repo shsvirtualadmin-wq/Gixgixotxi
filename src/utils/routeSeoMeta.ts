@@ -105,13 +105,15 @@ export function resolveStaticOrPatternRouteMeta(
     const slugParam = decodeURIComponent(cleanPath.slice('/commons/post/'.length));
     const post = dynamicData?.post;
     if (post && post.title) {
-      const title = `${post.title} — ${post.subject || 'Commons'} | Boardly`;
-      const desc =
-        String(post.description || '')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .slice(0, 200) ||
-        `View "${post.title}" and join the student discussion on Boardly Commons.`;
+      const title = `${post.title} | Boardly Commons`;
+      const rawText = String(post.description || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const desc = rawText
+        ? rawText.length > 158
+          ? `${rawText.slice(0, 155).trimEnd()}...`
+          : rawText
+        : `Read "${post.title}" and join the student discussion on Boardly Commons.`;
       const firstImage = (post.files || []).find(
         (f) =>
           f?.url &&
@@ -132,9 +134,9 @@ export function resolveStaticOrPatternRouteMeta(
         ogImage,
       };
     }
-    const readable = formatSlugLabel(slugParam.replace(/^post_[a-zA-Z0-9_]+-?/, '')) || 'Student Post';
+    const readable = formatSlugLabel(slugParam.replace(/^(?:commons_anon_topic_\d+|post_[a-zA-Z0-9_]+)-?/, '')) || 'Student Post';
     return {
-      title: `${readable} — Boardly Commons`,
+      title: `${readable} | Boardly Commons`,
       description: `Read this student post, view comments, and download shared study resources on Boardly Commons.`,
       canonicalUrl,
       ogType: 'article',

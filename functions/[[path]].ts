@@ -202,11 +202,16 @@ function formatReadableDate(iso: string): string {
 function renderPostSsrHtmlAndJsonLd(
   row: D1PostRow,
   comments: D1CommentRow[],
-  canonicalUrl: string
+  canonicalUrl: string,
+  relatedPosts: Array<{ id: string; slug?: string; title: string; subject?: string }> = []
 ): { articleHtml: string; jsonLdString: string } {
-  const authorName = row.is_anonymous
-    ? row.anonymous_alias || 'Anonymous Student'
-    : row.author_name || 'Boardly Student';
+  const rawAuthor = row.is_anonymous
+    ? 'Anonymous Student'
+    : String(row.author_name || 'Boardly Student').trim();
+  const authorName =
+    !row.is_anonymous && rawAuthor.includes('@')
+      ? rawAuthor.split('@')[0] || 'Boardly Student'
+      : rawAuthor || 'Boardly Student';
   const publishedIso = toIsoDate(row.created_at);
   const modifiedIso = toIsoDate(row.updated_at || row.created_at);
   const readableDate = formatReadableDate(publishedIso);
@@ -248,13 +253,33 @@ function renderPostSsrHtmlAndJsonLd(
       <p style="font-size:0.875rem;opacity:0.75;">Join the discussion on Boardly Commons.</p>
     </section>`;
 
-  const articleHtml = `<article class="boardly-ssr-post" data-ssr-post-id="${escapeHtmlAttr(row.id)}" style="max-width:780px;margin:2rem auto;padding:1.5rem;font-family:system-ui,-apple-system,sans-serif;line-height:1.65;">
+  const relatedHtml =
+    relatedPosts.length > 0
+      ? `<section class="related-posts" aria-label="Related posts" style="margin-top:2rem;padding-top:1.25rem;border-top:1px solid rgba(128,128,128,0.2);">
+      <h2 style="font-size:1.125rem;font-weight:700;margin-bottom:0.75rem;">Related Posts</h2>
+      <ul style="list-style:none;padding:0;margin:0;display:grid;gap:0.5rem;">
+        ${relatedPosts
+          .map((rp) => {
+            const rpSlug = buildCanonicalSlug(rp.id, rp.title);
+            return `<li><a href="https://boardly.cfd/commons/post/${escapeHtmlAttr(rpSlug)}">${escapeHtmlText(rp.title)}</a></li>`;
+          })
+          .join('\n        ')}
+      </ul>
+    </section>`
+      : '';
+
+  const articleHtml = `<main style="max-width:780px;margin:2rem auto;padding:1.5rem;font-family:system-ui,-apple-system,sans-serif;line-height:1.65;">
+  <nav aria-label="Breadcrumb" style="font-size:0.8125rem;opacity:0.8;margin-bottom:1rem;">
+    <a href="https://boardly.cfd/">Home</a> &gt; <a href="https://boardly.cfd/commons">Commons</a> &gt; <span aria-current="page">${escapeHtmlText(row.title)}</span>
+  </nav>
+  <article class="boardly-ssr-post" data-ssr-post-id="${escapeHtmlAttr(row.id)}">
     <header style="margin-bottom:1.25rem;">
       <div class="post-meta" style="font-size:0.875rem;opacity:0.8;margin-bottom:0.5rem;">
         <span>${escapeHtmlText(row.subject || 'General')}</span>
         ${row.chapter && row.chapter !== 'General' ? ` · <span>${escapeHtmlText(row.chapter)}</span>` : ''}
         · <span>Posted by <strong class="post-author">${escapeHtmlText(authorName)}</strong></span>
         · <time datetime="${escapeHtmlAttr(publishedIso)}">${escapeHtmlText(readableDate)}</time>
+        · <span>${commentCount} ${commentCount === 1 ? 'comment' : 'comments'}</span>
       </div>
       <h1 style="font-size:1.75rem;font-weight:800;line-height:1.25;margin:0;">${escapeHtmlText(row.title)}</h1>
     </header>
@@ -262,7 +287,9 @@ function renderPostSsrHtmlAndJsonLd(
       ${bodyHtml}
     </div>
     ${commentsHtml}
-  </article>`;
+    ${relatedHtml}
+  </article>
+</main>`;
 
   const jsonLdObj = {
     '@context': 'https://schema.org',
@@ -340,6 +367,12 @@ export const onRequest = async (context: {
     });
   }
 
+  // Canonical www -> non-www 301 redirect for GET requests
+  if (request.method === 'GET' && url.hostname.toLowerCase().startsWith('www.')) {
+    const cleanHost = url.hostname.replace(/^www\./i, '');
+    return Response.redirect(`https://${cleanHost}${pathname}${url.search}`, 301);
+  }
+
   // Never apply SEO redirects, trailing-slash rules, or 404 handling to non-GET requests or static assets
   if (
     request.method !== 'GET' ||
@@ -371,6 +404,10 @@ export const onRequest = async (context: {
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <sitemap>
     <loc>https://boardly.cfd/sitemap.xml</loc>
+    <lastmod>${nowIso}</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>https://boardly.cfd/sitemap-posts.xml</loc>
     <lastmod>${nowIso}</lastmod>
   </sitemap>
 </sitemapindex>`;
@@ -405,7 +442,7 @@ export const onRequest = async (context: {
 
       const postEntries: Array<{ loc: string; lastmod: string; priority: string; changefreq: string }> = [];
       for (const r of results || []) {
-        const slug = r.slug || buildCanonicalSlug(r.id, r.title);
+        const slug = buildCanonicalSlug(r.id, r.title);
         const lastmod = toIsoDate(r.updated_at || r.created_at);
         postEntries.push({
           loc: `https://boardly.cfd/commons/post/${escapeHtmlText(slug)}`,
@@ -477,6 +514,16 @@ ${postEntries
     return response;
   }
 
+  const replaceRootContent = (rawHtml: string, innerHtml: string): string => {
+    if (/<div\s+id="root"\s*>[\s\S]*?<\/div>\s*(?=<script\b)/i.test(rawHtml)) {
+      return rawHtml.replace(
+        /<div\s+id="root"\s*>[\s\S]*?<\/div>\s*(?=<script\b)/i,
+        `<div id="root">${innerHtml}</div>\n    `
+      );
+    }
+    return rawHtml.replace(/<div\s+id="root"\s*><\/div>/i, `<div id="root">${innerHtml}</div>`);
+  };
+
   const isCommonsPostRoute = pathname.startsWith('/commons/post/');
   const isMaterialItemRoute =
     (pathname.startsWith('/material/') || pathname.startsWith('/study-material/')) &&
@@ -495,16 +542,15 @@ ${postEntries
 
     if (!postId) {
       let notFoundHtml = await response.text();
-      notFoundHtml = notFoundHtml
-        .replace(/<title>[\s\S]*?<\/title>/i, '<title>Post Not Found — Boardly Commons</title>')
-        .replace(
-          /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
-          '<meta name="robots" content="noindex, nofollow" />'
-        )
-        .replace(
-          /<div id="root"><\/div>/i,
-          '<div id="root"><main style="max-width:640px;margin:4rem auto;padding:2rem;text-align:center;font-family:system-ui,sans-serif;"><h1>Post Not Found (404)</h1><p>This post does not exist or was removed.</p></main></div>'
-        );
+      notFoundHtml = replaceRootContent(
+        notFoundHtml
+          .replace(/<title>[\s\S]*?<\/title>/i, '<title>Post Not Found — Boardly Commons</title>')
+          .replace(
+            /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
+            '<meta name="robots" content="noindex, nofollow" />'
+          ),
+        '<main style="max-width:640px;margin:4rem auto;padding:2rem;text-align:center;font-family:system-ui,sans-serif;"><h1>Post Not Found (404)</h1><p>This post does not exist or was removed.</p></main>'
+      );
       const headers = new Headers(response.headers);
       headers.set('content-type', 'text/html; charset=utf-8');
       headers.set('cache-control', 'no-store');
@@ -531,47 +577,61 @@ ${postEntries
         if (!d1Row) {
           // Real 404 for posts that do not exist, were deleted, or are hidden/private
           let notFoundHtml = await response.text();
-          notFoundHtml = notFoundHtml
-            .replace(/<title>[\s\S]*?<\/title>/i, '<title>Post Not Found — Boardly Commons</title>')
-            .replace(
-              /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
-              '<meta name="description" content="This post does not exist or has been removed from Boardly Commons." />'
-            )
-            .replace(
-              /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
-              '<meta name="robots" content="noindex, nofollow" />'
-            )
-            .replace(
-              /<div id="root"><\/div>/i,
-              '<div id="root"><main data-ssr-status="404" style="max-width:640px;margin:4rem auto;padding:2rem;text-align:center;font-family:system-ui,sans-serif;"><h1>Post Not Found</h1><p>This Commons post does not exist or has been deleted.</p></main></div>'
-            );
+          notFoundHtml = replaceRootContent(
+            notFoundHtml
+              .replace(/<title>[\s\S]*?<\/title>/i, '<title>Post Not Found — Boardly Commons</title>')
+              .replace(
+                /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
+                '<meta name="description" content="This post does not exist or has been removed from Boardly Commons." />'
+              )
+              .replace(
+                /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
+                '<meta name="robots" content="noindex, nofollow" />'
+              ),
+            '<main data-ssr-status="404" style="max-width:640px;margin:4rem auto;padding:2rem;text-align:center;font-family:system-ui,sans-serif;"><h1>Post Not Found</h1><p>This Commons post does not exist or has been deleted.</p></main>'
+          );
           const headers = new Headers(response.headers);
           headers.set('content-type', 'text/html; charset=utf-8');
           headers.set('cache-control', 'no-store');
           return new Response(notFoundHtml, { status: 404, headers });
         }
 
-        // Fetch top comments for server-rendered HTML & JSON-LD
-        let topComments: D1CommentRow[] = [];
-        try {
-          const commentsRes = await env.DB.prepare(
-            'SELECT id, post_id, text, is_anonymous, author_name, created_at FROM post_comments WHERE post_id = ? ORDER BY created_at ASC LIMIT 20'
-          )
-            .bind(d1Row.id)
-            .all<D1CommentRow>();
-          topComments = Array.isArray(commentsRes?.results) ? commentsRes.results : [];
-        } catch {
-          topComments = [];
+        const canonicalSlug = buildCanonicalSlug(d1Row.id, d1Row.title);
+        // 301 redirect ID-only link (/commons/post/{id}) to canonical slug URL (/commons/post/{id}-{slug})
+        if (isCommonsPostRoute && slugParam === d1Row.id && canonicalSlug !== slugParam) {
+          return Response.redirect(`${url.origin}/commons/post/${canonicalSlug}${url.search}`, 301);
         }
 
-        const canonicalSlug = d1Row.slug || buildCanonicalSlug(d1Row.id, d1Row.title);
+        // Fetch top comments and related posts for server-rendered HTML & JSON-LD
+        let topComments: D1CommentRow[] = [];
+        let relatedPosts: Array<{ id: string; slug?: string; title: string; subject?: string }> = [];
+        try {
+          const [commentsRes, relatedRes] = await Promise.all([
+            env.DB.prepare(
+              'SELECT id, post_id, text, is_anonymous, author_name, created_at FROM post_comments WHERE post_id = ? ORDER BY created_at ASC LIMIT 20'
+            )
+              .bind(d1Row.id)
+              .all<D1CommentRow>(),
+            env.DB.prepare(
+              "SELECT id, slug, title, subject FROM posts WHERE id != ? AND is_hidden = 0 AND (status IS NULL OR status != 'removed') AND (visibility IS NULL OR visibility = 'public') ORDER BY created_at DESC LIMIT 4"
+            )
+              .bind(d1Row.id)
+              .all<{ id: string; slug?: string; title: string; subject?: string }>(),
+          ]);
+          topComments = Array.isArray(commentsRes?.results) ? commentsRes.results : [];
+          relatedPosts = Array.isArray(relatedRes?.results) ? relatedRes.results : [];
+        } catch {
+          topComments = [];
+          relatedPosts = [];
+        }
+
         const canonicalUrl = isMaterialItemRoute
           ? `https://boardly.cfd/material/${canonicalSlug}`
           : `https://boardly.cfd/commons/post/${canonicalSlug}`;
 
         const pageTitle = isMaterialItemRoute
           ? `${d1Row.title} — ${d1Row.subject || 'Study Material'} PDF & Notes | Boardly`
-          : `${d1Row.title} — ${d1Row.subject || 'General'} | Boardly Commons`;
+          : `${d1Row.title} | Boardly Commons`;
         const metaDescription = buildPostMetaDescription(
           d1Row.description,
           d1Row.title,
@@ -582,7 +642,8 @@ ${postEntries
         const { articleHtml, jsonLdString } = renderPostSsrHtmlAndJsonLd(
           d1Row,
           topComments,
-          canonicalUrl
+          canonicalUrl,
+          relatedPosts
         );
 
         const t = escapeHtmlAttr(pageTitle);
@@ -591,65 +652,67 @@ ${postEntries
         const img = escapeHtmlAttr(ogImage);
 
         let html = await response.text();
-        html = html
-          .replace(/<title>[\s\S]*?<\/title>/i, `<title>${t}</title>`)
-          .replace(
-            /<meta\s+name="title"\s+content="[^"]*"\s*\/?>/i,
-            `<meta name="title" content="${t}" />`
-          )
-          .replace(
-            /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
-            `<meta name="description" content="${d}" />`
-          )
-          .replace(
-            /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
-            '<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />'
-          )
-          .replace(
-            /<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/i,
-            `<link rel="canonical" href="${c}" />`
-          )
-          .replace(
-            /<meta\s+property="og:type"\s+content="[^"]*"\s*\/?>/i,
-            '<meta property="og:type" content="article" />'
-          )
-          .replace(
-            /<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i,
-            `<meta property="og:url" content="${c}" />`
-          )
-          .replace(
-            /<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i,
-            `<meta property="og:title" content="${t}" />`
-          )
-          .replace(
-            /<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i,
-            `<meta property="og:description" content="${d}" />`
-          )
-          .replace(
-            /<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i,
-            `<meta property="og:image" content="${img}" />`
-          )
-          .replace(
-            /<meta\s+name="twitter:url"\s+content="[^"]*"\s*\/?>/i,
-            `<meta name="twitter:url" content="${c}" />`
-          )
-          .replace(
-            /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
-            `<meta name="twitter:title" content="${t}" />`
-          )
-          .replace(
-            /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
-            `<meta name="twitter:description" content="${d}" />`
-          )
-          .replace(
-            /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
-            `<meta name="twitter:image" content="${img}" />`
-          )
-          .replace(
-            /<\/head>/i,
-            `  <script id="boardly-post-jsonld" type="application/ld+json">${jsonLdString}</script>\n  </head>`
-          )
-          .replace(/<div id="root"><\/div>/i, `<div id="root">${articleHtml}</div>`);
+        html = replaceRootContent(
+          html
+            .replace(/<title>[\s\S]*?<\/title>/i, `<title>${t}</title>`)
+            .replace(
+              /<meta\s+name="title"\s+content="[^"]*"\s*\/?>/i,
+              `<meta name="title" content="${t}" />`
+            )
+            .replace(
+              /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
+              `<meta name="description" content="${d}" />`
+            )
+            .replace(
+              /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
+              '<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />'
+            )
+            .replace(
+              /<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/i,
+              `<link rel="canonical" href="${c}" />`
+            )
+            .replace(
+              /<meta\s+property="og:type"\s+content="[^"]*"\s*\/?>/i,
+              '<meta property="og:type" content="article" />'
+            )
+            .replace(
+              /<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i,
+              `<meta property="og:url" content="${c}" />`
+            )
+            .replace(
+              /<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i,
+              `<meta property="og:title" content="${t}" />`
+            )
+            .replace(
+              /<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i,
+              `<meta property="og:description" content="${d}" />`
+            )
+            .replace(
+              /<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i,
+              `<meta property="og:image" content="${img}" />`
+            )
+            .replace(
+              /<meta\s+name="twitter:url"\s+content="[^"]*"\s*\/?>/i,
+              `<meta name="twitter:url" content="${c}" />`
+            )
+            .replace(
+              /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
+              `<meta name="twitter:title" content="${t}" />`
+            )
+            .replace(
+              /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
+              `<meta name="twitter:description" content="${d}" />`
+            )
+            .replace(
+              /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
+              `<meta name="twitter:image" content="${img}" />`
+            )
+            .replace(
+              /<\/head>/i,
+              `  <script id="boardly-post-jsonld" type="application/ld+json">${jsonLdString}</script>\n  </head>`
+            ),
+          articleHtml
+        );
 
         const newHeaders = new Headers(response.headers);
         newHeaders.set('content-type', 'text/html; charset=utf-8');

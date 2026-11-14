@@ -62,8 +62,10 @@ Disallow: /join/
 Disallow: /u/
 Disallow: /search
 Disallow: /410
+Disallow: /api
 Disallow: /api/
 
 Sitemap: https://boardly.cfd/sitemap.xml
+Sitemap: https://boardly.cfd/sitemap-index.xml
 Sitemap: https://boardly.cfd/sitemap-posts.xml
 
