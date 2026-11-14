@@ -1990,11 +1990,21 @@ export default {
           const seqPad = String(nextSeq++).padStart(4, '0');
           const serial = `BDLY-GL${glPad}-${seqPad}`;
           const resolvedThemeObj = resolveWorkerCertThemeColors(testId, configuredThemeId, studentUid);
+          const roleEmailRow = await db
+            .prepare('SELECT email FROM user_roles WHERE uid = ?1 LIMIT 1')
+            .bind(studentUid)
+            .first()
+            .catch(() => null);
+          const resolvedStudentEmail = String(
+            w.user_email || w.student_email || roleEmailRow?.email || ''
+          )
+            .trim()
+            .toLowerCase();
           const certRow = {
             id: `cert_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`,
             student_uid: studentUid,
-            student_name: resolveLeaderboardRowName(w.user_name, ''),
-            student_email: null,
+            student_name: resolveLeaderboardRowName(w.user_name, resolvedStudentEmail) || 'Student',
+            student_email: resolvedStudentEmail,
             grand_line_id: testId,
             grand_line_title: String(testRow.title || 'Boardly Grand Line Mock'),
             edition_label: `${String(testRow.subject || 'OFFICIAL').toUpperCase()} · GRAND LINE #${glPad}`,
@@ -2005,7 +2015,7 @@ export default {
             participants_count: bestAttempts.length,
             serial,
             theme_id: resolvedThemeObj.id || configuredThemeId || 'default',
-            signature_version: Number(activeSig.version),
+            signature_version: Number(activeSig.version || 1),
             issued_at: now,
             pdf_r2_key: `certificates/${testId}/${serial}.pdf`,
             png_r2_key: `certificates/${testId}/${serial}.png`,
@@ -2024,31 +2034,36 @@ export default {
             .bind(
               certRow.id,
               certRow.student_uid,
-              certRow.student_name,
-              certRow.student_email,
+              certRow.student_name || 'Student',
+              certRow.student_email || '',
               certRow.grand_line_id,
-              certRow.grand_line_title,
-              certRow.edition_label,
+              certRow.grand_line_title || 'Boardly Grand Line Mock',
+              certRow.edition_label || '',
               certRow.rank,
               certRow.score,
               certRow.total_questions,
               certRow.percentage,
               certRow.participants_count,
               certRow.serial,
-              certRow.theme_id,
+              certRow.theme_id || 'default',
               certRow.signature_version,
               certRow.issued_at,
               certRow.pdf_r2_key,
               certRow.png_r2_key,
-              certRow.status
+              certRow.status || 'active'
             )
             .run();
+
+          const exp = now + 1000 * 60 * 60 * 24 * 7;
+          const pngToken = await signWorkerCertToken(certRow.id, 'png', exp);
+          const pdfToken = await signWorkerCertToken(certRow.id, 'pdf', exp);
 
           issued.push({
             id: certRow.id,
             serial: certRow.serial,
             studentUid: certRow.student_uid,
             studentName: certRow.student_name,
+            studentEmail: certRow.student_email,
             grandLineId: certRow.grand_line_id,
             grandLineTitle: certRow.grand_line_title,
             editionLabel: certRow.edition_label,
@@ -2061,6 +2076,10 @@ export default {
             signatureVersion: certRow.signature_version,
             issuedAt: certRow.issued_at,
             status: certRow.status,
+            verifyUrl: `/verify/${encodeURIComponent(certRow.serial)}`,
+            previewPngUrl: `/api/certificates/${encodeURIComponent(certRow.id)}/download?format=png&inline=1&token=${pngToken}&exp=${exp}`,
+            downloadPngUrl: `/api/certificates/${encodeURIComponent(certRow.id)}/download?format=png&token=${pngToken}&exp=${exp}`,
+            downloadPdfUrl: `/api/certificates/${encodeURIComponent(certRow.id)}/download?format=pdf&token=${pdfToken}&exp=${exp}`,
           });
         }
 
