@@ -16,9 +16,12 @@ import {
   CheckCircle2,
   Eye,
   RefreshCw,
+  Clock,
+  Calendar,
 } from 'lucide-react';
 import {
   getAllPublicGrandLineTests,
+  getAllGrandLineTestsForAdmin,
   getMyTestAttempts,
   getTestLeaderboard,
   type AmbassadorTestAttempt,
@@ -31,6 +34,16 @@ import { useAuthGate } from '@/contexts/AuthGateContext';
 import { routes } from '@/utils/routes';
 import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
 import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import {
+  computeGrandLineTestStatus,
+  formatPktDateTime,
+  getGrandLineCountdownLabel,
+} from '@/utils/grandLineSchedule';
+import {
+  GrandLineStatusPills,
+  GrandLineAdminRowControls,
+  useServerSyncedClock,
+} from '@/components/admin/GrandLineScheduleSheet';
 
 function formatTimeTaken(seconds?: number): string {
   const sec = Math.max(0, Math.round(Number(seconds || 0)));
@@ -45,6 +58,7 @@ export function GrandLinePage() {
   const { profile } = useUserProfile();
   const { requireAuth } = useAuthGate();
   const navigate = useNavigate();
+  const nowMs = useServerSyncedClock(1000);
 
   const [tests, setTests] = useState<AmbassadorTestDoc[]>([]);
   const [myAttemptsMap, setMyAttemptsMap] = useState<Record<string, AmbassadorTestAttempt>>({});
@@ -66,7 +80,9 @@ export function GrandLinePage() {
       setLoading(true);
       setLoadError(null);
       try {
-        const data = await getAllPublicGrandLineTests();
+        const data = isAdmin
+          ? await getAllGrandLineTestsForAdmin().catch(() => getAllPublicGrandLineTests())
+          : await getAllPublicGrandLineTests();
         if (!active) return;
         setTests(data);
         if (data.length > 0) {
@@ -85,7 +101,7 @@ export function GrandLinePage() {
     return () => {
       active = false;
     };
-  }, [retryCount]);
+  }, [retryCount, isAdmin]);
 
   // Load current student's attempts and map by testId
   useEffect(() => {
@@ -136,6 +152,17 @@ export function GrandLinePage() {
 
   const handleStartTestClick = (test: AmbassadorTestDoc) => {
     setBannerError(null);
+    const currentStatus = computeGrandLineTestStatus(test, nowMs);
+    if (currentStatus !== 'live') {
+      const msg =
+        currentStatus === 'scheduled'
+          ? `This test is scheduled to start on ${formatPktDateTime(test.startAt) || 'its scheduled time'}.`
+          : 'This test has ended and can no longer be started.';
+      setBannerError(msg);
+      showApiToast(msg, 'error');
+      return;
+    }
+
     if (!user) {
       requireAuth(
         `take "${test.title}" on Grand Line`,
@@ -161,6 +188,10 @@ export function GrandLinePage() {
   };
 
   const filteredTests = tests.filter((t) => {
+    const status = computeGrandLineTestStatus(t, nowMs);
+    if (status === 'draft' && !isAdmin) {
+      return false;
+    }
     if (subjectFilter !== 'all' && t.subject.toLowerCase() !== subjectFilter.toLowerCase()) {
       return false;
     }
@@ -315,6 +346,8 @@ export function GrandLinePage() {
               {filteredTests.map((test) => {
                 const myAttempt = myAttemptsMap[test.id];
                 const isAttempted = Boolean(myAttempt);
+                const effectiveStatus = computeGrandLineTestStatus(test, nowMs);
+                const countdownLabel = getGrandLineCountdownLabel(test, nowMs);
 
                 return (
                   <div
@@ -335,6 +368,15 @@ export function GrandLinePage() {
                         <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/[0.05] border border-white/10 text-[var(--muted)]">
                           {test.questionCount} Questions
                         </span>
+
+                        {/* Status Pill & Countdown */}
+                        <GrandLineStatusPills
+                          test={test}
+                          nowMs={nowMs}
+                          showWindow={isAdmin}
+                          showCountdown={true}
+                        />
+
                         {isAttempted && myAttempt && (
                           <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/35 text-emerald-400">
                             <CheckCircle2 size={11} />
@@ -344,6 +386,24 @@ export function GrandLinePage() {
                           </span>
                         )}
                       </div>
+
+                      {/* Student-facing schedule info for Scheduled or Ended tests */}
+                      {effectiveStatus === 'scheduled' && test.startAt && (
+                        <p className="text-xs text-amber-300/90 flex items-center gap-1.5 flex-wrap">
+                          <Calendar size={12} className="shrink-0" />
+                          <span>
+                            Starts on <strong>{formatPktDateTime(test.startAt)}</strong>
+                            {countdownLabel ? ` (${countdownLabel})` : ''}
+                          </span>
+                        </p>
+                      )}
+                      {effectiveStatus === 'ended' && test.endAt && (
+                        <p className="text-xs text-[var(--muted)] flex items-center gap-1.5 flex-wrap">
+                          <Clock size={12} className="shrink-0" />
+                          <span>Ended on {formatPktDateTime(test.endAt)}</span>
+                        </p>
+                      )}
+
                       <p className="text-xs text-[var(--muted)] flex items-center gap-2 truncate">
                         <span>
                           Authored by:{' '}
@@ -356,6 +416,21 @@ export function GrandLinePage() {
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap shrink-0">
+                      {isAdmin && (
+                        <GrandLineAdminRowControls
+                          test={test}
+                          nowMs={nowMs}
+                          compact={true}
+                          onUpdated={(updated) => {
+                            setTests((prev) =>
+                              prev.map((item) =>
+                                item.id === updated.id ? { ...item, ...updated } : item
+                              )
+                            );
+                          }}
+                        />
+                      )}
+
                       <Button
                         variant="outline"
                         size="sm"
@@ -425,14 +500,34 @@ export function GrandLinePage() {
                         </>
                       ) : (
                         <>
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={() => handleStartTestClick(test)}
-                          >
-                            <Play size={13} />
-                            <span>Take Test</span>
-                          </Button>
+                          {effectiveStatus === 'live' && (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => handleStartTestClick(test)}
+                            >
+                              <Play size={13} />
+                              <span>Take Test</span>
+                            </Button>
+                          )}
+
+                          {effectiveStatus === 'scheduled' && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-500/12 text-amber-300 border border-amber-500/30 tabular-nums">
+                              <Clock size={12} />
+                              <span>
+                                {countdownLabel ||
+                                  (test.startAt
+                                    ? `Starts ${formatPktDateTime(test.startAt)}`
+                                    : 'Scheduled')}
+                              </span>
+                            </span>
+                          )}
+
+                          {effectiveStatus === 'ended' && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-zinc-500/15 text-zinc-300 border border-zinc-500/30">
+                              <span>Ended</span>
+                            </span>
+                          )}
 
                           {isAdmin && (
                             <PdfDownloadButton

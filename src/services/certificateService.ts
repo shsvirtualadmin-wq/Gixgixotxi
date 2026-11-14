@@ -77,6 +77,12 @@ export interface AdminMockSummary {
   resultsFinalised: boolean;
   finalisedAt: number | null;
   mockNumber: number;
+  startAt?: number | null;
+  endAt?: number | null;
+  statusMode?: 'auto' | 'forceLive' | 'forceEnded' | 'draft';
+  reason?: string | null;
+  forceCloseAttemptsAt?: number | null;
+  effectiveStatus?: 'live' | 'scheduled' | 'ended' | 'draft';
 }
 
 /**

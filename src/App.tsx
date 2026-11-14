@@ -25,6 +25,11 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
       const attempt = (remaining: number) => {
         factory()
           .then((mod) => {
+            try {
+              sessionStorage.removeItem('boardly_chunk_retry_reloaded');
+            } catch {
+              // ignore
+            }
             if (mod && mod.default) {
               resolve(mod as { default: T });
               return;
@@ -44,17 +49,21 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
           })
           .catch((error) => {
             if (remaining > 0) {
-              setTimeout(() => attempt(remaining - 1), 600);
+              setTimeout(() => attempt(remaining - 1), 500);
             } else {
-              const reloadKey = 'boardly_chunk_retry_reloaded';
-              const hasReloaded = sessionStorage.getItem(reloadKey);
-              if (!hasReloaded) {
-                sessionStorage.setItem(reloadKey, 'true');
-                window.location.reload();
-              } else {
-                sessionStorage.removeItem(reloadKey);
-                reject(error);
+              try {
+                const reloadKey = 'boardly_chunk_retry_reloaded';
+                const lastReload = Number(sessionStorage.getItem(reloadKey) || '0');
+                const now = Date.now();
+                if (!lastReload || now - lastReload > 15000) {
+                  sessionStorage.setItem(reloadKey, String(now));
+                  window.location.reload();
+                  return;
+                }
+              } catch {
+                // ignore storage errors
               }
+              reject(error);
             }
           });
       };
@@ -503,6 +512,7 @@ function AppInner() {
           <Route path="/rewards" element={<RewardsPage />} />
           <Route path="/store" element={<StorePage />} />
           <Route path="/store/get-kobans" element={<StorePage />} />
+          <Route path="/store/item/:item" element={<StoreItemDetailPage />} />
           <Route path="/store/:item" element={<StoreItemDetailPage />} />
           <Route path="/kobans" element={<KobansPage />} />
           <Route path="/about-kobans" element={<Navigate to="/kobans" replace />} />

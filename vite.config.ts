@@ -903,28 +903,6 @@ RULES:
           if (!cfMiddlewarePromise) {
             cfMiddlewarePromise = Promise.resolve(cfMod.createCloudflarePostsAndAuthMiddleware());
           }
-          const origWriteHead = res.writeHead.bind(res);
-          res.writeHead = function (statusCode: number, ...whArgs: any[]) {
-            try {
-              if (
-                req.method === 'GET' &&
-                statusCode === 200 &&
-                !capturedUrl.startsWith('/api') &&
-                !capturedUrl.startsWith('/src/') &&
-                !capturedUrl.startsWith('/@') &&
-                !cfMod.isAuthenticatedAppRoute(capturedUrl)
-              ) {
-                const routeMeta = cfMod.resolveServerRouteMeta(capturedUrl);
-                if (routeMeta?.statusCode && routeMeta.statusCode !== 200) {
-                  statusCode = routeMeta.statusCode;
-                }
-              }
-            } catch {
-              // ignore status override error
-            }
-            return origWriteHead(statusCode, ...whArgs);
-          };
-
           const origEnd = res.end.bind(res);
           res.end = function (chunk: any, ...args: any[]) {
             try {
@@ -932,11 +910,11 @@ RULES:
               if (req.method === 'GET' && !capturedUrl.startsWith('/api') && ct.includes('text/html') && chunk) {
                 const rawStr = typeof chunk === 'string' ? chunk : Buffer.isBuffer(chunk) ? chunk.toString('utf-8') : null;
                 if (rawStr && rawStr.includes('<title>')) {
-                  const routeMeta = cfMod.resolveServerRouteMeta(capturedUrl);
-                  if (routeMeta?.statusCode && !res.headersSent && !cfMod.isAuthenticatedAppRoute(capturedUrl)) {
-                    res.statusCode = routeMeta.statusCode;
+                  if (!res.headersSent) {
+                    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+                    res.setHeader('Vary', 'User-Agent');
                   }
-                  const enriched = cfMod.injectRouteMetaIntoHtml(rawStr, capturedUrl);
+                  const enriched = cfMod.injectRouteMetaIntoHtml(rawStr, capturedUrl, { isCrawler: false });
                   if (res.getHeader?.('content-length') || res.getHeader?.('Content-Length')) {
                     res.setHeader('Content-Length', Buffer.byteLength(enriched, 'utf-8'));
                   }
@@ -1535,10 +1513,19 @@ RULES:
         }
       });
 
-      server.middlewares.use('/assets/store', (req: any, res: any, next: any) => {
+      server.middlewares.use('/assets', (req: any, res: any, next: any) => {
         const cleanRel = decodeURIComponent((req.url || '').split('?')[0]).replace(/^\/+/, '');
-        const fullPath = path.join(__dirname, 'public', 'assets', 'store', cleanRel);
-        if (!cleanRel || !fs.existsSync(fullPath) || fs.statSync(fullPath).isDirectory()) {
+        const publicAssetPath = path.join(__dirname, 'public', 'assets', cleanRel);
+        const distAssetPath = path.join(__dirname, 'dist', 'assets', cleanRel);
+        const existsInPublic =
+          Boolean(cleanRel) &&
+          fs.existsSync(publicAssetPath) &&
+          !fs.statSync(publicAssetPath).isDirectory();
+        const existsInDist =
+          Boolean(cleanRel) &&
+          fs.existsSync(distAssetPath) &&
+          !fs.statSync(distAssetPath).isDirectory();
+        if (!existsInPublic && !existsInDist) {
           res.writeHead(404, {
             'Content-Type': 'text/plain; charset=utf-8',
             'Cache-Control': 'no-store',
@@ -1553,9 +1540,14 @@ RULES:
       order: 'pre' as const,
       async handler(html: string, ctx: any) {
         try {
+          if (!ctx?.server) {
+            // During `vite build`, keep index.html's canonical homepage title and meta intact
+            return html;
+          }
           const reqUrl = ctx?.originalUrl || ctx?.path || '/';
+          if (reqUrl === '/index.html') return html;
           const mod = await import('./src/server/cloudflarePostsAndAuthRouter.ts');
-          return mod.injectRouteMetaIntoHtml(html, reqUrl);
+          return mod.injectRouteMetaIntoHtml(html, reqUrl, { isCrawler: false });
         } catch {
           return html;
         }

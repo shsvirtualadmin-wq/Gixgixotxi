@@ -1,5 +1,5 @@
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, RefreshCw, Home } from 'lucide-react';
 import { Logo } from '@/components/ui/Logo';
 import { auth } from '@/lib/firebase';
 import { isSuperAdminEmailOrRole } from '@/hooks/useEffectivePlan';
@@ -14,6 +14,13 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
+}
+
+function isChunkLoadFailure(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error || '');
+  return /failed to fetch dynamically imported module|chunkloaderror|loading chunk [\w-]+ failed|importing a module script failed|error loading dynamically imported module/i.test(
+    msg
+  );
 }
 
 export class DashboardErrorBoundary extends Component<Props, State> {
@@ -31,6 +38,23 @@ export class DashboardErrorBoundary extends Component<Props, State> {
     console.error('[DashboardErrorBoundary] Error message:', error?.message);
     console.error('[DashboardErrorBoundary] Error stack:', error?.stack);
     console.error('[DashboardErrorBoundary] Component stack:', errorInfo?.componentStack);
+
+    // If a dynamic chunk failed to load, reload once (guarded by sessionStorage with 15s cooldown)
+    if (typeof window !== 'undefined' && isChunkLoadFailure(error)) {
+      try {
+        const reloadKey = 'boardly_chunk_retry_reloaded';
+        const lastReload = Number(sessionStorage.getItem(reloadKey) || '0');
+        const now = Date.now();
+        if (!lastReload || now - lastReload > 15000) {
+          sessionStorage.setItem(reloadKey, String(now));
+          window.location.reload();
+          return;
+        }
+      } catch {
+        // ignore storage error
+      }
+    }
+
     try {
       sessionStorage.setItem(
         'boardly_last_cockpit_error',
@@ -49,10 +73,22 @@ export class DashboardErrorBoundary extends Component<Props, State> {
   handleRetry = () => {
     try {
       sessionStorage.removeItem('boardly_last_cockpit_error');
+      sessionStorage.removeItem('boardly_chunk_retry_reloaded');
     } catch {
       // ignore
     }
     this.setState({ hasError: false, error: null, errorInfo: null });
+  };
+
+  handleGoHome = () => {
+    try {
+      sessionStorage.removeItem('boardly_last_cockpit_error');
+      sessionStorage.removeItem('boardly_chunk_retry_reloaded');
+    } catch {
+      // ignore
+    }
+    const homeUrl = getHomeUrl();
+    window.location.href = homeUrl || '/';
   };
 
   render() {
@@ -88,27 +124,35 @@ export class DashboardErrorBoundary extends Component<Props, State> {
                 {this.props.fallbackTitle || 'Something went wrong'}
               </h2>
               <p className="text-xs text-[var(--muted)] leading-relaxed">
-                An unexpected issue occurred while rendering this section. Please try again or refresh the page.
+                An unexpected issue occurred while loading this page. Please reload or return home.
               </p>
               {this.state.error?.message && (
                 <div className="text-[11px] font-mono text-[var(--muted)] bg-[var(--surface-2)] p-2.5 rounded-xl border border-[var(--border)] text-left break-words max-h-24 overflow-y-auto">
                   {this.state.error.message}
                 </div>
               )}
-              <div className="flex items-center justify-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={this.handleRetry}
-                  className="px-5 py-2.5 rounded-full bg-[#D71921] hover:bg-[#b0141a] text-white text-xs font-heading font-semibold transition-colors cursor-pointer"
-                >
-                  Try Again
-                </button>
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => window.location.reload()}
-                  className="px-5 py-2.5 rounded-full bg-[var(--surface-2)] hover:bg-[var(--card)] border border-[var(--border)] text-[var(--text)] text-xs font-heading transition-colors cursor-pointer"
+                  className="px-5 py-2.5 rounded-full bg-[#D71921] hover:bg-[#b0141a] text-white text-xs font-heading font-semibold transition-colors cursor-pointer"
                 >
-                  Reload Page
+                  Reload
+                </button>
+                <button
+                  type="button"
+                  onClick={this.handleGoHome}
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-[var(--surface-2)] hover:bg-[var(--card)] border border-[var(--border)] text-[var(--text)] text-xs font-heading transition-colors cursor-pointer"
+                >
+                  <Home size={13} />
+                  <span>Home</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={this.handleRetry}
+                  className="px-4 py-2.5 rounded-full bg-[var(--surface-2)] hover:bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] text-xs font-heading transition-colors cursor-pointer"
+                >
+                  Try Again
                 </button>
               </div>
             </div>
@@ -140,7 +184,7 @@ export class DashboardErrorBoundary extends Component<Props, State> {
               </div>
               <div>
                 <h2 className="font-heading font-bold text-base text-[var(--text)]">
-                  {this.props.fallbackTitle || 'Unable to display view'}
+                  {this.props.fallbackTitle || 'Something went wrong'}
                 </h2>
                 <div className="flex flex-wrap items-center gap-2 mt-1">
                   <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-[rgba(239,68,68,0.15)] text-[var(--red)] font-semibold">
@@ -164,18 +208,26 @@ export class DashboardErrorBoundary extends Component<Props, State> {
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={this.handleGoHome}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--card-2)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-xs font-heading text-[var(--text)] cursor-pointer"
+              >
+                <Home size={13} />
+                <span>Home</span>
+              </button>
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="px-4 py-2 rounded-xl bg-[var(--card-2)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-xs font-heading text-[var(--text)]"
+                className="px-4 py-2 rounded-xl bg-[var(--card-2)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-xs font-heading text-[var(--text)] cursor-pointer"
               >
-                Reload Page
+                Reload
               </button>
               <button
                 type="button"
                 onClick={this.handleRetry}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs font-heading font-semibold hover:opacity-90"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--text)] text-[var(--bg)] text-xs font-heading font-semibold hover:opacity-90 cursor-pointer"
               >
                 <RefreshCw size={13} />
                 <span>Try Again</span>

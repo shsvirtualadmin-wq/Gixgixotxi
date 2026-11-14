@@ -35,6 +35,12 @@ import { AdminCertificatesSkeleton } from '../../components/ui/Skeleton';
 import { SignatureUploader } from '../../components/certificates/SignatureUploader';
 import { ThemePicker } from '../../components/certificates/ThemePicker';
 import { formatCertificateDate } from '../../lib/certificateRenderer';
+import {
+  GrandLineStatusPills,
+  GrandLineAdminRowControls,
+  useServerSyncedClock,
+} from '../../components/admin/GrandLineScheduleSheet';
+import { GrandLineTestsAdminSection } from '../../components/admin/GrandLineTestsAdminSection';
 
 const CERTIFICATES_PAGE_SIZE = 20;
 
@@ -48,6 +54,7 @@ const CERTIFICATES_PAGE_SIZE = 20;
  */
 export const AdminCertificatesPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const nowMs = useServerSyncedClock(1000);
   const initialTab =
     searchParams.get('tab') === 'signature'
       ? 'signature'
@@ -608,6 +615,9 @@ export const AdminCertificatesPage: React.FC = () => {
       {/* TAB 2: GRAND LINE MOCK CERTIFICATE DESIGN PICKER & FINALISE RESULTS */}
       {activeTab === 'themes' && (
         <div className="space-y-5">
+          {/* Full Schedule & Status Control for all Grand Line Mocks */}
+          <GrandLineTestsAdminSection />
+
           {/* Mock Selector Strip */}
           <div className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -633,7 +643,7 @@ export const AdminCertificatesPage: React.FC = () => {
                     <div
                       key={mock.id}
                       onClick={() => setSelectedMockId(mock.id)}
-                      className={`p-3.5 rounded-xl border transition-colors cursor-pointer space-y-1.5 ${
+                      className={`p-3.5 rounded-xl border transition-colors cursor-pointer space-y-2 ${
                         isSelected
                           ? 'border-[var(--accent)] bg-[var(--surface-2)]'
                           : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--text-muted)]'
@@ -647,6 +657,15 @@ export const AdminCertificatesPage: React.FC = () => {
                           GL#{String(mock.mockNumber).padStart(2, '0')}
                         </span>
                       </div>
+
+                      <GrandLineStatusPills
+                        test={mock}
+                        nowMs={nowMs}
+                        showWindow={true}
+                        showCountdown={true}
+                        compact={true}
+                      />
+
                       <div className="flex items-center justify-between gap-2 text-[11px] font-mono text-[var(--text-muted)]">
                         <span>Theme: {mock.certificateThemeId || 'Auto (Unique)'}</span>
                         <span>{mock.resultsFinalised ? 'Finalised' : 'Open'}</span>
@@ -662,30 +681,60 @@ export const AdminCertificatesPage: React.FC = () => {
           {selectedMock ? (
             <div className="p-4 sm:p-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-5">
               <div className="flex items-start justify-between gap-3 flex-wrap border-b border-[var(--border)] pb-4">
-                <div>
+                <div className="space-y-1.5">
                   <div className="font-mono text-[10px] uppercase tracking-widest text-[var(--accent)]">
                     GRAND LINE MOCK #{String(selectedMock.mockNumber).padStart(2, '0')} · {selectedMock.subject}
                   </div>
                   <h3 className="text-base sm:text-lg font-bold text-[var(--text)]">
                     {selectedMock.title}
                   </h3>
+                  <GrandLineStatusPills
+                    test={selectedMock}
+                    nowMs={nowMs}
+                    showWindow={true}
+                    showCountdown={true}
+                  />
                 </div>
 
-                <button
-                  type="button"
-                  disabled={busyId === selectedMock.id}
-                  onClick={() => void handleFinaliseMock(selectedMock)}
-                  className="min-h-[44px] px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white text-xs font-bold hover:opacity-90 inline-flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  <Sparkles size={14} />
-                  <span>
-                    {busyId === selectedMock.id
-                      ? 'Finalising & Issuing...'
-                      : selectedMock.resultsFinalised
-                      ? 'Re-check & Issue 1st Position Certificates'
-                      : 'Publish Results & Issue 1st Position Certificate'}
-                  </span>
-                </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <GrandLineAdminRowControls
+                    test={selectedMock}
+                    nowMs={nowMs}
+                    onUpdated={(updated) => {
+                      setMocks((prev) =>
+                        prev.map((m) =>
+                          m.id === updated.id
+                            ? {
+                                ...m,
+                                startAt: updated.startAt,
+                                endAt: updated.endAt,
+                                statusMode: updated.statusMode,
+                                reason: updated.reason,
+                                forceCloseAttemptsAt: updated.forceCloseAttemptsAt,
+                                effectiveStatus: updated.effectiveStatus,
+                              }
+                            : m
+                        )
+                      );
+                    }}
+                  />
+
+                  <button
+                    type="button"
+                    disabled={busyId === selectedMock.id}
+                    onClick={() => void handleFinaliseMock(selectedMock)}
+                    className="min-h-[44px] px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white text-xs font-bold hover:opacity-90 inline-flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <Sparkles size={14} />
+                    <span>
+                      {busyId === selectedMock.id
+                        ? 'Finalising & Issuing...'
+                        : selectedMock.resultsFinalised
+                        ? 'Re-check & Issue 1st Position Certificates'
+                        : 'Publish Results & Issue 1st Position Certificate'}
+                    </span>
+                  </button>
+                </div>
               </div>
 
               <ThemePicker

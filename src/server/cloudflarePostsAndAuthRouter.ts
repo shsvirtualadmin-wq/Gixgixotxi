@@ -54,6 +54,15 @@ import {
   type ProBadgeDesignId,
 } from '../lib/proBadgeDesigns';
 import { setCachedUserProStatusAndBadge } from '../../functions/api/pro-badge';
+import {
+  computeGrandLineTestStatus,
+  normalizeOptionalTimestampMs,
+  normalizeStatusMode,
+  formatPktWindow,
+  type GrandLineStatusMode,
+} from '../utils/grandLineSchedule';
+
+const inMemoryActiveAttemptStarts = new Map<string, number>();
 
 const R2_PUBLIC_BASE_URL = (
   process.env.R2_PUBLIC_BASE_URL ||
@@ -746,6 +755,9 @@ export function loadD1Store(): D1StoreData {
         crews: Array.isArray(parsed.crews) ? parsed.crews : [],
         crewMembers: Array.isArray(parsed.crewMembers) ? parsed.crewMembers : [],
         crewJoinRequests: Array.isArray(parsed.crewJoinRequests) ? parsed.crewJoinRequests : [],
+        ...(Array.isArray(parsed.grandLineAuditLogs)
+          ? { grandLineAuditLogs: parsed.grandLineAuditLogs }
+          : {}),
       } as D1StoreData;
       if (ensureStoreDefaults(d1Cache)) {
         saveD1Store(d1Cache);
@@ -7720,12 +7732,41 @@ ${postSitemaps}
     });
   }
 
+  function serializePublicScheduleFields(t: any, nowMs: number): Record<string, any> {
+    const out: Record<string, any> = {
+      effectiveStatus: computeGrandLineTestStatus(t, nowMs),
+    };
+    if (t.startAt !== undefined) out.startAt = t.startAt;
+    if (t.endAt !== undefined) out.endAt = t.endAt;
+    if (t.statusMode !== undefined) out.statusMode = t.statusMode;
+    if (t.forceCloseAttemptsAt !== undefined) out.forceCloseAttemptsAt = t.forceCloseAttemptsAt;
+    return out;
+  }
+
+  function serializeAdminScheduleFields(t: any, nowMs: number): Record<string, any> {
+    const out = serializePublicScheduleFields(t, nowMs);
+    if (t.reason !== undefined) out.reason = t.reason;
+    return out;
+  }
+
+  function stripAdminReasonForStudent(t: any, isAdmin: boolean, nowMs: number): Record<string, any> {
+    const clone: Record<string, any> = {
+      ...t,
+      ...(isAdmin ? serializeAdminScheduleFields(t, nowMs) : serializePublicScheduleFields(t, nowMs)),
+    };
+    if (!isAdmin) {
+      delete clone.reason;
+    }
+    return clone;
+  }
+
   app.get('/api/tests/public', (req: Request, res: Response) => {
     const store = loadD1Store() as any;
     if (!Array.isArray(store.captainTests)) store.captainTests = [];
+    const nowMs = Date.now();
     const subject = String(req.query.subject || '').trim().toLowerCase();
     const list = store.captainTests
-      .filter((t: any) => t.visibility === 'public' && t.status === 'published')
+      .filter((t: any) => computeGrandLineTestStatus(t, nowMs) !== 'draft')
       .filter((t: any) => !subject || subject === 'all' || String(t.subject || '').toLowerCase() === subject)
       .sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0))
       .map((t: any) => ({
@@ -7749,8 +7790,9 @@ ${postSitemaps}
         mockNumber: t.mockNumber ?? t.mock_number ?? null,
         editionLabel: t.editionLabel ?? t.edition_label ?? null,
         createdAt: t.createdAt,
+        ...serializePublicScheduleFields(t, nowMs),
       }));
-    return res.status(200).json({ tests: list });
+    return res.status(200).json({ tests: list, serverTimeMs: nowMs });
   });
 
   app.get('/api/tests/mine', async (req: Request, res: Response) => {
@@ -7758,6 +7800,7 @@ ${postSitemaps}
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
     if (!Array.isArray(store.captainTests)) store.captainTests = [];
+    const nowMs = Date.now();
     const roleRow = resolveD1Role(store, user);
     const isAdmin = ['admin', 'superadmin'].includes(roleRow.role);
     const targetUid =
@@ -7766,8 +7809,9 @@ ${postSitemaps}
         : user.uid;
     const list = store.captainTests
       .filter((t: any) => (isAdmin && req.query.all === '1' ? true : t.captainUid === targetUid))
-      .sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
-    return res.status(200).json({ tests: list });
+      .sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0))
+      .map((t: any) => stripAdminReasonForStudent(t, isAdmin, nowMs));
+    return res.status(200).json({ tests: list, serverTimeMs: nowMs });
   });
 
   app.post('/api/tests', async (req: Request, res: Response) => {
@@ -7949,20 +7993,28 @@ ${postSitemaps}
     const store = loadD1Store() as any;
     if (!Array.isArray(store.captainTests)) store.captainTests = [];
     if (!Array.isArray(store.testAttempts)) store.testAttempts = [];
+    const nowMs = Date.now();
     const rawId = decodeURIComponent(String(req.params.id || ''));
     const testId = extractIdFromSlugOrId(rawId);
     const test = store.captainTests.find((t: any) => t.id === testId || t.id === rawId);
-    if (!test) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
+    if (!test) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND', serverTimeMs: nowMs });
 
     const isInfoOnly = req.query.view === 'info';
     const user = await verifyFirebaseJwtZeroFirestore(req);
+    const roleRow = user ? resolveD1Role(store, user) : { role: 'student' };
+    const isAdmin = Boolean(user && ['admin', 'superadmin'].includes(roleRow.role));
+    const isOwnerOrAdmin = Boolean(user && (test.captainUid === user.uid || isAdmin));
+    const effectiveStatus = computeGrandLineTestStatus(test, nowMs);
+
+    // Draft tests are strictly hidden from students/guests
+    if (effectiveStatus === 'draft' && !isOwnerOrAdmin) {
+      return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND', serverTimeMs: nowMs });
+    }
 
     if (isInfoOnly) {
       if (test.visibility === 'private') {
-        if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
-        const roleRow = resolveD1Role(store, user);
-        const isOwnerOrAdmin = test.captainUid === user.uid || ['admin', 'superadmin'].includes(roleRow.role);
-        if (!isOwnerOrAdmin) return res.status(403).json({ error: 'This test is private.', code: 'FORBIDDEN' });
+        if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED', serverTimeMs: nowMs });
+        if (!isOwnerOrAdmin) return res.status(403).json({ error: 'This test is private.', code: 'FORBIDDEN', serverTimeMs: nowMs });
       }
       const existingAttempt = user
         ? store.testAttempts.find(
@@ -7973,22 +8025,20 @@ ${postSitemaps}
         : null;
       return res.status(200).json({
         test: {
-          ...test,
+          ...stripAdminReasonForStudent(test, isAdmin, nowMs),
           questionCount: Number(test.questionCount ?? (test.questions?.length || 0)),
           questions: [],
         },
         alreadyAttempted: Boolean(existingAttempt),
         myAttempt: existingAttempt || null,
+        serverTimeMs: nowMs,
       });
     }
 
-    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED', serverTimeMs: nowMs });
 
-    const roleRow = resolveD1Role(store, user);
-    const isOwnerOrAdmin =
-      test.captainUid === user.uid || ['admin', 'superadmin'].includes(roleRow.role);
     if (test.visibility === 'private' && !isOwnerOrAdmin) {
-      return res.status(403).json({ error: 'This test is private.', code: 'FORBIDDEN' });
+      return res.status(403).json({ error: 'This test is private.', code: 'FORBIDDEN', serverTimeMs: nowMs });
     }
 
     const includeAnswers = isOwnerOrAdmin && req.query.includeAnswers === '1';
@@ -8009,6 +8059,7 @@ ${postSitemaps}
           state: 'already_attempted',
           code: 'ALREADY_ATTEMPTED',
           attemptId: existingAttempt.id,
+          serverTimeMs: nowMs,
           attempt: {
             id: existingAttempt.id,
             testId: test.id,
@@ -8028,6 +8079,29 @@ ${postSitemaps}
           },
         });
       }
+
+      // Server-side schedule & status enforcement: a new attempt can ONLY be started when the test is Live
+      if (effectiveStatus !== 'live') {
+        const message =
+          effectiveStatus === 'scheduled'
+            ? 'This Grand Line test is scheduled and has not started yet.'
+            : effectiveStatus === 'ended'
+            ? 'This Grand Line test has ended and can no longer be started.'
+            : 'This Grand Line test is not currently live.';
+        return res.status(403).json({
+          error: message,
+          message,
+          code: 'TEST_NOT_LIVE',
+          effectiveStatus,
+          startAt: test.startAt ?? null,
+          endAt: test.endAt ?? null,
+          serverTimeMs: nowMs,
+        });
+      }
+
+      // Record server-side active attempt start timestamp so if the test ends while the student is taking it,
+      // the server knows this student legitimately started while Live.
+      inMemoryActiveAttemptStarts.set(`${test.id}:${user.uid}`, nowMs);
     }
 
     const sanitizedQuestions = (test.questions || []).map((q: any, idx: number) => {
@@ -8048,10 +8122,167 @@ ${postSitemaps}
 
     return res.status(200).json({
       test: {
-        ...test,
+        ...stripAdminReasonForStudent(test, isAdmin, nowMs),
         questions: sanitizedQuestions,
       },
+      serverTimeMs: nowMs,
     });
+  });
+
+  function applyAdminScheduleAndStatusUpdate(
+    store: any,
+    existing: any,
+    body: any,
+    user: { uid: string; email?: string | null },
+    nowMs: number
+  ): { ok: true } | { ok: false; status: number; error: string; code: string } {
+    const hasStartAt = body.startAt !== undefined;
+    const hasEndAt = body.endAt !== undefined;
+    const hasStatusMode = body.statusMode !== undefined;
+    const hasReason = body.reason !== undefined;
+    const hasCloseAll = body.closeAllAttemptsNow !== undefined;
+
+    if (!hasStartAt && !hasEndAt && !hasStatusMode && !hasReason && !hasCloseAll) {
+      return { ok: true };
+    }
+
+    const nextStartAt = hasStartAt
+      ? normalizeOptionalTimestampMs(body.startAt)
+      : normalizeOptionalTimestampMs(existing.startAt);
+    const nextEndAt = hasEndAt
+      ? normalizeOptionalTimestampMs(body.endAt)
+      : normalizeOptionalTimestampMs(existing.endAt);
+
+    if (nextStartAt && nextEndAt && nextEndAt <= nextStartAt) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'End date and time must be after start date and time.',
+        code: 'INVALID_SCHEDULE_WINDOW',
+      };
+    }
+
+    const nextMode: GrandLineStatusMode = hasStatusMode
+      ? normalizeStatusMode(body.statusMode) || 'auto'
+      : normalizeStatusMode(existing.statusMode) || 'auto';
+
+    const previousStatus = computeGrandLineTestStatus(existing, nowMs);
+    const previousStatusMode = existing.statusMode || 'auto';
+    const previousWindow = formatPktWindow(existing.startAt, existing.endAt) || 'No schedule';
+
+    if (hasStartAt) {
+      existing.startAt = nextStartAt;
+    }
+    if (hasEndAt) {
+      existing.endAt = nextEndAt;
+    }
+    if (hasStatusMode) {
+      existing.statusMode = nextMode;
+      // Ensure legacy status/visibility does not block an admin-scheduled or force-live test
+      if (nextMode === 'forceLive') {
+        existing.status = 'published';
+        existing.visibility = 'public';
+      } else if (nextMode === 'auto' && (nextStartAt || nextEndAt)) {
+        existing.status = 'published';
+        existing.visibility = 'public';
+      }
+    }
+    if (hasReason) {
+      const cleanReason =
+        typeof body.reason === 'string' && body.reason.trim()
+          ? body.reason.trim().slice(0, 500)
+          : null;
+      existing.reason = cleanReason;
+    }
+
+    if (nextMode === 'forceEnded' && body.closeAllAttemptsNow === true) {
+      existing.forceCloseAttemptsAt = nowMs;
+    } else if (nextMode !== 'forceEnded' || body.closeAllAttemptsNow === false) {
+      if (existing.forceCloseAttemptsAt !== undefined) {
+        existing.forceCloseAttemptsAt = null;
+      }
+    }
+
+    const newStatus = computeGrandLineTestStatus(existing, nowMs);
+    const newStatusMode = existing.statusMode || 'auto';
+    const newWindow = formatPktWindow(existing.startAt, existing.endAt) || 'No schedule';
+
+    if (!Array.isArray(store.grandLineAuditLogs)) {
+      store.grandLineAuditLogs = [];
+    }
+    store.grandLineAuditLogs.unshift({
+      id: `gl_sched_${nowMs}_${crypto.randomUUID().slice(0, 8)}`,
+      adminEmail: String(user.email || 'admin').toLowerCase(),
+      adminUid: user.uid,
+      action: 'grand_line_schedule_status_updated',
+      targetUid: existing.id,
+      targetEmail: existing.title,
+      details: {
+        testId: existing.id,
+        testTitle: existing.title,
+        previousStatus,
+        newStatus,
+        previousStatusMode,
+        newStatusMode,
+        previousWindow,
+        newWindow,
+        startAt: existing.startAt ?? null,
+        endAt: existing.endAt ?? null,
+        closeAllAttemptsNow: Boolean(body.closeAllAttemptsNow),
+        reason: existing.reason ?? null,
+      },
+      timestampMs: nowMs,
+    });
+    if (store.grandLineAuditLogs.length > 500) {
+      store.grandLineAuditLogs = store.grandLineAuditLogs.slice(0, 500);
+    }
+
+    return { ok: true };
+  }
+
+  app.post('/api/tests/:id/schedule', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    if (!Array.isArray(store.captainTests)) store.captainTests = [];
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({
+        error: 'Forbidden: Only admins can change a Grand Line test schedule or status.',
+        code: 'FORBIDDEN',
+      });
+    }
+
+    const testId = decodeURIComponent(String(req.params.id || ''));
+    const existing = store.captainTests.find((t: any) => t.id === testId);
+    if (!existing) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
+
+    const nowMs = Date.now();
+    const result = applyAdminScheduleAndStatusUpdate(store, existing, req.body || {}, user, nowMs);
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error, code: result.code });
+    }
+
+    existing.updatedAt = nowMs;
+    saveD1Store(store);
+
+    return res.status(200).json({
+      ok: true,
+      test: stripAdminReasonForStudent(existing, true, nowMs),
+      serverTimeMs: nowMs,
+    });
+  });
+
+  app.get('/api/admin/grand-line-audit-logs', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+    const logs = Array.isArray(store.grandLineAuditLogs) ? store.grandLineAuditLogs : [];
+    return res.status(200).json({ ok: true, logs });
   });
 
   app.put('/api/tests/:id', async (req: Request, res: Response) => {
@@ -8065,11 +8296,34 @@ ${postSitemaps}
 
     const existing = store.captainTests[idx];
     const roleRow = resolveD1Role(store, user);
-    if (existing.captainUid !== user.uid && !['admin', 'superadmin'].includes(roleRow.role)) {
+    const isAdmin = ['admin', 'superadmin'].includes(roleRow.role);
+    if (existing.captainUid !== user.uid && !isAdmin) {
       return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
     }
 
     const body = req.body || {};
+    const touchesScheduleOrStatusMode =
+      body.startAt !== undefined ||
+      body.endAt !== undefined ||
+      body.statusMode !== undefined ||
+      body.reason !== undefined ||
+      body.closeAllAttemptsNow !== undefined;
+
+    if (touchesScheduleOrStatusMode && !isAdmin) {
+      return res.status(403).json({
+        error: 'Forbidden: Only admins can change a Grand Line test schedule or status.',
+        code: 'FORBIDDEN',
+      });
+    }
+
+    const nowMs = Date.now();
+    if (touchesScheduleOrStatusMode && isAdmin) {
+      const schedResult = applyAdminScheduleAndStatusUpdate(store, existing, body, user, nowMs);
+      if (!schedResult.ok) {
+        return res.status(schedResult.status).json({ error: schedResult.error, code: schedResult.code });
+      }
+    }
+
     if (body.title !== undefined) existing.title = String(body.title).trim();
     if (body.description !== undefined) existing.description = String(body.description).trim();
     if (body.subject !== undefined) existing.subject = String(body.subject).trim();
@@ -8098,12 +8352,13 @@ ${postSitemaps}
       }));
       existing.questionCount = existing.questions.length;
     }
-    existing.updatedAt = Date.now();
+    existing.updatedAt = nowMs;
     saveD1Store(store);
     return res.status(200).json({
       ok: true,
       id: testId,
       certificateThemeId: existing.certificateThemeId ?? null,
+      serverTimeMs: nowMs,
     });
   });
 
@@ -8256,6 +8511,57 @@ ${postSitemaps}
         });
       }
 
+      const nowMs = Date.now();
+      const effectiveStatus = computeGrandLineTestStatus(test, nowMs);
+
+      if (effectiveStatus !== 'live') {
+        if (effectiveStatus === 'draft' || effectiveStatus === 'scheduled') {
+          return res.status(403).json({
+            error: 'This Grand Line test is not currently live and cannot accept submissions.',
+            code: 'TEST_NOT_LIVE',
+            effectiveStatus,
+            serverTimeMs: nowMs,
+          });
+        }
+
+        // Test is 'ended': check if admin force-closed all attempts or if student started while Live
+        const forceCloseAt = normalizeOptionalTimestampMs(test.forceCloseAttemptsAt);
+        if (forceCloseAt && nowMs > forceCloseAt + 60_000) {
+          return res.status(403).json({
+            error: 'This Grand Line test was closed by an administrator and is no longer accepting submissions.',
+            code: 'TEST_FORCE_CLOSED',
+            effectiveStatus: 'ended',
+            serverTimeMs: nowMs,
+          });
+        }
+
+        const startedAtMs = inMemoryActiveAttemptStarts.get(lockKey);
+        const maxAllowedDurationMs = (Math.max(5, Number(test.durationMinutes || 20)) + 5) * 60 * 1000;
+        const endRefMs =
+          normalizeOptionalTimestampMs(test.endAt) ||
+          normalizeOptionalTimestampMs(test.updatedAt) ||
+          nowMs;
+
+        const startedBeforeEndAndWithinDuration =
+          startedAtMs !== undefined &&
+          startedAtMs <= endRefMs + 60_000 &&
+          nowMs - startedAtMs <= maxAllowedDurationMs;
+
+        const withinDurationAfterScheduledEnd =
+          startedAtMs === undefined &&
+          nowMs - endRefMs <= maxAllowedDurationMs &&
+          Number(req.body?.timeTakenSeconds || 0) > 0;
+
+        if (!startedBeforeEndAndWithinDuration && !withinDurationAfterScheduledEnd) {
+          return res.status(403).json({
+            error: 'This Grand Line test has ended and the submission window has closed.',
+            code: 'TEST_ENDED',
+            effectiveStatus: 'ended',
+            serverTimeMs: nowMs,
+          });
+        }
+      }
+
       const questions = test.questions || [];
       const body = req.body || {};
       const rawAnswers = body.answers || {};
@@ -8377,7 +8683,8 @@ ${postSitemaps}
         }
       }
 
-      return res.status(201).json({ attempt });
+      inMemoryActiveAttemptStarts.delete(lockKey);
+      return res.status(201).json({ attempt, serverTimeMs: Date.now() });
     } finally {
       inFlightAttemptSubmissions.delete(lockKey);
     }
@@ -9960,6 +10267,7 @@ ${postSitemaps}
         };
       });
 
+    const nowMs = Date.now();
     const mocks = (store.captainTests || []).map((t: any) => ({
       id: t.id,
       title: t.title,
@@ -9971,10 +10279,12 @@ ${postSitemaps}
       resultsFinalised: Boolean(t.resultsFinalised ?? t.results_finalised),
       finalisedAt: t.finalisedAt ?? t.finalised_at ?? null,
       mockNumber: resolveMockNumberForTest(store, t),
+      ...serializeAdminScheduleFields(t, nowMs),
     }));
 
     return res.status(200).json({
       ok: true,
+      serverTimeMs: nowMs,
       hasActiveSignature: Boolean(activeSig),
       activeSignature: activeSig
         ? {
@@ -10962,7 +11272,8 @@ function escapeHtmlAttr(str: string): string {
 }
 
 export function resolveServerRouteMeta(pathname: string) {
-  const cleanPath = (pathname || '/').split('?')[0].split('#')[0].replace(/\/+$/, '') || '/';
+  const rawPath = (pathname || '/').split('?')[0].split('#')[0].replace(/\/+$/, '') || '/';
+  const cleanPath = rawPath.toLowerCase() === '/index.html' ? '/' : rawPath;
   const isApiOrAuthRoute =
     cleanPath === '/api' ||
     cleanPath.startsWith('/api/') ||
@@ -11270,8 +11581,17 @@ export function resolveServerRouteMeta(pathname: string) {
   return baseMeta;
 }
 
-export function injectRouteMetaIntoHtml(html: string, pathname: string): string {
-  const meta = resolveServerRouteMeta(pathname);
+export function injectRouteMetaIntoHtml(
+  html: string,
+  pathname: string,
+  options?: { isCrawler?: boolean }
+): string {
+  const clean = (pathname || '/').split('?')[0].split('#')[0];
+  if (clean.toLowerCase() === '/index.html') {
+    return html;
+  }
+
+  const meta = resolveServerRouteMeta(clean);
   const t = escapeHtmlAttr(meta.title);
   const d = escapeHtmlAttr(meta.description);
   const c = escapeHtmlAttr(meta.canonical);
@@ -11339,10 +11659,11 @@ export function injectRouteMetaIntoHtml(html: string, pathname: string): string 
     );
   }
 
-  if (meta.rootBodyHtml) {
-    if (/<div\s+id="root"\s*>[\s\S]*?<\/div>\s*(?=<script\b)/i.test(out)) {
+  // Only replace <div id="root"> when explicitly serving a crawler user-agent
+  if (options?.isCrawler && meta.rootBodyHtml) {
+    if (/<div\s+id="root"\s*>[\s\S]*?<\/div>\s*(?=<script\b|<\/body>)/i.test(out)) {
       out = out.replace(
-        /<div\s+id="root"\s*>[\s\S]*?<\/div>\s*(?=<script\b)/i,
+        /<div\s+id="root"\s*>[\s\S]*?<\/div>\s*(?=<script\b|<\/body>)/i,
         `<div id="root">${meta.rootBodyHtml}</div>\n    `
       );
     } else {
@@ -11425,14 +11746,19 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
       !pathname.startsWith('/assets/') &&
       !pathname.startsWith('/src/') &&
       !pathname.startsWith('/@') &&
-      !/\.(js|css|png|jpg|jpeg|webp|svg|ico|xml|txt|json|woff2?|map|pdf)$/i.test(pathname)
+      pathname !== '/sw.js' &&
+      pathname !== '/manifest.json' &&
+      pathname !== '/site.webmanifest' &&
+      !/\.(js|mjs|css|png|jpg|jpeg|webp|gif|svg|ico|xml|txt|json|webmanifest|woff2?|ttf|otf|mp4|webm|map|pdf)$/i.test(
+        pathname
+      )
     ) {
       const cleanPublicPath = pathname.replace(/\/+$/, '') || '/';
       const searchSuffix = parsedUrl.search || '';
       const hostHeader = String(req.headers?.host || '').toLowerCase();
 
       // 301 redirect www.boardly.cfd -> https://boardly.cfd
-      if (hostHeader.startsWith('www.')) {
+      if (hostHeader === 'www.boardly.cfd') {
         res.writeHead(301, { Location: `https://boardly.cfd${cleanPublicPath}${searchSuffix}` });
         res.end();
         return;
@@ -11456,45 +11782,65 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
 
       // 301 redirect ID-only /commons/post/{id} to canonical /commons/post/{id}-{slug}
       if (cleanPublicPath.startsWith('/commons/post/')) {
-        const slugParam = decodeURIComponent(cleanPublicPath.slice('/commons/post/'.length));
-        const store = loadD1Store();
-        const exactIdRow = store.posts.find(
-          (p) =>
-            p.id === slugParam &&
-            !p.is_hidden &&
-            !(p as any).deleted &&
-            !(p as any).is_deleted &&
-            p.status !== 'removed' &&
-            p.status !== 'deleted' &&
-            (!p.visibility || p.visibility === 'public')
-        );
-        if (exactIdRow) {
-          const canonicalSlug = buildSlug(exactIdRow.id, exactIdRow.title);
-          if (canonicalSlug && canonicalSlug !== slugParam) {
-            res.writeHead(301, { Location: `/commons/post/${canonicalSlug}${searchSuffix}` });
-            res.end();
-            return;
+        try {
+          const slugParam = decodeURIComponent(cleanPublicPath.slice('/commons/post/'.length));
+          const store = loadD1Store();
+          const exactIdRow = store.posts.find(
+            (p) =>
+              p.id === slugParam &&
+              !p.is_hidden &&
+              !(p as any).deleted &&
+              !(p as any).is_deleted &&
+              p.status !== 'removed' &&
+              p.status !== 'deleted' &&
+              (!p.visibility || p.visibility === 'public')
+          );
+          if (exactIdRow) {
+            const canonicalSlug = buildSlug(exactIdRow.id, exactIdRow.title);
+            if (canonicalSlug && canonicalSlug !== slugParam) {
+              res.writeHead(301, { Location: `/commons/post/${canonicalSlug}${searchSuffix}` });
+              res.end();
+              return;
+            }
           }
+        } catch {
+          // ignore redirect lookup errors and continue to SPA
         }
       }
 
       const ua = String(req.headers?.['user-agent'] || '').toLowerCase();
       const isBot =
-        /facebookexternalhit|whatsapp|twitterbot|telegrambot|discordbot|linkedinbot|slackbot|googlebot|bingbot|yandex|duckduckbot|applebot|crawler|spider/i.test(
+        /facebookexternalhit|whatsapp|twitterbot|telegrambot|discordbot|linkedinbot|slackbot|googlebot|bingbot|yandex|duckduckbot|applebot|baiduspider|pinterest|embedly|redditbot|chrome-lighthouse/i.test(
           ua
         ) ||
         parsedUrl.searchParams.get('crawler') === '1' ||
         parsedUrl.searchParams.get('crawler') === 'true';
 
-      if (isBot) {
-        const meta = resolveServerRouteMeta(pathname);
-        const jsonLdTag = meta.jsonLd
-          ? `\n  <script id="boardly-post-jsonld" type="application/ld+json">${meta.jsonLd}</script>`
-          : '';
-        const bodyContent =
-          meta.rootBodyHtml ||
-          `<main>\n    <h1>${escapeHtmlAttr(meta.h1)}</h1>\n    <p>${escapeHtmlAttr(meta.description)}</p>\n  </main>`;
-        const html = `<!doctype html>
+      const isPublicSeoPage =
+        cleanPublicPath.startsWith('/commons/post/') ||
+        cleanPublicPath === '/commons' ||
+        cleanPublicPath.startsWith('/commons/subject/') ||
+        cleanPublicPath.startsWith('/material') ||
+        cleanPublicPath.startsWith('/mcqs') ||
+        cleanPublicPath.startsWith('/subjects') ||
+        cleanPublicPath.startsWith('/grand-line') ||
+        cleanPublicPath === '/' ||
+        cleanPublicPath === '/pricing' ||
+        cleanPublicPath === '/about' ||
+        cleanPublicPath === '/features' ||
+        cleanPublicPath === '/how-it-works' ||
+        cleanPublicPath === '/faq';
+
+      if (isBot && isPublicSeoPage) {
+        try {
+          const meta = resolveServerRouteMeta(pathname);
+          const jsonLdTag = meta.jsonLd
+            ? `\n  <script id="boardly-post-jsonld" type="application/ld+json">${meta.jsonLd}</script>`
+            : '';
+          const bodyContent =
+            meta.rootBodyHtml ||
+            `<main>\n    <h1>${escapeHtmlAttr(meta.h1)}</h1>\n    <p>${escapeHtmlAttr(meta.description)}</p>\n  </main>`;
+          const html = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -11519,16 +11865,15 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
   <div id="root">${bodyContent}</div>
 </body>
 </html>`;
-        res.statusCode = meta.statusCode || 200;
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.setHeader(
-          'Cache-Control',
-          meta.statusCode === 404
-            ? 'no-store'
-            : 'public, max-age=60, s-maxage=120, stale-while-revalidate=300'
-        );
-        res.end(html);
-        return;
+          res.statusCode = meta.statusCode || 200;
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          res.setHeader('Vary', 'User-Agent');
+          res.end(html);
+          return;
+        } catch {
+          // On any error in crawler rendering, fall back to normal SPA index.html
+        }
       }
     }
 

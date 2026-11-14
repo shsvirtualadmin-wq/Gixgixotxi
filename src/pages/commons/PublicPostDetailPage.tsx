@@ -62,11 +62,12 @@ import {
 } from '@/utils/privacy';
 
 export const PublicPostDetailPage: React.FC = () => {
-  const { idSlug, postId: rawPostIdParam } = useParams<{
+  const { idSlug, slug, postId: rawPostIdParam } = useParams<{
     idSlug?: string;
+    slug?: string;
     postId?: string;
   }>();
-  const postId = extractIdFromSlug(idSlug || rawPostIdParam || '');
+  const postId = extractIdFromSlug(idSlug || slug || rawPostIdParam || '');
   const location = useLocation();
   const { user } = useAuth();
   const { profile } = useUserProfile();

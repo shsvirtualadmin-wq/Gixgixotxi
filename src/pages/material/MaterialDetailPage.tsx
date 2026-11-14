@@ -36,12 +36,12 @@ import type { CommonsPost } from '@/types/commons';
 import { COMMONS_POST_TYPES } from '@/types/commons';
 
 export const MaterialDetailPage: React.FC = () => {
-  const { idSlug, itemId } = useParams<{ idSlug?: string; itemId?: string }>();
+  const { idSlug, slug, itemId } = useParams<{ idSlug?: string; slug?: string; itemId?: string }>();
   const location = useLocation();
   const basePrefix: '/material' | '/study-material' = location.pathname.startsWith('/study-material')
     ? '/study-material'
     : '/material';
-  const materialId = extractIdFromSlug(idSlug || itemId || '');
+  const materialId = extractIdFromSlug(idSlug || slug || itemId || '');
   const { user } = useAuth();
   const { requireAuth } = useAuthGate();
 

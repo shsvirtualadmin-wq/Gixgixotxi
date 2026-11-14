@@ -14,6 +14,7 @@ import {
   FileCheck2,
   Eye,
   RefreshCw,
+  Calendar,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -40,6 +41,12 @@ import {
   notifyTestCompleted,
   computeSubjectBreakdownFromQuestions,
 } from '@/services/emailNotificationService';
+import {
+  formatPktDateTime,
+  formatLiveCountdown,
+  recordServerTimeOffset,
+} from '@/utils/grandLineSchedule';
+import { useServerSyncedClock } from '@/components/admin/GrandLineScheduleSheet';
 
 const DEFAULT_ALREADY_ATTEMPTED_MSG =
   'Each Grand Line test can only be attempted once.';
@@ -67,7 +74,14 @@ export function GrandLineTestRunnerPage() {
     attemptId?: string;
     attempt?: Partial<AmbassadorTestAttempt>;
   } | null>(null);
+  const [notLiveInfo, setNotLiveInfo] = useState<{
+    effectiveStatus: 'scheduled' | 'ended' | 'draft';
+    startAt?: number | null;
+    endAt?: number | null;
+    message: string;
+  } | null>(null);
   const [loadingMyResult, setLoadingMyResult] = useState(false);
+  const nowMs = useServerSyncedClock(1000);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
@@ -186,6 +200,7 @@ export function GrandLineTestRunnerPage() {
     setNotFound(false);
     setLoadError(null);
     setAlreadyAttemptedInfo(null);
+    setNotLiveInfo(null);
 
     if (isResultMode) {
       getMyTestAttemptForTest(testId)
@@ -252,13 +267,32 @@ export function GrandLineTestRunnerPage() {
       })
       .catch((err: any) => {
         if (!active) return;
-        if (err?.status === 409 || err?.code === 'ALREADY_ATTEMPTED' || err?.data?.state === 'already_attempted') {
+        const errCode = err?.code || err?.data?.code;
+        recordServerTimeOffset(err?.data?.serverTimeMs);
+        if (err?.status === 409 || errCode === 'ALREADY_ATTEMPTED' || err?.data?.state === 'already_attempted') {
           setAlreadyAttemptedInfo({
             message: DEFAULT_ALREADY_ATTEMPTED_MSG,
             attemptId: err?.attemptId || err?.data?.attemptId,
             attempt: err?.attempt || err?.data?.attempt,
           });
-        } else if (err?.status === 404 || err?.code === 'NOT_FOUND') {
+        } else if (err?.status === 403 && errCode === 'TEST_NOT_LIVE') {
+          const eff = err?.data?.effectiveStatus || 'ended';
+          if (eff === 'draft') {
+            setNotFound(true);
+          } else {
+            setNotLiveInfo({
+              effectiveStatus: eff === 'scheduled' ? 'scheduled' : 'ended',
+              startAt: err?.data?.startAt ?? null,
+              endAt: err?.data?.endAt ?? null,
+              message:
+                err?.rawMessage ||
+                err?.message ||
+                (eff === 'scheduled'
+                  ? 'This Grand Line test has not started yet.'
+                  : 'This Grand Line test has ended and can no longer be started.'),
+            });
+          }
+        } else if (err?.status === 404 || errCode === 'NOT_FOUND') {
           setNotFound(true);
         } else {
           setLoadError(err?.rawMessage || err?.message || 'Failed to load this drill.');
@@ -272,6 +306,18 @@ export function GrandLineTestRunnerPage() {
       active = false;
     };
   }, [testId, isResultMode, authLoading, user?.uid, resolveStudentProfileName, retryCount]);
+
+  // Automatically transition from Scheduled -> Live without page reload when startAt is reached
+  useEffect(() => {
+    if (
+      notLiveInfo &&
+      notLiveInfo.effectiveStatus === 'scheduled' &&
+      notLiveInfo.startAt &&
+      nowMs >= notLiveInfo.startAt
+    ) {
+      setRetryCount((c) => c + 1);
+    }
+  }, [notLiveInfo, nowMs]);
 
   const handleFinish = useCallback(async () => {
     if (!test || submitted || submitting || submittingRef.current) return;
@@ -407,6 +453,72 @@ export function GrandLineTestRunnerPage() {
   // Show 404 screen ONLY when the API genuinely returned 404
   if (notFound) {
     return <NotFoundPage />;
+  }
+
+  // Friendly Scheduled or Ended screen (HTTP 403 TEST_NOT_LIVE)
+  if (notLiveInfo && !submitted) {
+    const isScheduled = notLiveInfo.effectiveStatus === 'scheduled';
+    const countdown =
+      isScheduled && notLiveInfo.startAt && notLiveInfo.startAt > nowMs
+        ? formatLiveCountdown(notLiveInfo.startAt, nowMs)
+        : null;
+
+    return (
+      <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] flex items-center justify-center p-4 sm:p-6">
+        <div className="max-w-lg w-full rounded-2xl bg-[var(--card)] border border-[var(--border)] p-6 sm:p-8 text-center space-y-5">
+          <div
+            className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto border ${
+              isScheduled
+                ? 'bg-amber-500/15 border-amber-500/30 text-amber-400'
+                : 'bg-zinc-500/15 border-zinc-500/30 text-zinc-300'
+            }`}
+          >
+            {isScheduled ? <Calendar size={28} /> : <Clock size={28} />}
+          </div>
+
+          <div className="space-y-2">
+            <span
+              className={`inline-block text-[11px] font-mono uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+                isScheduled
+                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                  : 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30'
+              }`}
+            >
+              {isScheduled ? 'Scheduled' : 'Ended'}
+            </span>
+            <h1 className="text-lg sm:text-xl font-bold text-[var(--text)]">
+              {isScheduled ? 'Test Has Not Started Yet' : 'This Test Has Ended'}
+            </h1>
+            <p className="text-xs sm:text-sm text-[var(--muted)] leading-relaxed">
+              {isScheduled && notLiveInfo.startAt
+                ? `Starts on ${formatPktDateTime(notLiveInfo.startAt)}${
+                    countdown ? ` • Starts in ${countdown}` : ''
+                  }`
+                : notLiveInfo.endAt
+                ? `Ended on ${formatPktDateTime(notLiveInfo.endAt)}. New attempts are closed, but results and leaderboards remain visible.`
+                : notLiveInfo.message}
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3 pt-2">
+            <Link
+              to={`/grand-line/test/${encodeURIComponent(testId)}`}
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[var(--accent)] text-white text-xs sm:text-sm font-bold hover:opacity-95 inline-flex items-center justify-center gap-2"
+            >
+              <Trophy size={15} />
+              <span>View Test Info &amp; Leaderboard</span>
+            </Link>
+            <Link
+              to="/grand-line"
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] inline-flex items-center justify-center gap-2"
+            >
+              <ArrowLeft size={15} />
+              <span>Back to Grand Line</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Friendly ALREADY_ATTEMPTED screen (HTTP 409)

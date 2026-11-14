@@ -68,6 +68,13 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     pendingCallbackRef.current = undefined;
   }, []);
 
+  // Ensure the sign-in modal never stays mounted over a newly navigated route
+  useEffect(() => {
+    setIsOpen(false);
+    setStep('options');
+    setErrorMsg(null);
+  }, [location.pathname]);
+
   const requireAuth = useCallback(
     (label: string, onAuthorized?: () => void, customRedirect?: string): boolean => {
       if (user) {

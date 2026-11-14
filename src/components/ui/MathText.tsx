@@ -13,7 +13,7 @@ const katexListeners = new Set<() => void>();
  * Lazy-loads KaTeX and mhchem only when a math segment is actually rendered or validated.
  */
 // eslint-disable-next-line react-refresh/only-export-components
-export function ensureKatexLoaded(): Promise<KatexModule> {
+export function ensureKatexLoaded(): Promise<KatexModule | null> {
   if (katexInstance) {
     return Promise.resolve(katexInstance);
   }
@@ -30,6 +30,11 @@ export function ensureKatexLoaded(): Promise<KatexModule> {
         katexListeners.forEach((cb) => cb());
         katexListeners.clear();
         return resolved;
+      })
+      .catch((err) => {
+        console.warn('[MathText] Failed to load KaTeX chunk:', err);
+        katexLoadPromise = null;
+        return null as unknown as KatexModule;
       });
   }
   return katexLoadPromise;

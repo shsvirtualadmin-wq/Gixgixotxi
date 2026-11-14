@@ -3219,20 +3219,77 @@ export async function deleteReview(adminEmail: string, reviewId: string): Promis
 
 // ─── AUDIT LOGS ──────────────────────────────────────────────────────────────
 export async function fetchAuditLogs(limitCount = 100): Promise<AuditLog[]> {
+  const fetchServerGrandLineAuditLogs = async (): Promise<AuditLog[]> => {
+    try {
+      const res = await fetchAdminJsonWithRetry<{ ok?: boolean; logs?: any[] }>(
+        '/api/admin/grand-line-audit-logs'
+      );
+      if (!res.ok || !Array.isArray(res.data?.logs)) return [];
+      return res.data.logs.map((row: any) => {
+        const ms = Number(row.timestampMs || Date.now());
+        return {
+          id: String(row.id || `gl_${ms}`),
+          adminEmail: String(row.adminEmail || 'admin'),
+          action: String(row.action || 'grand_line_schedule_status_updated'),
+          targetUid: row.targetUid || undefined,
+          targetEmail: row.targetEmail || undefined,
+          details: row.details || {},
+          timestamp: Timestamp.fromMillis(ms),
+        } as AuditLog;
+      });
+    } catch {
+      return [];
+    }
+  };
+
+  const mergeLogs = (firestoreLogs: AuditLog[], serverLogs: AuditLog[]): AuditLog[] => {
+    const byKey = new Map<string, AuditLog>();
+    for (const item of [...firestoreLogs, ...serverLogs]) {
+      const ms = item.timestamp?.toMillis
+        ? item.timestamp.toMillis()
+        : (item.timestamp as any)?.seconds
+        ? (item.timestamp as any).seconds * 1000
+        : 0;
+      const d = (item.details || {}) as Record<string, any>;
+      // Deduplicate if both client Firestore and server recorded the same schedule update within 5s
+      const dedupKey =
+        item.action === 'grand_line_schedule_status_updated' && d.testId
+          ? `gl_sched:${d.testId}:${d.newStatus}:${d.newWindow}:${Math.floor(ms / 5000)}`
+          : item.id;
+      if (!byKey.has(dedupKey)) {
+        byKey.set(dedupKey, item);
+      }
+    }
+    return Array.from(byKey.values())
+      .sort((a, b) => {
+        const aMs = a.timestamp?.toMillis ? a.timestamp.toMillis() : ((a.timestamp as any)?.seconds || 0) * 1000;
+        const bMs = b.timestamp?.toMillis ? b.timestamp.toMillis() : ((b.timestamp as any)?.seconds || 0) * 1000;
+        return bMs - aMs;
+      })
+      .slice(0, limitCount);
+  };
+
+  const serverLogsPromise = fetchServerGrandLineAuditLogs();
+
   try {
     const ref = collection(db, 'auditLogs');
     const q = query(ref, orderBy('timestamp', 'desc'), limit(limitCount));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog));
+    const [snap, serverLogs] = await Promise.all([getDocs(q), serverLogsPromise]);
+    const firestoreLogs = snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog));
+    return mergeLogs(firestoreLogs, serverLogs);
   } catch (err) {
     // If index is not yet built, fall back to simple limit without order
     console.warn('[AdminService] fetchAuditLogs fallback:', err);
     try {
-      const snap = await getDocs(query(collection(db, 'auditLogs'), limit(limitCount)));
-      return snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog));
+      const [snap, serverLogs] = await Promise.all([
+        getDocs(query(collection(db, 'auditLogs'), limit(limitCount))),
+        serverLogsPromise,
+      ]);
+      const firestoreLogs = snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog));
+      return mergeLogs(firestoreLogs, serverLogs);
     } catch (fallbackErr) {
       console.warn('[AdminService] fetchAuditLogs secondary fallback warning:', fallbackErr);
-      return [];
+      return await serverLogsPromise;
     }
   }
 }

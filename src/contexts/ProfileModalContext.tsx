@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, lazy } from 'react';
 import { createPortal } from 'react-dom';
+import { useLocation } from 'react-router-dom';
 import { BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
 import { useBodyScrollLock } from '@/utils/scrollLock';
 
@@ -26,6 +27,7 @@ export const useProfileModal = () => useContext(ProfileModalContext);
 export const ProfileModalProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeUid, setActiveUid] = useState<string | null>(null);
+  const location = useLocation();
 
   const openProfile = useCallback((uid?: string | null) => {
     setActiveUid(uid || null);
@@ -44,6 +46,12 @@ export const ProfileModalProvider: React.FC<{ children: React.ReactNode }> = ({ 
       window.history.back();
     }
   }, []);
+
+  // Automatically close the full-screen profile modal when navigating to a new route
+  useEffect(() => {
+    setIsOpen(false);
+    setActiveUid(null);
+  }, [location.pathname]);
 
   // Listen for browser / mobile back gesture (popstate)
   useEffect(() => {

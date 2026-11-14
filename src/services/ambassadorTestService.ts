@@ -1,5 +1,12 @@
 import { api } from '../lib/api';
 import { auth } from '../lib/firebase';
+import {
+  recordServerTimeOffset,
+  normalizeOptionalTimestampMs,
+  normalizeStatusMode,
+  type GrandLineStatusMode,
+  type GrandLineEffectiveStatus,
+} from '../utils/grandLineSchedule';
 
 export interface AmbassadorTestQuestion {
   id: string;
@@ -36,6 +43,12 @@ export interface AmbassadorCustomTest {
   resultsFinalised?: boolean;
   finalisedAt?: number | null;
   mockNumber?: number | null;
+  startAt?: number | null;
+  endAt?: number | null;
+  statusMode?: GrandLineStatusMode;
+  reason?: string | null;
+  forceCloseAttemptsAt?: number | null;
+  effectiveStatus?: GrandLineEffectiveStatus;
   createdAt: any;
   updatedAt?: any;
 }
@@ -143,7 +156,7 @@ function normalizeTestRow(raw: any): AmbassadorCustomTest {
     String(raw.creatorShortId || '') ||
     (captainUid ? captainUid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase() : 'CAPT');
 
-  return {
+  const normalized: AmbassadorCustomTest = {
     id: String(raw.id || ''),
     title: String(raw.title || 'Untitled Test'),
     description: String(raw.description || ''),
@@ -170,6 +183,35 @@ function normalizeTestRow(raw: any): AmbassadorCustomTest {
     createdAt: toTimestampCompat(raw.createdAt ?? raw.created_at),
     updatedAt: toTimestampCompat(raw.updatedAt ?? raw.updated_at ?? raw.createdAt),
   };
+
+  if (raw.startAt !== undefined || raw.start_at !== undefined) {
+    normalized.startAt = normalizeOptionalTimestampMs(raw.startAt ?? raw.start_at);
+  }
+  if (raw.endAt !== undefined || raw.end_at !== undefined) {
+    normalized.endAt = normalizeOptionalTimestampMs(raw.endAt ?? raw.end_at);
+  }
+  const mode = normalizeStatusMode(raw.statusMode ?? raw.status_mode);
+  if (mode) {
+    normalized.statusMode = mode;
+  }
+  if (raw.reason !== undefined) {
+    normalized.reason = raw.reason ? String(raw.reason) : null;
+  }
+  if (raw.forceCloseAttemptsAt !== undefined || raw.force_close_attempts_at !== undefined) {
+    normalized.forceCloseAttemptsAt = normalizeOptionalTimestampMs(
+      raw.forceCloseAttemptsAt ?? raw.force_close_attempts_at
+    );
+  }
+  if (
+    raw.effectiveStatus === 'live' ||
+    raw.effectiveStatus === 'scheduled' ||
+    raw.effectiveStatus === 'ended' ||
+    raw.effectiveStatus === 'draft'
+  ) {
+    normalized.effectiveStatus = raw.effectiveStatus;
+  }
+
+  return normalized;
 }
 
 export function normalizeAttemptRow(raw: any): AmbassadorTestAttempt {
@@ -521,11 +563,51 @@ export async function bulkInsertTestQuestions(
 
 export async function getTestsByCaptain(captainUid?: string): Promise<AmbassadorCustomTest[]> {
   const query = captainUid ? `?captainUid=${encodeURIComponent(captainUid)}` : '';
-  const data = await api.get<{ tests: any[] }>(`/api/tests/mine${query}`, {
+  const data = await api.get<{ tests: any[]; serverTimeMs?: number }>(`/api/tests/mine${query}`, {
     requireAuth: true,
     silentErrorToast: true,
   });
+  recordServerTimeOffset(data?.serverTimeMs);
   return (data.tests || []).map(normalizeTestRow);
+}
+
+export async function getAllGrandLineTestsForAdmin(): Promise<AmbassadorCustomTest[]> {
+  const data = await api.get<{ tests: any[]; serverTimeMs?: number }>('/api/tests/mine?all=1', {
+    requireAuth: true,
+    silentErrorToast: true,
+  });
+  recordServerTimeOffset(data?.serverTimeMs);
+  return (data.tests || []).map(normalizeTestRow);
+}
+
+export async function updateGrandLineScheduleAndStatus(
+  testId: string,
+  payload: {
+    startAt?: number | null;
+    endAt?: number | null;
+    statusMode?: GrandLineStatusMode;
+    reason?: string | null;
+    closeAllAttemptsNow?: boolean;
+  }
+): Promise<{
+  ok: boolean;
+  test: AmbassadorCustomTest;
+  serverTimeMs?: number;
+}> {
+  const data = await api.post<{
+    ok: boolean;
+    test: any;
+    serverTimeMs?: number;
+  }>(`/api/tests/${encodeURIComponent(testId)}/schedule`, payload, {
+    requireAuth: true,
+  });
+  recordServerTimeOffset(data?.serverTimeMs);
+  invalidateAmbassadorTestCache();
+  return {
+    ok: Boolean(data?.ok),
+    test: normalizeTestRow(data?.test || { id: testId }),
+    serverTimeMs: data?.serverTimeMs,
+  };
 }
 
 export async function getAllPublicAmbassadorTests(subject?: string): Promise<AmbassadorCustomTest[]> {
@@ -533,9 +615,10 @@ export async function getAllPublicAmbassadorTests(subject?: string): Promise<Amb
   const cacheKey = `public_tests:${normSubj}`;
   return cachedFetch(cacheKey, async () => {
     const query = normSubj !== 'All' ? `?subject=${encodeURIComponent(normSubj)}` : '';
-    const data = await api.get<{ tests: any[] }>(`/api/tests/public${query}`, {
+    const data = await api.get<{ tests: any[]; serverTimeMs?: number }>(`/api/tests/public${query}`, {
       silentErrorToast: true,
     });
+    recordServerTimeOffset(data?.serverTimeMs);
     return (data.tests || []).map(normalizeTestRow);
   });
 }
@@ -551,13 +634,14 @@ export async function getAmbassadorTestById(
     if (options?.view) params.set('view', options.view);
     const qs = params.toString();
     const query = qs ? `?${qs}` : '';
-    const data = await api.get<{ test: any; myAttempt?: any }>(
+    const data = await api.get<{ test: any; myAttempt?: any; serverTimeMs?: number }>(
       `/api/tests/${encodeURIComponent(testId)}${query}`,
       {
         requireAuth: false,
         silentErrorToast: options?.silentErrorToast ?? true,
       }
     );
+    recordServerTimeOffset(data?.serverTimeMs);
     if (!data?.test) return null;
     const normalized = normalizeTestRow(data.test) as AmbassadorCustomTest & {
       myAttempt?: AmbassadorTestAttempt | null;
@@ -583,10 +667,12 @@ export async function getMyTestAttemptForTest(testId: string): Promise<{
     test?: any;
     gradedQuestions?: GradedAttemptQuestion[];
     isAdminAnswerKey?: boolean;
+    serverTimeMs?: number;
   }>(`/api/tests/${encodeURIComponent(testId)}/my-attempt`, {
     requireAuth: false,
     silentErrorToast: true,
   });
+  recordServerTimeOffset(data?.serverTimeMs);
 
   return {
     attempt: data.attempt ? normalizeAttemptRow(data.attempt) : null,

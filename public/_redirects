@@ -1,5 +1,6 @@
 /_headers /_headers 200
 /_redirects /_redirects 200
+/assets/* /assets/:splat 404
 /api/* /api/:splat 200
 /about-kobans /kobans 301
 /study-material /material 301

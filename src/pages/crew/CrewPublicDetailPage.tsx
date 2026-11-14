@@ -12,8 +12,12 @@ import { useAuthGate } from '@/contexts/AuthGateContext';
 import { extractIdFromSlug, buildEntitySlug, maskPublicUserText } from '@/utils/privacy';
 
 export const CrewPublicDetailPage: React.FC = () => {
-  const { idSlug } = useParams<{ idSlug: string }>();
-  const crewId = extractIdFromSlug(idSlug);
+  const { idSlug, slug, crewId: rawCrewId } = useParams<{
+    idSlug?: string;
+    slug?: string;
+    crewId?: string;
+  }>();
+  const crewId = extractIdFromSlug(idSlug || slug || rawCrewId || '');
   const navigate = useNavigate();
   const { user } = useAuth();
   const { requireAuth } = useAuthGate();

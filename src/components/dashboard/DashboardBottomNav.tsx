@@ -671,6 +671,13 @@ function DashboardBottomNavComponent() {
     </nav>
   );
 
+  const handleCloseMenu = useCallback(() => {
+    setNavMenuOpen(false, isApprovedCaptain);
+    if (location.pathname === '/menu' || location.pathname === '/dashboard/menu') {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isApprovedCaptain, location.pathname, navigate]);
+
   return (
     <>
       {typeof document !== 'undefined'
@@ -680,12 +687,7 @@ function DashboardBottomNavComponent() {
       {/* ─── FULL-SCREEN MENU PAGE (SLIDES IN FROM RIGHT) ───────────────── */}
       <HamburgerMenuSheet
         isOpen={isMenuOpen}
-        onClose={() => {
-          setNavMenuOpen(false, isApprovedCaptain);
-          if (location.pathname === '/menu' || location.pathname === '/dashboard/menu') {
-            navigate('/dashboard', { replace: true });
-          }
-        }}
+        onClose={handleCloseMenu}
       />
     </>
   );

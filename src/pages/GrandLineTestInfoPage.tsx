@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
+  Calendar,
 } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
@@ -33,6 +34,16 @@ import { routes } from '@/utils/routes';
 import { showApiToast } from '@/lib/api';
 import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
 import { BubbleLoader } from '@/components/ui/BubbleLoader';
+import {
+  computeGrandLineTestStatus,
+  formatPktDateTime,
+  getGrandLineCountdownLabel,
+} from '@/utils/grandLineSchedule';
+import {
+  GrandLineStatusPills,
+  GrandLineAdminRowControls,
+  useServerSyncedClock,
+} from '@/components/admin/GrandLineScheduleSheet';
 
 function formatTimeTaken(seconds: number): string {
   const safe = Math.max(0, Math.floor(Number(seconds) || 0));
@@ -42,11 +53,16 @@ function formatTimeTaken(seconds: number): string {
 }
 
 export const GrandLineTestInfoPage: React.FC = () => {
-  const { idSlug } = useParams<{ idSlug: string }>();
-  const testId = extractIdFromSlug(idSlug);
+  const { idSlug, slug, testId: rawTestId } = useParams<{
+    idSlug?: string;
+    slug?: string;
+    testId?: string;
+  }>();
+  const testId = extractIdFromSlug(idSlug || slug || rawTestId || '');
   const navigate = useNavigate();
   const { user, profile, isAdmin } = useAuth();
   const { requireAuth } = useAuthGate();
+  const nowMs = useServerSyncedClock(1000);
 
   const [test, setTest] = useState<AmbassadorTestDoc | null>(null);
   const [leaderboard, setLeaderboard] = useState<PublicLeaderboardEntry[]>([]);
@@ -140,7 +156,10 @@ export const GrandLineTestInfoPage: React.FC = () => {
     );
   }
 
-  if (!test || test.status === 'unpublished') {
+  const effectiveStatus = test ? computeGrandLineTestStatus(test, nowMs) : 'draft';
+  const countdownLabel = test ? getGrandLineCountdownLabel(test, nowMs) : null;
+
+  if (!test || (effectiveStatus === 'draft' && !isAdmin && user?.uid !== test.captainUid)) {
     return <NotFoundPage />;
   }
 
@@ -158,6 +177,16 @@ export const GrandLineTestInfoPage: React.FC = () => {
   const handleStartTest = () => {
     if (myAttempt) {
       navigate(routes.grandLineTestRun(test.id, 'result'));
+      return;
+    }
+    const currentStatus = computeGrandLineTestStatus(test, nowMs);
+    if (currentStatus !== 'live') {
+      showApiToast(
+        currentStatus === 'scheduled'
+          ? 'This test has not started yet.'
+          : 'This test has ended and can no longer be started.',
+        'error'
+      );
       return;
     }
     requireAuth(
@@ -192,6 +221,12 @@ export const GrandLineTestInfoPage: React.FC = () => {
                 <Trophy size={13} />
                 <span>Grand Line Public Mock Test</span>
               </div>
+              <GrandLineStatusPills
+                test={test}
+                nowMs={nowMs}
+                showWindow={true}
+                showCountdown={true}
+              />
               {myAttempt && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                   <CheckCircle2 size={13} />
@@ -200,18 +235,30 @@ export const GrandLineTestInfoPage: React.FC = () => {
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                navigator.clipboard?.writeText(`https://boardly.cfd${canonicalPath}`);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              }}
-              className="glass-pill px-3 py-1.5 text-xs text-white/75 hover:text-white inline-flex items-center gap-1.5 cursor-pointer"
-            >
-              {copied ? <Check size={13} className="text-emerald-400" /> : <Share2 size={13} />}
-              <span>{copied ? 'Link Copied' : 'Share Test'}</span>
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              {isAdmin && (
+                <GrandLineAdminRowControls
+                  test={test}
+                  nowMs={nowMs}
+                  compact={true}
+                  onUpdated={(updated) =>
+                    setTest((prev) => (prev ? { ...prev, ...updated } : updated))
+                  }
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(`https://boardly.cfd${canonicalPath}`);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                className="glass-pill px-3 py-1.5 text-xs text-white/75 hover:text-white inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                {copied ? <Check size={13} className="text-emerald-400" /> : <Share2 size={13} />}
+                <span>{copied ? 'Link Copied' : 'Share Test'}</span>
+              </button>
+            </div>
           </div>
 
           <h1 className="font-dot text-2xl sm:text-4xl font-bold text-white mb-3">
@@ -318,14 +365,48 @@ export const GrandLineTestInfoPage: React.FC = () => {
               </>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={handleStartTest}
-                  className="btn-primary px-6 py-3 text-xs sm:text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
-                >
-                  {user ? <Play size={15} /> : <Lock size={15} />}
-                  <span>{user ? 'Start Timed Test Now' : 'Sign in to Take Test'}</span>
-                </button>
+                {effectiveStatus === 'live' && (
+                  <button
+                    type="button"
+                    onClick={handleStartTest}
+                    className="btn-primary px-6 py-3 text-xs sm:text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    {user ? <Play size={15} /> : <Lock size={15} />}
+                    <span>{user ? 'Start Timed Test Now' : 'Sign in to Take Test'}</span>
+                  </button>
+                )}
+
+                {effectiveStatus === 'scheduled' && (
+                  <div className="w-full sm:w-auto px-5 py-3.5 rounded-2xl bg-amber-500/12 border border-amber-500/30 text-amber-200 flex items-center gap-3">
+                    <Calendar size={18} className="text-amber-400 shrink-0" />
+                    <div className="text-xs sm:text-sm">
+                      <span className="font-bold block">
+                        Starts on {formatPktDateTime(test.startAt) || 'scheduled time'}
+                      </span>
+                      {countdownLabel && (
+                        <span className="text-xs text-amber-300/90 tabular-nums">
+                          {countdownLabel}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {effectiveStatus === 'ended' && (
+                  <div className="w-full sm:w-auto px-5 py-3.5 rounded-2xl bg-zinc-500/15 border border-zinc-500/30 text-zinc-200 flex items-center gap-3">
+                    <Clock size={18} className="text-zinc-400 shrink-0" />
+                    <div className="text-xs sm:text-sm">
+                      <span className="font-bold block">
+                        This test has ended
+                        {test.endAt ? ` (${formatPktDateTime(test.endAt)})` : ''}
+                      </span>
+                      <span className="text-xs text-white/60">
+                        New attempts are closed. Standings and leaderboard remain visible below.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {isAdmin && (
                   <PdfDownloadButton
                     label="Download Answer Key"

@@ -31,6 +31,7 @@ import {
 } from '@/services/kobanService';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { useAuth } from '@/contexts/AuthContext';
+import { GrandLineTestsAdminSection } from '@/components/admin/GrandLineTestsAdminSection';
 
 const CAPTAINS_PAGE_SIZE = 20;
 
@@ -254,6 +255,9 @@ export function AdminCaptainsPage() {
           </div>
         </div>
       </div>
+
+      {/* Grand Line Tests Schedule & Status Management */}
+      <GrandLineTestsAdminSection />
 
       {/* Search Bar */}
       <div className="flex items-center justify-between gap-4">

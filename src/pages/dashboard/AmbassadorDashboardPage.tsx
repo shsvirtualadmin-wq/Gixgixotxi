@@ -37,6 +37,7 @@ import {
   updateAmbassadorTest,
   togglePublishAmbassadorTest,
   getTestsByCaptain,
+  getAllGrandLineTestsForAdmin,
   getAmbassadorTestById,
   deleteAmbassadorTest,
   getTestResultsForCaptain,
@@ -45,6 +46,11 @@ import {
   type AmbassadorTestQuestion,
   type AmbassadorTestAttempt,
 } from '@/services/ambassadorTestService';
+import {
+  GrandLineStatusPills,
+  GrandLineAdminRowControls,
+  useServerSyncedClock,
+} from '@/components/admin/GrandLineScheduleSheet';
 import {
   getMyCrewD1,
   createCrewD1,
@@ -101,6 +107,7 @@ function getNcdPressHandlers(disabled?: boolean) {
 
 export function AmbassadorDashboardPage() {
   const { user, profile, isAdmin } = useAuth();
+  const nowMs = useServerSyncedClock(1000);
 
   // Active tab: My Tests | Results | Crew
   const [activeTab, setActiveTab] = useState<CaptainTab>('tests');
@@ -175,7 +182,7 @@ export function AmbassadorDashboardPage() {
     setLoading(true);
     try {
       const [testsList, crewBundle] = await Promise.all([
-        getTestsByCaptain(user.uid).catch(() => []),
+        (isAdmin ? getAllGrandLineTestsForAdmin() : getTestsByCaptain(user.uid)).catch(() => []),
         getMyCrewD1().catch(() => ({ crew: null, members: [] })),
       ]);
       setMyTests(testsList);
@@ -189,7 +196,7 @@ export function AmbassadorDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [user?.uid, selectedResultTestId]);
+  }, [user?.uid, isAdmin, selectedResultTestId]);
 
   useEffect(() => {
     loadCaptainWorkspace();
@@ -794,6 +801,13 @@ export function AmbassadorDashboardPage() {
                         {!isPublished && (
                           <span className="ncd-chip-gold">Unpublished</span>
                         )}
+
+                        <GrandLineStatusPills
+                          test={t}
+                          nowMs={nowMs}
+                          showWindow={true}
+                          showCountdown={true}
+                        />
                       </div>
 
                       <h3
@@ -828,6 +842,18 @@ export function AmbassadorDashboardPage() {
                       className="w-full sm:w-auto flex items-center gap-2 flex-wrap shrink-0 pt-3 sm:pt-0 border-t sm:border-t-0"
                       style={{ borderColor: 'var(--cw-line)' }}
                     >
+                      {isAdmin && (
+                        <GrandLineAdminRowControls
+                          test={t}
+                          nowMs={nowMs}
+                          onUpdated={(updated) => {
+                            setMyTests((prev) =>
+                              prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item))
+                            );
+                          }}
+                        />
+                      )}
+
                       <button
                         type="button"
                         onClick={() => handleTogglePublish(t)}

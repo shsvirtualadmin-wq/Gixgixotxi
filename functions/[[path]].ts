@@ -348,6 +348,16 @@ function renderPostSsrHtmlAndJsonLd(
   };
 }
 
+const CRAWLER_UA_REGEX =
+  /googlebot|bingbot|whatsapp|facebookexternalhit|twitterbot|telegrambot|discordbot|linkedinbot|slackbot|applebot|yandex|duckduckbot|baiduspider|pinterest|embedly|quora link preview|outbrain|vkshare|w3c_validator|redditbot|rogerbot|showyoubot|flipboard|tumblr|bitlybot|skypeuripreview|nuzzel|qwantify|pinterestbot|bitrix link preview|xing-contenttabreceiver|chrome-lighthouse/i;
+
+export function isCrawlerRequest(request: Request, url: URL): boolean {
+  const ua = String(request.headers.get('user-agent') || '');
+  if (CRAWLER_UA_REGEX.test(ua)) return true;
+  const crawlerParam = url.searchParams.get('crawler');
+  return crawlerParam === '1' || crawlerParam === 'true';
+}
+
 export const onRequest = async (context: {
   request: Request;
   env: Env;
@@ -367,40 +377,52 @@ export const onRequest = async (context: {
     });
   }
 
-  // Canonical www -> non-www 301 redirect for GET requests
-  if (request.method === 'GET' && url.hostname.toLowerCase().startsWith('www.')) {
-    const cleanHost = url.hostname.replace(/^www\./i, '');
-    return Response.redirect(`https://${cleanHost}${pathname}${url.search}`, 301);
-  }
-
-  // Never apply SEO redirects, trailing-slash rules, or 404 handling to non-GET requests or static assets
-  if (
-    request.method !== 'GET' ||
-    pathname.startsWith('/assets/') ||
-    /\.(js|css|png|jpg|jpeg|webp|svg|ico|xml|txt|json|woff2?|map|pdf)$/i.test(pathname)
-  ) {
-    // Allow dynamic sitemap XML generation for GET /sitemap*.xml
+  try {
+    // Canonical www -> non-www 301 redirect for GET requests (avoid redirect loops on localhost/preview)
     if (
       request.method === 'GET' &&
-      (pathname === '/sitemap.xml' || pathname === '/sitemap-posts.xml' || pathname === '/sitemap-index.xml') &&
+      url.hostname.toLowerCase() === 'www.boardly.cfd'
+    ) {
+      return Response.redirect(`https://boardly.cfd${pathname}${url.search}`, 301);
+    }
+
+    // Never apply SEO redirects, trailing-slash rules, or HTML rewrites to non-GET requests or static assets
+    if (
+      request.method !== 'GET' ||
+      pathname.startsWith('/assets/') ||
+      pathname === '/sw.js' ||
+      pathname === '/manifest.json' ||
+      pathname === '/site.webmanifest' ||
+      /\.(js|mjs|css|png|jpg|jpeg|webp|gif|svg|ico|xml|txt|json|webmanifest|woff2?|ttf|otf|mp4|webm|map|pdf)$/i.test(
+        pathname
+      )
+    ) {
+      // Allow dynamic sitemap XML generation for GET /sitemap*.xml
+      if (
+        request.method === 'GET' &&
+        (pathname === '/sitemap.xml' ||
+          pathname === '/sitemap-posts.xml' ||
+          pathname === '/sitemap-index.xml') &&
+        env?.DB
+      ) {
+        // Fall through to sitemap block below
+      } else {
+        return await next();
+      }
+    }
+
+    // 1. Dynamic Sitemap XML from D1 (lists every public post with lastmod)
+    if (
+      (pathname === '/sitemap.xml' ||
+        pathname === '/sitemap-posts.xml' ||
+        pathname === '/sitemap-index.xml') &&
+      request.method === 'GET' &&
       env?.DB
     ) {
-      // Fall through to sitemap block below
-    } else {
-      return next();
-    }
-  }
-
-  // 1. Dynamic Sitemap XML from D1 (lists every public post with lastmod)
-  if (
-    (pathname === '/sitemap.xml' || pathname === '/sitemap-posts.xml' || pathname === '/sitemap-index.xml') &&
-    request.method === 'GET' &&
-    env?.DB
-  ) {
-    try {
-      if (pathname === '/sitemap-index.xml') {
-        const nowIso = new Date().toISOString();
-        const indexXml = `<?xml version="1.0" encoding="UTF-8"?>
+      try {
+        if (pathname === '/sitemap-index.xml') {
+          const nowIso = new Date().toISOString();
+          const indexXml = `<?xml version="1.0" encoding="UTF-8"?>
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <sitemap>
     <loc>https://boardly.cfd/sitemap.xml</loc>
@@ -411,48 +433,53 @@ export const onRequest = async (context: {
     <lastmod>${nowIso}</lastmod>
   </sitemap>
 </sitemapindex>`;
-        return new Response(indexXml, {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/xml; charset=utf-8',
-            'Cache-Control': 'public, max-age=300, s-maxage=600',
-          },
-        });
-      }
+          return new Response(indexXml, {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/xml; charset=utf-8',
+              'Cache-Control': 'public, max-age=300, s-maxage=600',
+            },
+          });
+        }
 
-      const { results } = await env.DB.prepare(
-        "SELECT id, slug, title, files_json, created_at, updated_at FROM posts WHERE is_hidden = 0 AND (status IS NULL OR status != 'removed') AND (visibility IS NULL OR visibility = 'public') ORDER BY created_at DESC LIMIT 5000"
-      ).all<{
-        id: string;
-        slug: string;
-        title: string;
-        files_json?: string;
-        created_at?: number;
-        updated_at?: number;
-      }>();
+        const { results } = await env.DB.prepare(
+          "SELECT id, slug, title, files_json, created_at, updated_at FROM posts WHERE is_hidden = 0 AND (status IS NULL OR status != 'removed') AND (visibility IS NULL OR visibility = 'public') ORDER BY created_at DESC LIMIT 5000"
+        ).all<{
+          id: string;
+          slug: string;
+          title: string;
+          files_json?: string;
+          created_at?: number;
+          updated_at?: number;
+        }>();
 
-      const staticEntries = [
-        { loc: 'https://boardly.cfd/', priority: '1.0', changefreq: 'daily' },
-        { loc: 'https://boardly.cfd/commons', priority: '0.9', changefreq: 'hourly' },
-        { loc: 'https://boardly.cfd/material', priority: '0.9', changefreq: 'daily' },
-        { loc: 'https://boardly.cfd/mcqs', priority: '0.9', changefreq: 'daily' },
-        { loc: 'https://boardly.cfd/grand-line', priority: '0.9', changefreq: 'daily' },
-        { loc: 'https://boardly.cfd/pricing', priority: '0.8', changefreq: 'weekly' },
-      ];
+        const staticEntries = [
+          { loc: 'https://boardly.cfd/', priority: '1.0', changefreq: 'daily' },
+          { loc: 'https://boardly.cfd/commons', priority: '0.9', changefreq: 'hourly' },
+          { loc: 'https://boardly.cfd/material', priority: '0.9', changefreq: 'daily' },
+          { loc: 'https://boardly.cfd/mcqs', priority: '0.9', changefreq: 'daily' },
+          { loc: 'https://boardly.cfd/grand-line', priority: '0.9', changefreq: 'daily' },
+          { loc: 'https://boardly.cfd/pricing', priority: '0.8', changefreq: 'weekly' },
+        ];
 
-      const postEntries: Array<{ loc: string; lastmod: string; priority: string; changefreq: string }> = [];
-      for (const r of results || []) {
-        const slug = buildCanonicalSlug(r.id, r.title);
-        const lastmod = toIsoDate(r.updated_at || r.created_at);
-        postEntries.push({
-          loc: `https://boardly.cfd/commons/post/${escapeHtmlText(slug)}`,
-          lastmod,
-          priority: '0.8',
-          changefreq: 'weekly',
-        });
-      }
+        const postEntries: Array<{
+          loc: string;
+          lastmod: string;
+          priority: string;
+          changefreq: string;
+        }> = [];
+        for (const r of results || []) {
+          const slug = buildCanonicalSlug(r.id, r.title);
+          const lastmod = toIsoDate(r.updated_at || r.created_at);
+          postEntries.push({
+            loc: `https://boardly.cfd/commons/post/${escapeHtmlText(slug)}`,
+            lastmod,
+            priority: '0.8',
+            changefreq: 'weekly',
+          });
+        }
 
-      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${staticEntries
   .map(
@@ -475,333 +502,312 @@ ${postEntries
   .join('\n')}
 </urlset>`;
 
-      return new Response(xml, {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/xml; charset=utf-8',
-          'Cache-Control': 'public, max-age=120, s-maxage=300, stale-while-revalidate=600',
-        },
-      });
-    } catch {
-      // Fall through if D1 query fails
-    }
-  }
-
-  // 2. Exclude all authenticated app routes from SEO redirects, trailing-slash 301s, and 404 handling
-  const isAuthAppRoute = isAuthenticatedAppRoute(pathname);
-
-  // 3. SEO 301 redirects & trailing-slash normalization (ONLY on public GET page URLs)
-  if (!isAuthAppRoute) {
-    const cleanPublicPath = pathname.replace(/\/+$/, '') || '/';
-    if (cleanPublicPath === '/about-kobans') {
-      return Response.redirect(`${url.origin}/kobans${url.search}`, 301);
-    }
-    if (cleanPublicPath === '/study-material') {
-      return Response.redirect(`${url.origin}/material${url.search}`, 301);
-    }
-    if (cleanPublicPath.startsWith('/study-material/')) {
-      const rest = cleanPublicPath.slice('/study-material'.length);
-      return Response.redirect(`${url.origin}/material${rest}${url.search}`, 301);
-    }
-    if (pathname.length > 1 && pathname.endsWith('/')) {
-      return Response.redirect(`${url.origin}${cleanPublicPath}${url.search}`, 301);
-    }
-  }
-
-  const response = await next();
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.includes('text/html')) {
-    return response;
-  }
-
-  const replaceRootContent = (rawHtml: string, innerHtml: string): string => {
-    if (/<div\s+id="root"\s*>[\s\S]*?<\/div>\s*(?=<script\b)/i.test(rawHtml)) {
-      return rawHtml.replace(
-        /<div\s+id="root"\s*>[\s\S]*?<\/div>\s*(?=<script\b)/i,
-        `<div id="root">${innerHtml}</div>\n    `
-      );
-    }
-    return rawHtml.replace(/<div\s+id="root"\s*><\/div>/i, `<div id="root">${innerHtml}</div>`);
-  };
-
-  const isCommonsPostRoute = pathname.startsWith('/commons/post/');
-  const isMaterialItemRoute =
-    (pathname.startsWith('/material/') || pathname.startsWith('/study-material/')) &&
-    !pathname.startsWith('/material/subject/') &&
-    !pathname.startsWith('/study-material/subject/');
-
-  if (isCommonsPostRoute || isMaterialItemRoute) {
-    const slugParam = decodeURIComponent(
-      pathname
-        .replace(/^\/commons\/post\//, '')
-        .replace(/^\/study-material\//, '')
-        .replace(/^\/material\//, '')
-        .replace(/\/+$/, '')
-    );
-    const postId = extractPostIdFromSlug(slugParam);
-
-    if (!postId) {
-      let notFoundHtml = await response.text();
-      notFoundHtml = replaceRootContent(
-        notFoundHtml
-          .replace(/<title>[\s\S]*?<\/title>/i, '<title>Post Not Found — Boardly Commons</title>')
-          .replace(
-            /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
-            '<meta name="robots" content="noindex, nofollow" />'
-          ),
-        '<main style="max-width:640px;margin:4rem auto;padding:2rem;text-align:center;font-family:system-ui,sans-serif;"><h1>Post Not Found (404)</h1><p>This post does not exist or was removed.</p></main>'
-      );
-      const headers = new Headers(response.headers);
-      headers.set('content-type', 'text/html; charset=utf-8');
-      headers.set('cache-control', 'no-store');
-      return new Response(notFoundHtml, { status: 404, headers });
-    }
-
-    if (env?.DB) {
-      try {
-        // Look up by post ID first; fallback to slug match only if needed
-        let d1Row = await env.DB.prepare(
-          "SELECT id, slug, type, title, description, subject, chapter, class_level, board, author_name, is_anonymous, anonymous_alias, is_hidden, status, visibility, upvotes, comment_count, files_json, created_at, updated_at FROM posts WHERE id = ? AND is_hidden = 0 AND (status IS NULL OR status != 'removed') AND (visibility IS NULL OR visibility = 'public') LIMIT 1"
-        )
-          .bind(postId)
-          .first<D1PostRow>();
-
-        if (!d1Row && slugParam !== postId) {
-          d1Row = await env.DB.prepare(
-            "SELECT id, slug, type, title, description, subject, chapter, class_level, board, author_name, is_anonymous, anonymous_alias, is_hidden, status, visibility, upvotes, comment_count, files_json, created_at, updated_at FROM posts WHERE slug = ? AND is_hidden = 0 AND (status IS NULL OR status != 'removed') AND (visibility IS NULL OR visibility = 'public') LIMIT 1"
-          )
-            .bind(slugParam)
-            .first<D1PostRow>();
-        }
-
-        if (!d1Row) {
-          // Real 404 for posts that do not exist, were deleted, or are hidden/private
-          let notFoundHtml = await response.text();
-          notFoundHtml = replaceRootContent(
-            notFoundHtml
-              .replace(/<title>[\s\S]*?<\/title>/i, '<title>Post Not Found — Boardly Commons</title>')
-              .replace(
-                /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
-                '<meta name="description" content="This post does not exist or has been removed from Boardly Commons." />'
-              )
-              .replace(
-                /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
-                '<meta name="robots" content="noindex, nofollow" />'
-              ),
-            '<main data-ssr-status="404" style="max-width:640px;margin:4rem auto;padding:2rem;text-align:center;font-family:system-ui,sans-serif;"><h1>Post Not Found</h1><p>This Commons post does not exist or has been deleted.</p></main>'
-          );
-          const headers = new Headers(response.headers);
-          headers.set('content-type', 'text/html; charset=utf-8');
-          headers.set('cache-control', 'no-store');
-          return new Response(notFoundHtml, { status: 404, headers });
-        }
-
-        const canonicalSlug = buildCanonicalSlug(d1Row.id, d1Row.title);
-        // 301 redirect ID-only link (/commons/post/{id}) to canonical slug URL (/commons/post/{id}-{slug})
-        if (isCommonsPostRoute && slugParam === d1Row.id && canonicalSlug !== slugParam) {
-          return Response.redirect(`${url.origin}/commons/post/${canonicalSlug}${url.search}`, 301);
-        }
-
-        // Fetch top comments and related posts for server-rendered HTML & JSON-LD
-        let topComments: D1CommentRow[] = [];
-        let relatedPosts: Array<{ id: string; slug?: string; title: string; subject?: string }> = [];
-        try {
-          const [commentsRes, relatedRes] = await Promise.all([
-            env.DB.prepare(
-              'SELECT id, post_id, text, is_anonymous, author_name, created_at FROM post_comments WHERE post_id = ? ORDER BY created_at ASC LIMIT 20'
-            )
-              .bind(d1Row.id)
-              .all<D1CommentRow>(),
-            env.DB.prepare(
-              "SELECT id, slug, title, subject FROM posts WHERE id != ? AND is_hidden = 0 AND (status IS NULL OR status != 'removed') AND (visibility IS NULL OR visibility = 'public') ORDER BY created_at DESC LIMIT 4"
-            )
-              .bind(d1Row.id)
-              .all<{ id: string; slug?: string; title: string; subject?: string }>(),
-          ]);
-          topComments = Array.isArray(commentsRes?.results) ? commentsRes.results : [];
-          relatedPosts = Array.isArray(relatedRes?.results) ? relatedRes.results : [];
-        } catch {
-          topComments = [];
-          relatedPosts = [];
-        }
-
-        const canonicalUrl = isMaterialItemRoute
-          ? `https://boardly.cfd/material/${canonicalSlug}`
-          : `https://boardly.cfd/commons/post/${canonicalSlug}`;
-
-        const pageTitle = isMaterialItemRoute
-          ? `${d1Row.title} — ${d1Row.subject || 'Study Material'} PDF & Notes | Boardly`
-          : `${d1Row.title} | Boardly Commons`;
-        const metaDescription = buildPostMetaDescription(
-          d1Row.description,
-          d1Row.title,
-          d1Row.subject
-        );
-        const ogImage = 'https://boardly.cfd/assets/og-image.png';
-
-        const { articleHtml, jsonLdString } = renderPostSsrHtmlAndJsonLd(
-          d1Row,
-          topComments,
-          canonicalUrl,
-          relatedPosts
-        );
-
-        const t = escapeHtmlAttr(pageTitle);
-        const d = escapeHtmlAttr(metaDescription);
-        const c = escapeHtmlAttr(canonicalUrl);
-        const img = escapeHtmlAttr(ogImage);
-
-        let html = await response.text();
-        html = replaceRootContent(
-          html
-            .replace(/<title>[\s\S]*?<\/title>/i, `<title>${t}</title>`)
-            .replace(
-              /<meta\s+name="title"\s+content="[^"]*"\s*\/?>/i,
-              `<meta name="title" content="${t}" />`
-            )
-            .replace(
-              /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
-              `<meta name="description" content="${d}" />`
-            )
-            .replace(
-              /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
-              '<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />'
-            )
-            .replace(
-              /<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/i,
-              `<link rel="canonical" href="${c}" />`
-            )
-            .replace(
-              /<meta\s+property="og:type"\s+content="[^"]*"\s*\/?>/i,
-              '<meta property="og:type" content="article" />'
-            )
-            .replace(
-              /<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i,
-              `<meta property="og:url" content="${c}" />`
-            )
-            .replace(
-              /<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i,
-              `<meta property="og:title" content="${t}" />`
-            )
-            .replace(
-              /<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i,
-              `<meta property="og:description" content="${d}" />`
-            )
-            .replace(
-              /<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i,
-              `<meta property="og:image" content="${img}" />`
-            )
-            .replace(
-              /<meta\s+name="twitter:url"\s+content="[^"]*"\s*\/?>/i,
-              `<meta name="twitter:url" content="${c}" />`
-            )
-            .replace(
-              /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
-              `<meta name="twitter:title" content="${t}" />`
-            )
-            .replace(
-              /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
-              `<meta name="twitter:description" content="${d}" />`
-            )
-            .replace(
-              /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
-              `<meta name="twitter:image" content="${img}" />`
-            )
-            .replace(
-              /<\/head>/i,
-              `  <script id="boardly-post-jsonld" type="application/ld+json">${jsonLdString}</script>\n  </head>`
-            ),
-          articleHtml
-        );
-
-        const newHeaders = new Headers(response.headers);
-        newHeaders.set('content-type', 'text/html; charset=utf-8');
-        newHeaders.set('cache-control', 'public, max-age=60, s-maxage=180, stale-while-revalidate=300');
-
-        return new Response(html, {
+        return new Response(xml, {
           status: 200,
-          headers: newHeaders,
+          headers: {
+            'Content-Type': 'application/xml; charset=utf-8',
+            'Cache-Control': 'public, max-age=120, s-maxage=300, stale-while-revalidate=600',
+          },
         });
       } catch {
-        // Fall through to standard route meta if D1 binding throws unexpectedly
+        // Fall through if D1 query fails
       }
     }
+
+    // 2. Exclude all authenticated app routes from SEO redirects and crawler pre-rendering
+    const isAuthAppRoute = isAuthenticatedAppRoute(pathname);
+    const isCrawler = isCrawlerRequest(request, url);
+
+    // 3. SEO 301 redirects & trailing-slash normalization (ONLY on public GET page URLs)
+    if (!isAuthAppRoute) {
+      const cleanPublicPath = pathname.replace(/\/+$/, '') || '/';
+      if (cleanPublicPath === '/about-kobans') {
+        return Response.redirect(`${url.origin}/kobans${url.search}`, 301);
+      }
+      if (cleanPublicPath === '/study-material') {
+        return Response.redirect(`${url.origin}/material${url.search}`, 301);
+      }
+      if (cleanPublicPath.startsWith('/study-material/')) {
+        const rest = cleanPublicPath.slice('/study-material'.length);
+        return Response.redirect(`${url.origin}/material${rest}${url.search}`, 301);
+      }
+      if (pathname.length > 1 && pathname.endsWith('/')) {
+        return Response.redirect(`${url.origin}${cleanPublicPath}${url.search}`, 301);
+      }
+    }
+
+    const response = await next();
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('text/html')) {
+      return response;
+    }
+
+    const replaceRootContentForCrawler = (rawHtml: string, innerHtml: string): string => {
+      if (/<div\s+id="root"\s*>[\s\S]*?<\/div>\s*(?=<script\b|<\/body>)/i.test(rawHtml)) {
+        return rawHtml.replace(
+          /<div\s+id="root"\s*>[\s\S]*?<\/div>\s*(?=<script\b|<\/body>)/i,
+          `<div id="root">${innerHtml}</div>\n    `
+        );
+      }
+      return rawHtml.replace(/<div\s+id="root"\s*><\/div>/i, `<div id="root">${innerHtml}</div>`);
+    };
+
+    const isCommonsPostRoute = pathname.startsWith('/commons/post/');
+    const isMaterialItemRoute =
+      (pathname.startsWith('/material/') || pathname.startsWith('/study-material/')) &&
+      !pathname.startsWith('/material/subject/') &&
+      !pathname.startsWith('/study-material/subject/');
+
+    // 4. Pre-render D1 post/material HTML ONLY for crawlers on /commons/post/** or /material/**.
+    //    Normal browsers always get the normal SPA index.html with HTTP 200 and intact #root shell.
+    if (isCrawler && (isCommonsPostRoute || isMaterialItemRoute) && env?.DB) {
+      try {
+        const slugParam = decodeURIComponent(
+          pathname
+            .replace(/^\/commons\/post\//, '')
+            .replace(/^\/study-material\//, '')
+            .replace(/^\/material\//, '')
+            .replace(/\/+$/, '')
+        );
+        const postId = extractPostIdFromSlug(slugParam);
+
+        if (postId) {
+          let d1Row = await env.DB.prepare(
+            "SELECT id, slug, type, title, description, subject, chapter, class_level, board, author_name, is_anonymous, anonymous_alias, is_hidden, status, visibility, upvotes, comment_count, files_json, created_at, updated_at FROM posts WHERE id = ? AND is_hidden = 0 AND (status IS NULL OR status != 'removed') AND (visibility IS NULL OR visibility = 'public') LIMIT 1"
+          )
+            .bind(postId)
+            .first<D1PostRow>();
+
+          if (!d1Row && slugParam !== postId) {
+            d1Row = await env.DB.prepare(
+              "SELECT id, slug, type, title, description, subject, chapter, class_level, board, author_name, is_anonymous, anonymous_alias, is_hidden, status, visibility, upvotes, comment_count, files_json, created_at, updated_at FROM posts WHERE slug = ? AND is_hidden = 0 AND (status IS NULL OR status != 'removed') AND (visibility IS NULL OR visibility = 'public') LIMIT 1"
+            )
+              .bind(slugParam)
+              .first<D1PostRow>();
+          }
+
+          if (d1Row) {
+            const canonicalSlug = buildCanonicalSlug(d1Row.id, d1Row.title);
+            if (isCommonsPostRoute && slugParam === d1Row.id && canonicalSlug !== slugParam) {
+              return Response.redirect(
+                `${url.origin}/commons/post/${canonicalSlug}${url.search}`,
+                301
+              );
+            }
+
+            let topComments: D1CommentRow[] = [];
+            let relatedPosts: Array<{
+              id: string;
+              slug?: string;
+              title: string;
+              subject?: string;
+            }> = [];
+            try {
+              const [commentsRes, relatedRes] = await Promise.all([
+                env.DB.prepare(
+                  'SELECT id, post_id, text, is_anonymous, author_name, created_at FROM post_comments WHERE post_id = ? ORDER BY created_at ASC LIMIT 20'
+                )
+                  .bind(d1Row.id)
+                  .all<D1CommentRow>(),
+                env.DB.prepare(
+                  "SELECT id, slug, title, subject FROM posts WHERE id != ? AND is_hidden = 0 AND (status IS NULL OR status != 'removed') AND (visibility IS NULL OR visibility = 'public') ORDER BY created_at DESC LIMIT 4"
+                )
+                  .bind(d1Row.id)
+                  .all<{ id: string; slug?: string; title: string; subject?: string }>(),
+              ]);
+              topComments = Array.isArray(commentsRes?.results) ? commentsRes.results : [];
+              relatedPosts = Array.isArray(relatedRes?.results) ? relatedRes.results : [];
+            } catch {
+              topComments = [];
+              relatedPosts = [];
+            }
+
+            const canonicalUrl = isMaterialItemRoute
+              ? `https://boardly.cfd/material/${canonicalSlug}`
+              : `https://boardly.cfd/commons/post/${canonicalSlug}`;
+
+            const pageTitle = isMaterialItemRoute
+              ? `${d1Row.title} — ${d1Row.subject || 'Study Material'} PDF & Notes | Boardly`
+              : `${d1Row.title} | Boardly Commons`;
+            const metaDescription = buildPostMetaDescription(
+              d1Row.description,
+              d1Row.title,
+              d1Row.subject
+            );
+            const ogImage = 'https://boardly.cfd/assets/og-image.png';
+
+            const { articleHtml, jsonLdString } = renderPostSsrHtmlAndJsonLd(
+              d1Row,
+              topComments,
+              canonicalUrl,
+              relatedPosts
+            );
+
+            const t = escapeHtmlAttr(pageTitle);
+            const d = escapeHtmlAttr(metaDescription);
+            const c = escapeHtmlAttr(canonicalUrl);
+            const img = escapeHtmlAttr(ogImage);
+
+            let html = await response.clone().text();
+            html = replaceRootContentForCrawler(
+              html
+                .replace(/<title>[\s\S]*?<\/title>/i, `<title>${t}</title>`)
+                .replace(
+                  /<meta\s+name="title"\s+content="[^"]*"\s*\/?>/i,
+                  `<meta name="title" content="${t}" />`
+                )
+                .replace(
+                  /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
+                  `<meta name="description" content="${d}" />`
+                )
+                .replace(
+                  /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
+                  '<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />'
+                )
+                .replace(
+                  /<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/i,
+                  `<link rel="canonical" href="${c}" />`
+                )
+                .replace(
+                  /<meta\s+property="og:type"\s+content="[^"]*"\s*\/?>/i,
+                  '<meta property="og:type" content="article" />'
+                )
+                .replace(
+                  /<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i,
+                  `<meta property="og:url" content="${c}" />`
+                )
+                .replace(
+                  /<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i,
+                  `<meta property="og:title" content="${t}" />`
+                )
+                .replace(
+                  /<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i,
+                  `<meta property="og:description" content="${d}" />`
+                )
+                .replace(
+                  /<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i,
+                  `<meta property="og:image" content="${img}" />`
+                )
+                .replace(
+                  /<meta\s+name="twitter:url"\s+content="[^"]*"\s*\/?>/i,
+                  `<meta name="twitter:url" content="${c}" />`
+                )
+                .replace(
+                  /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
+                  `<meta name="twitter:title" content="${t}" />`
+                )
+                .replace(
+                  /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
+                  `<meta name="twitter:description" content="${d}" />`
+                )
+                .replace(
+                  /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
+                  `<meta name="twitter:image" content="${img}" />`
+                )
+                .replace(
+                  /<\/head>/i,
+                  `  <script id="boardly-post-jsonld" type="application/ld+json">${jsonLdString}</script>\n  </head>`
+                ),
+              articleHtml
+            );
+
+            const newHeaders = new Headers(response.headers);
+            newHeaders.set('content-type', 'text/html; charset=utf-8');
+            newHeaders.set('cache-control', 'no-cache, no-store, must-revalidate');
+            newHeaders.set('vary', 'User-Agent');
+
+            return new Response(html, {
+              status: 200,
+              headers: newHeaders,
+            });
+          }
+        }
+      } catch {
+        // On any failure, fall back to serving normal index.html below
+      }
+    }
+
+    // 5. Standard browser & non-post route response:
+    //    Update <head> meta tags only; NEVER touch <div id="root"> and ALWAYS serve with no-cache + Vary: User-Agent.
+    const meta = resolveStaticOrPatternRouteMeta(pathname);
+    const canonical =
+      meta.canonicalUrl || `https://boardly.cfd${pathname === '/' ? '' : pathname}`;
+    const robots = meta.noindex
+      ? 'noindex, nofollow'
+      : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
+
+    const t = escapeHtmlAttr(meta.title);
+    const d = escapeHtmlAttr(meta.description);
+    const c = escapeHtmlAttr(canonical);
+    const img = escapeHtmlAttr(meta.ogImage);
+
+    let html = await response.text();
+    html = html
+      .replace(/<title>[\s\S]*?<\/title>/i, `<title>${t}</title>`)
+      .replace(
+        /<meta\s+name="title"\s+content="[^"]*"\s*\/?>/i,
+        `<meta name="title" content="${t}" />`
+      )
+      .replace(
+        /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
+        `<meta name="description" content="${d}" />`
+      )
+      .replace(
+        /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
+        `<meta name="robots" content="${escapeHtmlAttr(robots)}" />`
+      )
+      .replace(
+        /<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/i,
+        `<link rel="canonical" href="${c}" />`
+      )
+      .replace(
+        /<meta\s+property="og:type"\s+content="[^"]*"\s*\/?>/i,
+        `<meta property="og:type" content="${meta.ogType}" />`
+      )
+      .replace(
+        /<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i,
+        `<meta property="og:url" content="${c}" />`
+      )
+      .replace(
+        /<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i,
+        `<meta property="og:title" content="${t}" />`
+      )
+      .replace(
+        /<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i,
+        `<meta property="og:description" content="${d}" />`
+      )
+      .replace(
+        /<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i,
+        `<meta property="og:image" content="${img}" />`
+      )
+      .replace(
+        /<meta\s+name="twitter:url"\s+content="[^"]*"\s*\/?>/i,
+        `<meta name="twitter:url" content="${c}" />`
+      )
+      .replace(
+        /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
+        `<meta name="twitter:title" content="${t}" />`
+      )
+      .replace(
+        /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
+        `<meta name="twitter:description" content="${d}" />`
+      )
+      .replace(
+        /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
+        `<meta name="twitter:image" content="${img}" />`
+      );
+
+    const newHeaders = new Headers(response.headers);
+    newHeaders.set('content-type', 'text/html; charset=utf-8');
+    newHeaders.set('cache-control', 'no-cache, no-store, must-revalidate');
+    newHeaders.set('vary', 'User-Agent');
+
+    return new Response(html, {
+      status: 200,
+      statusText: 'OK',
+      headers: newHeaders,
+    });
+  } catch {
+    return next();
   }
-
-  // Standard non-post route metadata injection
-  const meta = resolveStaticOrPatternRouteMeta(pathname);
-  const canonical = meta.canonicalUrl || `https://boardly.cfd${pathname === '/' ? '' : pathname}`;
-  const robots = meta.noindex
-    ? 'noindex, nofollow'
-    : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
-
-  const t = escapeHtmlAttr(meta.title);
-  const d = escapeHtmlAttr(meta.description);
-  const c = escapeHtmlAttr(canonical);
-  const img = escapeHtmlAttr(meta.ogImage);
-
-  let html = await response.text();
-  html = html
-    .replace(/<title>[\s\S]*?<\/title>/i, `<title>${t}</title>`)
-    .replace(
-      /<meta\s+name="title"\s+content="[^"]*"\s*\/?>/i,
-      `<meta name="title" content="${t}" />`
-    )
-    .replace(
-      /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
-      `<meta name="description" content="${d}" />`
-    )
-    .replace(
-      /<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i,
-      `<meta name="robots" content="${escapeHtmlAttr(robots)}" />`
-    )
-    .replace(
-      /<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/i,
-      `<link rel="canonical" href="${c}" />`
-    )
-    .replace(
-      /<meta\s+property="og:type"\s+content="[^"]*"\s*\/?>/i,
-      `<meta property="og:type" content="${meta.ogType}" />`
-    )
-    .replace(
-      /<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i,
-      `<meta property="og:url" content="${c}" />`
-    )
-    .replace(
-      /<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i,
-      `<meta property="og:title" content="${t}" />`
-    )
-    .replace(
-      /<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i,
-      `<meta property="og:description" content="${d}" />`
-    )
-    .replace(
-      /<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i,
-      `<meta property="og:image" content="${img}" />`
-    )
-    .replace(
-      /<meta\s+name="twitter:url"\s+content="[^"]*"\s*\/?>/i,
-      `<meta name="twitter:url" content="${c}" />`
-    )
-    .replace(
-      /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
-      `<meta name="twitter:title" content="${t}" />`
-    )
-    .replace(
-      /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
-      `<meta name="twitter:description" content="${d}" />`
-    )
-    .replace(
-      /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
-      `<meta name="twitter:image" content="${img}" />`
-    );
-
-  const newHeaders = new Headers(response.headers);
-  newHeaders.set('content-type', 'text/html; charset=utf-8');
-
-  return new Response(html, {
-    status: isAuthAppRoute ? 200 : pathname === '/410' ? 410 : response.status,
-    statusText: isAuthAppRoute ? 'OK' : response.statusText,
-    headers: newHeaders,
-  });
 };

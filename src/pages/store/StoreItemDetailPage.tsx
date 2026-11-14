@@ -21,7 +21,8 @@ import { useStoreCart } from '@/hooks/useStoreCart';
 import { Plus } from 'lucide-react';
 
 export const StoreItemDetailPage: React.FC = () => {
-  const { item: itemParam = '' } = useParams<{ item: string }>();
+  const { item: rawItem, slug: rawSlug } = useParams<{ item?: string; slug?: string }>();
+  const itemParam = rawItem || rawSlug || '';
   const { user, isGuest } = useAuth();
   const { owned, equipped, purchaseCosmetic, equipCosmetic } = useWallet();
   const { requireAuth } = useAuthGate();

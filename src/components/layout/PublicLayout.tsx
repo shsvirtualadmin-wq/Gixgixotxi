@@ -24,16 +24,7 @@ export function PublicLayout() {
 
   const pathname = location.pathname;
   const isHomePage = pathname === '/';
-
-  // Do not show the footer for a moment while the session is still loading (render neither until known)
-  if (sessionStatus === 'loading') {
-    return (
-      <div
-        className="min-h-screen w-full"
-        style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
-      />
-    );
-  }
+  const isLoadingSession = sessionStatus === 'loading';
 
   // Signed-in session -> AppLayout without the footer
   if (sessionStatus === 'authenticated') {
@@ -43,7 +34,9 @@ export function PublicLayout() {
     return <AppLayout />;
   }
 
-  // Signed-out session -> PublicLayout with the red Footer
+  // Signed-out session (or session still resolving) -> PublicLayout
+  // While session is loading, omit the red marketing Footer so it never flashes for signed-in users,
+  // while still rendering the actual route content / skeleton so the screen is NEVER black.
   const isStoreMainPage =
     pathname === '/store' || pathname === '/store/get-kobans';
   const isCommonsFeed =
@@ -64,7 +57,7 @@ export function PublicLayout() {
             <Outlet />
           </BoardlySuspenseBoundary>
         </main>
-        <Footer />
+        {!isLoadingSession && <Footer />}
       </div>
     );
   }
@@ -94,7 +87,7 @@ export function PublicLayout() {
           </BoardlySuspenseBoundary>
         </main>
       )}
-      <Footer />
+      {!isLoadingSession && <Footer />}
     </div>
   );
 }

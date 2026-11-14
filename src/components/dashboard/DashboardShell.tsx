@@ -9,7 +9,7 @@ import { DashboardErrorBoundary } from './DashboardErrorBoundary';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
 import { scheduleIdleTabPrefetch } from '@/lib/swrCache';
-import React, { Suspense, useEffect, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { ensureWelcomeNotificationForUser } from '@/services/notificationService';
 import { safetyCleanupScrollLocks } from '@/utils/scrollLock';
 import { UserPlus, X } from 'lucide-react';
@@ -18,67 +18,9 @@ const GuestUpgradeModal = React.lazy(() =>
   import('@/components/auth/GuestUpgradeModal').then((m) => ({ default: m.GuestUpgradeModal }))
 );
 
-const CACHED_DOCK_PATHS = new Set([
-  '/dashboard',
-  '/dashboard/commons',
-  '/commons',
-  '/dashboard/messages',
-  '/messages',
-  '/dashboard/chat',
-  '/dashboard/streaks',
-  '/dashboard/crew',
-  '/crew/my',
-  '/crew/dashboard',
-  '/dashboard/notifications',
-  '/notifications',
-  '/dashboard/practice',
-  '/practice',
-  '/dashboard/grand-line',
-  '/dashboard/store',
-  '/store',
-]);
-
-const MAX_KEEP_ALIVE_TABS = 6;
-
 function KeepAliveTabsOutlet() {
-  const location = useLocation();
   const currentOutlet = useOutlet();
-  const normalizedPath = location.pathname.replace(/\/+$/, '') || '/';
-  const isCacheableTab = CACHED_DOCK_PATHS.has(normalizedPath);
-  const cacheRef = useRef<Map<string, React.ReactNode>>(new Map());
-
-  if (isCacheableTab && currentOutlet) {
-    // Refresh LRU order and cap at MAX_KEEP_ALIVE_TABS
-    if (cacheRef.current.has(normalizedPath)) {
-      cacheRef.current.delete(normalizedPath);
-    } else if (cacheRef.current.size >= MAX_KEEP_ALIVE_TABS) {
-      const oldestKey = cacheRef.current.keys().next().value;
-      if (oldestKey) {
-        cacheRef.current.delete(oldestKey);
-      }
-    }
-    cacheRef.current.set(normalizedPath, currentOutlet);
-  }
-
-  return (
-    <>
-      {Array.from(cacheRef.current.entries()).map(([tabPath, element]) => {
-        const isActive = isCacheableTab && tabPath === normalizedPath;
-        return (
-          <div
-            key={tabPath}
-            style={{ display: isActive ? 'contents' : 'none' }}
-            aria-hidden={!isActive}
-          >
-            <BoardlySuspenseBoundary variant="page">{element}</BoardlySuspenseBoundary>
-          </div>
-        );
-      })}
-      {!isCacheableTab && (
-        <BoardlySuspenseBoundary variant="page">{currentOutlet}</BoardlySuspenseBoundary>
-      )}
-    </>
-  );
+  return <BoardlySuspenseBoundary variant="page">{currentOutlet}</BoardlySuspenseBoundary>;
 }
 
 export function DashboardShell() {
