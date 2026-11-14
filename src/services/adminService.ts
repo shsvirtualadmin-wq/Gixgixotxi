@@ -846,6 +846,12 @@ export async function fetchUsersPaginated(options?: {
             : map[row.uid] || { ...DEFAULT_OFF_2FA_SUMMARY };
           map[row.uid] = summary;
           const pbEntry = proBadgesByUid[row.uid];
+          const d1Plan = row.plan === 'pro' || row.isPremium ? 'pro' : 'free';
+          const d1ExpMs = Number(row.planExpiresAt || row.plan_expires_at || 0);
+          const d1ExpTimestamp =
+            d1ExpMs > 0
+              ? Timestamp.fromMillis(d1ExpMs)
+              : null;
           d1UsersList.push({
             uid: String(row.uid),
             email: String(row.email || ''),
@@ -853,7 +859,10 @@ export async function fetchUsersPaginated(options?: {
             displayName: row.displayName || row.username || (row.email ? String(row.email).split('@')[0] : 'Student'),
             name: row.displayName || row.username || '',
             role: row.role || 'student',
-            plan: row.plan === 'pro' ? 'pro' : 'free',
+            plan: d1Plan,
+            isPremium: d1Plan === 'pro',
+            ...(d1ExpTimestamp ? { planExpiresAt: d1ExpTimestamp } : {}),
+            suspended: Boolean(row.suspended || row.isSuspended),
             isGuest: Boolean(row.isGuest || row.accountType === 'guest'),
             accountType: row.accountType === 'guest' ? 'guest' : 'registered',
             onboardingCompleted: true,
@@ -928,12 +937,23 @@ export async function fetchUsersPaginated(options?: {
           byUid.set(d1u.uid, d1u);
         } else {
           const existing = byUid.get(d1u.uid)!;
+          const mergedPlan =
+            d1u.plan === 'pro' || existing.plan === 'pro' ? 'pro' : 'free';
+          const mergedRole =
+            d1u.role && d1u.role !== 'student'
+              ? d1u.role
+              : existing.role || d1u.role || 'student';
           byUid.set(d1u.uid, {
             ...existing,
             username: existing.username || d1u.username,
             email: existing.email || d1u.email,
             displayName: existing.displayName || d1u.displayName,
             name: existing.name || d1u.name,
+            role: mergedRole,
+            plan: mergedPlan,
+            isPremium: mergedPlan === 'pro',
+            planExpiresAt: existing.planExpiresAt || d1u.planExpiresAt || null,
+            suspended: existing.suspended ?? d1u.suspended ?? false,
             proBadgeDesign: (existing as any).proBadgeDesign || (d1u as any).proBadgeDesign,
             proBadgeVisible: (existing as any).proBadgeVisible ?? (d1u as any).proBadgeVisible,
           });
@@ -1601,13 +1621,17 @@ export async function ensureStudentWalletInitialized(uid: string): Promise<numbe
 export function isProtectedSuperAdmin(userOrProfile: { email?: string | null; role?: string | null; uid?: string | null } | null | undefined): boolean {
   if (!userOrProfile) return false;
   const email = userOrProfile.email?.toLowerCase().trim();
-  const role = userOrProfile.role;
+  const role = String(userOrProfile.role || '').toLowerCase().trim();
   return (
+    role === 'super_admin' ||
     role === 'superadmin' ||
-    role === 'admin' ||
     email === 'shsvirtualadmin@gmail.com' ||
     email === 'support@boardly.cfd' ||
-    userOrProfile.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2'
+    email === 'ktkhashir90@gmail.com' ||
+    userOrProfile.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
+    userOrProfile.uid === 'Pz5fjmLtXHbWL2ntnW1zd8nlQos2' ||
+    userOrProfile.uid === '2GHhpHZkYFR1keIAwlnuch08mdh1' ||
+    userOrProfile.uid === 'JBGCDTLuWUMUIUMCLek7SdgvUNn1'
   );
 }
 
@@ -1792,39 +1816,141 @@ export async function updateUserOverride(
   adminEmail: string,
   targetUid: string,
   targetEmail: string,
-  updates: Partial<UserProfile>,
+  updates: Partial<UserProfile> & { extendMonths?: number },
   previous: Partial<UserProfile>
 ): Promise<UserProfile> {
   const ref = doc(db, 'users', targetUid);
-  // Ensure no unsupported undefined values reach setDoc
+
+  // Convert Timestamp planExpiresAt to ms for backend API
+  let planExpiresAtMs: number | null | undefined = undefined;
+  if (updates.planExpiresAt !== undefined) {
+    if (updates.planExpiresAt === null) {
+      planExpiresAtMs = null;
+    } else if (typeof (updates.planExpiresAt as any)?.toMillis === 'function') {
+      planExpiresAtMs = (updates.planExpiresAt as any).toMillis();
+    } else if (typeof (updates.planExpiresAt as any)?.seconds === 'number') {
+      planExpiresAtMs = (updates.planExpiresAt as any).seconds * 1000;
+    } else if (typeof updates.planExpiresAt === 'number') {
+      planExpiresAtMs = updates.planExpiresAt;
+    }
+  }
+
+  // 1. Persist to D1 / backend override endpoint first (enforces permissions & last super_admin safeguard)
+  const currentUser = auth?.currentUser;
+  let serverUser: Record<string, any> | null = null;
+  if (currentUser) {
+    const idToken = await currentUser.getIdToken();
+    const overrideRes = await fetch(
+      `/api/admin/users/${encodeURIComponent(targetUid)}/override`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          uid: targetUid,
+          email: targetEmail || previous.email || '',
+          displayName: updates.displayName ?? previous.displayName ?? '',
+          role: updates.role,
+          customRole: updates.customRole,
+          plan: updates.plan,
+          isPremium: updates.isPremium,
+          planExpiresAtMs,
+          extendMonths: updates.extendMonths,
+          suspended: updates.suspended,
+        }),
+      }
+    );
+    const overrideJson = await overrideRes.json().catch(() => ({}));
+    if (!overrideRes.ok) {
+      const err: any = new Error(
+        overrideJson?.error || `Failed to save user changes (HTTP ${overrideRes.status}).`
+      );
+      err.code = overrideJson?.code || `HTTP_${overrideRes.status}`;
+      err.status = overrideRes.status;
+      throw err;
+    }
+    if (overrideJson?.user) {
+      serverUser = overrideJson.user;
+    }
+  }
+
+  // 2. Sync to Firestore `users/{targetUid}` & `publicProfiles/{targetUid}`
   const safeUpdates: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(updates)) {
-    if (value !== undefined) {
+    if (value !== undefined && key !== 'extendMonths') {
       safeUpdates[key] = value;
     }
   }
-  await setDoc(ref, safeUpdates, { merge: true });
+  if (serverUser?.planExpiresAtMs && !safeUpdates.planExpiresAt) {
+    safeUpdates.planExpiresAt = Timestamp.fromMillis(Number(serverUser.planExpiresAtMs));
+  }
 
-  // Verify write immediately directly from the server
   let verifiedProfile: UserProfile | null = null;
   try {
+    await setDoc(ref, safeUpdates, { merge: true });
     const verifiedSnap = await getDocFromServer(ref);
     if (verifiedSnap.exists()) {
-      verifiedProfile = verifiedSnap.data() as UserProfile;
+      verifiedProfile = { uid: targetUid, ...(verifiedSnap.data() as UserProfile) };
     }
-  } catch (verifyErr) {
-    console.warn('[AdminService] getDocFromServer verification fallback:', verifyErr);
+  } catch (fsErr) {
+    console.warn('[AdminService] Firestore user doc sync notice (D1 persisted):', fsErr);
+  }
+
+  try {
+    const pubRef = doc(db, 'publicProfiles', targetUid);
+    const pubPatch: Record<string, unknown> = { uid: targetUid };
+    if (updates.role !== undefined) pubPatch.role = updates.role;
+    if (updates.customRole !== undefined) pubPatch.customRole = updates.customRole;
+    await setDoc(pubRef, pubPatch, { merge: true });
+  } catch {
+    // Non-fatal
   }
 
   await logAdminAction(
     adminEmail,
     'user_override',
-    { updates, previous, verified: Boolean(verifiedProfile) },
+    { updates: safeUpdates, previous, verified: Boolean(verifiedProfile || serverUser) },
     targetUid,
     targetEmail
   );
 
-  return verifiedProfile || ({ ...previous, ...updates, uid: targetUid } as UserProfile);
+  const finalPlan: 'free' | 'pro' =
+    (serverUser?.plan ?? updates.plan ?? previous.plan) === 'pro' ? 'pro' : 'free';
+  const finalRole = (serverUser?.role ?? updates.role ?? previous.role ?? 'student') as UserProfile['role'];
+  const finalExpTimestamp =
+    serverUser?.planExpiresAtMs && Number(serverUser.planExpiresAtMs) > 0
+      ? Timestamp.fromMillis(Number(serverUser.planExpiresAtMs))
+      : updates.planExpiresAt !== undefined
+      ? updates.planExpiresAt
+      : previous.planExpiresAt ?? null;
+
+  const mergedResult: UserProfile = {
+    ...(previous as UserProfile),
+    ...(verifiedProfile || {}),
+    ...(updates as Partial<UserProfile>),
+    uid: targetUid,
+    email: targetEmail || previous.email || '',
+    role: finalRole,
+    plan: finalPlan,
+    isPremium: finalPlan === 'pro',
+    planExpiresAt: finalExpTimestamp,
+    suspended: Boolean(serverUser?.suspended ?? updates.suspended ?? previous.suspended),
+  };
+
+  // Update in-memory directory cache so subsequent reads do not revert to stale state
+  if (cachedAdminUsersDirectory) {
+    const patchList = (list: UserProfile[]) =>
+      list.map((u) => (u.uid === targetUid ? { ...u, ...mergedResult } : u));
+    cachedAdminUsersDirectory.users = patchList(cachedAdminUsersDirectory.users);
+    cachedAdminUsersDirectory.allDirectoryUsers = patchList(
+      cachedAdminUsersDirectory.allDirectoryUsers
+    );
+  }
+
+  return mergedResult;
 }
 
 export interface DeleteUserAccountResult {
@@ -1840,11 +1966,8 @@ export async function deleteUserAccount(
   targetEmail: string
 ): Promise<DeleteUserAccountResult> {
   const cleanAdmin = (adminEmail || '').trim().toLowerCase();
-  if (
-    cleanAdmin !== 'shsvirtualadmin@gmail.com' &&
-    cleanAdmin !== 'support@boardly.cfd'
-  ) {
-    throw new Error('Only Superadmin (shsvirtualadmin@gmail.com) can permanently delete users.');
+  if (!cleanAdmin) {
+    throw new Error('Admin authentication required to permanently delete users.');
   }
 
   const cleanUid = (targetUid || '').trim();

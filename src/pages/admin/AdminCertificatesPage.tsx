@@ -14,7 +14,11 @@ import {
   AlertCircle,
   Ban,
   RotateCcw,
+  Lock,
 } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+import { RequestAccessSheet } from '../../components/admin/RequestAccessSheet';
+import type { PermissionKey } from '../../constants/permissions';
 import {
   downloadCertificateFile,
   regenerateCertificateById,
@@ -53,6 +57,14 @@ const CERTIFICATES_PAGE_SIZE = 20;
  * 3. Settings > Certificate Signature manager (upload or draw pad, white-bg removal, light/dark preview, version history).
  */
 export const AdminCertificatesPage: React.FC = () => {
+  const { hasPermission, refreshActiveGrants } = useAuth();
+  const canIssueCerts = hasPermission('certificates.issue');
+  const [requestAccessModal, setRequestAccessModal] = useState<{
+    permission: PermissionKey;
+    actionLabel: string;
+    targetId?: string | null;
+    targetLabel?: string | null;
+  } | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const nowMs = useServerSyncedClock(1000);
   const initialTab =
@@ -174,10 +186,20 @@ export const AdminCertificatesPage: React.FC = () => {
   };
 
   const handleRegenerateOne = async (cert: StudentCertificateRecord) => {
+    if (!hasPermission('certificates.issue', cert.id)) {
+      setRequestAccessModal({
+        permission: 'certificates.issue',
+        actionLabel: `Regenerate certificate ${cert.serial}`,
+        targetId: cert.id,
+        targetLabel: `${cert.studentName} (${cert.serial})`,
+      });
+      return;
+    }
     setBusyId(cert.id);
     setNotice(null);
     try {
       const res = await regenerateCertificateById(cert.id);
+      refreshActiveGrants().catch(() => {});
       setNotice({
         type: 'success',
         text: `Regenerated ${res.certificate.serial} with signature v${res.certificate.signatureVersion}.`,
@@ -194,10 +216,18 @@ export const AdminCertificatesPage: React.FC = () => {
   };
 
   const handleRegenerateAll = async () => {
+    if (!canIssueCerts) {
+      setRequestAccessModal({
+        permission: 'certificates.issue',
+        actionLabel: 'Regenerate all certificates',
+      });
+      return;
+    }
     setRegeneratingAll(true);
     setNotice(null);
     try {
       const res = await regenerateAllCertificates();
+      refreshActiveGrants().catch(() => {});
       const count = res.regenerated ?? res.regeneratedCount ?? 0;
       setNotice({
         type: 'success',
@@ -220,11 +250,21 @@ export const AdminCertificatesPage: React.FC = () => {
   };
 
   const handleToggleRevoke = async (cert: StudentCertificateRecord) => {
+    if (!hasPermission('certificates.issue', cert.id)) {
+      setRequestAccessModal({
+        permission: 'certificates.issue',
+        actionLabel: `${cert.status === 'revoked' ? 'Restore' : 'Revoke'} certificate ${cert.serial}`,
+        targetId: cert.id,
+        targetLabel: `${cert.studentName} (${cert.serial})`,
+      });
+      return;
+    }
     setBusyId(cert.id);
     setNotice(null);
     try {
       const nextStatus = cert.status === 'revoked' ? 'active' : 'revoked';
       await toggleRevokeCertificate(cert.id, nextStatus);
+      refreshActiveGrants().catch(() => {});
       setNotice({
         type: 'success',
         text: `Certificate ${cert.serial} is now ${nextStatus.toUpperCase()}.`,
@@ -241,6 +281,14 @@ export const AdminCertificatesPage: React.FC = () => {
   };
 
   const handleMockThemeChange = async (mockId: string, themeId: string | null) => {
+    if (!hasPermission('certificates.issue', mockId)) {
+      setRequestAccessModal({
+        permission: 'certificates.issue',
+        actionLabel: 'Change mock certificate theme',
+        targetId: mockId,
+      });
+      return;
+    }
     const previousMocks = mocks;
     // Optimistically update UI immediately so big preview and checkmark switch in 0ms
     setMocks((prev) =>
@@ -249,6 +297,7 @@ export const AdminCertificatesPage: React.FC = () => {
     setNotice(null);
     try {
       await updateGrandLineCertificateTheme(mockId, themeId);
+      refreshActiveGrants().catch(() => {});
       setNotice({
         type: 'success',
         text: `Saved certificate theme "${themeId || 'Auto (Unique per student)'}" for mock.`,
@@ -263,15 +312,25 @@ export const AdminCertificatesPage: React.FC = () => {
   };
 
   const handleFinaliseMock = async (mock: AdminMockSummary) => {
+    if (!hasPermission('certificates.issue', mock.id)) {
+      setRequestAccessModal({
+        permission: 'certificates.issue',
+        actionLabel: `Issue 1st Position Certificate for "${mock.title}"`,
+        targetId: mock.id,
+        targetLabel: mock.title,
+      });
+      return;
+    }
     setBusyId(mock.id);
     setNotice(null);
     try {
       const res = await finaliseGrandLineMockResults(mock.id, mock.certificateThemeId);
+      refreshActiveGrants().catch(() => {});
       setNotice({
         type: 'success',
         text: `Finalised "${mock.title}" (${res.participantsCount} participants). Issued ${res.issuedCount} new certificate(s), ${res.existingCount} already existed.`,
       });
-      await loadData();
+      await loadData(true);
     } catch (err: any) {
       setNotice({
         type: 'error',
@@ -707,6 +766,12 @@ export const AdminCertificatesPage: React.FC = () => {
                     test={selectedMock}
                     nowMs={nowMs}
                     onUpdated={(updated) => {
+                      const nextFinalised =
+                        updated.statusMode === 'forceEnded'
+                          ? true
+                          : updated.statusMode === 'forceLive'
+                          ? false
+                          : Boolean(updated.resultsFinalised ?? selectedMock.resultsFinalised);
                       setMocks((prev) =>
                         prev.map((m) =>
                           m.id === updated.id
@@ -718,6 +783,7 @@ export const AdminCertificatesPage: React.FC = () => {
                                 reason: updated.reason,
                                 forceCloseAttemptsAt: updated.forceCloseAttemptsAt,
                                 effectiveStatus: updated.effectiveStatus,
+                                resultsFinalised: nextFinalised,
                               }
                             : m
                         )
@@ -729,9 +795,17 @@ export const AdminCertificatesPage: React.FC = () => {
                     type="button"
                     disabled={busyId === selectedMock.id}
                     onClick={() => void handleFinaliseMock(selectedMock)}
-                    className="min-h-[44px] px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white text-xs font-bold hover:opacity-90 inline-flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                    className={`min-h-[44px] px-4 py-2.5 rounded-xl text-xs font-bold inline-flex items-center gap-2 cursor-pointer disabled:opacity-50 ${
+                      hasPermission('certificates.issue', selectedMock.id)
+                        ? 'bg-[var(--accent)] text-white hover:opacity-90'
+                        : 'bg-amber-500/15 border border-amber-500/30 text-amber-300 opacity-85'
+                    }`}
                   >
-                    <Sparkles size={14} />
+                    {hasPermission('certificates.issue', selectedMock.id) ? (
+                      <Sparkles size={14} />
+                    ) : (
+                      <Lock size={14} />
+                    )}
                     <span>
                       {busyId === selectedMock.id
                         ? 'Finalising & Issuing...'
@@ -796,8 +870,20 @@ export const AdminCertificatesPage: React.FC = () => {
           onSignatureChanged={handleSignatureChanged}
         />
       )}
+
+      {requestAccessModal && (
+        <RequestAccessSheet
+          open={Boolean(requestAccessModal)}
+          onClose={() => setRequestAccessModal(null)}
+          permission={requestAccessModal.permission}
+          actionLabel={requestAccessModal.actionLabel}
+          targetId={requestAccessModal.targetId}
+          targetLabel={requestAccessModal.targetLabel}
+        />
+      )}
     </div>
   );
 };
 
 export default AdminCertificatesPage;
+

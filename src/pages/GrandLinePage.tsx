@@ -80,9 +80,15 @@ export function GrandLinePage() {
       setLoading(true);
       setLoadError(null);
       try {
-        const data = isAdmin
-          ? await getAllGrandLineTestsForAdmin().catch(() => getAllPublicGrandLineTests())
-          : await getAllPublicGrandLineTests();
+        let data: AmbassadorTestDoc[] = [];
+        if (isAdmin) {
+          data = await getAllGrandLineTestsForAdmin();
+          if (data.length === 0) {
+            data = await getAllPublicGrandLineTests();
+          }
+        } else {
+          data = await getAllPublicGrandLineTests();
+        }
         if (!active) return;
         setTests(data);
         if (data.length > 0) {

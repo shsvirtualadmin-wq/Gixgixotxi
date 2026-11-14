@@ -572,12 +572,33 @@ export async function getTestsByCaptain(captainUid?: string): Promise<Ambassador
 }
 
 export async function getAllGrandLineTestsForAdmin(): Promise<AmbassadorCustomTest[]> {
-  const data = await api.get<{ tests: any[]; serverTimeMs?: number }>('/api/tests/mine?all=1', {
-    requireAuth: true,
-    silentErrorToast: true,
-  });
-  recordServerTimeOffset(data?.serverTimeMs);
-  return (data.tests || []).map(normalizeTestRow);
+  const [mineRes, pubRes] = await Promise.all([
+    api
+      .get<{ tests: any[]; serverTimeMs?: number }>('/api/tests/mine?all=1', {
+        requireAuth: true,
+        silentErrorToast: true,
+      })
+      .catch(() => ({ tests: [], serverTimeMs: undefined })),
+    api
+      .get<{ tests: any[]; serverTimeMs?: number }>('/api/tests/public', {
+        silentErrorToast: true,
+      })
+      .catch(() => ({ tests: [], serverTimeMs: undefined })),
+  ]);
+  recordServerTimeOffset(mineRes?.serverTimeMs || pubRes?.serverTimeMs);
+  const byId = new Map<string, AmbassadorCustomTest>();
+  for (const row of pubRes?.tests || []) {
+    const norm = normalizeTestRow(row);
+    if (norm.id) byId.set(norm.id, norm);
+  }
+  for (const row of mineRes?.tests || []) {
+    const norm = normalizeTestRow(row);
+    if (norm.id) {
+      const existing = byId.get(norm.id);
+      byId.set(norm.id, existing ? { ...existing, ...norm } : norm);
+    }
+  }
+  return Array.from(byId.values());
 }
 
 export async function updateGrandLineScheduleAndStatus(

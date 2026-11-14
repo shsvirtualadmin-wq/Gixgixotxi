@@ -1,6 +1,6 @@
 import type { Timestamp } from 'firebase/firestore';
 
-export type UserRole = 'student' | 'crew' | 'captain' | 'ambassador' | 'admin' | 'superadmin';
+export type UserRole = 'student' | 'crew' | 'captain' | 'ambassador' | 'admin' | 'super_admin' | 'superadmin';
 export type UserPlan = 'free' | 'pro';
 
 export interface UserProfile {

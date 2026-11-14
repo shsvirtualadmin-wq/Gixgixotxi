@@ -18,16 +18,35 @@ export type ToastKind = 'error' | 'success' | 'info';
 export function showApiToast(message: string, kind: ToastKind = 'error'): void {
   if (typeof document === 'undefined' || !message) return;
 
+  const normalizedMessage = message.trim();
+  if (!normalizedMessage) return;
+
   let container = document.getElementById('boardly-api-toast-container');
   if (!container) {
     container = document.createElement('div');
     container.id = 'boardly-api-toast-container';
     container.className =
-      'fixed top-4 right-4 left-4 sm:left-auto sm:max-w-sm z-[9999] flex flex-col gap-2 pointer-events-none';
+      'fixed top-4 right-4 left-4 sm:left-auto sm:max-w-sm z-[10050] flex flex-col gap-2 pointer-events-none';
     document.body.appendChild(container);
   }
 
+  // Dedupe: if an identical toast message is already visible, reset its timer instead of stacking a second one
+  const toastKey = `${kind}:${normalizedMessage.toLowerCase()}`;
+  const existingToast = container.querySelector(
+    `[data-toast-key="${CSS.escape(toastKey)}"]`
+  ) as HTMLElement | null;
+  if (existingToast) {
+    const prevTimer = Number(existingToast.dataset.timerId || '0');
+    if (prevTimer) window.clearTimeout(prevTimer);
+    const nextTimer = window.setTimeout(() => {
+      if (existingToast.parentNode) existingToast.remove();
+    }, 4000);
+    existingToast.dataset.timerId = String(nextTimer);
+    return;
+  }
+
   const toast = document.createElement('div');
+  toast.setAttribute('data-toast-key', toastKey);
   const borderClass =
     kind === 'error'
       ? 'border-[#D71921]/60 bg-[#140c0d] text-red-200'
@@ -39,7 +58,7 @@ export function showApiToast(message: string, kind: ToastKind = 'error'): void {
 
   const textSpan = document.createElement('span');
   textSpan.className = 'leading-snug break-words flex-1';
-  textSpan.textContent = message;
+  textSpan.textContent = normalizedMessage;
 
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
@@ -53,11 +72,12 @@ export function showApiToast(message: string, kind: ToastKind = 'error'): void {
   toast.appendChild(closeBtn);
   container.appendChild(toast);
 
-  setTimeout(() => {
+  const timerId = window.setTimeout(() => {
     if (toast.parentNode) {
       toast.remove();
     }
-  }, 5000);
+  }, 4000);
+  toast.dataset.timerId = String(timerId);
 }
 
 /**

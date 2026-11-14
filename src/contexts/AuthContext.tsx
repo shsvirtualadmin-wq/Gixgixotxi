@@ -85,10 +85,21 @@ const ChooseUsernameModal = lazy(() =>
   }))
 );
 
+import {
+  normalizeCanonicalRole,
+  roleHasPermission,
+  type PermissionKey,
+  type ActivePermissionGrant,
+} from '@/constants/permissions';
+import { isAdminAccount } from '@/constants/superAdmin';
+
 // ─── Constants ──────────────────────────────────────────────────────────────
 const SUPER_ADMIN_UID = 'A5YMRimdHRcmeDWutxtUGt2e4hf2';
 const SUPER_ADMIN_UID_ALLOWLIST = new Set([
   'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+  'Pz5fjmLtXHbWL2ntnW1zd8nlQos2',
+  '2GHhpHZkYFR1keIAwlnuch08mdh1',
+  'JBGCDTLuWUMUIUMCLek7SdgvUNn1',
   'uid_superadmin_1',
   'uid_superadmin_2',
 ]);
@@ -212,6 +223,11 @@ interface AuthContextValue {
   clearAuthError: () => void;
   clearProfileError: () => void;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
+  isLimitedAdmin: boolean;
+  activeGrants: ActivePermissionGrant[];
+  hasPermission: (permission: PermissionKey, targetId?: string | null) => boolean;
+  refreshActiveGrants: () => Promise<void>;
   isGuest: boolean;
   guestSessionToken: string | null;
   isSessionVerified: boolean;
@@ -390,15 +406,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Guests are exempt from the 6-digit email OTP verification step
   const isSessionVerified = isGuest || otpVerificationState.status === 'verified';
 
-  const isAdmin = !!(
+  const [activeGrants, setActiveGrants] = useState<ActivePermissionGrant[]>([]);
+
+  const isSuperAdmin = !!(
     !isGuest &&
     isSessionVerified &&
-    ((user?.uid && SUPER_ADMIN_UID_ALLOWLIST.has(user.uid)) ||
-      (profile?.uid && SUPER_ADMIN_UID_ALLOWLIST.has(profile.uid)) ||
-      profile?.role === 'admin' ||
-      profile?.role === 'superadmin' ||
+    (isAdminAccount(user?.uid || profile?.uid, user?.email || profile?.email) ||
+      normalizeCanonicalRole(profile?.role) === 'super_admin' ||
       (profile as any)?.isSuperAdmin === true)
   );
+
+  const isLimitedAdmin = !!(
+    !isGuest &&
+    isSessionVerified &&
+    !isSuperAdmin &&
+    normalizeCanonicalRole(profile?.role) === 'admin'
+  );
+
+  const isAdmin = isSuperAdmin || isLimitedAdmin;
+
+  const hasPermission = useCallback(
+    (permission: PermissionKey, targetId?: string | null): boolean => {
+      if (isSuperAdmin) return true;
+      if (!isAdmin) return false;
+      return roleHasPermission(profile?.role, permission, activeGrants, targetId);
+    },
+    [isSuperAdmin, isAdmin, profile?.role, activeGrants]
+  );
+
+  const refreshActiveGrants = useCallback(async () => {
+    const currentUser = auth.currentUser || user;
+    if (!currentUser || isGuest) return;
+    try {
+      const idToken = await currentUser.getIdToken();
+      const res = await fetch('/api/admin/access-requests/mine', {
+        method: 'GET',
+        credentials: 'include',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      if (Array.isArray(data?.activeGrants)) {
+        setActiveGrants(data.activeGrants);
+      }
+    } catch {
+      // Ignore
+    }
+  }, [user, isGuest]);
 
   // ── Helper to determine target dashboard URL by role ─────────────────────
   const getRoleRedirectUrl = useCallback(
@@ -444,7 +498,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const path = `users/${firebaseUser.uid}`;
 
     const emailLower = (firebaseUser.email ?? '').toLowerCase();
-    const isSuperAdminAccount = SUPER_ADMIN_UID_ALLOWLIST.has(firebaseUser.uid);
+    const isSuperAdminAccount =
+      SUPER_ADMIN_UID_ALLOWLIST.has(firebaseUser.uid) ||
+      isAdminAccount(firebaseUser.uid, emailLower);
 
     const fallbackName =
       firebaseUser.displayName?.trim() ||
@@ -460,7 +516,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       displayName: fallbackName,
       name: fallbackName,
       photoURL: null,
-      role: isSuperAdminAccount ? 'admin' : 'student',
+      role: isSuperAdminAccount ? 'super_admin' : 'student',
       plan: isSuperAdminAccount ? 'pro' : 'free',
       status: 'active',
       profileCompleted: isSuperAdminAccount ? true : false,
@@ -489,7 +545,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             displayName: fallbackName,
             email: emailLower,
             photoURL: null,
-            role: isSuperAdminAccount ? 'admin' : 'student',
+            role: isSuperAdminAccount ? 'super_admin' : 'student',
             plan: isSuperAdminAccount ? 'pro' : 'free',
             status: 'active',
             profileCompleted: isSuperAdminAccount ? true : false,
@@ -561,12 +617,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           silentPatches.displayName = loadedProfile.displayName;
         }
         if (isSuperAdminAccount) {
-          loadedProfile.role = 'admin';
-        } else if (
-          !loadedProfile.role ||
-          loadedProfile.role === 'admin' ||
-          loadedProfile.role === 'superadmin'
-        ) {
+          loadedProfile.role = 'super_admin';
+        } else if (loadedProfile.role === 'superadmin') {
+          loadedProfile.role = 'super_admin';
+        } else if (!loadedProfile.role) {
           loadedProfile.role = 'student';
         }
         if (Object.keys(silentPatches).length > 0) {
@@ -1289,18 +1343,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             });
           }
           const serverRoleRaw = String(meData.user.role || '').trim().toLowerCase();
-          const trustedRole = SUPER_ADMIN_UID_ALLOWLIST.has(firebaseUser.uid)
-            ? 'admin'
-            : serverRoleRaw === 'superadmin' || serverRoleRaw === 'admin'
+          const isOwnerAccount =
+            SUPER_ADMIN_UID_ALLOWLIST.has(firebaseUser.uid) ||
+            isAdminAccount(firebaseUser.uid, firebaseUser.email);
+          const trustedRole: UserProfile['role'] = isOwnerAccount
+            ? 'super_admin'
+            : serverRoleRaw === 'super_admin' || serverRoleRaw === 'superadmin'
+            ? 'super_admin'
+            : serverRoleRaw === 'admin'
             ? 'admin'
             : serverRoleRaw === 'captain' || serverRoleRaw === 'crew'
             ? (serverRoleRaw as UserProfile['role'])
             : 'student';
+          if (Array.isArray(meData.activeGrants)) {
+            setActiveGrants(meData.activeGrants);
+          } else if (trustedRole === 'admin') {
+            refreshActiveGrants().catch(() => {});
+          }
           setProfile((prev) =>
             prev
               ? {
                   ...prev,
                   ...(meData.user.username ? { username: meData.user.username } : {}),
+                  ...(meData.user.plan === 'pro' || meData.user.plan === 'free'
+                    ? { plan: meData.user.plan, isPremium: meData.user.plan === 'pro' }
+                    : {}),
                   role: trustedRole,
                 }
               : prev
@@ -2774,6 +2841,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearAuthError,
       clearProfileError,
       isAdmin,
+      isSuperAdmin,
+      isLimitedAdmin,
+      activeGrants,
+      hasPermission,
+      refreshActiveGrants,
       isGuest,
       guestSessionToken,
       isSessionVerified,
@@ -2807,6 +2879,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearAuthError,
       clearProfileError,
       isAdmin,
+      isSuperAdmin,
+      isLimitedAdmin,
+      activeGrants,
+      hasPermission,
+      refreshActiveGrants,
       isGuest,
       guestSessionToken,
       isSessionVerified,

@@ -3,13 +3,17 @@ export type GrandLineStatusMode = 'auto' | 'forceLive' | 'forceEnded' | 'draft';
 export type GrandLineEffectiveStatus = 'live' | 'scheduled' | 'ended' | 'draft';
 
 export interface GrandLineScheduleTestLike {
-  status?: 'draft' | 'published' | 'unpublished' | string | null;
+  status?: 'draft' | 'published' | 'unpublished' | 'finalised' | 'ended' | string | null;
   visibility?: 'public' | 'private' | string | null;
   startAt?: number | string | null;
   endAt?: number | string | null;
   statusMode?: GrandLineStatusMode | string | null;
   reason?: string | null;
   forceCloseAttemptsAt?: number | string | null;
+  resultsFinalised?: boolean | number | null;
+  results_finalised?: boolean | number | null;
+  finalisedAt?: number | string | null;
+  finalised_at?: number | string | null;
 }
 
 /**
@@ -80,9 +84,10 @@ export function normalizeStatusMode(raw: unknown): GrandLineStatusMode | undefin
  * - statusMode "draft" → 'draft' (hidden from students)
  * - statusMode "forceLive" → 'live' (ignores the schedule)
  * - statusMode "forceEnded" → 'ended' (ignores the schedule)
+ * - resultsFinalised === true (and mode !== "forceLive") → 'ended'
  * - "auto" or missing →
- *   - If no startAt and no endAt: use the test's existing status exactly as it is today
- *     (published & public → 'live'; unpublished / draft / private → 'draft').
+ *   - If no startAt and no endAt: use the test's existing status
+ *     (published & public → 'live'; finalised/ended → 'ended'; unpublished / draft / private → 'draft').
  *   - If startAt is in the future → 'scheduled' ("Starts in ...").
  *   - If endAt has passed → 'ended'.
  *   - If now is between startAt and endAt (or startAt passed and no endAt, or no startAt and before endAt) → 'live'.
@@ -99,25 +104,32 @@ export function computeGrandLineTestStatus(
   if (mode === 'forceLive') return 'live';
   if (mode === 'forceEnded') return 'ended';
 
-  // Legacy/existing base check: if a test is private or unpublished/draft and statusMode is not overriding it
   const existingStatus = String(test.status || 'published').toLowerCase();
   const existingVisibility = String(test.visibility || 'public').toLowerCase();
+  const isResultsFinalised =
+    Boolean(test.resultsFinalised) ||
+    Boolean(test.results_finalised) ||
+    existingStatus === 'finalised' ||
+    existingStatus === 'ended';
+
   const isLegacyDraftOrPrivate =
     existingStatus === 'draft' ||
     existingStatus === 'unpublished' ||
     existingVisibility === 'private';
 
+  if (isLegacyDraftOrPrivate) {
+    return 'draft';
+  }
+
+  if (isResultsFinalised) {
+    return 'ended';
+  }
+
   const startAtMs = normalizeOptionalTimestampMs(test.startAt);
   const endAtMs = normalizeOptionalTimestampMs(test.endAt);
 
-  // If no startAt and no endAt, behave 100% identically to today
   if (!startAtMs && !endAtMs) {
-    return isLegacyDraftOrPrivate ? 'draft' : 'live';
-  }
-
-  // If test is explicitly unpublished/private in legacy status, keep it hidden as draft
-  if (isLegacyDraftOrPrivate) {
-    return 'draft';
+    return 'live';
   }
 
   if (startAtMs && nowMs < startAtMs) {

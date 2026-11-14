@@ -9,10 +9,12 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  Lock,
 } from 'lucide-react';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserOverrideDrawer } from '@/components/admin/UserOverrideDrawer';
+import { RequestAccessSheet } from '@/components/admin/RequestAccessSheet';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import { AdminNameRequestsSection } from '@/components/admin/AdminNameRequestsSection';
 import {
@@ -320,22 +322,36 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
 });
 
 export function AdminUsersPage() {
-  const { user, isAdmin, profileLoading } = useAuth();
+  const {
+    user,
+    isAdmin,
+    isSuperAdmin: authIsSuperAdmin,
+    hasPermission,
+    profileLoading,
+  } = useAuth();
+  const canViewUsers = hasPermission('users.view');
+  const [requestUsersViewOpen, setRequestUsersViewOpen] = useState(false);
   const [adminTab, setAdminTab] = useState<'users' | 'nameRequests'>('users');
   const [pendingNameRequestsCount, setPendingNameRequestsCount] = useState<number>(0);
 
-  const initialCache = getCachedAdminUsersState();
-  const [allUsers, setAllUsers] = useState<UserProfile[]>(() => initialCache?.allDirectoryUsers ?? []);
-  const [user2faMap, setUser2faMap] = useState<Record<string, UserTwoFactorSummary>>(
-    () => initialCache?.user2faMap ?? {}
+  const initialCache = canViewUsers ? getCachedAdminUsersState() : null;
+  const [allUsers, setAllUsers] = useState<UserProfile[]>(() =>
+    canViewUsers ? initialCache?.allDirectoryUsers ?? [] : []
   );
-  const [loadState, setLoadState] = useState<LoadState>(() => (initialCache ? 'loaded' : 'loading'));
-  const [loading, setLoading] = useState<boolean>(() => !initialCache);
+  const [user2faMap, setUser2faMap] = useState<Record<string, UserTwoFactorSummary>>(
+    () => (canViewUsers ? initialCache?.user2faMap ?? {} : {})
+  );
+  const [loadState, setLoadState] = useState<LoadState>(() =>
+    initialCache ? 'loaded' : 'loading'
+  );
+  const [loading, setLoading] = useState<boolean>(() => !initialCache && canViewUsers);
   const [loadingMore, setLoadingMore] = useState(false);
   const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(
-    () => initialCache?.lastDoc ?? null
+    () => (canViewUsers ? initialCache?.lastDoc ?? null : null)
   );
-  const [hasMore, setHasMore] = useState<boolean>(() => initialCache?.hasMore ?? false);
+  const [hasMore, setHasMore] = useState<boolean>(() =>
+    canViewUsers ? initialCache?.hasMore ?? false : false
+  );
   const [error, setError] = useState<AdminDiagnosticError | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
 
@@ -373,9 +389,12 @@ export function AdminUsersPage() {
 
   const emailLower = user?.email?.toLowerCase().trim() || '';
   const isSuperAdmin = Boolean(
-    emailLower === 'shsvirtualadmin@gmail.com' ||
+    authIsSuperAdmin ||
+      emailLower === 'shsvirtualadmin@gmail.com' ||
       emailLower === 'support@boardly.cfd' ||
-      user?.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2'
+      emailLower === 'ktkhashir90@gmail.com' ||
+      user?.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
+      user?.uid === 'JBGCDTLuWUMUIUMCLek7SdgvUNn1'
   );
 
   const handleBackfillPublicProfiles = async () => {
@@ -398,7 +417,7 @@ export function AdminUsersPage() {
 
   const loadUsers = useCallback(
     async (options?: { force?: boolean }) => {
-      if (!user || !isAdmin) return;
+      if (!user || !isAdmin || !canViewUsers) return;
       const currentCached = getCachedAdminUsersState();
       if (!currentCached) {
         setLoading(true);
@@ -436,12 +455,12 @@ export function AdminUsersPage() {
         setLoading(false);
       }
     },
-    [user, isAdmin]
+    [user, isAdmin, canViewUsers]
   );
 
   // Wait for auth and admin-role check before firing fetch
   useEffect(() => {
-    if (!profileLoading && user && isAdmin) {
+    if (!profileLoading && user && isAdmin && canViewUsers) {
       const cached = getCachedAdminUsersState();
       if (cached) {
         setAllUsers(cached.allDirectoryUsers);
@@ -450,15 +469,19 @@ export function AdminUsersPage() {
         setHasMore(cached.hasMore);
         setLoadState('loaded');
         setLoading(false);
-        // If cache is older than 30 seconds, refresh quietly in the background
-        if (Date.now() - cached.loadedAt > 30_000) {
+        // If cache is older than 30 seconds, refresh quietly in the background ONLY if user sheet is closed
+        if (Date.now() - cached.loadedAt > 30_000 && !selectedUser) {
           void loadUsers();
         }
       } else {
         void loadUsers();
       }
+    } else if (!canViewUsers) {
+      setAllUsers([]);
+      setUser2faMap({});
+      setLoading(false);
     }
-  }, [profileLoading, user, isAdmin, loadUsers]);
+  }, [profileLoading, user, isAdmin, canViewUsers, loadUsers, selectedUser]);
 
   const handleLoadMore = async () => {
     if (!lastDoc || loadingMore) return;
@@ -643,6 +666,49 @@ export function AdminUsersPage() {
   }, [filteredUsers, safePage]);
 
   const isInitialLoading = (profileLoading || loadState === 'loading') && allUsers.length === 0;
+
+  if (!profileLoading && !canViewUsers) {
+    return (
+      <div
+        data-testid="admin-users-locked-state"
+        className="flex flex-col items-center justify-center py-16 px-4 text-center max-w-lg mx-auto space-y-5"
+      >
+        <div className="w-16 h-16 rounded-3xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-lg">
+          <Lock size={28} />
+        </div>
+        <div className="space-y-2">
+          <div className="text-[11px] font-mono uppercase tracking-widest text-amber-400 font-semibold">
+            LOCKED SECTION &bull; users.view
+          </div>
+          <h1 className="font-dot text-2xl sm:text-3xl font-extrabold text-[var(--text)]">
+            User Directory is Locked
+          </h1>
+          <p className="text-xs sm:text-sm text-[var(--muted)] leading-relaxed">
+            As an <strong className="text-[var(--text)]">Admin</strong>, you can manage the MCQ
+            question bank and moderate community content directly. Viewing the user directory,
+            student emails, IDs, plans, or roles requires <strong className="text-[var(--text)]">Super Admin</strong> approval.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          data-testid="request-users-view-btn"
+          onClick={() => setRequestUsersViewOpen(true)}
+          className="min-h-[44px] px-6 py-2.5 rounded-xl bg-[#D71921] hover:bg-[#b8141b] text-white text-xs sm:text-sm font-bold inline-flex items-center gap-2 shadow-lg shadow-[#D71921]/25 transition-all cursor-pointer"
+        >
+          <Lock size={15} />
+          <span>Request Access to Users</span>
+        </button>
+
+        <RequestAccessSheet
+          open={requestUsersViewOpen}
+          onClose={() => setRequestUsersViewOpen(false)}
+          permission="users.view"
+          actionLabel="View User Directory, Profiles, Emails & IDs"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 w-full max-w-full">
@@ -1179,6 +1245,14 @@ export function AdminUsersPage() {
           adminEmail={user?.email || ''}
           initialTwoFactorStatus={user2faMap[selectedUser.uid] || selectedUser.twoFactorStatus}
           onUpdate2faStatus={handleUpdateUser2faInState}
+          onUserUpdated={(updatedUser) => {
+            setAllUsers((prev) =>
+              prev.map((u) => (u.uid === updatedUser.uid ? { ...u, ...updatedUser } : u))
+            );
+            setSelectedUser((prev) =>
+              prev && prev.uid === updatedUser.uid ? { ...prev, ...updatedUser } : prev
+            );
+          }}
           onClose={() => setSelectedUser(null)}
           onSuccess={() => {
             void loadUsers({ force: true });

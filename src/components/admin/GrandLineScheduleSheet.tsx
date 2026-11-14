@@ -13,10 +13,13 @@ import {
   X,
   RotateCcw,
   FileText,
+  Lock,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBodyScrollLock } from '@/utils/scrollLock';
 import { showApiToast } from '@/lib/api';
+import { RequestAccessSheet } from './RequestAccessSheet';
+import type { PermissionKey } from '@/constants/permissions';
 import { logAdminAction } from '@/services/adminService';
 import {
   updateGrandLineScheduleAndStatus,
@@ -74,7 +77,11 @@ export const GrandLineStatusPills: React.FC<{
 }> = ({ test, nowMs: propNowMs, showWindow = true, showCountdown = true, compact = false }) => {
   const nowMs = propNowMs ?? getServerNowMs();
   const status: GrandLineEffectiveStatus = computeGrandLineTestStatus(test, nowMs);
-  const label = getEffectiveStatusLabel(status);
+  const isFinalised =
+    Boolean(test.resultsFinalised) ||
+    Boolean(test.results_finalised) ||
+    normalizeStatusMode(test.statusMode) === 'forceEnded';
+  const label = status === 'ended' && isFinalised ? 'Finalised' : getEffectiveStatusLabel(status);
   const windowStr = showWindow ? formatPktWindow(test.startAt, test.endAt) : '';
   const countdownStr = showCountdown ? getGrandLineCountdownLabel(test, nowMs, compact) : null;
 
@@ -685,14 +692,14 @@ export const GrandLineQuickToggleConfirmModal: React.FC<{
 
       showApiToast(
         isEnding
-          ? `"${test.title}" has been ended.`
+          ? `"${test.title}" has been ended and marked Finalised.`
           : `"${test.title}" is now Live.`,
         'success'
       );
       onConfirmed?.(res.test);
       onClose();
-    } catch (err: any) {
-      showApiToast(err?.message || 'Failed to update test status.', 'error');
+    } catch {
+      // apiRequest already displays a single deduplicated error toast
     } finally {
       setSubmitting(false);
     }
@@ -807,38 +814,79 @@ export const GrandLineAdminRowControls: React.FC<{
   onUpdated?: (updated: AmbassadorCustomTest) => void;
   compact?: boolean;
 }> = ({ test, nowMs: propNowMs, onUpdated, compact = false }) => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, hasPermission, refreshActiveGrants } = useAuth();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [quickAction, setQuickAction] = useState<'endNow' | 'makeLive' | null>(null);
+  const [requestPerm, setRequestPerm] = useState<{
+    permission: PermissionKey;
+    actionLabel: string;
+  } | null>(null);
 
   if (!isAdmin) return null;
 
   const nowMs = propNowMs ?? getServerNowMs();
   const status = computeGrandLineTestStatus(test, nowMs);
+  const canManageTests = hasPermission('tests.manage', test.id);
+  const canEndTests = hasPermission('tests.end', test.id);
 
   return (
     <>
       <div className="inline-flex items-center gap-2 flex-wrap">
         <button
           type="button"
-          onClick={() => setSheetOpen(true)}
-          className={`inline-flex items-center gap-1.5 rounded-full font-bold border border-white/[0.12] bg-white/[0.05] hover:bg-white/[0.1] text-[#f0f0f2] transition-colors ${
+          onClick={() => {
+            if (!canManageTests) {
+              setRequestPerm({
+                permission: 'tests.manage',
+                actionLabel: `Schedule & Status for "${test.title}"`,
+              });
+              return;
+            }
+            setSheetOpen(true);
+          }}
+          className={`inline-flex items-center gap-1.5 rounded-full font-bold border transition-colors cursor-pointer ${
+            canManageTests
+              ? 'border-white/[0.12] bg-white/[0.05] hover:bg-white/[0.1] text-[#f0f0f2]'
+              : 'border-amber-500/30 bg-amber-500/10 text-amber-300/80 opacity-80'
+          } ${
             compact ? 'min-h-[34px] px-3 py-1 text-[11px]' : 'min-h-[38px] px-3.5 py-1.5 text-xs'
           }`}
         >
-          <Calendar size={compact ? 12 : 13} className="text-[#ef4444] shrink-0" />
+          {canManageTests ? (
+            <Calendar size={compact ? 12 : 13} className="text-[#ef4444] shrink-0" />
+          ) : (
+            <Lock size={compact ? 11 : 12} className="text-amber-400 shrink-0" />
+          )}
           <span>Schedule &amp; Status</span>
         </button>
 
         {status === 'live' && (
           <button
             type="button"
-            onClick={() => setQuickAction('endNow')}
-            className={`inline-flex items-center gap-1.5 rounded-full font-bold border border-red-500/30 bg-red-500/12 hover:bg-red-500/20 text-red-300 transition-colors ${
+            data-testid={`grand-line-end-now-${test.id}`}
+            onClick={() => {
+              if (!canEndTests) {
+                setRequestPerm({
+                  permission: 'tests.end',
+                  actionLabel: `End test now: "${test.title}"`,
+                });
+                return;
+              }
+              setQuickAction('endNow');
+            }}
+            className={`inline-flex items-center gap-1.5 rounded-full font-bold border transition-colors cursor-pointer ${
+              canEndTests
+                ? 'border-red-500/30 bg-red-500/12 hover:bg-red-500/20 text-red-300'
+                : 'border-amber-500/30 bg-amber-500/10 text-amber-300/80 opacity-80'
+            } ${
               compact ? 'min-h-[34px] px-3 py-1 text-[11px]' : 'min-h-[38px] px-3.5 py-1.5 text-xs'
             }`}
           >
-            <Square size={compact ? 11 : 12} className="shrink-0" />
+            {canEndTests ? (
+              <Square size={compact ? 11 : 12} className="shrink-0" />
+            ) : (
+              <Lock size={compact ? 11 : 12} className="text-amber-400 shrink-0" />
+            )}
             <span>End now</span>
           </button>
         )}
@@ -846,12 +894,29 @@ export const GrandLineAdminRowControls: React.FC<{
         {status === 'ended' && (
           <button
             type="button"
-            onClick={() => setQuickAction('makeLive')}
-            className={`inline-flex items-center gap-1.5 rounded-full font-bold border border-emerald-500/30 bg-emerald-500/12 hover:bg-emerald-500/20 text-emerald-300 transition-colors ${
+            onClick={() => {
+              if (!canManageTests) {
+                setRequestPerm({
+                  permission: 'tests.manage',
+                  actionLabel: `Make test live: "${test.title}"`,
+                });
+                return;
+              }
+              setQuickAction('makeLive');
+            }}
+            className={`inline-flex items-center gap-1.5 rounded-full font-bold border transition-colors cursor-pointer ${
+              canManageTests
+                ? 'border-emerald-500/30 bg-emerald-500/12 hover:bg-emerald-500/20 text-emerald-300'
+                : 'border-amber-500/30 bg-amber-500/10 text-amber-300/80 opacity-80'
+            } ${
               compact ? 'min-h-[34px] px-3 py-1 text-[11px]' : 'min-h-[38px] px-3.5 py-1.5 text-xs'
             }`}
           >
-            <Play size={compact ? 11 : 12} className="shrink-0" />
+            {canManageTests ? (
+              <Play size={compact ? 11 : 12} className="shrink-0" />
+            ) : (
+              <Lock size={compact ? 11 : 12} className="text-amber-400 shrink-0" />
+            )}
             <span>Make Live</span>
           </button>
         )}
@@ -861,15 +926,32 @@ export const GrandLineAdminRowControls: React.FC<{
         test={test}
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
-        onSaved={(updated) => onUpdated?.(updated)}
+        onSaved={(updated) => {
+          refreshActiveGrants().catch(() => {});
+          onUpdated?.(updated);
+        }}
       />
 
       <GrandLineQuickToggleConfirmModal
         test={test}
         targetAction={quickAction}
         onClose={() => setQuickAction(null)}
-        onConfirmed={(updated) => onUpdated?.(updated)}
+        onConfirmed={(updated) => {
+          refreshActiveGrants().catch(() => {});
+          onUpdated?.(updated);
+        }}
       />
+
+      {requestPerm && (
+        <RequestAccessSheet
+          open={Boolean(requestPerm)}
+          onClose={() => setRequestPerm(null)}
+          permission={requestPerm.permission}
+          actionLabel={requestPerm.actionLabel}
+          targetId={test.id}
+          targetLabel={test.title}
+        />
+      )}
     </>
   );
 };

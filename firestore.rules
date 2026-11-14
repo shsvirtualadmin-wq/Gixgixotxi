@@ -19,29 +19,41 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
-    function isAdmin() {
+    function isSuperAdmin() {
       return signedIn() && (
-        (
-          request.auth.token.email_verified == true &&
-          request.auth.token.email != null &&
-          request.auth.token.email.lower() == 'shsvirtualadmin@gmail.com'
-        ) ||
-        request.auth.uid == 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
-        request.auth.uid == 'jJfb1nThG1X9phL8fFDZ0G0J7m33' ||
-        request.auth.token.admin == true ||
-        request.auth.token.role == 'admin' ||
-        request.auth.token.role == 'superadmin' ||
+        request.auth.uid in [
+          'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+          'Pz5fjmLtXHbWL2ntnW1zd8nlQos2',
+          '2GHhpHZkYFR1keIAwlnuch08mdh1',
+          'JBGCDTLuWUMUIUMCLek7SdgvUNn1',
+          'jJfb1nThG1X9phL8fFDZ0G0J7m33'
+        ] ||
+        request.auth.token.role in ['super_admin', 'superadmin'] ||
         (
           request.auth.token.email != null &&
           request.auth.token.email.lower() in [
             'shsvirtualadmin@gmail.com',
             'support@boardly.cfd',
+            'ktkhashir90@gmail.com',
             'support@scholario.me'
           ]
         ) ||
         (
           exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'superadmin']
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['super_admin', 'superadmin']
+        )
+      );
+    }
+
+    function isAdmin() {
+      return isSuperAdmin() || (
+        signedIn() && (
+          request.auth.token.admin == true ||
+          request.auth.token.role == 'admin' ||
+          (
+            exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+          )
         )
       );
     }
