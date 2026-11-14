@@ -684,6 +684,515 @@ export default {
     try {
       await ensureCaptainSchema(db);
 
+      async function ensureCertificateD1Tables(database) {
+        await database
+          .prepare(
+            `CREATE TABLE IF NOT EXISTS certificate_signatures (
+              id TEXT PRIMARY KEY,
+              r2_key TEXT NOT NULL,
+              signatory_name TEXT NOT NULL,
+              signatory_title TEXT NOT NULL,
+              version INTEGER NOT NULL,
+              uploaded_by TEXT NOT NULL,
+              created_at INTEGER NOT NULL,
+              active INTEGER NOT NULL DEFAULT 1
+            )`
+          )
+          .run();
+        await database
+          .prepare(
+            `CREATE TABLE IF NOT EXISTS certificates (
+              id TEXT PRIMARY KEY,
+              student_uid TEXT NOT NULL,
+              student_name TEXT NOT NULL,
+              student_email TEXT NOT NULL DEFAULT '',
+              grand_line_id TEXT NOT NULL,
+              grand_line_title TEXT NOT NULL,
+              edition_label TEXT NOT NULL DEFAULT '',
+              rank INTEGER NOT NULL DEFAULT 1,
+              score INTEGER NOT NULL DEFAULT 0,
+              total_questions INTEGER NOT NULL DEFAULT 0,
+              percentage INTEGER NOT NULL DEFAULT 0,
+              participants_count INTEGER NOT NULL DEFAULT 1,
+              serial TEXT NOT NULL UNIQUE,
+              theme_id TEXT NOT NULL,
+              signature_version INTEGER NOT NULL DEFAULT 1,
+              issued_at INTEGER NOT NULL,
+              pdf_r2_key TEXT NOT NULL,
+              png_r2_key TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')),
+              UNIQUE(student_uid, grand_line_id)
+            )`
+          )
+          .run();
+
+        await db
+          .prepare('ALTER TABLE captain_tests ADD COLUMN certificate_theme_id TEXT DEFAULT NULL')
+          .run()
+          .catch(() => {});
+        await db
+          .prepare('ALTER TABLE captain_tests ADD COLUMN results_finalised INTEGER DEFAULT 0')
+          .run()
+          .catch(() => {});
+        await db
+          .prepare('ALTER TABLE captain_tests ADD COLUMN finalised_at INTEGER DEFAULT NULL')
+          .run()
+          .catch(() => {});
+      }
+
+      function uint8ArrayToBase64(bytes) {
+        let binary = '';
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+        }
+        return btoa(binary);
+      }
+
+      function base64ToUint8Array(base64) {
+        const clean = String(base64 || '').replace(/\s+/g, '');
+        const raw = atob(clean);
+        const out = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) {
+          out[i] = raw.charCodeAt(i);
+        }
+        return out;
+      }
+
+      function isPngMagicBytes(bytes) {
+        return (
+          bytes &&
+          bytes.length >= 8 &&
+          bytes[0] === 0x89 &&
+          bytes[1] === 0x50 &&
+          bytes[2] === 0x4e &&
+          bytes[3] === 0x47 &&
+          bytes[4] === 0x0d &&
+          bytes[5] === 0x0a &&
+          bytes[6] === 0x1a &&
+          bytes[7] === 0x0a
+        );
+      }
+
+      async function loadSignatureDataUrlFromR2(r2Bucket, r2Key) {
+        if (!r2Bucket || !r2Key) return null;
+        try {
+          const obj = await r2Bucket.get(r2Key);
+          if (!obj) return null;
+          const ab = await obj.arrayBuffer();
+          const bytes = new Uint8Array(ab);
+          if (bytes.byteLength === 0) return null;
+          return `data:image/png;base64,${uint8ArrayToBase64(bytes)}`;
+        } catch {
+          return null;
+        }
+      }
+
+      async function signWorkerCertToken(certId, fmt, expMs) {
+        const secret = String(env.INTERNAL_EMAIL_SECRET || 'boardly_cert_hmac_v1').trim();
+        const key = await crypto.subtle.importKey(
+          'raw',
+          new TextEncoder().encode(secret),
+          { name: 'HMAC', hash: 'SHA-256' },
+          false,
+          ['sign']
+        );
+        const mac = await crypto.subtle.sign(
+          'HMAC',
+          key,
+          new TextEncoder().encode(`${certId}:${fmt}:${expMs}`)
+        );
+        return Array.from(new Uint8Array(mac))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+      }
+
+      async function verifyWorkerCertToken(certId, fmt, token, expMs) {
+        const expNum = Number(expMs || 0);
+        if (!Number.isFinite(expNum) || expNum < Date.now() || !token) return false;
+        const expected = await signWorkerCertToken(certId, fmt, expNum);
+        return expected === String(token).trim();
+      }
+
+      const WORKER_CERT_THEMES = {
+        default: {
+          id: 'default',
+          bg: '#09090B',
+          cardSurface: '#121216',
+          border: '#EF4444',
+          ink: '#FAFAFA',
+          muted: '#A1A1AA',
+          accent: '#EF4444',
+          secondary: '#E4E4E7',
+          sigInk: '#FAFAFA',
+        },
+        'default-light': {
+          id: 'default-light',
+          bg: '#F4F4F0',
+          cardSurface: '#FFFFFF',
+          border: '#09090B',
+          ink: '#09090B',
+          muted: '#52525B',
+          accent: '#DC2626',
+          secondary: '#18181B',
+          sigInk: '#09090B',
+        },
+        'red-dark': {
+          id: 'red-dark',
+          bg: '#160709',
+          cardSurface: '#240B0F',
+          border: '#F43F5E',
+          ink: '#FFF1F2',
+          muted: '#FDA4AF',
+          accent: '#F43F5E',
+          secondary: '#FB923C',
+          sigInk: '#FFE4E6',
+        },
+        'light-red': {
+          id: 'light-red',
+          bg: '#FAF6F0',
+          cardSurface: '#FFFDF9',
+          border: '#E11D48',
+          ink: '#1C1917',
+          muted: '#57534E',
+          accent: '#E11D48',
+          secondary: '#9F1239',
+          sigInk: '#1C1917',
+        },
+        'blue-dark': {
+          id: 'blue-dark',
+          bg: '#061024',
+          cardSurface: '#0C1D3D',
+          border: '#38BDF8',
+          ink: '#F0F9FF',
+          muted: '#93C5FD',
+          accent: '#38BDF8',
+          secondary: '#818CF8',
+          sigInk: '#E0F2FE',
+        },
+        'green-dark': {
+          id: 'green-dark',
+          bg: '#051812',
+          cardSurface: '#0A291F',
+          border: '#10B981',
+          ink: '#ECFDF5',
+          muted: '#6EE7B7',
+          accent: '#10B981',
+          secondary: '#2DD4BF',
+          sigInk: '#D1FAE5',
+        },
+        'amber-dark': {
+          id: 'amber-dark',
+          bg: '#140E05',
+          cardSurface: '#211708',
+          border: '#F59E0B',
+          ink: '#FFFBEB',
+          muted: '#FCD34D',
+          accent: '#F59E0B',
+          secondary: '#FDE047',
+          sigInk: '#FEF08A',
+        },
+        'mono-light': {
+          id: 'mono-light',
+          bg: '#FFFFFF',
+          cardSurface: '#F8FAFC',
+          border: '#0F172A',
+          ink: '#0F172A',
+          muted: '#475569',
+          accent: '#0F172A',
+          secondary: '#DC2626',
+          sigInk: '#0F172A',
+        },
+      };
+
+      const WORKER_AUTO_THEMES = [
+        {
+          id: 'auto-violet-dark',
+          bg: '#0F0720',
+          cardSurface: '#190D33',
+          border: '#A855F7',
+          ink: '#FAF5FF',
+          muted: '#D8B4FE',
+          accent: '#A855F7',
+          secondary: '#EC4899',
+          sigInk: '#F3E8FF',
+        },
+        ...Object.values(WORKER_CERT_THEMES),
+      ];
+
+      function resolveWorkerCertThemeColors(grandLineId, themeId, studentSeed) {
+        if (themeId && WORKER_CERT_THEMES[themeId]) return WORKER_CERT_THEMES[themeId];
+        if (!studentSeed && (!themeId || themeId === 'auto')) {
+          return WORKER_AUTO_THEMES[0];
+        }
+        let h = 0x811c9dc5;
+        const s = `${grandLineId || 'gl_mock_01'}::${studentSeed || 'sample'}`;
+        for (let i = 0; i < s.length; i++) {
+          h ^= s.charCodeAt(i);
+          h = Math.imul(h, 0x01000193) >>> 0;
+        }
+        return WORKER_AUTO_THEMES[h % WORKER_AUTO_THEMES.length];
+      }
+
+      function hexToRgb01(hex) {
+        const clean = String(hex || '#0A0A0D').replace('#', '');
+        const r = parseInt(clean.slice(0, 2), 16) || 10;
+        const g = parseInt(clean.slice(2, 4), 16) || 10;
+        const b = parseInt(clean.slice(4, 6), 16) || 13;
+        return {
+          r,
+          g,
+          b,
+          rf: (r / 255).toFixed(3),
+          gf: (g / 255).toFixed(3),
+          bf: (b / 255).toFixed(3),
+        };
+      }
+
+      function escapePdfText(str) {
+        return String(str || '')
+          .replace(/[^\x20-\x7E]/g, ' ')
+          .replace(/\\/g, '\\\\')
+          .replace(/\(/g, '\\(')
+          .replace(/\)/g, '\\)');
+      }
+
+      function formatWorkerCertDate(ts) {
+        const d = new Date(Number(ts || Date.now()));
+        const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        const mon = months[d.getUTCMonth()] || 'JAN';
+        const yr = d.getUTCFullYear();
+        return `${day} ${mon} ${yr}`;
+      }
+
+      function buildWorkerCertificatePdfBytes(certRow, sigRow) {
+        const palette = resolveWorkerCertThemeColors(certRow.grand_line_id, certRow.theme_id, certRow.student_uid || certRow.serial);
+        const bg = hexToRgb01(palette.bg);
+        const cardSurface = hexToRgb01(palette.cardSurface || palette.bg);
+        const border = hexToRgb01(palette.border || palette.accent);
+        const ink = hexToRgb01(palette.ink);
+        const muted = hexToRgb01(palette.muted);
+        const accent = hexToRgb01(palette.accent);
+        const sigInk = hexToRgb01(palette.sigInk || palette.ink);
+
+        const serial = String(certRow.serial || 'BDLY-GL01-0001');
+        const studentName = String(certRow.student_name || 'Student');
+        const mockTitle = String(certRow.grand_line_title || 'Boardly Grand Line Mock');
+        const editionLabel = String(certRow.edition_label || 'OFFICIAL EDITION').toUpperCase();
+        const score = Number(certRow.score || 0);
+        const totalQ = Number(certRow.total_questions || 0);
+        const pct = Number(certRow.percentage || (totalQ > 0 ? Math.round((score / totalQ) * 100) : 100));
+        const scoreStr = totalQ > 0 ? `${score}/${totalQ} (${pct}%)` : `${score}`;
+        const participants = Number(certRow.participants_count || 1);
+        const dateStr = formatWorkerCertDate(certRow.issued_at);
+        const sigName = String(sigRow?.signatory_name || 'Boardly Examination Council');
+        const sigTitle = String(sigRow?.signatory_title || 'Founder, Boardly');
+        const sigVer = Number(sigRow?.version || certRow.signature_version || 1);
+
+        const contentLines = [
+          'q',
+          `${bg.rf} ${bg.gf} ${bg.bf} rg`,
+          '0 0 1123 794 re f',
+          `${cardSurface.rf} ${cardSurface.gf} ${cardSurface.bf} rg`,
+          '56 48 1011 698 re f',
+          `${border.rf} ${border.gf} ${border.bf} RG 2 w`,
+          '56 48 1011 698 re S',
+          'BT',
+          `/F2 22 Tf ${ink.rf} ${ink.gf} ${ink.bf} rg 104 686 Td (BOARDLY .) Tj`,
+          `/F2 11 Tf ${muted.rf} ${muted.gf} ${muted.bf} rg 0 -22 Td (GRAND LINE MOCK / ${escapePdfText(editionLabel)}) Tj`,
+          `/F2 12 Tf ${accent.rf} ${accent.gf} ${accent.bf} rg 330 -60 Td (CERTIFICATE OF EXCELLENCE) Tj`,
+          `/F1 40 Tf ${accent.rf} ${accent.gf} ${accent.bf} rg -20 -58 Td (1ST POSITION) Tj`,
+          `/F2 12 Tf ${muted.rf} ${muted.gf} ${muted.bf} rg 35 -48 Td (PROUDLY PRESENTED TO) Tj`,
+          `/F1 34 Tf ${ink.rf} ${ink.gf} ${ink.bf} rg -60 -52 Td (${escapePdfText(studentName)}) Tj`,
+          `/F1 14 Tf ${muted.rf} ${muted.gf} ${muted.bf} rg -140 -48 Td (for securing First Position in ${escapePdfText(mockTitle)} with a score of ${escapePdfText(scoreStr)}, ahead of ${participants} participants.) Tj`,
+          `/F2 11 Tf ${ink.rf} ${ink.gf} ${ink.bf} rg -45 -180 Td (DATE ISSUED: ${escapePdfText(dateStr)}   |   SERIAL: ${escapePdfText(serial)}   |   VERIFY: boardly.cfd/verify/${escapePdfText(serial)}) Tj`,
+          `/F1 13 Tf ${sigInk.rf} ${sigInk.gf} ${sigInk.bf} rg 0 -28 Td (AUTHORISED BY: ${escapePdfText(sigName)} - ${escapePdfText(sigTitle)} [Signature v${sigVer}]) Tj`,
+          'ET',
+          'Q',
+        ];
+        const streamStr = contentLines.join('\n');
+
+        const objs = [
+          '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+          '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+          '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1123 794] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>\nendobj\n',
+          '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n',
+          '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>\nendobj\n',
+          `6 0 obj\n<< /Length ${streamStr.length} >>\nstream\n${streamStr}\nendstream\nendobj\n`,
+        ];
+
+        let pdf = '%PDF-1.4\n';
+        const offsets = [0];
+        for (const o of objs) {
+          offsets.push(pdf.length);
+          pdf += o;
+        }
+        const xrefStart = pdf.length;
+        pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
+        for (let i = 1; i <= objs.length; i++) {
+          pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+        }
+        pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+        return new TextEncoder().encode(pdf);
+      }
+
+      let crcTableCache = null;
+      function getCrc32Table() {
+        if (crcTableCache) return crcTableCache;
+        const table = new Uint32Array(256);
+        for (let n = 0; n < 256; n++) {
+          let c = n;
+          for (let k = 0; k < 8; k++) {
+            c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+          }
+          table[n] = c >>> 0;
+        }
+        crcTableCache = table;
+        return table;
+      }
+
+      function crc32(bytes) {
+        const table = getCrc32Table();
+        let crc = 0xffffffff;
+        for (let i = 0; i < bytes.length; i++) {
+          crc = table[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+        }
+        return (crc ^ 0xffffffff) >>> 0;
+      }
+
+      function adler32(bytes) {
+        let a = 1;
+        let b = 0;
+        const MOD = 65521;
+        for (let i = 0; i < bytes.length; i++) {
+          a = (a + bytes[i]) % MOD;
+          b = (b + a) % MOD;
+        }
+        return ((b << 16) | a) >>> 0;
+      }
+
+      function makePngChunk(typeFourCC, dataBytes) {
+        const len = dataBytes.length;
+        const out = new Uint8Array(12 + len);
+        const view = new DataView(out.buffer);
+        view.setUint32(0, len, false);
+        for (let i = 0; i < 4; i++) {
+          out[4 + i] = typeFourCC.charCodeAt(i);
+        }
+        out.set(dataBytes, 8);
+        const crcInput = out.subarray(4, 8 + len);
+        view.setUint32(8 + len, crc32(crcInput), false);
+        return out;
+      }
+
+      function buildWorkerCertificatePngBytes(certRow, sigRow) {
+        const palette = resolveWorkerCertThemeColors(certRow.grand_line_id, certRow.theme_id, certRow.student_uid || certRow.serial);
+        const bg = hexToRgb01(palette.bg);
+        const cardSurface = hexToRgb01(palette.cardSurface || palette.bg);
+        const accent = hexToRgb01(palette.accent);
+        const ink = hexToRgb01(palette.ink);
+
+        const w = 112;
+        const h = 79;
+        const rawScanlines = new Uint8Array(h * (1 + w * 3));
+        let ptr = 0;
+        for (let y = 0; y < h; y++) {
+          rawScanlines[ptr++] = 0; // filter type 0
+          for (let x = 0; x < w; x++) {
+            const isBorder = x === 5 || x === w - 6 || y === 4 || y === h - 5;
+            const isHeaderDot = x >= 22 && x <= 25 && y >= 10 && y <= 13;
+            const isCenterBar = y >= 32 && y <= 34 && x >= 20 && x <= w - 20;
+            const isInsideCard = x > 5 && x < w - 6 && y > 4 && y < h - 5;
+            if (isBorder || isHeaderDot || isCenterBar) {
+              rawScanlines[ptr++] = accent.r;
+              rawScanlines[ptr++] = accent.g;
+              rawScanlines[ptr++] = accent.b;
+            } else if (isInsideCard && (x + y) % 11 === 0) {
+              rawScanlines[ptr++] = ink.r;
+              rawScanlines[ptr++] = ink.g;
+              rawScanlines[ptr++] = ink.b;
+            } else if (isInsideCard) {
+              rawScanlines[ptr++] = cardSurface.r;
+              rawScanlines[ptr++] = cardSurface.g;
+              rawScanlines[ptr++] = cardSurface.b;
+            } else {
+              rawScanlines[ptr++] = bg.r;
+              rawScanlines[ptr++] = bg.g;
+              rawScanlines[ptr++] = bg.b;
+            }
+          }
+        }
+
+        // Wrap rawScanlines in uncompressed Zlib stream (CMF=0x78, FLG=0x01, BFINAL=1, LEN, NLEN, data, Adler32)
+        const len = rawScanlines.length;
+        const zlib = new Uint8Array(2 + 5 + len + 4);
+        zlib[0] = 0x78;
+        zlib[1] = 0x01;
+        zlib[2] = 0x01; // final uncompressed block
+        zlib[3] = len & 0xff;
+        zlib[4] = (len >>> 8) & 0xff;
+        const nlen = ~len & 0xffff;
+        zlib[5] = nlen & 0xff;
+        zlib[6] = (nlen >>> 8) & 0xff;
+        zlib.set(rawScanlines, 7);
+        const adlerView = new DataView(zlib.buffer);
+        adlerView.setUint32(7 + len, adler32(rawScanlines), false);
+
+        const ihdr = new Uint8Array(13);
+        const ihdrView = new DataView(ihdr.buffer);
+        ihdrView.setUint32(0, w, false);
+        ihdrView.setUint32(4, h, false);
+        ihdr[8] = 8; // bit depth 8
+        ihdr[9] = 2; // color type 2 (RGB)
+        ihdr[10] = 0;
+        ihdr[11] = 0;
+        ihdr[12] = 0;
+
+        const metaStr = `BoardlyCertificate\0serial=${certRow.serial};student=${certRow.student_name};mock=${certRow.grand_line_title};sig_v=${sigRow?.version || certRow.signature_version || 1}`;
+        const textBytes = new TextEncoder().encode(metaStr);
+
+        const sigHeader = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+        const cIhdr = makePngChunk('IHDR', ihdr);
+        const cText = makePngChunk('tEXt', textBytes);
+        const cIdat = makePngChunk('IDAT', zlib);
+        const cIend = makePngChunk('IEND', new Uint8Array(0));
+
+        const total = sigHeader.length + cIhdr.length + cText.length + cIdat.length + cIend.length;
+        const out = new Uint8Array(total);
+        let offset = 0;
+        for (const part of [sigHeader, cIhdr, cText, cIdat, cIend]) {
+          out.set(part, offset);
+          offset += part.length;
+        }
+        return out;
+      }
+
+      async function renderAndStoreWorkerCertificate(env, certRow, sigRow) {
+        if (!env.R2_BUCKET) {
+          throw new Error('R2_BUCKET binding is not configured on this Worker.');
+        }
+        const pdfBytes = buildWorkerCertificatePdfBytes(certRow, sigRow);
+        const pngBytes = buildWorkerCertificatePngBytes(certRow, sigRow);
+
+        const pdfKey = certRow.pdf_r2_key || `certificates/${certRow.grand_line_id}/${certRow.serial}.pdf`;
+        const pngKey = certRow.png_r2_key || `certificates/${certRow.grand_line_id}/${certRow.serial}.png`;
+
+        await env.R2_BUCKET.put(pdfKey, pdfBytes, {
+          httpMetadata: {
+            contentType: 'application/pdf',
+            cacheControl: 'private, no-store',
+          },
+        });
+        await env.R2_BUCKET.put(pngKey, pngBytes, {
+          httpMetadata: {
+            contentType: 'image/png',
+            cacheControl: 'private, no-store',
+          },
+        });
+        return { pdfKey, pngKey, pdfBytes, pngBytes };
+      }
+
       // 1. Health Check
       if (path === '/api/health' && method === 'GET') {
         const check = await db.prepare('SELECT 1 AS ok').first();
@@ -1379,9 +1888,6 @@ export default {
       if (finaliseMatch && method === 'POST') {
         const testId = decodeURIComponent(finaliseMatch[1]);
         const user = await authenticateRequest(request, env, true);
-        if (!user.isAdminOrAbove) {
-          return errorResponse(request, env, 'Only admins can finalise Grand Line results and issue certificates.', 'FORBIDDEN', 403);
-        }
         await ensureCertificateD1Tables(db);
         const testRow = await db
           .prepare('SELECT * FROM captain_tests WHERE id = ?1')
@@ -1389,6 +1895,23 @@ export default {
           .first();
         if (!testRow) {
           return errorResponse(request, env, 'Grand Line mock not found.', 'NOT_FOUND', 404);
+        }
+        if (!user.isAdminOrAbove && testRow.captain_uid !== user.uid) {
+          return errorResponse(request, env, 'Only admins or the mock captain can finalise Grand Line results and issue certificates.', 'FORBIDDEN', 403);
+        }
+        const body = await request.json().catch(() => ({}));
+        if (body && (body.certificateThemeId !== undefined || body.certificate_theme_id !== undefined)) {
+          const rawTheme = body.certificateThemeId !== undefined ? body.certificateThemeId : body.certificate_theme_id;
+          const cleanTheme =
+            typeof rawTheme === 'string' && rawTheme.trim() && rawTheme.trim() !== 'auto'
+              ? rawTheme.trim()
+              : null;
+          testRow.certificate_theme_id = cleanTheme;
+          await db
+            .prepare('UPDATE captain_tests SET certificate_theme_id = ?1 WHERE id = ?2')
+            .bind(cleanTheme, testId)
+            .run()
+            .catch(() => {});
         }
         const activeSig = await db
           .prepare('SELECT * FROM certificate_signatures WHERE active = 1 ORDER BY version DESC LIMIT 1')
@@ -1451,6 +1974,7 @@ export default {
         const issued = [];
         const skipped = [];
         const now = Date.now();
+        const wasAlreadyFinalised = Boolean(testRow.results_finalised);
 
         for (const w of winners) {
           const studentUid = String(w.user_uid);
@@ -1525,10 +2049,18 @@ export default {
             serial: certRow.serial,
             studentUid: certRow.student_uid,
             studentName: certRow.student_name,
+            grandLineId: certRow.grand_line_id,
+            grandLineTitle: certRow.grand_line_title,
+            editionLabel: certRow.edition_label,
+            rank: certRow.rank,
             score: certRow.score,
             totalQuestions: certRow.total_questions,
             percentage: certRow.percentage,
+            participantsCount: certRow.participants_count,
             themeId: certRow.theme_id,
+            signatureVersion: certRow.signature_version,
+            issuedAt: certRow.issued_at,
+            status: certRow.status,
           });
         }
 
@@ -1540,9 +2072,14 @@ export default {
 
         return jsonResponse(request, env, {
           ok: true,
+          testId,
           grandLineId: testId,
+          resultsFinalised: true,
+          alreadyFinalised: wasAlreadyFinalised,
           participantsCount: bestAttempts.length,
           issuedCount: issued.length,
+          existingCount: skipped.length,
+          certificates: issued,
           issued,
           skipped,
         });
@@ -2715,514 +3252,6 @@ export default {
       // =======================================================================
       // 10. GRAND LINE CERTIFICATES & PRIVATE ADMIN SIGNATURES (D1 + PRIVATE R2)
       // =======================================================================
-      async function ensureCertificateD1Tables(database) {
-        await database
-          .prepare(
-            `CREATE TABLE IF NOT EXISTS certificate_signatures (
-              id TEXT PRIMARY KEY,
-              r2_key TEXT NOT NULL,
-              signatory_name TEXT NOT NULL,
-              signatory_title TEXT NOT NULL,
-              version INTEGER NOT NULL,
-              uploaded_by TEXT NOT NULL,
-              created_at INTEGER NOT NULL,
-              active INTEGER NOT NULL DEFAULT 1
-            )`
-          )
-          .run();
-        await database
-          .prepare(
-            `CREATE TABLE IF NOT EXISTS certificates (
-              id TEXT PRIMARY KEY,
-              student_uid TEXT NOT NULL,
-              student_name TEXT NOT NULL,
-              student_email TEXT NOT NULL DEFAULT '',
-              grand_line_id TEXT NOT NULL,
-              grand_line_title TEXT NOT NULL,
-              edition_label TEXT NOT NULL DEFAULT '',
-              rank INTEGER NOT NULL DEFAULT 1,
-              score INTEGER NOT NULL DEFAULT 0,
-              total_questions INTEGER NOT NULL DEFAULT 0,
-              percentage INTEGER NOT NULL DEFAULT 0,
-              participants_count INTEGER NOT NULL DEFAULT 1,
-              serial TEXT NOT NULL UNIQUE,
-              theme_id TEXT NOT NULL,
-              signature_version INTEGER NOT NULL DEFAULT 1,
-              issued_at INTEGER NOT NULL,
-              pdf_r2_key TEXT NOT NULL,
-              png_r2_key TEXT NOT NULL,
-              status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')),
-              UNIQUE(student_uid, grand_line_id)
-            )`
-          )
-          .run();
-
-        await db
-          .prepare('ALTER TABLE captain_tests ADD COLUMN certificate_theme_id TEXT DEFAULT NULL')
-          .run()
-          .catch(() => {});
-        await db
-          .prepare('ALTER TABLE captain_tests ADD COLUMN results_finalised INTEGER DEFAULT 0')
-          .run()
-          .catch(() => {});
-        await db
-          .prepare('ALTER TABLE captain_tests ADD COLUMN finalised_at INTEGER DEFAULT NULL')
-          .run()
-          .catch(() => {});
-      }
-
-      function uint8ArrayToBase64(bytes) {
-        let binary = '';
-        const chunkSize = 0x8000;
-        for (let i = 0; i < bytes.length; i += chunkSize) {
-          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
-        }
-        return btoa(binary);
-      }
-
-      function base64ToUint8Array(base64) {
-        const clean = String(base64 || '').replace(/\s+/g, '');
-        const raw = atob(clean);
-        const out = new Uint8Array(raw.length);
-        for (let i = 0; i < raw.length; i++) {
-          out[i] = raw.charCodeAt(i);
-        }
-        return out;
-      }
-
-      function isPngMagicBytes(bytes) {
-        return (
-          bytes &&
-          bytes.length >= 8 &&
-          bytes[0] === 0x89 &&
-          bytes[1] === 0x50 &&
-          bytes[2] === 0x4e &&
-          bytes[3] === 0x47 &&
-          bytes[4] === 0x0d &&
-          bytes[5] === 0x0a &&
-          bytes[6] === 0x1a &&
-          bytes[7] === 0x0a
-        );
-      }
-
-      async function loadSignatureDataUrlFromR2(r2Bucket, r2Key) {
-        if (!r2Bucket || !r2Key) return null;
-        try {
-          const obj = await r2Bucket.get(r2Key);
-          if (!obj) return null;
-          const ab = await obj.arrayBuffer();
-          const bytes = new Uint8Array(ab);
-          if (bytes.byteLength === 0) return null;
-          return `data:image/png;base64,${uint8ArrayToBase64(bytes)}`;
-        } catch {
-          return null;
-        }
-      }
-
-      async function signWorkerCertToken(certId, fmt, expMs) {
-        const secret = String(env.INTERNAL_EMAIL_SECRET || 'boardly_cert_hmac_v1').trim();
-        const key = await crypto.subtle.importKey(
-          'raw',
-          new TextEncoder().encode(secret),
-          { name: 'HMAC', hash: 'SHA-256' },
-          false,
-          ['sign']
-        );
-        const mac = await crypto.subtle.sign(
-          'HMAC',
-          key,
-          new TextEncoder().encode(`${certId}:${fmt}:${expMs}`)
-        );
-        return Array.from(new Uint8Array(mac))
-          .map((b) => b.toString(16).padStart(2, '0'))
-          .join('');
-      }
-
-      async function verifyWorkerCertToken(certId, fmt, token, expMs) {
-        const expNum = Number(expMs || 0);
-        if (!Number.isFinite(expNum) || expNum < Date.now() || !token) return false;
-        const expected = await signWorkerCertToken(certId, fmt, expNum);
-        return expected === String(token).trim();
-      }
-
-      const WORKER_CERT_THEMES = {
-        default: {
-          id: 'default',
-          bg: '#09090B',
-          cardSurface: '#121216',
-          border: '#EF4444',
-          ink: '#FAFAFA',
-          muted: '#A1A1AA',
-          accent: '#EF4444',
-          secondary: '#E4E4E7',
-          sigInk: '#FAFAFA',
-        },
-        'default-light': {
-          id: 'default-light',
-          bg: '#F4F4F0',
-          cardSurface: '#FFFFFF',
-          border: '#09090B',
-          ink: '#09090B',
-          muted: '#52525B',
-          accent: '#DC2626',
-          secondary: '#18181B',
-          sigInk: '#09090B',
-        },
-        'red-dark': {
-          id: 'red-dark',
-          bg: '#160709',
-          cardSurface: '#240B0F',
-          border: '#F43F5E',
-          ink: '#FFF1F2',
-          muted: '#FDA4AF',
-          accent: '#F43F5E',
-          secondary: '#FB923C',
-          sigInk: '#FFE4E6',
-        },
-        'light-red': {
-          id: 'light-red',
-          bg: '#FAF6F0',
-          cardSurface: '#FFFDF9',
-          border: '#E11D48',
-          ink: '#1C1917',
-          muted: '#57534E',
-          accent: '#E11D48',
-          secondary: '#9F1239',
-          sigInk: '#1C1917',
-        },
-        'blue-dark': {
-          id: 'blue-dark',
-          bg: '#061024',
-          cardSurface: '#0C1D3D',
-          border: '#38BDF8',
-          ink: '#F0F9FF',
-          muted: '#93C5FD',
-          accent: '#38BDF8',
-          secondary: '#818CF8',
-          sigInk: '#E0F2FE',
-        },
-        'green-dark': {
-          id: 'green-dark',
-          bg: '#051812',
-          cardSurface: '#0A291F',
-          border: '#10B981',
-          ink: '#ECFDF5',
-          muted: '#6EE7B7',
-          accent: '#10B981',
-          secondary: '#2DD4BF',
-          sigInk: '#D1FAE5',
-        },
-        'amber-dark': {
-          id: 'amber-dark',
-          bg: '#140E05',
-          cardSurface: '#211708',
-          border: '#F59E0B',
-          ink: '#FFFBEB',
-          muted: '#FCD34D',
-          accent: '#F59E0B',
-          secondary: '#FDE047',
-          sigInk: '#FEF08A',
-        },
-        'mono-light': {
-          id: 'mono-light',
-          bg: '#FFFFFF',
-          cardSurface: '#F8FAFC',
-          border: '#0F172A',
-          ink: '#0F172A',
-          muted: '#475569',
-          accent: '#0F172A',
-          secondary: '#DC2626',
-          sigInk: '#0F172A',
-        },
-      };
-
-      const WORKER_AUTO_THEMES = [
-        {
-          id: 'auto-violet-dark',
-          bg: '#0F0720',
-          cardSurface: '#190D33',
-          border: '#A855F7',
-          ink: '#FAF5FF',
-          muted: '#D8B4FE',
-          accent: '#A855F7',
-          secondary: '#EC4899',
-          sigInk: '#F3E8FF',
-        },
-        ...Object.values(WORKER_CERT_THEMES),
-      ];
-
-      function resolveWorkerCertThemeColors(grandLineId, themeId, studentSeed) {
-        if (themeId && WORKER_CERT_THEMES[themeId]) return WORKER_CERT_THEMES[themeId];
-        if (!studentSeed && (!themeId || themeId === 'auto')) {
-          return WORKER_AUTO_THEMES[0];
-        }
-        let h = 0x811c9dc5;
-        const s = `${grandLineId || 'gl_mock_01'}::${studentSeed || 'sample'}`;
-        for (let i = 0; i < s.length; i++) {
-          h ^= s.charCodeAt(i);
-          h = Math.imul(h, 0x01000193) >>> 0;
-        }
-        return WORKER_AUTO_THEMES[h % WORKER_AUTO_THEMES.length];
-      }
-
-      function hexToRgb01(hex) {
-        const clean = String(hex || '#0A0A0D').replace('#', '');
-        const r = parseInt(clean.slice(0, 2), 16) || 10;
-        const g = parseInt(clean.slice(2, 4), 16) || 10;
-        const b = parseInt(clean.slice(4, 6), 16) || 13;
-        return {
-          r,
-          g,
-          b,
-          rf: (r / 255).toFixed(3),
-          gf: (g / 255).toFixed(3),
-          bf: (b / 255).toFixed(3),
-        };
-      }
-
-      function escapePdfText(str) {
-        return String(str || '')
-          .replace(/[^\x20-\x7E]/g, ' ')
-          .replace(/\\/g, '\\\\')
-          .replace(/\(/g, '\\(')
-          .replace(/\)/g, '\\)');
-      }
-
-      function formatWorkerCertDate(ts) {
-        const d = new Date(Number(ts || Date.now()));
-        const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-        const day = String(d.getUTCDate()).padStart(2, '0');
-        const mon = months[d.getUTCMonth()] || 'JAN';
-        const yr = d.getUTCFullYear();
-        return `${day} ${mon} ${yr}`;
-      }
-
-      function buildWorkerCertificatePdfBytes(certRow, sigRow) {
-        const palette = resolveWorkerCertThemeColors(certRow.grand_line_id, certRow.theme_id, certRow.student_uid || certRow.serial);
-        const bg = hexToRgb01(palette.bg);
-        const cardSurface = hexToRgb01(palette.cardSurface || palette.bg);
-        const border = hexToRgb01(palette.border || palette.accent);
-        const ink = hexToRgb01(palette.ink);
-        const muted = hexToRgb01(palette.muted);
-        const accent = hexToRgb01(palette.accent);
-        const sigInk = hexToRgb01(palette.sigInk || palette.ink);
-
-        const serial = String(certRow.serial || 'BDLY-GL01-0001');
-        const studentName = String(certRow.student_name || 'Student');
-        const mockTitle = String(certRow.grand_line_title || 'Boardly Grand Line Mock');
-        const editionLabel = String(certRow.edition_label || 'OFFICIAL EDITION').toUpperCase();
-        const score = Number(certRow.score || 0);
-        const totalQ = Number(certRow.total_questions || 0);
-        const pct = Number(certRow.percentage || (totalQ > 0 ? Math.round((score / totalQ) * 100) : 100));
-        const scoreStr = totalQ > 0 ? `${score}/${totalQ} (${pct}%)` : `${score}`;
-        const participants = Number(certRow.participants_count || 1);
-        const dateStr = formatWorkerCertDate(certRow.issued_at);
-        const sigName = String(sigRow?.signatory_name || 'Boardly Examination Council');
-        const sigTitle = String(sigRow?.signatory_title || 'Founder, Boardly');
-        const sigVer = Number(sigRow?.version || certRow.signature_version || 1);
-
-        const contentLines = [
-          'q',
-          `${bg.rf} ${bg.gf} ${bg.bf} rg`,
-          '0 0 1123 794 re f',
-          `${cardSurface.rf} ${cardSurface.gf} ${cardSurface.bf} rg`,
-          '56 48 1011 698 re f',
-          `${border.rf} ${border.gf} ${border.bf} RG 2 w`,
-          '56 48 1011 698 re S',
-          'BT',
-          `/F2 22 Tf ${ink.rf} ${ink.gf} ${ink.bf} rg 104 686 Td (BOARDLY .) Tj`,
-          `/F2 11 Tf ${muted.rf} ${muted.gf} ${muted.bf} rg 0 -22 Td (GRAND LINE MOCK / ${escapePdfText(editionLabel)}) Tj`,
-          `/F2 12 Tf ${accent.rf} ${accent.gf} ${accent.bf} rg 330 -60 Td (CERTIFICATE OF EXCELLENCE) Tj`,
-          `/F1 40 Tf ${accent.rf} ${accent.gf} ${accent.bf} rg -20 -58 Td (1ST POSITION) Tj`,
-          `/F2 12 Tf ${muted.rf} ${muted.gf} ${muted.bf} rg 35 -48 Td (PROUDLY PRESENTED TO) Tj`,
-          `/F1 34 Tf ${ink.rf} ${ink.gf} ${ink.bf} rg -60 -52 Td (${escapePdfText(studentName)}) Tj`,
-          `/F1 14 Tf ${muted.rf} ${muted.gf} ${muted.bf} rg -140 -48 Td (for securing First Position in ${escapePdfText(mockTitle)} with a score of ${escapePdfText(scoreStr)}, ahead of ${participants} participants.) Tj`,
-          `/F2 11 Tf ${ink.rf} ${ink.gf} ${ink.bf} rg -45 -180 Td (DATE ISSUED: ${escapePdfText(dateStr)}   |   SERIAL: ${escapePdfText(serial)}   |   VERIFY: boardly.cfd/verify/${escapePdfText(serial)}) Tj`,
-          `/F1 13 Tf ${sigInk.rf} ${sigInk.gf} ${sigInk.bf} rg 0 -28 Td (AUTHORISED BY: ${escapePdfText(sigName)} - ${escapePdfText(sigTitle)} [Signature v${sigVer}]) Tj`,
-          'ET',
-          'Q',
-        ];
-        const streamStr = contentLines.join('\n');
-
-        const objs = [
-          '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
-          '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
-          '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1123 794] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>\nendobj\n',
-          '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n',
-          '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>\nendobj\n',
-          `6 0 obj\n<< /Length ${streamStr.length} >>\nstream\n${streamStr}\nendstream\nendobj\n`,
-        ];
-
-        let pdf = '%PDF-1.4\n';
-        const offsets = [0];
-        for (const o of objs) {
-          offsets.push(pdf.length);
-          pdf += o;
-        }
-        const xrefStart = pdf.length;
-        pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
-        for (let i = 1; i <= objs.length; i++) {
-          pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
-        }
-        pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
-        return new TextEncoder().encode(pdf);
-      }
-
-      let crcTableCache = null;
-      function getCrc32Table() {
-        if (crcTableCache) return crcTableCache;
-        const table = new Uint32Array(256);
-        for (let n = 0; n < 256; n++) {
-          let c = n;
-          for (let k = 0; k < 8; k++) {
-            c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-          }
-          table[n] = c >>> 0;
-        }
-        crcTableCache = table;
-        return table;
-      }
-
-      function crc32(bytes) {
-        const table = getCrc32Table();
-        let crc = 0xffffffff;
-        for (let i = 0; i < bytes.length; i++) {
-          crc = table[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
-        }
-        return (crc ^ 0xffffffff) >>> 0;
-      }
-
-      function adler32(bytes) {
-        let a = 1;
-        let b = 0;
-        const MOD = 65521;
-        for (let i = 0; i < bytes.length; i++) {
-          a = (a + bytes[i]) % MOD;
-          b = (b + a) % MOD;
-        }
-        return ((b << 16) | a) >>> 0;
-      }
-
-      function makePngChunk(typeFourCC, dataBytes) {
-        const len = dataBytes.length;
-        const out = new Uint8Array(12 + len);
-        const view = new DataView(out.buffer);
-        view.setUint32(0, len, false);
-        for (let i = 0; i < 4; i++) {
-          out[4 + i] = typeFourCC.charCodeAt(i);
-        }
-        out.set(dataBytes, 8);
-        const crcInput = out.subarray(4, 8 + len);
-        view.setUint32(8 + len, crc32(crcInput), false);
-        return out;
-      }
-
-      function buildWorkerCertificatePngBytes(certRow, sigRow) {
-        const palette = resolveWorkerCertThemeColors(certRow.grand_line_id, certRow.theme_id, certRow.student_uid || certRow.serial);
-        const bg = hexToRgb01(palette.bg);
-        const cardSurface = hexToRgb01(palette.cardSurface || palette.bg);
-        const accent = hexToRgb01(palette.accent);
-        const ink = hexToRgb01(palette.ink);
-
-        const w = 112;
-        const h = 79;
-        const rawScanlines = new Uint8Array(h * (1 + w * 3));
-        let ptr = 0;
-        for (let y = 0; y < h; y++) {
-          rawScanlines[ptr++] = 0; // filter type 0
-          for (let x = 0; x < w; x++) {
-            const isBorder = x === 5 || x === w - 6 || y === 4 || y === h - 5;
-            const isHeaderDot = x >= 22 && x <= 25 && y >= 10 && y <= 13;
-            const isCenterBar = y >= 32 && y <= 34 && x >= 20 && x <= w - 20;
-            const isInsideCard = x > 5 && x < w - 6 && y > 4 && y < h - 5;
-            if (isBorder || isHeaderDot || isCenterBar) {
-              rawScanlines[ptr++] = accent.r;
-              rawScanlines[ptr++] = accent.g;
-              rawScanlines[ptr++] = accent.b;
-            } else if (isInsideCard && (x + y) % 11 === 0) {
-              rawScanlines[ptr++] = ink.r;
-              rawScanlines[ptr++] = ink.g;
-              rawScanlines[ptr++] = ink.b;
-            } else if (isInsideCard) {
-              rawScanlines[ptr++] = cardSurface.r;
-              rawScanlines[ptr++] = cardSurface.g;
-              rawScanlines[ptr++] = cardSurface.b;
-            } else {
-              rawScanlines[ptr++] = bg.r;
-              rawScanlines[ptr++] = bg.g;
-              rawScanlines[ptr++] = bg.b;
-            }
-          }
-        }
-
-        // Wrap rawScanlines in uncompressed Zlib stream (CMF=0x78, FLG=0x01, BFINAL=1, LEN, NLEN, data, Adler32)
-        const len = rawScanlines.length;
-        const zlib = new Uint8Array(2 + 5 + len + 4);
-        zlib[0] = 0x78;
-        zlib[1] = 0x01;
-        zlib[2] = 0x01; // final uncompressed block
-        zlib[3] = len & 0xff;
-        zlib[4] = (len >>> 8) & 0xff;
-        const nlen = ~len & 0xffff;
-        zlib[5] = nlen & 0xff;
-        zlib[6] = (nlen >>> 8) & 0xff;
-        zlib.set(rawScanlines, 7);
-        const adlerView = new DataView(zlib.buffer);
-        adlerView.setUint32(7 + len, adler32(rawScanlines), false);
-
-        const ihdr = new Uint8Array(13);
-        const ihdrView = new DataView(ihdr.buffer);
-        ihdrView.setUint32(0, w, false);
-        ihdrView.setUint32(4, h, false);
-        ihdr[8] = 8; // bit depth 8
-        ihdr[9] = 2; // color type 2 (RGB)
-        ihdr[10] = 0;
-        ihdr[11] = 0;
-        ihdr[12] = 0;
-
-        const metaStr = `BoardlyCertificate\0serial=${certRow.serial};student=${certRow.student_name};mock=${certRow.grand_line_title};sig_v=${sigRow?.version || certRow.signature_version || 1}`;
-        const textBytes = new TextEncoder().encode(metaStr);
-
-        const sigHeader = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-        const cIhdr = makePngChunk('IHDR', ihdr);
-        const cText = makePngChunk('tEXt', textBytes);
-        const cIdat = makePngChunk('IDAT', zlib);
-        const cIend = makePngChunk('IEND', new Uint8Array(0));
-
-        const total = sigHeader.length + cIhdr.length + cText.length + cIdat.length + cIend.length;
-        const out = new Uint8Array(total);
-        let offset = 0;
-        for (const part of [sigHeader, cIhdr, cText, cIdat, cIend]) {
-          out.set(part, offset);
-          offset += part.length;
-        }
-        return out;
-      }
-
-      async function renderAndStoreWorkerCertificate(env, certRow, sigRow) {
-        if (!env.R2_BUCKET) {
-          throw new Error('R2_BUCKET binding is not configured on this Worker.');
-        }
-        const pdfBytes = buildWorkerCertificatePdfBytes(certRow, sigRow);
-        const pngBytes = buildWorkerCertificatePngBytes(certRow, sigRow);
-
-        const pdfKey = certRow.pdf_r2_key || `certificates/${certRow.grand_line_id}/${certRow.serial}.pdf`;
-        const pngKey = certRow.png_r2_key || `certificates/${certRow.grand_line_id}/${certRow.serial}.png`;
-
-        await env.R2_BUCKET.put(pdfKey, pdfBytes, {
-          httpMetadata: {
-            contentType: 'application/pdf',
-            cacheControl: 'private, no-store',
-          },
-        });
-        await env.R2_BUCKET.put(pngKey, pngBytes, {
-          httpMetadata: {
-            contentType: 'image/png',
-            cacheControl: 'private, no-store',
-          },
-        });
-        return { pdfKey, pngKey, pdfBytes, pngBytes };
-      }
 
       // Block any direct public/student access to /api/signatures/*
       if (path.startsWith('/api/signatures/')) {
