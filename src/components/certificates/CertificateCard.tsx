@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Download,
@@ -16,6 +16,7 @@ import {
 } from '../../services/certificateService';
 import { CertificateRenderer } from './CertificateRenderer';
 import { formatCertificateDate } from '../../lib/certificateRenderer';
+import { useAuth } from '../../contexts/AuthContext';
 
 export interface CertificateCardProps {
   certificate: StudentCertificateRecord;
@@ -23,13 +24,105 @@ export interface CertificateCardProps {
 
 /**
  * Student Dashboard Certificate Card ("My Certificates").
- * Provides live A4 landscape preview and authenticated Download PDF, Download PNG,
- * Share, and public Verify actions with >= 44px tap targets.
+ * Directly renders the unified 1123x794 A4 Landscape CertificateRenderer component
+ * and provides high-resolution Download PDF, Download PNG, Share, and public Verify actions.
  */
 export const CertificateCard: React.FC<CertificateCardProps> = ({ certificate }) => {
+  const { user, profile } = useAuth();
   const [downloadingFormat, setDownloadingFormat] = useState<'pdf' | 'png' | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const resolvedStudentName = useMemo(() => {
+    const rawCertName = String(certificate.studentName || '').trim();
+    const isGenericPlaceholder =
+      !rawCertName ||
+      rawCertName.toLowerCase() === 'student' ||
+      rawCertName.toLowerCase() === 'ayesha rahman khan';
+
+    const profileFullName = String(
+      (profile as any)?.full_name ||
+        (profile as any)?.fullName ||
+        profile?.displayName ||
+        user?.displayName ||
+        profile?.username ||
+        ''
+    ).trim();
+
+    if (!isGenericPlaceholder) {
+      return rawCertName;
+    }
+    if (profileFullName) {
+      return profileFullName;
+    }
+    if (certificate.studentEmail && certificate.studentEmail.includes('@')) {
+      return certificate.studentEmail.split('@')[0];
+    }
+    if (user?.email && user.email.includes('@')) {
+      return user.email.split('@')[0];
+    }
+    return rawCertName || 'Student';
+  }, [certificate.studentName, certificate.studentEmail, profile, user]);
+
+  const scoreObtained = useMemo(
+    () => Math.max(0, Number(certificate.scoreObtained ?? certificate.score ?? 0)),
+    [certificate.scoreObtained, certificate.score]
+  );
+
+  const totalMarks = useMemo(
+    () =>
+      Math.max(
+        0,
+        Number(certificate.totalMarks ?? certificate.totalQuestions ?? 0)
+      ),
+    [certificate.totalMarks, certificate.totalQuestions]
+  );
+
+  const calculatedPercentage = useMemo(() => {
+    if (totalMarks > 0) {
+      return Math.max(0, Math.min(100, Math.round((scoreObtained / totalMarks) * 100)));
+    }
+    return Math.max(0, Math.min(100, Math.round(Number(certificate.percentage ?? 0))));
+  }, [scoreObtained, totalMarks, certificate.percentage]);
+
+  const effectiveSerial = certificate.serialNumber || certificate.serial;
+  const effectiveTitle = certificate.testTitle || certificate.grandLineTitle;
+  const issuedDateLabel =
+    certificate.issuedDate || formatCertificateDate(certificate.issuedAt);
+  const paletteSeed =
+    certificate.paletteSeed ||
+    certificate.studentUid ||
+    effectiveSerial ||
+    resolvedStudentName;
+
+  const enrichedCertificate: StudentCertificateRecord = useMemo(
+    () => ({
+      ...certificate,
+      serial: effectiveSerial,
+      serialNumber: effectiveSerial,
+      studentName: resolvedStudentName,
+      grandLineTitle: effectiveTitle,
+      testTitle: effectiveTitle,
+      score: scoreObtained,
+      scoreObtained,
+      totalQuestions: totalMarks,
+      totalMarks,
+      percentage: calculatedPercentage,
+      issuedDate: issuedDateLabel,
+      paletteSeed,
+    }),
+    [
+      certificate,
+      effectiveSerial,
+      resolvedStudentName,
+      effectiveTitle,
+      scoreObtained,
+      totalMarks,
+      calculatedPercentage,
+      issuedDateLabel,
+      paletteSeed,
+    ]
+  );
 
   const handleDownload = async (format: 'pdf' | 'png') => {
     setErrorMsg(null);
@@ -37,10 +130,11 @@ export const CertificateCard: React.FC<CertificateCardProps> = ({ certificate })
     try {
       await downloadCertificateFile({
         certificateId: certificate.id,
-        serial: certificate.serial,
+        serial: effectiveSerial,
         format,
         signedUrl:
           format === 'pdf' ? certificate.downloadPdfUrl : certificate.downloadPngUrl,
+        certificate: enrichedCertificate,
       });
     } catch (err: any) {
       setErrorMsg(err?.message || `Failed to download ${format.toUpperCase()}.`);
@@ -54,8 +148,8 @@ export const CertificateCard: React.FC<CertificateCardProps> = ({ certificate })
     try {
       const shareData = await createCertificateShareLink(certificate.id);
       const fullVerifyUrl = `${window.location.origin}${shareData.verifyUrl}`;
-      const shareTitle = `1st Position in ${certificate.grandLineTitle} — Boardly Certificate`;
-      const shareText = `I secured 1st Position in ${certificate.grandLineTitle} on Boardly! Verify certificate ${certificate.serial}:`;
+      const shareTitle = `1st Position in ${effectiveTitle} — Boardly Certificate`;
+      const shareText = `I secured 1st Position in ${effectiveTitle} on Boardly! Verify certificate ${effectiveSerial}:`;
 
       if (navigator.share) {
         await navigator.share({
@@ -70,7 +164,7 @@ export const CertificateCard: React.FC<CertificateCardProps> = ({ certificate })
       }
     } catch {
       const fallbackUrl = `${window.location.origin}/verify/${encodeURIComponent(
-        certificate.serial
+        effectiveSerial
       )}`;
       if (navigator.clipboard) {
         await navigator.clipboard.writeText(fallbackUrl).catch(() => {});
@@ -93,21 +187,21 @@ export const CertificateCard: React.FC<CertificateCardProps> = ({ certificate })
             className="text-base sm:text-lg font-bold text-[var(--text)] truncate"
             style={{ fontFamily: 'var(--font-heading)' }}
           >
-            {certificate.grandLineTitle}
+            {effectiveTitle}
           </h3>
           <div className="font-mono text-[11px] text-[var(--text-muted)] flex items-center gap-2 flex-wrap">
-            <span>SERIAL: {certificate.serial}</span>
+            <span>SERIAL: {effectiveSerial}</span>
             <span>·</span>
-            <span>ISSUED: {formatCertificateDate(certificate.issuedAt)}</span>
+            <span>ISSUED: {issuedDateLabel}</span>
             <span>·</span>
             <span>
-              SCORE: {certificate.score}/{certificate.totalQuestions} ({certificate.percentage}%)
+              SCORE: {scoreObtained}/{totalMarks} ({calculatedPercentage}%)
             </span>
           </div>
         </div>
 
         <Link
-          to={`/verify/${encodeURIComponent(certificate.serial)}`}
+          to={`/verify/${encodeURIComponent(effectiveSerial)}`}
           className="min-h-[40px] px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] font-mono text-[11px] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--accent)] inline-flex items-center gap-1.5 transition-colors"
         >
           <span>Verify</span>
@@ -115,31 +209,37 @@ export const CertificateCard: React.FC<CertificateCardProps> = ({ certificate })
         </Link>
       </div>
 
-      {/* Certificate Preview (Server-rendered PNG with fallback to identical live renderer) */}
+      {/* Unified Live A4 Landscape (1123x794) Certificate Renderer */}
       <div className="relative rounded-xl overflow-hidden border border-[var(--border)] bg-black/20">
-        {certificate.previewPngUrl ? (
-          <img
-            src={certificate.previewPngUrl}
-            alt={`Certificate ${certificate.serial} for ${certificate.studentName}`}
-            className="w-full h-auto block"
-            loading="lazy"
-          />
-        ) : (
-          <CertificateRenderer
-            serial={certificate.serial}
-            studentName={certificate.studentName}
-            grandLineId={certificate.grandLineId}
-            grandLineTitle={certificate.grandLineTitle}
-            editionLabel={certificate.editionLabel}
-            rank={certificate.rank}
-            score={certificate.score}
-            totalQuestions={certificate.totalQuestions}
-            percentage={certificate.percentage}
-            participantsCount={certificate.participantsCount}
-            issuedAt={certificate.issuedAt}
-            themeId={certificate.themeId}
-          />
-        )}
+        <CertificateRenderer
+          serial={effectiveSerial}
+          serialNumber={effectiveSerial}
+          studentName={resolvedStudentName}
+          studentUid={certificate.studentUid}
+          paletteSeed={paletteSeed}
+          grandLineId={certificate.grandLineId}
+          grandLineTitle={effectiveTitle}
+          testTitle={effectiveTitle}
+          editionLabel={certificate.editionLabel}
+          rank={certificate.rank}
+          score={scoreObtained}
+          scoreObtained={scoreObtained}
+          totalQuestions={totalMarks}
+          totalMarks={totalMarks}
+          percentage={calculatedPercentage}
+          participantsCount={certificate.participantsCount}
+          issuedAt={certificate.issuedAt}
+          issuedDate={issuedDateLabel}
+          themeId={certificate.themeId}
+          theme={certificate.theme}
+          instanceId={`student-cert-${certificate.id || effectiveSerial}`}
+          signatoryName={certificate.signatoryName}
+          signatoryTitle={certificate.signatoryTitle}
+          signatureDataUrl={certificate.signatureDataUrl}
+          verifyBaseUrl={
+            typeof window !== 'undefined' ? window.location.origin : 'https://boardly.cfd'
+          }
+        />
       </div>
 
       {errorMsg && (

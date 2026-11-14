@@ -8,25 +8,41 @@
 
 import { apiRequest as apiFetch, getBearerToken as getIdToken } from '../lib/api';
 import type { CertificateTheme } from '../config/certificateThemes';
+import {
+  CERTIFICATE_WIDTH,
+  CERTIFICATE_HEIGHT,
+  buildCertificateSvgMarkup,
+  formatCertificateDate,
+  type CertificateRenderInput,
+} from '../lib/certificateRenderer';
 
 export interface StudentCertificateRecord {
   id: string;
   serial: string;
+  serialNumber?: string;
   studentUid: string;
   studentName: string;
   studentEmail?: string;
   grandLineId: string;
   grandLineTitle: string;
+  testTitle?: string;
   editionLabel: string;
   rank: number;
   score: number;
+  scoreObtained?: number;
   totalQuestions: number;
+  totalMarks?: number;
   percentage: number;
   participantsCount: number;
   themeId: string;
+  paletteSeed?: string;
   theme?: CertificateTheme;
   signatureVersion: number;
+  signatoryName?: string;
+  signatoryTitle?: string;
+  signatureDataUrl?: string | null;
   issuedAt: number;
+  issuedDate?: string;
   status: 'active' | 'revoked';
   verifyUrl: string;
   previewPngUrl: string;
@@ -54,7 +70,9 @@ export interface PublicCertificateVerification {
   valid: boolean;
   status: 'active' | 'revoked' | 'not_found' | 'invalid';
   serial: string;
+  studentUid?: string;
   studentName?: string;
+  grandLineId?: string;
   mockTitle?: string;
   editionLabel?: string;
   rank?: number;
@@ -62,6 +80,10 @@ export interface PublicCertificateVerification {
   totalQuestions?: number;
   percentage?: number;
   participantsCount?: number;
+  themeId?: string;
+  signatoryName?: string;
+  signatoryTitle?: string;
+  signatureDataUrl?: string | null;
   issuedAt?: number;
   error?: string;
 }
@@ -85,6 +107,52 @@ export interface AdminMockSummary {
   effectiveStatus?: 'live' | 'scheduled' | 'ended' | 'draft';
 }
 
+export function normalizeCertificateRecord(raw: any): StudentCertificateRecord {
+  const score = Math.max(0, Number(raw?.scoreObtained ?? raw?.score ?? 0));
+  const totalQuestions = Math.max(0, Number(raw?.totalMarks ?? raw?.totalQuestions ?? raw?.total_questions ?? 0));
+  const percentage =
+    totalQuestions > 0
+      ? Math.max(0, Math.min(100, Math.round((score / totalQuestions) * 100)))
+      : Math.max(0, Math.min(100, Math.round(Number(raw?.percentage ?? 0))));
+  const serial = String(raw?.serialNumber || raw?.serial || '');
+  const grandLineTitle = String(raw?.testTitle || raw?.grandLineTitle || raw?.grand_line_title || 'Boardly Grand Line Mock');
+  const issuedAt = Number(raw?.issuedAt ?? raw?.issued_at ?? Date.now());
+  const studentUid = String(raw?.studentUid || raw?.student_uid || '');
+  return {
+    ...raw,
+    id: String(raw?.id || ''),
+    serial,
+    serialNumber: serial,
+    studentUid,
+    studentName: String(raw?.studentName || raw?.student_name || 'Student'),
+    studentEmail: raw?.studentEmail || raw?.student_email || '',
+    grandLineId: String(raw?.grandLineId || raw?.grand_line_id || 'default'),
+    grandLineTitle,
+    testTitle: grandLineTitle,
+    editionLabel: String(raw?.editionLabel || raw?.edition_label || 'OFFICIAL MOCK EDITION'),
+    rank: Number(raw?.rank || 1),
+    score,
+    scoreObtained: score,
+    totalQuestions,
+    totalMarks: totalQuestions,
+    percentage,
+    participantsCount: Math.max(1, Number(raw?.participantsCount ?? raw?.participants_count ?? 1)),
+    themeId: String(raw?.themeId || raw?.theme_id || 'auto'),
+    paletteSeed: String(raw?.paletteSeed || studentUid || serial || raw?.studentName || 'Student'),
+    signatureVersion: Number(raw?.signatureVersion ?? raw?.signature_version ?? 1),
+    signatoryName: raw?.signatoryName || raw?.signatory_name || 'Boardly Examination Council',
+    signatoryTitle: raw?.signatoryTitle || raw?.signatory_title || 'Founder, Boardly',
+    signatureDataUrl: raw?.signatureDataUrl ?? raw?.signature_data_url ?? null,
+    issuedAt,
+    issuedDate: raw?.issuedDate || formatCertificateDate(issuedAt),
+    status: raw?.status === 'revoked' ? 'revoked' : 'active',
+    verifyUrl: String(raw?.verifyUrl || `/verify/${encodeURIComponent(serial)}`),
+    previewPngUrl: String(raw?.previewPngUrl || ''),
+    downloadPngUrl: String(raw?.downloadPngUrl || ''),
+    downloadPdfUrl: String(raw?.downloadPdfUrl || ''),
+  };
+}
+
 /**
  * Fetch the logged-in student's active certificates (`GET /api/certificates/mine`).
  */
@@ -94,7 +162,9 @@ export async function fetchMyCertificates(): Promise<StudentCertificateRecord[]>
     const data = await apiFetch<{ certificates: StudentCertificateRecord[] }>(endpoint, {
       requireAuth: true,
     });
-    return Array.isArray(data?.certificates) ? data.certificates : [];
+    return Array.isArray(data?.certificates)
+      ? data.certificates.map(normalizeCertificateRecord)
+      : [];
   } catch (err: any) {
     console.error(`[CertificateService] Error (${err?.code || 'API_ERROR'}) at ${endpoint}:`, err);
     throw err;
@@ -102,18 +172,196 @@ export async function fetchMyCertificates(): Promise<StudentCertificateRecord[]>
 }
 
 /**
- * Download a certificate PDF or PNG through the authenticated Worker endpoint
- * (`GET /api/certificates/:id/download?format=pdf|png`).
+ * Renders the full 1123 x 794 A4 Landscape certificate SVG onto a 2x Retina (2246 x 1588)
+ * HTML5 Canvas with embedded signature data URI, QR code, and student details.
+ */
+async function renderCertificateToCanvas(
+  input: CertificateRenderInput,
+  scaleFactor = 2
+): Promise<HTMLCanvasElement> {
+  if (typeof document !== 'undefined' && (document as any).fonts?.ready) {
+    await (document as any).fonts.ready.catch(() => {});
+  }
+
+  let embeddedSigUrl = input.signatureDataUrl || null;
+  if (embeddedSigUrl && !embeddedSigUrl.startsWith('data:image/')) {
+    const resolved = await fetchSignatureImageAsDataUrl(embeddedSigUrl).catch(() => null);
+    if (resolved) {
+      embeddedSigUrl = resolved;
+    } else {
+      embeddedSigUrl = null;
+    }
+  }
+
+  const svgMarkup = buildCertificateSvgMarkup({
+    ...input,
+    signatureDataUrl: embeddedSigUrl,
+  });
+
+  const width = CERTIFICATE_WIDTH * scaleFactor;
+  const height = CERTIFICATE_HEIGHT * scaleFactor;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Canvas 2D context is not available');
+  }
+
+  const svgBlob = new Blob([svgMarkup], { type: 'image/svg+xml;charset=utf-8' });
+  const svgUrl = URL.createObjectURL(svgBlob);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve();
+      };
+      img.onerror = () => reject(new Error('Failed to rasterize certificate SVG onto canvas'));
+      img.src = svgUrl;
+    });
+  } finally {
+    URL.revokeObjectURL(svgUrl);
+  }
+
+  return canvas;
+}
+
+/**
+ * Download a high-resolution 1123x794 A4 Landscape certificate PDF or PNG.
+ * Uses the unified client-side 1123x794 CertificateRenderer SVG-to-Canvas / jsPDF pipeline
+ * when certificate metadata is available, ensuring crisp typography, QR code, signature,
+ * and dynamic student name on both desktop and mobile devices.
  */
 export async function downloadCertificateFile(params: {
   certificateId: string;
   serial: string;
   format: 'pdf' | 'png';
   signedUrl?: string;
+  certificate?: Partial<StudentCertificateRecord> & Partial<CertificateRenderInput>;
 }): Promise<void> {
   const endpoint =
     params.signedUrl ||
     `/api/certificates/${encodeURIComponent(params.certificateId)}/download?format=${params.format}`;
+
+  // Resolve certificate data if not directly passed
+  let certData = params.certificate;
+  if (!certData && typeof window !== 'undefined') {
+    try {
+      const myCerts = await fetchMyCertificates();
+      const matched = myCerts.find(
+        (c) => c.id === params.certificateId || c.serial === params.serial
+      );
+      if (matched) {
+        certData = matched;
+      }
+    } catch {
+      // Ignore and try public verify or server endpoint
+    }
+  }
+
+  if (certData && typeof document !== 'undefined') {
+    try {
+      const score = Math.max(0, Number(certData.scoreObtained ?? certData.score ?? 0));
+      const total = Math.max(
+        0,
+        Number(certData.totalMarks ?? certData.totalQuestions ?? 0)
+      );
+      const pct =
+        total > 0
+          ? Math.round((score / total) * 100)
+          : Number(certData.percentage ?? 0);
+
+      const renderInput: CertificateRenderInput = {
+        serial: certData.serialNumber || certData.serial || params.serial,
+        serialNumber: certData.serialNumber || certData.serial || params.serial,
+        studentName: certData.studentName || 'Student',
+        studentUid: certData.studentUid || null,
+        paletteSeed:
+          certData.paletteSeed ||
+          certData.studentUid ||
+          certData.serial ||
+          params.serial,
+        grandLineId: certData.grandLineId || 'default',
+        grandLineTitle:
+          certData.testTitle ||
+          certData.grandLineTitle ||
+          'Boardly Grand Line Mock',
+        testTitle:
+          certData.testTitle ||
+          certData.grandLineTitle ||
+          'Boardly Grand Line Mock',
+        editionLabel: certData.editionLabel || 'OFFICIAL MOCK EDITION',
+        rank: certData.rank || 1,
+        score,
+        scoreObtained: score,
+        totalQuestions: total,
+        totalMarks: total,
+        percentage: pct,
+        participantsCount: Math.max(1, Number(certData.participantsCount || 1)),
+        issuedAt: certData.issuedAt || Date.now(),
+        issuedDate: certData.issuedDate,
+        themeId: certData.themeId || 'auto',
+        theme: certData.theme || null,
+        signatoryName: certData.signatoryName || 'Boardly Examination Council',
+        signatoryTitle: certData.signatoryTitle || 'Founder, Boardly',
+        signatureDataUrl: certData.signatureDataUrl || null,
+        verifyBaseUrl:
+          typeof window !== 'undefined' ? window.location.origin : 'https://boardly.cfd',
+      };
+
+      const canvas = await renderCertificateToCanvas(renderInput, 2);
+
+      if (params.format === 'png') {
+        const pngBlob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(
+            (b) => (b ? resolve(b) : reject(new Error('Failed to encode PNG blob'))),
+            'image/png',
+            1.0
+          );
+        });
+        const blobUrl = URL.createObjectURL(pngBlob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = `${params.serial}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+        return;
+      } else {
+        const { jsPDF } = await import('jspdf');
+        const pdf = new jsPDF({
+          orientation: 'landscape',
+          unit: 'px',
+          format: [CERTIFICATE_WIDTH, CERTIFICATE_HEIGHT],
+          compress: true,
+        });
+        const pngDataUrl = canvas.toDataURL('image/png', 1.0);
+        pdf.addImage(
+          pngDataUrl,
+          'PNG',
+          0,
+          0,
+          CERTIFICATE_WIDTH,
+          CERTIFICATE_HEIGHT,
+          undefined,
+          'FAST'
+        );
+        pdf.save(`${params.serial}.pdf`);
+        return;
+      }
+    } catch (clientRenderErr) {
+      console.warn(
+        '[CertificateService] Client high-res render fallback to server:',
+        clientRenderErr
+      );
+    }
+  }
+
   try {
     const token = await getIdToken();
     const headers: Record<string, string> = {};
@@ -509,10 +757,31 @@ export async function fetchAdminCertificates(params?: {
         activeSignature = { ...activeSignature, previewDataUrl: dataUrl };
       }
     }
+    const normalizedCerts = Array.isArray(res?.certificates)
+      ? res.certificates.map((c: any) => {
+          const norm = normalizeCertificateRecord(c);
+          return {
+            ...norm,
+            signatoryName:
+              c?.signatoryName ||
+              activeSignature?.signatoryName ||
+              norm.signatoryName,
+            signatoryTitle:
+              c?.signatoryTitle ||
+              activeSignature?.signatoryTitle ||
+              norm.signatoryTitle,
+            signatureDataUrl:
+              c?.signatureDataUrl ||
+              activeSignature?.previewDataUrl ||
+              norm.signatureDataUrl ||
+              null,
+          };
+        })
+      : [];
     return {
       hasActiveSignature: Boolean(res?.hasActiveSignature ?? activeSignature),
       activeSignature,
-      certificates: Array.isArray(res?.certificates) ? res.certificates : [],
+      certificates: normalizedCerts,
       mocks: Array.isArray(res?.mocks) ? res.mocks : [],
     };
   } catch (err: any) {

@@ -20,16 +20,23 @@ export const CERTIFICATE_HEIGHT = 794;
 
 export interface CertificateRenderInput {
   serial: string;
+  serialNumber?: string;
   studentName: string;
+  studentUid?: string | null;
+  paletteSeed?: string | null;
   grandLineId: string;
   grandLineTitle: string;
+  testTitle?: string;
   editionLabel?: string;
   rank?: number;
   score: number | string;
+  scoreObtained?: number;
   totalQuestions?: number;
+  totalMarks?: number;
   percentage?: number;
   participantsCount: number;
   issuedAt: number | string | Date;
+  issuedDate?: number | string | Date;
   themeId?: string | null;
   /** Optional explicit CertificateTheme object; when provided, overrides themeId lookup */
   theme?: CertificateTheme | null;
@@ -52,6 +59,9 @@ export function escapeXml(unsafe: string): string {
 }
 
 export function formatCertificateDate(issuedAt: number | string | Date): string {
+  if (typeof issuedAt === 'string' && /^\d{1,2}\s+[A-Z]{3}\s+\d{4}$/i.test(issuedAt.trim())) {
+    return issuedAt.trim().toUpperCase();
+  }
   const d =
     issuedAt instanceof Date
       ? issuedAt
@@ -82,60 +92,71 @@ export function formatCertificateDate(issuedAt: number | string | Date): string 
 }
 
 export function formatCertificateScoreText(input: CertificateRenderInput): string {
-  if (typeof input.score === 'string' && input.score.trim().length > 0) {
+  if (
+    typeof input.score === 'string' &&
+    input.score.trim().length > 0 &&
+    input.scoreObtained === undefined &&
+    Number.isNaN(Number(input.score))
+  ) {
     return input.score.trim();
   }
-  const numScore = Number(input.score || 0);
-  const total = Number(input.totalQuestions || 0);
-  const pct =
-    typeof input.percentage === 'number' && Number.isFinite(input.percentage)
-      ? Math.round(input.percentage)
-      : total > 0
-      ? Math.round((numScore / total) * 100)
-      : null;
-  if (total > 0 && pct !== null) {
+  const rawScore = input.scoreObtained !== undefined ? input.scoreObtained : input.score;
+  const rawTotal = input.totalMarks !== undefined ? input.totalMarks : input.totalQuestions;
+  const numScore = Math.max(0, Number(rawScore ?? 0));
+  const total = Math.max(0, Number(rawTotal ?? 0));
+
+  if (total > 0) {
+    const pct = Math.max(0, Math.min(100, Math.round((numScore / total) * 100)));
     return `${numScore}/${total} (${pct}%)`;
   }
-  if (total > 0) {
-    return `${numScore}/${total}`;
+  if (typeof input.percentage === 'number' && Number.isFinite(input.percentage)) {
+    const pct = Math.max(0, Math.min(100, Math.round(input.percentage)));
+    return `${numScore} (${pct}%)`;
   }
   return String(numScore);
 }
 
 /**
  * Computes auto-shrinking font size and 1-or-2-line wrapping for the student name.
- * Short/medium names stay on 1 line (52px down to 28px). Very long names wrap cleanly to 2 lines.
+ * Keeps student names strictly within the safe 680px center zone (between x=221 and x=901)
+ * so long 4-part names never overflow the card or collide with decorative dot-spiral motifs.
  */
 export function layoutStudentName(rawName: string): {
   lines: string[];
   fontSize: number;
   lineHeight: number;
+  maxWidthPx: number;
 } {
   const clean = String(rawName || 'Student')
     .replace(/\s+/g, ' ')
     .trim();
   const len = clean.length;
+  const maxWidthPx = 680;
 
-  if (len <= 18) {
-    return { lines: [clean], fontSize: 52, lineHeight: 60 };
+  if (len <= 16) {
+    return { lines: [clean], fontSize: 50, lineHeight: 58, maxWidthPx };
   }
-  if (len <= 24) {
-    return { lines: [clean], fontSize: 44, lineHeight: 52 };
+  if (len <= 22) {
+    return { lines: [clean], fontSize: 42, lineHeight: 50, maxWidthPx };
   }
-  if (len <= 30) {
-    return { lines: [clean], fontSize: 36, lineHeight: 44 };
+  if (len <= 28) {
+    return { lines: [clean], fontSize: 35, lineHeight: 42, maxWidthPx };
   }
-  if (len <= 36) {
-    return { lines: [clean], fontSize: 30, lineHeight: 38 };
+  if (len <= 34) {
+    return { lines: [clean], fontSize: 30, lineHeight: 37, maxWidthPx };
+  }
+  if (len <= 40) {
+    return { lines: [clean], fontSize: 26, lineHeight: 33, maxWidthPx };
   }
 
-  // Wrap to 2 balanced lines at minimum readable size (28px)
+  // Wrap to 2 balanced lines for very long 4+ part names
   const words = clean.split(' ');
   if (words.length <= 1) {
     return {
       lines: [clean.slice(0, 32), clean.slice(32, 64)].filter(Boolean),
-      fontSize: 28,
-      lineHeight: 34,
+      fontSize: 26,
+      lineHeight: 32,
+      maxWidthPx,
     };
   }
 
@@ -154,10 +175,13 @@ export function layoutStudentName(rawName: string): {
 
   const line1 = words.slice(0, bestSplit).join(' ');
   const line2 = words.slice(bestSplit).join(' ');
+  const maxLineLen = Math.max(line1.length, line2.length);
+  const twoLineFontSize = maxLineLen > 30 ? 22 : maxLineLen > 24 ? 25 : 28;
   return {
-    lines: [line1, line2.length > 38 ? `${line2.slice(0, 35)}...` : line2],
-    fontSize: 28,
-    lineHeight: 34,
+    lines: [line1, line2.length > 44 ? `${line2.slice(0, 41)}...` : line2],
+    fontSize: twoLineFontSize,
+    lineHeight: Math.round(twoLineFontSize * 1.22),
+    maxWidthPx,
   };
 }
 
@@ -414,16 +438,21 @@ export function renderDotMatrixBannerSvg(
  * Used for the live preview, miniature theme thumbnails, and server-side PNG/PDF rasterization.
  */
 export function buildCertificateSvgMarkup(input: CertificateRenderInput): string {
+  const seed =
+    input.paletteSeed ||
+    input.studentUid ||
+    input.serialNumber ||
+    input.serial ||
+    input.studentName;
   const theme: CertificateTheme = resolveCertificateTheme(
     input.grandLineId,
     input.themeId,
-    input.studentName,
+    seed,
     input.theme
   );
-  const rawUid = String(input.instanceId || `${theme.id}-${input.serial || 'cert'}`).replace(
-    /[^a-zA-Z0-9_-]/g,
-    '_'
-  );
+  const rawUid = String(
+    input.instanceId || `${theme.id}-${input.serial || input.serialNumber || 'cert'}`
+  ).replace(/[^a-zA-Z0-9_-]/g, '_');
   const dotGridId = `dotGrid_${rawUid}`;
   const glowBlurId = `glowBlur_${rawUid}`;
   const panelShadowId = `panelShadow_${rawUid}`;
@@ -431,11 +460,15 @@ export function buildCertificateSvgMarkup(input: CertificateRenderInput): string
   const sigInkId = `sigInk_${rawUid}`;
 
   const edition = (input.editionLabel || 'OFFICIAL MOCK EDITION').trim().toUpperCase();
-  const mockTitle = (input.grandLineTitle || 'Boardly Grand Line Mock').trim();
+  const mockTitle = (
+    input.testTitle ||
+    input.grandLineTitle ||
+    'Boardly Grand Line Mock'
+  ).trim();
   const scoreLabel = formatCertificateScoreText(input);
   const participantsCount = Math.max(1, Math.floor(Number(input.participantsCount || 1)));
-  const dateLabel = formatCertificateDate(input.issuedAt);
-  const serial = (input.serial || 'BDLY-GL01-0001').trim();
+  const dateLabel = formatCertificateDate(input.issuedDate ?? input.issuedAt);
+  const serial = (input.serialNumber || input.serial || 'BDLY-GL01-0001').trim();
   const signatoryName = (input.signatoryName || 'Boardly Examination Council').trim();
   const signatoryTitle = (input.signatoryTitle || 'Founder, Boardly').trim();
   const baseUrl = (input.verifyBaseUrl || 'https://boardly.cfd').replace(/\/+$/, '');
@@ -469,15 +502,23 @@ export function buildCertificateSvgMarkup(input: CertificateRenderInput): string
     }
   }
 
-  // Name SVG tspans
+  // Name SVG tspans with automatic horizontal width clamp inside the 680px safe center zone
   const nameStartY = nameLayout.lines.length === 1 ? 430 : 412;
   const nameSvg = nameLayout.lines
-    .map(
-      (line, idx) =>
-        `<text x="561.5" y="${nameStartY + idx * nameLayout.lineHeight}" text-anchor="middle" fill="${theme.inkColor}" font-family="'Space Grotesk', 'Inter', 'Helvetica Neue', Arial, sans-serif" font-size="${nameLayout.fontSize}" font-weight="700" letter-spacing="-0.02em">${escapeXml(
-          line
-        )}</text>`
-    )
+    .map((line, idx) => {
+      const estWidth = line.length * nameLayout.fontSize * 0.58;
+      const clampAttrs =
+        estWidth > nameLayout.maxWidthPx
+          ? ` textLength="${nameLayout.maxWidthPx}" lengthAdjust="spacingAndGlyphs"`
+          : '';
+      return `<text x="561.5" y="${
+        nameStartY + idx * nameLayout.lineHeight
+      }" text-anchor="middle" fill="${
+        theme.inkColor
+      }" font-family="'Space Grotesk', 'Inter', 'Helvetica Neue', Arial, sans-serif" font-size="${
+        nameLayout.fontSize
+      }" font-weight="700" letter-spacing="-0.02em"${clampAttrs}>${escapeXml(line)}</text>`;
+    })
     .join('\n');
 
   const citationStartY = nameLayout.lines.length === 1 ? 492 : 504;
@@ -691,14 +732,20 @@ export function buildCertificateSvgMarkup(input: CertificateRenderInput): string
  * so headless browsers and server renderers produce the exact same visual output.
  */
 export function buildCertificateHtmlDocument(input: CertificateRenderInput): string {
+  const seed =
+    input.paletteSeed ||
+    input.studentUid ||
+    input.serialNumber ||
+    input.serial ||
+    input.studentName;
   const theme = resolveCertificateTheme(
     input.grandLineId,
     input.themeId,
-    input.studentName,
+    seed,
     input.theme
   );
   const svgMarkup = buildCertificateSvgMarkup({ ...input, theme });
-  const title = `Boardly Certificate — ${input.serial} — ${input.studentName}`;
+  const title = `Boardly Certificate — ${input.serialNumber || input.serial} — ${input.studentName}`;
 
   return `<!DOCTYPE html>
 <html lang="en">

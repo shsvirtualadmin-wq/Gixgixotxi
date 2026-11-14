@@ -5,15 +5,17 @@ import {
   fetchMyCertificates,
   type StudentCertificateRecord,
 } from '../../services/certificateService';
+import { getMyTestAttempts } from '../../services/ambassadorTestService';
 import { CertificateCard } from '../../components/certificates/CertificateCard';
 import { CertificatesSectionSkeleton } from '../../components/ui/Skeleton';
 import { readSwrCache, writeSwrCache } from '../../lib/swrCache';
+import { useAuth } from '../../contexts/AuthContext';
 
 export interface MyCertificatesSectionProps {
   compact?: boolean;
 }
 
-const CERTIFICATES_CACHE_KEY = 'certificates:my:v1';
+const CERTIFICATES_CACHE_KEY = 'certificates:my:v2';
 
 /**
  * Reusable "My Certificates" section for the Student Dashboard (Overview, Profile, and /dashboard/certificates).
@@ -21,6 +23,7 @@ const CERTIFICATES_CACHE_KEY = 'certificates:my:v1';
 export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
   compact = false,
 }) => {
+  const { user, profile } = useAuth();
   const initialCached = useMemo(
     () => readSwrCache<StudentCertificateRecord[]>(CERTIFICATES_CACHE_KEY),
     []
@@ -31,27 +34,106 @@ export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
   const [loading, setLoading] = useState(() => !initialCached);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const loadCertificates = useCallback(async (background = false) => {
-    if (!background) {
-      setLoading(true);
-    }
-    setErrorMsg(null);
-    try {
-      const rows = await fetchMyCertificates();
-      setCertificates(rows);
-      writeSwrCache(CERTIFICATES_CACHE_KEY, rows, {
-        freshTtlMs: 60_000,
-        maxStaleMs: 15 * 60_000,
-        persist: true,
-      });
-    } catch (err: any) {
+  const loadCertificates = useCallback(
+    async (background = false) => {
       if (!background) {
-        setErrorMsg(err?.message || 'Unable to load your certificates right now.');
+        setLoading(true);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      setErrorMsg(null);
+      try {
+        const [rows, myAttempts] = await Promise.all([
+          fetchMyCertificates(),
+          getMyTestAttempts().catch(() => []),
+        ]);
+
+        const fallbackProfileName = String(
+          (profile as any)?.full_name ||
+            (profile as any)?.fullName ||
+            profile?.displayName ||
+            user?.displayName ||
+            profile?.username ||
+            ''
+        ).trim();
+
+        const enrichedRows = rows.map((cert) => {
+          let score = Math.max(0, Number(cert.scoreObtained ?? cert.score ?? 0));
+          let totalQuestions = Math.max(
+            0,
+            Number(cert.totalMarks ?? cert.totalQuestions ?? 0)
+          );
+          let studentName = String(cert.studentName || '').trim();
+
+          // Cross-check with student's best verified attempt for this mock if score is 0
+          const matchingAttempts = Array.isArray(myAttempts)
+            ? myAttempts.filter((a) => a.test_id === cert.grandLineId)
+            : [];
+          if (matchingAttempts.length > 0) {
+            const bestAttempt = [...matchingAttempts].sort(
+              (a, b) => Number(b.score || 0) - Number(a.score || 0)
+            )[0];
+            if (bestAttempt) {
+              const attemptScore = Math.max(0, Number(bestAttempt.score || 0));
+              const attemptTotal = Math.max(
+                0,
+                Number(bestAttempt.total_questions || totalQuestions || 0)
+              );
+              if (score === 0 && attemptScore > 0) {
+                score = attemptScore;
+              }
+              if (attemptTotal > 0 && (totalQuestions === 0 || totalQuestions === 100)) {
+                totalQuestions = attemptTotal;
+              }
+              if (
+                (!studentName || studentName.toLowerCase() === 'student') &&
+                bestAttempt.user_name &&
+                bestAttempt.user_name.toLowerCase() !== 'student'
+              ) {
+                studentName = bestAttempt.user_name;
+              }
+            }
+          }
+
+          if (
+            (!studentName ||
+              studentName.toLowerCase() === 'student' ||
+              studentName.toLowerCase() === 'ayesha rahman khan') &&
+            fallbackProfileName
+          ) {
+            studentName = fallbackProfileName;
+          }
+
+          const percentage =
+            totalQuestions > 0
+              ? Math.max(0, Math.min(100, Math.round((score / totalQuestions) * 100)))
+              : Math.max(0, Math.min(100, Math.round(Number(cert.percentage ?? 0))));
+
+          return {
+            ...cert,
+            studentName: studentName || 'Student',
+            score,
+            scoreObtained: score,
+            totalQuestions,
+            totalMarks: totalQuestions,
+            percentage,
+          };
+        });
+
+        setCertificates(enrichedRows);
+        writeSwrCache(CERTIFICATES_CACHE_KEY, enrichedRows, {
+          freshTtlMs: 60_000,
+          maxStaleMs: 15 * 60_000,
+          persist: true,
+        });
+      } catch (err: any) {
+        if (!background) {
+          setErrorMsg(err?.message || 'Unable to load your certificates right now.');
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [profile, user]
+  );
 
   useEffect(() => {
     void loadCertificates(Boolean(initialCached));

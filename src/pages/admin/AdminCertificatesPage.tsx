@@ -506,7 +506,11 @@ export const AdminCertificatesPage: React.FC = () => {
                         <span>Mock: {cert.grandLineTitle}</span>
                         <span>·</span>
                         <span>
-                          Score: {cert.score}/{cert.totalQuestions} ({cert.percentage}%)
+                          Score: {cert.score}/{cert.totalQuestions} (
+                          {cert.totalQuestions > 0
+                            ? Math.round((cert.score / cert.totalQuestions) * 100)
+                            : cert.percentage}
+                          %)
                         </span>
                         <span>·</span>
                         <span>Participants: {cert.participantsCount}</span>
@@ -525,6 +529,7 @@ export const AdminCertificatesPage: React.FC = () => {
                             serial: cert.serial,
                             format: 'pdf',
                             signedUrl: cert.downloadPdfUrl,
+                            certificate: cert,
                           })
                         }
                         className="min-h-[40px] px-3 py-1.5 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 inline-flex items-center gap-1.5 cursor-pointer"
@@ -541,6 +546,7 @@ export const AdminCertificatesPage: React.FC = () => {
                             serial: cert.serial,
                             format: 'png',
                             signedUrl: cert.downloadPngUrl,
+                            certificate: cert,
                           })
                         }
                         className="min-h-[40px] px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] inline-flex items-center gap-1.5 cursor-pointer"

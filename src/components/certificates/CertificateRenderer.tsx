@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import {
   CERTIFICATE_WIDTH,
@@ -24,20 +24,28 @@ export interface CertificateRendererProps extends CertificateRenderInput {
  * Reusable responsive A4 Landscape (1123 x 794 px) Certificate Renderer.
  * Matches the server/Worker HTML & SVG template 1:1, with pre-blurred colour glows,
  * frosted glass card surface, dot-grid background, and decorative dot motif widget.
- * Never overlays a CSS blur on top of the rendered certificate.
+ * Uses a ResizeObserver + CSS transform: scale(...) inside an aspect-ratio: 1123/794
+ * container so the full 1123x794 certificate scales cleanly across mobile & desktop.
  */
 export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
   serial,
+  serialNumber,
   studentName,
+  studentUid,
+  paletteSeed,
   grandLineId,
   grandLineTitle,
+  testTitle,
   editionLabel,
   rank = 1,
   score,
+  scoreObtained,
   totalQuestions,
+  totalMarks,
   percentage,
   participantsCount,
   issuedAt,
+  issuedDate,
   themeId,
   theme: themeProp,
   instanceId,
@@ -50,51 +58,94 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
   error = null,
   onRetry,
 }) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const updateScale = () => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0) {
+        setScale(rect.width / CERTIFICATE_WIDTH);
+      }
+    };
+
+    updateScale();
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => {
+        updateScale();
+      });
+      observer.observe(el);
+      return () => observer.disconnect();
+    }
+    window.addEventListener('resize', updateScale);
+    return () => window.removeEventListener('resize', updateScale);
+  }, []);
+
+  const effectiveSerial = serialNumber || serial || 'BDLY-GL01-0001';
+  const effectiveTitle = testTitle || grandLineTitle || 'Boardly Grand Line Mock';
+  const effectiveSeed =
+    paletteSeed || studentUid || effectiveSerial || studentName || 'Student';
+
   const theme = useMemo(
     () =>
       resolveCertificateTheme(
         grandLineId || 'default',
         themeId === undefined ? 'default' : themeId,
-        studentName,
+        effectiveSeed,
         themeProp
       ),
-    [grandLineId, themeId, studentName, themeProp]
+    [grandLineId, themeId, effectiveSeed, themeProp]
   );
 
   const svgMarkup = useMemo(
     () =>
       buildCertificateSvgMarkup({
-        serial,
+        serial: effectiveSerial,
+        serialNumber: effectiveSerial,
         studentName,
+        studentUid,
+        paletteSeed: effectiveSeed,
         grandLineId: grandLineId || 'default',
-        grandLineTitle,
+        grandLineTitle: effectiveTitle,
+        testTitle: effectiveTitle,
         editionLabel,
         rank,
         score,
+        scoreObtained,
         totalQuestions,
+        totalMarks,
         percentage,
         participantsCount,
         issuedAt,
+        issuedDate,
         themeId: theme.id,
         theme,
-        instanceId: instanceId || `${theme.id}-${serial}`,
+        instanceId: instanceId || `${theme.id}-${effectiveSerial}`,
         signatoryName,
         signatoryTitle,
         signatureDataUrl,
         verifyBaseUrl,
       }),
     [
-      serial,
+      effectiveSerial,
       studentName,
+      studentUid,
+      effectiveSeed,
       grandLineId,
-      grandLineTitle,
+      effectiveTitle,
       editionLabel,
       rank,
       score,
+      scoreObtained,
       totalQuestions,
+      totalMarks,
       percentage,
       participantsCount,
       issuedAt,
+      issuedDate,
       theme,
       instanceId,
       signatoryName,
@@ -106,21 +157,41 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
 
   return (
     <div
+      ref={containerRef}
       className={`relative w-full overflow-hidden rounded-2xl border border-[var(--border)] select-none ${className}`}
       style={{
         aspectRatio: `${CERTIFICATE_WIDTH} / ${CERTIFICATE_HEIGHT}`,
+        width: '100%',
+        overflow: 'hidden',
         backgroundColor: theme.backgroundColor,
       }}
       role="img"
-      aria-label={`Boardly Certificate of Excellence for ${studentName} in ${grandLineTitle} (Serial ${serial})`}
+      aria-label={`Boardly Certificate of Excellence for ${studentName} in ${effectiveTitle} (Serial ${effectiveSerial})`}
     >
-      {/* Sharp SVG Certificate */}
+      {/* Sharp 1123x794 A4 Landscape Stage scaled via ResizeObserver */}
       <div
-        className={`w-full h-full [&>svg]:w-full [&>svg]:h-full [&>svg]:block transition-opacity duration-200 ${
+        className={`transition-opacity duration-200 ${
           loading ? 'opacity-35 blur-sm' : 'opacity-100'
         }`}
-        dangerouslySetInnerHTML={{ __html: svgMarkup }}
-      />
+        style={
+          scale !== null
+            ? {
+                width: `${CERTIFICATE_WIDTH}px`,
+                height: `${CERTIFICATE_HEIGHT}px`,
+                transform: `scale(${scale})`,
+                transformOrigin: 'top left',
+              }
+            : {
+                width: '100%',
+                height: '100%',
+              }
+        }
+      >
+        <div
+          className="w-full h-full [&>svg]:w-full [&>svg]:h-full [&>svg]:block"
+          dangerouslySetInnerHTML={{ __html: svgMarkup }}
+        />
+      </div>
 
       {/* Loading Skeleton Overlay (shown ONLY while loading is true) */}
       {loading && (

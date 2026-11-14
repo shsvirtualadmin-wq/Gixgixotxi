@@ -9272,8 +9272,10 @@ ${postSitemaps}
     const { signatureRow: activeSig } = getActiveSignatureRecord(store);
     const activeSigVersion = activeSig ? Number(activeSig.version) : 0;
     const preferredThemeId = test.certificateThemeId ?? test.certificate_theme_id ?? null;
-    const resolvedTheme = resolveCertificateTheme(test.id, preferredThemeId);
-    const themeIdToSave = preferredThemeId || resolvedTheme.id;
+    const themeIdToSave =
+      preferredThemeId && String(preferredThemeId).trim() !== 'auto'
+        ? String(preferredThemeId).trim()
+        : 'auto';
     const editionLabel =
       test.editionLabel ||
       test.edition_label ||
@@ -9286,15 +9288,6 @@ ${postSitemaps}
       const studentUid = String(winnerAttempt.userUid || winnerAttempt.user_uid || '').trim();
       if (!studentUid) continue;
 
-      // Idempotency: UNIQUE(student_uid, grand_line_id) -> ON CONFLICT DO NOTHING
-      const existingCert = store.certificates.find(
-        (c: any) => c.student_uid === studentUid && c.grand_line_id === test.id
-      );
-      if (existingCert) {
-        existingCertificates.push(existingCert);
-        continue;
-      }
-
       const studentName = resolveLeaderboardDisplayName(winnerAttempt, store);
       const roleEntry = (store.userRoles || []).find((r: any) => r.uid === studentUid);
       const studentEmail = String(
@@ -9303,16 +9296,49 @@ ${postSitemaps}
         .trim()
         .toLowerCase();
 
-      const serial = generateNextCertificateSerial(store, mockNumber);
-      const certId = `cert_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
-      const score = Number(winnerAttempt.score || 0);
-      const totalQuestions = Number(
-        winnerAttempt.totalQuestions || test.questionCount || test.questions?.length || 0
+      const score = Math.max(0, Number(winnerAttempt.score || 0));
+      const totalQuestions = Math.max(
+        0,
+        Number(
+          winnerAttempt.totalQuestions ||
+            winnerAttempt.total_questions ||
+            test.questionCount ||
+            test.question_count ||
+            test.questions?.length ||
+            0
+        )
       );
       const percentage =
         totalQuestions > 0
-          ? Math.round((score / totalQuestions) * 100)
-          : Number(winnerAttempt.percentage || 100);
+          ? Math.max(0, Math.min(100, Math.round((score / totalQuestions) * 100)))
+          : Math.max(0, Math.min(100, Math.round(Number(winnerAttempt.percentage ?? 0))));
+
+      // Idempotency: UNIQUE(student_uid, grand_line_id) -> update existing record on re-check
+      const existingCert = store.certificates.find(
+        (c: any) => c.student_uid === studentUid && c.grand_line_id === test.id
+      );
+      if (existingCert) {
+        if (studentName && studentName !== 'Student') {
+          existingCert.student_name = studentName;
+        }
+        if (studentEmail) {
+          existingCert.student_email = studentEmail;
+        }
+        existingCert.grand_line_title = test.title;
+        existingCert.edition_label = editionLabel;
+        existingCert.score = score;
+        existingCert.total_questions = totalQuestions;
+        existingCert.percentage = percentage;
+        existingCert.participants_count = participantsCount;
+        existingCert.theme_id = themeIdToSave;
+        existingCert.signature_version = activeSigVersion;
+        await renderAndPersistCertificateRow(store, existingCert);
+        existingCertificates.push(existingCert);
+        continue;
+      }
+
+      const serial = generateNextCertificateSerial(store, mockNumber);
+      const certId = `cert_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
 
       const pdfR2Key = `certificates/${test.id}/${serial}.pdf`;
       const pngR2Key = `certificates/${test.id}/${serial}.png`;
@@ -9951,10 +9977,76 @@ ${postSitemaps}
     const store = loadD1Store() as any;
     ensureCertificateStoreArrays(store);
 
+    const { signatureRow: activeSig, dataUrl: activeSigDataUrl } = getActiveSignatureRecord(store);
+    let dirty = false;
+
     const myCerts = store.certificates
       .filter((c: any) => c.student_uid === user.uid && c.status === 'active')
       .sort((a: any, b: any) => Number(b.issued_at || 0) - Number(a.issued_at || 0))
       .map((c: any) => {
+        let score = Math.max(0, Number(c.score || 0));
+        let totalQuestions = Math.max(0, Number(c.total_questions || 0));
+        let studentName = String(c.student_name || '').trim();
+
+        const matchingAttempts = (store.testAttempts || []).filter(
+          (a: any) =>
+            String(a.testId || a.test_id || '') === String(c.grand_line_id) &&
+            String(a.userUid || a.user_uid || '') === String(c.student_uid)
+        );
+        if (matchingAttempts.length > 0) {
+          const bestAtt = [...matchingAttempts].sort(
+            (a: any, b: any) => Number(b.score || 0) - Number(a.score || 0)
+          )[0];
+          if (bestAtt) {
+            const attScore = Math.max(0, Number(bestAtt.score || 0));
+            const attTotal = Math.max(
+              0,
+              Number(bestAtt.totalQuestions || bestAtt.total_questions || totalQuestions || 0)
+            );
+            if (score === 0 && attScore > 0) {
+              score = attScore;
+              c.score = score;
+              dirty = true;
+            }
+            if (attTotal > 0 && (totalQuestions === 0 || totalQuestions === 100)) {
+              totalQuestions = attTotal;
+              c.total_questions = totalQuestions;
+              dirty = true;
+            }
+            if (!studentName || studentName.toLowerCase() === 'student') {
+              const resolvedName = resolveLeaderboardDisplayName(bestAtt, store);
+              if (resolvedName && resolvedName !== 'Student') {
+                studentName = resolvedName;
+                c.student_name = studentName;
+                dirty = true;
+              }
+            }
+          }
+        }
+
+        if (!studentName || studentName.toLowerCase() === 'student') {
+          const fallbackName = resolveLeaderboardDisplayName(
+            { userUid: user.uid, userName: (user as any).name || '', userEmail: user.email || '' },
+            store
+          );
+          if (fallbackName && fallbackName !== 'Student') {
+            studentName = fallbackName;
+            c.student_name = studentName;
+            dirty = true;
+          } else {
+            studentName = 'Student';
+          }
+        }
+
+        const percentage =
+          totalQuestions > 0
+            ? Math.max(0, Math.min(100, Math.round((score / totalQuestions) * 100)))
+            : Math.max(0, Math.min(100, Math.round(Number(c.percentage ?? 0))));
+        if (percentage !== Number(c.percentage || 0)) {
+          c.percentage = percentage;
+          dirty = true;
+        }
+
         const signedPng = createSignedCertificateDownloadToken({
           certificateId: c.id,
           format: 'png',
@@ -9963,23 +10055,36 @@ ${postSitemaps}
           certificateId: c.id,
           format: 'pdf',
         });
-        const theme = resolveCertificateTheme(c.grand_line_id, c.theme_id);
+        const theme = resolveCertificateTheme(
+          c.grand_line_id,
+          c.theme_id,
+          c.student_uid || c.serial || studentName
+        );
         return {
           id: c.id,
           serial: c.serial,
+          serialNumber: c.serial,
           studentUid: c.student_uid,
-          studentName: c.student_name,
+          studentName,
+          studentEmail: c.student_email || user.email || '',
           grandLineId: c.grand_line_id,
           grandLineTitle: c.grand_line_title,
+          testTitle: c.grand_line_title,
           editionLabel: c.edition_label,
           rank: Number(c.rank || 1),
-          score: Number(c.score || 0),
-          totalQuestions: Number(c.total_questions || 0),
-          percentage: Number(c.percentage || 0),
+          score,
+          scoreObtained: score,
+          totalQuestions,
+          totalMarks: totalQuestions,
+          percentage,
           participantsCount: Number(c.participants_count || 1),
-          themeId: c.theme_id,
+          themeId: c.theme_id || 'auto',
+          paletteSeed: c.student_uid || c.serial,
           theme,
-          signatureVersion: Number(c.signature_version || 0),
+          signatureVersion: Number(c.signature_version || activeSig?.version || 1),
+          signatoryName: activeSig?.signatory_name || 'Boardly Examination Council',
+          signatoryTitle: activeSig?.signatory_title || 'Founder, Boardly',
+          signatureDataUrl: activeSigDataUrl || null,
           issuedAt: Number(c.issued_at),
           status: c.status,
           verifyUrl: `/verify/${encodeURIComponent(c.serial)}`,
@@ -9988,6 +10093,10 @@ ${postSitemaps}
           downloadPdfUrl: `/api/certificates/${encodeURIComponent(c.id)}/download?format=pdf&token=${signedPdf.token}&exp=${signedPdf.exp}`,
         };
       });
+
+    if (dirty) {
+      saveD1Store(store);
+    }
 
     return res.status(200).json({ certificates: myCerts });
   });
@@ -10136,19 +10245,32 @@ ${postSitemaps}
       });
     }
 
+    const { signatureRow: activeSig } = getActiveSignatureRecord(store);
+    const score = Math.max(0, Number(cert.score || 0));
+    const totalQuestions = Math.max(0, Number(cert.total_questions || 0));
+    const percentage =
+      totalQuestions > 0
+        ? Math.max(0, Math.min(100, Math.round((score / totalQuestions) * 100)))
+        : Math.max(0, Math.min(100, Math.round(Number(cert.percentage ?? 0))));
+
     const isRevoked = cert.status === 'revoked';
     const safeCertificate = {
       serial: cert.serial,
       status: (isRevoked ? 'revoked' : 'active') as 'active' | 'revoked',
+      studentUid: cert.student_uid,
       studentName: cert.student_name,
+      grandLineId: cert.grand_line_id,
       mockTitle: cert.grand_line_title,
       grandLineTitle: cert.grand_line_title,
       editionLabel: cert.edition_label,
       rank: Number(cert.rank || 1),
-      score: Number(cert.score || 0),
-      totalQuestions: Number(cert.total_questions || 0),
-      percentage: Number(cert.percentage || 0),
+      score,
+      totalQuestions,
+      percentage,
       participantsCount: Number(cert.participants_count || 1),
+      themeId: cert.theme_id || 'auto',
+      signatoryName: activeSig?.signatory_name || 'Boardly Examination Council',
+      signatoryTitle: activeSig?.signatory_title || 'Founder, Boardly',
       issuedAt: Number(cert.issued_at),
     };
     return res.status(200).json({
@@ -10234,6 +10356,12 @@ ${postSitemaps}
       })
       .sort((a: any, b: any) => Number(b.issued_at || 0) - Number(a.issued_at || 0))
       .map((c: any) => {
+        const score = Math.max(0, Number(c.score || 0));
+        const totalQuestions = Math.max(0, Number(c.total_questions || 0));
+        const percentage =
+          totalQuestions > 0
+            ? Math.max(0, Math.min(100, Math.round((score / totalQuestions) * 100)))
+            : Math.max(0, Math.min(100, Math.round(Number(c.percentage ?? 0))));
         const signedPng = createSignedCertificateDownloadToken({
           certificateId: c.id,
           format: 'png',
@@ -10245,19 +10373,27 @@ ${postSitemaps}
         return {
           id: c.id,
           serial: c.serial,
+          serialNumber: c.serial,
           studentUid: c.student_uid,
           studentName: c.student_name,
           studentEmail: c.student_email,
           grandLineId: c.grand_line_id,
           grandLineTitle: c.grand_line_title,
+          testTitle: c.grand_line_title,
           editionLabel: c.edition_label,
           rank: Number(c.rank || 1),
-          score: Number(c.score || 0),
-          totalQuestions: Number(c.total_questions || 0),
-          percentage: Number(c.percentage || 0),
+          score,
+          scoreObtained: score,
+          totalQuestions,
+          totalMarks: totalQuestions,
+          percentage,
           participantsCount: Number(c.participants_count || 1),
-          themeId: c.theme_id,
-          signatureVersion: Number(c.signature_version || 0),
+          themeId: c.theme_id || 'auto',
+          paletteSeed: c.student_uid || c.serial,
+          signatureVersion: Number(c.signature_version || activeSig?.version || 1),
+          signatoryName: activeSig?.signatory_name || 'Boardly Examination Council',
+          signatoryTitle: activeSig?.signatory_title || 'Founder, Boardly',
+          signatureDataUrl: activeSigDataUrl || null,
           issuedAt: Number(c.issued_at),
           status: c.status,
           verifyUrl: `/verify/${encodeURIComponent(c.serial)}`,

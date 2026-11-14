@@ -1963,13 +1963,21 @@ export default {
           .first();
         const mockNumber = Math.max(1, Number(countMocksRow?.cnt || 1));
         const glPad = String(mockNumber).padStart(2, '0');
-        const configuredThemeId = testRow.certificate_theme_id ? String(testRow.certificate_theme_id).trim() : null;
+        const configuredThemeId =
+          testRow.certificate_theme_id && String(testRow.certificate_theme_id).trim() !== 'auto'
+            ? String(testRow.certificate_theme_id).trim()
+            : null;
 
         const existingSerialsRes = await db
           .prepare('SELECT serial FROM certificates WHERE grand_line_id = ?1')
           .bind(testId)
           .all();
         let nextSeq = (existingSerialsRes?.results?.length || 0) + 1;
+
+        const sigPreviewDataUrl = await loadSignatureDataUrlFromR2(
+          env.R2_BUCKET,
+          activeSig.r2_key
+        ).catch(() => null);
 
         const issued = [];
         const skipped = [];
@@ -1978,43 +1986,149 @@ export default {
 
         for (const w of winners) {
           const studentUid = String(w.user_uid);
-          const existingCert = await db
-            .prepare('SELECT * FROM certificates WHERE student_uid = ?1 AND grand_line_id = ?2')
-            .bind(studentUid, testId)
-            .first();
-          if (existingCert) {
-            skipped.push({ studentUid, serial: existingCert.serial, reason: 'already_issued' });
-            continue;
-          }
-
-          const seqPad = String(nextSeq++).padStart(4, '0');
-          const serial = `BDLY-GL${glPad}-${seqPad}`;
-          const resolvedThemeObj = resolveWorkerCertThemeColors(testId, configuredThemeId, studentUid);
           const roleEmailRow = await db
             .prepare('SELECT email FROM user_roles WHERE uid = ?1 LIMIT 1')
             .bind(studentUid)
             .first()
             .catch(() => null);
+          const unameRow = await db
+            .prepare(
+              'SELECT display_username, username FROM user_usernames WHERE uid = ?1 LIMIT 1'
+            )
+            .bind(studentUid)
+            .first()
+            .catch(() => null);
+          const guestRow = await db
+            .prepare(
+              'SELECT display_username, username FROM guest_accounts WHERE guest_uid = ?1 LIMIT 1'
+            )
+            .bind(studentUid)
+            .first()
+            .catch(() => null);
+
           const resolvedStudentEmail = String(
             w.user_email || w.student_email || roleEmailRow?.email || ''
           )
             .trim()
             .toLowerCase();
+
+          const candidateName =
+            w.user_name && String(w.user_name).trim().toLowerCase() !== 'student'
+              ? String(w.user_name).trim()
+              : unameRow?.display_username ||
+                unameRow?.username ||
+                guestRow?.display_username ||
+                guestRow?.username ||
+                w.user_name ||
+                '';
+          const resolvedStudentName =
+            resolveLeaderboardRowName(candidateName, resolvedStudentEmail) || 'Student';
+
+          let scoreObtained = Math.max(0, Number(w.score ?? 0));
+          if (scoreObtained === 0 && w.id) {
+            const ansRow = await db
+              .prepare(
+                'SELECT COUNT(*) AS cnt FROM attempt_answers WHERE attempt_id = ?1 AND is_correct = 1'
+              )
+              .bind(w.id)
+              .first()
+              .catch(() => null);
+            if (Number(ansRow?.cnt || 0) > 0) {
+              scoreObtained = Number(ansRow.cnt);
+            }
+          }
+
+          let totalMarks = Math.max(
+            0,
+            Number(w.total_questions || testRow.question_count || 0)
+          );
+          if (totalMarks <= 0) {
+            const qCountRow = await db
+              .prepare('SELECT COUNT(*) AS cnt FROM test_questions WHERE test_id = ?1')
+              .bind(testId)
+              .first()
+              .catch(() => null);
+            totalMarks = Math.max(1, Number(qCountRow?.cnt || 100));
+          }
+
+          const calculatedPercentage =
+            totalMarks > 0
+              ? Math.max(0, Math.min(100, Math.round((scoreObtained / totalMarks) * 100)))
+              : Math.max(0, Math.min(100, Math.round(Number(w.percentage ?? 0))));
+
+          const existingCert = await db
+            .prepare('SELECT * FROM certificates WHERE student_uid = ?1 AND grand_line_id = ?2')
+            .bind(studentUid, testId)
+            .first();
+
+          if (existingCert) {
+            const updatedCertRow = {
+              ...existingCert,
+              student_name:
+                resolvedStudentName !== 'Student'
+                  ? resolvedStudentName
+                  : existingCert.student_name || 'Student',
+              student_email: resolvedStudentEmail || existingCert.student_email || '',
+              grand_line_title: String(testRow.title || existingCert.grand_line_title || 'Boardly Grand Line Mock'),
+              edition_label: `${String(testRow.subject || 'OFFICIAL').toUpperCase()} · GRAND LINE #${glPad}`,
+              score: scoreObtained,
+              total_questions: totalMarks,
+              percentage: calculatedPercentage,
+              participants_count: bestAttempts.length,
+              theme_id: configuredThemeId || 'auto',
+              signature_version: Number(activeSig.version || 1),
+            };
+
+            await renderAndStoreWorkerCertificate(env, updatedCertRow, activeSig);
+            await db
+              .prepare(
+                `UPDATE certificates
+                 SET student_name = ?1, student_email = ?2, grand_line_title = ?3,
+                     edition_label = ?4, score = ?5, total_questions = ?6,
+                     percentage = ?7, participants_count = ?8, theme_id = ?9,
+                     signature_version = ?10
+                 WHERE id = ?11`
+              )
+              .bind(
+                updatedCertRow.student_name,
+                updatedCertRow.student_email,
+                updatedCertRow.grand_line_title,
+                updatedCertRow.edition_label,
+                updatedCertRow.score,
+                updatedCertRow.total_questions,
+                updatedCertRow.percentage,
+                updatedCertRow.participants_count,
+                updatedCertRow.theme_id,
+                updatedCertRow.signature_version,
+                existingCert.id
+              )
+              .run();
+
+            skipped.push({
+              studentUid,
+              serial: existingCert.serial,
+              reason: 'already_issued_updated',
+            });
+            continue;
+          }
+
+          const seqPad = String(nextSeq++).padStart(4, '0');
+          const serial = `BDLY-GL${glPad}-${seqPad}`;
           const certRow = {
             id: `cert_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`,
             student_uid: studentUid,
-            student_name: resolveLeaderboardRowName(w.user_name, resolvedStudentEmail) || 'Student',
+            student_name: resolvedStudentName,
             student_email: resolvedStudentEmail,
             grand_line_id: testId,
             grand_line_title: String(testRow.title || 'Boardly Grand Line Mock'),
             edition_label: `${String(testRow.subject || 'OFFICIAL').toUpperCase()} · GRAND LINE #${glPad}`,
             rank: 1,
-            score: Number(w.score || 0),
-            total_questions: Number(w.total_questions || testRow.question_count || 0),
-            percentage: Number(w.percentage || 100),
+            score: scoreObtained,
+            total_questions: totalMarks,
+            percentage: calculatedPercentage,
             participants_count: bestAttempts.length,
             serial,
-            theme_id: resolvedThemeObj.id || configuredThemeId || 'default',
+            theme_id: configuredThemeId || 'auto',
             signature_version: Number(activeSig.version || 1),
             issued_at: now,
             pdf_r2_key: `certificates/${testId}/${serial}.pdf`,
@@ -2045,7 +2159,7 @@ export default {
               certRow.percentage,
               certRow.participants_count,
               certRow.serial,
-              certRow.theme_id || 'default',
+              certRow.theme_id || 'auto',
               certRow.signature_version,
               certRow.issued_at,
               certRow.pdf_r2_key,
@@ -2061,19 +2175,27 @@ export default {
           issued.push({
             id: certRow.id,
             serial: certRow.serial,
+            serialNumber: certRow.serial,
             studentUid: certRow.student_uid,
             studentName: certRow.student_name,
             studentEmail: certRow.student_email,
             grandLineId: certRow.grand_line_id,
             grandLineTitle: certRow.grand_line_title,
+            testTitle: certRow.grand_line_title,
             editionLabel: certRow.edition_label,
             rank: certRow.rank,
             score: certRow.score,
+            scoreObtained: certRow.score,
             totalQuestions: certRow.total_questions,
+            totalMarks: certRow.total_questions,
             percentage: certRow.percentage,
             participantsCount: certRow.participants_count,
             themeId: certRow.theme_id,
+            paletteSeed: certRow.student_uid || certRow.serial,
             signatureVersion: certRow.signature_version,
+            signatoryName: activeSig.signatory_name || 'Boardly Examination Council',
+            signatoryTitle: activeSig.signatory_title || 'Founder, Boardly',
+            signatureDataUrl: sigPreviewDataUrl,
             issuedAt: certRow.issued_at,
             status: certRow.status,
             verifyUrl: `/verify/${encodeURIComponent(certRow.serial)}`,
@@ -3290,8 +3412,7 @@ export default {
         const serial = decodeURIComponent(verifyMatch[1]).trim().toUpperCase();
         const cert = await db
           .prepare(
-            `SELECT serial, student_name, grand_line_title, edition_label, rank, score,
-                    total_questions, percentage, participants_count, issued_at, status
+            `SELECT *
              FROM certificates
              WHERE UPPER(serial) = ?1`
           )
@@ -3307,19 +3428,68 @@ export default {
           );
         }
 
+        let score = Math.max(0, Number(cert.score || 0));
+        let totalQuestions = Math.max(0, Number(cert.total_questions || 0));
+        let studentName = String(cert.student_name || 'Student').trim();
+
+        if ((score === 0 || !studentName || studentName.toLowerCase() === 'student') && cert.student_uid && cert.grand_line_id) {
+          const bestAtt = await db
+            .prepare(
+              `SELECT * FROM test_attempts
+               WHERE user_uid = ?1 AND test_id = ?2
+               ORDER BY score DESC, percentage DESC, created_at ASC LIMIT 1`
+            )
+            .bind(cert.student_uid, cert.grand_line_id)
+            .first()
+            .catch(() => null);
+          if (bestAtt) {
+            let attScore = Math.max(0, Number(bestAtt.score || 0));
+            if (attScore === 0 && bestAtt.id) {
+              const ansRow = await db
+                .prepare('SELECT COUNT(*) AS cnt FROM attempt_answers WHERE attempt_id = ?1 AND is_correct = 1')
+                .bind(bestAtt.id)
+                .first()
+                .catch(() => null);
+              if (Number(ansRow?.cnt || 0) > 0) attScore = Number(ansRow.cnt);
+            }
+            if (score === 0 && attScore > 0) score = attScore;
+            if (Number(bestAtt.total_questions || 0) > 0 && (totalQuestions === 0 || totalQuestions === 100)) {
+              totalQuestions = Number(bestAtt.total_questions);
+            }
+            if ((!studentName || studentName.toLowerCase() === 'student') && bestAtt.user_name) {
+              studentName = resolveLeaderboardRowName(bestAtt.user_name, cert.student_email || '') || studentName;
+            }
+          }
+        }
+
+        const percentage =
+          totalQuestions > 0
+            ? Math.max(0, Math.min(100, Math.round((score / totalQuestions) * 100)))
+            : Math.max(0, Math.min(100, Math.round(Number(cert.percentage ?? 0))));
+
+        const activeSig = await db
+          .prepare('SELECT signatory_name, signatory_title FROM certificate_signatures WHERE active = 1 ORDER BY version DESC LIMIT 1')
+          .first()
+          .catch(() => null);
+
         const isRevoked = cert.status === 'revoked';
         const safeCertificate = {
           serial: cert.serial,
           status: isRevoked ? 'revoked' : 'active',
-          studentName: cert.student_name,
+          studentUid: cert.student_uid,
+          studentName,
+          grandLineId: cert.grand_line_id,
           mockTitle: cert.grand_line_title,
           grandLineTitle: cert.grand_line_title,
           editionLabel: cert.edition_label,
           rank: Number(cert.rank || 1),
-          score: Number(cert.score || 0),
-          totalQuestions: Number(cert.total_questions || 0),
-          percentage: Number(cert.percentage || 0),
+          score,
+          totalQuestions,
+          percentage,
           participantsCount: Number(cert.participants_count || 1),
+          themeId: cert.theme_id || 'auto',
+          signatoryName: activeSig?.signatory_name || 'Boardly Examination Council',
+          signatoryTitle: activeSig?.signatory_title || 'Founder, Boardly',
           issuedAt: Number(cert.issued_at),
         };
         return jsonResponse(request, env, {
@@ -3342,26 +3512,138 @@ export default {
           .bind(user.uid)
           .all();
 
+        const activeSig = await db
+          .prepare('SELECT * FROM certificate_signatures WHERE active = 1 ORDER BY version DESC LIMIT 1')
+          .first()
+          .catch(() => null);
+        const sigDataUrl = activeSig
+          ? await loadSignatureDataUrlFromR2(env.R2_BUCKET, activeSig.r2_key).catch(() => null)
+          : null;
+
+        const unameRow = await db
+          .prepare('SELECT display_username, username FROM user_usernames WHERE uid = ?1 LIMIT 1')
+          .bind(user.uid)
+          .first()
+          .catch(() => null);
+        const guestRow = await db
+          .prepare('SELECT display_username, username FROM guest_accounts WHERE guest_uid = ?1 LIMIT 1')
+          .bind(user.uid)
+          .first()
+          .catch(() => null);
+        const userFallbackName =
+          resolveLeaderboardRowName(
+            user.tokenName ||
+              unameRow?.display_username ||
+              unameRow?.username ||
+              guestRow?.display_username ||
+              guestRow?.username ||
+              '',
+            user.email
+          ) || 'Student';
+
         const exp = Date.now() + 1000 * 60 * 60 * 24 * 7;
         const mapped = [];
         for (const c of results || []) {
+          let score = Math.max(0, Number(c.score || 0));
+          let totalQuestions = Math.max(0, Number(c.total_questions || 0));
+          let studentName = String(c.student_name || '').trim();
+          let needsDbRepair = false;
+
+          if (score === 0 || totalQuestions === 0 || !studentName || studentName.toLowerCase() === 'student') {
+            const bestAtt = await db
+              .prepare(
+                `SELECT * FROM test_attempts
+                 WHERE user_uid = ?1 AND test_id = ?2
+                 ORDER BY score DESC, percentage DESC, created_at ASC LIMIT 1`
+              )
+              .bind(c.student_uid, c.grand_line_id)
+              .first()
+              .catch(() => null);
+
+            if (bestAtt) {
+              let attScore = Math.max(0, Number(bestAtt.score || 0));
+              if (attScore === 0 && bestAtt.id) {
+                const ansRow = await db
+                  .prepare('SELECT COUNT(*) AS cnt FROM attempt_answers WHERE attempt_id = ?1 AND is_correct = 1')
+                  .bind(bestAtt.id)
+                  .first()
+                  .catch(() => null);
+                if (Number(ansRow?.cnt || 0) > 0) attScore = Number(ansRow.cnt);
+              }
+              if (score === 0 && attScore > 0) {
+                score = attScore;
+                needsDbRepair = true;
+              }
+              if (Number(bestAtt.total_questions || 0) > 0 && (totalQuestions === 0 || totalQuestions === 100)) {
+                totalQuestions = Number(bestAtt.total_questions);
+                needsDbRepair = true;
+              }
+              if ((!studentName || studentName.toLowerCase() === 'student') && bestAtt.user_name) {
+                const resolvedAttName = resolveLeaderboardRowName(bestAtt.user_name, user.email || c.student_email || '');
+                if (resolvedAttName && resolvedAttName !== 'Student') {
+                  studentName = resolvedAttName;
+                  needsDbRepair = true;
+                }
+              }
+            }
+          }
+
+          if (!studentName || studentName.toLowerCase() === 'student') {
+            if (userFallbackName && userFallbackName !== 'Student') {
+              studentName = userFallbackName;
+              needsDbRepair = true;
+            } else {
+              studentName = 'Student';
+            }
+          }
+
+          const percentage =
+            totalQuestions > 0
+              ? Math.max(0, Math.min(100, Math.round((score / totalQuestions) * 100)))
+              : Math.max(0, Math.min(100, Math.round(Number(c.percentage ?? 0))));
+
+          if (percentage !== Number(c.percentage || 0)) {
+            needsDbRepair = true;
+          }
+
+          if (needsDbRepair) {
+            await db
+              .prepare(
+                `UPDATE certificates
+                 SET student_name = ?1, score = ?2, total_questions = ?3, percentage = ?4
+                 WHERE id = ?5`
+              )
+              .bind(studentName, score, totalQuestions, percentage, c.id)
+              .run()
+              .catch(() => {});
+          }
+
           const pngToken = await signWorkerCertToken(c.id, 'png', exp);
           const pdfToken = await signWorkerCertToken(c.id, 'pdf', exp);
           mapped.push({
             id: c.id,
             serial: c.serial,
+            serialNumber: c.serial,
             studentUid: c.student_uid,
-            studentName: c.student_name,
+            studentName,
+            studentEmail: c.student_email || user.email || '',
             grandLineId: c.grand_line_id,
             grandLineTitle: c.grand_line_title,
+            testTitle: c.grand_line_title,
             editionLabel: c.edition_label,
             rank: Number(c.rank || 1),
-            score: Number(c.score || 0),
-            totalQuestions: Number(c.total_questions || 0),
-            percentage: Number(c.percentage || 0),
+            score,
+            scoreObtained: score,
+            totalQuestions,
+            totalMarks: totalQuestions,
+            percentage,
             participantsCount: Number(c.participants_count || 1),
-            themeId: c.theme_id,
-            signatureVersion: Number(c.signature_version || 0),
+            themeId: c.theme_id || 'auto',
+            paletteSeed: c.student_uid || c.serial,
+            signatureVersion: Number(c.signature_version || activeSig?.version || 1),
+            signatoryName: activeSig?.signatory_name || 'Boardly Examination Council',
+            signatoryTitle: activeSig?.signatory_title || 'Founder, Boardly',
+            signatureDataUrl: sigDataUrl,
             issuedAt: Number(c.issued_at),
             status: c.status,
             verifyUrl: `/verify/${encodeURIComponent(c.serial)}`,
@@ -4031,24 +4313,38 @@ export default {
           const exp = Date.now() + 1000 * 60 * 60 * 24 * 7;
           const mappedCerts = [];
           for (const c of results || []) {
+            const score = Math.max(0, Number(c.score || 0));
+            const totalQuestions = Math.max(0, Number(c.total_questions || 0));
+            const percentage =
+              totalQuestions > 0
+                ? Math.max(0, Math.min(100, Math.round((score / totalQuestions) * 100)))
+                : Math.max(0, Math.min(100, Math.round(Number(c.percentage ?? 0))));
             const pngToken = await signWorkerCertToken(c.id, 'png', exp);
             const pdfToken = await signWorkerCertToken(c.id, 'pdf', exp);
             mappedCerts.push({
               id: c.id,
               serial: c.serial,
+              serialNumber: c.serial,
               studentUid: c.student_uid,
               studentName: c.student_name,
               studentEmail: c.student_email,
               grandLineId: c.grand_line_id,
               grandLineTitle: c.grand_line_title,
+              testTitle: c.grand_line_title,
               editionLabel: c.edition_label,
               rank: Number(c.rank || 1),
-              score: Number(c.score || 0),
-              totalQuestions: Number(c.total_questions || 0),
-              percentage: Number(c.percentage || 0),
+              score,
+              scoreObtained: score,
+              totalQuestions,
+              totalMarks: totalQuestions,
+              percentage,
               participantsCount: Number(c.participants_count || 1),
-              themeId: c.theme_id,
-              signatureVersion: Number(c.signature_version || 0),
+              themeId: c.theme_id || 'auto',
+              paletteSeed: c.student_uid || c.serial,
+              signatureVersion: Number(c.signature_version || formattedActiveSig?.version || 1),
+              signatoryName: formattedActiveSig?.signatoryName || 'Boardly Examination Council',
+              signatoryTitle: formattedActiveSig?.signatoryTitle || 'Founder, Boardly',
+              signatureDataUrl: formattedActiveSig?.previewDataUrl || null,
               issuedAt: Number(c.issued_at),
               status: c.status,
               verifyUrl: `/verify/${encodeURIComponent(c.serial)}`,

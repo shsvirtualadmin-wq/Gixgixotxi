@@ -18,6 +18,7 @@ import {
   type PublicCertificateVerification,
 } from '../services/certificateService';
 import { formatCertificateDate } from '../lib/certificateRenderer';
+import { CertificateRenderer } from '../components/certificates/CertificateRenderer';
 
 /**
  * Public Certificate Verification Page (`boardly.cfd/verify/:serial` and `/verify`).
@@ -210,6 +211,46 @@ export const VerifyCertificatePage: React.FC = () => {
           {/* Safe Public Record Details (Shown for Active or Revoked records) */}
           {(result.status === 'active' || result.status === 'revoked') && (
             <div className="space-y-5">
+              {result.status === 'active' && (
+                <div className="rounded-2xl overflow-hidden border border-[var(--border)] bg-black/20">
+                  <CertificateRenderer
+                    serial={result.serial}
+                    serialNumber={result.serial}
+                    studentName={result.studentName || 'Student'}
+                    studentUid={result.studentUid || result.serial}
+                    paletteSeed={result.studentUid || result.serial || result.studentName}
+                    grandLineId={result.grandLineId || 'default'}
+                    grandLineTitle={result.mockTitle || 'Boardly Grand Line Mock'}
+                    testTitle={result.mockTitle || 'Boardly Grand Line Mock'}
+                    editionLabel={result.editionLabel || 'OFFICIAL MOCK EDITION'}
+                    rank={result.rank || 1}
+                    score={Math.max(0, Number(result.score ?? 0))}
+                    scoreObtained={Math.max(0, Number(result.score ?? 0))}
+                    totalQuestions={Math.max(0, Number(result.totalQuestions ?? 0))}
+                    totalMarks={Math.max(0, Number(result.totalQuestions ?? 0))}
+                    percentage={
+                      Number(result.totalQuestions ?? 0) > 0
+                        ? Math.round(
+                            (Math.max(0, Number(result.score ?? 0)) /
+                              Math.max(1, Number(result.totalQuestions ?? 1))) *
+                              100
+                          )
+                        : Math.max(0, Math.min(100, Math.round(Number(result.percentage ?? 0))))
+                    }
+                    participantsCount={Math.max(1, Number(result.participantsCount || 1))}
+                    issuedAt={result.issuedAt || Date.now()}
+                    themeId={result.themeId || 'auto'}
+                    instanceId={`verify-cert-${result.serial}`}
+                    signatoryName={result.signatoryName}
+                    signatoryTitle={result.signatoryTitle}
+                    signatureDataUrl={result.signatureDataUrl}
+                    verifyBaseUrl={
+                      typeof window !== 'undefined' ? window.location.origin : 'https://boardly.cfd'
+                    }
+                  />
+                </div>
+              )}
+
               <div className="p-5 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] space-y-2">
                 <div className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
                   RECIPIENT (STUDENT NAME)
@@ -247,7 +288,16 @@ export const VerifyCertificatePage: React.FC = () => {
                     1st Position (Rank #{result.rank || 1})
                   </div>
                   <div className="font-mono text-[11px] text-[var(--text-muted)]">
-                    Score: {result.score}/{result.totalQuestions} ({result.percentage}%)
+                    Score: {Math.max(0, Number(result.score ?? 0))}/
+                    {Math.max(0, Number(result.totalQuestions ?? 0))} (
+                    {Number(result.totalQuestions ?? 0) > 0
+                      ? Math.round(
+                          (Math.max(0, Number(result.score ?? 0)) /
+                            Math.max(1, Number(result.totalQuestions ?? 1))) *
+                            100
+                        )
+                      : Math.max(0, Math.min(100, Math.round(Number(result.percentage ?? 0))))}
+                    %)
                   </div>
                 </div>
 
